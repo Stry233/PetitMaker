@@ -1,0 +1,204 @@
+{
+  "id": "tree-baobab",
+  "category": "tree",
+  "name": {
+    "en": "Baobab",
+    "zh": "猴面包树",
+    "ja": "バオバブ",
+    "ru": "Баобаб",
+    "th": "ต้นเบาบับ",
+    "id": "Pohon Baobab",
+    "fr": "Baobab"
+  },
+  "emoji": "🌳",
+  "icon": "tree-baobab",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.64,
+          0.6,
+          0.64
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#bf9b6b",
+        "seg": 9,
+        "taper": 0.82
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.54,
+          0.65,
+          0.54
+        ],
+        "pos": [
+          0,
+          0.58,
+          0
+        ],
+        "color": "#a86e33",
+        "seg": 9,
+        "taper": 0.56
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.52,
+          0.16
+        ],
+        "pos": [
+          0.1,
+          1.0,
+          0.0
+        ],
+        "color": "#9c612b",
+        "rotZ": -38,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.66,
+          0.26,
+          0.66
+        ],
+        "pos": [
+          0.36,
+          1.33,
+          0.0
+        ],
+        "color": "#24421a",
+        "detail": 1
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.52,
+          0.16
+        ],
+        "pos": [
+          -0.1,
+          1.0,
+          0.0
+        ],
+        "color": "#9c612b",
+        "rotZ": 38,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.66,
+          0.26,
+          0.66
+        ],
+        "pos": [
+          -0.36,
+          1.33,
+          0.0
+        ],
+        "color": "#2f5220",
+        "detail": 1
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.52,
+          0.16
+        ],
+        "pos": [
+          0.0,
+          1.0,
+          0.1
+        ],
+        "color": "#9c612b",
+        "rotX": 38,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.66,
+          0.26,
+          0.66
+        ],
+        "pos": [
+          0.0,
+          1.33,
+          0.36
+        ],
+        "color": "#2f5220",
+        "detail": 1
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.52,
+          0.16
+        ],
+        "pos": [
+          0.0,
+          1.0,
+          -0.1
+        ],
+        "color": "#9c612b",
+        "rotX": -38,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.66,
+          0.26,
+          0.66
+        ],
+        "pos": [
+          0.0,
+          1.33,
+          -0.36
+        ],
+        "color": "#24421a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.76,
+          0.3,
+          0.76
+        ],
+        "pos": [
+          0,
+          1.4,
+          0
+        ],
+        "color": "#3f6b2a",
+        "detail": 1
+      }
+    ]
+  }
+}

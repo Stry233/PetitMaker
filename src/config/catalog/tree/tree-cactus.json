@@ -1,0 +1,403 @@
+{
+  "id": "tree-cactus",
+  "category": "tree",
+  "name": {
+    "en": "Cactus",
+    "zh": "仙人掌",
+    "ja": "サボテン",
+    "ru": "Кактус",
+    "th": "กระบองเพชร",
+    "id": "Kaktus",
+    "fr": "Cactus"
+  },
+  "emoji": "🌳",
+  "icon": "tree-cactus",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.34,
+          0.14,
+          0.34
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#2f6b49",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.3,
+          1.5,
+          0.3
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#3e8a5c",
+        "seg": 8,
+        "taper": 0.9
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.18,
+          0.28
+        ],
+        "pos": [
+          0,
+          1.48,
+          0
+        ],
+        "color": "#57ad78",
+        "seg": 8
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.16,
+          0.12,
+          0.16
+        ],
+        "pos": [
+          0,
+          1.62,
+          0
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.3,
+          0.16
+        ],
+        "pos": [
+          0.36,
+          0.55,
+          0
+        ],
+        "color": "#4a9c68",
+        "rotZ": 90,
+        "seg": 7
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.18,
+          0.62,
+          0.18
+        ],
+        "pos": [
+          0.36,
+          0.46,
+          0
+        ],
+        "color": "#4a9c68",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.12,
+          0.17
+        ],
+        "pos": [
+          0.36,
+          1.08,
+          0
+        ],
+        "color": "#57ad78",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.12,
+          0.1,
+          0.12
+        ],
+        "pos": [
+          0.36,
+          1.18,
+          0
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.3,
+          0.16
+        ],
+        "pos": [
+          -0.36,
+          0.78,
+          0
+        ],
+        "color": "#4a9c68",
+        "rotZ": -90,
+        "seg": 7
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.18,
+          0.42,
+          0.18
+        ],
+        "pos": [
+          -0.36,
+          0.69,
+          0
+        ],
+        "color": "#4a9c68",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.12,
+          0.17
+        ],
+        "pos": [
+          -0.36,
+          1.11,
+          0
+        ],
+        "color": "#57ad78",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.12,
+          0.1,
+          0.12
+        ],
+        "pos": [
+          -0.36,
+          1.21,
+          0
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.3,
+          0.16
+        ],
+        "pos": [
+          0,
+          0.42,
+          0.33
+        ],
+        "color": "#4a9c68",
+        "rotX": -90,
+        "seg": 7
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.18,
+          0.34,
+          0.18
+        ],
+        "pos": [
+          0,
+          0.33,
+          0.33
+        ],
+        "color": "#4a9c68",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.12,
+          0.17
+        ],
+        "pos": [
+          0,
+          0.67,
+          0.33
+        ],
+        "color": "#57ad78",
+        "seg": 7
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.16,
+          0.3,
+          0.16
+        ],
+        "pos": [
+          0,
+          0.88,
+          -0.33
+        ],
+        "color": "#4a9c68",
+        "rotX": 90,
+        "seg": 7
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.18,
+          0.3,
+          0.18
+        ],
+        "pos": [
+          0,
+          0.79,
+          -0.33
+        ],
+        "color": "#4a9c68",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.12,
+          0.17
+        ],
+        "pos": [
+          0,
+          1.09,
+          -0.33
+        ],
+        "color": "#57ad78",
+        "seg": 7
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.12,
+          0.1,
+          0.12
+        ],
+        "pos": [
+          0,
+          1.19,
+          -0.33
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.138,
+          0.35,
+          0.05
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.025,
+          0.7,
+          0.141
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.136,
+          0.5,
+          -0.05
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.048,
+          0.95,
+          -0.132
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.12,
+          1.15,
+          0.069
+        ],
+        "color": "#f2d13c"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.129,
+          1.25,
+          -0.047
+        ],
+        "color": "#f2d13c"
+      }
+    ]
+  }
+}

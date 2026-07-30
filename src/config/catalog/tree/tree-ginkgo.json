@@ -1,0 +1,245 @@
+{
+  "id": "tree-ginkgo",
+  "category": "tree",
+  "name": {
+    "en": "Ginkgo",
+    "zh": "银杏树",
+    "ja": "イチョウ",
+    "ru": "Гинкго",
+    "th": "ต้นแปะก๊วย",
+    "id": "Pohon Ginkgo",
+    "fr": "Ginkgo"
+  },
+  "emoji": "🌳",
+  "icon": "tree-ginkgo",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.5,
+          0.14,
+          0.5
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#97794e",
+        "seg": 7,
+        "taper": 0.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.36,
+          0.82,
+          0.36
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#b99a68",
+        "seg": 7,
+        "taper": 0.62
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.14,
+          0.54,
+          1.14
+        ],
+        "pos": [
+          0,
+          0.52,
+          0
+        ],
+        "color": "#e8ad22",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.707,
+          0.4,
+          0.707
+        ],
+        "pos": [
+          -0.319,
+          0.55,
+          0.096
+        ],
+        "color": "#d99216",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.707,
+          0.4,
+          0.707
+        ],
+        "pos": [
+          0.319,
+          0.56,
+          -0.096
+        ],
+        "color": "#f2c34a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.638,
+          0.378,
+          0.638
+        ],
+        "pos": [
+          0.064,
+          0.55,
+          0.319
+        ],
+        "color": "#e8ad22",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.94,
+          0.5,
+          0.94
+        ],
+        "pos": [
+          0,
+          0.86,
+          0
+        ],
+        "color": "#e08c16",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.583,
+          0.37,
+          0.583
+        ],
+        "pos": [
+          -0.263,
+          0.89,
+          0.079
+        ],
+        "color": "#cf7714",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.583,
+          0.37,
+          0.583
+        ],
+        "pos": [
+          0.263,
+          0.9,
+          -0.079
+        ],
+        "color": "#ea9c1c",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.526,
+          0.35,
+          0.526
+        ],
+        "pos": [
+          0.053,
+          0.89,
+          0.263
+        ],
+        "color": "#e08c16",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.66,
+          0.46,
+          0.66
+        ],
+        "pos": [
+          0,
+          1.2,
+          0
+        ],
+        "color": "#b3541c",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.409,
+          0.34,
+          0.409
+        ],
+        "pos": [
+          -0.185,
+          1.23,
+          0.055
+        ],
+        "color": "#9c4517",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.409,
+          0.34,
+          0.409
+        ],
+        "pos": [
+          0.185,
+          1.24,
+          -0.055
+        ],
+        "color": "#c26a1a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.37,
+          0.322,
+          0.37
+        ],
+        "pos": [
+          0.037,
+          1.23,
+          0.185
+        ],
+        "color": "#b3541c",
+        "detail": 1
+      }
+    ]
+  }
+}

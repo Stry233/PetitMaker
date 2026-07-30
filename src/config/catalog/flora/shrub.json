@@ -1,0 +1,189 @@
+{
+  "id": "shrub",
+  "category": "flora",
+  "name": {
+    "en": "Shrub",
+    "zh": "灌木丛",
+    "ja": "低木",
+    "ru": "Куст",
+    "th": "พุ่มไม้",
+    "id": "Semak",
+    "fr": "Buisson"
+  },
+  "emoji": "🌿",
+  "icon": "plant-shrub",
+  "width": 1,
+  "height": 1,
+  "loadValue": 15,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.92,
+          0.4,
+          0.92
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#3d7a31",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.506,
+          0.3,
+          0.506
+        ],
+        "pos": [
+          0.26,
+          0.04,
+          0.15
+        ],
+        "color": "#2f6428",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.506,
+          0.3,
+          0.506
+        ],
+        "pos": [
+          -0.15,
+          0.04,
+          0.26
+        ],
+        "color": "#3d7a31",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.506,
+          0.3,
+          0.506
+        ],
+        "pos": [
+          -0.26,
+          0.04,
+          -0.15
+        ],
+        "color": "#2f6428",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.506,
+          0.3,
+          0.506
+        ],
+        "pos": [
+          0.15,
+          0.04,
+          -0.26
+        ],
+        "color": "#3d7a31",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.552,
+          0.28,
+          0.552
+        ],
+        "pos": [
+          0,
+          0.22,
+          0
+        ],
+        "color": "#4f9440",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.07,
+          0.07,
+          0.07
+        ],
+        "pos": [
+          0.309,
+          0.3,
+          0.083
+        ],
+        "color": "#cc4b28"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.07,
+          0.07,
+          0.07
+        ],
+        "pos": [
+          -0.042,
+          0.36,
+          0.236
+        ],
+        "color": "#cc4b28"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.07,
+          0.07,
+          0.07
+        ],
+        "pos": [
+          -0.319,
+          0.26,
+          -0.116
+        ],
+        "color": "#cc4b28"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.07,
+          0.07,
+          0.07
+        ],
+        "pos": [
+          0.024,
+          0.32,
+          -0.279
+        ],
+        "color": "#cc4b28"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.07,
+          0.07,
+          0.07
+        ],
+        "pos": [
+          0.121,
+          0.42,
+          -0.07
+        ],
+        "color": "#cc4b28"
+      }
+    ]
+  }
+}

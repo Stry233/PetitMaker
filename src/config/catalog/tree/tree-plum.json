@@ -1,0 +1,211 @@
+{
+  "id": "tree-plum",
+  "category": "tree",
+  "name": {
+    "en": "Plum Tree",
+    "zh": "李树",
+    "ja": "スモモの木",
+    "ru": "Слива",
+    "th": "ต้นพลัม",
+    "id": "Pohon Plum",
+    "fr": "Prunier"
+  },
+  "emoji": "🌳",
+  "icon": "tree-plum",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.52,
+          0.18,
+          0.52
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#5c332c",
+        "seg": 7,
+        "taper": 0.72
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.4,
+          0.95,
+          0.4
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#6f4437",
+        "seg": 7,
+        "taper": 0.6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.06,
+          0.8,
+          1.06
+        ],
+        "pos": [
+          0,
+          0.72,
+          0
+        ],
+        "color": "#27541d",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.32,
+          0.72,
+          0.1
+        ],
+        "color": "#1d4517",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.32,
+          0.76,
+          -0.1
+        ],
+        "color": "#27541d",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.08,
+          0.68,
+          0.33
+        ],
+        "color": "#1d4517",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.08,
+          0.72,
+          -0.33
+        ],
+        "color": "#1d4517",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.72,
+          0.55,
+          0.72
+        ],
+        "pos": [
+          0,
+          1.28,
+          0
+        ],
+        "color": "#336826",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.17,
+          0.17
+        ],
+        "pos": [
+          -0.582,
+          1.02,
+          0.172
+        ],
+        "color": "#e8b13e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.17,
+          0.17
+        ],
+        "pos": [
+          -0.506,
+          0.97,
+          0.335
+        ],
+        "color": "#c9403a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.17,
+          0.17
+        ],
+        "pos": [
+          0.603,
+          0.92,
+          -0.068
+        ],
+        "color": "#e8b13e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.17,
+          0.17,
+          0.17
+        ],
+        "pos": [
+          0.556,
+          0.87,
+          -0.242
+        ],
+        "color": "#c9403a"
+      }
+    ]
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "id": "tree-avocado",
+  "category": "tree",
+  "name": {
+    "en": "Avocado",
+    "zh": "牛油果树",
+    "ja": "アボカドの木",
+    "ru": "Авокадо",
+    "th": "ต้นอะโวคาโด",
+    "id": "Pohon Alpukat",
+    "fr": "Avocatier"
+  },
+  "emoji": "🌳",
+  "icon": "tree-avocado",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.52,
+          0.18,
+          0.52
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#5f2f1c",
+        "seg": 7,
+        "taper": 0.72
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.4,
+          0.95,
+          0.4
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#7c4526",
+        "seg": 7,
+        "taper": 0.6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.06,
+          0.8,
+          1.06
+        ],
+        "pos": [
+          0,
+          0.72,
+          0
+        ],
+        "color": "#234c1a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.32,
+          0.72,
+          0.1
+        ],
+        "color": "#1a3d14",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.32,
+          0.76,
+          -0.1
+        ],
+        "color": "#234c1a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.08,
+          0.68,
+          0.33
+        ],
+        "color": "#1a3d14",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.08,
+          0.72,
+          -0.33
+        ],
+        "color": "#1a3d14",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.72,
+          0.55,
+          0.72
+        ],
+        "pos": [
+          0,
+          1.28,
+          0
+        ],
+        "color": "#2f5f22",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.3,
+          0.2
+        ],
+        "pos": [
+          -0.583,
+          1.05,
+          0.212
+        ],
+        "color": "#b78ab6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.3,
+          0.2
+        ],
+        "pos": [
+          0.611,
+          0.95,
+          -0.108
+        ],
+        "color": "#b78ab6"
+      }
+    ]
+  }
+}

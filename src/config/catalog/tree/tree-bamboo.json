@@ -1,0 +1,274 @@
+{
+  "id": "tree-bamboo",
+  "category": "tree",
+  "name": {
+    "en": "Bamboo",
+    "zh": "竹子",
+    "ja": "竹",
+    "ru": "Бамбук",
+    "th": "ไผ่",
+    "id": "Bambu",
+    "fr": "Bambou"
+  },
+  "emoji": "🌳",
+  "icon": "tree-bamboo",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.36,
+          0.16,
+          0.36
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#b3b055",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.3,
+          0.06,
+          0.3
+        ],
+        "pos": [
+          0,
+          0.16,
+          0
+        ],
+        "color": "#c9c46a",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.26,
+          0.3,
+          0.26
+        ],
+        "pos": [
+          0,
+          0.22,
+          0
+        ],
+        "color": "#3f8032",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.3,
+          0.05,
+          0.3
+        ],
+        "pos": [
+          0,
+          0.52,
+          0
+        ],
+        "color": "#86b14b",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.25,
+          0.3,
+          0.25
+        ],
+        "pos": [
+          0,
+          0.57,
+          0
+        ],
+        "color": "#4b8c35",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.29,
+          0.05,
+          0.29
+        ],
+        "pos": [
+          0,
+          0.87,
+          0
+        ],
+        "color": "#86b14b",
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.24,
+          0.28,
+          0.24
+        ],
+        "pos": [
+          0,
+          0.92,
+          0
+        ],
+        "color": "#3f8032",
+        "seg": 8
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.1,
+          0.2
+        ],
+        "pos": [
+          0.14,
+          0.66,
+          0.06
+        ],
+        "color": "#6f9d35",
+        "rotY": 35,
+        "rotZ": -24
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.0,
+          0.32,
+          1.0
+        ],
+        "pos": [
+          0,
+          1.1,
+          0
+        ],
+        "color": "#6f9d35",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.26,
+          0.62
+        ],
+        "pos": [
+          0.395,
+          1.02,
+          0.144
+        ],
+        "color": "#57802b",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.26,
+          0.62
+        ],
+        "pos": [
+          -0.015,
+          1.07,
+          0.42
+        ],
+        "color": "#8fbe4d",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.26,
+          0.62
+        ],
+        "pos": [
+          -0.404,
+          1.02,
+          0.116
+        ],
+        "color": "#6f9d35",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.26,
+          0.62
+        ],
+        "pos": [
+          -0.235,
+          1.07,
+          -0.348
+        ],
+        "color": "#8fbe4d",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.26,
+          0.62
+        ],
+        "pos": [
+          0.259,
+          1.02,
+          -0.331
+        ],
+        "color": "#57802b",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.7,
+          0.3,
+          0.7
+        ],
+        "pos": [
+          0,
+          1.33,
+          0
+        ],
+        "color": "#8fbe4d",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.42,
+          0.24,
+          0.42
+        ],
+        "pos": [
+          0.08,
+          1.52,
+          0.05
+        ],
+        "color": "#a3cd5b",
+        "detail": 1
+      }
+    ]
+  }
+}

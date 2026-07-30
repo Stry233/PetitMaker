@@ -1,0 +1,349 @@
+{
+  "id": "plant-agave",
+  "category": "flora",
+  "name": {
+    "en": "Agave",
+    "zh": "龙舌兰丛",
+    "ja": "アガベ",
+    "ru": "Агава",
+    "th": "อากาเว่",
+    "id": "Agave",
+    "fr": "Agave"
+  },
+  "emoji": "🌿",
+  "icon": "plant-agave",
+  "width": 1,
+  "height": 1,
+  "loadValue": 15,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 0.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 45.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 90.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 135.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 180.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 225.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 270.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.15,
+          0.54,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#4c8f35",
+        "rotY": 315.0,
+        "rotZ": 64,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 22.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 82.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 142.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 202.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 262.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.46,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#5fa340",
+        "rotY": 322.0,
+        "rotZ": 44,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.11,
+          0.36,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#7ab84e",
+        "rotY": 45.0,
+        "rotZ": 22,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.11,
+          0.36,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#7ab84e",
+        "rotY": 135.0,
+        "rotZ": 22,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.11,
+          0.36,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#7ab84e",
+        "rotY": 225.0,
+        "rotZ": 22,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.11,
+          0.36,
+          0.07
+        ],
+        "pos": [
+          0,
+          0.02,
+          0
+        ],
+        "color": "#7ab84e",
+        "rotY": 315.0,
+        "rotZ": 22,
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.1,
+          0.24,
+          0.1
+        ],
+        "pos": [
+          0,
+          0.1,
+          0
+        ],
+        "color": "#8cc65a"
+      }
+    ]
+  }
+}

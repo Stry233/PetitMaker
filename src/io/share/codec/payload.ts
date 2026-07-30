@@ -1,0 +1,299 @@
+// src/io/share/codec/payload.ts — PetitGlyph v2 payload frame: assembles/parses the byte frame
+// the visible glyph code carries. Sits on top of the canonical/predictor/residual-coder layers
+// (canonical.ts, codec/predictors.ts, codec/terrain-coder.ts, codec/object-coder.ts): picks the
+// smallest self-verified {predictor + residual} encoding via a tiny MDL competition, then wraps
+// it with a small header (template/catalog identity + a binary provenance record + a SHA-256
+// content-hash gate) so a corrupted or foreign payload is rejected before it ever reaches the
+// map-reconstruction path.
+import type { CanonicalSave } from '../canonical';
+import { canonicalize, canonicalBytes, templateHash, catalogHash } from '../canonical';
+import { getMapTemplate } from '../../../config/maps';
+import { sha256 } from '../crypto/sha256';
+import { ShareError } from '../errors';
+import type { MapProvenanceSummary } from '../../../core/provenance/types';
+import { P_EMPTY, P_REPLAY, emptyCanonical, replayCanonical } from './predictors';
+import { tokensOf, tokensToCells } from './grid-io';
+import { encodeTerrain, decodeTerrain } from './terrain-coder';
+import { encodeObjects, decodeObjects } from './object-coder';
+import { RangeEncoder, RangeDecoder } from './bitio';
+import type { GenerateConfig, GridState } from '../../../core/model/types';
+
+export interface ShareCodeMeta {
+  title?: string;
+  appVersion: string;
+  saveVersion: number;
+  createdAt?: string;
+}
+
+export interface ProvenanceInfo {
+  aiUsed: boolean;
+  proceduralUsed: boolean;
+  appVersion: string;
+  saveVersion: number;
+  createdAt?: string;
+  title?: string;
+}
+
+const MAGIC0 = 0x50; // 'P'
+const MAGIC1 = 0x32; // '2'
+const FRAME_VERSION = 1;
+const TITLE_MAX_CHARS = 48;
+
+// ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──
+
+class ByteWriter {
+  private out: number[] = [];
+  u8(v: number): void { this.out.push(v & 0xff); }
+  u16(v: number): void { this.out.push(v & 0xff, (v >>> 8) & 0xff); }
+  u32(v: number): void {
+    this.out.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
+  }
+  raw(bytes: Uint8Array): void { for (let i = 0; i < bytes.length; i++) this.out.push(bytes[i]! & 0xff); }
+  /** u8 length prefix + utf8 bytes. Throws if the encoded string exceeds 255 bytes. */
+  str8(s: string): void {
+    const b = new TextEncoder().encode(s);
+    if (b.length > 0xff) throw new Error('payload: string exceeds u8 length prefix');
+    this.u8(b.length);
+    this.raw(b);
+  }
+  /** u8 length prefix + raw bytes. */
+  blob8(b: Uint8Array): void {
+    if (b.length > 0xff) throw new Error('payload: blob exceeds u8 length prefix');
+    this.u8(b.length);
+    this.raw(b);
+  }
+  /** u16 length prefix + raw bytes. */
+  blob16(b: Uint8Array): void {
+    if (b.length > 0xffff) throw new Error('payload: blob exceeds u16 length prefix');
+    this.u16(b.length);
+    this.raw(b);
+  }
+  toBytes(): Uint8Array { return Uint8Array.from(this.out); }
+}
+
+class ByteReader {
+  private pos = 0;
+  constructor(private buf: Uint8Array) {}
+  private need(n: number): void {
+    if (this.pos + n > this.buf.length) throw new ShareError('decode-failed', 'Payload ends unexpectedly.');
+  }
+  u8(): number { this.need(1); return this.buf[this.pos++]!; }
+  u16(): number {
+    this.need(2);
+    const v = this.buf[this.pos]! | (this.buf[this.pos + 1]! << 8);
+    this.pos += 2;
+    return v >>> 0;
+  }
+  u32(): number {
+    this.need(4);
+    const v = (this.buf[this.pos]! | (this.buf[this.pos + 1]! << 8) | (this.buf[this.pos + 2]! << 16) | (this.buf[this.pos + 3]! << 24)) >>> 0;
+    this.pos += 4;
+    return v;
+  }
+  raw(n: number): Uint8Array { this.need(n); const out = this.buf.slice(this.pos, this.pos + n); this.pos += n; return out; }
+  str8(): string { const len = this.u8(); return new TextDecoder().decode(this.raw(len)); }
+  blob8(): Uint8Array { const len = this.u8(); return this.raw(len); }
+  blob16(): Uint8Array { const len = this.u16(); return this.raw(len); }
+  rest(): Uint8Array { const out = this.buf.slice(this.pos); this.pos = this.buf.length; return out; }
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+// ── Provenance record (binary) ──────────────────────────────────────────────────────────────
+
+const FLAG_AI = 1, FLAG_PROCEDURAL = 2, FLAG_CREATED_AT = 4, FLAG_TITLE = 8;
+
+function encodeProvenanceRecord(summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Uint8Array {
+  const aiUsed = summary?.containsAi ?? false;
+  const proceduralUsed = summary?.containsProcedural ?? false;
+  const hasCreatedAt = meta.createdAt !== undefined;
+  const title = meta.title !== undefined ? meta.title.slice(0, TITLE_MAX_CHARS) : undefined;
+  const hasTitle = !!title;
+
+  let flags = 0;
+  if (aiUsed) flags |= FLAG_AI;
+  if (proceduralUsed) flags |= FLAG_PROCEDURAL;
+  if (hasCreatedAt) flags |= FLAG_CREATED_AT;
+  if (hasTitle) flags |= FLAG_TITLE;
+
+  const w = new ByteWriter();
+  w.u8(flags);
+  w.u8(meta.saveVersion);
+  w.str8(meta.appVersion);
+  if (hasCreatedAt) w.u32(Math.floor(new Date(meta.createdAt!).getTime() / 1000));
+  if (hasTitle) w.str8(title!);
+  return w.toBytes();
+}
+
+function decodeProvenanceRecord(bytes: Uint8Array): ProvenanceInfo {
+  const r = new ByteReader(bytes);
+  const flags = r.u8();
+  const saveVersion = r.u8();
+  const appVersion = r.str8();
+  const info: ProvenanceInfo = {
+    aiUsed: (flags & FLAG_AI) !== 0,
+    proceduralUsed: (flags & FLAG_PROCEDURAL) !== 0,
+    appVersion,
+    saveVersion,
+  };
+  if (flags & FLAG_CREATED_AT) info.createdAt = new Date(r.u32() * 1000).toISOString();
+  if (flags & FLAG_TITLE) info.title = r.str8();
+  return info;
+}
+
+// ── MDL predictor candidates + frame assembly ───────────────────────────────────────────────
+
+interface Candidate { id: number; predicted: CanonicalSave; blob: Uint8Array }
+
+function buildFrame(canonical: CanonicalSave, contentHash: Uint8Array, c: Candidate, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Uint8Array {
+  const template = getMapTemplate(canonical.templateId);
+  const width = template.width;
+  const actualTokens = tokensOf(canonical.cells);
+
+  let predictorId = c.id;
+  let predicted = c.predicted;
+  let blob = c.blob;
+  let predictedTokens = tokensOf(predicted.cells);
+  if (predictedTokens.length !== actualTokens.length) {
+    // Predictor/template mismatch (e.g. a stale generator replay) — fall back to the empty
+    // predictor, which matches by construction whenever the templateId resolves correctly. If it
+    // still doesn't match, this candidate fails its self-verify below and the MDL loop drops it.
+    predictorId = P_EMPTY;
+    predicted = emptyCanonical(canonical.templateId);
+    blob = new Uint8Array(0);
+    predictedTokens = tokensOf(predicted.cells);
+  }
+
+  const enc = new RangeEncoder();
+  encodeTerrain(enc, actualTokens, predictedTokens, width);
+  encodeObjects(enc, canonical.objects, predicted.objects);
+  const residual = enc.finish();
+
+  const prov = encodeProvenanceRecord(summary, meta);
+
+  const w = new ByteWriter();
+  w.u8(MAGIC0);
+  w.u8(MAGIC1);
+  w.u8(FRAME_VERSION);
+  w.u8(predictorId);
+  w.u8(canonical.version);
+  w.str8(canonical.templateId);
+  w.u32(templateHash(template));
+  w.u32(catalogHash());
+  w.blob8(prov);
+  w.raw(contentHash);
+  w.blob16(blob);
+  w.raw(residual);
+  return w.toBytes();
+}
+
+/** MDL over {P_EMPTY, P_REPLAY if `state.generation`}: each candidate frame is self-verified
+ *  (decoded and hash-checked) before it is eligible; the smallest eligible frame wins. */
+export async function encodeMapPayload(state: GridState, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Promise<Uint8Array> {
+  const canonical = canonicalize(state);
+  const want = await sha256(canonicalBytes(canonical));
+
+  const candidates: Candidate[] = [
+    { id: P_EMPTY, predicted: emptyCanonical(canonical.templateId), blob: new Uint8Array(0) },
+  ];
+  if (state.generation) {
+    try {
+      const predicted = await replayCanonical(canonical.templateId, state.generation);
+      candidates.push({ id: P_REPLAY, predicted, blob: new TextEncoder().encode(JSON.stringify(state.generation)) });
+    } catch { /* replay unavailable → P_EMPTY only */ }
+  }
+
+  let best: Uint8Array | null = null;
+  for (const c of candidates) {
+    try {
+      const frame = buildFrame(canonical, want, c, summary, meta);
+      await decodeMapPayload(frame); // self-verify (hash gate inside) — throws if it doesn't round-trip
+      if (!best || frame.length < best.length) best = frame;
+    } catch { /* candidate ineligible — encodeObjects can throw on an unknown catalogId, or
+                 self-verify can fail; either way this candidate is skipped. */ }
+  }
+  if (!best) throw new ShareError('decode-failed', 'No payload candidate self-verified.');
+  return best;
+}
+
+export interface DecodedMapPayload {
+  canonical: CanonicalSave;
+  provenance: ProvenanceInfo;
+  generation?: GenerateConfig;
+  templateHash: number;
+  catalogHash: number;
+}
+
+export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPayload> {
+  try {
+    const r = new ByteReader(bytes);
+    const m0 = r.u8(), m1 = r.u8();
+    if (m0 !== MAGIC0 || m1 !== MAGIC1) throw new ShareError('corrupt', 'Not a PetitGlyph v2 payload (bad magic).');
+
+    const version = r.u8();
+    if (version > FRAME_VERSION) throw new ShareError('future-version', `Payload version ${version} is newer than this build supports.`);
+    if (version !== FRAME_VERSION) throw new ShareError('decode-failed', `Unsupported payload version ${version}.`);
+
+    const predictorId = r.u8();
+    if (predictorId !== P_EMPTY && predictorId !== P_REPLAY) throw new ShareError('decode-failed', 'Unknown predictor id.');
+
+    const canonicalVersion = r.u8();
+    const templateId = r.str8();
+    const tHash = r.u32();
+    const cHash = r.u32();
+    const provBytes = r.blob8();
+    const provenance = decodeProvenanceRecord(provBytes);
+    const contentHash = r.raw(32);
+    const predictorBlob = r.blob16();
+    const residual = r.rest();
+
+    const template = getMapTemplate(templateId);
+    const width = template.width;
+    const cellCount = template.width * template.height;
+
+    let predicted: CanonicalSave;
+    let generation: GenerateConfig | undefined;
+    if (predictorId === P_REPLAY) {
+      let cfg: GenerateConfig;
+      try {
+        cfg = JSON.parse(new TextDecoder().decode(predictorBlob)) as GenerateConfig;
+      } catch {
+        throw new ShareError('decode-failed', 'Malformed predictor blob.');
+      }
+      predicted = await replayCanonical(templateId, cfg);
+      generation = cfg;
+    } else {
+      predicted = emptyCanonical(templateId);
+    }
+
+    const predictedTokens = tokensOf(predicted.cells);
+    if (predictedTokens.length !== cellCount) {
+      throw new ShareError('decode-failed', 'Predictor/template cell-count mismatch.');
+    }
+
+    const dec = new RangeDecoder(residual);
+    const tokens = decodeTerrain(dec, predictedTokens, width);
+    const objects = decodeObjects(dec, predicted.objects);
+
+    const canonical: CanonicalSave = {
+      version: canonicalVersion,
+      templateId,
+      cells: tokensToCells(tokens),
+      objects,
+    };
+
+    const gotHash = await sha256(canonicalBytes(canonical));
+    if (!bytesEqual(gotHash, contentHash)) throw new ShareError('corrupt', 'Content hash mismatch.');
+
+    const result: DecodedMapPayload = { canonical, provenance, templateHash: tHash, catalogHash: cHash };
+    if (generation !== undefined) result.generation = generation;
+    return result;
+  } catch (e) {
+    if (e instanceof ShareError) throw e;
+    throw new ShareError('decode-failed', e instanceof Error ? e.message : String(e));
+  }
+}

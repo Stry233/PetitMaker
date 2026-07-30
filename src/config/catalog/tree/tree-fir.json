@@ -1,0 +1,139 @@
+{
+  "id": "tree-fir",
+  "category": "tree",
+  "name": {
+    "en": "Fir",
+    "zh": "杉木",
+    "ja": "モミの木",
+    "ru": "Пихта",
+    "th": "ต้นเฟอร์",
+    "id": "Pohon Cemara",
+    "fr": "Sapin"
+  },
+  "emoji": "🌳",
+  "icon": "tree-fir",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.54,
+          0.18,
+          0.54
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#54382a",
+        "seg": 7,
+        "taper": 0.72
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.42,
+          1.0,
+          0.42
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#6a4832",
+        "seg": 7,
+        "taper": 0.62
+      },
+      {
+        "shape": "cone",
+        "size": [
+          1.08,
+          0.52,
+          1.08
+        ],
+        "pos": [
+          0.0,
+          0.68,
+          0.0
+        ],
+        "color": "#1d4a37",
+        "seg": 9
+      },
+      {
+        "shape": "cone",
+        "size": [
+          0.88,
+          0.48,
+          0.88
+        ],
+        "pos": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "color": "#26573f",
+        "seg": 9
+      },
+      {
+        "shape": "cone",
+        "size": [
+          0.68,
+          0.44,
+          0.68
+        ],
+        "pos": [
+          0.0,
+          1.32,
+          0.0
+        ],
+        "color": "#26573f",
+        "seg": 8
+      },
+      {
+        "shape": "cone",
+        "size": [
+          0.48,
+          0.4,
+          0.48
+        ],
+        "pos": [
+          0.0,
+          1.62,
+          0.0
+        ],
+        "color": "#2f6347",
+        "seg": 8
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.24,
+          0.2
+        ],
+        "pos": [
+          0.0,
+          1.92,
+          0.0
+        ],
+        "color": "#2f6347"
+      }
+    ]
+  }
+}

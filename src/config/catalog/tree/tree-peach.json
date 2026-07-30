@@ -1,0 +1,233 @@
+{
+  "id": "tree-peach",
+  "category": "tree",
+  "name": {
+    "en": "Peach Tree",
+    "zh": "桃花树",
+    "ja": "モモの木",
+    "ru": "Персиковое дерево",
+    "th": "ต้นพีช",
+    "id": "Pohon Persik",
+    "fr": "Pêcher"
+  },
+  "emoji": "🌳",
+  "icon": "tree-peach",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.5,
+          0.16,
+          0.5
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#3f2233",
+        "seg": 7,
+        "taper": 0.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.38,
+          0.9,
+          0.38
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#4a2a3e",
+        "seg": 7,
+        "taper": 0.6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.355,
+          0.6,
+          0.063
+        ],
+        "color": "#b04277"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.05,
+          0.6,
+          0.356
+        ],
+        "color": "#e0559a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          -0.324,
+          0.6,
+          0.158
+        ],
+        "color": "#b04277"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          -0.25,
+          0.6,
+          -0.259
+        ],
+        "color": "#e0559a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.169,
+          0.6,
+          -0.318
+        ],
+        "color": "#b04277"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          0.198,
+          0.84,
+          0.198
+        ],
+        "color": "#e0559a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          -0.198,
+          0.84,
+          0.198
+        ],
+        "color": "#f18ab7"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          -0.198,
+          0.84,
+          -0.198
+        ],
+        "color": "#e0559a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          0.198,
+          0.84,
+          -0.198
+        ],
+        "color": "#f18ab7"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.5,
+          0.62
+        ],
+        "pos": [
+          0,
+          1.04,
+          0
+        ],
+        "color": "#f18ab7"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.34,
+          0.26,
+          0.34
+        ],
+        "pos": [
+          0.1,
+          1.38,
+          0.06
+        ],
+        "color": "#f7bcd3"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.16,
+          0.2
+        ],
+        "pos": [
+          -0.22,
+          1.32,
+          -0.12
+        ],
+        "color": "#f7bcd3"
+      }
+    ]
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "id": "tree-flame",
+  "category": "tree",
+  "name": {
+    "en": "Flame Tree",
+    "zh": "火焰树",
+    "ja": "カエンボク",
+    "ru": "Огненное дерево",
+    "th": "ต้นหางนกยูง",
+    "id": "Pohon Flamboyan",
+    "fr": "Flamboyant"
+  },
+  "emoji": "🌳",
+  "icon": "tree-flame",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.5,
+          0.16,
+          0.5
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#7c5027",
+        "seg": 7,
+        "taper": 0.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.38,
+          0.9,
+          0.38
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#9a6a38",
+        "seg": 7,
+        "taper": 0.6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.355,
+          0.6,
+          0.063
+        ],
+        "color": "#d4470e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.05,
+          0.6,
+          0.356
+        ],
+        "color": "#f2670f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          -0.324,
+          0.6,
+          0.158
+        ],
+        "color": "#d4470e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          -0.25,
+          0.6,
+          -0.259
+        ],
+        "color": "#f2670f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.54,
+          0.62
+        ],
+        "pos": [
+          0.169,
+          0.6,
+          -0.318
+        ],
+        "color": "#d4470e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          0.198,
+          0.84,
+          0.198
+        ],
+        "color": "#f2670f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          -0.198,
+          0.84,
+          0.198
+        ],
+        "color": "#fb8f1a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          -0.198,
+          0.84,
+          -0.198
+        ],
+        "color": "#f2670f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.55,
+          0.48,
+          0.55
+        ],
+        "pos": [
+          0.198,
+          0.84,
+          -0.198
+        ],
+        "color": "#fb8f1a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.62,
+          0.5,
+          0.62
+        ],
+        "pos": [
+          0,
+          1.04,
+          0
+        ],
+        "color": "#fb8f1a"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.34,
+          0.26,
+          0.34
+        ],
+        "pos": [
+          0.1,
+          1.38,
+          0.06
+        ],
+        "color": "#fdc32d"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.16,
+          0.2
+        ],
+        "pos": [
+          -0.22,
+          1.32,
+          -0.12
+        ],
+        "color": "#fdc32d"
+      }
+    ]
+  }
+}

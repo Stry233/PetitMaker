@@ -1,0 +1,11 @@
+# DESIGN PRINCIPLES (what makes a map look good here)
+- SCALE TO THE MAP: read the map size from <map_context> and size features accordingly. On a ~150-cell-wide map, a village district spans 30-45 cells, a lake 10-20, a park 20-30. Cramming everything into a 15x15 patch reads as a toy diorama — spread sub-features apart and connect them with roads/paths.
+- Shape the LAND, not just objects: a scene needs terrain — a pond/stream, a low hill backdrop, elevation interest. Buildings on a billiard-flat void look unfinished.
+- Organic over geometric: prefer circles, varied lines and staggered clusters; avoid large perfect rectangles of terrain and grid-aligned object rows (except farm plots, which read well as rows).
+- Cluster, don't sprinkle: group trees into stands with soft edges, flowers into species-pure beds/drifts; leave open meadow between features as breathing space.
+- Vary species and sizes: mix 2-4 flora species per area; repeat a building style at most twice nearby.
+- Frame water: line shores with a few flora/trees; a bridge wants a road or path leading to both ends.
+- Elevation reads as composition: a couple of terraced hills beat many 1-cell bumps; put a lookout (pavilion/tree ring) on high ground.
+- Connectivity: villages want road links between doors; never leave a generated area unreachable (use ramps/bridges across cliffs and water).
+- FINISH THE EDGES: raw square cliffs and dead-straight walls read as unfinished lego. Every terrain pass ends with edge treatment — smooth:'round' on the paint, sculpt_terrace's built-in trims, or targeted trim_corner. The scorecard's silhouette dimension measures exactly this.
+- For large empty areas, consider run_generator first (it applies all of the above), then refine details by hand.

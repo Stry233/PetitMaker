@@ -1,0 +1,114 @@
+{
+  "id": "ramp-retro-steps",
+  "category": "ramp",
+  "name": {
+    "en": "Retro Steps",
+    "zh": "复古街区石阶",
+    "ja": "レトロな階段",
+    "ru": "Ретро-ступени",
+    "th": "บันไดย้อนยุค",
+    "id": "Tangga Retro",
+    "fr": "Marches rétro"
+  },
+  "emoji": "❓",
+  "width": 2,
+  "height": 4,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "heightDrop",
+      "layers": 1
+    }
+  ],
+  "icon": "ramp-retro-steps",
+  "model3d": {
+    "parts": [
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.18,
+          0.92
+        ],
+        "pos": [
+          0,
+          0,
+          -0.5
+        ],
+        "color": "#b97c50"
+      },
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.18,
+          0.77
+        ],
+        "pos": [
+          0,
+          0.16,
+          -0.35
+        ],
+        "color": "#c68a5c"
+      },
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.18,
+          0.62
+        ],
+        "pos": [
+          0,
+          0.32,
+          -0.2
+        ],
+        "color": "#b97c50"
+      },
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.18,
+          0.47
+        ],
+        "pos": [
+          0,
+          0.48,
+          -0.05
+        ],
+        "color": "#c68a5c"
+      },
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.18,
+          0.32
+        ],
+        "pos": [
+          0,
+          0.64,
+          0.1
+        ],
+        "color": "#b97c50"
+      },
+      {
+        "shape": "box",
+        "size": [
+          0.9,
+          0.2,
+          0.17
+        ],
+        "pos": [
+          0,
+          0.8,
+          0.25
+        ],
+        "color": "#c68a5c"
+      }
+    ]
+  }
+}

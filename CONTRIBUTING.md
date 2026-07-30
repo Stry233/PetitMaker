@@ -1,0 +1,101 @@
+# Contributing to PetitMaker
+
+Thanks for your interest in PetitMaker, an unofficial map editor for *Petit Planet*. This guide covers how contributions are licensed and the sign-off we require. Please read it before opening a pull request.
+
+## At a glance
+
+- **Code contributions** are licensed **inbound = outbound** under **Apache-2.0**.
+- Every commit must carry a **Developer Certificate of Origin** sign-off (`Signed-off-by:`), added with `git commit -s`.
+- **Contributors retain copyright** in their contributions; you license your work to the project, you do not assign ownership to it.
+- **Art / non-code asset contributions** require a separate **written permission record** before they can be merged; the maintainers keep these records privately.
+- We only publish a contributor's name with their **consent**.
+
+## Developer Certificate of Origin (DCO)
+
+We use the **Developer Certificate of Origin 1.1** instead of a CLA. The DCO is a lightweight statement (reproduced below) that you have the right to submit the work under the project's license. You agree to it by **signing off** each commit.
+
+Add the sign-off automatically with:
+
+```bash
+git commit -s -m "your message"
+```
+
+This appends a line to the commit message using your real (or usual) name and email:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+Commits without a valid `Signed-off-by:` line cannot be merged. If you forget, amend with `git commit --amend -s` (or rebase with sign-off) and force-push the branch.
+
+<details>
+<summary>Developer Certificate of Origin 1.1 (full text)</summary>
+
+```
+Developer Certificate of Origin
+Version 1.1
+
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+
+Developer's Certificate of Origin 1.1
+
+By making a contribution to this project, I certify that:
+
+(a) The contribution was created in whole or in part by me and I
+    have the right to submit it under the open source license
+    indicated in the file; or
+
+(b) The contribution is based upon previous work that, to the best
+    of my knowledge, is covered under an appropriate open source
+    license and I have the right under that license to submit that
+    work with modifications, whether created in whole or in part
+    by me, under the same open source license (unless I am
+    permitted to submit under a different license), as indicated
+    in the file; or
+
+(c) The contribution was provided directly to me by some other
+    person who certified (a), (b) or (c) and I have not modified
+    it.
+
+(d) I understand and agree that this project and the contribution
+    are public and that a record of the contribution (including all
+    personal information I submit with it, including my sign-off) is
+    maintained indefinitely and may be redistributed consistent with
+    this project or the open source license(s) involved.
+```
+
+</details>
+
+## Code license (inbound = outbound)
+
+Code contributions are accepted under **Apache-2.0**, the same license the project ships under (see `LICENSE` and `NOTICE`). By signing off, you license your code contribution to the project and its users under Apache-2.0.
+
+**You retain copyright** in your contributions. The project does not require copyright assignment and does not act as a collective owner of your work. The copyright stays with each contributor, licensed under Apache-2.0 (see `docs/ASSET_LICENSES.md` for the full code-vs-brand-vs-asset scope split).
+
+## Art & non-code asset contributions
+
+Art, icons, fonts, sounds, and other non-code assets are **not** covered by the code license and cannot be merged on a DCO sign-off alone. Before such a contribution is accepted, we must have an explicit **written permission record** describing what is granted, by whom, and under what terms. The maintainers keep these records privately, together with the project's asset-provenance ledger; neither is part of the public repository. `docs/ASSET_LICENSES.md` carries the public summary.
+
+If you want to contribute an asset, contact us first (see below) so we can set up the permission record. Do not submit third-party or game-derived material you do not have the right to license.
+
+## Credit & naming
+
+We only publish a contributor's name (in credits, the About screen, release notes, or elsewhere) **with that person's consent**. If you contribute, let us know whether and how you would like to be credited; we will record your preference and will not publish your name without permission.
+
+## Development setup
+
+```bash
+npm install
+npm run dev          # Vite dev server
+npm run test:run     # run the test suite (Vitest)
+npm run lint         # TypeScript type-check (tsc --noEmit)
+```
+
+Please run `npm run test:run` and `npm run lint` before opening a pull request, and keep changes focused. For architecture and conventions, see `docs/ARCHITECTURE.md`.
+
+## Questions
+
+For contribution questions, or to arrange an asset-permission or credit record, email **selka.craft@outlook.com**. Security issues follow a separate process. See `SECURITY.md`.

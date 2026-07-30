@@ -1,0 +1,42 @@
+Alibaba PuHuiTi 3.0 (阿里巴巴普惠体 3.0) — Official License Statement
+阿里巴巴普惠体3.0版 法律声明
+
+Retrieved verbatim (no paraphrasing) on 2026-07-14 from the official reference chain published
+at https://www.alibabafonts.com/ (font product page) → official legal-statement document
+https://www.yuque.com/yiguang-wkqc2/puhuiti/nus9wiinq4aeiegy ("阿里巴巴普惠体3.0版 法律声明"),
+cross-verified byte-for-byte identical against two independent third-party mirrors that both cite
+the same official source: https://www.100font.com/thread-96.htm and
+https://www.maoken.com/freefonts/1151.html (both retrieved 2026-07-14). The official yuque.com
+page itself is a JavaScript-rendered SPA that could not be captured by a non-browser fetch in this
+audit; the text below is reproduced from the two independent verbatim mirrors, which agree exactly
+with each other character-for-character.
+
+---
+
+阿⾥巴巴普惠体3.0版，在2.0版的基础上，新增拓展了符合国标GB18030-2022规格的简体中文字库（指定7款字重）。现有简体中文（指定9款字重）、越南文和泰文字体（指定3款字重）、韩文字体（指定3款字重）、日文字体（指定3款字重）、繁体中文（Big5和HK分别指定4款字重），前述字体及包含该字体的字库软件，合称 "阿⾥巴巴字体"。
+
+阿里巴巴字体的知识产权和相关权益归属于阿里巴巴（中国）有限公司（以下简称"阿里巴巴"），受《中华人民共和国著作权法》及其他适用法律法规、国际公约、条约的保护。
+
+阿里巴巴授权个人、企业等用户在遵守本声明相关条款的前提下，可以下载、安装和使用上述阿里巴巴字体，该授权是免费的普通许可，用户可基于合法目的用于商业用途或非商业用途，但不得以任何违反法律法规、政策、规章或公序良俗的方式使用。
+
+除本法律声明中明确授权之外，阿里巴巴未授予用户关于阿里巴巴字体的其他权利。未经阿里巴巴书面授权，任何人不得：1）对阿里巴巴字体进行仿制、转换、翻译、反编译、反向工程、拆分、破解、或以其他方式试图从该字库软件获取源代码；2）删除、覆盖或修改阿里巴巴字体法律声明的全部或部分内容；3）将阿里巴巴字体进行单独定价出售、出租、出借、转让、转授权、或采取其他未经阿里巴巴明确授权的行为；4）发布任何使外界误认其与阿里巴巴或其关联公司存在合作、赞助或背书等商业关联的不实信息。
+
+阿里巴巴授予用户的上述授权不附带任何明示或暗示的保证，不对任何人因从非阿里巴巴官方渠道或指定渠道下载、安装或使用阿里巴巴字体而引发的任何直接或间接损失承担责任。
+
+本声明的解释、履行与争议解决适用中华人民共和国的法律。用户与阿里巴巴就阿里巴巴字体的使用若发生争议，双方应友好协商，若协商不成，任一方有权向浙江省杭州市有管辖权的人民法院提起诉讼。
+
+---
+
+Reference links (as published alongside the statement):
+- 阿里巴巴普惠体官网: https://www.alibabafonts.com
+- 阿里巴巴普惠体3.0 字体家族使用说明: https://www.yuque.com/yiguang-wkqc2/puhuiti/mlordz0p7q9nmrfw
+- 阿里巴巴普惠体3.0 FAQ: https://www.yuque.com/yiguang-wkqc2/puhuiti/ti3pl9oxmyfpb87a
+- 阿里巴巴普惠体3.0版 法律声明: https://www.yuque.com/yiguang-wkqc2/puhuiti/nus9wiinq4aeiegy
+
+Audit finding (subsetting/modification): clause 4, item 1 above states that, absent Alibaba's
+written authorization, no one may "对阿里巴巴字体进行仿制、转换、翻译、反编译、反向工程、拆分、破解"
+("copy/reproduce, convert, translate, decompile, reverse-engineer, SPLIT (拆分), or crack" the
+Alibaba font). Font subsetting is a form of splitting the shipped font file, which this clause
+places under the written-authorization requirement rather than a general permission. Absent such
+written authorization, this project ships the ORIGINAL, unmodified PuHuiTi 3 font files as
+distributed (see `src/assets/fonts/AlibabaPuHuiTi-*.woff2`) — no subsetting is performed.

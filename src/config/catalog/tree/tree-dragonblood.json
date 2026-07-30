@@ -1,0 +1,336 @@
+{
+  "id": "tree-dragonblood",
+  "category": "tree",
+  "name": {
+    "en": "Dragon Blood",
+    "zh": "龙血树",
+    "ja": "リュウケツジュ",
+    "ru": "Драцена",
+    "th": "ต้นเลือดมังกร",
+    "id": "Pohon Darah Naga",
+    "fr": "Dragonnier"
+  },
+  "emoji": "🌳",
+  "icon": "tree-dragonblood",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.56,
+          0.5,
+          0.56
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#b5aa8a",
+        "seg": 9,
+        "taper": 0.85
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.48,
+          0.55,
+          0.48
+        ],
+        "pos": [
+          0,
+          0.48,
+          0
+        ],
+        "color": "#9b9078",
+        "seg": 9,
+        "taper": 0.6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.13,
+          0.55,
+          0.13
+        ],
+        "pos": [
+          0.08,
+          0.9,
+          0.0
+        ],
+        "color": "#9b9078",
+        "rotZ": -32,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.13,
+          0.55,
+          0.13
+        ],
+        "pos": [
+          -0.08,
+          0.9,
+          0.0
+        ],
+        "color": "#9b9078",
+        "rotZ": 32,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.13,
+          0.55,
+          0.13
+        ],
+        "pos": [
+          0.0,
+          0.9,
+          0.08
+        ],
+        "color": "#9b9078",
+        "rotX": 32,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.13,
+          0.55,
+          0.13
+        ],
+        "pos": [
+          0.0,
+          0.9,
+          -0.08
+        ],
+        "color": "#9b9078",
+        "rotX": -32,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.11,
+          0.42,
+          0.11
+        ],
+        "pos": [
+          0.141,
+          0.95,
+          0.141
+        ],
+        "color": "#9b9078",
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.11,
+          0.42,
+          0.11
+        ],
+        "pos": [
+          -0.141,
+          0.95,
+          0.141
+        ],
+        "color": "#9b9078",
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.11,
+          0.42,
+          0.11
+        ],
+        "pos": [
+          -0.141,
+          0.95,
+          -0.141
+        ],
+        "color": "#9b9078",
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.11,
+          0.42,
+          0.11
+        ],
+        "pos": [
+          0.141,
+          0.95,
+          -0.141
+        ],
+        "color": "#9b9078",
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.24,
+          0.42,
+          1.24
+        ],
+        "pos": [
+          0,
+          1.28,
+          0
+        ],
+        "color": "#3c6423",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.6,
+          0.32,
+          0.6
+        ],
+        "pos": [
+          0.411,
+          1.26,
+          0.087
+        ],
+        "color": "#2c501b",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.6,
+          0.32,
+          0.6
+        ],
+        "pos": [
+          0.044,
+          1.26,
+          0.418
+        ],
+        "color": "#3c6423",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.6,
+          0.32,
+          0.6
+        ],
+        "pos": [
+          -0.384,
+          1.26,
+          0.171
+        ],
+        "color": "#2c501b",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.6,
+          0.32,
+          0.6
+        ],
+        "pos": [
+          -0.281,
+          1.26,
+          -0.312
+        ],
+        "color": "#3c6423",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.6,
+          0.32,
+          0.6
+        ],
+        "pos": [
+          0.21,
+          1.26,
+          -0.364
+        ],
+        "color": "#2c501b",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.72,
+          0.34,
+          0.72
+        ],
+        "pos": [
+          0,
+          1.54,
+          0
+        ],
+        "color": "#567d2f",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.3,
+          0.18,
+          0.3
+        ],
+        "pos": [
+          0.15,
+          1.62,
+          0.26
+        ],
+        "color": "#6d9639"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.3,
+          0.18,
+          0.3
+        ],
+        "pos": [
+          -0.3,
+          1.62,
+          0.0
+        ],
+        "color": "#6d9639"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.3,
+          0.18,
+          0.3
+        ],
+        "pos": [
+          0.15,
+          1.62,
+          -0.26
+        ],
+        "color": "#6d9639"
+      }
+    ]
+  }
+}

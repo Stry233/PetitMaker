@@ -1,0 +1,128 @@
+{
+  "id": "ramp-park-steps",
+  "category": "ramp",
+  "name": {
+    "en": "Park Steps",
+    "zh": "公园石阶",
+    "ja": "公園の階段",
+    "ru": "Парковые ступени",
+    "th": "บันไดสวน",
+    "id": "Tangga Taman",
+    "fr": "Marches de parc"
+  },
+  "emoji": "❓",
+  "width": 2,
+  "height": 4,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "heightDrop",
+      "layers": 1
+    }
+  ],
+  "icon": "ramp-park-steps",
+  "model3d": {
+    "parts": [
+      {
+        "shape": "wedge",
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#a89ca3"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.142,
+          -0.417
+        ],
+        "color": "#d8ccd2"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.308,
+          -0.25
+        ],
+        "color": "#d8ccd2"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.475,
+          -0.083
+        ],
+        "color": "#d8ccd2"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.642,
+          0.083
+        ],
+        "color": "#d8ccd2"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.808,
+          0.25
+        ],
+        "color": "#d8ccd2"
+      },
+      {
+        "shape": "box",
+        "size": [
+          1,
+          0.05,
+          0.153
+        ],
+        "pos": [
+          0,
+          0.975,
+          0.417
+        ],
+        "color": "#d8ccd2"
+      }
+    ]
+  }
+}

@@ -1,0 +1,197 @@
+{
+  "id": "tree-mango",
+  "category": "tree",
+  "name": {
+    "en": "Mango Tree",
+    "zh": "芒果树",
+    "ja": "マンゴーの木",
+    "ru": "Манговое дерево",
+    "th": "ต้นมะม่วง",
+    "id": "Pohon Mangga",
+    "fr": "Manguier"
+  },
+  "emoji": "🌳",
+  "icon": "tree-mango",
+  "width": 1,
+  "height": 1,
+  "loadValue": 50,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "cylinder",
+        "size": [
+          0.52,
+          0.18,
+          0.52
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#59381f",
+        "seg": 7,
+        "taper": 0.72
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.4,
+          0.95,
+          0.4
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#6f4c2c",
+        "seg": 7,
+        "taper": 0.6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          1.06,
+          0.8,
+          1.06
+        ],
+        "pos": [
+          0,
+          0.72,
+          0
+        ],
+        "color": "#35611a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.32,
+          0.72,
+          0.1
+        ],
+        "color": "#274d12",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.32,
+          0.76,
+          -0.1
+        ],
+        "color": "#35611a",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          0.08,
+          0.68,
+          0.33
+        ],
+        "color": "#274d12",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.68,
+          0.56,
+          0.68
+        ],
+        "pos": [
+          -0.08,
+          0.72,
+          -0.33
+        ],
+        "color": "#274d12",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.72,
+          0.55,
+          0.72
+        ],
+        "pos": [
+          0,
+          1.28,
+          0
+        ],
+        "color": "#467a22",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.18,
+          0.26,
+          0.18
+        ],
+        "pos": [
+          0.612,
+          0.92,
+          -0.187
+        ],
+        "color": "#eaa93f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.18,
+          0.26,
+          0.18
+        ],
+        "pos": [
+          -0.609,
+          0.96,
+          0.198
+        ],
+        "color": "#eaa93f"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.18,
+          0.26,
+          0.18
+        ],
+        "pos": [
+          0.15,
+          0.9,
+          0.602
+        ],
+        "color": "#eaa93f"
+      }
+    ]
+  }
+}

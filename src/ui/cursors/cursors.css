@@ -1,0 +1,93 @@
+/* ── Global cursor coverage ──────────────────────────────────
+   The values come from ui/cursors/cursor-vars, which writes the four custom properties onto
+   <html>. Each keyword after the var is what the browser uses before that writer has run (the
+   first paint) and if the image is ever rejected — a bare var() with no fallback would make the
+   declaration invalid and hand the surface back to the OS. */
+
+/* Everything that sets no cursor of its own — the page background, panel bodies, the gaps
+   between controls — inherits the app arrow from here. Without this rule those surfaces are
+   OS-drawn no matter how many components are swept. */
+html {
+  cursor: var(--pw-cursor-default, default);
+}
+
+/* `cursor` is inherited, but a UA declaration ON an element beats an inherited value, so every
+   element a UA stylesheet styles needs naming here or it keeps the OS glyph. Which elements
+   those are is DERIVED, not judged: `__tests__/ui/ua-cursor-elements.test.ts` holds the list
+   read out of Gecko and Blink, and its header says how to re-derive it. Inline styles from the
+   swept components still win over all of these. */
+
+/* A press here acts, so the hand. Wider than the UA sheets, which draw the arrow on `button`,
+   `select` and `option`. */
+a:any-link,
+button,
+summary,
+select,
+option,
+[role="button"] {
+  cursor: var(--pw-cursor-clickable, pointer);
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  cursor: var(--pw-cursor-text, text);
+}
+
+/* Non-text input types are controls, not fields. `image` is a submit button drawn as a picture
+   and `file` opens a picker, so both belong here rather than with the caret targets the bare
+   `input` rule above would otherwise give them. */
+input[type="button"],
+input[type="checkbox"],
+input[type="color"],
+input[type="file"],
+input[type="image"],
+input[type="radio"],
+input[type="range"],
+input[type="reset"],
+input[type="submit"] {
+  cursor: var(--pw-cursor-clickable, pointer);
+}
+
+/* The date and time family is a segmented picker widget with no insertion point to place, not a
+   caret target. Both engines draw the arrow on most of this family and disagree only on
+   `month`/`week`, so all five are named here. */
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"],
+input[type="week"] {
+  cursor: var(--pw-cursor-default, default);
+}
+
+/* A label is not itself a control and an optgroup is a heading inside a list, so neither takes
+   the hand. A label DOES forward its click, but for a text field that only moves focus. */
+label,
+optgroup {
+  cursor: var(--pw-cursor-default, default);
+}
+
+/* A label around a checkbox or radio is different: the whole label is the toggle's hit area, so
+   pressing anywhere on it flips the control. Its own block because a browser without `:has()`
+   drops the entire rule it appears in; dropping this one falls back to the arrow above. */
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]) {
+  cursor: var(--pw-cursor-clickable, pointer);
+}
+
+/* A control that refuses. Last, so it takes every tie above it. The two element-qualified
+   `aria-disabled` selectors are what make that enough: source order only settles a TIE, and
+   `a:any-link` and `input[type="…"]` are both more specific than a bare attribute selector, so
+   without them a link or a typed input marked disabled through ARIA would keep its enabled
+   cursor. */
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled,
+option:disabled,
+optgroup:disabled,
+[aria-disabled="true"],
+a[aria-disabled="true"],
+input[aria-disabled="true"] {
+  cursor: var(--pw-cursor-blocked, not-allowed);
+}

@@ -1,0 +1,148 @@
+/**
+ * The seam between the tool/interaction layer and a concrete map view. Tools,
+ * the ToolManager, and the pointer machine speak ONLY these interfaces, so a
+ * second renderer (the 3D editor) plugs in by implementing them — the tool
+ * codebase itself never branches on which view is live.
+ *
+ * 2D: `Viewport` satisfies ViewProjection, `OverlayLayer` satisfies ToolOverlay.
+ * 3D: the projection raycasts the visible surface to a cell; the overlay draws
+ * surface decals. Both views convert cells to screen coordinates for the
+ * screen-anchored React chrome (SelectionHandles / ContextMenu / popovers).
+ */
+import type { GridState, MacroCoord } from '../core/model/types';
+import type { RowSpan } from './map2d/layers/ghost-geometry';
+import type { MacroRect } from './interaction/marquee';
+import type { GroupRotation } from './group-arc';
+
+export interface ViewProjection {
+  /** Macro cell under a screen point (2D: inverse camera transform; 3D: visible-surface pick). */
+  screenToMacro(sx: number, sy: number): MacroCoord;
+  /** Micro (half-cell) coordinate under a screen point. */
+  screenToMicro(sx: number, sy: number): MacroCoord;
+  /** Screen position of macro cell (x, y)'s corner + the projected cell size in px. `behind` marks a
+   *  point at or behind the camera plane: a perspective divide by a negative w mirrors x/y, so the
+   *  returned coords are finite but WRONG. Chrome that anchors to a point must hide on it (a flat 2D
+   *  camera has no behind, and omits the flag). */
+  cellToScreen(x: number, y: number): { x: number; y: number; scale: number; behind?: boolean };
+  /** Camera verb used by the Hand tool (2D: offset pan; 3D: ground-plane pan). */
+  pan(dx: number, dy: number): void;
+  /** Object under the pointer by its RENDERED body (3D: mesh raycast — a tree's
+   *  canopy selects the tree). Null falls back to footprint hit-testing. */
+  pickObject?(sx: number, sy: number): string | null;
+  /** Screen AABB of an object's rendered bounding box (3D) plus the projected
+   *  top-face corner anchors — chrome pins its handles to real box corners,
+   *  not the AABB's (empty space around a perspective diamond). */
+  objectScreenBox?(id: string): {
+    x: number; y: number; w: number; h: number; scale: number;
+    anchors: { left: { x: number; y: number }; right: { x: number; y: number } };
+  } | null;
+}
+
+/** The drawing surface tools and the pointer machine paint feedback through.
+ *  Cell coordinates; `terrainMode`/`terrainGrid` selects the micro grid
+ *  (−HALF_TILE) that terrain renders on, vs the macro grid objects use. */
+export interface ToolOverlay {
+  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean): void;
+  showGhostSpans(spans: RowSpan[], color: number, terrainGrid?: boolean): void;
+  clearGhost(): void;
+  /** `append` draws this ring alongside whatever is already on screen instead of replacing it
+   *  (a GROUP selection paints one ring per member). Omit or false replaces. */
+  showSelection(x: number, y: number, w?: number, h?: number, elevation?: number, terrainMode?: boolean, append?: boolean): void;
+  clearSelection(): void;
+  showHover(x: number, y: number, w?: number, h?: number, terrainMode?: boolean): void;
+  clearHover(): void;
+  flashCommit(cells: MacroCoord[], opts?: { color?: number; terrainMode?: boolean }): void;
+  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void;
+  clearBuildableRegion(): void;
+  /** The Ctrl+drag rubber band, in the same MACRO rect it selects with. Never terrain-shifted:
+   *  a band only ever selects objects. */
+  showBand(rect: MacroRect): void;
+  clearBand(): void;
+  /** 3D enhancement: an object-bounding selection box (wireframe around the
+   *  rendered body); views without one use the flat footprint ring. Cleared by
+   *  clearSelection. `append` behaves as in showSelection. */
+  showObjectSelection?(objectId: string, append?: boolean): void;
+  /** 3D enhancement: the item's actual mesh, translucent and validity-tinted,
+   *  at the hover cell. Views without a mesh representation omit it; callers
+   *  pair it with the cell ghost (which carries the footprint/validity). */
+  showPlacementGhost?(catalogId: string, x: number, y: number, rotation: number, valid: boolean, elevation: number): void;
+  /** The GROUP drag ghost: one body per selected member, each at its own drop position, ALL
+   *  sharing ONE validity tint — a group move is all-or-nothing, so tinting members individually
+   *  would promise a partial move that can never happen. Views without a body-ghost representation
+   *  omit it (same fallback as `showPlacementGhost`); the cell wash from `showGhost` still carries
+   *  the footprint/validity on its own. Replaces whatever the last call drew. */
+  showGroupPlacementGhost?(members: Array<{
+    catalogId: string; x: number; y: number; rotation: number; elevation: number;
+  }>, valid: boolean): void;
+}
+
+/** One editable view (2D map or 3D editor): the projection + overlay pair plus
+ *  the view-specific hooks the tool layer needs. ToolManager holds the ACTIVE
+ *  view and is re-pointed when the mode toggles. */
+export interface EditorView {
+  projection: ViewProjection;
+  overlay: ToolOverlay;
+  /** Re-apply the camera after a camera verb (the Hand tool's pan loop). */
+  applyCameraTransform(): void;
+  /** Placement "plop" animation for a freshly placed object (view-specific, optional). */
+  plopObject?(id: string): void;
+  /** Rotation spin animation (view-specific, optional). One object turning about its OWN centre.
+   *  `onFrame`, when supplied, fires once per tick with the SAME eased progress just applied to the
+   *  icon/instance (1 on the settling frame, never called under reduced motion) — the caller's hook
+   *  for keeping the selection ring on the same clock instead of interpolating the turn a second time. */
+  animateRotation?(id: string, fromDeg: number, toDeg: number, onFrame?: (eased: number) => void): void;
+  /** A GROUP rotation: one rigid body turning about one point, so it arrives as ONE spec covering
+   *  every member (never a spin per member — see `group-arc.ts` for the arc + one-clock invariants).
+   *  Optional, like the tweens above; a view without it simply shows the finished arrangement.
+   *  `onFrame` is the same per-tick progress hook as `animateRotation` above, fired once per tick
+   *  (not once per member) since the whole body shares one clock. */
+  animateGroupRotation?(turn: GroupRotation, onFrame?: (eased: number) => void): void;
+  /** The map this view currently RENDERS. Not the same as the store's `gridState`: a freshly loaded
+   *  map reaches each view on that view's own schedule (the 3D scene is rebuilt behind an async
+   *  import, so for a while the registered view still shows the previous map). A caller that must
+   *  know "has the view caught up to this map yet" asks here. Views that cannot report it omit it. */
+  rendersState?(): GridState | null;
+  /** One-shot: run `cb` after the next frame this view actually PAINTS. Both views draw ON DEMAND,
+   *  so "a frame passed" is not "the map is on screen" — only the renderer knows when it drew. Fires
+   *  on teardown too (a disposed view will never paint, and a waiter must never hang). Views that
+   *  cannot report it omit it. */
+  onNextPaint?(cb: () => void): void;
+  /** Whether the Hand tool's LEFT-drag pans the camera. The 2D map keeps its
+   *  classic grab-the-map drag; the 3D editor reserves left strictly for
+   *  selection and tools (there, right/middle drag orbit and pan lives on
+   *  left-drag in Hand mode, Space+left-drag, or WASD). */
+  leftDragPans?: boolean;
+}
+
+/** Camera verbs the pointer machine drives. Each verb SELF-APPLIES (no
+ *  separate transform call): 2D = viewport offset/zoom, 3D = orbit camera. */
+export interface ViewCamera {
+  pan(dx: number, dy: number): void;
+  /** Stepped zoom at a screen anchor (a discrete mouse notch). */
+  zoomStep(dir: 1 | -1, anchorX: number, anchorY: number): void;
+  /** Stepped zoom for the toolkit buttons, EASED (a camera glide) rather than
+   *  instant. Optional: the 2D chrome runs its own tween, so only the 3D view
+   *  implements this; callers fall back to zoomBy when it's absent. */
+  zoomStepAnimated?(dir: 1 | -1): void;
+  /** Smooth magnitude zoom (pinch / ctrl+wheel), factor > 1 zooms in. */
+  zoomBy(factor: number, anchorX: number, anchorY: number): void;
+  /** Orbit by screen deltas — 3D only. The machine's right-drag calls
+   *  orbit ?? pan, so the 2D view pans where the 3D view orbits. */
+  orbit?(dx: number, dy: number): void;
+  /** Re-frame the whole map (the fit chrome/shortcut). */
+  fitToMap?(): void;
+  /** Two-finger twist → yaw, radians (3D only). */
+  orbitTwist?(dRadians: number): void;
+  /** Camera tilt as 0..1 across the view's polar range (3D only). */
+  tilt?(value: number): void;
+  /** When true, a touchpad two-finger scroll ZOOMS (dolly) instead of panning.
+   *  The 3D camera sets this: a scroll-pan there would slide the camera forward/
+   *  back (reads as W/S), so scroll should zoom. The 2D view leaves it unset and
+   *  keeps touchpad-scroll panning. (A mouse notch always zooms in both views.) */
+  wheelZooms?: boolean;
+}
+
+/** The full contract one view hands the pointer machine. */
+export interface ActiveView extends EditorView {
+  camera: ViewCamera;
+}

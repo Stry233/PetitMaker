@@ -1,0 +1,242 @@
+{
+  "id": "flower-canna-red",
+  "category": "flora",
+  "name": {
+    "en": "Red Canna",
+    "zh": "红美人蕉",
+    "ja": "アカバナカンナ",
+    "ru": "Красная канна",
+    "th": "พุทธรักษาแดง",
+    "id": "Kana Merah",
+    "fr": "Canna rouge"
+  },
+  "emoji": "🌷",
+  "icon": "flower-canna-red",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.09,
+          0.4
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#3f7d2e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.3,
+          0.05
+        ],
+        "pos": [
+          0.08,
+          0.0,
+          0.139
+        ],
+        "color": "#3f7d2e",
+        "rotY": -60,
+        "rotZ": 22
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.28,
+          0.05
+        ],
+        "pos": [
+          -0.08,
+          0.0,
+          -0.139
+        ],
+        "color": "#3f7d2e",
+        "rotY": -240,
+        "rotZ": 22
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.24,
+          0.05
+        ],
+        "pos": [
+          -0.139,
+          0.0,
+          0.08
+        ],
+        "color": "#3f7d2e",
+        "rotY": -150,
+        "rotZ": 22
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.26,
+          0.05
+        ],
+        "pos": [
+          0.139,
+          0.0,
+          -0.08
+        ],
+        "color": "#3f7d2e",
+        "rotY": -330,
+        "rotZ": 22
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.045,
+          0.48,
+          0.045
+        ],
+        "pos": [
+          -0.11,
+          0.02,
+          0.03
+        ],
+        "color": "#4c8a33",
+        "rotY": 15.3,
+        "rotZ": 12,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.18,
+          0.2,
+          0.18
+        ],
+        "pos": [
+          -0.206,
+          0.47,
+          0.056
+        ],
+        "color": "#e05a24"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.16,
+          0.13
+        ],
+        "pos": [
+          -0.206,
+          0.61,
+          0.056
+        ],
+        "color": "#c93d1a"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.045,
+          0.4,
+          0.045
+        ],
+        "pos": [
+          0.13,
+          0.02,
+          -0.08
+        ],
+        "color": "#4c8a33",
+        "rotY": -148.4,
+        "rotZ": 18,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.153,
+          0.17,
+          0.153
+        ],
+        "pos": [
+          0.235,
+          0.38,
+          -0.145
+        ],
+        "color": "#e05a24"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.111,
+          0.136,
+          0.111
+        ],
+        "pos": [
+          0.235,
+          0.502,
+          -0.145
+        ],
+        "color": "#c93d1a"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.045,
+          0.33,
+          0.045
+        ],
+        "pos": [
+          0.03,
+          0.02,
+          0.15
+        ],
+        "color": "#4c8a33",
+        "rotY": 101.3,
+        "rotZ": 24,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.126,
+          0.14,
+          0.126
+        ],
+        "pos": [
+          0.056,
+          0.301,
+          0.282
+        ],
+        "color": "#e05a24"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.091,
+          0.112,
+          0.091
+        ],
+        "pos": [
+          0.056,
+          0.405,
+          0.282
+        ],
+        "color": "#c93d1a"
+      }
+    ]
+  }
+}

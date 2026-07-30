@@ -1,0 +1,57 @@
+/*
+ * Alibaba PuHuiTi 3 — the design typeface (rounded CJK sans).
+ * Weights: 400 Regular, 500 Medium, 700 Bold, 900 Heavy (titles).
+ *
+ * NOTE: these woff2 files carry the full CJK glyph set (~5MB each), and ship
+ * UNMODIFIED — do NOT subset them. The PuHuiTi 3.0 license clause 4(1) requires
+ * Alibaba's written authorization to "拆分" (split/subset) the font, which this
+ * project does not hold, so the whole-glyph-set files are the licensed form.
+ * See docs/THIRD_PARTY_NOTICES.md → Fonts (Alibaba PuHuiTi 3).
+ */
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./AlibabaPuHuiTi-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./AlibabaPuHuiTi-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-weight: 700;
+  font-display: swap;
+  src: url('./AlibabaPuHuiTi-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-weight: 900;
+  font-display: swap;
+  src: url('./AlibabaPuHuiTi-Heavy.woff2') format('woff2');
+}
+
+/*
+ * PW Rounded Sans — Latin accent typeface (self-hosted; no external font hosts, see
+ * security/headers-policy.ts).
+ * Static instances at weights 500 (Medium) and 700 (Bold), instanced from the
+ * upstream Quicksand variable font — the only weights the app actually uses (styles.ts).
+ * Renamed per OFL-1.1 clause 3: a Modified Version (variable→static instancing) may not
+ * use the Reserved Font Name "Quicksand", so the shipped files' name tables were rewritten
+ * to this family/PostScript name. Derived from Quicksand (c) Andrew Paglinawan, OFL-1.1 —
+ * see licenses/quicksand/ (license text kept verbatim; never modified).
+ */
+@font-face {
+  font-family: 'PW Rounded Sans';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./Quicksand-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'PW Rounded Sans';
+  font-weight: 700;
+  font-display: swap;
+  src: url('./Quicksand-Bold.woff2') format('woff2');
+}

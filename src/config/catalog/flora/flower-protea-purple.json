@@ -1,0 +1,258 @@
+{
+  "id": "flower-protea-purple",
+  "category": "flora",
+  "name": {
+    "en": "Purple Protea",
+    "zh": "紫帝王花",
+    "ja": "パープルプロテア",
+    "ru": "Фиолетовая протея",
+    "th": "โปรเทียม่วง",
+    "id": "Protea Ungu",
+    "fr": "Protéa violet"
+  },
+  "emoji": "🌷",
+  "icon": "flower-protea-purple",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.09,
+          0.38
+        ],
+        "pos": [
+          0,
+          0.0,
+          0
+        ],
+        "color": "#3f7d2e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.36,
+          0.07,
+          0.16
+        ],
+        "pos": [
+          0.156,
+          0.0,
+          0.09
+        ],
+        "color": "#3f7d2e",
+        "rotY": -30.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.36,
+          0.07,
+          0.16
+        ],
+        "pos": [
+          -0.09,
+          0.0,
+          0.156
+        ],
+        "color": "#3f7d2e",
+        "rotY": -120.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.36,
+          0.07,
+          0.16
+        ],
+        "pos": [
+          -0.156,
+          0.0,
+          -0.09
+        ],
+        "color": "#3f7d2e",
+        "rotY": -210.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.36,
+          0.07,
+          0.16
+        ],
+        "pos": [
+          0.09,
+          0.0,
+          -0.156
+        ],
+        "color": "#3f7d2e",
+        "rotY": -300.0
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.085,
+          0.3,
+          0.085
+        ],
+        "pos": [
+          -0.12,
+          0.02,
+          0.06
+        ],
+        "color": "#8a6242",
+        "rotY": 26.6,
+        "rotZ": 20,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.28,
+          0.19,
+          0.28
+        ],
+        "pos": [
+          -0.212,
+          0.272,
+          0.106
+        ],
+        "color": "#a58ad2",
+        "seg": 9,
+        "taper": 1.45
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.37,
+          0.06,
+          0.37
+        ],
+        "pos": [
+          -0.212,
+          0.442,
+          0.106
+        ],
+        "color": "#cfc0ea",
+        "seg": 9,
+        "taper": 1.1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.2,
+          0.13,
+          0.2
+        ],
+        "pos": [
+          -0.212,
+          0.442,
+          0.106
+        ],
+        "color": "#b7a3de"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.05,
+          0.06
+        ],
+        "pos": [
+          -0.212,
+          0.552,
+          0.106
+        ],
+        "color": "#7a5aa8"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.07,
+          0.22,
+          0.07
+        ],
+        "pos": [
+          0.2,
+          0.02,
+          -0.14
+        ],
+        "color": "#8a6242",
+        "rotY": -145.0,
+        "rotZ": 34,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.19,
+          0.14,
+          0.19
+        ],
+        "pos": [
+          0.301,
+          0.182,
+          -0.211
+        ],
+        "color": "#a58ad2",
+        "seg": 8,
+        "taper": 1.35
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.13,
+          0.1,
+          0.13
+        ],
+        "pos": [
+          0.301,
+          0.302,
+          -0.211
+        ],
+        "color": "#cfc0ea"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.06,
+          0.12,
+          0.06
+        ],
+        "pos": [
+          0.02,
+          0.02,
+          0.2
+        ],
+        "color": "#8a6242",
+        "rotY": 95.7,
+        "rotZ": 45,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.14,
+          0.19,
+          0.14
+        ],
+        "pos": [
+          0.028,
+          0.075,
+          0.284
+        ],
+        "color": "#b7a3de"
+      }
+    ]
+  }
+}

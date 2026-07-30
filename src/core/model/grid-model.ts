@@ -1,0 +1,201 @@
+/**
+ * Grid data structure and spatial utilities.
+ *
+ * Coordinate system: (x, y) where x is column, y is row.
+ * cells[y][x] — row-major storage. Out-of-bounds access returns null.
+ *
+ * The grid is mutable — `setCell` and terrain assignment modify in place.
+ * Immutable snapshots are produced via `cloneCell` for undo/redo.
+ */
+
+import { CellZone, ObjectCategory, TerrainType } from './types';
+import type { ChunkCoord, Corners, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, TerrainCell } from './types';
+import { CHUNK_SIZE, TILE_SIZE, PLAZA_ID } from './constants';
+
+export const HALF_TILE = TILE_SIZE / 2;
+
+/** Whether a zone can be built/placed/painted on. Grass is the only buildable zone
+ *  today — this is the ONE place that fact lives, so adding a buildable zone is a
+ *  single edit here rather than hunting every `=== CellZone.Grass` gate. */
+export function isBuildableZone(zone: CellZone): boolean {
+  return zone === CellZone.Grass;
+}
+
+export function createDefaultTerrainCell(type: TerrainType, elevation: number): TerrainCell {
+  return { type, elevation };
+}
+
+/** Initializes a grid from a template — all cells start with null terrain. The
+ *  plaza is a normal immutable PlacedObject over plain Grass cells (see
+ *  createPlazaObject), not terrain. */
+export function createGrid(template: MapTemplate): MacroCell[][] {
+  const { width, height, zones } = template;
+  const cells: MacroCell[][] = [];
+  for (let y = 0; y < height; y++) {
+    const row: MacroCell[] = [];
+    for (let x = 0; x < width; x++) {
+      let zone = zones[y]?.[x] ?? CellZone.Void;
+      if (zone === CellZone.Plaza) zone = CellZone.Grass; // plaza is an object now
+      row.push({ zone, terrain: null });
+    }
+    cells.push(row);
+  }
+  return cells;
+}
+
+export interface Rect { x: number; y: number; w: number; h: number; }
+
+/** Whether the unit cell at macro (x, y) overlaps `rect`. `cellShift` is the
+ *  cell's lower-bound offset: terrain renders on the micro-grid (−HALF_TILE), so
+ *  its cell spans [x−0.5, x+0.5] → shift −0.5; objects use the macro grid → shift 0.
+ *  This single test is what lets a fractional-edge footprint (the plaza) and a
+ *  normal integer footprint share the same overlap logic. */
+export function cellOverlapsRect(rect: Rect, x: number, y: number, cellShift: number): boolean {
+  const cl = x + cellShift, ct = y + cellShift;
+  return cl < rect.x + rect.w && cl + 1 > rect.x && ct < rect.y + rect.h && ct + 1 > rect.y;
+}
+
+/** AABB overlap of two macro rects. Touching edges (a.x + a.w === b.x) do NOT
+ *  count as overlapping — matches the object-to-object "strict <" rule. */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** The immutable central-plaza object built from the map's plaza config (null if
+ *  the map has none). Fractional position + per-map size; locked. Added to the
+ *  grid's objects at init/load and excluded from serialization. */
+export function createPlazaObject(template: MapTemplate): PlacedObject | null {
+  const p = template.plaza;
+  if (!p || p.width === 0 || p.height === 0) return null;
+  return {
+    id: PLAZA_ID, catalogId: PLAZA_ID,
+    position: { x: p.x, y: p.y }, width: p.width, height: p.height,
+    // Self-description so the plaza renders through the normal object path (no special-case renderer):
+    icon: 'plaza', color: p.color,
+    rotation: 0, category: ObjectCategory.Facility, elevation: p.elevation, locked: true,
+  };
+}
+
+export function isInBounds(x: number, y: number, width: number, height: number): boolean {
+  return x >= 0 && x < width && y >= 0 && y < height;
+}
+
+/** Returns null for out-of-bounds coordinates. Never throws. */
+export function getCell(cells: MacroCell[][], x: number, y: number): MacroCell | null {
+  const row = cells[y];
+  if (!row) return null;
+  return row[x] ?? null;
+}
+
+/** No-op for out-of-bounds coordinates. Never throws. */
+export function setCell(cells: MacroCell[][], x: number, y: number, cell: MacroCell): void {
+  const row = cells[y];
+  if (row && x >= 0 && x < row.length) {
+    row[x] = cell;
+  }
+}
+
+export function macroToChunk(x: number, y: number): ChunkCoord {
+  return { cx: Math.floor(x / CHUNK_SIZE), cy: Math.floor(y / CHUNK_SIZE) };
+}
+
+export function macroToMicro(x: number, y: number): MicroCoord {
+  return { x: x * 2, y: y * 2 };
+}
+
+/** Deep-copies terrain, including corners and patchOnly. The clone shares no mutable references with the original. */
+export function cloneCell(cell: MacroCell): MacroCell {
+  const cloned: MacroCell = {
+    zone: cell.zone,
+    terrain: null,
+  };
+  if (cell.terrain) {
+    cloned.terrain = { type: cell.terrain.type, elevation: cell.terrain.elevation };
+    if (cell.terrain.corners) cloned.terrain.corners = [...cell.terrain.corners] as Corners;
+    if (cell.terrain.patchOnly !== undefined) cloned.terrain.patchOnly = cell.terrain.patchOnly;
+    if (cell.terrain.patchBase !== undefined) cloned.terrain.patchBase = cell.terrain.patchBase;
+  }
+  return cloned;
+}
+
+export function chunkKey(cx: number, cy: number): string {
+  return `${cx},${cy}`;
+}
+
+/** Mark a mutation of `state.objects` (add/remove/in-place edit). Consumers that
+ *  memoize derived object data (state/object-index) key their freshness on this.
+ *
+ *  Pass `delta` whenever the caller knows which objects changed: the index then
+ *  patches those entries instead of rebuilding from every object. Omitting it is
+ *  safe (the index rebuilds), so a new mutation site is never wrong, only slower. */
+export function bumpObjectsVersion(
+  state: { objectsVersion?: number; objectsDelta?: ObjectsDelta },
+  delta?: { removed?: readonly PlacedObject[]; added?: readonly PlacedObject[] },
+): void {
+  const version = (state.objectsVersion ?? 0) + 1;
+  state.objectsVersion = version;
+  state.objectsDelta = delta ? { version, removed: delta.removed, added: delta.added } : undefined;
+}
+
+/** The four orthogonal neighbour offsets — the one true copy. */
+export const NEIGHBORS4: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** The eight neighbour offsets (orthogonal first, then diagonal) — the one true copy. */
+export const NEIGHBORS8: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+/** Multi-source BFS distance (in cells) from `seeds` over a width×height grid. Deterministic.
+ *  Shared by elevation (ridge crest falloff), hydrology (shores), and the placement analysis.
+ *  `diag` picks the metric: false = Manhattan (4-neighbour; erosion by its diamond ball chamfers
+ *  rectangle corners at 45°), true = Chebyshev (8-neighbour; erosion keeps rectangles rectangular
+ *  — the generator's rectilinear style relies on this). */
+const DIST_FAR = 30000;
+export function distanceField(seeds: number[], width: number, height: number, diag = false): Int16Array {
+  const dist = new Int16Array(width * height).fill(DIST_FAR);
+  const frontier: number[] = [];
+  for (const s of seeds) if (s >= 0 && s < dist.length && dist[s] === DIST_FAR) { dist[s] = 0; frontier.push(s); }
+  relaxFrontier(dist, frontier, width, height, diag);
+  return dist;
+}
+
+/** Incrementally add one source to an existing distanceField result IN PLACE: BFS from `seed`,
+ *  relaxing only where it improves. Because a distance field satisfies the grid triangle
+ *  inequality, propagation never needs to pass through a non-improved cell — `dist` ends exactly
+ *  equal to a fresh multi-source BFS over the old seeds plus this one (same values, no realloc).
+ *  Farthest-point sampling uses this to avoid a full-grid BFS per added site. */
+export function relaxDistanceFrom(dist: Int16Array, seed: number, width: number, height: number): void {
+  if (seed < 0 || seed >= dist.length || dist[seed]! <= 0) return;
+  dist[seed] = 0;
+  relaxFrontier(dist, [seed], width, height, false);
+}
+
+/** The BFS relaxation kernel shared by distanceField and relaxDistanceFrom: propagate
+ *  dist+1 improvements outward from `frontier` until no cell improves. */
+function relaxFrontier(dist: Int16Array, frontier: number[], width: number, height: number, diag: boolean): void {
+  const neighbors = diag ? NEIGHBORS8 : NEIGHBORS4;
+  while (frontier.length) {
+    const next: number[] = [];
+    for (const i of frontier) {
+      const x = i % width, y = (i / width) | 0;
+      for (const [dx, dy] of neighbors) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const j = flatIndex(nx, ny, width);
+        if (dist[j]! > dist[i]! + 1) { dist[j] = (dist[i]! + 1) as number; next.push(j); }
+      }
+    }
+    frontier = next;
+  }
+}
+
+/** Flat (row-major) index of a cell — the canonical home for the `y*width+x` idiom. */
+export const flatIndex = (x: number, y: number, width: number): number => y * width + x;
+/** The canonical "x,y" cell key (mirrors chunkKey's style). */
+export const cellKey = (x: number, y: number): string => `${x},${y}`;
+
+export function getFootprint(x: number, y: number, w: number, h: number): MacroCoord[] {
+  const coords: MacroCoord[] = [];
+  for (let dy = 0; dy < h; dy++)
+    for (let dx = 0; dx < w; dx++)
+      coords.push({ x: x + dx, y: y + dy });
+  return coords;
+}
+

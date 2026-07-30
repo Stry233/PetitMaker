@@ -1,0 +1,24 @@
+import type { CatalogItem } from '../../../core/model/types';
+import flower_sunflower from './flower-sunflower.json';
+import flower_rose from './flower-rose.json';
+import flower_lily from './flower-lily.json';
+import flower_daisy from './flower-daisy.json';
+import flower_bellflower from './flower-bellflower.json';
+import flower_violet from './flower-violet.json';
+import flower_dahlia from './flower-dahlia.json';
+import flower_protea from './flower-protea.json';
+import flower_protea_purple from './flower-protea-purple.json';
+import flower_protea_red from './flower-protea-red.json';
+import flower_amaryllis from './flower-amaryllis.json';
+import flower_canna_yellow from './flower-canna-yellow.json';
+import flower_canna_red from './flower-canna-red.json';
+import flower_portulaca_white from './flower-portulaca-white.json';
+import flower_portulaca_purple from './flower-portulaca-purple.json';
+import flower_portulaca_yellow from './flower-portulaca-yellow.json';
+import flower_agapanthus from './flower-agapanthus.json';
+import shrub from './shrub.json';
+import plant_gardenia from './plant-gardenia.json';
+import plant_azalea from './plant-azalea.json';
+import plant_agave from './plant-agave.json';
+
+export const flora: CatalogItem[] = [flower_sunflower, flower_rose, flower_lily, flower_daisy, flower_bellflower, flower_violet, flower_dahlia, flower_protea, flower_protea_purple, flower_protea_red, flower_amaryllis, flower_canna_yellow, flower_canna_red, flower_portulaca_white, flower_portulaca_purple, flower_portulaca_yellow, flower_agapanthus, shrub, plant_gardenia, plant_azalea, plant_agave] as CatalogItem[];

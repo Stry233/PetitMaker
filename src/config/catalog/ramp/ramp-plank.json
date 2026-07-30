@@ -1,0 +1,188 @@
+{
+  "id": "ramp-plank",
+  "category": "ramp",
+  "name": {
+    "en": "Plank Ramp",
+    "zh": "简木斜坡",
+    "ja": "板のスロープ",
+    "ru": "Дощатый пандус",
+    "th": "ทางลาดไม้กระดาน",
+    "id": "Tanjakan Papan",
+    "fr": "Rampe en planches"
+  },
+  "emoji": "❓",
+  "width": 1,
+  "height": 4,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "heightDrop",
+      "layers": 1
+    }
+  ],
+  "icon": "ramp-plank",
+  "model3d": {
+    "parts": [
+      {
+        "shape": "wedge",
+        "size": [
+          0.84,
+          1,
+          1
+        ],
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "color": "#8a6a3e"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.076,
+          -0.444
+        ],
+        "color": "#b08a52",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.187,
+          -0.333
+        ],
+        "color": "#c9a876",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.298,
+          -0.222
+        ],
+        "color": "#b08a52",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.409,
+          -0.111
+        ],
+        "color": "#c9a876",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.52,
+          0
+        ],
+        "color": "#b08a52",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.631,
+          0.111
+        ],
+        "color": "#c9a876",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.742,
+          0.222
+        ],
+        "color": "#b08a52",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.853,
+          0.333
+        ],
+        "color": "#c9a876",
+        "rotZ": 90,
+        "seg": 8
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.15,
+          0.86,
+          0.15
+        ],
+        "pos": [
+          0.43,
+          0.964,
+          0.444
+        ],
+        "color": "#b08a52",
+        "rotZ": 90,
+        "seg": 8
+      }
+    ]
+  }
+}

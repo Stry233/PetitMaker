@@ -1,0 +1,189 @@
+/* ── PetitMaker Animation System ─────────────────────────── */
+
+/* No global button:hover / :active rules: components own their hover/tap
+   motion via Framer Motion (the shared `pressable` preset). A global
+   `box-shadow … !important` would draw a rectangular shadow around every
+   button — including transparent icon buttons — and global transforms would
+   fight Framer's. */
+
+/* Editor chrome is a tool, not a document: kill text selection (the blue
+   highlight when dragging), native image drag, and the long-press callout.
+   Inputs stay selectable. */
+html, body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  user-select: none;
+}
+
+/* Cozy rounded scrollbars — the native scrollbar is too square/chunky for the
+   rounded UI. A thin pill thumb on a transparent track, with breathing room
+   (transparent border + padding-box clip). Warm brown by default; any scroll
+   container can override the colour via --sb-thumb / --sb-thumb-hover (the dark
+   smoky Layer panel sets a light thumb). */
+* {
+  scrollbar-width: thin;                                              /* Firefox */
+  scrollbar-color: var(--sb-thumb, rgba(130, 96, 66, 0.40)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb, rgba(130, 96, 66, 0.40));
+  border-radius: 999px;
+  border: 3px solid transparent;        /* shrinks the visible pill, adds inset */
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover, rgba(130, 96, 66, 0.62));
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Shared circular spinner (ui/Spinner.tsx — the tight-space loader; roomy
+   contexts use ui/menu/LoadingDots). Most UI motion is component-owned
+   (Framer Motion / Web Animations API); the exceptions are this spinner and
+   the Site Log keyframes below (indefinitely-looping decor that would waste
+   React renders as JS animation). */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Site Log (agent v2) shared keyframes ─────────────────────────────
+   Used by ui/menu/agent/atoms.tsx. The components supply the scale-dependent
+   geometry (background image / size / travel distance) via --pw-* custom
+   properties, so the keyframes stay scale-agnostic. */
+
+/* Traveling wavy underline (Wavy). One period per 1.2s; freezes when the
+   component adds .pw-dimmed (undone entries) and under reduced motion. */
+.pw-wavy {
+  display: inline-block;
+  background-repeat: repeat-x;
+  background-position: 0 bottom;
+  background-size: var(--pw-wave-size);
+  animation: pw-wavymove 1.2s linear infinite;
+}
+.pw-wavy.pw-dimmed { animation: none; }
+@keyframes pw-wavymove {
+  to { background-position-x: var(--pw-wave-period); }
+}
+
+/* Indeterminate work stripes (StripeBar): the 45° stripe field slides one
+   tile per second. */
+.pw-stripes { animation: pw-stripemove 1s linear infinite; }
+@keyframes pw-stripemove {
+  to { background-position: var(--pw-stripe-travel) 0; }
+}
+
+/* Blueprint done watermark: the big soft check draws itself once. */
+.pw-drawcheck path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: pw-drawcheck 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards;
+}
+@keyframes pw-drawcheck {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Welcome-card color pools (WelcomeCard ::before equivalent): the soft sun /
+   meadow radials drift ±5% / ±2.5° over 9s, easing back and forth. */
+.pw-blankdrift { animation: pw-blankdrift 9s ease-in-out infinite alternate; }
+@keyframes pw-blankdrift {
+  from { transform: translate(-5%, -4%) rotate(-2.5deg); }
+  to { transform: translate(5%, 5%) rotate(2.5deg); }
+}
+
+/* Hidden-scrollbar scroll container (ticket back face, the site log). */
+.pw-noscroll { scrollbar-width: none; }
+.pw-noscroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* ── Reduced motion ──────────────────────────────────────────────────────
+   THREE gates drive motion and they must agree: Framer/DOM (<MotionConfig> in
+   App), the canvas rAF loops (the `motion-state` singleton), and CSS (here).
+   A media query only sees the OS, so on its own it cannot express Settings →
+   Motion: neither "Reduced" while the OS says no-preference, nor "Full" while
+   the OS says reduce. `ui/useMotionEnabled` therefore mirrors the EFFECTIVE
+   preference onto <html data-reduced-motion="1|0">, and that attribute is what
+   the rules below key off; the media query serves as the pre-hydration default
+   and is scoped so an explicit "Full" opts out of it. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduced-motion='0']) .pw-wavy,
+  :root:not([data-reduced-motion='0']) .pw-stripes,
+  :root:not([data-reduced-motion='0']) .pw-blankdrift { animation: none; }
+  :root:not([data-reduced-motion='0']) .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
+}
+
+[data-reduced-motion='1'] .pw-wavy,
+[data-reduced-motion='1'] .pw-stripes,
+[data-reduced-motion='1'] .pw-blankdrift { animation: none; }
+[data-reduced-motion='1'] .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
+
+/* Catch-all. Components own a lot of plain CSS transitions inline (hover tints,
+   rotating chevrons, panel fades); those are invisible to Framer's MotionConfig,
+   so collapse them wholesale rather than chasing every `transition:` string and
+   missing the next one. `.pw-busy` opts out: a progress indicator that stops
+   reads as a hung UI, so the spinner keeps turning (WCAG 2.3.3 covers
+   NON-essential animation). */
+[data-reduced-motion='1'] *:not(.pw-busy),
+[data-reduced-motion='1'] *:not(.pw-busy)::before,
+[data-reduced-motion='1'] *:not(.pw-busy)::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Visible keyboard focus across the custom buttons. Static ring
+   (reduced-motion-safe); :focus-visible keeps it off mouse clicks.
+   `!important` because controls set their own inline styles (e.g. an input
+   with inline `outline:none`) that would otherwise win. */
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #fb923c !important;
+  outline-offset: 2px !important;
+}
+
+/* A control living inside a rounded field wrapper moves its focus ring UP to
+   the wrapper, so the ring follows the corner radius instead of drawing a
+   bare rectangle inside it. Outline honors border-radius. */
+.pw-field-input:focus-visible {
+  outline: none !important;
+}
+
+/* Hit-transparent group wrapper whose DIRECT children stay interactive: lets a
+   whole absolutely-positioned control group fade/slide as one motion element
+   without swallowing clicks meant for its controls. */
+.pw-hitpass {
+  pointer-events: none;
+}
+.pw-hitpass > * {
+  pointer-events: auto;
+}
+.pw-field-wrap:has(.pw-field-input:focus-visible) {
+  outline: 3px solid #fb923c;
+  outline-offset: 2px;
+}
+
+/* The layer list hides its scrollbar so the selection pill — intentionally wider than the smoky
+   card, with its rounded ends peeking out of the box — is never clipped by the scrollbar. The
+   partially-visible bottom row cues that the list scrolls (wheel / drag). */
+.layer-rows-scroll { scrollbar-width: none; }
+.layer-rows-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }

@@ -1,0 +1,28 @@
+{
+  "id": "road-dirt",
+  "category": "road",
+  "name": {
+    "en": "Dirt Road",
+    "zh": "土路",
+    "ja": "土の道",
+    "ru": "Грунтовая дорога",
+    "th": "ทางดิน",
+    "id": "Jalan Tanah",
+    "fr": "Chemin de terre"
+  },
+  "emoji": "🛤️",
+  "color": "#c4a882",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}
