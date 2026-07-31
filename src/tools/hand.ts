@@ -1,7 +1,7 @@
 import { ToolType } from '../core/model/types';
 import type { MacroCoord, MicroCoord } from '../core/model/types';
 import type { Tool, ToolContext } from './types';
-import type { CursorId } from '../ui/cursors/cursor-spec';
+import type { CursorId } from '../core/runtime/cursor-spec';
 
 export class HandTool implements Tool {
   readonly id = ToolType.Hand;

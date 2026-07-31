@@ -64,16 +64,16 @@ export interface MacroCell {
 }
 
 // --- Objects ---
-// ObjectCategory is the numeric enum persisted on PlacedObject; ItemCategory (below) is the string
-// enum used by the catalog/UI. They are intentionally distinct; unifying them needs a versioned
-// save migration.
-export enum ObjectCategory { Facility = 1, House = 2, Tree = 3, Flora = 4 }
+/**
+ * A placed object carries no category of its own: `catalogId` already determines it, and
+ * `getCatalogItem(catalogId).category` is the ONE way to ask. Every object resolves, the
+ * central plaza included (it is registered in the catalog by id for exactly this reason).
+ */
 export interface PlacedObject {
   id: string;
   catalogId: string;
   position: MacroCoord;
   rotation: 0 | 90 | 180 | 270;
-  category: ObjectCategory;
   elevation: number;
   spanLength?: number;
   corners?: Corners;
@@ -103,19 +103,6 @@ export enum ItemCategory {
   Facility = 'facility',
 }
 
-/** Map a catalog item's (string) ItemCategory to the (numeric) ObjectCategory
- *  persisted on a PlacedObject. The single source of truth for this projection —
- *  every placement path (manual + generator) must route through it so a placed
- *  object's persisted category matches its catalog category. */
-export function objectCategory(cat: ItemCategory): ObjectCategory {
-  switch (cat) {
-    case ItemCategory.Tree: return ObjectCategory.Tree;
-    case ItemCategory.Flora: return ObjectCategory.Flora;
-    case ItemCategory.Facility: return ObjectCategory.Facility;
-    default: return ObjectCategory.House; // building / road / bridge / ramp
-  }
-}
-
 export type PlacementTrait =
   | { type: 'flat' }
   | { type: 'noFloat' }
@@ -131,7 +118,6 @@ export interface CatalogItem {
   id: string;
   category: ItemCategory;
   name: LocalizedName;
-  emoji: string;
   /** Icon PNG basename under src/assets/icons/ (catalog/ or ui/), resolved by iconUrl(). */
   icon?: string;
   color?: string;
@@ -351,8 +337,6 @@ export enum ToolType {
   ObjectPlacer = 'ObjectPlacer',
   Eraser = 'Eraser',
   Hand = 'Hand',
-  Scatter = 'Scatter',
-  RoadBrush = 'RoadBrush',
   EdgeCut = 'EdgeCut',
 }
 

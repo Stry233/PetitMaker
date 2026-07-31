@@ -3,7 +3,7 @@ import type {
   Command, ValidationError, ValidationResult, GridState,
 } from '../core/model/types';
 import type { ToolOverlay, ViewProjection } from '../canvas/view-projection';
-import type { CursorId } from '../ui/cursors/cursor-spec';
+import type { CursorId } from '../core/runtime/cursor-spec';
 
 export interface ToolContext {
   gridState: GridState;

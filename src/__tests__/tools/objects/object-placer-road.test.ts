@@ -6,7 +6,7 @@ import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import {
-  CommandType, ObjectCategory, type EditorEvents, type MacroCoord, type PlaceObjectCommand,
+  CommandType, type EditorEvents, type MacroCoord, type PlaceObjectCommand,
 } from '../../../core/model/types';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
@@ -14,9 +14,9 @@ import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
 const addRoad = (state: any, x: number, y: number, id = `road-${x}-${y}`) =>
-  state.objects.set(id, { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 });
+  state.objects.set(id, { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 });
 const addStall = (state: any, x: number, y: number, id = `blocker-${x}-${y}`) =>
-  state.objects.set(id, { id, catalogId: 'building-stall', position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 });
+  state.objects.set(id, { id, catalogId: 'building-stall', position: { x, y }, rotation: 0, elevation: 0 });
 
 // A building placed over a road removes the road. The removal must be tied to the placement: it happens
 // ONLY if the placement is legal, and the two undo together as one step (never leave the road gone with
@@ -79,7 +79,7 @@ describe('ObjectPlacerTool: placing over a road', () => {
 describe('V-PLACE-OVERLAP: surface coatings do not block', () => {
   const placeStallAt = (x: number, y: number): PlaceObjectCommand => ({
     type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: 'new', catalogId: 'building-stall', position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 },
+    object: { id: 'new', catalogId: 'building-stall', position: { x, y }, rotation: 0, elevation: 0 },
     loadValue: 0,
   });
 
@@ -96,6 +96,6 @@ describe('V-PLACE-OVERLAP: surface coatings do not block', () => {
   });
 
   it('objectRect is exported for the rule to measure footprints', () => {
-    expect(objectRect({ id: 'x', catalogId: 'building-stall', position: { x: 1, y: 1 }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 } as any)).toBeTruthy();
+    expect(objectRect({ id: 'x', catalogId: 'building-stall', position: { x: 1, y: 1 }, rotation: 0, elevation: 0 } as any)).toBeTruthy();
   });
 });

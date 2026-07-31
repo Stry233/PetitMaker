@@ -15,7 +15,6 @@ import { registerMapSnapshotter } from '../../agent/snapshot';
 import { useWasdPan, useUiZoomShortcut } from '../interaction/use-view-shortcuts';
 import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
 import { useCursor } from '../interaction/use-cursor';
-import { canHoldSelection } from '../interaction/selection-hover';
 import { registerToolManager, setActiveView } from '../active-view';
 import { registerWindowBridge } from './interaction/window-bridge-register';
 
@@ -153,8 +152,6 @@ export function PixiCanvas() {
     renderer.terrainLayer.markNumbersDirty();
     renderer.terrainLayer.drawNumbers(gs);
     renderer.mountNumberContainer();
-    // Re-sync the selection label: hide it when global numbers are on (overlap).
-    paintSelection(renderer.overlayLayer, gs, useEditorStore.getState().selection, showLayerNumbers);
   }, [showLayerNumbers]);
 
   // Re-draw when gridState changes (new project)
@@ -190,26 +187,6 @@ export function PixiCanvas() {
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  // Keep the selection overlay in sync with the store:
-  //  - Emptying the selection clears the outline (inverse of showSelection) —
-  //    covers delete via context menu, popover, or keyboard uniformly.
-  //  - Switching to a tool that cannot select (the paint brushes, the eraser, the
-  //    edge cutter) deselects, since a selection is only meaningful while a click
-  //    can make one. The object placer keeps its selection ARMED or not: Ctrl-click
-  //    selects there, and a click on an existing object selects it for an ad-hoc
-  //    rotate/delete while the item stays armed.
-  useEffect(() => {
-    return useEditorStore.subscribe((state, prev) => {
-      if (state.selection.length === 0 && prev.selection.length > 0) {
-        rendererRef.current?.overlayLayer.clearSelection();
-        return;
-      }
-      if (state.selection.length > 0) {
-        if (!canHoldSelection(state.activeTool)) useEditorStore.getState().clearSelection();
-      }
-    });
   }, []);
 
   // Re-paint the selection box when the selected object's geometry changes — a

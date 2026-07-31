@@ -10,16 +10,16 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import { ItemCategory, ObjectCategory, objectCategory, type GridState, type PlacedObject } from '../../core/model/types';
+import type { GridState, PlacedObject } from '../../core/model/types';
 import { entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
 import { PLAZA_ID } from '../../core/model/constants';
 import { makeState } from '../rules/_helpers';
 
 function tree(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, category: ObjectCategory.Tree, elevation: 0 };
+  return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0 };
 }
 function road(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, category: objectCategory(ItemCategory.Road), elevation: 0 };
+  return { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 function add(state: GridState, ...objs: PlacedObject[]): void {
@@ -202,7 +202,7 @@ describe('objectAt', () => {
     const state = makeState(20, 20);
     const plaza: PlacedObject = {
       id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
-      rotation: 0, category: ObjectCategory.Facility, elevation: 0, locked: true,
+      rotation: 0, elevation: 0, locked: true,
     };
     add(state, plaza);
     expect(objectAt(getObjectIndex(state), { x: 5, y: 5 })?.id).toBe(PLAZA_ID);

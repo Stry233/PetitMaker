@@ -11,7 +11,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory } from '../../core/model/types';
+import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject, ValidationError } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { setActiveView } from '../../canvas/active-view';
@@ -28,18 +28,18 @@ vi.mock('../../ui/menu/scale', async (importOriginal) => {
 
 registerCatalogItem({
   id: 'sel-hut', category: ItemCategory.Building, name: { en: 'sel-hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
 });
 registerCatalogItem({
   id: 'sel-rot-hut', category: ItemCategory.Building, name: { en: 'sel-rot-hut' },
-  emoji: '🏚️', width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
+  width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
 });
 // A non-square, non-rotatable footprint: the one shape rotateGroup refuses (a stand-in for a
 // bridge/ramp span, without needing the real waterSpan trait — the refusal only reads
 // catalog.rotatable and the footprint's own w !== h).
 registerCatalogItem({
   id: 'sel-span', category: ItemCategory.Bridge, name: { en: 'sel-span' },
-  emoji: '🌉', width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
 });
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -54,7 +54,7 @@ function placeAll(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: s.catalogId, position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
       ...(s.locked ? { locked: true } : {}),
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });

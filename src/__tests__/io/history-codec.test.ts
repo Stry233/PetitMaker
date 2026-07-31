@@ -4,7 +4,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { makeState } from '../rules/_helpers';
-import { CommandType, TerrainType, ObjectCategory, type PlaceObjectCommand } from '../../core/model/types';
+import { CommandType, TerrainType, type PlaceObjectCommand } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
 
 function editedExecutor() {
@@ -63,7 +63,7 @@ describe('history codec', () => {
     const startSize = originalExec.getUndoStackSize();
     const obj = {
       id: 'test-obj-1', catalogId: 'road-dirt',
-      position: { x: 5, y: 5 }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x: 5, y: 5 }, rotation: 0, elevation: 0,
     };
     const item = getCatalogItem('road-dirt');
     const placeResult = originalExec.execute({

@@ -1,12 +1,10 @@
 // src/io/share/codec/object-coder.ts — object-list residual coder. The decoder reconstructs the
 // EXACT canonical list: predicted minus deletions plus additions, re-sorted by the canonical
-// objKey and re-id'd o0..; category is PREDICTED from the catalog projection (near-zero-cost in
-// the overwhelmingly common case) with a per-added-object exception bit + explicit fallback for
-// any object whose stored category legitimately disagrees with that projection.
+// objKey and re-id'd o0.. . An object's category is not transmitted at all: `catalogId` already
+// determines it, so the reader derives it from the catalog when it needs it.
 import { RangeEncoder, RangeDecoder, BitModel, TreeModel, UintModel, encodeTree, decodeTree, encodeUint, decodeUint, zigzag, unzigzag } from './bitio';
 import { objKey } from '../canonical';
 import { getAllItems, getCatalogItem } from '../../../state/catalog';
-import { objectCategory, ObjectCategory } from '../../../core/model/types';
 import type { SaveObject } from '../../save-format';
 
 const CORNERS = 'SF1234E';
@@ -20,22 +18,12 @@ function catalogIds(): string[] {
   return CATALOG_IDS;
 }
 
-// ObjectCategory's numeric values must fit the 3-bit TreeModel used for the explicit-category
-// exception path below.
-const CATEGORY_MAX = Math.max(...Object.values(ObjectCategory).filter((v): v is number => typeof v === 'number'));
-if (CATEGORY_MAX > 7) throw new Error('object-coder: ObjectCategory exceeds 3-bit index');
-
 class Models {
   delCount = new UintModel(); delGap = new UintModel();
   addCount = new UintModel();
   catalog = new TreeModel(7);
   dx = new UintModel(); dy = new UintModel();
   rot = new TreeModel(2);
-  // categoryMatchesProjection: 1 = category is exactly objectCategory(catalog item's ItemCategory)
-  // (the overwhelmingly common case — skews adaptively toward 1); 0 = an explicit category
-  // follows. This replaces re-deriving category unconditionally, which silently corrupted any
-  // object whose stored category legitimately (or illegitimately) disagrees with the projection.
-  catMatch = new BitModel(); catExplicit = new TreeModel(3);
   hasElev = new BitModel(); elev = new UintModel();
   hasSpan = new BitModel(); span = new UintModel();
   hasCorners = new BitModel(); corner = [new TreeModel(3), new TreeModel(3), new TreeModel(3), new TreeModel(3)];
@@ -50,10 +38,7 @@ function keySet(objs: SaveObject[]): Map<string, number> {
 function normalize(objs: SaveObject[]): SaveObject[] {
   return [...objs].sort((a, b) => { const ka = objKey(a), kb = objKey(b); return ka < kb ? -1 : ka > kb ? 1 : 0; })
     .map((o, i) => {
-      // category is now transmitted (via the categoryMatchesProjection exception bit in the
-      // add loop) rather than re-derived, so it must be PRESERVED here, not overwritten — the
-      // catalog projection is only a prediction used to save bits, not the source of truth.
-      const out: SaveObject = { id: `o${i}`, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, category: o.category };
+      const out: SaveObject = { id: `o${i}`, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation };
       if (o.elevation !== undefined) out.elevation = o.elevation;
       if (o.spanLength !== undefined) out.spanLength = o.spanLength;
       if (o.corners !== undefined) out.corners = o.corners;
@@ -94,11 +79,6 @@ export function encodeObjects(enc: RangeEncoder, objects: SaveObject[], predicte
     encodeUint(enc, M.dx, zigzag(o.x - px)); encodeUint(enc, M.dy, zigzag(o.y - py));
     px = o.x; py = o.y;
     encodeTree(enc, M.rot, ROTS.indexOf(o.rotation));
-    const item = getCatalogItem(o.catalogId);
-    const predictedCategory = item ? objectCategory(item.category) : undefined;
-    const catMatches = predictedCategory !== undefined && o.category === predictedCategory;
-    enc.encodeBit(M.catMatch, catMatches ? 1 : 0);
-    if (!catMatches) encodeTree(enc, M.catExplicit, o.category);
     enc.encodeBit(M.hasElev, o.elevation !== undefined ? 1 : 0);
     if (o.elevation !== undefined) encodeUint(enc, M.elev, o.elevation);
     enc.encodeBit(M.hasSpan, o.spanLength !== undefined ? 1 : 0);
@@ -127,11 +107,7 @@ export function decodeObjects(dec: RangeDecoder, predicted: SaveObject[]): SaveO
     const catalogId = catalogIds()[decodeTree(dec, M.catalog)]!;
     px += unzigzag(decodeUint(dec, M.dx)); py += unzigzag(decodeUint(dec, M.dy));
     const rotation = ROTS[decodeTree(dec, M.rot)]!;
-    const item = getCatalogItem(catalogId);
-    const category = dec.decodeBit(M.catMatch) === 1
-      ? (item ? objectCategory(item.category) : 0)
-      : decodeTree(dec, M.catExplicit);
-    const o: SaveObject = { id: 'o?', catalogId, x: px, y: py, rotation, category };
+    const o: SaveObject = { id: 'o?', catalogId, x: px, y: py, rotation };
     if (dec.decodeBit(M.hasElev) === 1) o.elevation = decodeUint(dec, M.elev);
     if (dec.decodeBit(M.hasSpan) === 1) o.spanLength = decodeUint(dec, M.span);
     if (dec.decodeBit(M.hasCorners) === 1) {

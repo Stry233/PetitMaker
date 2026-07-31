@@ -80,7 +80,7 @@ export function useWasdPan(rendererRef: RefObject<MapRenderer | null>) {
 
     const onKeyDown = (e: KeyboardEvent) => {
       // The 3D preview owns WASD while it's open — don't also pan the hidden 2D map.
-      if (useEditorStore.getState().preview3DOpen) return;
+      if (useEditorStore.getState().modals.preview3d) return;
       // A blocking modal is foregrounded over a blurred map — keys belong to the popup, not the map.
       if (anyOverlayOpen()) return;
       const key = e.key.toLowerCase();

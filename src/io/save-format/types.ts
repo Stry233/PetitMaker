@@ -22,7 +22,6 @@ export interface SaveObject {
   x: number;
   y: number;
   rotation: number;
-  category: number;
   elevation?: number;
   spanLength?: number;
   corners?: string;

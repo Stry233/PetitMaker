@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildObjectInstances, objectInstance } from '../../canvas/map3d/build/object-meshes';
-import { ObjectCategory, type GridState, type PlacedObject } from '../../core/model/types';
+import { type GridState, type PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { getCatalogItem } from '../../state/catalog';
 
@@ -16,7 +16,7 @@ function withObjects(...objs: PlacedObject[]): GridState {
 }
 
 const place = (id: string, catalogId: string, x: number, y: number, extra: Partial<PlacedObject> = {}): PlacedObject =>
-  ({ id, catalogId, position: { x, y }, rotation: 0, category: ObjectCategory.House, elevation: 0, ...extra });
+  ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0, ...extra });
 
 describe('objectInstance', () => {
   it('matches the bulk builder for archetype, model, ramp and trimmed-road cases', () => {

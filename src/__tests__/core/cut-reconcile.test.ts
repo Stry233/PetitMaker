@@ -5,7 +5,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type Command, type Corners, type EditorEvents } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
-import { ObjectCategory, type PlacedObject } from '../../core/model/types';
+import { type PlacedObject } from '../../core/model/types';
 
 function exec(state: any): CommandExecutor {
   return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
@@ -68,7 +68,7 @@ describe('reconcileCuts — terrain', () => {
 function addRoad(state: any, x: number, y: number): PlacedObject {
   const road: PlacedObject = {
     id: `road-${x}-${y}`, catalogId: 'road-dirt',
-    position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+    position: { x, y }, rotation: 0, elevation: 0,
   };
   state.objects.set(road.id, road);
   return road;

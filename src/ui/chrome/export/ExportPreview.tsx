@@ -18,7 +18,7 @@ export function ExportPreview({ options, summary, codeImg, codePending }: { opti
   const t = useT();
   const state = useEditorStore((s) => s.gridState);
   const locale = useEditorStore((s) => s.locale);
-  const open = useEditorStore((s) => s.exportModalOpen);
+  const open = useEditorStore((s) => s.modals.export);
   const [baseMap, setBaseMap] = useState<HTMLImageElement | null>(null);
   const [card3d, setCard3d] = useState<HTMLImageElement[]>([]);
   const [dataUrl, setDataUrl] = useState<string | null>(null);

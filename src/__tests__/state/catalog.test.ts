@@ -33,7 +33,7 @@ describe('Catalog', () => {
       expect(item.category).toBeTruthy();
       expect(item.name.en).toBeTruthy();
       expect(item.name.zh).toBeTruthy();
-      expect(item.emoji).toBeTruthy();
+      expect(item.icon ?? item.color).toBeTruthy(); // every item renders as a sprite or a colour swatch
       expect(typeof item.width).toBe('number');
       expect(typeof item.height).toBe('number');
       expect(typeof item.loadValue).toBe('number');

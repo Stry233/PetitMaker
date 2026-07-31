@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE } from '../../ui/cursors/cursor-spec';
+import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE } from '../../core/runtime/cursor-spec';
 import { cursorSvg } from '../../ui/cursors/cursor-art';
 import { colors } from '../../ui/styles';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';

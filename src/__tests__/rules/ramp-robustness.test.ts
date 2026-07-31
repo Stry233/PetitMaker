@@ -18,7 +18,7 @@ describe('ramp policy robustness', () => {
   function placeRamp(x: number, y: number): PlaceObjectCommand {
     return {
       type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, category: 1, elevation: 0 },
+      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, elevation: 0 },
       loadValue: 80,
     };
   }

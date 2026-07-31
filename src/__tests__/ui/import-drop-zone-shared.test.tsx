@@ -24,7 +24,7 @@ vi.mock('../../ui/chrome/import/ImportDropZone', async (importOriginal) => {
 
 import { ImportModal } from '../../ui/chrome/import/ImportModal';
 import { DropImportOverlay } from '../../ui/chrome/import/DropImportOverlay';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   // reducedMotion="always": only the mock call matters here, not animation timing.
@@ -40,11 +40,12 @@ function dragEnterWithFile(): void {
 describe('ImportModal and DropImportOverlay share ImportDropZone', () => {
   beforeEach(() => {
     dropZoneSpy.mockReset();
-    setStoreState({ locale: 'en', importModalOpen: false, gridState: makeState() });
+    setStoreState({ locale: 'en', gridState: makeState() });
+    setStoreModal('import', false);
   });
 
   it('ImportModal renders the shared drop zone with click-to-pick wired up', () => {
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
 
     expect(dropZoneSpy).toHaveBeenCalled();

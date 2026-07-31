@@ -11,7 +11,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory } from '../../core/model/types';
+import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject, ValidationError } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
@@ -19,12 +19,12 @@ const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, onHelp: () =>
 
 registerCatalogItem({
   id: 'grs-hut', category: ItemCategory.Building, name: { en: 'grs-hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
+  width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
 });
 // Non-square, non-rotatable: the one shape rotateGroup refuses (a stand-in for a bridge/ramp span).
 registerCatalogItem({
   id: 'grs-span', category: ItemCategory.Bridge, name: { en: 'grs-span' },
-  emoji: '🌉', width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
 });
 
 interface Spec { id: string; catalogId: string; x: number; y: number }
@@ -36,7 +36,7 @@ function place(specs: Spec[]): { gs: GridState; exec: CommandExecutor; eventBus:
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: s.catalogId, position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
     expect(res.success).toBe(true);

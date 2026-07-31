@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { ObjectLayer } from '../../canvas/map2d/layers/object-layer';
 import { CULL_MARGIN_PX } from '../../canvas/map2d/layers/chunk-cull';
 import { TILE_SIZE } from '../../core/model/constants';
-import { ObjectCategory, type PlacedObject } from '../../core/model/types';
+import { type PlacedObject } from '../../core/model/types';
 import { registerCatalogItem, getCatalogItem } from '../../state/catalog';
 
 const house = getCatalogItem('building-myhouse')!;
@@ -19,7 +19,7 @@ registerCatalogItem({ ...house, id: 'test-giant', width: 20, height: 27 });
 registerCatalogItem({ ...house, id: 'test-small', width: 2, height: 2 });
 
 const place = (id: string, catalogId: string): PlacedObject =>
-  ({ id, catalogId, position: { x: 76, y: 58 }, rotation: 0, category: ObjectCategory.House, elevation: 0 });
+  ({ id, catalogId, position: { x: 76, y: 58 }, rotation: 0, elevation: 0 });
 
 describe('object culling vs oversized footprints', () => {
   it('an object larger than the cull margin stays visible when its anchor chunk is culled', () => {

@@ -60,8 +60,8 @@ describe('DOCS registry', () => {
   });
 
   it('zh source is present exactly for the docs that carry a zh companion', () => {
-    const zhDocs: DocId[] = ['privacy', 'terms', 'about', 'security', 'contact'];
-    const enOnlyDocs: DocId[] = ['license', 'third-party', 'asset-licenses', 'changelog'];
+    const zhDocs: DocId[] = ['privacy', 'terms', 'about', 'security', 'contact', 'asset-licenses', 'changelog'];
+    const enOnlyDocs: DocId[] = ['license', 'third-party'];
 
     for (const id of zhDocs) {
       expect(DOCS[id].source.zh, `${id} should carry a zh source`).not.toBeNull();
@@ -249,8 +249,8 @@ describe('docBody — token substitution', () => {
   });
 
   it('a zh-null doc falls back to its en body when zh is requested', () => {
-    const en = docBody('changelog', 'en', LEGAL);
-    const zh = docBody('changelog', 'zh', LEGAL);
+    const en = docBody('third-party', 'en', LEGAL);
+    const zh = docBody('third-party', 'zh', LEGAL);
     expect(zh).toBe(en);
   });
 
@@ -311,8 +311,9 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
     expect(localizeZhSlug('/privacy')).toBe('/zh/privacy');
     expect(localizeZhSlug('/security')).toBe('/zh/security');
     expect(localizeZhSlug('/terms#changes')).toBe('/zh/terms#changes');
+    expect(localizeZhSlug('/asset-licenses')).toBe('/zh/asset-licenses');
+    expect(localizeZhSlug('/changelog')).toBe('/zh/changelog');
     // en-only docs have no zh page → untouched
-    expect(localizeZhSlug('/asset-licenses')).toBe('/asset-licenses');
     expect(localizeZhSlug('/license')).toBe('/license');
     // pure fragment / already-localized left alone
     expect(localizeZhSlug('#section')).toBe('#section');
@@ -327,7 +328,7 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
       // Any remaining root-relative link must be to an en-only doc (no zh page).
       for (const h of rootRelative) {
         expect(
-          ['/asset-licenses', '/license', '/third-party-notices', '/changelog'].some((p) => h.startsWith(p)),
+          ['/license', '/third-party-notices'].some((p) => h.startsWith(p)),
           `${id}.zh link ${h} should have been localized to /zh/`,
         ).toBe(true);
       }

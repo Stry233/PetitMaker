@@ -11,19 +11,13 @@
  * exactly like `rotateObjectAction`'s spin below — so no caller can forget it
  * or fire it on a doomed command.
  */
-import { CommandType, type MacroCell, type PlacedObject, type GridState, type EditorEvents, type RemoveObjectCommand } from '../../core/model/types';
+import { type MacroCell, type PlacedObject, type GridState, type EditorEvents } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { EventBus } from '../../core/commands/event-bus';
 import { peelCommand } from '../../tools/paint/terrain-peel';
 import { planObjectRotation } from '../../tools/objects/object-placer';
 import { petitWindow } from '../../core/runtime/window-bridge';
-
-const removeCmd = (obj: PlacedObject): RemoveObjectCommand => ({
-  type: CommandType.RemoveObject,
-  timestamp: Date.now(),
-  objectId: obj.id,
-  removedObject: obj,
-} as RemoveObjectCommand);
+import { removeObjectCommand } from '../../tools/objects/object-placer';
 
 /**
  * Remove one placed object as a single undo step, playing the collapse/poof first. Returns whether
@@ -37,7 +31,7 @@ const removeCmd = (obj: PlacedObject): RemoveObjectCommand => ({
  * (`deleteGroup`) calls this per member, so each gets its own gated poof with no caller wiring.
  */
 export function removeObjectAction(executor: CommandExecutor, state: GridState, obj: PlacedObject): boolean {
-  const cmd = removeCmd(obj);
+  const cmd = removeObjectCommand(obj);
   if (executor.getRegistry().validatePreCommand(cmd, state).length === 0) {
     petitWindow().__petitAnimateRemove?.(obj.id);
   }
@@ -70,7 +64,7 @@ export function rotateObjectAction(
     return false;
   }
   const start = executor.getUndoStackSize();
-  executor.execute(removeCmd(obj));
+  executor.execute(removeObjectCommand(obj));
   executor.execute(cmd);
   // Collapse the remove+place into one undo step (rotate is one action).
   executor.commitStrokeGroup(start);

@@ -1,9 +1,10 @@
-import { CommandType, TerrainType } from '../../core/model/types';
-import type { Corners, GridState, MacroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand } from '../../core/model/types';
+import { TerrainType } from '../../core/model/types';
+import type { Corners, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 import type { ToolContext } from '../types';
 import { getCell } from '../../core/model/grid-model';
 import { getCatalogItem } from '../../state/catalog';
 import { isCoating } from '../../core/model/traits';
+import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
 
 function isRoad(obj: PlacedObject): boolean {
   const item = getCatalogItem(obj.catalogId);
@@ -43,12 +44,7 @@ export function reconcileRoadsAfterMountainPaint(paintedCells: MacroCoord[], ctx
   for (const road of affected) {
     if (footprintUnchanged(ctx.gridState, road)) continue;
 
-    const removeCmd: RemoveObjectCommand = {
-      type: CommandType.RemoveObject,
-      timestamp: Date.now(),
-      objectId: road.id, removedObject: road,
-    };
-    ctx.executeCommand(removeCmd);
+    ctx.executeCommand(removeObjectCommand(road));
 
     const cell = getCell(ctx.gridState.cells, road.position.x, road.position.y);
     const newElevation = cell?.terrain?.elevation ?? 0;
@@ -57,17 +53,10 @@ export function reconcileRoadsAfterMountainPaint(paintedCells: MacroCoord[], ctx
       catalogId: road.catalogId,
       position: { x: road.position.x, y: road.position.y },
       rotation: road.rotation,
-      category: road.category,
       elevation: newElevation,
       ...(road.corners ? { corners: [...road.corners] as Corners } : {}),
     };
-    const item = getCatalogItem(road.catalogId);
-    const placeCmd: PlaceObjectCommand = {
-      type: CommandType.PlaceObject,
-      timestamp: Date.now(),
-      object: candidate,
-      loadValue: item?.loadValue ?? 0,
-    };
+    const placeCmd = objectPlacementCommand(candidate);
 
     const errors = ctx.validateCommand(placeCmd);
     if (errors.length === 0) {

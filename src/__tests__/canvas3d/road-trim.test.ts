@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { buildRoadTrimMesh } from '../../canvas/map3d/build/terrain-geometry';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { surfaceY } from '../../canvas/map3d/core/coords';
-import { ObjectCategory, type GridState } from '../../core/model/types';
+import { type GridState } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
 // A road whose edge-cut gave it non-square corners can't ride the shared full-square instance geometry, so
 // its trimmed top face is meshed separately — a 1:1 port of 2D drawRoadShape. Untrimmed roads stay instanced.
 const addRoad = (s: any, id: string, corners?: any, rotation = 0) =>
-  s.objects.set(id, { id, catalogId: 'road-dirt', position: { x: 5, y: 5 }, rotation, category: ObjectCategory.Facility, elevation: 0, corners });
+  s.objects.set(id, { id, catalogId: 'road-dirt', position: { x: 5, y: 5 }, rotation, elevation: 0, corners });
 const instanceCount = (s: GridState) => [...buildObjectInstances(s).values()].reduce((n, l) => n + l.length, 0);
 const xCentroid = (m: { positions: number[] }) => { let sx = 0, n = 0; for (let i = 0; i < m.positions.length; i += 3) { sx += m.positions[i]!; n++; } return sx / n; };
 

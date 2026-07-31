@@ -1,9 +1,9 @@
-import { CommandType, ToolType, objectCategory } from '../../core/model/types';
+import { CommandType, ToolType } from '../../core/model/types';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
 import type { GridState, MacroCoord, MicroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand, ValidationError } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { Tool, ToolContext } from '../types';
-import type { CursorId } from '../../ui/cursors/cursor-spec';
+import type { CursorId } from '../../core/runtime/cursor-spec';
 import { useEditorStore } from '../../state/store';
 import { getCatalogItem } from '../../state/catalog';
 import { bumpObjectsVersion, cellKey, getCell, getFootprint } from '../../core/model/grid-model';
@@ -89,7 +89,7 @@ function computeRampGhost(
     type: CommandType.PlaceObject, timestamp: Date.now(),
     object: {
       id: '__ghost__', catalogId: itemId, position: { x: coord.x, y: coord.y },
-      rotation: 0, category: objectCategory(item.category), elevation: surfaceElevation(getCell(ctx.gridState.cells, coord.x, coord.y)?.terrain),
+      rotation: 0, elevation: surfaceElevation(getCell(ctx.gridState.cells, coord.x, coord.y)?.terrain),
     },
     loadValue: item.loadValue,
   };
@@ -209,7 +209,7 @@ export function planPlacementGhost(
     type: CommandType.PlaceObject, timestamp: Date.now(),
     object: {
       id: '__ghost__', catalogId: item.id, position: { x: coord.x, y: coord.y },
-      rotation: appliedRotation, category: objectCategory(item.category), elevation,
+      rotation: appliedRotation, elevation,
     },
     loadValue: item.loadValue,
   } as PlaceObjectCommand);
@@ -264,7 +264,6 @@ export class ObjectPlacerTool implements Tool {
       catalogId: item.id,
       position: { x: coord.x, y: coord.y },
       rotation,
-      category: objectCategory(item.category),
       elevation,
     };
 

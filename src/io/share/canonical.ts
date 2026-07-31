@@ -17,9 +17,9 @@ export interface CanonicalSave {
 }
 
 /** Total, deterministic object sort key. Objects cannot overlap, so
- *  (x,y,catalogId,rotation,category,span,corners,patch) is unique → no id tiebreak needed. */
+ *  (x,y,catalogId,rotation,span,corners,patch) is unique → no id tiebreak needed. */
 export function objKey(o: SaveObject): string {
-  return [o.x, o.y, o.catalogId, o.rotation, o.category, o.elevation ?? '', o.spanLength ?? '', o.corners ?? '', o.patchOnly ? 1 : 0].join('|');
+  return [o.x, o.y, o.catalogId, o.rotation, o.elevation ?? '', o.spanLength ?? '', o.corners ?? '', o.patchOnly ? 1 : 0].join('|');
 }
 
 /** The optional SaveObject fields (elevation/spanLength/corners/patchOnly), present-only, in
@@ -43,7 +43,7 @@ export function canonicalize(state: GridState): CanonicalSave {
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
   const objects: SaveObject[] = sorted.map((o, i) => (
-    { id: `o${i}`, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, category: o.category, ...optionalFields(o) }
+    { id: `o${i}`, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, ...optionalFields(o) }
   ));
   return { version: save.version, templateId: save.templateId, cells: save.cells, objects };
 }
@@ -51,7 +51,7 @@ export function canonicalize(state: GridState): CanonicalSave {
 /** Stable JSON (fixed key order) of the canonical save — the hash + json-codec unit. */
 function stable(c: CanonicalSave): string {
   const obj = (o: SaveObject) => (
-    { id: o.id, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, category: o.category, ...optionalFields(o) }
+    { id: o.id, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, ...optionalFields(o) }
   );
   return JSON.stringify({
     version: c.version,

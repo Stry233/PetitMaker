@@ -1,10 +1,10 @@
-import { ItemCategory, ObjectCategory, type CatalogItem, type MacroCoord, type PlacedObject } from '../../../core/model/types';
+import { ItemCategory, type CatalogItem, type MacroCoord, type PlacedObject } from '../../../core/model/types';
 import { NEIGHBORS4 } from '../../../core/model/grid-model';
 import { TUNING } from '../tuning';
 import { makeRng, type Rng } from '../../../core/model/rng';
 import { objectRect } from '../../../state/object-geometry';
 import { tryPlace, tryDecorate, sweepClearanceCells, forEachFootprintCell, buildingGate, hasGate, type PlaceCtx } from './object';
-import { getPlaceableByCategory, getCatalogItem } from '../../../state/catalog';
+import { getPlaceableByCategory, getCatalogItem, isDecoration } from '../../../state/catalog';
 import type { PlacementAnalysis } from './analysis';
 import { routeRegionsMulti, type Portal } from './portals';
 import type { Node } from './settlement';
@@ -13,7 +13,10 @@ import type { ZonePlan } from '../types';
 import { realizeCrossings, crossingEnds } from './themes';
 import { bySizeDesc } from '../geometry';
 
-const isBuilding = (c: ObjectCategory): boolean => c === ObjectCategory.Facility || c === ObjectCategory.House;
+/** Everything a road should reach: every placed object except the vegetation. Buildings and
+ *  facilities want a door spur, and a road/bridge/ramp is already part of the network it links
+ *  into, so the one thing to leave out is decoration. */
+const wantsRoadSpur = (o: PlacedObject): boolean => !isDecoration(o);
 const pairKey = (p: Portal): string => (p.regionA < p.regionB ? `${p.regionA},${p.regionB}` : `${p.regionB},${p.regionA}`);
 
 /** The shared mutable plumbing threaded through every road-network phase. The three route-laying
@@ -215,7 +218,7 @@ function doorSpurs(net: NetCtx): void {
   // pass — paving only re-marks already-passable cells, so the flood stays valid
   // until a doorstep sweep frees an occupied cell (then it recomputes).
   let reach = networkReach(net);
-  for (const b of objs) if (!b.locked && isBuilding(b.category)) {
+  for (const b of objs) if (!b.locked && wantsRoadSpur(b)) {
     const r = objectRect(b);
     let doors: MacroCoord[];
     const item = getCatalogItem(b.catalogId);

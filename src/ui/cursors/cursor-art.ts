@@ -55,7 +55,7 @@
  */
 import { colors } from '../styles';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
-import { CURSORS, CURSOR_SIZE, type CursorId } from './cursor-spec';
+import { CURSORS, CURSOR_SIZE, type CursorId } from '../../core/runtime/cursor-spec';
 
 const INK = colors.frameDark;
 const CREAM = colors.panelCream;

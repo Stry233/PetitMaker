@@ -354,7 +354,7 @@ describe('Ramp placement — all 4 directions on rectangular mountain', () => {
   function placeRamp(x: number, y: number): import('../../core/model/types').PlaceObjectCommand {
     return {
       type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, category: 1 as any, elevation: 0 },
+      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
       loadValue: 80,
     };
   }
@@ -444,7 +444,7 @@ describe('Ramp placement — multi-tier + directional symmetry', () => {
   function legal(state: import('../../core/model/types').GridState, x: number, y: number): boolean {
     const cmd: import('../../core/model/types').PlaceObjectCommand = {
       type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, category: 1 as any, elevation: 0 },
+      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
       loadValue: 80,
     };
     return createDefaultRegistry().validatePreCommand(cmd, state).length === 0;

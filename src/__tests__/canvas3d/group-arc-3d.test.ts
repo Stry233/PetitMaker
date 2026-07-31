@@ -12,7 +12,7 @@ import type * as THREE from 'three';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { CommandType, ObjectCategory } from '../../core/model/types';
+import { CommandType } from '../../core/model/types';
 import type { Corners, EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { bodyRoute, isTrimMeshedRoad, objectInstance } from '../../canvas/map3d/build/object-meshes';
 import { buildRoadTrimMesh } from '../../canvas/map3d/build/terrain-geometry';
@@ -31,7 +31,7 @@ function mapWithRoads(): { gs: GridState; exec: CommandExecutor } {
   for (const [id, x, y] of [['r1', 5, 5], ['r2', 6, 5], ['r3', 7, 5]] as const) {
     const object: PlacedObject = {
       id, catalogId: 'road-dirt', position: { x, y },
-      rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      rotation: 0, elevation: 0,
       ...(id === 'r1' ? { corners: BR_FAN } : {}),
     };
     expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 }).success).toBe(true);

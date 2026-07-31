@@ -6,6 +6,7 @@ import { I18nProvider } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
 import { makeState } from '../rules/_helpers';
 import type { CameraAngle } from '../../canvas/map3d/capture';
+import { setStoreModal } from '../_store';
 
 const A = (az: number): CameraAngle => ({ az, el: 40, dist: 0.9 });
 
@@ -14,8 +15,8 @@ function setShots(n: number) {
     gridState: makeState(30, 30),
     export3dShots: Array.from({ length: n }, (_, i) => A(i * 40)),
     preview3DEdit: null,
-    preview3DOpen: false,
   });
+  setStoreModal('preview3d', false);
 }
 
 function renderStrip() {
@@ -52,7 +53,7 @@ describe('Shot3dStrip', () => {
     renderStrip();
     fireEvent.click(screen.getAllByTitle('Click to set the camera angle')[1]!);
     const st = useEditorStore.getState();
-    expect(st.preview3DOpen).toBe(true);
+    expect(st.modals.preview3d).toBe(true);
     expect(st.preview3DEdit?.index).toBe(1);
   });
 

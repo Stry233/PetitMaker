@@ -154,7 +154,7 @@ The full tour: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) (the engine) and [
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) 20 or newer.
+Requires [Node.js](https://nodejs.org) 24 or newer.
 
 ```bash
 npm install
@@ -195,10 +195,10 @@ In alphabetical order, not a ranking.
 
 <table align="center">
 <tr>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/16699168"><img src="./src/assets/team/16699168.jpg" width="80" alt="火山野牛王's avatar"><br><br><b>火山野牛王</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/25599535"><img src="./src/assets/team/25599535.jpg" width="80" alt="镜喵MirrorCat's avatar"><br><br><b>镜喵&#8288;MirrorCat</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/3546659724200757"><img src="./src/assets/team/3546659724200757.jpg" width="80" alt="Selka's avatar"><br><br><b>Selka</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/3632319829116985"><img src="./src/assets/team/3632319829116985.jpg" width="80" alt="鱼松吃点吗's avatar"><br><br><b>鱼松吃点吗</b></a></td>
+<td align="center"><a href="https://space.bilibili.com/16699168"><img src="./src/assets/team/16699168.jpg" width="72" alt="火山野牛王's avatar"><br><sub><b>火山野牛王</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/25599535"><img src="./src/assets/team/25599535.jpg" width="72" alt="镜喵MirrorCat's avatar"><br><sub><b>镜喵MirrorCat</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/3546659724200757"><img src="./src/assets/team/3546659724200757.jpg" width="72" alt="Selka's avatar"><br><sub><b>Selka</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/3632319829116985"><img src="./src/assets/team/3632319829116985.jpg" width="72" alt="鱼松吃点吗's avatar"><br><sub><b>鱼松吃点吗</b></sub></a></td>
 </tr>
 </table>
 
@@ -207,12 +207,12 @@ In alphabetical order, not a ranking.
 | Document | Purpose |
 |---|---|
 | [LICENSE](./LICENSE) | Apache-2.0 code license |
-| [ASSET_LICENSES.md](./docs/ASSET_LICENSES.md) | Four-way ownership scope: code / brand & art / third-party / user maps |
+| [ASSET_LICENSES.md](./docs/ASSET_LICENSES.md) ([中文](./docs/ASSET_LICENSES.zh-CN.md)) | Four-way ownership scope: code / brand & art / third-party / user maps |
 | [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md) | Bundled software dependencies and shipped fonts |
 | [SECURITY.md](./SECURITY.md) ([中文](./docs/SECURITY.zh-CN.md)) | Vulnerability reporting policy |
 | [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md) | Developer threat model (build, headers/CSP, key vault, agent sandbox) |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | DCO sign-off, code/asset contribution terms, credit policy |
-| [CHANGELOG.md](./docs/CHANGELOG.md) | Release history (Keep a Changelog) |
+| [CHANGELOG.md](./docs/CHANGELOG.md) ([中文](./docs/CHANGELOG.zh-CN.md)) | Release history (Keep a Changelog) |
 
 ## Contact
 

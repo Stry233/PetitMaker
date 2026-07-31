@@ -10,8 +10,9 @@ import { ImportDropZone, IMPORT_CARD_WIDTH, IMPORT_CARD_PADDING } from './Import
 
 export function ImportModal() {
   const t = useT();
-  const open = useEditorStore((s) => s.importModalOpen);
-  const close = useEditorStore((s) => s.setImportModalOpen);
+  const open = useEditorStore((s) => s.modals.import);
+  const setModal = useEditorStore((s) => s.setModal);
+  const close = (open: boolean) => setModal('import', open);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 

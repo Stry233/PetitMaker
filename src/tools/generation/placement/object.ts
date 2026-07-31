@@ -1,10 +1,11 @@
-import { CommandType, ItemCategory, ObjectCategory, objectCategory, type Command, type GridState, type MacroCoord, type PlaceObjectCommand, type PlacedObject, type RemoveObjectCommand, type ValidationResult } from '../../../core/model/types';
+import { ItemCategory, type Command, type GridState, type MacroCoord, type PlaceObjectCommand, type PlacedObject, type ValidationResult } from '../../../core/model/types';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
-import { getCatalogItem } from '../../../state/catalog';
+import { getCatalogItem, isDecoration } from '../../../state/catalog';
 import { objectRect, getRotatedSize } from '../../../state/object-geometry';
 import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
 import { isCoating } from '../../../core/model/traits';
 import type { PlacementAnalysis } from './analysis';
+import { objectPlacementCommand, removeObjectCommand } from '../../objects/object-placer';
 
 /** Context threaded through every placement stage. Deterministic ids come from the counter. */
 export interface PlaceCtx {
@@ -75,10 +76,9 @@ function placeObjectCommand(ctx: PlaceCtx, catalogId: string, x: number, y: numb
     catalogId,
     position: { x, y },
     rotation,
-    category: objectCategory(item.category),
     elevation: surfaceElevation(ctx.state.cells[y]?.[x]?.terrain),
   };
-  return { type: CommandType.PlaceObject, timestamp: 0, object: obj, loadValue: item.loadValue };
+  return objectPlacementCommand(obj);
 }
 
 /** A HOUSE's gate: the centre of the edge that is the footprint's BOTTOM at rotation 0, rotated
@@ -156,7 +156,7 @@ export function enforceClearance(ctx: PlaceCtx): void {
   const W = ctx.state.template.width;
   const toRemove: PlacedObject[] = [];
   for (const o of ctx.state.objects.values()) {
-    if (o.locked || (o.category !== ObjectCategory.Tree && o.category !== ObjectCategory.Flora)) continue;
+    if (o.locked || !isDecoration(o)) continue;
     const r = objectRect(o);
     let hit = false;
     for (let y = Math.floor(r.y); y < r.y + r.h && !hit; y++) for (let x = Math.floor(r.x); x < r.x + r.w; x++) {
@@ -170,7 +170,7 @@ export function enforceClearance(ctx: PlaceCtx): void {
 
 /** Remove a placed object via the command path (used to roll back a crossing that didn't connect). */
 export function removePlaced(ctx: PlaceCtx, obj: PlacedObject): void {
-  ctx.execute({ type: CommandType.RemoveObject, timestamp: 0, objectId: obj.id, removedObject: obj } as RemoveObjectCommand);
+  ctx.execute(removeObjectCommand(obj));
 }
 
 /** Remove every DECORATION (tree/flora) whose footprint touches `cells`, returning what was removed.
@@ -182,7 +182,7 @@ export function sweepClearanceCells(ctx: PlaceCtx, cells: Set<number>): PlacedOb
   const W = ctx.state.template.width;
   const removed: PlacedObject[] = [];
   for (const o of ctx.state.objects.values()) {
-    if (o.locked || (o.category !== ObjectCategory.Tree && o.category !== ObjectCategory.Flora)) continue;
+    if (o.locked || !isDecoration(o)) continue;
     const r = objectRect(o);
     let hit = false;
     for (let y = Math.floor(r.y); y < r.y + r.h && !hit; y++) for (let x = Math.floor(r.x); x < r.x + r.w; x++) {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { objectBlocksTerrainRule } from '../../rules/object-blocks-terrain';
-import { CellZone, CommandType, TerrainType, ObjectCategory } from '../../core/model/types';
+import { CellZone, CommandType, TerrainType } from '../../core/model/types';
 import type { PlaceObjectCommand, PaintTerrainCommand, EraseTerrainCommand } from '../../core/model/types';
 import { makeState, setTerrain, setZone } from './_helpers';
 import { registerCatalogItem } from '../../state/catalog';
@@ -11,7 +11,7 @@ import { ItemCategory } from '../../core/model/types';
 // exercise the flat-trait rule at small scale).
 registerCatalogItem({
   id: 'test-house', category: ItemCategory.Building, name: { en: 'Test House', zh: '测试屋' },
-  emoji: '🏠', width: 2, height: 2, loadValue: 200, rotatable: true, placementMode: 'point',
+  width: 2, height: 2, loadValue: 200, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
 });
 
@@ -19,7 +19,7 @@ registerCatalogItem({
 // footprint (a square fixture can't, since rotation leaves its extent unchanged).
 registerCatalogItem({
   id: 'test-bench', category: ItemCategory.Building, name: { en: 'Test Bench', zh: '测试长椅' },
-  emoji: '🛋️', width: 1, height: 3, loadValue: 50, rotatable: true, placementMode: 'point',
+  width: 1, height: 3, loadValue: 50, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
 });
 
@@ -27,7 +27,7 @@ function placeItemRot(id: string, x: number, y: number, rotation: 0 | 90 | 180 |
   return {
     type: CommandType.PlaceObject,
     timestamp: 0,
-    object: { id: 'test', catalogId: id, position: { x, y }, rotation, category: 1 as any, elevation: 0 },
+    object: { id: 'test', catalogId: id, position: { x, y }, rotation, elevation: 0 },
     loadValue: 0,
   };
 }
@@ -36,7 +36,7 @@ function placeItem(id: string, x: number, y: number): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
     timestamp: 0,
-    object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, category: 1 as any, elevation: 0 },
+    object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, elevation: 0 },
     loadValue: 0,
   };
 }
@@ -304,7 +304,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       const state = makeState();
       state.objects.set('existing', {
         id: 'existing', catalogId: 'tree-apple',
-        position: { x: 6, y: 5 }, rotation: 0, category: 3 as any, elevation: 0,
+        position: { x: 6, y: 5 }, rotation: 0, elevation: 0,
       });
       expect(traitPlacementRule.validate(placeItem('tree-apple', 5, 5), state).length).toBeGreaterThan(0);
     });
@@ -313,7 +313,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       const state = makeState();
       state.objects.set('existing', {
         id: 'existing', catalogId: 'tree-apple',
-        position: { x: 8, y: 5 }, rotation: 0, category: 3 as any, elevation: 0,
+        position: { x: 8, y: 5 }, rotation: 0, elevation: 0,
       });
       expect(traitPlacementRule.validate(placeItem('tree-apple', 5, 5), state)).toHaveLength(0);
     });
@@ -351,13 +351,13 @@ describe('V-PLACE-BLOCK: mountain over roads', () => {
   function addRoad(state: any, x: number, y: number) {
     state.objects.set(`road-${x}-${y}`, {
       id: `road-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     });
   }
   function addHouse(state: any, x: number, y: number) {
     state.objects.set(`house-${x}-${y}`, {
       id: `house-${x}-${y}`, catalogId: 'test-house',
-      position: { x, y }, rotation: 0, category: ObjectCategory.House, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     });
   }
   function paint(x: number, y: number, type: TerrainType): PaintTerrainCommand {

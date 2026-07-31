@@ -103,8 +103,8 @@ export function useSiteLogTurn(args: { region: MacroCoord[]; draft: string; setD
       getProvenanceSource: () => ({ provider, model, userApproved: false }),
       requestExport: (kind) => {
         const st = useEditorStore.getState();
-        if (kind === 'json') st.setExportJsonModalOpen(true);
-        else st.setExportModalOpen(true);
+        if (kind === 'json') st.setModal('exportJson', true);
+        else st.setModal('export', true);
       },
     };
     const system = buildSystemPrompt(commandExecutor.getRegistry(), { uiLocale: useEditorStore.getState().locale });

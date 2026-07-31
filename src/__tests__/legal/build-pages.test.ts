@@ -204,7 +204,7 @@ describe('sitemapXml', () => {
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     const expected = pagePlan().map((p) => `${cfg.canonicalOrigin}${p.path}`);
     expect(locs.sort()).toEqual(expected.sort());
-    expect(locs.length).toBe(14); // 9 docs, 5 with a zh companion
+    expect(locs.length).toBe(16); // 9 docs, 7 with a zh companion
   });
 
   it('every url carries an x-default alternate', () => {

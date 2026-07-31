@@ -12,7 +12,6 @@ import { KEY_ROWS, NAV, NUMPAD, comboFor, comboFromEvent, prettyCombo, type Laye
 import { translations } from '../../i18n/translations';
 import { useEditorStore } from '../../state/store';
 import { setStoreState } from '../_store';
-import { ObjectCategory } from '../../core/model/types';
 import type { EditorEvents } from '../../core/model/types';
 import { makeState, makeObject } from '../rules/_helpers';
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -113,8 +112,8 @@ describe('command registry (single source of truth)', () => {
 
   it('selection.all REPLACES the selection with every object incl. locked ones, and no terrain', () => {
     const state = makeState();
-    state.objects.set('a', makeObject('a', 1, 1, ObjectCategory.Tree));
-    state.objects.set('plaza', { ...makeObject('plaza', 5, 5, ObjectCategory.Facility), locked: true });
+    state.objects.set('a', makeObject('a', 1, 1));
+    state.objects.set('plaza', { ...makeObject('plaza', 5, 5), locked: true });
     // Start from a non-empty, non-matching selection: an implementation that
     // APPENDED instead of replacing would leave this terrain ref behind.
     useEditorStore.setState({ gridState: state, selection: [{ kind: 'terrain', x: 9, y: 9 }] });

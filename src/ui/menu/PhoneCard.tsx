@@ -20,6 +20,7 @@ import { usePx, useMenuCenterOffset } from './scale';
 import { squircleClip } from './squircle';
 import { iconUrl } from './icons';
 import { useT } from '../../i18n/context';
+import { tourTargetAttr } from '../chrome/tour/steps';
 
 interface PhoneCardProps {
   onCollapse: () => void;
@@ -119,6 +120,7 @@ export function PhoneCard({ onCollapse, children }: PhoneCardProps) {
         <motion.button
           type="button"
           style={homeHit}
+          {...tourTargetAttr('menu-home')}
           onClick={onCollapse}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.92 }}
@@ -170,6 +172,7 @@ export function CollapsedPhone({ onExpand, onHoverStart, onHoverEnd }: Collapsed
     <motion.button
       type="button"
       style={style}
+      {...tourTargetAttr('menu-collapsed')}
       onClick={onExpand}
       onHoverStart={onHoverStart}
       onHoverEnd={onHoverEnd}

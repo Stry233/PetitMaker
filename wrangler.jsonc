@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers static-asset hosting for the production site. `name` must equal the
+  // Worker's name in the Cloudflare dashboard or the build fails before it runs.
+  // No `main`: with assets and no script, Cloudflare serves the files and 404s anything else,
+  // which is what this app wants — it has no client-side routes, so every URL is a real file.
+  // Response headers come from public/_headers, generated from security/headers-policy.ts.
+  "name": "petitmaker",
+  "compatibility_date": "2026-07-30",
+  "assets": { "directory": "./dist" }
+}

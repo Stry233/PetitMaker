@@ -19,7 +19,7 @@ import { __resetCursorController, registerCursorSurface, setToolCursor } from '.
 import { isBrushTool } from '../../canvas/interaction/selection-hover';
 import { cursorCss } from '../../ui/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ObjectCategory, ToolType, TerrainType, type GridState, type PlacedObject } from '../../core/model/types';
+import { ToolType, TerrainType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion, getCell } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -72,7 +72,7 @@ function setHeld(held: boolean): void {
 function tree(id: string, x: number, y: number): PlacedObject {
   return {
     id, catalogId: 'tree-apple', position: { x, y },
-    rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+    rotation: 0, elevation: 0,
   };
 }
 

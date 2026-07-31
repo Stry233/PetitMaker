@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { CURSORS, CURSOR_IDS, DOM_CURSORS, type DomCursorId } from '../../ui/cursors/cursor-spec';
+import { CURSORS, CURSOR_IDS, DOM_CURSORS, type DomCursorId } from '../../core/runtime/cursor-spec';
 import { cursorCss } from '../../ui/cursors/cursor-css';
 import { publishCursorPreference, useCursorVars } from '../../ui/cursors/cursor-vars';
 import {

@@ -29,7 +29,7 @@ for (const item of items) {
 // placement list (getCatalogByCategory).
 const PLAZA_ITEM: CatalogItem = {
   id: PLAZA_ID, category: ItemCategory.Facility,
-  name: { en: 'Central Plaza', zh: '中央广场' }, emoji: '', icon: 'plaza',
+  name: { en: 'Central Plaza', zh: '中央广场' }, icon: 'plaza',
   width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'terrainBase' }],
 };
@@ -37,6 +37,20 @@ byId.set(PLAZA_ITEM.id, PLAZA_ITEM);
 
 export function getCatalogItem(id: string): CatalogItem | undefined {
   return byId.get(id);
+}
+
+/** A placed object's category, the full 7-way ItemCategory. A PlacedObject carries none of its
+ *  own — `catalogId` determines it — so this is the ONE way to ask. Undefined for a catalogId the
+ *  catalog does not know, which json-codec drops on load. */
+export function categoryOf(obj: { catalogId: string }): ItemCategory | undefined {
+  return byId.get(obj.catalogId)?.category;
+}
+
+/** Whether a placed object is a DECORATION (a tree or a flower): the vegetation that generation
+ *  sweeps out of gate strips, crossing clearances and paved cells. */
+export function isDecoration(obj: { catalogId: string }): boolean {
+  const cat = categoryOf(obj);
+  return cat === ItemCategory.Tree || cat === ItemCategory.Flora;
 }
 
 /**

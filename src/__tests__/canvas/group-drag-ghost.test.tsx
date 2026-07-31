@@ -19,7 +19,7 @@ import { usePointerInteraction } from '../../canvas/interaction/usePointerIntera
 import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import { __resetCursorController } from '../../canvas/interaction/cursor-controller';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ItemCategory, ObjectCategory, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import { ItemCategory, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -36,12 +36,12 @@ import { registerCatalogItem } from '../../state/catalog';
 const ITEM = 'ghost-test-hut';
 registerCatalogItem({
   id: ITEM, category: ItemCategory.Building, name: { en: 'Ghost Test Hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
 function tree(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: ITEM, position: { x, y }, rotation: 0, category: ObjectCategory.Tree, elevation: 0 };
+  return { id, catalogId: ITEM, position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 function makeMockView() {

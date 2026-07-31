@@ -252,6 +252,8 @@ describe('export leak check — re-derived independently of the copy step', () =
       'docs/ARCHITECTURE.md',
       'docs/THIRD_PARTY_NOTICES.md',
       'docs/README.zh-CN.md',
+      'docs/ASSET_LICENSES.zh-CN.md',
+      'docs/CHANGELOG.zh-CN.md',
       'scripts/export-public-repo.mts',
       'scripts/export-public-repo-core.mts',
     ]) {

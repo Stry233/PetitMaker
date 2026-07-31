@@ -9,8 +9,9 @@ import {
   shouldBlockPortrait,
   orientationTypeIsPortrait,
   readDeviceOrientation,
-  usePortraitGuard,
-} from '../../ui/chrome/portrait-guard';
+  detectPortraitBlocked,
+} from '../../core/runtime/portrait-signals';
+import { usePortraitGuard } from '../../ui/chrome/portrait-guard';
 
 describe('shouldBlockPortrait (pure)', () => {
   it('never fires without a touch-primary pointer, however the signals combine', () => {
@@ -55,6 +56,30 @@ describe('readDeviceOrientation', () => {
     vi.stubGlobal('screen', {});
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('portrait'), media: q }));
     expect(readDeviceOrientation()).toBe(true);
+  });
+});
+
+describe('detectPortraitBlocked (the store seed)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('answers without a subscription, so the store holds the real value on App\'s first render', () => {
+    // Passive effects flush children-first: PortraitGuard's mirror-write and useFirstLaunchTour's
+    // once-only check land in the same flush, so a `false` default would let the tour start under
+    // the rotate overlay and never re-check.
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q !== '(orientation: portrait)', media: q }));
+    vi.stubGlobal('screen', { orientation: { type: 'portrait-primary' } });
+    expect(detectPortraitBlocked()).toBe(true);
+
+    vi.stubGlobal('screen', { orientation: { type: 'landscape-primary' } });
+    expect(detectPortraitBlocked()).toBe(false);
+  });
+
+  it('is what the store starts at, so nothing has to wait an effect to learn it', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: true, media: q }));
+    vi.stubGlobal('screen', { orientation: { type: 'portrait-primary' } });
+    vi.resetModules(); // the seed runs at module evaluation, so the store has to be built here
+    const { useEditorStore } = await import('../../state/store');
+    expect(useEditorStore.getState().portraitBlocked).toBe(true);
   });
 });
 

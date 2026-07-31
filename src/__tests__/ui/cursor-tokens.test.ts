@@ -158,7 +158,7 @@ export function scanSource(file: string, src: string): string[] {
           `${file}:${line} ${label} ${isCss ? keyword : `'${keyword}'`} — `
           + (token
             ? `use cursors.${token} from ui/styles`
-            : 'no cursor token covers this state: add one to ui/cursors/cursor-spec')
+            : '../../core/runtime/cursor-spec')
           + ' (a keyword hands this control back to the OS cursor).',
         );
       }

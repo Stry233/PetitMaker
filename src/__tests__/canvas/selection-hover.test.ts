@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canHoldSelection, inSelectMode, isDraggableObject, objectUnderPointer, overSelectedObject, selectionHoverBox,
 } from '../../canvas/interaction/selection-hover';
-import { ItemCategory, ObjectCategory, ToolType } from '../../core/model/types';
+import { ItemCategory, ToolType } from '../../core/model/types';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { registerCatalogItem } from '../../state/catalog';
@@ -17,7 +17,7 @@ import { createPlazaObject } from '../../core/model/grid-model';
 
 registerCatalogItem({
   id: 'hover-house', category: ItemCategory.Building, name: { en: 'Hover House' },
-  emoji: '🏠', width: 3, height: 2, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 3, height: 2, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
@@ -25,7 +25,7 @@ function stateWithHouse(): GridState {
   const s = makeState(20, 20) as GridState;
   const house: PlacedObject = {
     id: 'h1', catalogId: 'hover-house', position: { x: 5, y: 6 },
-    rotation: 0, category: ObjectCategory.House, elevation: 0,
+    rotation: 0, elevation: 0,
   };
   s.objects.set(house.id, house);
   return s;
@@ -82,7 +82,7 @@ describe('selectionHoverBox', () => {
     const s = stateWithHouse();
     const second: PlacedObject = {
       id: 'h2', catalogId: 'hover-house', position: { x: 12, y: 3 },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
     };
     s.objects.set(second.id, second);
     const group = [{ kind: 'object', id: 'h1' }, { kind: 'object', id: 'h2' }] as const;
@@ -117,7 +117,7 @@ describe('objectUnderPointer', () => {
     const s = stateWithHouse();
     const other: PlacedObject = {
       id: 'h2', catalogId: 'hover-house', position: { x: 12, y: 12 },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
     };
     s.objects.set(other.id, other);
     // A 3D raycast can hit a body whose footprint does not cover the macro cell under the cursor.

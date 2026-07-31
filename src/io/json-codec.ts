@@ -191,7 +191,6 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
       x: obj.position.x,
       y: obj.position.y,
       rotation: obj.rotation,
-      category: obj.category,
       elevation: obj.elevation,
     };
     if (obj.spanLength !== undefined) saved.spanLength = obj.spanLength;
@@ -312,7 +311,6 @@ export function deserialize(json: string, template: MapTemplate): GridState {
       catalogId: obj.catalogId,
       position: { x: obj.x, y: obj.y },
       rotation: obj.rotation as 0 | 90 | 180 | 270,
-      category: obj.category,
       elevation: obj.elevation ?? 0,
     };
     if (obj.spanLength !== undefined) placed.spanLength = obj.spanLength;

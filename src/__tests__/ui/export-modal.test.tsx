@@ -34,7 +34,7 @@ vi.mock('../../io/image-export', async (importOriginal) => {
 
 import { buildShareCode } from '../../io/share';
 import { downloadBlob } from '../../io/image-export';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;
@@ -44,7 +44,8 @@ function mountStateWith(setupExec?: (e: CommandExecutor) => void) {
   const s = makeState(8, 8);
   const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry());
   setupExec?.(e);
-  setStoreState({ gridState: s, commandExecutor: e, exportModalOpen: true });
+  setStoreState({ gridState: s, commandExecutor: e });
+  setStoreModal('export');
 }
 
 /** Minimal proxy-based CanvasRenderingContext2D stub — property sets are stored; any method GET
@@ -225,10 +226,9 @@ describe('ExportModal', () => {
         // The insert-tag menu closed (AnimatePresence's unmount settles after a microtask
         // even with animations skipped)…
         await waitFor(() => expect(screen.queryByRole('button', { name: /fill/i })).toBeNull());
-        // …but ExportModal itself did NOT: onClose (setExportModalOpen(false)) was never
-        // invoked, so the store's exportModalOpen stays true and the modal's own controls
-        // are still present.
-        expect(useEditorStore.getState().exportModalOpen).toBe(true);
+        // …but ExportModal itself stays open: onClose is never invoked, so the modal flag holds
+        // and the modal's own controls are still present.
+        expect(useEditorStore.getState().modals.export).toBe(true);
         expect(screen.getByRole('button', { name: 'Export image' })).toBeTruthy();
       } finally {
         MotionGlobalConfig.skipAnimations = false;

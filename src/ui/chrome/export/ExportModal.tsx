@@ -46,12 +46,13 @@ const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(
 export function ExportModal() {
   const t = useT();
   const busy = useCursorCss('busy');
-  const open = useEditorStore((s) => s.exportModalOpen);
-  const close = useEditorStore((s) => s.setExportModalOpen);
+  const open = useEditorStore((s) => s.modals.export);
+  const setModal = useEditorStore((s) => s.setModal);
+  const close = (open: boolean) => setModal('export', open);
   // Gated on `open`: this selector runs on EVERY store update, and the provenance
   // summary re-derives a full cell-taint scan per edit — a closed, always-mounted
   // modal must cost nothing while the user paints.
-  const summary = useEditorStore((s) => (s.exportModalOpen ? s.commandExecutor?.getProvenanceSummary() : undefined));
+  const summary = useEditorStore((s) => (s.modals.export ? s.commandExecutor?.getProvenanceSummary() : undefined));
   const gridState = useEditorStore((s) => s.gridState);
   const locale = useEditorStore((s) => s.locale);
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);

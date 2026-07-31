@@ -34,6 +34,9 @@ import { parseLegalMarkdown } from '../../legal/markdown';
 import { DOCS, docNodes, type DocId } from '../../legal/registry';
 import { LEGAL } from '../../legal/config';
 import { I18nProvider } from '../../i18n/context';
+import { TourOverlay } from '../../ui/chrome/tour/TourOverlay';
+import { startTour } from '../../ui/chrome/tour/use-tour';
+import { useEditorStore } from '../../state/store';
 import { colors } from '../../ui/styles';
 import { setStoreState } from '../_store';
 
@@ -67,6 +70,16 @@ function contrastRatio(hexA: string, hexB: string): number {
 }
 
 const AA_BODY_TEXT = 4.5;
+
+/** A rendered inline color as hex. jsdom normalises `color`/`background` to `rgb(r, g, b)`, so a
+ *  contrast check on what an element ACTUALLY renders has to come back through this. */
+function renderedHex(value: string): string {
+  const rgb = /rgb\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(value);
+  if (rgb) return `#${rgb.slice(1, 4).map((c) => Number(c).toString(16).padStart(2, '0')).join('')}`;
+  const hex = /#[0-9a-f]{6}/i.exec(value);
+  if (!hex) throw new Error(`not a color: ${value}`);
+  return hex[0];
+}
 
 function renderModal(onClose: () => void = () => {}) {
   return render(
@@ -118,6 +131,35 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     // The zh-only note sits on `surfaceSecondary`, not `panelCream` — a
     // slightly darker background, so it needs its own check.
     expect(contrastRatio(colors.brownText, colors.surfaceSecondary)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+  });
+
+  it("the brand lockup's tagline passes AA on both surfaces it appears on", () => {
+    // BrandLockup's tagline is colors.brownText. It renders on the About modal's card
+    // (surfacePrimary) and, once the tour's welcome step lands, on a white bubble.
+    expect(contrastRatio(colors.brownText, colors.surfacePrimary)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+    expect(contrastRatio(colors.brownText, colors.white)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+  });
+
+  it("the tour bubble's body, skip link and progress counter pass AA against the bubble's own background", () => {
+    // Rendered, not tokens: a pair of assertions over `colors.brownText` stays green with
+    // TourOverlay reverted to the failing textSecondary, which is what it is meant to catch. The
+    // background comes off the card too, so the check cannot drift from the surface it is about.
+    startTour();
+    try {
+      render(<I18nProvider><TourOverlay /></I18nProvider>);
+      const card = screen.getByRole('dialog');
+      const surface = renderedHex(card.style.background);
+      const texts = [
+        screen.getByText(/^Plan a map here/),          // the step's body
+        screen.getByRole('button', { name: 'Skip tour' }),
+        screen.getByText(/^Step 1 of/),
+      ];
+      for (const el of texts) {
+        expect(contrastRatio(renderedHex(el.style.color), surface)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+      }
+    } finally {
+      act(() => { useEditorStore.getState().setTourRunning(false); });
+    }
   });
 
   it('the rendered About-modal disclaimer text is NOT set in the failing textSecondary color', () => {

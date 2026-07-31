@@ -10,6 +10,7 @@ import { Switch } from './Switch';
 import { resetAllLocalData } from '../../io/local-reset';
 import { Spinner } from '../Spinner';
 import { useEditorStore } from '../../state/store';
+import { startTour } from './tour/use-tour';
 
 // UI-scale slider bounds — mirror the Ctrl+(+/−) shortcut exactly: the store's
 // setUiZoom clamps to [0.6, 1.8] and the shortcut bumps by 0.1, so this slider
@@ -427,6 +428,22 @@ export function SettingsModal({
         <div style={rowStyle}>
           <span style={labelStyle}>{t('modal.settings_chunks')}</span>
           <Switch on={showChunks} onClick={() => onShowChunksChange(!showChunks)} label={t('modal.settings_chunks')} />
+        </div>
+
+        {/* Replay the first-launch tour. A button, not a Switch: it performs an action rather than
+            holding a setting. Closes Settings before starting the tour so the modal does not sit
+            on top of the overlay it just launched. */}
+        <div style={rowStyle}>
+          <span style={labelStyle}>{t('modal.settings_tour')}</span>
+          <motion.button
+            type="button"
+            style={aboutChipStyle}
+            onClick={() => { onClose(); startTour(); }}
+            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.03 }}
+          >
+            {t('modal.settings_tour_action')}
+          </motion.button>
         </div>
 
         {/* Motion preference — System follows the OS reduce-motion setting; the

@@ -31,7 +31,8 @@ The editor is a **layered stack with one strict rule: a module may import only f
 ├────────────────────────────────────────────────────────────────────────┤
 │ core/ model/      types · grid-model · constants · rng · noise ·       │
 │                   colors · bridge-span · waterfall-geometry ·          │
-│                   model-spec · layer-utils · chunk-tracker             │
+│                   model-spec · layer-utils · chunk-tracker ·           │
+│                   rule-dispatcher (the validate-only rule interface)   │
 │       commands/   command-executor (two-phase validation) ·            │
 │                   command-apply · provenance-recorder · event-bus      │
 │       edge-cut/   terrain-silhouette kernel · cut-validator ·          │
@@ -49,7 +50,7 @@ The editor is a **layered stack with one strict rule: a module may import only f
 | Layer | Owns | May import |
 |---|---|---|
 | `config/` | static JSON data — the catalog (one file per object, with its 3D `model3d` inline) + map templates | — |
-| `core/` | the **engine floor**: pure types, grid + geometry, RNG/noise/colour primitives, the command executor + two-phase validation, the event bus, and the edge-cut silhouette kernel | `config`, within `core` |
+| `core/` | the **engine floor**: pure types, grid + geometry, RNG/noise/colour primitives, the command executor + two-phase validation, the event bus, the edge-cut silhouette kernel, and the provenance ledger. It depends on `rules/` only through `model/rule-dispatcher.ts`, the validate-only interface the concrete `RuleRegistry` implements, so the edge points down like every other one | `config`, within `core` |
 | `state/` | the Zustand store (wires executor + registry + bus), the item catalog, and object-footprint geometry | `core` |
 | `rules/` | two-phase validators (pre-command + post-stroke), one rule per file | `core`, `state` |
 | `tools/` | interaction handlers (gesture → `Command`) + procedural generation | `core`, `state`, `rules` |
@@ -57,7 +58,7 @@ The editor is a **layered stack with one strict rule: a module may import only f
 | `legal/` | policy-document source (constrained markdown → React and static-HTML emitters, config, filing bar) | `core`, `i18n` |
 | `assets/` | static icons, fonts, and team art (resolved by `icon-urls.ts`) | — |
 | `canvas/` | the view seam (`view-projection.ts`, `active-view.ts`), the shared `interaction/` pointer machine, and the two live editing views: `map2d/` (PixiJS) and `map3d/` (three.js) | everything below |
-| `ui/` | React panels, chrome, hooks, and the design tokens | everything below |
+| `ui/` | React panels, chrome, hooks, the design tokens, the keyboard-command registry (`keybindings/`) and the cursor catalogue + art (`cursors/`) | everything below |
 | `agent/`, `io/`, `api/` | LLM agent harness, save/load + share + image export, programmatic API | everything below (leaf consumers) |
 
 **`core/model` is the canonical primitives floor.** Every shape-free, state-free primitive lives here so no higher layer re-implements or reaches up for it: the seeded RNG (`rng.ts`), value noise (`noise.ts`), colour lookups (`colors.ts`), the 4-neighbour offsets + BFS distance field + `flatIndex`/`cellKey` helpers (`grid-model.ts`), waterfall face geometry (`waterfall-geometry.ts`), and the declarative 3D `ModelSpec` shape (`model-spec.ts`, referenced by `CatalogItem.model3d`). Geometry that additionally needs the **item catalog** (object footprints — `objectRect`, `getPlacedObjectSize`, `buildObjectOccupancy`, …) sits one layer up in `state/object-geometry.ts`, so `rules/`, `tools/`, and both views under `canvas/` import it *downward* rather than reaching into a tool.
@@ -90,11 +91,11 @@ The sections below follow this dependency chain outward, from the data model to 
 
 ### The Cell Hierarchy
 
-The atomic unit of state is `MacroCell` (`types.ts:38`): a zone enum (`CellZone`) plus a nullable `TerrainCell`. When `terrain` is `null` the cell is bare ground (layer 0) — this is a deliberate sentinel rather than a default struct with `TerrainType.None`, because it keeps the common case cheap and makes "has terrain?" a single null check everywhere. `TerrainCell` (`types.ts:30`) holds `type` (a `TerrainType` enum), `elevation` (1–8 per `constants.ts:4-5`), and two optional fields — `corners?: Corners` and `patchOnly?: boolean` — that only exist on road/edge-cut cells. These optional fields are how the road/edge system piggy-backs metadata onto the same terrain slot without adding a separate data structure.
+The atomic unit of state is `MacroCell` (`types.ts`): a zone enum (`CellZone`) plus a nullable `TerrainCell`. When `terrain` is `null` the cell is bare ground (layer 0) — this is a deliberate sentinel rather than a default struct with `TerrainType.None`, because it keeps the common case cheap and makes "has terrain?" a single null check everywhere. `TerrainCell` (`types.ts`) holds `type` (a `TerrainType` enum), `elevation` (1–8 per `constants.ts`), and three optional fields that only exist on road/edge-cut cells: `corners?: Corners`, `patchOnly?: boolean`, and `patchBase?: number`. These optional fields are how the road/edge system piggy-backs metadata onto the same terrain slot without adding a separate data structure. `patchBase` is the load-bearing one: a Γ patch is a cosmetic fillet, so `patchBase` records the REAL support tier under it (0 when the fillet sits straight on the ground). Reading `elevation` on such a cell sees a block that is not there, which is why `structuralTop`/`surfaceElevation` exist and why placement and support questions must go through them.
 
-`Corners` (`types.ts:25`) is a fixed-length tuple `[CornerTrim, CornerTrim, CornerTrim, CornerTrim]` in NW/NE/SW/SE order. The element type `CornerTrim` is a string union (`'square' | 'fan' | 'tri-NW' | 'tri-NE' | 'tri-SW' | 'tri-SE' | 'empty'`). The sentinel value `'empty'` signals "remove this cell entirely" in `TrimCornersCommand` — when all four corners are `'empty'`, `CommandExecutor.applyCommand` deletes the terrain cell rather than storing an all-empty `Corners` array (`command-executor.ts:227-230`). Similarly, all-`'square'` corners normalize to `corners: undefined` (`command-executor.ts:224`), since `undefined` is the canonical form for "no corner data".
+`Corners` (`types.ts`) is a fixed-length tuple `[CornerTrim, CornerTrim, CornerTrim, CornerTrim]` in NW/NE/SW/SE order. The element type `CornerTrim` is a string union (`'square' | 'fan' | 'tri-NW' | 'tri-NE' | 'tri-SW' | 'tri-SE' | 'empty'`). The sentinel value `'empty'` signals "remove this cell entirely" in `TrimCornersCommand` — when all four corners are `'empty'`, `applyCommand` deletes the terrain cell rather than storing an all-empty `Corners` array (`command-apply.ts`). Similarly, all-`'square'` corners normalize to `corners: undefined`, since `undefined` is the canonical form for "no corner data".
 
-`GridState` (`types.ts:125`) aggregates:
+`GridState` (`types.ts`) aggregates:
 - `cells: MacroCell[][]` — row-major, `cells[y][x]` (documented invariant).
 - `objects: Map<string, PlacedObject>` — keyed by UUID.
 - `lockedLayers: Set<number>` — UI-controlled; read by `layer-lock` rule but never written by rules.
@@ -104,29 +105,29 @@ The atomic unit of state is `MacroCell` (`types.ts:38`): a zone enum (`CellZone`
 
 ### The Command Discriminated Union
 
-All mutations flow as `Command` values, a discriminated union narrowed by `cmd.type: CommandType` (`types.ts:134-207`). The five members are:
+All mutations flow as `Command` values, a discriminated union narrowed by `cmd.type: CommandType` (`types.ts`). The five members are:
 
 - **`PaintTerrainCommand`**: a batch of `MacroCoord[]` plus `terrainType` and `elevation`. The batch design means a full brush stroke can be a single command, though in practice each cell in a stroke is a separate command (tools call `execute()` once per cell, accumulate them as separate undo entries, and call `commitStroke()` at pointer-up).
 - **`EraseTerrainCommand`**: same batch shape, no terrain payload.
-- **`PlaceObjectCommand`**: embeds the full `PlacedObject` struct, plus `chunkDelta: Map<string, number>` and `loadValue`. The `chunkDelta` field and `loadValue` are populated by callers, but `CommandExecutor.applyCommand` does not use them for chunk-load accounting (chunk load is now computed fresh from `state.objects` in the rule — see the chunk-load section below). Both fields are vestigial; their removal was deferred.
+- **`PlaceObjectCommand`**: embeds the full `PlacedObject` struct plus `loadValue`. `loadValue` is populated by callers but not used for chunk-load accounting, which the rule computes fresh from `state.objects` (see the chunk-load section below).
 - **`RemoveObjectCommand`**: mirrors `PlaceObjectCommand`; captures `removedObject` for undo.
-- **`TrimCornersCommand`** (`types.ts:166`): the most structurally overloaded command. A single type covers both terrain-layer corner trimming and road-object corner trimming via the `layer: 'terrain' | 'road'` discriminant and optional `objectId`. The `beforeCorners`/`afterCorners` fields carry the corner state for undo. Optional `beforeRotation`/`afterRotation` fields carry a road rotation change on the command so that `revertEntry`/`reapplyEntry` can restore it faithfully — `reconcileRoadAt` and the edge-cut tool set these instead of mutating `road.rotation` directly.
+- **`TrimCornersCommand`** (`types.ts`): the most structurally overloaded command. A single type covers both terrain-layer corner trimming and road-object corner trimming via the `layer: 'terrain' | 'road'` discriminant and optional `objectId`. The `beforeCorners`/`afterCorners` fields carry the corner state for undo. Optional `beforeRotation`/`afterRotation` fields carry a road rotation change on the command so that `revertEntry`/`reapplyEntry` can restore it faithfully — `reconcileRoadAt` and the edge-cut tool set these instead of mutating `road.rotation` directly.
 
-Every command extends `CommandBase` (`types.ts:136-138`) which carries only `timestamp`. Undo/redo snapshots live solely on the executor's private `HistoryEntry { cmd, before, after }` and are never stored on the command itself. `CommandExecutor.execute()` captures before/after cell snapshots via `cloneCell` and stores them on the `HistoryEntry` (`command-executor.ts:65-70`). `CellSnapshot` (`types.ts:134`) is simply `{ coord: MacroCoord; cell: MacroCell }`.
+Every command extends `CommandBase` (`types.ts`) which carries only `timestamp`. Undo/redo snapshots live solely on the executor's private `HistoryEntry { cmd, before, after }` and are never stored on the command itself. `CommandExecutor.execute()` captures before/after cell snapshots via `cloneCell` and stores them on the `HistoryEntry` (`command-executor.ts`). `CellSnapshot` (`types.ts`) is simply `{ coord: MacroCoord; cell: MacroCell }`.
 
 ---
 
 ### PlacedObject and the Dual Catalog Problem
 
-`PlacedObject` (`types.ts:45`) is the runtime representation: UUID, `catalogId` reference, `position`, `rotation`, `category: ObjectCategory`, `elevation`, and optionals (`spanLength` for bridges, `corners`/`patchOnly` for road objects). It has an `ObjectCategory` enum (values 1–4) whose members map to the legacy names Facility/House/Tree/Flora.
+`PlacedObject` (`types.ts`) is the runtime representation: UUID, `catalogId` reference, `position`, `rotation`, `elevation`, and optionals (`spanLength` for bridges, `corners`/`patchOnly` for road objects). It carries no category of its own: `catalogId` determines it, and `state/catalog.ts:categoryOf` is the one way to ask, answering with the full seven-way `ItemCategory`. That matters because a projection onto fewer members cannot tell a house from a road, a bridge or a ramp, and callers then recover the difference by matching on id strings.
 
-There is a parallel `ItemCategory` string enum (`types.ts:59`) with seven string values (Building, Tree, Flora, Road, Bridge, Ramp, Facility) used by `CatalogItem`. `CatalogItem` (`types.ts:77`) is the schema for the per-object files under `src/config/catalog/<category>/<id>.json`. `PlacedObject` stores only `catalogId` and looks up its dimensional and behavioral metadata from the catalog at runtime.
+`ItemCategory` (`types.ts`) is the string enum with seven values (Building, Tree, Flora, Road, Bridge, Ramp, Facility) that `CatalogItem` carries. `CatalogItem` (`types.ts`) is the schema for the per-object files under `src/config/catalog/<category>/<id>.json`. `PlacedObject` stores only `catalogId` and looks up its dimensional and behavioral metadata from the catalog at runtime.
 
 ---
 
 ### PlacementTrait Union
 
-`PlacementTrait` (`types.ts:77`) is a tagged union of six variants. Each variant parameterizes a validation strategy: `flat` checks uniform elevation across an extended footprint (W+1 × H+1 to account for the macro/micro grid offset — see "Coordinate duality (macro vs. micro)" below); `noFloat` requires terrain present on every footprint cell; `waterSpan` validates bridge geometry including auto-detecting orientation and mutating `cmd.object.rotation`, `cmd.object.position`, and `cmd.object.spanLength` as side-effects during validation (`placement.ts:144-151`); `heightDrop` similarly mutates position, rotation, and elevation for ramps; `surfaceCoating` requires non-water terrain (roads); `exclusionRadius` enforces Chebyshev distance between same-category items.
+`PlacementTrait` (`types.ts`) is a tagged union of six variants. Each variant parameterizes a validation strategy: `flat` checks uniform elevation across an extended footprint (W+1 × H+1 to account for the macro/micro grid offset — see "Coordinate duality (macro vs. micro)" below); `noFloat` requires terrain present on every footprint cell; `waterSpan` validates bridge geometry including auto-detecting orientation and mutating `cmd.object.rotation`, `cmd.object.position`, and `cmd.object.spanLength` as side-effects during validation (`placement.ts`); `heightDrop` similarly mutates position, rotation, and elevation for ramps; `surfaceCoating` requires non-water terrain (roads); `exclusionRadius` enforces Chebyshev distance between same-category items.
 
 The mutation-during-validation pattern for `waterSpan` and `heightDrop` is intentional: it allows the placement validation rule to both check and auto-correct object placement geometry in a single pass.
 
@@ -134,7 +135,7 @@ The mutation-during-validation pattern for `waterSpan` and `heightDrop` is inten
 
 ### Rule System Interfaces
 
-`PreCommandRule` (`types.ts:225`) gates individual commands: `appliesTo: CommandType[]` lets `RuleRegistry.validatePreCommand` skip irrelevant rules cheaply. `PostStrokeRule` (`types.ts:237`) gets the full `GridState` with no command context — it must scan for structural violations globally. Both are pure (no mutation). `ValidationError` (`types.ts:210`) carries a `ruleId`, i18n `message` key, evidence `cells`, and `severity: 'error' | 'warning'` (only `'error'` triggers rejection; `'warning'` is defined but not acted on by `CommandExecutor`). **`cells` is the evidence contract**: the cells that *cause* the violation — complete (every offender, e.g. every non-flat cell in the `flat` trait's extended sweep, or the intersection region of an overlap), never a bare click anchor; non-spatial rules (max-count, chunk load, locked object) report the whole footprint involved. The optional `grid: 'macro' | 'micro'` says which grid the evidence renders on ('micro' = the terrain micro-grid, −HALF_TILE); when absent, the renderer falls back to the command-type default. The error flash (`OverlayLayer.flashErrors` via the pure `canvas/map2d/layers/error-flash.ts:resolveErrorFlashCells`) lights exactly these cells, per-error grid, deduped across rules — and the agent bridge's `formatErrors` echoes the same coordinates to the LLM.
+`PreCommandRule` (`types.ts`) gates individual commands: `appliesTo: CommandType[]` lets `RuleRegistry.validatePreCommand` skip irrelevant rules cheaply. `PostStrokeRule` (`types.ts`) gets the full `GridState` with no command context — it must scan for structural violations globally. Both are pure (no mutation). `ValidationError` (`types.ts`) carries a `ruleId`, i18n `message` key, evidence `cells`, and `severity: 'error' | 'warning'` (only `'error'` triggers rejection; `'warning'` is defined but not acted on by `CommandExecutor`). **`cells` is the evidence contract**: the cells that *cause* the violation — complete (every offender, e.g. every non-flat cell in the `flat` trait's extended sweep, or the intersection region of an overlap), never a bare click anchor; non-spatial rules (max-count, chunk load, locked object) report the whole footprint involved. The optional `grid: 'macro' | 'micro'` says which grid the evidence renders on ('micro' = the terrain micro-grid, −HALF_TILE); when absent, the renderer falls back to the command-type default. The error flash (`OverlayLayer.flashErrors` via the pure `canvas/map2d/layers/error-flash.ts:resolveErrorFlashCells`) lights exactly these cells, per-error grid, deduped across rules — and the agent bridge's `formatErrors` echoes the same coordinates to the LLM.
 
 ---
 
@@ -142,7 +143,7 @@ The mutation-during-validation pattern for `waterSpan` and `heightDrop` is inten
 
 `layer-utils.ts` provides two exports:
 
-**`getActiveLayers(state, activeLayer)`** scans all cells and objects to produce a `LayerInfo[]` for the layer panel UI. The cell counting is cumulative: a cell at elevation 3 increments buckets 1, 2, and 3 (`layer-utils.ts:23-28`). Objects contribute to their single `elevation` bucket. The function always ensures layers 0, 1, and `activeLayer` appear even if their count is 0 (`layer-utils.ts:37-39`), guaranteeing the UI always shows at least the ground and first layer. Layers with zero cells (and not forced) are omitted.
+**`getActiveLayers(state, activeLayer)`** scans all cells and objects to produce a `LayerInfo[]` for the layer panel UI. The cell counting is cumulative: a cell at elevation 3 increments buckets 1, 2, and 3 (`layer-utils.ts`). Objects contribute to their single `elevation` bucket. The function always ensures layers 0, 1, and `activeLayer` appear even if their count is 0 (`layer-utils.ts`), guaranteeing the UI always shows at least the ground and first layer. Layers with zero cells (and not forced) are omitted.
 
 `layer-utils` contains no rule logic: V-MTN-03 (3×3 base support) lives in exactly one place, `rules/base-support.ts`. The renderer's buildable-region overlay is driven by `__petitShowPreview(cells)` with externally supplied cells (generation preview), not by a predictor here.
 
@@ -157,7 +158,7 @@ The mutation-during-validation pattern for `waterSpan` and `heightDrop` is inten
 ### Composition with Neighbouring Subsystems
 
 - **Rules** import `PreCommandRule`, `PostStrokeRule`, `Command`, `CommandType`, `GridState`, `ValidationError`, `PlacementTrait` — all from `types.ts`. The type system enforces the purity contract: rules receive only read-only-by-convention values and return `ValidationError[]`.
-- **CommandExecutor** (`command-executor.ts`) owns `GridState` and applies mutations; it uses `CellSnapshot` for undo/redo and emits typed `EditorEvents`. The `EventBus<EditorEvents>` is parameterized by the `EditorEvents` map from `types.ts:258`, giving compile-time guarantees that event payloads match listener signatures.
+- **CommandExecutor** (`command-executor.ts`) owns `GridState` and applies mutations; it uses `CellSnapshot` for undo/redo and emits typed `EditorEvents`. The `EventBus<EditorEvents>` is parameterized by the `EditorEvents` map from `types.ts`, giving compile-time guarantees that event payloads match listener signatures.
 - **Renderer** subscribes to `cells-changed` and `objects-changed`; it reads `MacroCell.terrain.corners` to determine trim shape, `PlacedObject.elevation` for layer visibility, and `ELEVATION_COLORS`/`ZONE_COLORS` from constants.
 - **IO** (`json-codec.ts`) serializes/deserializes `GridState`.
 - **`ChunkTracker`** (`chunk-tracker.ts`) is used by the chunk-load rule (`rules/chunk-load.ts`) and the programmatic API to compute current chunk loads on-the-fly from `state.objects`. The `chunkDelta` fields on `PlaceObjectCommand` and `RemoveObjectCommand` are vestigial — they are populated by callers but are not consumed by `CommandExecutor` or the rule; a deferred cleanup item.
@@ -178,21 +179,21 @@ The grid is a **row-major 2-D array** of `MacroCell` (`types.ts:MacroCell`), ind
 
 **Grid lifecycle:**
 
-`createGrid` (`grid-model.ts:22`) is the only constructor. It iterates the `MapTemplate` zone table and produces a fresh cell array. Plaza cells (`CellZone.Plaza`) are the sole exception to the null-terrain default: their `TerrainCell` is pre-populated by `createDefaultTerrainCell` using `plaza.terrainType ?? TerrainType.Mountain` at `plaza.elevation` (`grid-model.ts:31–34`). All other cells, including `Beach`, `Boundary`, and `Grass`, start with `terrain: null`.
+`createGrid` (`grid-model.ts`) is the only constructor. It iterates the `MapTemplate` zone table and produces a fresh cell array. Plaza cells (`CellZone.Plaza`) are the sole exception to the null-terrain default: their `TerrainCell` is pre-populated by `createDefaultTerrainCell` using `plaza.terrainType ?? TerrainType.Mountain` at `plaza.elevation` (`grid-model.ts`). All other cells, including `Beach`, `Boundary`, and `Grass`, start with `terrain: null`.
 
 **Access:**
 
-`getCell` (`grid-model.ts:48`) returns `null` for any out-of-bounds index; it never throws. This is the universal safe-read contract used everywhere (rules, tools, renderers). `setCell` (`grid-model.ts:55`) has a symmetric no-op contract for out-of-bounds writes. Together they form a boundary layer so callers never guard indices themselves.
+`getCell` (`grid-model.ts`) returns `null` for any out-of-bounds index; it never throws. This is the universal safe-read contract used everywhere (rules, tools, renderers). `setCell` (`grid-model.ts`) has a symmetric no-op contract for out-of-bounds writes. Together they form a boundary layer so callers never guard indices themselves.
 
 **Mutation:**
 
-The grid is intentionally mutable. `CommandExecutor.applyCommand` directly sets `cell.terrain` or calls `setCell` (`command-executor.ts:291–354`). The undo/redo mechanism relies on `cloneCell` (`grid-model.ts:71`) to capture deep snapshots before and after each command. `cloneCell` copies `zone`, `terrain.type`, `terrain.elevation`, and the optional `corners` (as a fresh array copy) and `patchOnly` fields (`grid-model.ts:78-79`). Terrain `TrimCorners` undo/redo therefore faithfully restores corner geometry.
+The grid is intentionally mutable. `applyCommand` directly sets `cell.terrain` or calls `setCell` (`command-apply.ts`). The undo/redo mechanism relies on `cloneCell` (`grid-model.ts`) to capture deep snapshots before and after each command. `cloneCell` copies `zone`, `terrain.type`, `terrain.elevation`, and the optional `corners` (as a fresh array copy), `patchOnly` and `patchBase` fields (`grid-model.ts`). Terrain `TrimCorners` undo/redo therefore faithfully restores corner geometry.
 
 **Coordinate duality (macro vs. micro):**
 
 The editor has two overlapping grids. The macro-grid is the placement unit (1 tile = `TILE_SIZE = 64 px`). The micro-grid subdivides each macro tile into a 2×2 sub-grid (0.5 tile = 32 px = `HALF_TILE`). Terrain blocks render at pixel position `x * TILE_SIZE - HALF_TILE` (a −32 px offset), centering each block on the intersection of four macro cells. Objects render at `x * TILE_SIZE` with no offset.
 
-`macroToMicro` (`grid-model.ts:66`) converts by doubling: `(x, y) → (x*2, y*2)`. The name is slightly misleading — the returned type is `MacroCoord`, not `MicroCoord`, because the function is used for index arithmetic that operates in micro-units but is stored in the same `{x, y}` struct. The micro-coordinate system is used directly in bridge-detection logic inside `object-placer.ts:isFullWidthWaterAt`, where the bridge scan walks micro steps (`m * perpDx/perpDy`) and then back-converts with `Math.ceil(microX / 2)` to reach the underlying macro cell.
+`macroToMicro` (`grid-model.ts`) converts by doubling: `(x, y) → (x*2, y*2)`. The name is slightly misleading — the returned type is `MacroCoord`, not `MicroCoord`, because the function is used for index arithmetic that operates in micro-units but is stored in the same `{x, y}` struct. The micro-coordinate system is used directly in bridge-detection logic inside `object-placer.ts:isFullWidthWaterAt`, where the bridge scan walks micro steps (`m * perpDx/perpDy`) and then back-converts with `Math.ceil(microX / 2)` to reach the underlying macro cell.
 
 The practical consequence of the −`HALF_TILE` terrain offset is captured in the "Flat trait" rule: placement flatness checks extend one extra column and row right/bottom to account for the fact that a macro cell's terrain block bleeds into the adjacent macro-grid region (`grid-model.ts` header comment) — this is what prevents micro-block floating at cliff edges due to the macro/micro grid offset difference.
 
@@ -204,16 +205,16 @@ The practical consequence of the −`HALF_TILE` terrain offset is captured in th
 
 ### EventBus (`src/core/commands/event-bus.ts`)
 
-`EventBus<EventMap>` is a generic, synchronous, in-process pub/sub hub. It maintains a `Map<key, Set<Handler>>` (`event-bus.ts:4`). The generic parameter `EventMap` constrains all `on`, `off`, and `emit` calls to the same event-to-payload mapping at compile time.
+`EventBus<EventMap>` is a generic, synchronous, in-process pub/sub hub. It maintains a `Map<key, Set<Handler>>` (`event-bus.ts`). The generic parameter `EventMap` constrains all `on`, `off`, and `emit` calls to the same event-to-payload mapping at compile time.
 
-The editor instantiates a single `EventBus<EditorEvents>` in `store.ts:73` and shares it to both `CommandExecutor` (at executor construction time, `store.ts:104–115`) and `MapRenderer` (at renderer construction time, `PixiCanvas.tsx`). This is the **only cross-cutting channel** between the state layer and the rendering layer; the renderer never reads `GridState` directly except during `initMap` and snapshot operations.
+The editor instantiates a single `EventBus<EditorEvents>` in `store.ts` and shares it to both `CommandExecutor` (at executor construction time, `store.ts`) and `MapRenderer` (at renderer construction time, `PixiCanvas.tsx`). This is the **only cross-cutting channel** between the state layer and the rendering layer; the renderer never reads `GridState` directly except during `initMap` and snapshot operations.
 
-**`EditorEvents` (`types.ts:258–265`):**
+**`EditorEvents` (`types.ts`):**
 
 | Event | Payload | Who emits | Who handles |
 |---|---|---|---|
 | `cells-changed` | `{ cells: MacroCoord[] }` | `CommandExecutor` (execute, undo, redo, commitStroke revert) | `MapRenderer`: selective terrain redraw + layer number refresh |
-| `objects-changed` | `{ added?, removed? }` | `CommandExecutor.applyCommand` inside `PlaceObject`, `RemoveObject`, `TrimCorners` | `MapRenderer`: object layer sync |
+| `objects-changed` | `{ added?, removed? }` | `applyCommand` inside `PlaceObject`, `RemoveObject`, `TrimCorners` | `MapRenderer`: object layer sync |
 | `validation-failed` | `{ cmd, errors }` | `CommandExecutor.execute` on pre-command rejection | `MapRenderer`: flash error overlay; `Toast.tsx`: auto-show error toast |
 | `tool-changed` | `{ tool: ToolType }` | `store.setActiveTool` | (subscribed by tools, not visible in grep — used by ToolManager) |
 | `history-changed` | `{ canUndo, canRedo }` | `CommandExecutor` after every execute/undo/redo | `HistoryControls.tsx` button enable/disable |
@@ -226,11 +227,11 @@ For road `TrimCornersCommand`, `applyCommand` emits `objects-changed { removed }
 
 ### ChunkTracker (`src/core/model/chunk-tracker.ts`)
 
-`ChunkTracker` maintains a `Map<string, number>` of chunk-key → accumulated load value. A chunk key is produced by `chunkKey` (`grid-model.ts:84`): `"cx,cy"` with `cx = Math.floor(x / CHUNK_SIZE)`.
+`ChunkTracker` maintains a `Map<string, number>` of chunk-key → accumulated load value. A chunk key is produced by `chunkKey` (`grid-model.ts`): `"cx,cy"` with `cx = Math.floor(x / CHUNK_SIZE)`.
 
 **How objects span multiple chunks:**
 
-`affectedChunks` (`chunk-tracker.ts:16`) iterates every `(dx, dy)` offset within the object's `w × h` footprint and collects the distinct chunk keys. For a 2×2 object placed at macro (15, 15), all four cells (15,15), (16,15), (15,16), (16,16) fall in different chunks (chunk 0 and chunk 1 on each axis), so the object contributes its `loadValue` to all four chunk buckets. This is a per-chunk-cell-coverage model, not a per-object-anchor model.
+`affectedChunks` (`chunk-tracker.ts`) iterates every `(dx, dy)` offset within the object's `w × h` footprint and collects the distinct chunk keys. For a 2×2 object placed at macro (15, 15), all four cells (15,15), (16,15), (15,16), (16,16) fall in different chunks (chunk 0 and chunk 1 on each axis), so the object contributes its `loadValue` to all four chunk buckets. This is a per-chunk-cell-coverage model, not a per-object-anchor model.
 
 **Current role — live computation in the rule:** The chunk-load pre-command rule (`rules/chunk-load.ts:chunkLoadViolations`) builds a fresh `ChunkTracker` from `state.objects` on every invocation, populating it by iterating all placed objects and calling `tracker.addObject` for each. It then checks whether adding the candidate's full footprint would exceed `CHUNK_LOAD_LIMIT` on any chunk. This approach is stateless: the tracker is ephemeral and the load figure is always consistent with the current `state.objects`, with no separate accounting map to drift.
 
@@ -259,16 +260,16 @@ For road `TrimCornersCommand`, `applyCommand` emits `objects-changed { removed }
 
 ### Key Types and Data Structures
 
-- `HistoryEntry` (`command-executor.ts:17`): the private unit of undo history. Holds the original `Command`, plus `before` and `after` arrays of `CellSnapshot` (coord + deep-copied `MacroCell`) captured by the executor around the mutation. The `HistoryEntry` is the sole authoritative history record — `CommandBase` carries only `timestamp`; undo/redo snapshots live exclusively on `HistoryEntry`.
-- `CellSnapshot` (`types.ts:143`): a `{ coord: MacroCoord, cell: MacroCell }` pair, produced by `command-executor.ts:snapshot()` via `grid-model.ts:cloneCell()`.
+- `HistoryEntry` (`command-executor.ts`): the private unit of undo history. Holds the original `Command`, plus `before` and `after` arrays of `CellSnapshot` (coord + deep-copied `MacroCell`) captured by the executor around the mutation. The `HistoryEntry` is the sole authoritative history record — `CommandBase` carries only `timestamp`; undo/redo snapshots live exclusively on `HistoryEntry`.
+- `CellSnapshot` (`types.ts`): a `{ coord: MacroCoord, cell: MacroCell }` pair, produced by `command-executor.ts:snapshot()` via `grid-model.ts:cloneCell()`.
 - `RuleRegistry` (`rules/registry.ts`): a dual-list dispatcher. Pre-command rules are filtered by `rule.appliesTo` before invocation; post-stroke rules always run against the full state. All applicable rules execute to completion — errors accumulate rather than short-circuit.
-- `EditorEvents` (`types.ts:258`): the typed event bus schema. The executor emits `cells-changed`, `objects-changed`, `validation-failed`, and `history-changed`.
+- `EditorEvents` (`types.ts`): the typed event bus schema. The executor emits `cells-changed`, `objects-changed`, `validation-failed`, and `history-changed`.
 
 ### Phase 1 — Pre-Command Validation (`execute`)
 
-`execute()` (`command-executor.ts:57`) runs the full sequence:
+`execute()` (`command-executor.ts`) runs the full sequence:
 
-1. `registry.validatePreCommand(cmd, state)` fans out to all registered pre-command rules whose `appliesTo` includes `cmd.type`. Registered pre-command rules (in priority order, `rules/index.ts:25`): `layerLockRule`, `zoneRestrictionRule`, `elevationRangeRule`, `mountainFloatingRule`, `waterFloatingRule`, `objectBlocksTerrainRule`, `placementOverlapRule`, `traitPlacementRule`, `chunkLoadRule`.
+1. `registry.validatePreCommand(cmd, state)` fans out to all registered pre-command rules whose `appliesTo` includes `cmd.type`. Registered pre-command rules (in priority order, `rules/index.ts`): `layerLockRule`, `zoneRestrictionRule`, `elevationRangeRule`, `mountainFloatingRule`, `waterFloatingRule`, `objectBlocksTerrainRule`, `placementOverlapRule`, `traitPlacementRule`, `chunkLoadRule`.
 2. If any error is returned, `validation-failed` is emitted (picked up by `Toast.tsx` for display) and `ValidationResult { success: false }` is returned with state unchanged.
 3. If clean: `getAffectedCells(cmd)` determines which macro-coordinates will be touched (one coord per object position for `PlaceObject`/`RemoveObject`, the full cell list for terrain commands, `{x, y}` for `TrimCorners`). Snapshots are taken **before** and **after** mutation. The `HistoryEntry` is pushed to the undo stack and the redo stack is cleared.
 4. `cells-changed` and `history-changed` are emitted unconditionally on success.
@@ -277,7 +278,7 @@ A subtle contract: `state` is mutated **in place** by `applyCommand`. There is n
 
 ### `applyCommand` — Per-Command Mutations
 
-`applyCommand` (`command-executor.ts:291`) is a direct switch over `CommandType`:
+`applyCommand` (`command-apply.ts`) is a direct switch over `CommandType`:
 
 - **`PaintTerrain`**: iterates `cmd.cells`, writes `createDefaultTerrainCell(terrainType, elevation)` per cell. Special case: `Mountain` at `elevation === 0` is treated as an erase (sets `terrain = null`) rather than a paint.
 - **`EraseTerrain`**: sets `terrain = null` on each cell.
@@ -288,7 +289,7 @@ A subtle contract: `state` is mutated **in place** by `applyCommand`. There is n
 
 ### Phase 2 — Post-Stroke Validation (`commitStroke`)
 
-`commitStroke(strokeStartSize)` (`command-executor.ts:84`) is called by tools at pointer-up. `strokeStartSize` is the undo stack depth at the moment the stroke began (retrieved via `getUndoStackSize()`); this bounds how far back the auto-revert can reach.
+`commitStroke(strokeStartSize)` (`command-executor.ts`) is called by tools at pointer-up. `strokeStartSize` is the undo stack depth at the moment the stroke began (retrieved via `getUndoStackSize()`); this bounds how far back the auto-revert can reach.
 
 1. `registry.validatePostStroke(state)` runs all post-stroke rules (registered: `baseSupportRule`, `waterContainmentRule`, `waterfallAdjacentUniformityRule`). These are stateful grid scans, not command-gated.
 2. If violations exist, the executor enters a revert loop: it pops entries off the undo stack (up to `maxUndos = undoStack.length - strokeStartSize`), calls the private `revertEntry(entry)` helper for each (which restores `entry.before` cell snapshots via `setCell + cloneCell` **and** undoes the command's object-layer effect — `PlaceObject` deletes the object, `RemoveObject` re-adds it, road `TrimCorners` restores corners and rotation), and pushes the entry to the redo stack. After each undo, it re-runs `validatePostStroke`. The loop exits as soon as the state is clean or the entire stroke has been reverted. A single `cells-changed` + `history-changed` pair is emitted after all reverts are batched.
@@ -299,17 +300,17 @@ The undo-grouping model is implicit: all commands executed between two `commitSt
 
 ### Undo Semantics
 
-`undo()` (`command-executor.ts:155`) pops entries one at a time, calling the private `revertEntry(entry)` helper for each, and re-runs `validatePostStroke` after each pop. It keeps undoing until the state is clean or the stack is empty. This means a single user undo can revert multiple `HistoryEntry` items, skipping through any intermediate state that would itself be illegal. The redo stack receives all popped entries in order.
+`undo()` (`command-executor.ts`) pops entries one at a time, calling the private `revertEntry(entry)` helper for each, and re-runs `validatePostStroke` after each pop. It keeps undoing until the state is clean or the stack is empty. This means a single user undo can revert multiple `HistoryEntry` items, skipping through any intermediate state that would itself be illegal. The redo stack receives all popped entries in order.
 
-`redo()` (`command-executor.ts:174`) pops one entry, calls the private `reapplyEntry(entry)` helper (which restores `entry.after` cell snapshots and re-applies the command's object-layer effect — the exact inverse of `revertEntry`), and pushes it back to the undo stack. Redo does not validate — it trusts that the after-state was valid when it was originally executed.
+`redo()` (`command-executor.ts`) pops one entry, calls the private `reapplyEntry(entry)` helper (which restores `entry.after` cell snapshots and re-applies the command's object-layer effect — the exact inverse of `revertEntry`), and pushes it back to the undo stack. Redo does not validate — it trusts that the after-state was valid when it was originally executed.
 
-**`revertEntry` / `reapplyEntry`:** These two private helpers (`command-executor.ts:191`, `228`) are the shared implementation for undo, redo, and `commitStroke`'s revert loop. Both restore the relevant cell snapshots (`before` for revert, `after` for reapply) **and** handle the command's object-layer effect: `PlaceObject` ↔ delete/add on `state.objects`, `RemoveObject` ↔ add/delete, road `TrimCorners` ↔ restore corners + `beforeRotation`/`afterRotation`. Each call emits the corresponding `objects-changed` event. One edge case: a road deleted by an all-`'empty'` `TrimCorners` is not re-created on undo, because the command does not store the full `PlacedObject` — this situation is not reachable from current authoring tools.
+**`revertEntry` / `reapplyEntry`:** These two private helpers (`command-executor.ts`, `228`) are the shared implementation for undo, redo, and `commitStroke`'s revert loop. Both restore the relevant cell snapshots (`before` for revert, `after` for reapply) **and** handle the command's object-layer effect: `PlaceObject` ↔ delete/add on `state.objects`, `RemoveObject` ↔ add/delete, road `TrimCorners` ↔ restore corners + `beforeRotation`/`afterRotation`. Each call emits the corresponding `objects-changed` event. One edge case: a road deleted by an all-`'empty'` `TrimCorners` is not re-created on undo, because the command does not store the full `PlacedObject` — this situation is not reachable from current authoring tools.
 
 **`commitStrokeGroup`** (`command-executor.ts`): like `commitStroke` but also collapses all the stroke's history entries into a single undo entry after the stroke is committed. The collapse merges the earliest `before` and latest `after` snapshot per cell, **and** the net object add/removes across the group (`HistoryEntry.objectOps`), so a batch that mixes terrain edits with object placement/removal — e.g. terrain generation, or the Generate-panel Clear that wipes tiles + placements — undoes/redoes as one step. (Road *corner* edits aren't captured by `objectOps`, so don't group those.) Terrain-only batches get an empty `objectOps` and behave exactly as before.
 
 ### Cut-Reconcile Hook
 
-`reconcileCuts` (`cut-reconcile.ts:146`) satisfies the `CutReconcileTarget` interface, which requires only `execute(cmd)`. This narrow interface lets `cut-reconcile.ts` be tested independently and keeps it decoupled from full executor semantics. Repair commands are plain `TrimCorners` commands, meaning they go through pre-command validation and produce their own `HistoryEntry` items. Undo fidelity is now complete: `cloneCell` copies corner data, and road rotation changes travel on the command's `beforeRotation`/`afterRotation` fields and are restored by `revertEntry`.
+`reconcileCuts` (`cut-reconcile.ts`) satisfies the `CutReconcileTarget` interface, which requires only `execute(cmd)`. This narrow interface lets `cut-reconcile.ts` be tested independently and keeps it decoupled from full executor semantics. Repair commands are plain `TrimCorners` commands, meaning they go through pre-command validation and produce their own `HistoryEntry` items. Undo fidelity is now complete: `cloneCell` copies corner data, and road rotation changes travel on the command's `beforeRotation`/`afterRotation` fields and are restored by `revertEntry`.
 
 ### Event Emission Summary
 
@@ -390,7 +391,7 @@ Rules read this state purely; the only exception is the `waterSpan` and `heightD
 
 **V-ZONE-01 (`zone-restriction.ts`)** — Applies to all four command types. For `PlaceObject` it iterates the rotated footprint and tests each cell with `isPlazaCollision(..., 0)` (object cell extent); for terrain edits / removals it tests the `extractCells` coords with the default terrain extent. `isPlazaCollision` checks whether the cell's area overlaps the plaza rect (+ `microOffset` buffer), so a placement can't intrude into the plaza yet terrain can sit against its edge. If no plaza collision, checks `cell.zone !== CellZone.Grass`. Out-of-bounds cells (where `getCell` returns `null`) are silently skipped — the rule is not responsible for enforcing map bounds. One error is emitted per invalid cell.
 
-**V-MTN-01 (`elevation-range.ts`)** — Applies to `PaintTerrain`. Guards only `TerrainType.Mountain` commands. Returns a single error for the whole command (not per-cell) if `cmd.elevation` is outside `[0, ELEVATION_MAX]` (currently 0–8, per `constants.ts:ELEVATION_MAX`). Elevation 0 is valid because it is the clear-terrain sentinel in `CommandExecutor.applyCommand()`.
+**V-MTN-01 (`elevation-range.ts`)** — Applies to `PaintTerrain`. Guards only `TerrainType.Mountain` commands. Returns a single error for the whole command (not per-cell) if `cmd.elevation` is outside `[0, ELEVATION_MAX]` (currently 0–8, per `constants.ts:ELEVATION_MAX`). Elevation 0 is valid because it is the clear-terrain sentinel in `applyCommand()`.
 
 **V-MTN-02 / V-WTR-01 (`floating-block.ts`)** — Both rules share `validateNoFloating`. Applies to `PaintTerrain`. Skips elevations ≤ 1 (layer 1 is always supported by the implicit ground). For each cell in `cmd.cells`, reads existing terrain and rejects if `cell.terrain.elevation < cmd.elevation - 1` (or if no terrain at all). Water counts as valid support for floating purposes; the rule checks only structural adjacency, not terrain type. Two distinct rule instances (`mountainFloatingRule`, `waterFloatingRule`) are registered separately and both appear in `appliesTo: [CommandType.PaintTerrain]`.
 
@@ -444,11 +445,11 @@ The design motivation for post-stroke (vs. per-command) validation is that these
 
 The entry point is `command-executor.ts:commitStroke`. Tools call `ctx.commitStroke(this.strokeStartUndoSize)` when a brush stroke ends — the argument is the undo-stack size recorded at `pointerdown` time. `commitStroke` delegates to `registry.ts:validatePostStroke`, which iterates all registered `PostStrokeRule` instances in registration order (base-support → water-containment → waterfall-adjacent-uniformity, as declared in `index.ts:createDefaultRegistry`).
 
-If `validatePostStroke` returns violations, `commitStroke` auto-reverts: it pops entries from the undo stack one at a time (up to `maxUndos = undoStack.length - strokeStartSize`), restoring the `before` snapshot for each command, and re-runs `validatePostStroke` after every pop. It stops as soon as the state is clean or the entire stroke has been unwound (`command-executor.ts:84–121`). The initial violation list (from the first check, before any undo) is what `commitStroke` returns to the tool; the tool is responsible for showing a toast. This asymmetry — `validation-failed` event for pre-command failures, direct return value for post-stroke — is a deliberate design choice.
+If `validatePostStroke` returns violations, `commitStroke` auto-reverts: it pops entries from the undo stack one at a time (up to `maxUndos = undoStack.length - strokeStartSize`), restoring the `before` snapshot for each command, and re-runs `validatePostStroke` after every pop. It stops as soon as the state is clean or the entire stroke has been unwound (`command-executor.ts`). The initial violation list (from the first check, before any undo) is what `commitStroke` returns to the tool; the tool is responsible for showing a toast. This asymmetry — `validation-failed` event for pre-command failures, direct return value for post-stroke — is a deliberate design choice.
 
 After any auto-revert (and after recording the final clean set of commands), `commitStroke` calls `reconcileCuts` to repair edge-cut corners invalidated by the stroke. The post-stroke rules run before `reconcileCuts`, so the geometry the cuts are reconciled against is already in the clean, rule-satisfying state.
 
-The same `validatePostStroke` call also drives undo behaviour (`command-executor.ts:136`): when the user presses Undo, the executor pops commands one at a time until the undo-ed state also satisfies all post-stroke rules, skipping intermediate states that would be invalid.
+The same `validatePostStroke` call also drives undo behaviour (`command-executor.ts`): when the user presses Undo, the executor pops commands one at a time until the undo-ed state also satisfies all post-stroke rules, skipping intermediate states that would be invalid.
 
 ### core/model/waterfall-geometry.ts — Shared Geometry Primitives
 
@@ -493,7 +494,7 @@ For each confirmed capped face, it:
 
 1. Calls `getFullStrip` to build the ordered strip of cells: `[capA, ...waterCells..., capB]` along the perpendicular axis. `getFullStrip` walks outward in both directions through same-elevation water cells, then appends the bounding mountain cell at each end.
 2. Constructs a `faceKey = "${strip.cells[0].x},${strip.cells[0].y},${flowDir}"` for deduplication — anchored to the first cap mountain. This correctly collapses multiple water cells in the same strip: all of them discover the same strip and produce the same key.
-3. Calls `checkAdjacentRowUniformity`, which reads the elevation of each cell in the strip shifted one step in the flow direction, checks if they are all equal to the first element's elevation, and pushes an error for each non-equal cell. Out-of-bounds adjacent cells receive elevation `-1` (via `cellElevation`); if the entire adjacent row is off-map, they are all `-1` and therefore uniformly equal — no violation, as confirmed by the test at `waterfall-uniformity.test.ts:87`.
+3. Calls `checkAdjacentRowUniformity`, which reads the elevation of each cell in the strip shifted one step in the flow direction, checks if they are all equal to the first element's elevation, and pushes an error for each non-equal cell. Out-of-bounds adjacent cells receive elevation `-1` (via `cellElevation`); if the entire adjacent row is off-map, they are all `-1` and therefore uniformly equal — no violation, as confirmed by the test at `waterfall-uniformity.test.ts`.
 
 Like `water-containment.ts`, `waterfall-uniformity.ts` redundantly redefines its own local `DIR_OFFSETS` and `PERP_DIRS` (lines 36–48) rather than importing them.
 
@@ -517,30 +518,30 @@ This subsystem owns the geometry of edge-cut corners — both the rules about wh
 
 ### Key Data Structures
 
-A `Corners` tuple (`types.ts:25`) holds four `CornerTrim` values — one per sub-block corner in TL/TR/BL/BR order. Each value is one of `square | fan | tri-NW | tri-NE | tri-SW | tri-SE | empty`. Terrain cuts live on `TerrainCell.corners` (`types.ts:33`); road cuts live on `PlacedObject.corners` (`types.ts:53`). `undefined` corners and an all-`square` corners array are treated identically by the executor (both normalize to `undefined` on write — `command-executor.ts:224`). Gamma-patches (`patchOnly: true`) are a special terrain cell variant whose sole purpose is to fill the concave inner corner left by three abutting filled cells; they carry exactly one non-`empty` corner.
+A `Corners` tuple (`types.ts`) holds four `CornerTrim` values — one per sub-block corner in TL/TR/BL/BR order. Each value is one of `square | fan | tri-NW | tri-NE | tri-SW | tri-SE | empty`. Terrain cuts live on `TerrainCell.corners` (`types.ts`); road cuts live on `PlacedObject.corners` (`types.ts`). `undefined` corners and an all-`square` corners array are treated identically by the executor (both normalize to `undefined` on write — `command-executor.ts`). Gamma-patches (`patchOnly: true`) are a special terrain cell variant whose sole purpose is to fill the concave inner corner left by three abutting filled cells; they carry exactly one non-`empty` corner.
 
-The `TrimCornersCommand` (`types.ts:166`) is the only mutating unit this subsystem issues. It records the cell, the layer, an optional `objectId` for roads, `beforeCorners`/`afterCorners`, and optional `beforeRotation`/`afterRotation` for road rotation changes. The executor's `applyCommand` handles both terrain and road targets, including the special-case of all-`'empty'` `afterCorners` which triggers full terrain-null or road-object deletion.
+The `TrimCornersCommand` (`types.ts`) is the only mutating unit this subsystem issues. It records the cell, the layer, an optional `objectId` for roads, `beforeCorners`/`afterCorners`, and optional `beforeRotation`/`afterRotation` for road rotation changes. The executor's `applyCommand` handles both terrain and road targets, including the special-case of all-`'empty'` `afterCorners` which triggers full terrain-null or road-object deletion.
 
 ### Edge-Coverage Model (`cut-validator.ts`)
 
 The geometric core models each macro-cell edge as a unit interval [0, 1] and asks: which sub-intervals does a given `Corners` configuration cover on a given side?
 
-`SIDE_CONTRIBUTIONS` (`cut-validator.ts:15`) maps each side (N/S/W/E) to the two corner positions that contribute to it, each owning one half of the interval. `shapeProvidesCoverage` (`cut-validator.ts:40`) decides whether a corner's shape actually covers its half: `square` and `fan` always cover; a triangle covers only the two sides matching its compass label (encoded in `TRI_SIDES`); `empty` covers nothing.
+`SIDE_CONTRIBUTIONS` (`cut-validator.ts`) maps each side (N/S/W/E) to the two corner positions that contribute to it, each owning one half of the interval. `shapeProvidesCoverage` (`cut-validator.ts`) decides whether a corner's shape actually covers its half: `square` and `fan` always cover; a triangle covers only the two sides matching its compass label (encoded in `TRI_SIDES`); `empty` covers nothing.
 
-`computeCellEdgeCoverage` (`cut-validator.ts:47`) assembles the raw half-intervals from both contributing corners, sorts and merges them (with `EPSILON = 1e-6` tolerance), and returns a list of `EdgeInterval` segments. When `corners` is `undefined` the whole edge [0, 1] is returned — meaning a plain square cell fully covers every side.
+`computeCellEdgeCoverage` (`cut-validator.ts`) assembles the raw half-intervals from both contributing corners, sorts and merges them (with `EPSILON = 1e-6` tolerance), and returns a list of `EdgeInterval` segments. When `corners` is `undefined` the whole edge [0, 1] is returned — meaning a plain square cell fully covers every side.
 
-`hasPositiveEdgeContact` (`cut-validator.ts:98`) checks whether two cells share physical geometry along their shared edge. It computes coverage on each side independently, then **flips** the neighbour's interval list (`flipIntervals`, `cut-validator.ts:92`) before calling `intervalsOverlap`. The flip is necessary because position 0 on the N side of cell A corresponds to position 1 on the S side of cell B (left-to-right on A is right-to-left viewed from B).
+`hasPositiveEdgeContact` (`cut-validator.ts`) checks whether two cells share physical geometry along their shared edge. It computes coverage on each side independently, then **flips** the neighbour's interval list (`flipIntervals`, `cut-validator.ts`) before calling `intervalsOverlap`. The flip is necessary because position 0 on the N side of cell A corresponds to position 1 on the S side of cell B (left-to-right on A is right-to-left viewed from B).
 
 ### Cut Validation (`cut-validator.ts:validateCut`)
 
-`validateCut` (`cut-validator.ts:134`) is the single gate that decides whether a proposed `candidateCorners` is legal at (x, y) on a given layer. It iterates the four cardinal neighbours and, for each that counts as a "connected neighbour" in the current layer, asserts that `hasPositiveEdgeContact` holds between the candidate and that neighbour's current corners. A single failing side is enough to reject.
+`validateCut` (`cut-validator.ts`) is the single gate that decides whether a proposed `candidateCorners` is legal at (x, y) on a given layer. It iterates the four cardinal neighbours and, for each that counts as a "connected neighbour" in the current layer, asserts that `hasPositiveEdgeContact` holds between the candidate and that neighbour's current corners. A single failing side is enough to reject.
 
 The definition of "connected neighbour" differs by layer:
 
-- **Terrain**: the neighbour must have the same `TerrainType` and same `elevation`, and must not be a patch-only cell (`cut-validator.ts:146`).
-- **Road**: the neighbour just needs to have any `surfaceCoating` object (`hasRoadAt`, `cut-validator.ts:110`).
+- **Terrain**: the neighbour must have the same `TerrainType` and same `elevation`, and must not be a patch-only cell (`cut-validator.ts`).
+- **Road**: the neighbour just needs to have any `surfaceCoating` object (`hasRoadAt`, `cut-validator.ts`).
 
-After edge connectivity, a road-specific structural check follows (`cut-validator.ts:168`): if a road cell connects to two or more neighbours, the candidate corners must be all-`square` when the connections are opposite (N+S or E+W) or when there are 3+ connections. For exactly two adjacent (L-shaped) connections, fans at any corner that is adjacent to a connected side are forbidden — only triangles or `square` are acceptable there.
+After edge connectivity, a road-specific structural check follows (`cut-validator.ts`): if a road cell connects to two or more neighbours, the candidate corners must be all-`square` when the connections are opposite (N+S or E+W) or when there are 3+ connections. For exactly two adjacent (L-shaped) connections, fans at any corner that is adjacent to a connected side are forbidden — only triangles or `square` are acceptable there.
 
 ### The Layer-Silhouette Kernel (`terrain-silhouette.ts`)
 
@@ -565,17 +566,17 @@ Auto-trim symmetry between the layers: the post-stroke pass (`applyAutoEdgeCut`)
 
 **Terrain**: a corner is locked when it is *not a free corner of the terrain's silhouette at the cell's top layer* — i.e. when a same-type **EDGE** neighbour holds solid mass at that layer (`terrainSolidAt` over the two `EDGE_NEIGHBORS`; a diagonal-only touch does NOT lock — that is what makes a pinch cuttable). A same-type **taller** neighbour locks (its stack covers this layer); a same-type **lower** step does not (the bevel down to it is intended). On top of the geometry, three things lock extra corners: **WATERFALL-LIP** (an elevated-water corner facing a drop), **WATERFALL-FRAME** (a cap mountain's flow side), and **MOUNTAIN BANK** — a MOUNTAIN meeting water on EXACTLY ONE edge of a corner is the water's bank there, so that corner is locked (cutting it would peel the mountain off the water, leaving the pond unbanked on the rendered map). A mountain fronted by water on BOTH of a corner's edges is an island/peninsula tip and still rounds (revealing the water); a ground island in water is unaffected (it rounds via `groundConvexCornerInWater`).
 
-**Road**: road locking uses a count-based policy rather than per-corner geometry. Zero neighbours → nothing locked. Three or more neighbours, or two opposite neighbours → all four corners locked. Exactly one neighbour → the two corners on that side locked (same as terrain Rule A for one edge). Two adjacent neighbours → all four corners locked **except** the one in the "free" quadrant — the corner diagonally opposite to the connecting pair (`trim-lock.ts:59`).
+**Road**: road locking uses a count-based policy rather than per-corner geometry. Zero neighbours → nothing locked. Three or more neighbours, or two opposite neighbours → all four corners locked. Exactly one neighbour → the two corners on that side locked (same as terrain Rule A for one edge). Two adjacent neighbours → all four corners locked **except** the one in the "free" quadrant — the corner diagonally opposite to the connecting pair (`trim-lock.ts`).
 
 This asymmetry between terrain and road locking reflects that terrain cuts are per-corner shape choices whereas road cuts use a small canonical vocabulary where the only valid cut is at a single free corner.
 
 ### Gamma-Patch Detection (`cut-validator.ts:isInnerCorner`)
 
-`isInnerCorner` (`cut-validator.ts:190`) determines whether a patch-only cell at (x, y) with a given corner index is still in a valid concave-corner context. The target cell must itself be empty of real terrain. For each corner index the function checks three specific neighbours — the two orthogonally adjacent cells and the diagonal cell in the corner's quadrant (`maps` array, `cut-validator.ts:205`). All three must be non-patch cells of the matching type and elevation for the patch to be considered "intact". This is used exclusively in reconciliation to prune stale patches.
+`isInnerCorner` (`cut-validator.ts`) determines whether a patch-only cell at (x, y) with a given corner index is still in a valid concave-corner context. The target cell must itself be empty of real terrain. For each corner index the function checks three specific neighbours — the two orthogonally adjacent cells and the diagonal cell in the corner's quadrant (`maps` array, `cut-validator.ts`). All three must be non-patch cells of the matching type and elevation for the patch to be considered "intact". This is used exclusively in reconciliation to prune stale patches.
 
 ### Canonical Road States (`road-cut-states.ts`)
 
-Road cuts are stored and reasoned about in a **canonical (left-connected) form**: `CANONICAL_ROAD_STATES` (`road-cut-states.ts:6`) lists five valid cut shapes, all expressed as if the road connects to the left. Index 0 is `undefined` (sentinel). The five canonical shapes are:
+Road cuts are stored and reasoned about in a **canonical (left-connected) form**: `CANONICAL_ROAD_STATES` (`road-cut-states.ts`) lists five valid cut shapes, all expressed as if the road connects to the left. Index 0 is `undefined` (sentinel). The five canonical shapes are:
 
 | Index | Description | Kind |
 |-------|-------------|------|
@@ -585,35 +586,35 @@ Road cuts are stored and reasoned about in a **canonical (left-connected) form**
 | 4 | diagonal `/` (tri-NE pair) | direct |
 | 5 | wedge (TR + BR fan) | round |
 
-`classifyRoadKind` (`road-cut-states.ts:97`) maps a `Corners` to `'round' | 'direct' | null` based on whether it contains a `fan` or a triangle. `null` means all-square (unconstrained).
+`classifyRoadKind` (`road-cut-states.ts`) maps a `Corners` to `'round' | 'direct' | null` based on whether it contains a `fan` or a triangle. `null` means all-square (unconstrained).
 
-`canonicalToActual` (`road-cut-states.ts:32`) rotates a canonical corners tuple into the coordinate frame of the actual connection direction. The rotation is a two-step process: first `rotateCornerTrim` (`road-cut-states.ts:27`) remaps triangle compass labels via `TRI_ROTATE` (a `conn → old-trim → new-trim` lookup, `road-cut-states.ts:20`); then the positions of the four corners within the tuple are permuted to match the connection direction (the `switch` in `canonicalToActual`).
+`canonicalToActual` (`road-cut-states.ts`) rotates a canonical corners tuple into the coordinate frame of the actual connection direction. The rotation is a two-step process: first `rotateCornerTrim` (`road-cut-states.ts`) remaps triangle compass labels via `TRI_ROTATE` (a `conn → old-trim → new-trim` lookup, `road-cut-states.ts`); then the positions of the four corners within the tuple are permuted to match the connection direction (the `switch` in `canonicalToActual`).
 
-`detectRoadConn` (`road-cut-states.ts:66`) probes the four cardinal neighbours of a road object for another road object (excluding `patchOnly`) and returns the first direction it finds. If no real neighbour exists, it falls back to `ROTATION_TO_CONN[road.rotation]`. This fallback makes isolated roads self-consistent with their visual rotation.
+`detectRoadConn` (`road-cut-states.ts`) probes the four cardinal neighbours of a road object for another road object (excluding `patchOnly`) and returns the first direction it finds. If no real neighbour exists, it falls back to `ROTATION_TO_CONN[road.rotation]`. This fallback makes isolated roads self-consistent with their visual rotation.
 
-`countRoadNeighbors` (`road-cut-states.ts:83`) performs the same scan but counts all four directions rather than returning early, used by `reconcileRoadAt` to detect the isolated case.
+`countRoadNeighbors` (`road-cut-states.ts`) performs the same scan but counts all four directions rather than returning early, used by `reconcileRoadAt` to detect the isolated case.
 
 ### Reconciliation Pass (`cut-reconcile.ts:reconcileCuts`)
 
-`reconcileCuts` (`cut-reconcile.ts:142`) is the entry point called by `commitStroke` after the stroke's terrain/object changes have settled. It:
+`reconcileCuts` (`cut-reconcile.ts`) is the entry point called by `commitStroke` after the stroke's terrain/object changes have settled. It:
 
-1. **Seeds the working region**: takes the set of changed `MacroCoord`s from the stroke and inflates it by one cell in every direction (8-neighbourhood) via `expandRegion` (`cut-reconcile.ts:19`), storing the result in a `Set<string>`.
+1. **Seeds the working region**: takes the set of changed `MacroCoord`s from the stroke and inflates it by one cell in every direction (8-neighbourhood) via `expandRegion` (`cut-reconcile.ts`), storing the result in a `Set<string>`.
 
 2. **Iterates to fixpoint with cascading growth**: runs up to `MAX_RECONCILE_PASSES = 16` passes over the current region. Each pass visits every cell in the region and applies three orthogonal reconcilers. When a cell is repaired, its 8-neighbourhood is immediately folded into the region `Set`, so that cascading road repairs beyond the initial ring are picked up in subsequent passes. The loop exits early as soon as a pass makes no changes.
 
 The three reconcilers:
 
-- **`reconcileTerrainCell`** (`cut-reconcile.ts:35`): for real (non-patch) terrain cells with non-square corners, recomputes `computeLockedCorners` against the current state and rewrites any locked corner that is not already `square` to `square`. Issues a `TrimCornersCommand` via the target executor.
+- **`reconcileTerrainCell`** (`cut-reconcile.ts`): for real (non-patch) terrain cells with non-square corners, recomputes `computeLockedCorners` against the current state and rewrites any locked corner that is not already `square` to `square`. Issues a `TrimCornersCommand` via the target executor.
 
-- **`reconcilePatchTerrain`** (`cut-reconcile.ts:118`): for `patchOnly` cells, calls `isInnerCorner` on the active non-`empty` corner. If the inner-corner context is broken, issues a `TrimCornersCommand` with all-`empty` afterCorners, which the executor converts to `cell.terrain = null`.
+- **`reconcilePatchTerrain`** (`cut-reconcile.ts`): for `patchOnly` cells, calls `isInnerCorner` on the active non-`empty` corner. If the inner-corner context is broken, issues a `TrimCornersCommand` with all-`empty` afterCorners, which the executor converts to `cell.terrain = null`.
 
-- **`reconcileRoadAt`** (`cut-reconcile.ts:88`): for roads with non-square corners, recomputes `detectRoadConn` + `canonicalToActual` and feeds the result to `validateCut`. If still valid, no action. If invalid, it attempts to find a **same-kind** canonical state that does validate by iterating `CANONICAL_ROAD_STATES[1..]` (skipping index 0). For isolated roads every canonical state is tried at all four rotations; for connected roads only the current connection direction is used. If a replacement is found, it issues a `TrimCornersCommand` with the replacement canonical corners, carrying `beforeRotation`/`afterRotation` on the command when a rotation change is needed (so that `revertEntry`/`reapplyEntry` can restore it faithfully — `road.rotation` is not mutated directly). If no same-kind replacement validates, the road is reset to all-`square`.
+- **`reconcileRoadAt`** (`cut-reconcile.ts`): for roads with non-square corners, recomputes `detectRoadConn` + `canonicalToActual` and feeds the result to `validateCut`. If still valid, no action. If invalid, it attempts to find a **same-kind** canonical state that does validate by iterating `CANONICAL_ROAD_STATES[1..]` (skipping index 0). For isolated roads every canonical state is tried at all four rotations; for connected roads only the current connection direction is used. If a replacement is found, it issues a `TrimCornersCommand` with the replacement canonical corners, carrying `beforeRotation`/`afterRotation` on the command when a rotation change is needed (so that `revertEntry`/`reapplyEntry` can restore it faithfully — `road.rotation` is not mutated directly). If no same-kind replacement validates, the road is reset to all-`square`.
 
-All repairs are issued through `target.execute(cmd)` where `target` is a `CutReconcileTarget` — a minimal interface (`cut-reconcile.ts:12`) satisfied by `CommandExecutor`. This means reconciliation repairs enter the undo stack as `TrimCornersCommand` entries within the same stroke, participating in history.
+All repairs are issued through `target.execute(cmd)` where `target` is a `CutReconcileTarget` — a minimal interface (`cut-reconcile.ts`) satisfied by `CommandExecutor`. This means reconciliation repairs enter the undo stack as `TrimCornersCommand` entries within the same stroke, participating in history.
 
 ### Composition with `commitStroke`
 
-`commitStroke` (`command-executor.ts:84`) proceeds in this order:
+`commitStroke` (`command-executor.ts`) proceeds in this order:
 
 1. Run post-stroke rule validation. If violations exist, auto-revert the stroke's commands one by one until the state is clean.
 2. Collect the set of macro coordinates affected by whichever stroke commands remain on the undo stack (i.e. after any auto-revert).
@@ -654,13 +655,15 @@ The context is a single long-lived object whose mutable fields are updated by `r
 
 ### ToolManager: Registration and Dispatch
 
-`ToolManager` (`tool-manager.ts`) holds a `Map<ToolType, Tool>` and an `activeTool` pointer. `HandTool` is instantiated in the constructor and is the default; all other tools (`DrawingTool`, `EraserTool`, `ScatterTool`, `RoadBrushTool`, `ObjectPlacerTool`, `EdgeCutTool`) are registered from `PixiCanvas.tsx` immediately after `MapRenderer` is ready.
+`ToolManager` (`tool-manager.ts`) holds a `Map<ToolType, Tool>` and an `activeTool` pointer. `HandTool` is instantiated in the constructor and is the default; the rest (`DrawingTool`, `EraserTool`, `ObjectPlacerTool`, `EdgeCutTool`) are registered by `registerDefaultTools()` in the same constructor, so a caller only constructs the manager. Every `ToolType` names a tool the manager registers, which `tool-cursors.test.ts` pins: scattering is the generation populator's job and roads are painted by `DrawingTool` in tile mode, so neither has a ToolType of its own.
+
+`setView` swaps the ACTIVE view (2D map ↔ 3D editor) by rebuilding the context around the new projection/overlay pair, which is how the whole tool layer follows a mode switch without any tool knowing a switch happened.
 
 `setActiveTool` calls `onDeactivate` on the outgoing tool and `onActivate` on the incoming one, both with a freshly refreshed context. On each of `handlePointerDown`, `handlePointerMove`, and `handlePointerUp`, `ToolManager` calls `refreshCtx()` then delegates to the active tool. The manager's public fields (`terrainType`, `elevation`, `brushSize`) are the source of truth for tool parameters; `PixiCanvas.tsx` syncs them from the Zustand store inside a `useEffect` that runs whenever the relevant store slices change.
 
-`HandTool` receives special treatment in `handlePointerMove` (`tool-manager.ts:80`): the raw screen-space delta `(dx, dy)` computed from `lastScreenX/Y` is passed to `handleRawMouseMove` before the standard macro/micro coordinate path runs. This is the only place where sub-pixel movement reaches a tool; all other tools work in macro coordinates.
+`HandTool` receives special treatment in `handlePointerMove`: the raw screen-space delta `(dx, dy)` computed from `lastScreenX/Y` is passed to `handleRawMouseMove` before the standard macro/micro coordinate path runs. This is the only place where sub-pixel movement reaches a tool; all other tools work in macro coordinates. It applies only in views whose left-drag pans there (the 2D map): the 3D editor sets `leftDragPans: false` and pans from the pointer machine instead, since left is reserved for selection and tools while right/middle orbit.
 
-**Tool registration is duplicated.** `PixiCanvas.tsx` contains two identical blocks (lines 98–104 and 284–290) that construct a fresh `ToolManager` and register the same six tools: one on initial mount and one in the `useEffect` that fires when `gridState` changes (project re-load). The shortcut registrations that reference `ToolType.TerrainBrush` (line 118) still work because that `ToolType` value is used as the `DrawingTool`'s `id`.
+`PixiCanvas.tsx` owns the manager's lifecycle: one is constructed in the `gridState` effect (a new map, an import, a generate) and published through `registerToolManager`, so the editor has exactly one at a time and the active-view registry re-points it on a mode switch.
 
 ### Stroke Lifecycle
 
@@ -672,9 +675,9 @@ Every brush stroke follows a two-phase lifecycle, with the tool owning both phas
 
 The `strokeStartUndoSize` watermark is critical: it tells `commitStroke` exactly how many undo entries belong to the current stroke. Tools must snapshot this value **before** issuing any commands for the stroke. `DrawingTool` is careful to reset it inside `onPointerDown` for brush mode and inside `onPointerUp` for shape modes (lines 163, 174, 184), because shape strokes do not accumulate commands during the drag — they emit everything at once on mouse-up.
 
-For the curve tool, the stroke spans three click events rather than a pointer-down/up pair. `DrawingTool` collects `curvePoints` across calls; on the third click it samples the quadratic Bézier, calls `paintCells`, then calls `finishStroke` (which calls `commitStroke`) — all within `onPointerDown` (`drawing-tool.ts:67–83`). `strokeStartUndoSize` is re-snapshotted at the moment the third click begins, so any phantom undo entries from aborted previews are excluded.
+For the curve tool, the stroke spans three click events rather than a pointer-down/up pair. `DrawingTool` collects `curvePoints` across calls; on the third click it samples the quadratic Bézier, calls `paintCells`, then calls `finishStroke` (which calls `commitStroke`) — all within `onPointerDown` (`drawing-tool.ts`). `strokeStartUndoSize` is re-snapshotted at the moment the third click begins, so any phantom undo entries from aborted previews are excluded.
 
-`EdgeCutTool` uses the shortest possible stroke window: it snapshots the stack size, issues one or two commands, and calls `commitStroke` all within `onPointerDown` (`edge-cut-tool.ts:132,219`). There is no drag phase.
+`EdgeCutTool` uses the shortest possible stroke window: it snapshots the stack size, issues one or two commands, and calls `commitStroke` all within `onPointerDown` (`edge-cut-tool.ts,219`). There is no drag phase.
 
 `ObjectPlacerTool` never calls `commitStroke` — object placement commands are individually pre-validated with sufficient pre-command rules that post-stroke rules do not apply to them.
 
@@ -682,29 +685,25 @@ For the curve tool, the stroke spans three click events rather than a pointer-do
 
 `DrawingTool` (`drawing-tool.ts`) handles five drawing modes under a single `ToolType.TerrainBrush` id: `brush`, `line`, `rect`, `circle`, and `curve`. This consolidation means `PixiCanvas.tsx` manages mode changes by directly mutating `tool.mode` and `tool.contentType` on the registered instance (lines 236–244) rather than switching between registered tools.
 
-The `paintCells` method (`drawing-tool.ts:199`) has a significant asymmetry between mountain and water content. For mountains it groups cells by their **target elevation** (`min(existing + 1, ELEVATION_MAX)`) and emits one `PaintTerrain` command per distinct elevation level, producing correct incremental stacking. For water it emits a single command covering all cells at `ctx.elevation`. A `strokeCells: Set<string>` guard prevents re-painting the same macro cell twice within a brush stroke — important for brush mode where the pointer can revisit a cell.
+The `paintCells` method (`drawing-tool.ts`) has a significant asymmetry between mountain and water content. For mountains it groups cells by their **target elevation** (`min(existing + 1, ELEVATION_MAX)`) and emits one `PaintTerrain` command per distinct elevation level, producing correct incremental stacking. For water it emits a single command covering all cells at `ctx.elevation`. A `strokeCells: Set<string>` guard prevents re-painting the same macro cell twice within a brush stroke — important for brush mode where the pointer can revisit a cell.
 
 Ghost preview uses `ctx.overlay.showGhost(cells, color, terrainMode)`. The third argument controls a pixel offset: terrain ghosts are offset by `-HALF_TILE` (32 px) to align with the micro-grid rendering of terrain tiles; object ghosts pass `false` to sit on the macro-grid.
 
 ### EraserTool
 
-`EraserTool` (`eraser.ts`) delegates single-cell peel to `peelCommand` (`terrain-peel.ts`). This helper (`terrain-peel.ts:9`) encodes the erosion rule: water erases to ground (`EraseTerrain` command); mountain at elevation N emits a `PaintTerrain` command at elevation N-1 (elevation 0 is the special case that clears via `applyCommand`). The eraser reads `layerVisibility` directly from the Zustand store (`eraser.ts:64`) to skip hidden layers — one of only two places in the tools layer that reads Zustand state at event time (the other being `ObjectPlacerTool` and `RoadBrushTool`, which read `selectedItemId`).
+`EraserTool` (`eraser.ts`) delegates single-cell peel to `peelCommand` (`terrain-peel.ts`). This helper (`terrain-peel.ts`) encodes the erosion rule: water erases to ground (`EraseTerrain` command); mountain at elevation N emits a `PaintTerrain` command at elevation N-1 (elevation 0 is the special case that clears via `applyCommand`). The eraser reads `layerVisibility` directly from the Zustand store to skip hidden layers — one of only two places in the tools layer that reads Zustand state at event time (the other being `ObjectPlacerTool`, which reads `selectedItemId`).
 
 ### ObjectPlacerTool
 
-`ObjectPlacerTool` (`object-placer.ts`) has two behavioural modes gated by whether `selectedItemId` is set in the store. With an item selected it places on pointer-down; with no item selected it is passive (the drag-to-move logic lives entirely in `PixiCanvas.tsx`'s pointer handlers, outside the tool).
+`ObjectPlacerTool` (`object-placer.ts`) has two behavioural modes gated by whether `selectedItemId` is set in the store. With an item selected it places on pointer-down; with no item selected it is passive (drag-to-move lives in the shared pointer machine, outside the tool).
 
-Bridge ghost computation (`computeBridgeGhost`, `object-placer.ts:68`) scans left/right or up/down from the cursor position, counting contiguous full-width water strips (checking at micro-grid resolution via `isFullWidthWaterAt`). The scan halts when it finds land on both sides with a water run of 3–6 cells. Ramp ghost computation (`computeRampGhost`, `object-placer.ts:134`) scans the four cardinal neighbours for an elevation difference matching the ramp's `layers` field and derives the footprint orientation from that.
+Bridge ghost computation (`computeBridgeGhost`, `object-placer.ts`) scans left/right or up/down from the cursor position, counting contiguous full-width water strips (checking at micro-grid resolution via `isFullWidthWaterAt`). The scan halts when it finds land on both sides with a water run of 3–6 cells. Ramp ghost computation (`computeRampGhost`, `object-placer.ts`) scans the four cardinal neighbours for an elevation difference matching the ramp's `layers` field and derives the footprint orientation from that.
 
-`removeOverlappingCoatings` (`object-placer.ts:166`) removes any `surfaceCoating` objects whose footprint overlaps the incoming footprint before placement — invoked by both `ObjectPlacerTool.onPointerDown` and `RoadBrushTool.paintRoad`. This keeps road replacement atomic: erase-then-place instead of overlap-validation-fail.
+`removeOverlappingCoatings` removes any `surfaceCoating` objects whose footprint overlaps the incoming footprint before placement — invoked by both `ObjectPlacerTool.onPointerDown` and the tile brush. This keeps road replacement atomic: erase-then-place instead of overlap-validation-fail.
 
-### RoadBrushTool
+### Tile coating (the road/tile brush)
 
-`RoadBrushTool` (`road-brush.ts`) places `surfaceCoating` objects cell-by-cell as the user drags, using `brushCells` from `drawing-tool.ts` for the brush area. It calls `removeOverlappingCoatings` before each `PlaceObject` command so dragging over an existing road replaces it. The `paintedCells` set guards against double-placement per stroke (analogous to `strokeCells` in `DrawingTool`).
-
-### ScatterTool
-
-`ScatterTool` (`scatter-tool.ts`) does not participate in the pointer event lifecycle at all — its `onPointerDown/Move/Up` methods are no-ops. It is driven programmatically by the `GeneratePanel` UI, which calls `tool.preview(ctx)` then `tool.execute(ctx)`. Placement uses `seededRandom` (a simple integer hash) and `simpleNoise2D` together so that the same `ScatterProfile` always produces the same pattern. Each placement is issued as a `PlaceObject` command through `ctx.executeCommand`; the executor's `applyCommand` is the sole writer of `state.objects`, so the tool never mutates the grid directly.
+There is no separate road tool. `DrawingTool` in tile mode (`contentType: 'tile'`) drives the same shape vocabulary as terrain and delegates each cell to `tools/paint/tile-coating.ts`: `placeTileCell` calls `removeOverlappingCoatings` and then issues the `PlaceObject`, so dragging over an existing road replaces it, and `eraseTileCells` is the inverse. A per-stroke `painted` set guards against double-placement, the same way `strokeCells` does for terrain. Tiles are ordinary `surfaceCoating` objects, which is why the overlap rule exempts them rather than the brush working around it.
 
 ### EdgeCutTool
 
@@ -745,9 +744,9 @@ This runs inside the stroke — the remove/replace commands become part of the u
 ### Composition with Neighbouring Subsystems
 
 - **CommandExecutor / RuleRegistry**: Tools receive both via closures in `ToolContext`. Pre-command validation is transparent (execute returns a `ValidationResult`); post-stroke validation is triggered explicitly by `commitStroke`.
-- **PixiCanvas.tsx (event plumbing)**: Raw DOM `PointerEvent`s are partially intercepted — right-click pan, drag-to-move, block selection — before reaching `ToolManager.handlePointer*`. The tool system therefore only sees left-click events that are not handled by those higher-priority paths.
-- **Zustand store**: `ToolManager.refreshCtx` pushes store values into `ToolContext`; tools also read `useEditorStore.getState()` directly for `selectedItemId` (ObjectPlacer, RoadBrush) and `layerVisibility` (Eraser). The `t()` helper also calls `getState()` at invocation time.
-- **OverlayLayer**: Tools write to `ctx.overlay.showGhost` / `clearGhost` for cursor feedback. The overlay is also written by `PixiCanvas.tsx` for drag-to-move previews, creating a shared resource with no explicit ownership protocol.
+- **The pointer machine (`canvas/interaction/usePointerInteraction.ts`)**: one state machine shared by BOTH canvases, which mount it and register themselves as the active view. Raw DOM `PointerEvent`s are partially intercepted there — camera pan/orbit, drag-to-move, selection and the rubber band — before reaching `ToolManager.handlePointer*`. The tool system therefore only sees left-click events that are not handled by those higher-priority paths, and it never learns which view is live.
+- **Zustand store**: `ToolManager.refreshCtx` pushes store values into `ToolContext`; tools also read `useEditorStore.getState()` directly for `selectedItemId` (ObjectPlacer) and `layerVisibility` (Eraser). The `t()` helper also calls `getState()` at invocation time.
+- **The overlay**: Tools write to `ctx.overlay.showGhost` / `clearGhost` for cursor feedback. The pointer machine writes to the same overlay for drag-to-move previews and selection rings, creating a shared resource with no explicit ownership protocol.
 
 ---
 
@@ -802,7 +801,7 @@ The maze uses a randomized DFS (recursive backtracker) on a logical cell-wall gr
 4. Carves starting from `(1,1)` using iterative DFS with a stack. On each step, picks a random unvisited neighbor (2 steps away). Carving a passage marks the wall midpoint plus the destination room as `true`. Corridor and room widths are both `corridorWidth × corridorWidth` cells.
 5. All `false` cells in the maze grid that map to valid in-region Grass cells become Mountains, painted bottom-up from elevation 1 to `min(maxElevation, 3)`.
 
-The elevation cap at 3 (`maze-generator.ts:150`) is hardcoded because the 3x3 base rule (V-MTN-03) exempts elevations 1–3 and the maze does not run the erosion precomputation that the noise generator uses. This avoids any base-support violations without erosion logic.
+The elevation cap at 3 (`maze-generator.ts`) is hardcoded because the 3x3 base rule (V-MTN-03) exempts elevations 1–3 and the maze does not run the erosion precomputation that the noise generator uses. This avoids any base-support violations without erosion logic.
 
 The wall-midpoint carving (lines 125–131) covers the rectangle from `min(cx,nx)` to `max(cx,nx)+cw-1` in both axes. For `corridorWidth=1` this is correct: both the single-cell wall midpoint and the corner cells of the 1×1 rooms are included. For `corridorWidth > 1`, the rectangle over-carves slightly — walls that are `cw` cells wide between rooms are cleared as a block rather than as individual cells, but this is acceptable because the maze only places Mountains on `false` cells.
 
@@ -814,9 +813,9 @@ The same bulk-command-then-per-cell fallback strategy as in the noise generator 
 
 ### Integration with Command/Validation Pipeline
 
-Both generators receive `executeCommand: (cmd: Command) => ValidationResult` as a plain callback, not a direct `CommandExecutor` reference. In production (`App.tsx:479`), this is `(cmd) => exec.execute(cmd)`. This means every generation command passes through the full pre-command rule set (zone restriction, layer lock, elevation range, floating block, placement overlap, object-blocks-terrain, chunk-load). The generators observe the `ValidationResult` and skip or retry cells on failure.
+Both generators receive `executeCommand: (cmd: Command) => ValidationResult` as a plain callback, not a direct `CommandExecutor` reference. In production (`App.tsx`), this is `(cmd) => exec.execute(cmd)`. This means every generation command passes through the full pre-command rule set (zone restriction, layer lock, elevation range, floating block, placement overlap, object-blocks-terrain, chunk-load). The generators observe the `ValidationResult` and skip or retry cells on failure.
 
-The `App.tsx` orchestration layer calls `exec.commitStrokeGroup(strokeStart)` after generation (`App.tsx:483`, `498`). This runs post-stroke validation and cut-reconciliation once at the end, then collapses the entire generation into a **single undo entry** so the user undoes the whole generation in one Ctrl+Z rather than command-by-command. Generators are designed to produce rule-valid output structurally, so post-stroke revert should never fire in practice; the test suite in `terrain-generator.test.ts` verifies this by running post-stroke rules directly against the state after generation.
+The `App.tsx` orchestration layer calls `exec.commitStrokeGroup(strokeStart)` after generation (`App.tsx`, `498`). This runs post-stroke validation and cut-reconciliation once at the end, then collapses the entire generation into a **single undo entry** so the user undoes the whole generation in one Ctrl+Z rather than command-by-command. Generators are designed to produce rule-valid output structurally, so post-stroke revert should never fire in practice; the test suite in `terrain-generator.test.ts` verifies this by running post-stroke rules directly against the state after generation.
 
 `CommandExecutor.execute` captures `before`/`after` cell snapshots for each generated command; `commitStrokeGroup` then collapses all those individual entries into one, so undo works correctly as a single operation.
 
@@ -824,7 +823,9 @@ The `App.tsx` orchestration layer calls `exec.commitStrokeGroup(strokeStart)` af
 
 ### Region Selection
 
-The region selection system lives entirely in `App.tsx` and uses a window-global callback pattern (`__petitRegionBrushCallback`, `__petitRegionBrushDone`) to bridge the PixiCanvas event loop to React state. Brush, eraser, rect, circle, line, and curve modes are supported via `shapes.ts` utilities. The selected region is stored as `MacroCoord[]` in `genRegion` React state and passed to `generateTerrain` via `config.region`. Both generators convert this to a `Set<string>` (`"x,y"` keys) for O(1) membership tests.
+The region selection system is the `ui/hooks/useRegionBrush.ts` state machine, and it uses a window-global callback pattern (`__petitRegionBrushCallback`, `__petitRegionBrushDone`) to bridge the pointer machine to React state. Brush, eraser, rect, circle, line, and curve modes are supported via `shapes.ts` utilities, accumulating buildable cells into a mutable buffer during the drag and committing on pointer-up. The selected region is stored as `MacroCoord[]` in `genRegion` React state and passed to `generateTerrain` via `config.region`. Both generators convert this to a `Set<string>` (`"x,y"` keys) for O(1) membership tests.
+
+The hook owns the region's OWN undo/redo stack, separate from the map's command history: a painted region is a scope for a future generate, not a map edit, so it must never share the executor's stack. While `selectingRegion` is on, the keyboard command routes Ctrl+Z/Ctrl+Y here instead of to the executor. One snapshot per perceived action (a brush drag, a shape drag, a whole curve sequence, a Clear tap), never per cell, and the stack lives on refs because it is read only imperatively and must survive the effect re-runs that every `genRegion` commit causes.
 
 ---
 
@@ -849,14 +850,14 @@ The Zustand store (`src/state/store.ts`) is the composition root of the entire e
 
 ### Store Shape
 
-`EditorStore` (`store.ts:21`) is a flat interface combining three distinct concern groups:
+`EditorStore` (`store.ts`) is a flat interface combining three distinct concern groups:
 
 **Core engine references** — These three fields form the "engine bundle" that components reach into:
 - `gridState: GridState | null` — the row-major cell grid, object map, chunk loads, locked layers, and map template. `null` until `initMap` or `loadMap` is called.
 - `commandExecutor: CommandExecutor | null` — the command pipeline; `null` until a map is initialised.
-- `eventBus: EventBus<EditorEvents>` — created once at store construction (`store.ts:73`) and **never replaced**. This is intentional: PixiCanvas subscribes to it on mount and the subscription lives for the component's lifetime. The event bus is the only member that survives `initMap`/`loadMap` unchanged.
+- `eventBus: EventBus<EditorEvents>` — created once at store construction (`store.ts`) and **never replaced**. This is intentional: PixiCanvas subscribes to it on mount and the subscription lives for the component's lifetime. The event bus is the only member that survives `initMap`/`loadMap` unchanged.
 
-**Tool/UI parameters** — `activeTool`, `drawingMode`, `contentType`, `terrainType`, `activeLayer`, `layerVisibility`, `layerLocked`, `brushSize`, `locale`, `showGrid`, `showChunkBounds`, `showLayerNumbers`, and the region-selection cluster (`selectingRegion`, `regionTool`, `regionBrushSize`).
+**Tool/UI parameters** — `activeTool`, `designMode` (the UI-facing editing mode the active tool is derived from), `contentType`, `tileMaterial`, `autoEdgeCut`, `activeLayer`, `displayLayer`, `layerVisibility`, `layerLocked`, `brushSize`, `locale`, `viewMode`, `showGrid`, `showChunkBounds`, `showLayerNumbers`, and the region-selection cluster (`selectingRegion`, `regionTool`, `regionBrushSize`). The tool PARAMETERS themselves (`terrainType`, `elevation`, `brushSize`) live on `ToolManager`, which `PixiCanvas.tsx` syncs from these store slices.
 
 **Selection/overlay state** — `selectedItemId`, `selection: BlockRef[]`, `contextMenu`, `deletePopover`.
 
@@ -866,17 +867,17 @@ The store also holds `chunkTracker: ChunkTracker` (`store.ts`), but this instanc
 
 ### initMap and loadMap as Wiring Points
 
-`initMap(template, registry)` (`store.ts:95`) is the factory for a new editing session:
+`initMap(template, registry)` (`store.ts`) is the factory for a new editing session:
 1. Calls `createGrid(template)` to build a fresh row-major `MacroCell[][]`.
 2. Constructs a `GridState` with empty `objects` and `lockedLayers`.
 3. Instantiates `CommandExecutor(gridState, eventBus, registry)`, binding the three collaborators together.
 4. Writes `gridState`, a fresh `ChunkTracker`, and `commandExecutor` into the store atomically via Zustand `set()`.
 
-`loadMap(state, registry)` (`store.ts:113`) is identical except it accepts a pre-built `GridState` (from the JSON codec after import) instead of calling `createGrid`. In both cases the **existing `eventBus` instance is reused** — only `gridState`, `chunkTracker`, and `commandExecutor` are replaced.
+`loadMap(state, registry)` (`store.ts`) is identical except it accepts a pre-built `GridState` (from the JSON codec after import) instead of calling `createGrid`. In both cases the **existing `eventBus` instance is reused** — only `gridState`, `chunkTracker`, and `commandExecutor` are replaced.
 
 The caller is responsible for supplying the `RuleRegistry`. In production, `App.tsx` always passes `createDefaultRegistry()` (from `src/rules/index.ts`), which registers all eleven rules in the canonical phase order. This means rule configuration is opaque to the store — the store binds the executor to whatever registry it receives, with no knowledge of which rules are active.
 
-`PixiCanvas.tsx` reacts to `gridState` changing (the `useEffect` at `PixiCanvas.tsx:277`) and rebuilds a fresh `ToolManager` with the new executor and grid state, completing the wiring from store update to renderer.
+`PixiCanvas.tsx` reacts to `gridState` changing (the `useEffect` at `PixiCanvas.tsx`) and rebuilds a fresh `ToolManager` with the new executor and grid state, completing the wiring from store update to renderer.
 
 ---
 
@@ -898,7 +899,7 @@ The `RuleRegistry` (`src/rules/registry.ts`) splits rules into two lists by phas
 
 ### BlockRef / Selection Model
 
-`BlockRef` (`store.ts:20`) is a discriminated union:
+`BlockRef` (`store.ts`) is a discriminated union:
 ```
 { kind: 'object'; id: string }
 | { kind: 'terrain'; x: number; y: number }
@@ -910,7 +911,7 @@ A `BlockRef` is used for three distinct but related purposes:
 
 `ContextMenu.tsx` and `DeletePopover.tsx` both pull `commandExecutor` and `gridState` directly from the store and issue commands themselves (remove object, peel terrain, rotate object via remove+place). They call `executor.commitStroke(start)` after each operation.
 
-There is also `selectedItemId: string | null` in the store, which is the **catalog-level** selection — which item in the CollectionPanel is highlighted for placement. `ObjectPlacerTool` and `RoadBrushTool` read this via `useEditorStore.getState().selectedItemId` to know what to place.
+There is also `selectedItemId: string | null` in the store, which is the **catalog-level** selection — which item in the `PlacementPanel` is armed for placement. `ObjectPlacerTool` reads it via `useEditorStore.getState().selectedItemId` to know what to place, and `placementRotation` beside it carries the armed item's pending rotation (it lives in the store because the rotate shortcut, the ghost preview and the placement command are three separate call sites, only one of which touches a tool).
 
 ---
 
@@ -922,7 +923,7 @@ There is also `selectedItemId: string | null` in the store, which is the **catal
 
 The four exported functions (`getCatalogItem`, `getCatalogByCategory`, `getAllCategories`, `getAllItems`) are pure reads on these maps. There is no lazy loading, no hot-reload path, and no catalog mutations at runtime.
 
-`CatalogItem` (`types.ts:85`) carries the `PlacementTrait[]` array that drives `V-PLACE-TRAIT` (`rules/placement.ts`). Each trait is a tagged union variant; the rule iterates the trait list and dispatches to per-trait validation logic. This makes adding a new trait type a two-file change (add to the union in `types.ts`, handle in `placement.ts`) with no changes to the registry or executor.
+`CatalogItem` (`types.ts`) carries the `PlacementTrait[]` array that drives `V-PLACE-TRAIT` (`rules/placement.ts`). Each trait is a tagged union variant; the rule iterates the trait list and dispatches to per-trait validation logic. This makes adding a new trait type a two-file change (add to the union in `types.ts`, handle in `placement.ts`) with no changes to the registry or executor.
 
 `CatalogItem` is entirely disjoint from `PlacedObject`. A `PlacedObject` stores only `catalogId`, `position`, `rotation`, `elevation`, and optionally `spanLength` and `corners` — it looks up its dimensional and behavioral metadata from the catalog at runtime via `getCatalogItem(obj.catalogId)`. The catalog is therefore the authoritative schema for object rules; `PlacedObject` is the minimal persistent payload.
 
@@ -932,7 +933,7 @@ The four exported functions (`getCatalogItem`, `getCatalogByCategory`, `getAllCa
 
 1. The `eventBus` instance is immutable for the lifetime of the application. It must be subscribed to before `initMap` is called; subscriptions are not re-established on map reload.
 2. `commandExecutor` and `gridState` change together in one `set()` call. Any code that reads one should always check the other (both are nullable for the same reason).
-3. `GridState.lockedLayers` is mutated directly by a `useEffect` in `PixiCanvas.tsx` whenever `layerLocked` changes (`PixiCanvas.tsx:254`); it is not mediated through a command. Rules read it but never write it.
+3. `GridState.lockedLayers` is mutated directly by a `useEffect` in `PixiCanvas.tsx` whenever `layerLocked` changes (`PixiCanvas.tsx`); it is not mediated through a command. Rules read it but never write it.
 4. Rule purity: neither `PreCommandRule.validate` nor `PostStrokeRule.validate` may mutate state. The registry enforces this only by convention — TypeScript does not prevent mutations.
 5. Commands carry no snapshot data — `CommandBase` has only `timestamp`. `CommandExecutor.execute` captures `before`/`after` cell snapshots and stores them on the private `HistoryEntry`.
 
@@ -961,7 +962,7 @@ This subsystem has two loosely related jobs that share the `GridState` type as t
 
 #### SaveFile schema (version 1)
 
-The top-level `SaveFile` interface (`json-codec.ts:29`) has four fields:
+The top-level `SaveFile` interface (`json-codec.ts`) has four fields:
 
 | Field | Type | Purpose |
 |---|---|---|
@@ -973,33 +974,33 @@ The top-level `SaveFile` interface (`json-codec.ts:29`) has four fields:
 
 #### Cell encoding pipeline
 
-`serialize` (`json-codec.ts:136`) iterates cells in row-major order (`y` outer, `x` inner) and converts each `MacroCell` to a short text token:
+`serialize` (`json-codec.ts`) iterates cells in row-major order (`y` outer, `x` inner) and converts each `MacroCell` to a short text token:
 
 - Empty cell (`terrain: null`) → `"_"`.
-- Terrain cell → `terrainToken` (`json-codec.ts:39`), which produces `t<type>:<elevation>` plus an optional corner suffix and optional `:P` patch-only flag. The corner suffix encodes the four `CornerTrim` values using a single-char map (`S/F/1/2/3/4/E`); if all four corners are `'square'` the suffix is omitted entirely, saving space for the most common case.
+- Terrain cell → `terrainToken` (`json-codec.ts`), which produces `t<type>:<elevation>` plus an optional corner suffix and optional `:P` patch-only flag. The corner suffix encodes the four `CornerTrim` values using a single-char map (`S/F/1/2/3/4/E`); if all four corners are `'square'` the suffix is omitted entirely, saving space for the most common case.
 
-The token array is then RLE-compressed by `rleEncode` (`json-codec.ts:61`): consecutive identical tokens become `<count>*<token>`. For a fresh map this collapses all empty cells to a single `400*_`-style run. On `deserialize` (`json-codec.ts:184`), `rleDecode` (`json-codec.ts:79`) expands the RLE, then `tokenToCell` (`json-codec.ts:117`) reconstructs each `MacroCell` — restoring `zone` from the live template rather than persisting it (zone data is the template's responsibility, not the save file's).
+The token array is then RLE-compressed by `rleEncode` (`json-codec.ts`): consecutive identical tokens become `<count>*<token>`. For a fresh map this collapses all empty cells to a single `400*_`-style run. On `deserialize` (`json-codec.ts`), `rleDecode` (`json-codec.ts`) expands the RLE, then `tokenToCell` (`json-codec.ts`) reconstructs each `MacroCell` — restoring `zone` from the live template rather than persisting it (zone data is the template's responsibility, not the save file's).
 
 `tokenToCell` handles legacy saves: tokens may contain `+`-joined parts with `c` (old corner) or `r` (old road) prefixes which are silently ignored. Only `t`-prefixed parts are read.
 
 #### Object encoding
 
-`SaveFileObject` (`json-codec.ts:16`) flattens `PlacedObject` to scalar fields. Notable details:
+`SaveFileObject` (`json-codec.ts`) flattens `PlacedObject` to scalar fields. Notable details:
 
 - `spanLength` and `corners` are only written when present (bridges only have `spanLength`; road patches may have `corners`).
 - A corner-suffix omission optimisation mirrors the terrain case: if all four corners encode to `"SSSS"`, `corners` is omitted from the saved object entirely.
-- `patchOnly` is written with a `(saved as any).patchOnly` cast (`json-codec.ts:169`), revealing that `SaveFileObject` does not declare the field — it is stored but the interface does not advertise it. Symmetric `(obj as any).patchOnly` read on load (`json-codec.ts:224`).
-- `rotation` is read back with a type assertion to `0 | 90 | 180 | 270` (`json-codec.ts:209`) without runtime validation; an invalid serialised value would silently pass through.
+- `patchOnly` is written with a `(saved as any).patchOnly` cast (`json-codec.ts`), revealing that `SaveFileObject` does not declare the field — it is stored but the interface does not advertise it. Symmetric `(obj as any).patchOnly` read on load (`json-codec.ts`).
+- `rotation` is read back with a type assertion to `0 | 90 | 180 | 270` (`json-codec.ts`) without runtime validation; an invalid serialised value would silently pass through.
 
 #### Deserialization invariants
 
-`deserialize` (`json-codec.ts:184`) rebuilds `GridState` from scratch via `createGrid(template)`, which ensures `zone` is always sourced from the template (not persisted). This means importing a save against a different template than it was created with will produce mismatched zone assignments — the codec does not validate `templateId` against the provided template. The returned state always has `lockedLayers: new Set()` regardless of what was in the save file; layer locks are not persisted.
+`deserialize` (`json-codec.ts`) rebuilds `GridState` from scratch via `createGrid(template)`, which ensures `zone` is always sourced from the template (not persisted). This means importing a save against a different template than it was created with will produce mismatched zone assignments — the codec does not validate `templateId` against the provided template. The returned state always has `lockedLayers: new Set()` regardless of what was in the save file; layer locks are not persisted.
 
-`parseTerrain` (`json-codec.ts:97`) includes a legacy entry in its decode map: `T: 'tri-NW'` alongside `'1': 'tri-NW'` (`json-codec.ts:104`). The encoder only ever writes numeric codes, so `T` is a dead read path for forward-compat with an older encoding.
+`parseTerrain` (`json-codec.ts`) includes a legacy entry in its decode map: `T: 'tri-NW'` alongside `'1': 'tri-NW'` (`json-codec.ts`). The encoder only ever writes numeric codes, so `T` is a dead read path for forward-compat with an older encoding.
 
 #### Autosave (`src/io/autosave.ts`)
 
-`scheduleAutosave` (`autosave.ts:13`) wraps `serialize` + `localStorage.setItem` behind a 2-second debounce. Errors (quota exceeded, serialisation failure) are silently swallowed. `loadAutosave` (`autosave.ts:32`) calls `deserialize` and returns `null` on any exception.
+`scheduleAutosave` (`autosave.ts`) wraps `serialize` + `localStorage.setItem` behind a 2-second debounce. Errors (quota exceeded, serialisation failure) are silently swallowed. `loadAutosave` (`autosave.ts`) calls `deserialize` and returns `null` on any exception.
 
 #### Image export (`src/io/image-export.ts`)
 
@@ -1009,7 +1010,7 @@ The token array is then RLE-compressed by `rleEncode` (`json-codec.ts:61`): cons
 
 #### Installation
 
-`installAPI` (`editor-api.ts:155`) is called once in `App.tsx:useEffect` (`App.tsx:279`). It creates an `EditorAPI` instance with two thunks — `getState` and `getExecutor` — that call `useEditorStore.getState()` at invocation time. This means the API always reflects the latest `GridState` and `CommandExecutor` even after `initMap`/`loadMap` replace them in the store. The API object itself lives at `window.__PETIT_API` for console use.
+`installAPI` (`editor-api.ts`) is called once in `App.tsx:useEffect` (`App.tsx`). It creates an `EditorAPI` instance with two thunks — `getState` and `getExecutor` — that call `useEditorStore.getState()` at invocation time. This means the API always reflects the latest `GridState` and `CommandExecutor` even after `initMap`/`loadMap` replace them in the store. The API object itself lives at `window.__PETIT_API` for console use.
 
 #### Read surface
 
@@ -1021,12 +1022,12 @@ The token array is then RLE-compressed by `rleEncode` (`json-codec.ts:61`): cons
 
 Two construction details stand out:
 
-- All four methods use `as unknown as Command` casts (`editor-api.ts:72`, `80`, `104`, `118`). The commands are constructed as plain object literals rather than properly typed interfaces, requiring the cast to satisfy TypeScript. For `PlaceObjectCommand` and `RemoveObjectCommand`, the required `loadValue` field (`types.ts:166`) is omitted entirely — the `as unknown as Command` cast papers over the type error silently.
-- `placeObject` (`editor-api.ts:85`) hard-codes `category: ObjectCategory.House` regardless of the placed item's catalog entry, and sets `elevation` from the terrain at the target cell. A bridge placed via the API will not have `spanLength` set, making it semantically incomplete (a bridge without `spanLength` would fail `waterSpan` trait validation in a pre-command rule before it even reaches placement).
+- All four methods use `as unknown as Command` casts (`editor-api.ts`, `80`, `104`, `118`). The commands are constructed as plain object literals rather than properly typed interfaces, requiring the cast to satisfy TypeScript. For `PlaceObjectCommand` and `RemoveObjectCommand`, the required `loadValue` field (`types.ts`) is omitted entirely — the `as unknown as Command` cast papers over the type error silently.
+- `placeObject` (`editor-api.ts`) builds its command through `objectPlacementCommand`, the same factory the placer tool uses, and sets `elevation` from the terrain at the target cell. A bridge placed via the API will not have `spanLength` set, making it semantically incomplete (a bridge without `spanLength` would fail `waterSpan` trait validation in a pre-command rule before it even reaches placement).
 
 #### Validation surface
 
-`validate` (`editor-api.ts:124`) calls `executor.getRegistry().validatePreCommand(cmd, state)` and wraps the result in a `ValidationResult`. This lets scripts dry-run commands, but it only covers pre-command rules — the full two-phase picture (including post-stroke rules that might revert the command) is not exposed.
+`validate` (`editor-api.ts`) calls `executor.getRegistry().validatePreCommand(cmd, state)` and wraps the result in a `ValidationResult`. This lets scripts dry-run commands, but it only covers pre-command rules — the full two-phase picture (including post-stroke rules that might revert the command) is not exposed.
 
 #### I/O surface
 
@@ -1047,7 +1048,7 @@ Two construction details stand out:
 
 ## Editor Interaction: Block Selection
 
-Selection is editor-interaction state rather than map data, but it drives several command paths, so it belongs here. Any block can be selected — a placed object or a terrain cell (mountain, water, or bare ground). Selection is a single reference (`Selection` in `state/store.ts`), either to an object (by id) or to a terrain cell (by coordinate); there is no separate object-only selection path.
+Selection is editor-interaction state rather than map data, but it drives several command paths, so it belongs here. Any block can be selected — a placed object or a terrain cell (mountain, water, or bare ground) — and there is no separate object-only selection path. The selection is a SET: `selection: BlockRef[]` in `state/store.ts`, ordered as the user built it, holding object references (by id) and terrain references (by coordinate). Only objects can be selected plurally; terrain is always a selection of one (see "Group operations" below).
 
 **When selection is active.** An unmodified click selects in drag mode: the Hand tool, or the Object Placer with no item chosen (`inSelectMode` in `canvas/interaction/selection-hover.ts`). During creation modes (brushing, painting, road brush, edge cutting) a click means "draw here", so selection is disabled to avoid ambiguity — and switching to one of them drops the selection, since it can no longer be made.
 
@@ -1068,3 +1069,15 @@ A selected block shows its layer number as a fallback for when the global show-n
 **Delete semantics.** Deleting a terrain block peels exactly one layer (mountain N → N−1, water → cleared to ground) — the same peel the eraser uses. Deleting an object removes it. Right-click → context menu deletes instantly; keyboard Delete/Backspace opens a confirm popover (Enter confirms, Esc cancels). Ground is undeletable: for a ground cell the context-menu Delete is greyed out and the Delete key does nothing (ground *water* is not ground — it peels to ground like any other water).
 
 Deselecting — including the implicit deselect after a delete, or leaving drag mode — clears the selection outline through a single subscription on the selection state, the inverse of drawing it.
+
+### Group operations
+
+Ctrl is a selection modifier and nothing else: Ctrl+click toggles a member, Ctrl+drag rubber-bands, Ctrl+A takes every object on the map. Moving is unmodified and does not care how many members there are — a drag arms only on a press over an ALREADY-selected object, which is the same rule single selection has always used, so extending it to N needs no new gesture. The band is a MACRO rectangle (`canvas/interaction/marquee.ts`): the drag's endpoints go through `ViewProjection.screenToMacro` and the resulting rect is both what is drawn and what selects, so the 2D and 3D behaviours are identical by construction and the rule is testable without a camera. An object is covered when its footprint INTERSECTS the rect, and candidates come from `object-index`'s `entriesNear`, never a scan of `state.objects`.
+
+Terrain is never multi-selected. Ctrl over bare ground begins a band instead of selecting the cell, and a band collects objects only; a set of terrain cells has no group operation the brushes do not already do better.
+
+`PlacedObject.locked` is a tag on an object, not a kind of object. A locked object (today only the central plaza) is selectable, joins a group, and draws a ring like anything else; what it cannot do is change, and V-LOCK-02 refuses the modification by name. Hit-testing therefore must not filter locked objects out — doing so made the same map answer the same click two different ways in the two views.
+
+Whether a group operation refuses wholly or applies partially follows from whether a partial result is coherent, and has nothing to do with which member is locked. **Move and rotate are geometric**, so a partial application would silently deform the arrangement being manipulated and leave an undo restoring something the user never saw: if any member's destination is illegal, or any member is locked or cannot turn, the whole operation is refused and the blocker is named. For a move the refusal is visible before release, as the drag ghost tints invalid. **Delete applies to what it can and reports the rest**, since the survivors are exactly where they were: Ctrl+A then Delete clears the map and keeps the plaza, with a message saying so. Both run through `ui/chrome/group-actions.ts` (the plural sibling of `object-actions.ts`) as one stroke group and one undo entry, so the context menu, the delete popover and the keyboard command share one implementation. Membership is re-resolved from ids on every operation (`groupMembers`), because nothing validates a selection centrally and another path may have removed a member since.
+
+A group rotation is ONE rigid body turning about ONE point: every member's position rotates about the selection's macro bounding-box centre, and each rotatable member's own facing advances by the same quarter turn. A member that cannot turn but is SQUARE is carried — its position travels, its facing does not — because `rotatable: false` marks an item with no meaningful facing, and refusing on that flag would let one flower kill nearly every real selection while protecting nothing. A member that cannot turn and is NOT square refuses the whole rotation: it cannot swap its extent, so the bounding box changes shape from turn to turn and the arrangement walks away from where it started. The animation contract lives in `canvas/group-arc.ts` and is shared by both views: what eases is the ANGLE about the pivot with the radius held (a straight line cuts the chord, visibly contracting the arrangement mid-turn), the whole turn is one spec on one clock rather than a signal per member, and offsets are measured FROM the already-committed rest pose, since the commands apply instantly and a tween can only land where the map already put the object.

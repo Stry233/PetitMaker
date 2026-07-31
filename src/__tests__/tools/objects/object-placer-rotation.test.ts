@@ -9,7 +9,7 @@ import { ObjectPlacerTool, planPlacementGhost } from '../../../tools/objects/obj
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
-import { ObjectCategory, TerrainType, type EditorEvents, type MacroCoord } from '../../../core/model/types';
+import { TerrainType, type EditorEvents, type MacroCoord } from '../../../core/model/types';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
 import { useEditorStore } from '../../../state/store';
@@ -144,7 +144,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     const ex = exec(state);
     const obj = {
       id: 'sel-1', catalogId: HOUSE, position: { x: 5, y: 5 }, rotation: 0 as const,
-      category: ObjectCategory.House, elevation: 0,
+      elevation: 0,
     };
     state.objects.set(obj.id, obj);
     useEditorStore.setState({

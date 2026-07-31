@@ -4,10 +4,10 @@
  * (mirrors the probes in design-quality.test.ts). Pure reads — no commands,
  * no mutation. Scores are 0-10 with actionable hints for the LLM.
  */
-import { CellZone, ItemCategory, ObjectCategory, TerrainType, type GridState } from '../core/model/types';
+import { CellZone, ItemCategory, TerrainType, type GridState } from '../core/model/types';
 import { objectRect } from '../state/object-geometry';
 import { NEIGHBORS4 } from '../core/model/grid-model';
-import { getPlaceableByCategory } from '../state/catalog';
+import { categoryOf, getPlaceableByCategory, isDecoration } from '../state/catalog';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { computeLockedCorners } from '../core/edge-cut/trim-lock';
 import { detectWaterfalls } from '../core/model/waterfall-geometry';
@@ -28,12 +28,11 @@ const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
 function connectivity(state: GridState): QualityDimension {
   const { width, height } = state.template;
   // Crossing footprints (+1 apron) let the walk change elevation or cross water.
-  // Bridges and ramps use ObjectCategory.House (same as buildings/roads) — match
-  // the exact filter used in design-quality.test.ts line 98-99.
   const cross = new Set<number>();
   for (const o of state.objects.values()) {
-    if (o.locked || o.category !== ObjectCategory.House) continue;
-    if (!o.catalogId.includes('bridge') && !o.catalogId.includes('ramp')) continue;
+    if (o.locked) continue;
+    const cat = categoryOf(o);
+    if (cat !== ItemCategory.Bridge && cat !== ItemCategory.Ramp) continue;
     const r = objectRect(o);
     for (let y = Math.floor(r.y) - 1; y <= r.y + r.h; y++)
       for (let x = Math.floor(r.x) - 1; x <= r.x + r.w; x++)
@@ -253,12 +252,11 @@ function buildings(state: GridState): QualityDimension {
 
 function decoration(state: GridState): QualityDimension {
   const { width, height } = state.template;
-  // Count flora and trees per quadrant. ObjectCategory.Tree = 3, ObjectCategory.Flora = 4.
+  // Count flora and trees per quadrant.
   const quad = [0, 0, 0, 0];
   let total = 0;
   for (const o of state.objects.values()) {
-    if (o.locked) continue;
-    if (o.category !== ObjectCategory.Tree && o.category !== ObjectCategory.Flora) continue;
+    if (o.locked || !isDecoration(o)) continue;
     total++;
     const qi = (o.position.y >= height / 2 ? 2 : 0) + (o.position.x >= width / 2 ? 1 : 0);
     quad[qi] = (quad[qi] ?? 0) + 1;
@@ -273,18 +271,12 @@ function decoration(state: GridState): QualityDimension {
 }
 
 function roads(state: GridState): QualityDimension {
-  // Roads use ObjectCategory.House (same as buildings) but have catalogIds starting with "road-".
-  // Buildings also use ObjectCategory.House but don't start with "road-".
   const roadCells = new Set<string>();
   const buildingsArr = [...state.objects.values()].filter(
-    (o) => !o.locked && o.category === ObjectCategory.House
-      && !o.catalogId.includes('bridge') && !o.catalogId.includes('ramp')
-      && !o.catalogId.startsWith('road-'),
+    (o) => !o.locked && categoryOf(o) === ItemCategory.Building,
   );
   for (const o of state.objects.values()) {
-    if (o.category === ObjectCategory.House && o.catalogId.startsWith('road-')) {
-      roadCells.add(`${o.position.x},${o.position.y}`);
-    }
+    if (categoryOf(o) === ItemCategory.Road) roadCells.add(`${o.position.x},${o.position.y}`);
   }
   if (buildingsArr.length === 0) return { score: 0, hints: ['No buildings yet, so no road network to judge.'] };
   let connected = 0;

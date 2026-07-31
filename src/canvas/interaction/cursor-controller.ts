@@ -6,7 +6,7 @@
  * resolved value changed. Both canvases register their container here.
  */
 import { cursorCss } from '../../ui/cursors/cursor-css';
-import { FORBIDDABLE, type CursorId } from '../../ui/cursors/cursor-spec';
+import { FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
 
 /** What the pointer is doing, when that outranks the tool. */
 export type DragKind = 'none' | 'pan' | 'orbit';

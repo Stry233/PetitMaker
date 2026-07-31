@@ -23,7 +23,6 @@ import {
   CellZone,
   ItemCategory,
   TerrainType,
-  objectCategory,
   type Command,
   type Corners,
   type CornerTrim,
@@ -87,7 +86,7 @@ function handEditSmall(): GridState {
     const item = floraItems[i % floraItems.length]!;
     const x = 15 + (i % 5), y = 15 + Math.floor(i / 5);
     const id = `hand-o${i}`;
-    state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, category: objectCategory(item.category), elevation: 0 });
+    state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, elevation: 0 });
   }
   return state;
 }
@@ -122,7 +121,7 @@ function generatedThenEdited(): GridState {
       if ([...state.objects.values()].some((o) => o.position.x === x && o.position.y === y)) continue;
       const item = floraItems[added % floraItems.length]!;
       const id = `edit-o${added}`;
-      state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, category: objectCategory(item.category), elevation: 0 });
+      state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, elevation: 0 });
       added++;
     }
   }
@@ -216,7 +215,7 @@ export function adversarialState(n: number, seed: number): GridState {
       if (cell.zone !== CellZone.Grass || cell.terrain) continue;
       const item = floraItems[rng.int(floraItems.length)]!;
       const id = `adv-o${placed}`;
-      state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, category: objectCategory(item.category), elevation: 0 });
+      state.objects.set(id, { id, catalogId: item.id, position: { x, y }, rotation: 0, elevation: 0 });
       placed++;
     }
   }

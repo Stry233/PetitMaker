@@ -37,7 +37,7 @@ function gen(mode: 'earth' | 'water' | 'mixed', seed: number, relief: number, la
     water.push(c && c.type === TerrainType.Water ? c.elevation : -1);
   }
   // `kind` is the catalog ItemCategory (building/road/bridge/ramp/tree/flora/facility) — more
-  // informative than ObjectCategory, which lumps road/bridge/ramp under House. Drives the render color.
+  // informative than which lumps road/bridge/ramp under House. Drives the render color.
   const objects = [...state.objects.values()]
     .filter((o) => !o.locked)
     .map((o) => ({ kind: getCatalogItem(o.catalogId)?.category ?? 'building', e: o.elevation, ...objectRect(o) }));

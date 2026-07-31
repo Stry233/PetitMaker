@@ -13,7 +13,7 @@ import { useEffect } from 'react';
 import { refreshCursor } from '../../canvas/interaction/cursor-controller';
 import { useEditorStore } from '../../state/store';
 import { cursorCss, setSystemCursors } from './cursor-css';
-import { DOM_CURSORS, type CursorId, type DomCursorId } from './cursor-spec';
+import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../core/runtime/cursor-spec';
 
 /** Write the properties. Idempotent, and safe to call before React mounts. */
 export function applyCursorVars(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): void {

@@ -9,12 +9,13 @@ import { I18nProvider } from '../../i18n/context';
 
 vi.mock('../../io/image-export', async (orig) => ({ ...(await orig<typeof import('../../io/image-export')>()), downloadJSON: vi.fn() }));
 import { downloadJSON } from '../../io/image-export';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 function mount() {
   const s = makeState(8, 8);
   const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry());
-  setStoreState({ gridState: s, commandExecutor: e, exportJsonModalOpen: true, locale: 'en' });
+  setStoreState({ gridState: s, commandExecutor: e, locale: 'en' });
+  setStoreModal('exportJson');
 }
 const W = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 

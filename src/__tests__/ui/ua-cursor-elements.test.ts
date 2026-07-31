@@ -28,7 +28,7 @@
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
-import { DOM_CURSORS, type DomCursorId } from '../../ui/cursors/cursor-spec';
+import { DOM_CURSORS, type DomCursorId } from '../../core/runtime/cursor-spec';
 
 declare const process: { cwd(): string };
 

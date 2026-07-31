@@ -27,6 +27,10 @@ import { discardStoredSession } from './agent/session';
 import { ToastContainer } from './ui/chrome/Toast';
 import { DevBuildNotice } from './ui/chrome/DevBuildNotice';
 import { PortraitGuard } from './ui/chrome/PortraitGuard';
+import { TourOverlay } from './ui/chrome/tour/TourOverlay';
+import { TourDoneModal } from './ui/chrome/tour/TourDoneModal';
+import { useFirstLaunchTour } from './ui/chrome/tour/use-tour';
+import type { TourStep } from './ui/chrome/tour/steps';
 import { LegalBar } from './legal/LegalBar';
 import { ContextMenu } from './ui/chrome/ContextMenu';
 import { DeletePopover } from './ui/chrome/DeletePopover';
@@ -45,11 +49,11 @@ import { useRestoreFade } from './ui/hooks/useRestoreFade';
 import { LayerPanelHost } from './ui/menu/LayerPanelHost';
 import { PlacementPanel } from './ui/menu/PlacementPanel';
 
-import { scheduleAutosave, readAutosave, type RestoredAutosave } from './io/autosave';
+import { scheduleAutosave, readRestorableAutosave, type RestoredAutosave } from './io/autosave';
 import { installAPI } from './api/editor-api';
 
 import { ToolType } from './core/model/types';
-import type { MacroCoord, GridState } from './core/model/types';
+import type { MacroCoord } from './core/model/types';
 import type { PersistedCamera } from './io/save-format';
 // safe in the main bundle: the agent store only pulls provider METADATA (defaults.ts), not the SDKs
 import { useAgentSession } from './agent/session';
@@ -64,29 +68,18 @@ const Preview3D = lazy(() => import('./canvas/map3d/Preview3D').then((m) => ({ d
 // changes underneath you". Editor3DCanvas's half of the crossfade matches it.
 const VIEW_FADE = '0.35s';
 
-/** Whether an autosaved map is worth offering to restore: it has any terrain or
- *  any non-locked object. The plaza is auto-recreated and locked, so an untouched
- *  map reads as empty and we skip the prompt. */
-function mapHasContent(state: GridState): boolean {
-  for (const row of state.cells) {
-    for (const cell of row) if (cell?.terrain) return true;
-  }
-  for (const obj of state.objects.values()) {
-    if (!obj.locked) return true;
-  }
-  return false;
-}
-
 export default function App() {
   useCursorVars(); // publish the DOM cursors to <html>, which every non-canvas surface reads
 
   /* ── Modal state ──────────────────────────────────────── */
-  const [showHelp, setShowHelp] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
-  const [showNewProject, setShowNewProject] = useState(false);
-  // A valid autosave awaiting the user's resume/start-fresh choice (startup only).
-  const [restoreCandidate, setRestoreCandidate] = useState<RestoredAutosave | null>(null);
+  // The autosave, read ONCE for the whole startup: the restore offer and the first-launch tour's
+  // "has this browser used the editor before" check are the same question of the same save, and a
+  // full parse + deserialize of a 169x140 map is not something a cold start should do twice.
+  // PixiCanvas always opens a FRESH map, so this never blocks; a blank/corrupt/absent save is null.
+  const [startupSave] = useState<RestoredAutosave | null>(readRestorableAutosave);
+  // The same save while it awaits the user's resume/start-fresh choice. Held in memory, so an
+  // autosave overwrite by the fresh map cannot lose it.
+  const [restoreCandidate, setRestoreCandidate] = useState<RestoredAutosave | null>(startupSave);
   const [phoneHover, setPhoneHover] = useState(false); // hovering the collapsed phone → hint the restore bubble will dismiss
   // A restored camera parked between "loadMap committed" and "the views have re-applied their own
   // camera reset" (2D's fitToMap runs in PixiCanvas's own gridState effect) — see the apply effect
@@ -137,11 +130,12 @@ export default function App() {
   } = useMenuNavigation({
     setSelectingRegion,
     setGenRegion,
-    setShowNewProject,
     handleImage,
     handleExport,
     handleImport,
   });
+  const portraitBlocked = useEditorStore((s) => s.portraitBlocked);
+  useFirstLaunchTour(portraitBlocked, startupSave !== null);
   const { generating, onGenerate, onClear } = useGenerateRun({
     menuView,
     genRegion,
@@ -164,8 +158,8 @@ export default function App() {
   const locale = useEditorStore((s) => s.locale);
   const showGrid = useEditorStore((s) => s.showGrid);
   const showChunkBounds = useEditorStore((s) => s.showChunkBounds);
-  const preview3DOpen = useEditorStore((s) => s.preview3DOpen);
-  const setPreview3DOpen = useEditorStore((s) => s.setPreview3DOpen);
+  const modals = useEditorStore((s) => s.modals);
+  const setModal = useEditorStore((s) => s.setModal);
   const viewMode = useEditorStore((s) => s.viewMode);
   const gridState = useEditorStore((s) => s.gridState);
   const setActiveTool = useEditorStore((s) => s.setActiveTool);
@@ -227,15 +221,6 @@ export default function App() {
     settleRestoreFade(gridState);
   }, [gridState, settleRestoreFade]);
 
-  /* ── Startup: offer to restore the last autosaved session (runs once). ── */
-  useEffect(() => {
-    // PixiCanvas always opens a FRESH map, so this never blocks. If a content-ful autosave exists,
-    // offer to restore it via a bubble from the phone (held in memory, so an autosave overwrite by the
-    // fresh map can't lose it). A blank/corrupt/absent save → no offer; the fresh map just stands.
-    const candidate = readAutosave();
-    if (candidate && mapHasContent(candidate.state)) setRestoreCandidate(candidate);
-  }, []);
-
   // Region-selection brush (Generate) — state machine lives in its own hook.
   const { clearRegion: clearRegionBrush, regionUndo, regionRedo } = useRegionBrush(selectingRegion, genRegion, setGenRegion);
 
@@ -252,7 +237,7 @@ export default function App() {
   }, []);
 
   /* ── Editor keyboard shortcuts (the full keymap lives in one hook) ───── */
-  useEditorShortcuts({ openBuild, handleTileAction, onHelp: () => setShowHelp(true), regionUndo, regionRedo });
+  useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo });
 
   // Suppress the browser's native right-click menu app-wide (copy image / link
   // etc.) so only our own context menu shows. Text fields keep theirs (copy/paste).
@@ -273,7 +258,7 @@ export default function App() {
       initMap(getMapTemplate(templateId), createDefaultRegistry());
       setDesignMode('hand');
       setActiveTool(designModeToToolType('hand'));
-      setShowNewProject(false);
+      setModal('newProject', false);
     },
     [initMap, setActiveTool],
   );
@@ -300,6 +285,19 @@ export default function App() {
     const fn = petitWindow().__petitFitMap;
     fn?.();
   }, []);
+
+  // The card's state is part of the choreography: the app opens collapsed, the step that explains
+  // the tiles opens it, and the layers step closes it again, so the tour ends where it began and
+  // the visitor gets to open it themselves.
+  // `onStepEnter` fires from TourOverlay's layout effect, and a setState from there is flushed
+  // synchronously inside the same task as the commit, while the overlay's measurement waits for a
+  // rAF that cannot run until that task yields. So BOTH of these must stay direct, synchronous
+  // state sets (never startTransition/setTimeout/a promise) or the step's target is not in the DOM
+  // to be measured.
+  const handleTourStep = useCallback((step: TourStep) => {
+    if (step.menu === 'expand') setMenuCollapsed(false);
+    if (step.menu === 'collapse') setMenuCollapsed(true);
+  }, [setMenuCollapsed]);
 
   /* ── Render ───────────────────────────────────────────── */
 
@@ -359,8 +357,8 @@ export default function App() {
           load={0}
           loadMax={10000}
           onAction={handleTileAction}
-          onSettings={() => setShowSettings(true)}
-          onHelp={() => setShowHelp(true)}
+          onSettings={() => setModal('settings', true)}
+          onHelp={() => setModal('help', true)}
           generateBusy={generating || agentRunning}
         />
         <AnimatePresence>
@@ -473,19 +471,19 @@ export default function App() {
       )}
 
       {/* Modals */}
-      {preview3DOpen && (
+      {modals.preview3d && (
         <Suspense fallback={null}>
-          <Preview3D onClose={() => setPreview3DOpen(false)} />
+          <Preview3D onClose={() => setModal('preview3d', false)} />
         </Suspense>
       )}
       {/* Help/Settings/About/NewProject are all kept mounted and driven by
           `open` so each ModalShell animates the card enter AND exit as one
           unit (a wholesale unmount, `{showX && <XModal/>}`, skipped the exit
           animation). About opens over Settings; closing returns to Settings. */}
-      <KeyboardModal open={showHelp} onClose={() => setShowHelp(false)} />
+      <KeyboardModal open={modals.help} onClose={() => setModal('help', false)} />
 
       <SettingsModal
-        open={showSettings}
+        open={modals.settings}
         locale={locale}
         showGrid={showGrid}
         showChunks={showChunkBounds}
@@ -496,16 +494,16 @@ export default function App() {
         onShowChunksChange={setShowChunkBounds}
         onMotionPrefChange={setMotionPref}
         onSystemCursorsChange={setSystemCursors}
-        onAbout={() => setShowAbout(true)}
-        onClose={() => setShowSettings(false)}
+        onAbout={() => setModal('about', true)}
+        onClose={() => setModal('settings', false)}
       />
 
-      <AboutModal open={showAbout} onClose={() => setShowAbout(false)} />
+      <AboutModal open={modals.about} onClose={() => setModal('about', false)} />
 
       <NewProjectModal
-        open={showNewProject}
+        open={modals.newProject}
         onSelect={handleNewProject}
-        onClose={() => setShowNewProject(false)}
+        onClose={() => setModal('newProject', false)}
       />
 
       <ExportModal />
@@ -539,6 +537,8 @@ export default function App() {
       <LegalBar />
       <PortraitGuard />
       <SelectionHandles />
+      <TourOverlay onStepEnter={handleTourStep} />
+      <TourDoneModal />
       <ContextMenu />
       <DeletePopover />
     </I18nProvider>

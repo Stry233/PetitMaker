@@ -169,7 +169,7 @@ export function PlacementPanel({ category, selectedItemId, onSelectItem }: Props
                 ? <img src={iconUrl(item.icon)} alt="" draggable={false} style={{ width: cols === 2 ? px(120) : px(128), height: cols === 2 ? px(120) : px(128), objectFit: 'contain' }} />
                 : item.color
                   ? <span style={{ width: cols === 2 ? px(56) : px(80), height: cols === 2 ? px(56) : px(80), borderRadius: px(12), background: item.color, border: `2px solid ${colors.inkBorder}` }} />
-                  : <span style={{ fontSize: pxf(cols === 2 ? 64 : 92), lineHeight: 1 }}>{item.emoji}</span>}
+                  : null}
               <span style={{ fontFamily: font.family, fontWeight: fw(900), fontSize: pxf(26), color: C.inkText, lineHeight: 1.35, maxWidth: '100%', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {localizedName(item.name, locale)}
               </span>

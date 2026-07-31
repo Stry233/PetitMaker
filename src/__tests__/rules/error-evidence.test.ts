@@ -12,7 +12,7 @@ import { placementOverlapRule } from '../../rules/placement-overlap';
 import { placementMaxCountRule } from '../../rules/placement-max-count';
 import { lockedObjectRule } from '../../rules/locked-object';
 import { chunkLoadViolations } from '../../rules/chunk-load';
-import { CommandType, ItemCategory, ObjectCategory, TerrainType } from '../../core/model/types';
+import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import type { PaintTerrainCommand } from '../../core/model/types';
 import type { MacroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand } from '../../core/model/types';
 import { makeState, setTerrain } from './_helpers';
@@ -20,40 +20,40 @@ import { registerCatalogItem } from '../../state/catalog';
 
 registerCatalogItem({
   id: 'ev-house', category: ItemCategory.Building, name: { en: 'Evidence House' },
-  emoji: '🏠', width: 2, height: 2, loadValue: 0, rotatable: true, placementMode: 'point',
+  width: 2, height: 2, loadValue: 0, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
 });
 registerCatalogItem({
   id: 'ev-pier', category: ItemCategory.Facility, name: { en: 'Evidence Pier' },
-  emoji: '🧱', width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'noFloat' }],
 });
 registerCatalogItem({
   id: 'ev-path', category: ItemCategory.Road, name: { en: 'Evidence Path' },
-  emoji: '🛣️', width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'surfaceCoating' }],
 });
 registerCatalogItem({
   id: 'ev-tree', category: ItemCategory.Tree, name: { en: 'Evidence Tree' },
-  emoji: '🌳', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'exclusionRadius', radius: 2 }],
 });
 registerCatalogItem({
   id: 'ev-unique', category: ItemCategory.Building, name: { en: 'Evidence Unique' },
-  emoji: '🏛️', width: 2, height: 1, loadValue: 0, maxCount: 1, rotatable: true, placementMode: 'point',
+  width: 2, height: 1, loadValue: 0, maxCount: 1, rotatable: true, placementMode: 'point',
   traits: [],
 });
 
 function place(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: 'candidate', catalogId, position: { x, y }, rotation, category: ObjectCategory.House, elevation: 0 },
+    object: { id: 'candidate', catalogId, position: { x, y }, rotation, elevation: 0 },
     loadValue: 0,
   };
 }
 
 function existing(catalogId: string, id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId, position: { x, y }, rotation: 0, category: ObjectCategory.House, elevation: 0 };
+  return { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 const has = (cells: MacroCoord[], x: number, y: number): boolean =>
@@ -186,7 +186,7 @@ describe('evidence cells: non-spatial rules use the whole footprint', () => {
     const state = makeState();
     const plaza: PlacedObject = {
       id: '__plaza__', catalogId: '__plaza__', position: { x: 3, y: 3 }, width: 2, height: 2,
-      rotation: 0, category: ObjectCategory.Facility, elevation: 0, locked: true,
+      rotation: 0, elevation: 0, locked: true,
     };
     state.objects.set(plaza.id, plaza);
     const cmd: RemoveObjectCommand = {
@@ -203,7 +203,7 @@ describe('evidence cells: non-spatial rules use the whole footprint', () => {
     const state = makeState();
     const candidate: PlacedObject = {
       id: 'c', catalogId: 'ev-house', position: { x: 5, y: 5 }, rotation: 0,
-      category: ObjectCategory.House, elevation: 0,
+      elevation: 0,
     };
     const errors = chunkLoadViolations(state, candidate, 999_999);
     expect(errors).toHaveLength(1);

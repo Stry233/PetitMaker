@@ -3,7 +3,7 @@ import {
   CANONICAL_ROAD_STATES, canonicalToActual, classifyRoadKind, detectRoadConn,
 } from '../../core/edge-cut/road-cut-states';
 import { validateCut } from '../../core/edge-cut/cut-validator';
-import { ObjectCategory, type Corners, type PlacedObject } from '../../core/model/types';
+import { type Corners, type PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
 describe('classifyRoadKind', () => {
@@ -36,7 +36,7 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
   function addRoad(state: any, x: number, y: number, corners?: Corners): PlacedObject {
     const road: PlacedObject = {
       id: `r-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
       ...(corners ? { corners } : {}),
     } as PlacedObject;
     state.objects.set(road.id, road);
