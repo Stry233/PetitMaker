@@ -5,14 +5,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import { chunkNumberCells } from '../../canvas/map2d/layers/number-cells';
-import { ItemCategory, ObjectCategory, TerrainType } from '../../core/model/types';
+import { ItemCategory, TerrainType } from '../../core/model/types';
 import type { PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { registerCatalogItem } from '../../state/catalog';
 
 registerCatalogItem({
   id: 'num-house', category: ItemCategory.Building, name: { en: 'Number House' },
-  emoji: '🏠', width: 2, height: 2, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 2, height: 2, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
@@ -34,7 +34,7 @@ describe('chunkNumberCells', () => {
     const state = makeState(20, 20);
     const house: PlacedObject = {
       id: 'h', catalogId: 'num-house', position: { x: 4, y: 4 },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
     };
     state.objects.set(house.id, house);
     const cells = chunkNumberCells(state, 0, 0, new Set());

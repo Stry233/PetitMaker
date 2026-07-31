@@ -150,9 +150,10 @@ function groupDragIds(sel: readonly BlockRef[], anchorId: string): string[] | nu
 }
 
 /** Enough of a pointer position to resolve a hover/target check. Real PointerEvents satisfy this
- *  structurally; `usePointerInteraction`'s viewport-changed resampler constructs one from the last
- *  known screen position for a pointer that never moved but whose CELL did (the camera moved under
- *  it), since there is no real event to read at that moment. */
+ *  structurally; `usePointerInteraction`'s resampler constructs one from the last known screen
+ *  position for a pointer that never moved but whose CELL (or ghost orientation) did — the camera
+ *  panned under it, or the armed item's rotation flipped — since there is no real event to read at
+ *  that moment. */
 type PointerSample = { clientX: number; clientY: number; pointerType: string; target: EventTarget | null };
 
 /**
@@ -221,6 +222,12 @@ export function usePointerInteraction(
     let lastPointerX = 0;
     let lastPointerY = 0;
     let pointerKnown = false;
+    // Guards the resampler below against re-entering itself: the gesture-flag guard enumerates
+    // every gesture that pans through ITS OWN live pointermove, but a synchronous camera-transform
+    // emitter that pans through none of them (the 2D Hand tool drags the camera from inside
+    // ToolManager, setting no flag here) would otherwise feed handlePointerMove back into the same
+    // 'viewport-changed' emission it just caused, recursing until the call stack overflows.
+    let resampling = false;
     const DRAG_THRESHOLD = 3;
     // Touch: active points + pinch math live in TouchPinch; `touchNavigating` flips on when a
     // second finger lands and stays on until every finger lifts (fingers navigate, they never
@@ -295,7 +302,7 @@ export function usePointerInteraction(
 
     const el = container;
     // Takes any event-like value with a `target` (a real DOM Event, or a PointerSample built for the
-    // viewport-changed resampler below) — both need the same "is this actually over MY canvas" test.
+    // resampler below) — both need the same "is this actually over MY canvas" test.
     function isCanvasTarget(e: { target: EventTarget | null }): boolean {
       const target = e.target;
       if (!(target instanceof Node)) return false; // window/document targets are never the canvas
@@ -353,12 +360,13 @@ export function usePointerInteraction(
       pinchZoomAt(e);
     };
 
-    const onPointerDown = (e: PointerEvent) => {
-      if (!isCanvasTarget(e)) return;
+    let regionBrushing = false;
+    let spacePanning = false;
 
-      // Touch has no meaningful "position" once the finger lifts, so it never feeds the resampler.
-      if (e.pointerType !== 'touch') { lastPointerX = e.clientX; lastPointerY = e.clientY; pointerKnown = true; }
-
+    /** A touch press: a second finger turns the gesture into camera navigation and cancels
+     *  whatever the first finger started; a single finger falls through to the tool/select path
+     *  with an undo watermark, so a later pinch can take back anything it painted. */
+    const touchDown = (e: PointerEvent): boolean => {
       if (e.pointerType === 'touch') {
         const count = touchPinch.down(e.pointerId, e.clientX, e.clientY);
         if (count === 2) {
@@ -373,15 +381,20 @@ export function usePointerInteraction(
           view()?.overlay.clearGhost();
           if (regionBrushing) { regionBrushing = false; petitWindow().__petitRegionBrushDone?.(); }
           touchNavigating = true;
-          return;
+          return true;
         }
-        if (count > 2) { e.preventDefault(); return; } // extra fingers join the navigation gesture
-        if (touchNavigating) { e.preventDefault(); return; } // still mid-gesture (shouldn't happen: count===1 here)
+        if (count > 2) { e.preventDefault(); return true; } // extra fingers join the navigation gesture
+        if (touchNavigating) { e.preventDefault(); return true; } // still mid-gesture (shouldn't happen: count===1 here)
         // Single finger falls through to the normal (tool/select) path; take the undo watermark
         // so a pinch can cleanly cancel anything this finger paints.
         touchUndoStart = useEditorStore.getState().commandExecutor?.getUndoStackSize() ?? -1;
       }
 
+      return false;
+    };
+
+    /** Right or middle press: arm camera navigation. A tap opens the context menu on release. */
+    const orbitDown = (e: PointerEvent): boolean => {
       if (e.button === 2 || e.button === 1) {
         e.preventDefault();
         // MIDDLE is a second RIGHT: both navigate the camera, so a mouse without a
@@ -396,8 +409,110 @@ export function usePointerInteraction(
         panLastX = e.clientX;
         panLastY = e.clientY;
         setCursorDrag(view()?.camera.orbit ? 'orbit' : 'pan');
-        return;
+        return true;
       }
+      return false;
+    };
+
+    /** What a left press landed on, resolved once and shared by both selection paths. */
+    interface PressFacts {
+      store: ReturnType<typeof useEditorStore.getState>;
+      activeDown: ReturnType<typeof getActiveView>;
+      ctrl: boolean;
+      armed: boolean;
+      brushCtrl: boolean;
+      inDragMode: boolean;
+      pressMacro: MacroCoord | null;
+      pressHit: ReturnType<typeof objectUnderPointer> | null;
+    }
+
+    /** Apply the selection a left press implies, given what it landed on.
+     *
+     *  Returns true when the press was CONSUMED by the selection: an armed item selected the
+     *  object in the way instead of placing on it, so the tool must not also see this press.
+     *  Every other path leaves the press live — a plain click that selects still falls through to
+     *  the Hand tool, which is what lets the same drag pan the camera. */
+    const applySelectionPress = (e: PointerEvent, f: PressFacts): boolean => {
+      const { store, activeDown, ctrl, armed, brushCtrl, inDragMode, pressMacro, pressHit } = f;
+      if ((inDragMode || (armed && ctrl) || brushCtrl) && store.gridState && activeDown && pressMacro) {
+        const macro = pressMacro;
+        const hitObj = pressHit;
+        const sel = singleSelection(store.selection);
+        if (hitObj) {
+          const block = { kind: 'object', id: hitObj.id } as const;
+          if (ctrl) {
+            // Ctrl+click toggles membership and never arms a drag (a held Ctrl+drag starts
+            // the rubber band instead), so moving is reachable only through an unmodified press.
+            // A brush tool leaves terrain-editing mode BEFORE the write (see
+            // leaveBrushForSelection): selection starts empty in brush mode, so this toggle is
+            // always an ADD, guaranteed to leave the selection non-empty.
+            leaveBrushForSelection();
+            store.toggleSelection(block);
+          } else {
+            // Drag-to-move arms only on a press over an object that is already selected; a
+            // press on any other object selects it and then falls through to the Hand tool,
+            // so the drag pans the camera. MEMBERSHIP, not identity: with a plural selection
+            // the press picks the group up by whichever member it landed on.
+            const alreadySelected = store.selection.some((r) => r.kind === 'object' && r.id === hitObj.id);
+            if (alreadySelected) {
+              // Re-clicking a selected object arms the tap behaviour (deselect for a
+              // lone member, collapse to it for a group); a drag still moves.
+              if (store.selection.length > 1) collapseToOnUp = hitObj.id;
+              else toggleOffOnUp = true;
+            } else {
+              store.setSelection([block]);
+            }
+            if (alreadySelected && isDraggableObject(hitObj)) {
+              dragObjId = hitObj.id;
+              dragStartX = e.clientX;
+              dragStartY = e.clientY;
+              grabOffsetX = hitObj.position.x - macro.x;
+              grabOffsetY = hitObj.position.y - macro.y;
+              lastDragGhostKey = null;
+            }
+          }
+        } else if (ctrl) {
+          // Ctrl press on bare ground leaves the selection untouched: terrain never joins a
+          // group, and the rubber-band DRAG (not this press) is what starts a marquee.
+        } else if (sel?.kind === 'terrain' && sel.x === macro.x && sel.y === macro.y) {
+          // Re-clicking the selected terrain cell deselects it on pointer-up.
+          toggleOffOnUp = true;
+        } else {
+          // Select the terrain/ground cell
+          const block = { kind: 'terrain', x: macro.x, y: macro.y } as const;
+          store.setSelection([block]);
+        }
+        // Arm the band on ANY Ctrl-held press here, hit or not: a drag from an object is still
+        // a band (Ctrl never moves anything, so dragObjId is never set in this branch).
+        if (ctrl) {
+          bandArmed = true;
+          bandStartMacro = macro;
+          bandStartX = e.clientX;
+          bandStartY = e.clientY;
+          // Neither the armed item's placement preview nor a brush's paint-preview ghost has
+          // anything left to preview: this gesture selects.
+          if (armed || brushCtrl) activeDown.overlay.clearGhost();
+        }
+      } else if (armed && store.gridState && activeDown && pressMacro) {
+        // An item is armed and Ctrl is not held: rather than attempt a placement that would be
+        // refused, a press on the EXISTING object in the way selects it (so it can be rotated or
+        // deleted from the handles) and leaves the item armed to carry on placing.
+        const tool = tools()?.getActiveTool();
+        const ctx = tools()?.getContext();
+        const placementAllowed = !tool?.canActAt || !ctx || tool.canActAt(pressMacro, ctx);
+        if (pressHit && armedPressSelects(
+          store.activeTool, store.selectedItemId, store.selectingRegion, ctrl, pressHit, placementAllowed,
+        )) {
+          const block = { kind: 'object', id: pressHit.id } as const;
+          store.setSelection([block]);
+          return true;
+        }
+      }
+      return false;
+    };
+
+    /** A left press: pan with Space, paint a region, resolve the selection, or start a tool stroke. */
+    const leftDown = (e: PointerEvent): void => {
       // Left button
       if (e.button === 0) {
         e.preventDefault();
@@ -430,9 +545,6 @@ export function usePointerInteraction(
         store.setDeletePopover(null);
         toggleOffOnUp = false;
         collapseToOnUp = null;
-        // True once this press has SELECTED the object under an armed item instead of placing:
-        // the press must not also reach the tool. Lives and dies inside this press.
-        let armedSelected = false;
         const ctrl = isMultiSelectHeld();
         const armed = store.activeTool === ToolType.ObjectPlacer && !!store.selectedItemId;
         // A build brush (terrain/eraser/edge-cut) is normally paint-only, but Ctrl reaches the
@@ -451,84 +563,9 @@ export function usePointerInteraction(
               store.gridState, pressMacro, activeDown?.projection.pickObject?.(e.clientX, e.clientY) ?? undefined,
             )
           : null;
-        if ((inDragMode || (armed && ctrl) || brushCtrl) && store.gridState && activeDown && pressMacro) {
-          const macro = pressMacro;
-          const hitObj = pressHit;
-          const sel = singleSelection(store.selection);
-          if (hitObj) {
-            const block = { kind: 'object', id: hitObj.id } as const;
-            if (ctrl) {
-              // Ctrl+click toggles membership and never arms a drag (a held Ctrl+drag starts
-              // the rubber band instead), so moving is reachable only through an unmodified press.
-              // A brush tool leaves terrain-editing mode BEFORE the write (see
-              // leaveBrushForSelection): selection starts empty in brush mode, so this toggle is
-              // always an ADD, guaranteed to leave the selection non-empty.
-              leaveBrushForSelection();
-              store.toggleSelection(block);
-              paintSelection(activeDown.overlay, store.gridState, useEditorStore.getState().selection, store.showLayerNumbers);
-            } else {
-              // Drag-to-move arms only on a press over an object that is already selected; a
-              // press on any other object selects it and then falls through to the Hand tool,
-              // so the drag pans the camera. MEMBERSHIP, not identity: with a plural selection
-              // the press picks the group up by whichever member it landed on.
-              const alreadySelected = store.selection.some((r) => r.kind === 'object' && r.id === hitObj.id);
-              if (alreadySelected) {
-                // Re-clicking a selected object arms the tap behaviour (deselect for a
-                // lone member, collapse to it for a group); a drag still moves.
-                if (store.selection.length > 1) collapseToOnUp = hitObj.id;
-                else toggleOffOnUp = true;
-              } else {
-                store.setSelection([block]);
-                paintSelection(activeDown.overlay, store.gridState, [block], store.showLayerNumbers);
-              }
-              if (alreadySelected && isDraggableObject(hitObj)) {
-                dragObjId = hitObj.id;
-                dragStartX = e.clientX;
-                dragStartY = e.clientY;
-                grabOffsetX = hitObj.position.x - macro.x;
-                grabOffsetY = hitObj.position.y - macro.y;
-                lastDragGhostKey = null;
-              }
-            }
-          } else if (ctrl) {
-            // Ctrl press on bare ground leaves the selection untouched: terrain never joins a
-            // group, and the rubber-band DRAG (not this press) is what starts a marquee.
-          } else if (sel?.kind === 'terrain' && sel.x === macro.x && sel.y === macro.y) {
-            // Re-clicking the selected terrain cell deselects it on pointer-up.
-            toggleOffOnUp = true;
-          } else {
-            // Select the terrain/ground cell
-            const block = { kind: 'terrain', x: macro.x, y: macro.y } as const;
-            store.setSelection([block]);
-            paintSelection(activeDown.overlay, store.gridState, [block], store.showLayerNumbers);
-          }
-          // Arm the band on ANY Ctrl-held press here, hit or not: a drag from an object is still
-          // a band (Ctrl never moves anything, so dragObjId is never set in this branch).
-          if (ctrl) {
-            bandArmed = true;
-            bandStartMacro = macro;
-            bandStartX = e.clientX;
-            bandStartY = e.clientY;
-            // Neither the armed item's placement preview nor a brush's paint-preview ghost has
-            // anything left to preview: this gesture selects.
-            if (armed || brushCtrl) activeDown.overlay.clearGhost();
-          }
-        } else if (armed && store.gridState && activeDown && pressMacro) {
-          // An item is armed and Ctrl is not held: rather than attempt a placement that would be
-          // refused, a press on the EXISTING object in the way selects it (so it can be rotated or
-          // deleted from the handles) and leaves the item armed to carry on placing.
-          const tool = tools()?.getActiveTool();
-          const ctx = tools()?.getContext();
-          const placementAllowed = !tool?.canActAt || !ctx || tool.canActAt(pressMacro, ctx);
-          if (pressHit && armedPressSelects(
-            store.activeTool, store.selectedItemId, store.selectingRegion, ctrl, pressHit, placementAllowed,
-          )) {
-            const block = { kind: 'object', id: pressHit.id } as const;
-            store.setSelection([block]);
-            paintSelection(activeDown.overlay, store.gridState, [block], store.showLayerNumbers);
-            armedSelected = true;
-          }
-        }
+        const armedSelected = applySelectionPress(e, {
+          store, activeDown, ctrl, armed, brushCtrl, inDragMode, pressMacro, pressHit,
+        });
         if (!dragObjId && !bandArmed && !armedSelected) {
           toolDown = true;
           // Navigate mode: a left-DRAG PANS the camera (grab the map — the same feel as the 2D
@@ -552,31 +589,36 @@ export function usePointerInteraction(
       }
     };
 
-    let regionBrushing = false;
-    let spacePanning = false;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!isCanvasTarget(e)) return;
 
-    const onPointerMove = (e: PointerEvent) => {
-      // Track the live screen position for the viewport-changed resampler: "here" means either this
-      // container is literally under the pointer, or a stroke already started on it (a mid-stroke
-      // drag stays live even if the browser occasionally reports a target outside the element, same
-      // condition the tool-feed branch below uses).
-      if (e.pointerType !== 'touch' && (toolDown || isCanvasTarget(e))) {
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
-        pointerKnown = true;
-      }
+      // Touch has no meaningful "position" once the finger lifts, so it never feeds the resampler.
+      if (e.pointerType !== 'touch') { lastPointerX = e.clientX; lastPointerY = e.clientY; pointerKnown = true; }
+
+      if (touchDown(e)) return;
+      if (orbitDown(e)) return;
+      leftDown(e);
+    };
+
+    /** Space-held or nav-mode left drag: slide the camera and consume the move. */
+    const panMove = (e: PointerEvent): boolean => {
       if (spacePanning) {
         view()?.camera.pan(panLastX - e.clientX, panLastY - e.clientY);
         panLastX = e.clientX;
         panLastY = e.clientY;
-        return;
+        return true;
       }
       if (leftPanning && (e.buttons & 1) !== 0 && e.pointerType !== 'touch') {
         view()?.camera.pan(panLastX - e.clientX, panLastY - e.clientY);
         panLastX = e.clientX;
         panLastY = e.clientY;
-        return;
+        return true;
       }
+      return false;
+    };
+
+    /** Touch: keep the pinch baseline fresh, and drive camera zoom/pan/twist while navigating. */
+    const touchMove = (e: PointerEvent): boolean => {
       if (e.pointerType === 'touch') {
         // Keep the tracker current on every touch move (so the pinch baseline is fresh the
         // instant a second finger lands); its deltas drive the camera only while navigating.
@@ -588,7 +630,7 @@ export function usePointerInteraction(
             if (delta.panX !== 0 || delta.panY !== 0) nav.camera.pan(delta.panX, delta.panY);
             if (delta.twist !== 0) nav.camera.orbitTwist?.(delta.twist);
           }
-          return;
+          return true;
         }
         // One-finger drag in a nav-mode 3D view PANS the camera — the touch analog of the desktop
         // left-drag pan (2D already one-finger-pans via the Hand tool). leftPanning is set on
@@ -596,12 +638,17 @@ export function usePointerInteraction(
         // editor). A second finger switches to the pinch/pan/twist gesture above.
         if (leftPanning && delta) {
           view()?.camera.pan(delta.panX, delta.panY);
-          return;
+          return true;
         }
       }
+      return false;
+    };
+
+    /** Right or middle drag: orbit the camera where the view has one, otherwise pan. */
+    const orbitMove = (e: PointerEvent): boolean => {
       if (rightPanning) {
         const nav = view();
-        if (!nav) return;
+        if (!nav) return true;
         if (Math.abs(e.clientX - rightDownX) > DRAG_THRESHOLD || Math.abs(e.clientY - rightDownY) > DRAG_THRESHOLD) {
           rightMoved = true;
         }
@@ -612,8 +659,13 @@ export function usePointerInteraction(
         }
         panLastX = e.clientX;
         panLastY = e.clientY;
-        return;
+        return true;
       }
+      return false;
+    };
+
+    /** Ctrl rubber band: grow the drawn rect. Membership is resolved once, on release. */
+    const bandMove = (e: PointerEvent): boolean => {
       // Rubber band: swallow the move unconditionally once Ctrl armed it (a
       // band-armed press must never fall through to pan or a tool stroke below).
       // Only the drawn rect updates per move — objectsInBand runs once, on release.
@@ -626,14 +678,24 @@ export function usePointerInteraction(
         if (bandActive && bandView && bandStartMacro) {
           bandView.overlay.showBand(macroRect(bandStartMacro, bandView.projection.screenToMacro(e.clientX, e.clientY)));
         }
-        return;
+        return true;
       }
       // Region brushing drag
+      return false;
+    };
+
+    /** Region brush: feed the painted cell to the Generate panel. */
+    const regionMove = (e: PointerEvent): boolean => {
       if (regionBrushing) {
         const macro = view()?.projection.screenToMacro(e.clientX, e.clientY);
         if (macro) petitWindow().__petitRegionBrushCallback?.(macro);
-        return;
+        return true;
       }
+      return false;
+    };
+
+    /** Drag-to-move: arm past the threshold, then draw the drop ghost for the object or the group. */
+    const dragMove = (e: PointerEvent): boolean => {
       // Drag-to-move
       if (dragObjId && !dragging) {
         const ddx = e.clientX - dragStartX;
@@ -660,7 +722,7 @@ export function usePointerInteraction(
           // multiply that cost for nothing, since the drop cell (and everything derived from it)
           // is unchanged. Throttled on the cell, not a timer, per the ghost's own contract.
           const ghostKey = `${groupIds ? groupIds.join(',') : dragObjId}|${dx}|${dy}`;
-          if (ghostKey === lastDragGhostKey) return;
+          if (ghostKey === lastDragGhostKey) return true;
           lastDragGhostKey = ghostKey;
 
           if (groupIds) {
@@ -702,8 +764,27 @@ export function usePointerInteraction(
             dragView.overlay.showPlacementGhost?.(obj.catalogId, baseX, baseY, obj.rotation, valid, dropElev);
           }
         }
-        return;
+        return true;
       }
+      return false;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      // Track the live screen position for the resampler: "here" means either this
+      // container is literally under the pointer, or a stroke already started on it (a mid-stroke
+      // drag stays live even if the browser occasionally reports a target outside the element, same
+      // condition the tool-feed branch below uses).
+      if (e.pointerType !== 'touch' && (toolDown || isCanvasTarget(e))) {
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+        pointerKnown = true;
+      }
+      if (panMove(e)) return;
+      if (touchMove(e)) return;
+      if (orbitMove(e)) return;
+      if (bandMove(e)) return;
+      if (regionMove(e)) return;
+      if (dragMove(e)) return;
       if (!dragging && (toolDown || isCanvasTarget(e))) {
         // While a tool is down (a stroke), replay the browser's COALESCED moves — the intermediate
         // positions it captured but batched into this one event — so a fast drag samples the real
@@ -726,8 +807,8 @@ export function usePointerInteraction(
      *  drag-to-move arms). Only the instance whose canvas is under the pointer may touch the
      *  hover state — both canvases run this hook, and the hidden one must not clear what the
      *  visible one draws (its own pointerleave handles departures). Takes a PointerSample rather than
-     *  a PointerEvent so the viewport-changed resampler can call it with the last known position
-     *  (real PointerEvents satisfy PointerSample structurally, so every live call site is unaffected). */
+     *  a PointerEvent so the resampler can call it with the last known position (real PointerEvents
+     *  satisfy PointerSample structurally, so every live call site is unaffected). */
     const updateSelectionHover = (e: PointerSample) => {
       if (!isCanvasTarget(e)) return;
       const hoverView = view();
@@ -823,7 +904,6 @@ export function usePointerInteraction(
               // subscription would clear this same write before the switch lands.
               leaveBrushForSelection();
               store.setSelection([...existing, ...additions]);
-              paintSelection(bandView.overlay, gs, useEditorStore.getState().selection, store.showLayerNumbers);
             }
           }
         }
@@ -858,7 +938,6 @@ export function usePointerInteraction(
             } else {
               store.setSelection([block]);
             }
-            paintSelection(tapView.overlay, gs, useEditorStore.getState().selection, store.showLayerNumbers);
           }
         }
         return;
@@ -904,7 +983,6 @@ export function usePointerInteraction(
             return;
           }
           // The members keep their ids, so the selection still names them; only the rings move.
-          paintSelection(dropView.overlay, gs, useEditorStore.getState().selection, useEditorStore.getState().showLayerNumbers);
           return;
         }
 
@@ -929,7 +1007,6 @@ export function usePointerInteraction(
         // pressed mid-drag would otherwise deselect the object the user just moved.
         const block = { kind: 'object', id: movedId } as const;
         useEditorStore.getState().setSelection([block]);
-        paintSelection(dropView.overlay, gs, useEditorStore.getState().selection, useEditorStore.getState().showLayerNumbers);
         return;
       }
       if (!dragging) {
@@ -937,11 +1014,7 @@ export function usePointerInteraction(
         // A tap (no drag) on a member of a GROUP selects that member alone — an unmodified click
         // always ends with one thing selected. On a lone selected block it toggles the selection off.
         if (collapseToOnUp) {
-          const gs = useEditorStore.getState().gridState;
-          const tapView = view();
-          const block = { kind: 'object', id: collapseToOnUp } as const;
-          useEditorStore.getState().setSelection([block]);
-          if (gs && tapView) paintSelection(tapView.overlay, gs, [block], useEditorStore.getState().showLayerNumbers);
+          useEditorStore.getState().setSelection([{ kind: 'object', id: collapseToOnUp }]);
           collapseToOnUp = null;
         } else if (toggleOffOnUp) {
           useEditorStore.getState().clearSelection();
@@ -982,37 +1055,54 @@ export function usePointerInteraction(
     };
 
     /**
-     * A stationary pointer is still over a moving CELL when the camera pans by some means outside
-     * this pointer machine (WASD is the motivating case) — the world under an unmoved screen point
-     * genuinely changed, which makes the viewport a tool-INPUT source here, not just a render
-     * trigger. Re-samples the last known screen position so a live brush stroke keeps painting the
-     * cells sliding under it, and the idle hover box / placement ghost keep tracking the cell a
-     * click would actually land on.
+     * Re-feeds the last known screen position to the tools + hover when something OTHER than a real
+     * pointer event changed what that position means: the camera moving under a still cursor
+     * (`onViewportChanged`), or the armed item's pending rotation flipping under a still cursor
+     * (the placementRotation subscription below) — both leave a live brush stroke frozen on stale
+     * cells, or the idle hover box / placement ghost tracking a cell/orientation a click would no
+     * longer produce.
      *
-     * Skipped whenever a live gesture is ALREADY resampling every frame through its own real
-     * pointermove (an orbit/pan drag, the Hand tool's left-drag, an object drag, the rubber band,
-     * the region brush, or a touch pinch) — feeding the tool again here would duplicate that
-     * gesture's own tick, since its pan and this event fire from the same call stack.
+     * Skipped whenever a live gesture already owns the pointer through a channel that bypasses
+     * `tools()?.handlePointerMove` (an orbit/pan drag, the Hand tool's left-drag, an object drag, the
+     * rubber band, the region brush, or a touch pinch): each of those gestures has its own bespoke
+     * per-move handling instead, so feeding the tools here would not just duplicate a tick, it would
+     * hand them a position update mid-gesture that the normal pointermove path deliberately withholds
+     * from them.
      */
-    const onViewportChanged = () => {
+    const resamplePointer = () => {
       if (!pointerKnown) return;
+      if (resampling) return;
       if (rightPanning || leftPanning || spacePanning || dragging || bandArmed || regionBrushing || touchNavigating) return;
-      tools()?.handlePointerMove(lastPointerX, lastPointerY);
-      // Brushes/eraser/placer already got their re-sample above; the hover box and cursor hints are
-      // the "no stroke active" half of the same fact, gated (inside updateSelectionHover) on the
-      // hovered cell actually changing, same as a real drag.
-      if (!toolDown) {
-        updateSelectionHover({ clientX: lastPointerX, clientY: lastPointerY, pointerType: 'mouse', target: container });
+      resampling = true;
+      try {
+        tools()?.handlePointerMove(lastPointerX, lastPointerY);
+        // Brushes/eraser/placer already got their re-sample above; the hover box and cursor hints are
+        // the "no stroke active" half of the same fact, gated (inside updateSelectionHover) on the
+        // hovered cell actually changing, same as a real drag.
+        if (!toolDown) {
+          updateSelectionHover({ clientX: lastPointerX, clientY: lastPointerY, pointerType: 'mouse', target: container });
+        }
+      } finally {
+        resampling = false;
       }
     };
+    // The viewport itself is a tool-INPUT source here, not just a render trigger: the world under an
+    // unmoved screen point genuinely changed.
+    const onViewportChanged = () => resamplePointer();
     const eventBus = useEditorStore.getState().eventBus;
+    // The rotate shortcut (`,`/`.`) writes placementRotation straight into the store — no pointer
+    // event runs alongside it — so the ghost drawn by ObjectPlacerTool.onPointerMove is otherwise
+    // stuck at the old orientation until the cursor next moves for real.
+    const unsubRotation = useEditorStore.subscribe((state, prevState) => {
+      if (state.placementRotation !== prevState.placementRotation) resamplePointer();
+    });
 
     // The hover preview and the positional cursor facts die with the pointer: leaving the canvas
     // (window edge) must not strand a grey box or a stale badge on the map.
     const onPointerLeave = (e: PointerEvent) => {
       view()?.overlay.clearHover();
       hoverCell = null;
-      pointerKnown = false; // gone: nothing left for the viewport-changed resampler to re-sample
+      pointerKnown = false; // gone: nothing left for the resampler to re-sample
       setCursorForbidden(false);
       setCursorOverSelected(false);
       setCursorCtrlHint(null);
@@ -1044,6 +1134,7 @@ export function usePointerInteraction(
       window.removeEventListener('wheel', onWheelGlobal);
       container.removeEventListener('contextmenu', onContextMenu);
       eventBus.off('viewport-changed', onViewportChanged);
+      unsubRotation();
     };
   }, []);
 }

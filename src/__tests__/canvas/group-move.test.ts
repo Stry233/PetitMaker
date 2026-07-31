@@ -11,14 +11,14 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory, TerrainType } from '../../core/model/types';
+import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { moveGroup, previewGroupMove } from '../../ui/chrome/group-actions';
 
 registerCatalogItem({
   id: 'grp-hut', category: ItemCategory.Building, name: { en: 'Group Hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
@@ -30,7 +30,7 @@ function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: 'grp-hut', position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
       ...(s.locked ? { locked: true } : {}),
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });

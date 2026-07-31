@@ -1,5 +1,5 @@
 import { CommandType, TerrainType } from '../../core/model/types';
-import type { Command, GridState, MacroCoord, RemoveObjectCommand, ValidationResult } from '../../core/model/types';
+import type { Command, GridState, MacroCoord, ValidationResult } from '../../core/model/types';
 import { runLandform, toGenConfig } from './index';
 import type { ZonePlan } from './types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
@@ -8,6 +8,7 @@ import { generateMaze } from './maze-generator';
 import { edgeCutGeneratedTerrain } from '../edge-cut/auto-edge-cut';
 import { generationCutMode } from './style';
 import type { GenerateConfig } from '../../core/model/types';
+import { removeObjectCommand } from '../objects/object-placer';
 
 export interface GenerateResult {
   placed: number;
@@ -95,12 +96,7 @@ export function clearAllObjects(
   for (const obj of [...state.objects.values()]) {
     if (obj.locked) continue;   // never dissolve immutable structures (the central plaza); V-LOCK-02 also guards this
     if (inRegion && !inRegion.has(`${obj.position.x},${obj.position.y}`)) continue;
-    const res = executeCommand({
-      type: CommandType.RemoveObject,
-      timestamp: Date.now(),
-      objectId: obj.id,
-      removedObject: obj,
-    } as RemoveObjectCommand);
+    const res = executeCommand(removeObjectCommand(obj));
     if (res.success) count++;
   }
   return count;

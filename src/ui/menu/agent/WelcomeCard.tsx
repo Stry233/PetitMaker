@@ -13,7 +13,8 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { colors as C, inkTint, font, springs, pressable, cursors } from '../../styles';
 import { usePx } from '../scale';
-import { Wavy, VerbGlyph, ChevronRightIcon, HoverTip, RestartIcon } from './atoms';
+import { Wavy } from '../Wavy';
+import { VerbGlyph, ChevronRightIcon, HoverTip, RestartIcon } from './atoms';
 import { sampleInspirations } from './inspirations';
 
 export interface WelcomeCardProps {

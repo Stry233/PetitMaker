@@ -49,6 +49,7 @@ import { useEditorStore } from '../../state/store';
 import { font, colors, radii, springs, shadows, exitTransition, modalRow, buttonMotion, primaryButton, btnReset, cursors } from '../styles';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../version';
 import { ModalShell } from './ModalShell';
+import { BrandLockup } from './BrandLockup';
 import { useChromeScale } from '../menu/scale';
 import { LoadingDots } from '../menu/LoadingDots';
 import { DOCS, docIdForPath, teamInReadingOrder, type DocId } from '../../legal/registry';
@@ -182,35 +183,8 @@ const brandBlock: CSSProperties = {
   gap: 5,
 };
 
-const brandLogo: CSSProperties = {
-  width: 72,
-  height: 72,
-  borderRadius: radii.lg,
-  objectFit: 'contain',
-  marginBottom: 2,
-};
-
-const appNameStyle: CSSProperties = {
-  fontFamily: font.family,
-  fontWeight: 900,
-  fontSize: 30,
-  color: colors.frameDark,
-  textAlign: 'center',
-  lineHeight: 1.05,
-};
-
-// `colors.textSecondary` fails WCAG AA (~3.9:1) against `panelCream` at this size —
-// `colors.brownText` is the darkest muted/taupe token and passes (~5.4:1).
-// See src/__tests__/legal/a11y.test.tsx's contrast describe block.
-const taglineStyle: CSSProperties = {
-  fontFamily: font.family,
-  fontWeight: 600,
-  fontSize: 13,
-  color: colors.brownText,
-  textAlign: 'center',
-};
-
-// One muted line, no card — the version recedes below the brand. (AA swap as above.)
+// One muted line, no card — the version recedes below the brand. `colors.brownText` over
+// `colors.textSecondary`: the latter fails WCAG AA at this size (see the a11y contrast describe block).
 const versionLine: CSSProperties = {
   fontFamily: font.family,
   fontSize: 11.5,
@@ -451,7 +425,8 @@ const filingLabel: CSSProperties = {
   fontFamily: font.family,
 };
 
-// AA swap as above — these render the legally-mandated ICP/PSB filing numbers.
+// `colors.brownText` over `colors.textSecondary` (see the a11y contrast describe block) — these
+// render the legally-mandated ICP/PSB filing numbers.
 const filingLink: CSSProperties = {
   fontSize: 12.5,
   fontWeight: 700,
@@ -706,12 +681,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
           >
             {/* Brand block — the anchor: name, tagline, one muted version line. */}
             <div style={brandBlock}>
-              {/* Served from public/ through BASE_URL rather than imported, so one copy of the
-                  logo backs both the favicon and this, and it still resolves under the dev
-                  site's /Apollonius/ prefix where a root-absolute path would 404. */}
-              <img src={`${import.meta.env.BASE_URL}logo-256.png`} alt={t('app.name')} style={brandLogo} />
-              <div style={appNameStyle}>{t('app.name')}</div>
-              <div style={taglineStyle}>{t('app.tagline')}</div>
+              <BrandLockup size={72} tagline />
               <div style={versionButtonWrap}>
                 <motion.button
                   type="button"

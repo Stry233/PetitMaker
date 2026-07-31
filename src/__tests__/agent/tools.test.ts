@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules';
-import { TerrainType, ItemCategory, ObjectCategory, type EditorEvents } from '../../core/model/types';
+import { TerrainType, ItemCategory, type EditorEvents } from '../../core/model/types';
 import { getCatalogByCategory } from '../../state/catalog';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { executeToolCall, TOOL_SCHEMAS, SUBAGENT_TOOL_SCHEMAS, type AgentToolDeps } from '../../agent/tools';
@@ -47,7 +47,7 @@ describe('agent tools', () => {
     const { state, deps } = setup();
     const roadId = getCatalogByCategory(ItemCategory.Road)[0]!.id;
     const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
-    state.objects.set('road-1', { id: 'road-1', catalogId: roadId, position: { x: 5, y: 5 }, rotation: 0, category: ObjectCategory.House, elevation: 0 });
+    state.objects.set('road-1', { id: 'road-1', catalogId: roadId, position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
     const r = await executeToolCall(call('place_object', { catalogId: floraId, x: 5, y: 5 }), deps);
     expect(r.isError).toBe(false);
     expect(r.content).toMatch(/[Cc]leared \d+ road/); // warns the agent it removed the road
@@ -283,7 +283,7 @@ describe('clear_area, skills, delegation stub', () => {
 
   it('clear_area never removes locked objects (the plaza)', async () => {
     const s = setup();
-    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, category: 1, elevation: 1, width: 2, height: 2, locked: true });
+    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, elevation: 1, width: 2, height: 2, locked: true });
     await executeToolCall(call('clear_area', { rect: { x1: 0, y1: 0, x2: 19, y2: 19 } }), s.deps);
     expect(s.state.objects.has('plaza')).toBe(true);
   });
@@ -406,7 +406,7 @@ describe('clear_area, skills, delegation stub', () => {
 describe('rejection diagnostics', () => {
   it('failed placement names the blocking object, including locked structures', async () => {
     const s = setup();
-    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, category: 1, elevation: 1, width: 6, height: 6, locked: true });
+    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, elevation: 1, width: 6, height: 6, locked: true });
     const r = await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 6, y: 6 }), s.deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('In the way');
@@ -416,7 +416,7 @@ describe('rejection diagnostics', () => {
 
   it('map summary lists immovable structures generically', async () => {
     const s = setup();
-    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, category: 1, elevation: 1, width: 6, height: 6, locked: true });
+    s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, elevation: 1, width: 6, height: 6, locked: true });
     const ctx = (await executeToolCall(call('get_selection', {}), s.deps)).content; // not summary, but exercise the path
     expect(typeof ctx).toBe('string');
     const { mapSummary } = await import('../../agent/serialize');

@@ -36,7 +36,10 @@ export interface ProvenanceInfo {
 
 const MAGIC0 = 0x50; // 'P'
 const MAGIC1 = 0x32; // '2'
-const FRAME_VERSION = 1;
+/** The payload wire format. A reader rejects any frame that does not carry this exact version, so
+ *  bumping it whenever the object or terrain encoding changes turns a stale code into a named
+ *  refusal instead of a content-hash mismatch further down. */
+const FRAME_VERSION = 2;
 const TITLE_MAX_CHARS = 48;
 
 // ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──

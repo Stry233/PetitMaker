@@ -104,17 +104,6 @@ export function Editor3DCanvas() {
     return () => bus.off('objects-changed', onObjectsChanged);
   }, []);
 
-  // Clear the 3D selection box when the selection is cleared via a STORE change (Esc-deselect,
-  // delete popover, tool switch) — those fire no objects-changed, so the repaint above misses them,
-  // and PixiCanvas's equivalent subscription only clears the 2D overlay. Mirrors that for the 3D view.
-  useEffect(() => {
-    return useEditorStore.subscribe((state, prev) => {
-      if (state.selection.length === 0 && prev.selection.length > 0 && state.viewMode === '3d') {
-        getActiveView()?.overlay.clearSelection();
-      }
-    });
-  }, []);
-
   useEffect(() => () => { sceneRef.current?.dispose(); sceneRef.current = null; }, []);
 
   return (

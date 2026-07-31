@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { TerrainType } from '../../core/model/types';
 import { makeState, setTerrain, placeCmd, makeObject } from './_helpers';
-import { ObjectCategory } from '../../core/model/types';
 
 /**
  * Γ-patches (patchOnly fillets) are COSMETIC: per the terrain-silhouette kernel a
@@ -17,7 +16,7 @@ describe('placement vs edge-cut patches', () => {
     state.cells[6]![6]!.terrain!.patchOnly = true;
     state.cells[6]![6]!.terrain!.corners = ['tri-NW', 'square', 'square', 'square'];
     // flower at (5,5): flat trait checks footprint + 1 right/bottom → includes (6,6)
-    const cmd = placeCmd(makeObject('flower-rose', 5, 5, ObjectCategory.Flora));
+    const cmd = placeCmd(makeObject('flower-rose', 5, 5));
     expect(traitPlacementRule.validate(cmd, state)).toHaveLength(0);
   });
 
@@ -30,7 +29,7 @@ describe('placement vs edge-cut patches', () => {
     state.cells[6]![6]!.terrain!.patchOnly = true;
     // flower anchored on the fillet cell: raw reads say "flat at 2" but the real
     // surface is a 1-level step — placement must be rejected
-    const cmd = placeCmd(makeObject('flower-rose', 6, 6, ObjectCategory.Flora));
+    const cmd = placeCmd(makeObject('flower-rose', 6, 6));
     expect(traitPlacementRule.validate(cmd, state).length).toBeGreaterThan(0);
   });
 
@@ -42,7 +41,7 @@ describe('placement vs edge-cut patches', () => {
     for (let y = 4; y <= 9; y++) for (let x = 4; x <= 9; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Mountain, 2);
     state.cells[6]![6]!.terrain!.patchOnly = true; // fillet at 2 over real 1
-    const cmd = placeCmd(makeObject('tree-apple', 6, 6, ObjectCategory.Tree));
+    const cmd = placeCmd(makeObject('tree-apple', 6, 6));
     // real surface at (6,6) is 1 — same as the plateau → placement is legal
     expect(traitPlacementRule.validate(cmd, state)).toHaveLength(0);
   });

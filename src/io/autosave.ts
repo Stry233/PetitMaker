@@ -61,7 +61,9 @@ export function scheduleAutosave(state: GridState): void {
  *  shared with the startup restore offer and the drag-drop import confirm. */
 export function autosaveWorthy(state: GridState): boolean {
   for (const row of state.cells) {
-    for (const cell of row) if (cell.terrain) return true;
+    // A row is a sparse array in a hand-built or partially-decoded grid, so a hole reads as
+    // undefined; this walk runs inside the first-launch check, where a throw would take the app down.
+    for (const cell of row) if (cell?.terrain) return true;
   }
   for (const [, obj] of state.objects) if (!obj.locked) return true;
   return false;
@@ -115,4 +117,14 @@ export function hasAutosave(): boolean {
   } catch {
     return false;
   }
+}
+
+/** The autosave this browser holds if it is worth restoring: present, readable, and
+ *  `autosaveWorthy` (not just the auto-recreated, locked plaza), else null. Returns the save rather
+ *  than a boolean because the two questions asked at startup — offer a restore, and has this
+ *  browser used the editor before (the first-launch tour's test) — are the same question, and a
+ *  full JSON.parse + deserialize of a 169x140 map is not something to do twice on a cold start. */
+export function readRestorableAutosave(): RestoredAutosave | null {
+  const candidate = readAutosave();
+  return candidate && autosaveWorthy(candidate.state) ? candidate : null;
 }

@@ -157,6 +157,77 @@ describe('ASSET_LICENSES.md — four-way scope split', () => {
   });
 });
 
+describe('ASSET_LICENSES.zh-CN.md — authored equivalent + parity', () => {
+  const EN = read('docs/ASSET_LICENSES.md');
+  const ZH = read('docs/ASSET_LICENSES.zh-CN.md');
+
+  it('exists', () => {
+    expect(existsSync('docs/ASSET_LICENSES.zh-CN.md')).toBe(true);
+  });
+
+  it('has the same heading structure as the English source', () => {
+    expect(headingCount(ZH)).toBe(headingCount(EN));
+    expect(headingCount(ZH)).toBeGreaterThan(0);
+  });
+
+  it('every heading is translated (no verbatim English headings)', () => {
+    const headings = ZH.match(/^#{2,}\s+.+$/gm) ?? [];
+    expect(headings.length).toBeGreaterThan(0);
+    for (const h of headings) expect(h).toMatch(/[一-鿿]/);
+  });
+
+  it('states the same four-way scope split, keeping the English legal terms alongside', () => {
+    // A licence term is the thing a reader may have to match against another document, so
+    // the Chinese carries it: translating it away would make the two versions say
+    // different things to anyone checking.
+    expect(ZH).toContain('Apache-2.0');
+    expect(ZH).toContain('All Rights Reserved');
+    expect(ZH).toContain('保留所有权利');
+    expect(ZH).toContain('用户地图');
+    expect(ZH).toContain('SIL Open Font License 1.1');
+  });
+
+  it('keeps the permission to share exports, and its two limits', () => {
+    expect(ZH).toContain('non-exclusive, royalty-free, worldwide');
+    expect(ZH).toMatch(/不包括提取素材/);
+    expect(ZH).toMatch(/不转移/);
+  });
+
+  it('keeps the audit disclaimer: a provenance record is not a permission', () => {
+    expect(EN).toContain('not itself a permission'); // the sentence being mirrored
+    expect(ZH).toMatch(/并不构成授权或许可/);
+  });
+
+  it('carries the affiliation disclaimer (米哈游/HoYoverse) and the IP channel', () => {
+    expect(ZH).toContain('米哈游');
+    expect(ZH).toMatch(/HoYoverse/);
+    expect(ZH).toContain('[IP]');
+    expect(ZH).toContain('selka.craft@outlook.com');
+  });
+});
+
+describe('CHANGELOG.zh-CN.md — authored equivalent', () => {
+  const EN = read('docs/CHANGELOG.md');
+  const ZH = read('docs/CHANGELOG.zh-CN.md');
+  // The STAGED section only. The two files hold different amounts of already-released history:
+  // the Chinese one was written after v0.1 shipped, so it carries that section itself while the
+  // English one's lives in the public repository. Comparing whole files would read that as drift.
+  const staged = (md: string) => md.split(/^##\s/m).find((s) => /^\[(Unreleased|未发布)\]/.test(s)) ?? '';
+
+  it('exists and follows the same format, in Chinese', () => {
+    expect(existsSync('docs/CHANGELOG.zh-CN.md')).toBe(true);
+    expect(ZH).toContain('Keep a Changelog');
+    expect(headingCount(staged(ZH))).toBe(headingCount(staged(EN)));
+  });
+
+  it('carries the staged section the publish step rewrites into a release', () => {
+    // changelog-core.mts matches this heading in either language; losing it would publish
+    // a Chinese changelog with no release notes at all. Its mechanics are pinned in
+    // scripts/__tests__/release.test.mts.
+    expect(ZH).toMatch(/^##\s*\[未发布\]\s*$/m);
+  });
+});
+
 describe('CONTRIBUTING.md — DCO + inbound=outbound', () => {
   const C = read('CONTRIBUTING.md');
 
@@ -245,13 +316,10 @@ describe('README.md — public front page', () => {
   });
 
   it('credits all four named contributors with their Bilibili links', () => {
-    // A displayed name may carry a zero-width word joiner (U+2060) to stop GitHub breaking it at
-    // a CJK/Latin boundary, which would misalign that avatar against the others. Strip those
-    // before matching, or the assertion passes on the alt text alone and stops guarding the name
-    // a reader actually sees.
-    const shown = R.replace(/&#8288;|\u2060/g, '');
+    // Match the DISPLAYED name, not just any occurrence: alt text carries these names too, so a
+    // loose match would keep passing after the visible credit broke.
     for (const name of ['Selka', '火山野牛王', '镜喵MirrorCat', '鱼松吃点吗']) {
-      expect(shown).toContain(`<b>${name}</b>`);
+      expect(R).toContain(`<b>${name}</b>`);
     }
     expect(R).toContain('https://space.bilibili.com/3546659724200757');
     expect(R).toContain('https://space.bilibili.com/16699168');
@@ -357,10 +425,12 @@ describe('public docs never reference the internal tree', () => {
     'docs/README.zh-CN.md',
     'docs/SECURITY.zh-CN.md',
     'docs/ASSET_LICENSES.md',
+    'docs/ASSET_LICENSES.zh-CN.md',
     'docs/THIRD_PARTY_NOTICES.md',
     'docs/THREAT_MODEL.md',
     'docs/ARCHITECTURE.md',
     'docs/CHANGELOG.md',
+    'docs/CHANGELOG.zh-CN.md',
   ];
   for (const f of PUBLIC_DOCS) {
     it(`${f} does not mention docs/internal or scripts/internal`, () => {

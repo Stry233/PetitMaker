@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateTerrain, clearAllTerrain, clearAllObjects } from '../../tools/generation/terrain-generator';
-import { TerrainType, CommandType, ObjectCategory } from '../../core/model/types';
+import { TerrainType, CommandType } from '../../core/model/types';
 import type { Command, GridState, ValidationResult, EditorEvents, PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { getCell, createDefaultTerrainCell } from '../../core/model/grid-model';
@@ -58,15 +58,15 @@ describe('generateTerrain dispatch + clearAllTerrain', () => {
 });
 
 describe('clearAllObjects', () => {
-  const obj = (id: string, x: number, y: number, cat: ObjectCategory): PlacedObject =>
-    ({ id, catalogId: id, position: { x, y }, rotation: 0, category: cat, elevation: 0 });
+  const obj = (id: string, x: number, y: number): PlacedObject =>
+    ({ id, catalogId: id, position: { x, y }, rotation: 0, elevation: 0 });
 
   it('removes every placed object — tiles AND placements', () => {
     const state = makeState(20, 20);
     for (const o of [
-      obj('road-dirt-1', 5, 5, ObjectCategory.Facility),  // a tile/road surface
-      obj('tree-apple-1', 7, 7, ObjectCategory.Tree),      // a placement
-      obj('building-stall-1', 9, 9, ObjectCategory.House),
+      obj('road-dirt-1', 5, 5),  // a tile/road surface
+      obj('tree-apple-1', 7, 7),      // a placement
+      obj('building-stall-1', 9, 9),
     ]) state.objects.set(o.id, o);
 
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
@@ -81,8 +81,8 @@ describe('clearAllObjects', () => {
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     for (const o of [
-      obj('road-dirt-1', 5, 5, ObjectCategory.Facility),
-      obj('tree-apple-1', 7, 7, ObjectCategory.Tree),
+      obj('road-dirt-1', 5, 5),
+      obj('tree-apple-1', 7, 7),
     ]) state.objects.set(o.id, o);
 
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());

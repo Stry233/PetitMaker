@@ -8,9 +8,9 @@ import { EditorAPI } from '../../api/editor-api';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { ItemCategory, ObjectCategory, TerrainType } from '../../core/model/types';
+import { ItemCategory, TerrainType } from '../../core/model/types';
 import type { EditorEvents, GridState } from '../../core/model/types';
-import { getPlaceableByCategory } from '../../state/catalog';
+import { getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
 import { makeState, setTerrain } from '../rules/_helpers';
 
 function world(): { state: GridState; api: EditorAPI } {
@@ -26,7 +26,7 @@ describe('EditorAPI.placeObject', () => {
     const res = api.placeObject(tree.id, 5, 5);
     expect(res.success).toBe(true);
     const placed = [...state.objects.values()].find((o) => o.catalogId === tree.id);
-    expect(placed?.category).toBe(ObjectCategory.Tree);
+    expect(getCatalogItem(placed!.catalogId)?.category).toBe(ItemCategory.Tree);
   });
 
   it('records the structural surface elevation of the anchor cell', () => {

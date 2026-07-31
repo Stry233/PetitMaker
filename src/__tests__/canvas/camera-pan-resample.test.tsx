@@ -75,6 +75,7 @@ let executor: CommandExecutor;
 let tm: ToolManager;
 let overlay: ReturnType<typeof makeView>['overlay'];
 let camera: ReturnType<typeof makeView>['camera'];
+let view: ReturnType<typeof makeView>['view'];
 
 /** The app's own wiring: a real ToolManager over a fresh grid, pointed at the test view. */
 function activate(tool: ToolType, itemId: string | null = null): void {
@@ -84,6 +85,7 @@ function activate(tool: ToolType, itemId: string | null = null): void {
   const made = makeView();
   overlay = made.overlay;
   camera = made.camera;
+  view = made.view;
   setActiveView(made.view); // re-points the manager's ctx at the test view's projection/overlay
   registerToolManager(tm);
   tm.setActiveTool(tool);
@@ -160,5 +162,30 @@ describe('a camera pan under a stationary pointer', () => {
     window.dispatchEvent(pointer('pointerup', { button: 2, buttons: 0, clientX: 230, clientY: 200 }));
 
     expect(moveSpy).not.toHaveBeenCalled();
+  });
+
+  it('bounds a 2D Hand-tool left-drag pan instead of recursing, even though ToolManager itself emits viewport-changed', () => {
+    activate(ToolType.Hand);
+    // Mirrors the real 2D renderer: ToolManager.handlePointerMove pans HandTool and then calls
+    // applyCameraTransform, which the real MapRenderer answers by emitting 'viewport-changed' —
+    // unlike the right-drag case above, the 2D Hand drag sets NONE of the resampler's gesture
+    // flags (leftPanning stays false; 2D pans left-drag through ToolManager, not the pointer
+    // machine), so only the re-entrancy latch stops this from recursing. The latch still lets the
+    // resampler run once (same as any other idle re-sample): by then ToolManager has already
+    // recorded the new screen position, so that one extra pass computes a zero delta and pans by
+    // nothing — two calls, one real 10px pan and one no-op, never the unbounded recursion.
+    vi.mocked(view.applyCameraTransform).mockImplementation(() => {
+      useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
+    });
+    const panSpy = vi.mocked(view.projection.pan);
+
+    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 200, clientY: 150 }));
+    panSpy.mockClear();
+
+    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 190, clientY: 150 }));
+    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 190, clientY: 150 }));
+
+    const totalDx = panSpy.mock.calls.reduce((sum, [dx]) => sum + (dx as number), 0);
+    expect({ calls: panSpy.mock.calls.length, totalDx }).toEqual({ calls: 2, totalDx: 10 });
   });
 });

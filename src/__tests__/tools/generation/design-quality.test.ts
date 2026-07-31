@@ -5,6 +5,7 @@ import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState } from '../../rules/_helpers';
+import { ItemCategory, type PlacedObject } from '../../../core/model/types';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
 import { toGenConfig } from '../../../tools/generation';
 import { populate } from '../../../tools/generation/placement';
@@ -13,8 +14,9 @@ import { getCell } from '../../../core/model/grid-model';
 import { objectRect } from '../../../state/object-geometry';
 import { buildingGate, hasGate } from '../../../tools/generation/placement/object';
 import { getCatalogItem } from '../../../state/catalog';
-import { CellZone, ObjectCategory, TerrainType, type Command, type EditorEvents, type GenerateConfig, type GridState } from '../../../core/model/types';
+import { CellZone, TerrainType, type Command, type EditorEvents, type GenerateConfig, type GridState } from '../../../core/model/types';
 import { ELEVATION_MAX } from '../../../core/model/constants';
+import { categoryOf, isDecoration } from '../../../state/catalog';
 
 const SIZE = 64;
 
@@ -64,8 +66,9 @@ function objectCells(state: GridState): Set<number> {
 function walkableCoverage(state: GridState, S: number): number {
   const cross = new Set<number>();
   for (const o of state.objects.values()) {
-    if (o.locked || o.category !== ObjectCategory.House) continue;
-    if (!o.catalogId.includes('bridge') && !o.catalogId.includes('ramp')) continue;
+    if (o.locked) continue;
+    const cat = categoryOf(o);
+    if (cat !== ItemCategory.Bridge && cat !== ItemCategory.Ramp) continue;
     const r = objectRect(o);
     for (let y = Math.floor(r.y) - 1; y <= r.y + r.h; y++) for (let x = Math.floor(r.x) - 1; x <= r.x + r.w; x++) {
       if (x >= 0 && y >= 0 && x < S && y < S) cross.add(y * S + x);
@@ -218,9 +221,7 @@ describe('design quality', () => {
   it('BUILDING SPREAD: homes scatter across the island, not one clustered village', () => {
     for (const seed of [4, 42, 99]) {
       const { state } = build('mixed', seed);
-      const isBuilding = (o: { locked?: boolean; category: ObjectCategory; catalogId: string }) =>
-        !o.locked && o.category === ObjectCategory.House
-        && !o.catalogId.includes('bridge') && !o.catalogId.includes('ramp') && !o.catalogId.startsWith('road');
+      const isBuilding = (o: PlacedObject) => !o.locked && categoryOf(o) === ItemCategory.Building;
       const sectors = new Set<string>();
       let buildings = 0;
       for (const o of state.objects.values()) {
@@ -251,7 +252,8 @@ describe('design quality', () => {
       let crossings = 0;
       for (const o of state.objects.values()) {
         if (o.locked) continue;
-        if (o.category === ObjectCategory.House && (o.catalogId.includes('bridge') || o.catalogId.includes('ramp'))) crossings++;
+        const cat = categoryOf(o);
+        if (cat === ItemCategory.Bridge || cat === ItemCategory.Ramp) crossings++;
       }
       expect(crossings, `seed ${seed}: realized crossings (planned ${planned})`).toBeGreaterThanOrEqual(Math.ceil(planned / 2));
     }
@@ -327,7 +329,7 @@ describe('design quality', () => {
     }
     return out;
   };
-  const isDecor = (o: { category: ObjectCategory }) => o.category === ObjectCategory.Tree || o.category === ObjectCategory.Flora;
+  const isDecor = (o: PlacedObject) => isDecoration(o);
 
   it('CLEARANCE: no decoration (tree OR flora) intrudes on a house gate strip or a ramp/bridge end (3×3)', () => {
     for (const seed of [4, 42]) {

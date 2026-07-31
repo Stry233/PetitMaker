@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { chunkLoadViolations, chunkLoadRule } from '../../rules/chunk-load';
-import { CommandType, ObjectCategory, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
+import { CommandType, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
 import { makeState } from './_helpers';
 
 function obj(id: string, x: number, y: number, catalogId = 'road-dirt'): PlacedObject {
-  return { id, catalogId, position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 };
+  return { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 // The rule is gated off (CHUNK_LOAD_ENABLED=false) because real in-game loads are unknown,

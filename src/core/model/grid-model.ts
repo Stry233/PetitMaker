@@ -8,7 +8,7 @@
  * Immutable snapshots are produced via `cloneCell` for undo/redo.
  */
 
-import { CellZone, ObjectCategory, TerrainType } from './types';
+import { CellZone, TerrainType } from './types';
 import type { ChunkCoord, Corners, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, TerrainCell } from './types';
 import { CHUNK_SIZE, TILE_SIZE, PLAZA_ID } from './constants';
 
@@ -72,7 +72,7 @@ export function createPlazaObject(template: MapTemplate): PlacedObject | null {
     position: { x: p.x, y: p.y }, width: p.width, height: p.height,
     // Self-description so the plaza renders through the normal object path (no special-case renderer):
     icon: 'plaza', color: p.color,
-    rotation: 0, category: ObjectCategory.Facility, elevation: p.elevation, locked: true,
+    rotation: 0, elevation: p.elevation, locked: true,
   };
 }
 

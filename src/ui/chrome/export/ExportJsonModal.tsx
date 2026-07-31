@@ -138,8 +138,9 @@ function SectionRow({ name, desc, hint, checked, disabled, onToggle, bytes }: {
 export function ExportJsonModal() {
   const t = useT();
   const busy = useCursorCss('busy');
-  const open = useEditorStore((s) => s.exportJsonModalOpen);
-  const close = useEditorStore((s) => s.setExportJsonModalOpen);
+  const open = useEditorStore((s) => s.modals.exportJson);
+  const setModal = useEditorStore((s) => s.setModal);
+  const close = (open: boolean) => setModal('exportJson', open);
   const gridState = useEditorStore((s) => s.gridState);
   const commandExecutor = useEditorStore((s) => s.commandExecutor);
 

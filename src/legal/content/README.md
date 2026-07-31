@@ -12,9 +12,11 @@ Each of the following IS a repo file that exists for its own sake, so the app re
 |---|---|---|
 | License | `LICENSE` | Byte-exact upstream Apache-2.0 text, sha256-pinned. GitHub reads it at the repo root for license detection. |
 | Third-party notices | `docs/THIRD_PARTY_NOTICES.md` | **Generated** by `scripts/license-audit.mts` from the lockfile + shipped bundle. Never hand-edit; run `npm run legal:licenses`. |
-| Asset licenses | `docs/ASSET_LICENSES.md` | Public doc, linked from both READMEs. |
+| Asset licenses (en) | `docs/ASSET_LICENSES.md` | Public doc, linked from both READMEs. |
+| Asset licenses (zh) | `docs/ASSET_LICENSES.zh-CN.md` | The zh mirror of the above. |
 | Security policy (en) | `SECURITY.md` | Where GitHub looks for a vulnerability policy, which is what makes the "Report a vulnerability" affordance appear. |
 | Security policy (zh) | `docs/SECURITY.zh-CN.md` | The zh mirror of the above; parity-tested against it. |
-| Changelog | `docs/CHANGELOG.md` | Public doc, linked from both READMEs. |
+| Changelog (en) | `docs/CHANGELOG.md` | Public doc, linked from both READMEs. |
+| Changelog (zh) | `docs/CHANGELOG.zh-CN.md` | The zh mirror of the above. |
 
 Every registry entry declares which case it is (`sourceKind`: `authored` | `canonical-root` | `generated`) together with its `sourcePath`, and `src/__tests__/legal/doc-sources.test.ts` holds those declarations to the filesystem — the declared path must exist, its bytes must be the bytes the registry imported, the path must match the kind, and this directory must contain exactly the authored bodies. Adding a document in some third arrangement fails a test rather than quietly establishing a new convention.

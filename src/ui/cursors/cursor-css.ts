@@ -6,7 +6,7 @@
  * the image is unusable. Values are memoised; the controller asks for one on every hover change.
  */
 import { cursorSvg } from './cursor-art';
-import { CURSORS, type CursorId } from './cursor-spec';
+import { CURSORS, type CursorId } from '../../core/runtime/cursor-spec';
 
 const cache = new Map<string, string>();
 

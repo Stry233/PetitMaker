@@ -20,7 +20,7 @@ import { objectInstance } from '../build/object-meshes';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { modelGeometry } from '../models/build-model';
 import { archetypeGeometry } from '../build/object-archetypes';
-import { ObjectCategory, type PlacedObject } from '../../../core/model/types';
+import { type PlacedObject } from '../../../core/model/types';
 import type { ArchetypeKey } from '../core/types';
 
 type PendingGhost =
@@ -116,7 +116,7 @@ export class Overlay3D implements ToolOverlay {
   ): boolean {
     const resolved = objectInstance(this.state(), {
       id: '__ghost__', catalogId, position: { x, y },
-      rotation: (rotation as PlacedObject['rotation']), category: ObjectCategory.House, elevation,
+      rotation: (rotation as PlacedObject['rotation']), elevation,
     });
     if (!resolved) return false;
     const isModel = resolved.groupKey.startsWith('m:');

@@ -5,7 +5,7 @@ import { cutBackingByCorner } from '../../core/edge-cut/cut-backing';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { TerrainType, ObjectCategory, type EditorEvents, type PlacedObject } from '../../core/model/types';
+import { TerrainType, type EditorEvents, type PlacedObject } from '../../core/model/types';
 import { classifyRoadKind } from '../../core/edge-cut/road-cut-states';
 import { getCell } from '../../core/model/grid-model';
 import { makeState, setTerrain } from '../rules/_helpers';
@@ -225,7 +225,7 @@ describe('applyAutoEdgeCut — road/tile', () => {
   function addRoad(state: any, x: number, y: number): PlacedObject {
     const road: PlacedObject = {
       id: `r-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     };
     state.objects.set(road.id, road);
     return road;

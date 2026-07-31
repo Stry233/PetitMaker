@@ -12,7 +12,7 @@ import { setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ObjectCategory, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
@@ -57,7 +57,7 @@ function mapWithOneObject(): GridState {
   const gs = makeState(20, 20);
   const obj: PlacedObject = {
     id: 'a', catalogId: 'tree-apple', position: { x: 5, y: 5 },
-    rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+    rotation: 0, elevation: 0,
   };
   gs.objects.set(obj.id, obj);
   bumpObjectsVersion(gs, { added: [obj] });

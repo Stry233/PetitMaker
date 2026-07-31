@@ -7,14 +7,13 @@ import {
   type PlacedObject,
   type TerrainType,
   type ValidationResult,
-  ObjectCategory,
-  objectCategory,
 } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
 import { ChunkTracker } from '../core/model/chunk-tracker';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { CommandExecutor } from '../core/commands/command-executor';
 import { getCatalogItem } from '../state/catalog';
+import { objectPlacementCommand, removeObjectCommand } from '../tools/objects/object-placer';
 import { getPlacedObjectSize } from '../state/object-geometry';
 import { serialize, deserialize } from '../io/json-codec';
 
@@ -92,40 +91,23 @@ export class EditorAPI {
 
   placeObject(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): ValidationResult {
     const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const item = getCatalogItem(catalogId);
     const obj: PlacedObject = {
       id,
       catalogId,
       position: { x, y },
       rotation,
-      // Every placement path must derive the persisted category from the catalog
-      // (types.ts objectCategory contract) — a hardcoded value miscounts trees and
-      // flora as buildings in layer stats, saves, and the agent scorecard.
-      category: item ? objectCategory(item.category) : ObjectCategory.House,
       // Read the REAL standable surface (a Γ patch reads as its base block); a raw
       // terrain.elevation read sees a fillet as a full block and records a phantom
       // elevation. Mirrors the main placement path (ObjectPlacerTool).
       elevation: surfaceElevation(getCell(this.getState().cells, x, y)?.terrain),
     };
-    const cmd = {
-      type: CommandType.PlaceObject,
-      timestamp: Date.now(),
-      object: obj,
-      cells: [{ x, y }],
-    } as unknown as Command;
-    return this.getExecutor().execute(cmd);
+    return this.getExecutor().execute(objectPlacementCommand(obj));
   }
 
   removeObject(objectId: string): ValidationResult {
     const obj = this.getState().objects.get(objectId);
-    const cmd = {
-      type: CommandType.RemoveObject,
-      timestamp: Date.now(),
-      objectId,
-      removedObject: obj ?? null,
-      cells: obj ? [obj.position] : [],
-    } as unknown as Command;
-    return this.getExecutor().execute(cmd);
+    if (!obj) return { success: false, errors: [] };
+    return this.getExecutor().execute(removeObjectCommand(obj));
   }
 
   /* ── Validation ──────────────────────────────────────── */

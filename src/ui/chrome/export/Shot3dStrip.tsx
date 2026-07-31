@@ -47,7 +47,8 @@ export function Shot3dStrip({ open }: { open: boolean }) {
   const shots = useEditorStore((s) => s.export3dShots);
   const setShots = useEditorStore((s) => s.setExport3dShots);
   const setEdit = useEditorStore((s) => s.setPreview3DEdit);
-  const setPreviewOpen = useEditorStore((s) => s.setPreview3DOpen);
+  const setModal = useEditorStore((s) => s.setModal);
+  const setPreviewOpen = (open: boolean) => setModal('preview3d', open);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const [availW, setAvailW] = useState(0);

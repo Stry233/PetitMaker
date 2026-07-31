@@ -4,6 +4,23 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.68] - 2026-07-30
+
+### Added
+
+- **A guided tour the first time you open the editor.** It walks through moving the map, where the menu lives, how to read the height of a block, and how to switch between the 2D and 3D views. Skip it whenever you like, and open it again from Settings under Getting started.
+- **The changelog and the asset licences now read in Chinese**, in the app and in the repository, alongside the English ones.
+
+### Changed
+
+- **Share images use a new code format**, which carries less and reads the same. A picture made by an earlier build no longer imports. Export a fresh picture of any map you want to keep sharing. Saved JSON files are unaffected.
+
+### Fixed
+
+- **Dragging the 2D map with the hand tool** could send it sliding far past the pointer instead of following it.
+- **Turning an item with the comma and period keys before placing it** now turns the preview straight away, instead of waiting for the next mouse movement.
+- **The rotate-your-device notice** shows an icon that reads as a rotation.
+
 ## [0.1.1645] - 2026-07-30
 
 PetitMaker is a map planner for *Petit Planet* that runs in your browser. Plan an island here, then build it in the game. Nothing is uploaded and there is no account.

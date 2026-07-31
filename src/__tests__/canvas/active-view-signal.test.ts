@@ -8,12 +8,15 @@
  * in BOTH directions, it fires when the lazily-built 3D scene registers itself (after the store flip,
  * so `viewMode` cannot stand in for it), the newly active overlay gets the rings, and the outgoing
  * one keeps none.
+ *
+ * The same listener carries the ring for a selection CHANGE, so every path that edits the selection
+ * draws it without arranging the repaint itself, and drops a selection the active mode cannot hold.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActiveView, getActiveView, onActiveViewChange } from '../../canvas/active-view';
 import { installSelectionViewSync } from '../../canvas/interaction/selection-view-sync';
 import type { ActiveView, ToolOverlay } from '../../canvas/view-projection';
-import { ObjectCategory, type GridState, type PlacedObject } from '../../core/model/types';
+import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { makeState } from '../rules/_helpers';
@@ -36,7 +39,7 @@ function mapWithObject(id: string): GridState {
   const gs = makeState(20, 20);
   const obj: PlacedObject = {
     id, catalogId: 'tree-apple', position: { x: 4, y: 5 },
-    rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+    rotation: 0, elevation: 0,
   };
   gs.objects.set(id, obj);
   bumpObjectsVersion(gs, { added: [obj] });
@@ -135,7 +138,32 @@ describe('selection-view-sync: the ring follows the active view', () => {
     const again = { overlay: two.overlay } as unknown as ActiveView;
     setActiveView(again);
     expect(two.overlay.clearSelection).not.toHaveBeenCalled();
-    expect(two.overlay.showSelection).toHaveBeenCalledTimes(1);
+    expect(two.overlay.showSelection).toHaveBeenCalled();
     expect(useEditorStore.getState().selection).toHaveLength(1);
+  });
+
+  it('paints a selection CHANGE without the caller asking', () => {
+    const two = makeFakeView();
+    setStoreState({ gridState: mapWithObject('a'), selection: [] });
+    uninstall = installSelectionViewSync();
+    setActiveView(two.view);
+    (two.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
+
+    useEditorStore.getState().setSelection([{ kind: 'object', id: 'a' }]);
+    expect(two.overlay.showSelection).toHaveBeenCalledTimes(1);
+
+    useEditorStore.getState().clearSelection();
+    expect(two.overlay.clearSelection).toHaveBeenCalled();
+  });
+
+  it('drops the selection when the mode cannot hold one', () => {
+    const two = makeFakeView();
+    setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'object', id: 'a' }] });
+    uninstall = installSelectionViewSync();
+    setActiveView(two.view);
+
+    useEditorStore.getState().setActiveTool(ToolType.TerrainBrush);
+    expect(useEditorStore.getState().selection).toEqual([]);
+    expect(two.overlay.clearSelection).toHaveBeenCalled();
   });
 });

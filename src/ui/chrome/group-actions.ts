@@ -9,11 +9,11 @@
  * independently, so `GroupPlaceHook` fires per member, while a ROTATION is one rigid body turning
  * about one point, so `GroupRotateHook` fires ONCE with the whole turn.
  */
-import { CommandType, type Command, type EditorEvents, type GridState, type MacroCoord, type PlacedObject, type RemoveObjectCommand, type ValidationError } from '../../core/model/types';
+import { type Command, type EditorEvents, type GridState, type MacroCoord, type PlacedObject, type ValidationError } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { EventBus } from '../../core/commands/event-bus';
 import { bumpObjectsVersion, getFootprint } from '../../core/model/grid-model';
-import { movedObject, objectPlacementCommand } from '../../tools/objects/object-placer';
+import { movedObject, objectPlacementCommand, removeObjectCommand } from '../../tools/objects/object-placer';
 import { getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import type { GroupRotation } from '../../canvas/group-arc';
@@ -30,11 +30,6 @@ export interface GroupOpResult {
 }
 
 const NOTHING: GroupOpResult = { moved: 0, blockedBy: null, refusal: null };
-
-const removeCmd = (obj: PlacedObject): RemoveObjectCommand => ({
-  type: CommandType.RemoveObject, timestamp: Date.now(),
-  objectId: obj.id, removedObject: obj,
-});
 
 /** The objects `ids` still resolve to, in the given order. A selection may name an object that
  *  another path (the agent, a post-stroke revert, an undo) has since removed, and nothing validates
@@ -103,11 +98,11 @@ export function applyGroupTransform(
   // Refusals reach the caller through the result instead.
   return executor.runSilently((): GroupOpResult => {
     for (const obj of members) {
-      const cmd = removeCmd(obj);
+      const cmd = removeObjectCommand(obj);
       const res = executor.execute(cmd);
       if (!res.success) return refuse(executor, watermark, obj.id, cmd, res.errors);
     }
-    let last: Command = removeCmd(members[0]!);
+    let last: Command = removeObjectCommand(members[0]!);
     for (const obj of members) {
       const next = destination(obj);
       onWillPlace?.(obj, next);
@@ -240,7 +235,7 @@ export function rotateGroup(
     return !getCatalogItem(obj.catalogId)?.rotatable && rect.w !== rect.h;
   });
   if (span) {
-    return { moved: 0, blockedBy: span.id, refusal: { cmd: removeCmd(span), errors: [spanRefusal(span)] } };
+    return { moved: 0, blockedBy: span.id, refusal: { cmd: removeObjectCommand(span), errors: [spanRefusal(span)] } };
   }
   const pivot = rotationPivot(members, quarterTurns);
   const step = quarterTurns === 1 ? 90 : 270;
@@ -307,7 +302,7 @@ export function deleteGroup(
   }
   // Nothing removed. State is unchanged, so replaying the first member's own validation here
   // reproduces the error that refused it.
-  const cmd = removeCmd(members[0]!);
+  const cmd = removeObjectCommand(members[0]!);
   const errors = executor.getRegistry().validatePreCommand(cmd, state);
   return { deleted: 0, kept: members.length, refusal: { cmd, errors } };
 }

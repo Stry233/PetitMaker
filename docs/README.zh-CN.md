@@ -185,9 +185,9 @@ npm run build        # 生产构建
 1. **代码**：采用 **Apache-2.0** 授权（见 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE)）。
 2. **品牌、Logo 与原创美术**：PetitMaker / 谷地工坊 的名称、Logo 及原创美术作品，除非特定文件另有声明，均为 **保留所有权利（All Rights Reserved）**。
 3. **第三方素材与字体**：保留**其自身的授权条款**。详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)（英文）中列出的依赖库与内置字体。
-4. **用户地图**：你在编辑器中创作的地图及其他内容归**你**所有，但其中包含的任何第三方素材仍受各自条款约束。编辑器为你的地图生成的截图与导出图片，虽然嵌入了我们的美术素材，但明确允许你直接分享；详见 [ASSET_LICENSES.md](./ASSET_LICENSES.md)（英文）。
+4. **用户地图**：你在编辑器中创作的地图及其他内容归**你**所有，但其中包含的任何第三方素材仍受各自条款约束。编辑器为你的地图生成的截图与导出图片，虽然嵌入了我们的美术素材，但明确允许你直接分享；详见[素材许可](./ASSET_LICENSES.zh-CN.md)。
 
-完整的权属说明、来源披露与知识产权申诉流程见 [ASSET_LICENSES.md](./ASSET_LICENSES.md)（英文）。
+完整的权属说明、来源披露与知识产权投诉流程见[素材许可](./ASSET_LICENSES.zh-CN.md)。
 
 ## 鸣谢
 
@@ -195,10 +195,10 @@ npm run build        # 生产构建
 
 <table align="center">
 <tr>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/16699168"><img src="../src/assets/team/16699168.jpg" width="80" alt="火山野牛王 的头像"><br><br><b>火山野牛王</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/25599535"><img src="../src/assets/team/25599535.jpg" width="80" alt="镜喵MirrorCat 的头像"><br><br><b>镜喵&#8288;MirrorCat</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/3546659724200757"><img src="../src/assets/team/3546659724200757.jpg" width="80" alt="Selka 的头像"><br><br><b>Selka</b></a></td>
-<td align="center" valign="top" width="25%"><a href="https://space.bilibili.com/3632319829116985"><img src="../src/assets/team/3632319829116985.jpg" width="80" alt="鱼松吃点吗 的头像"><br><br><b>鱼松吃点吗</b></a></td>
+<td align="center"><a href="https://space.bilibili.com/16699168"><img src="../src/assets/team/16699168.jpg" width="72" alt="火山野牛王 的头像"><br><sub><b>火山野牛王</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/25599535"><img src="../src/assets/team/25599535.jpg" width="72" alt="镜喵MirrorCat 的头像"><br><sub><b>镜喵MirrorCat</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/3546659724200757"><img src="../src/assets/team/3546659724200757.jpg" width="72" alt="Selka 的头像"><br><sub><b>Selka</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/3632319829116985"><img src="../src/assets/team/3632319829116985.jpg" width="72" alt="鱼松吃点吗 的头像"><br><sub><b>鱼松吃点吗</b></sub></a></td>
 </tr>
 </table>
 
@@ -207,12 +207,12 @@ npm run build        # 生产构建
 | 文件 | 用途 |
 |---|---|
 | [LICENSE](../LICENSE) | Apache-2.0 代码授权（英文） |
-| [ASSET_LICENSES.md](./ASSET_LICENSES.md) | 四类权属划分：代码 / 品牌与美术 / 第三方 / 用户地图（英文） |
+| [ASSET_LICENSES.md](./ASSET_LICENSES.md)（[中文版](./ASSET_LICENSES.zh-CN.md)） | 四类权属划分：代码 / 品牌与美术 / 第三方 / 用户地图 |
 | [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) | 内置依赖库与字体清单（英文） |
 | [SECURITY.md](../SECURITY.md)（[中文版](./SECURITY.zh-CN.md)） | 安全漏洞报告政策 |
 | [THREAT_MODEL.md](./THREAT_MODEL.md) | 开发者威胁模型（构建、标头/CSP、密钥保管库、智能体沙箱，英文） |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | DCO 签署、代码/素材贡献条款、署名政策（英文） |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本历史（遵循 Keep a Changelog，英文） |
+| [CHANGELOG.md](./CHANGELOG.md)（[中文版](./CHANGELOG.zh-CN.md)） | 版本历史（遵循 Keep a Changelog） |
 
 ## 联系我们
 

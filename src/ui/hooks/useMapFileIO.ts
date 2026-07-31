@@ -18,16 +18,14 @@ export interface MapFileIO {
 }
 
 export function useMapFileIO(): MapFileIO {
-  const setExportJsonModalOpen = useEditorStore((s) => s.setExportJsonModalOpen);
-  const handleExport = useCallback(() => { setExportJsonModalOpen(true); }, [setExportJsonModalOpen]);
+  const setModal = useEditorStore((s) => s.setModal);
+  const handleExport = useCallback(() => { setModal('exportJson', true); }, [setModal]);
 
-  // Import now opens the unified ImportModal (an image PNG with embedded map data, or a
-  // legacy .json) which runs the same loadMap path. Drag/drop + paste live there.
-  const setImportModalOpen = useEditorStore((s) => s.setImportModalOpen);
-  const handleImport = useCallback(() => { setImportModalOpen(true); }, [setImportModalOpen]);
+  // Import opens the unified ImportModal (an image PNG with embedded map data, or a legacy .json)
+  // which runs the same loadMap path. Drag/drop + paste live there.
+  const handleImport = useCallback(() => { setModal('import', true); }, [setModal]);
 
-  const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
-  const handleImage = useCallback(() => { setExportModalOpen(true); }, [setExportModalOpen]);
+  const handleImage = useCallback(() => { setModal('export', true); }, [setModal]);
 
   return { handleExport, handleImport, handleImage };
 }

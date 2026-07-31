@@ -1,8 +1,10 @@
 import type { CSSProperties } from 'react';
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useT } from '../../i18n/context';
 import { useOverlayLock } from '../hooks/useOverlayLock';
 import { usePortraitGuard } from './portrait-guard';
+import { useEditorStore } from '../../state/store';
 import { colors, cozyOverlay, cozyPanel, font, springs, exitTransition, z } from '../styles';
 
 /**
@@ -30,8 +32,9 @@ const panel: CSSProperties = {
   gap: 14,
 };
 
+// The panel's own ink. `accentPrimary` reaches 1.7:1 on this cream and the icon read as a smudge.
 const iconWrap: CSSProperties = {
-  color: colors.accentPrimary,
+  color: colors.frameDark,
 };
 
 const title: CSSProperties = {
@@ -56,14 +59,23 @@ const continueBtn: CSSProperties = {
   opacity: 0.75,
 };
 
-/** A phone rotating into landscape — stroke icon in `currentColor`, matching `glyph-icons.tsx`. */
+/**
+ * The turn itself: the phone you are holding, faded, an arrow, and the phone you want. A single
+ * landscape phone cannot say "rotate" — it shows the destination and leaves the instruction to the
+ * text. Stroke icon in `currentColor`, matching `glyph-icons.tsx`.
+ */
 function RotateIcon() {
   return (
-    <svg width={56} height={56} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="7" width="13" height="9" rx="1.6" />
-      <path d="M18 4a5 5 0 0 1 3 4.2" />
-      <path d="M21 8.2h-3.4V5" />
+    <svg width={84} height={50} viewBox="0 0 40 24" fill="none" stroke="currentColor"
+      strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <g opacity={0.38}>
+        <rect x="3" y="2.5" width="11" height="19" rx="2.4" />
+        <path d="M6.8 5.6h3.4" />
+      </g>
+      <path d="M16.6 8.4A7.4 7.4 0 0 1 23.4 4.2" />
+      <path d="M23.4 4.2 20.7 2.7M23.4 4.2 22 7" />
+      <rect x="24" y="7.5" width="13" height="9.6" rx="2.4" />
+      <path d="M27.1 10.6v3.4" />
     </svg>
   );
 }
@@ -72,6 +84,12 @@ export function PortraitGuard() {
   const t = useT();
   const { blocked, dismiss } = usePortraitGuard();
   useOverlayLock(blocked);
+
+  // The one writer of the store's mirror: this is the only component holding the live
+  // media-query + dismiss state, so anything elsewhere that needs to know (the tour's gate)
+  // reads the store instead of running a second, independently-dismissable subscription.
+  const setPortraitBlocked = useEditorStore((s) => s.setPortraitBlocked);
+  useEffect(() => { setPortraitBlocked(blocked); }, [blocked, setPortraitBlocked]);
 
   return (
     <AnimatePresence>

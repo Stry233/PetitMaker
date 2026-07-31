@@ -12,9 +12,14 @@
  * `useEditorStore` there, or the component under test subscribes to a store nothing wrote to (see
  * `__tests__/ui/dev-build-notice.test.tsx`).
  */
-import { useEditorStore, type EditorStore } from '../state/store';
+import { useEditorStore, type EditorStore, type ModalId } from '../state/store';
 
 /** Merge `partial` into the editor store. Same semantics as `useEditorStore.setState`. */
 export function setStoreState(partial: Partial<EditorStore>): void {
   useEditorStore.setState(partial);
+}
+
+/** Open (or close) one overlay, leaving the rest as they are. */
+export function setStoreModal(id: ModalId, open = true): void {
+  useEditorStore.getState().setModal(id, open);
 }

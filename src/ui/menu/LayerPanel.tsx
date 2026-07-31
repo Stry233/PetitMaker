@@ -19,6 +19,7 @@ import { usePx } from './scale';
 import { measureTextW } from './measure-text';
 import { squircleClip } from './squircle';
 import { iconUrl } from './icons';
+import { tourTargetAttr } from '../chrome/tour/steps';
 
 const CARD_X = 10;   // card left inset within the panel
 const ROW0 = 100;    // first row top
@@ -176,6 +177,7 @@ export function LayerPanel({ layers, activeLayer, highlightLayer, layerVisibilit
         type="button"
         onClick={() => setShowLayerNumbers(!showLayerNumbers)}
         {...pressable}
+        {...tourTargetAttr('layer-numbers')}
         aria-label={t('a11y.toggle_layer_numbers')}
         aria-pressed={showLayerNumbers}
         style={{
@@ -200,6 +202,7 @@ export function LayerPanel({ layers, activeLayer, highlightLayer, layerVisibilit
           s.setViewMode(s.viewMode === '3d' ? '2d' : '3d');
         }}
         {...pressable}
+        {...tourTargetAttr('view-toggle')}
         aria-label={t('a11y.open_3d_preview')}
         aria-pressed={viewMode === '3d'}
         style={{

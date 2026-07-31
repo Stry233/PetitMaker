@@ -5,7 +5,7 @@ import { createDefaultRegistry } from '../../../../rules/index';
 import { makeState } from '../../../rules/_helpers';
 import { getCatalogByCategory } from '../../../../state/catalog';
 import { makeCtx, tryPlace } from '../../../../tools/generation/placement/object';
-import { ItemCategory, ObjectCategory, TerrainType, objectCategory, type EditorEvents } from '../../../../core/model/types';
+import { ItemCategory, TerrainType, type EditorEvents } from '../../../../core/model/types';
 
 const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
 
@@ -16,12 +16,6 @@ function ctxFor(size = 12) {
 }
 
 describe('placement/object', () => {
-  it('maps ItemCategory → ObjectCategory', () => {
-    expect(objectCategory(ItemCategory.Facility)).toBe(ObjectCategory.Facility);
-    expect(objectCategory(ItemCategory.Building)).toBe(ObjectCategory.House);
-    expect(objectCategory(ItemCategory.Tree)).toBe(ObjectCategory.Tree);
-    expect(objectCategory(ItemCategory.Flora)).toBe(ObjectCategory.Flora);
-  });
   it('places flora on flat grass and returns the object with a deterministic id', () => {
     const { state, ctx } = ctxFor();
     const placed = tryPlace(ctx, floraId, 5, 5);

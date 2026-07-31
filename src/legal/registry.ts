@@ -16,9 +16,10 @@
  *   - `canonical-root` — the body is a repo file that exists for its OWN sake and
  *     cannot move: `LICENSE` is byte-exact upstream text (GitHub reads it at the
  *     root for license detection), `SECURITY.md` is where GitHub looks for a
- *     vulnerability policy, and its zh mirror + `ASSET_LICENSES`/`CHANGELOG` are
- *     public docs the READMEs link. The app renders THAT file, so the GitHub view,
- *     the static page, and the in-app view cannot disagree.
+ *     vulnerability policy, and `ASSET_LICENSES`/`CHANGELOG` are public docs the
+ *     READMEs link; all three carry a `*.zh-CN.md` mirror. The app renders THAT
+ *     file, so the GitHub view, the static page, and the in-app view cannot
+ *     disagree.
  *   - `generated` — produced by a script; never hand-edited.
  *
  * See `src/legal/content/README.md` for the same map from the content side.
@@ -33,10 +34,12 @@ import { providerDisclosureList } from './providers-list';
 // with no `src/legal/content/` counterpart (see the header note).
 import LICENSE_SRC from '../../LICENSE?raw';
 import THIRD_PARTY_SRC from '../../docs/THIRD_PARTY_NOTICES.md?raw';
-import ASSET_LICENSES_SRC from '../../docs/ASSET_LICENSES.md?raw';
+import ASSET_LICENSES_EN_SRC from '../../docs/ASSET_LICENSES.md?raw';
+import ASSET_LICENSES_ZH_SRC from '../../docs/ASSET_LICENSES.zh-CN.md?raw';
 import SECURITY_EN_SRC from '../../SECURITY.md?raw';
 import SECURITY_ZH_SRC from '../../docs/SECURITY.zh-CN.md?raw';
-import CHANGELOG_SRC from '../../docs/CHANGELOG.md?raw';
+import CHANGELOG_EN_SRC from '../../docs/CHANGELOG.md?raw';
+import CHANGELOG_ZH_SRC from '../../docs/CHANGELOG.zh-CN.md?raw';
 
 // src/legal/content/* authored doc bodies (en+zh pairs).
 import PRIVACY_EN_SRC from './content/privacy.en.md?raw';
@@ -226,10 +229,10 @@ export const DOCS: Record<DocId, DocMeta> = {
     id: 'asset-licenses',
     slug: 'asset-licenses',
     titleKey: 'legal.doc_asset_licenses',
-    source: { en: ASSET_LICENSES_SRC, zh: null },
+    source: { en: ASSET_LICENSES_EN_SRC, zh: ASSET_LICENSES_ZH_SRC },
     sourceKind: 'canonical-root',
-    sourcePath: { en: 'docs/ASSET_LICENSES.md', zh: null },
-    schema: minimalSchema(['Asset Licenses']),
+    sourcePath: { en: 'docs/ASSET_LICENSES.md', zh: 'docs/ASSET_LICENSES.zh-CN.md' },
+    schema: minimalSchema(['Asset Licenses'], ['素材许可与来源']),
   },
   about: {
     id: 'about',
@@ -262,10 +265,10 @@ export const DOCS: Record<DocId, DocMeta> = {
     id: 'changelog',
     slug: 'changelog',
     titleKey: 'legal.doc_changelog',
-    source: { en: CHANGELOG_SRC, zh: null },
+    source: { en: CHANGELOG_EN_SRC, zh: CHANGELOG_ZH_SRC },
     sourceKind: 'canonical-root',
-    sourcePath: { en: 'docs/CHANGELOG.md', zh: null },
-    schema: minimalSchema(['Changelog']),
+    sourcePath: { en: 'docs/CHANGELOG.md', zh: 'docs/CHANGELOG.zh-CN.md' },
+    schema: minimalSchema(['Changelog'], ['更新日志']),
   },
 };
 
@@ -358,9 +361,9 @@ function substituteTokens(src: string, tokens: Record<string, string>): string {
 
 /**
  * The token-substituted body for a document in the requested language. A
- * `zh`-null doc (license/third-party/asset-licenses/changelog) falls back to
- * its `en` body — the doc viewer is the one that adds a zh intro note for
- * those (chrome, not content; see the design spec §6).
+ * `zh`-null doc (license/third-party) falls back to its `en` body — the doc
+ * viewer is the one that adds a zh intro note for those (chrome, not content;
+ * see the design spec §6).
  */
 export function docBody(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): string {
   const meta = DOCS[id];
@@ -394,10 +397,11 @@ export function docIdForPath(slugPath: string): DocId | null {
 /**
  * When rendering a zh doc, an INTERNAL cross-doc link whose path exactly matches
  * a known en slug that ALSO has a zh page (`/privacy`, `/terms`, `/security`,
- * `/about`, `/contact`) is rewritten to `/zh/<slug>`, so a zh reader stays in
- * Chinese across cross-references. A fragment (`#anchor`) is preserved. Links to
- * en-only docs (`/asset-licenses`, `/license`, …), external links, and pure
- * fragments are left untouched.
+ * `/about`, `/contact`, `/asset-licenses`, `/changelog`) is rewritten to
+ * `/zh/<slug>`, so a zh reader stays in Chinese across cross-references. A
+ * fragment (`#anchor`) is preserved. Links to en-only docs (`/license`,
+ * `/third-party-notices`), external links, and pure fragments are left
+ * untouched.
  */
 export function localizeZhSlug(href: string): string {
   const hashIdx = href.indexOf('#');

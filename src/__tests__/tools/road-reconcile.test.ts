@@ -3,7 +3,7 @@ import { reconcileRoadsAfterMountainPaint } from '../../tools/paint/road-reconci
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { TerrainType, ObjectCategory, type EditorEvents, type Command, type PlacedObject } from '../../core/model/types';
+import { TerrainType, type EditorEvents, type Command, type PlacedObject } from '../../core/model/types';
 import type { ToolContext } from '../../tools/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 
@@ -29,7 +29,7 @@ function makeCtx(state: any, executor: CommandExecutor): ToolContext {
 function addRoad(state: any, x: number, y: number, elevation = 0): PlacedObject {
   const road: PlacedObject = {
     id: `road-${x}-${y}`, catalogId: 'road-dirt',
-    position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation,
+    position: { x, y }, rotation: 0, elevation,
   };
   state.objects.set(road.id, road);
   return road;

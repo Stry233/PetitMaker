@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  CommandType, TerrainType, objectCategory,
-  type Command, type EditorEvents, type GridState, type MacroCoord, type ValidationResult,
+  CommandType, TerrainType, type Command, type EditorEvents, type GridState, type MacroCoord, type ValidationResult,
 } from '../../core/model/types';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
@@ -44,7 +43,7 @@ function placeFixture(exec: CommandExecutor, catalogId: string, at: MacroCoord):
     timestamp: Date.now(),
     object: {
       id: `fixture-${catalogId}`, catalogId: item.id, position: at,
-      rotation: 0, category: objectCategory(item.category), elevation: 0,
+      rotation: 0, elevation: 0,
     },
     loadValue: item.loadValue,
   });

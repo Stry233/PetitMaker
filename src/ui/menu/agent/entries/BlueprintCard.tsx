@@ -28,7 +28,8 @@ import {
   REVERT_TEXT,
   SummaryFold,
   UndoChip,
-  Wavy, pulseProps } from '../atoms';
+  pulseProps } from '../atoms';
+import { Wavy } from '../../Wavy';
 import { HelpersBlock } from './HelpersBlock';
 import { Markdown } from '../Markdown';
 

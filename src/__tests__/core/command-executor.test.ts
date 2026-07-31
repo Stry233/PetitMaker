@@ -4,7 +4,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { RuleRegistry } from '../../rules/registry';
 import { createDefaultRegistry } from '../../rules/index';
 import {
-  CellZone, CommandType, ObjectCategory, TerrainType,
+  CellZone, CommandType, TerrainType,
   type Corners, type EditorEvents, type EraseTerrainCommand, type PaintTerrainCommand, type PlaceObjectCommand,
   type PlacedObject, type RemoveObjectCommand, type TrimCornersCommand,
 } from '../../core/model/types';
@@ -150,7 +150,7 @@ describe('undo/redo — objects map', () => {
   function placeRoad(executor: CommandExecutor, x: number, y: number): PlacedObject {
     const obj: PlacedObject = {
       id: `r-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     };
     const item = getCatalogItem('road-dirt');
     const res = executor.execute({
@@ -233,7 +233,7 @@ describe('commitStrokeGroup — batch undo', () => {
     const item = getCatalogItem('road-dirt');
     const obj: PlacedObject = {
       id: 'rot-1', catalogId: 'road-dirt',
-      position: { x: 4, y: 4 }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x: 4, y: 4 }, rotation: 0, elevation: 0,
     };
     executor.execute({ type: CommandType.PlaceObject, timestamp: 0, object: obj, loadValue: item?.loadValue ?? 0 } as PlaceObjectCommand);
 
@@ -262,7 +262,7 @@ describe('planObjectRotation — validate before mutate', () => {
     const houseItem = getCatalogItem('building-myhouse');
     const house: PlacedObject = {
       id: 'house', catalogId: 'building-myhouse',
-      position: { x: 4, y: 25 }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x: 4, y: 25 }, rotation: 0, elevation: 0,
     };
     expect(executor.execute({ type: CommandType.PlaceObject, timestamp: 0, object: house, loadValue: houseItem?.loadValue ?? 0 } as PlaceObjectCommand).success).toBe(true);
 
@@ -277,7 +277,7 @@ describe('planObjectRotation — validate before mutate', () => {
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
     const house: PlacedObject = {
       id: 'house', catalogId: 'building-myhouse',
-      position: { x: 4, y: 4 }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x: 4, y: 4 }, rotation: 0, elevation: 0,
     };
     executor.execute({ type: CommandType.PlaceObject, timestamp: 0, object: house, loadValue: 0 } as PlaceObjectCommand);
     const before = state.objects.get('house');
@@ -310,7 +310,7 @@ describe('collapsed strokes and auto-revert', () => {
   function placeRoadAt(executor: CommandExecutor, x: number, y: number): PlacedObject {
     const obj: PlacedObject = {
       id: `r-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     };
     const item = getCatalogItem('road-dirt');
     const res = executor.execute({

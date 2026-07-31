@@ -19,7 +19,6 @@ import {
   CellZone,
   CommandType,
   TerrainType,
-  objectCategory,
   type Command,
   type Corners,
   type CornerTrim,
@@ -49,6 +48,7 @@ import type { PlanStage, ToolCall, ToolResult, ToolSchema } from '../types';
 import { type AgentToolDeps, type ToolResultBody, clamp, dedupe, formatErrors, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
 import { sculptTerrace, carveRiver } from './tools-terraform';
 import { findFlatAreas, findBridgeSites, findRampSites, scanBridgeSites } from './tools-search';
+import { objectPlacementCommand, removeObjectCommand } from '../../tools/objects/object-placer';
 
 /** Re-exported from tools-common so existing importers keep their path. */
 export type { AgentToolDeps } from './tools-common';
@@ -551,7 +551,7 @@ function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolRes
       }
     }
     if (hit) {
-      commands.push({ type: CommandType.RemoveObject, timestamp: Date.now(), objectId: obj.id, removedObject: obj });
+      commands.push(removeObjectCommand(obj));
     }
   }
   const removed = commands.length;
@@ -719,10 +719,9 @@ function buildPlaceCmd(
     catalogId,
     position: { x, y },
     rotation,
-    category: objectCategory(item.category),
     elevation: deps.getState().cells[y]?.[x]?.terrain?.elevation ?? 0,
   };
-  return { type: CommandType.PlaceObject, timestamp: Date.now(), object: obj, loadValue: item.loadValue };
+  return objectPlacementCommand(obj);
 }
 
 function placeObject(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
@@ -747,7 +746,7 @@ function placeObject(deps: AgentToolDeps, input: Record<string, unknown>): ToolR
     const state = deps.getState();
     if (deps.getExecutor().getRegistry().validatePreCommand(cmd, state).length === 0) {
       const roads = coatingsUnder(state, objectRect(cmd.object));
-      for (const o of roads) stripCmds.push({ type: CommandType.RemoveObject, timestamp: Date.now(), objectId: o.id, removedObject: o });
+      for (const o of roads) stripCmds.push(removeObjectCommand(o));
       if (roads.length) cleared = ` Cleared ${roads.length} road tile(s) it covered (placing over a road removes it).`;
     }
   }
@@ -796,7 +795,7 @@ function removeObject(deps: AgentToolDeps, input: Record<string, unknown>): Tool
   if (!obj) return { isError: true, content: `No object with id "${id}". Use get_objects.` };
   return runStroke(
     deps,
-    [{ type: CommandType.RemoveObject, timestamp: Date.now(), objectId: id, removedObject: obj }],
+    [removeObjectCommand(obj)],
     () => `Removed ${obj.catalogId} (${id}).`,
   );
 }
@@ -813,7 +812,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
   let failure: string | null = null;
   const { reverted, violations } = await runStrokeBody(deps, () => {
     const rm = exec.execute({
-      type: CommandType.RemoveObject, timestamp: Date.now(), objectId: id, removedObject: obj,    });
+      ...removeObjectCommand(obj) });
     if (!rm.success) {
       failure = formatErrors(rm.errors);
       return;
@@ -823,7 +822,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
     if (!pr || !pr.success) {
       failure = pr ? formatErrors(pr.errors) : (place as string);
       // restore the original (state is identical to before the remove → must succeed)
-      exec.execute({ type: CommandType.PlaceObject, timestamp: Date.now(), object: obj, loadValue: item.loadValue });
+      exec.execute(objectPlacementCommand(obj));
     }
   });
   if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };

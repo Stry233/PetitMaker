@@ -3,10 +3,12 @@ import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { EventBus } from '../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../rules/index';
 import { makeState } from '../../../rules/_helpers';
+import { categoryOf } from '../../../../state/catalog';
+import { ItemCategory } from '../../../../core/model/types';
 import { makeCtx } from '../../../../tools/generation/placement/object';
 import { analyzeTerrain } from '../../../../tools/generation/placement/analysis';
 import { placeNature } from '../../../../tools/generation/placement/nature';
-import { ObjectCategory, type EditorEvents } from '../../../../core/model/types';
+import { type EditorEvents } from '../../../../core/model/types';
 
 function run(nature: number, seed = 7) {
   const state = makeState(48, 48);
@@ -24,7 +26,7 @@ describe('placeNature', () => {
     expect(run(0.7).map((o) => o.catalogId)).toEqual(run(0.7).map((o) => o.catalogId));
   });
   it('trees keep exclusionRadius spacing (no two trees within 1 cell)', () => {
-    const trees = run(1).filter((o) => o.category === ObjectCategory.Tree);
+    const trees = run(1).filter((o) => categoryOf(o) === ItemCategory.Tree);
     for (const a of trees) for (const b of trees) {
       if (a === b) continue;
       expect(Math.max(Math.abs(a.position.x - b.position.x), Math.abs(a.position.y - b.position.y))).toBeGreaterThan(1);

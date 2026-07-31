@@ -6,6 +6,9 @@ import { colors, font, inkTint, radii, springs, z } from '../styles';
 import { useEditorStore } from '../../state/store';
 import { useT } from '../../i18n/context';
 import type { ValidationError } from '../../core/model/types';
+import { setToastPresenter, type ToastType } from '../../core/runtime/toast-bus';
+
+export { showToast } from '../../core/runtime/toast-bus';
 
 const TOAST_DURATION = 3000;
 
@@ -22,7 +25,6 @@ const containerStyle: CSSProperties = {
   pointerEvents: 'none',
 };
 
-type ToastType = 'error' | 'info' | 'warning';
 
 interface ToastMessage {
   id: number;
@@ -76,12 +78,6 @@ const badgeStyle = (type: ToastType): CSSProperties => ({
 
 let nextId = 0;
 
-let _showToastGlobal: ((text: string, type?: ToastType) => void) | null = null;
-
-export function showToast(text: string, type: ToastType = 'info'): void {
-  _showToastGlobal?.(text, type);
-}
-
 export function ToastContainer() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -117,10 +113,7 @@ export function ToastContainer() {
     });
   }, []);
 
-  useEffect(() => {
-    _showToastGlobal = addToast;
-    return () => { _showToastGlobal = null; };
-  }, [addToast]);
+  useEffect(() => setToastPresenter(addToast), [addToast]);
 
   useEffect(() => {
     const handler = ({ errors }: { errors: ValidationError[] }) => {

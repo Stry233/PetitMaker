@@ -29,7 +29,6 @@ export type CommandCategory =
 export interface CommandContext {
   openBuild: (mode: DesignMode) => void;
   handleTileAction: (spec: TileSpec) => void;
-  onHelp: () => void;
   /** Pop the Generate region's OWN undo/redo stack (ui/hooks/useRegionBrush) — a painted
    *  region is a scope for a future generate, not a map edit, so it keeps a history
    *  separate from the command executor's. Return false when there was nothing to pop
@@ -220,7 +219,7 @@ export const COMMANDS: EditorCommand[] = [
   // App actions
   { id: 'app.generate', category: 'app', labelKey: 'menu.generate', defaultCombo: 'ctrl+g', run: (c) => doTile(c, 'generate') },
   { id: 'app.new',      category: 'app', labelKey: 'menu.new',      defaultCombo: 'ctrl+n', run: (c) => doTile(c, 'new') },
-  { id: 'app.help',     category: 'app', labelKey: 'menu.help',     defaultCombo: 'shift+?', run: (c) => c.onHelp() },
+  { id: 'app.help',     category: 'app', labelKey: 'menu.help',     defaultCombo: 'shift+?', run: () => store().setModal('help', true) },
 
   // Overlay toggles
   { id: 'overlay.grid',    category: 'overlay', labelKey: 'shortcut.toggle_grid',        defaultCombo: 'shift+g', run: () => { const s = store(); s.setShowGrid(!s.showGrid); } },

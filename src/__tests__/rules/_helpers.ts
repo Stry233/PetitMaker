@@ -1,7 +1,6 @@
 import {
   CellZone,
   CommandType,
-  ObjectCategory,
   TerrainType,
   type EraseTerrainCommand,
   type GridState,
@@ -77,8 +76,7 @@ export function placeCmd(object: PlacedObject, loadValue = 0): PlaceObjectComman
 }
 
 export function makeObject(
-  id: string, x: number, y: number,
-  category: ObjectCategory, rotation: 0 | 90 | 180 | 270 = 0,
+  id: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0,
 ): PlacedObject {
-  return { id, catalogId: id, position: { x, y }, rotation, category, elevation: 0 };
+  return { id, catalogId: id, position: { x, y }, rotation, elevation: 0 };
 }

@@ -5,14 +5,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { macroRect, objectsInBand } from '../../canvas/interaction/marquee';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import { ObjectCategory, type GridState, type PlacedObject } from '../../core/model/types';
+import { type GridState, type PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
 function withObject(id: string, pos: { x: number; y: number }, w: number, h: number): GridState {
   const gs = makeState(20, 20);
   const obj: PlacedObject = {
     id, catalogId: 'building-cabin', position: pos, width: w, height: h,
-    rotation: 0, category: ObjectCategory.House, elevation: 0,
+    rotation: 0, elevation: 0,
   };
   gs.objects.set(id, obj);
   bumpObjectsVersion(gs, { added: [obj] });
@@ -25,7 +25,7 @@ function withManyObjects(count: number): GridState {
   for (let i = 0; i < count; i++) {
     objs.push({
       id: `o${i}`, catalogId: 'tree-apple', position: { x: i % 200, y: Math.floor(i / 200) },
-      rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+      rotation: 0, elevation: 0,
     });
   }
   for (const obj of objs) gs.objects.set(obj.id, obj);

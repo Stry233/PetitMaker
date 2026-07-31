@@ -183,7 +183,7 @@ describe('computeLockedCorners — road', () => {
   function addRoad(state: any, x: number, y: number) {
     state.objects.set(`road-${x}-${y}`, {
       id: `road-${x}-${y}`, catalogId: 'road-dirt',
-      position: { x, y }, rotation: 0, category: 1, elevation: 0,
+      position: { x, y }, rotation: 0, elevation: 0,
     });
   }
 

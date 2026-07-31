@@ -16,9 +16,9 @@ import { setConstrainKey, setMultiSelectKey } from '../../core/runtime/modifier-
 /** The React-provided deps the command handlers need (everything else is read from the store). */
 type Deps = CommandContext;
 
-export function useEditorShortcuts({ openBuild, handleTileAction, onHelp, regionUndo, regionRedo }: Deps): void {
+export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo }: Deps): void {
   useEffect(() => {
-    const ctx: CommandContext = { openBuild, handleTileAction, onHelp, regionUndo, regionRedo };
+    const ctx: CommandContext = { openBuild, handleTileAction, regionUndo, regionRedo };
     const build = (): ShortcutManager => {
       const sc = new ShortcutManager();
       const overrides = useKeybinds.getState().overrides;
@@ -45,5 +45,5 @@ export function useEditorShortcuts({ openBuild, handleTileAction, onHelp, region
     // Rebuild the binding table whenever the user rebinds / clears / resets a shortcut.
     const unsub = useKeybinds.subscribe(() => { sc = build(); });
     return () => { window.removeEventListener('keydown', onKey); unsub(); };
-  }, [openBuild, handleTileAction, onHelp, regionUndo, regionRedo]);
+  }, [openBuild, handleTileAction, regionUndo, regionRedo]);
 }

@@ -10,7 +10,7 @@ import { decodeHistory, encodeHistory, HISTORY_SCHEMA_VERSION } from '../../io/h
 import { migrateToCurrent } from '../../io/save-format/migrate';
 import { validateImportedState } from '../../io/share/validate';
 import { templateHash, catalogHash } from '../../io/share/canonical';
-import { CommandType, TerrainType, ObjectCategory } from '../../core/model/types';
+import { CommandType, TerrainType } from '../../core/model/types';
 import type { PlacedObject } from '../../core/model/types';
 import type { HistoryEntry } from '../../core/commands/command-apply';
 import type { Migration, RawSave } from '../../io/save-format/types';
@@ -68,10 +68,10 @@ describe('numeric token hardening', () => {
     const state = makeState(10, 10);
     const save = roundTripBase();
     save.objects = [
-      { id: 'bad1', catalogId: 'road-dirt', x: Number.NaN, y: 2, rotation: 0, category: ObjectCategory.House },
-      { id: 'bad2', catalogId: 'road-dirt', x: 2, y: 2, rotation: 45, category: ObjectCategory.House },
-      { id: 'bad3', catalogId: 'road-dirt', x: 500, y: 2, rotation: 0, category: ObjectCategory.House },
-      { id: 'ok', catalogId: 'road-dirt', x: 2, y: 2, rotation: 90, category: ObjectCategory.House },
+      { id: 'bad1', catalogId: 'road-dirt', x: Number.NaN, y: 2, rotation: 0 },
+      { id: 'bad2', catalogId: 'road-dirt', x: 2, y: 2, rotation: 45 },
+      { id: 'bad3', catalogId: 'road-dirt', x: 500, y: 2, rotation: 0 },
+      { id: 'ok', catalogId: 'road-dirt', x: 2, y: 2, rotation: 90 },
     ];
     const loaded = deserialize(JSON.stringify(save), state.template);
     const ids = [...loaded.objects.keys()].filter((k) => k !== '__plaza__');
@@ -111,7 +111,7 @@ describe('history section content validation', () => {
 
   const goodObj: PlacedObject = {
     id: 'o1', catalogId: 'road-dirt', position: { x: 2, y: 2 },
-    rotation: 0, category: ObjectCategory.House, elevation: 0,
+    rotation: 0, elevation: 0,
   };
 
   it('accepts honest entries', () => {

@@ -13,6 +13,8 @@ import { PhoneCard } from './PhoneCard';
 import { LoadBar } from './LoadBar';
 import { UtilButton } from './UtilButton';
 import { MenuTile } from './MenuTile';
+import { usePx } from './scale';
+import { tourTargetAttr } from '../chrome/tour/steps';
 import {
   FILE_TILES,
   BUILD_TILES,
@@ -42,9 +44,17 @@ export function MainMenuCard({
   generateBusy,
 }: MainMenuCardProps) {
   const t = useT();
+  const { px } = usePx();
 
   return (
     <PhoneCard onCollapse={onCollapse}>
+      {/* An empty box over the build + placement tiles: the tour measures this to place its spotlight.
+          aria-hidden and pointer-events none, so it is invisible to both the reader and the pointer. */}
+      <div
+        {...tourTargetAttr('menu-tiles')}
+        aria-hidden
+        style={{ position: 'absolute', left: px(50), top: px(320), width: px(546), height: px(555), pointerEvents: 'none' }}
+      />
       <LoadBar value={load} max={loadMax} />
       <UtilButton kind="gear" onClick={onSettings} ariaLabel={t('menu.settings')} />
       <UtilButton kind="help" onClick={onHelp} ariaLabel={t('menu.help')} />

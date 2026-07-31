@@ -332,9 +332,8 @@ export class ObjectLayer {
           wrapper.addChild(g);
 
           if (!item?.color) {
-            const emoji = item?.emoji;
             const fontSize = Math.min(size.w, size.h) * TILE_SIZE * 0.6;
-            const label = new PIXI.Text(emoji ?? obj.catalogId.slice(0, 3), {
+            const label = new PIXI.Text(obj.catalogId.slice(0, 3), {
               fontSize,
               fontFamily: 'serif',
             });

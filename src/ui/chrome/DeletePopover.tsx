@@ -88,7 +88,7 @@ export function DeletePopover() {
           screenY = pos.y - 8;
         }
         const name = item ? localizedName(item.name, locale) : obj.catalogId;
-        title = `${item?.emoji ?? ''} ${t('delete.confirm').replace('{name}', name)}`;
+        title = t('delete.confirm').replace('{name}', name);
         confirm = () => {
           // Routed through deleteGroup (one member) rather than removeObjectAction directly, so a
           // locked object reports through the SAME register reportDeleteGroup gives any other

@@ -5,13 +5,10 @@
  * and the registry's pre-command validation) so a returned site is placeable.
  */
 import {
-  CommandType,
   ItemCategory,
-  ObjectCategory,
   TerrainType,
   type GridState,
   type MacroCoord,
-  type PlaceObjectCommand,
   type PlacedObject,
 } from '../../core/model/types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
@@ -20,6 +17,7 @@ import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
 import { objectRect } from '../../state/object-geometry';
 import { type AgentToolDeps, type ToolResultBody, waterSpanTrait } from './tools-common';
+import { objectPlacementCommand } from '../../tools/objects/object-placer';
 
 /* ── search: flat areas a footprint fits on ─────────────────────────── */
 
@@ -204,15 +202,9 @@ function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): Ra
           catalogId: rampId,
           position: { x, y },
           rotation: 0,
-          category: ObjectCategory.House,
           elevation: anchorElev,
         };
-        const cmd: PlaceObjectCommand = {
-          type: CommandType.PlaceObject,
-          timestamp: 0,
-          object: candidate,
-          loadValue: item.loadValue,
-        };
+        const cmd = objectPlacementCommand(candidate);
         const errors = reg.validatePreCommand(cmd, state);
         if (errors.length > 0) continue;
 

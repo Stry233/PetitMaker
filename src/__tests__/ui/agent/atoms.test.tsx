@@ -9,9 +9,9 @@ import {
   TickDot,
   UndoneStamp,
   VerbGlyph,
-  Wavy,
   prettyModel,
 } from '../../../ui/menu/agent/atoms';
+import { Wavy } from '../../../ui/menu/Wavy';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;

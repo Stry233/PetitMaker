@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { DOM_CURSORS } from './cursors/cursor-spec';
+import { DOM_CURSORS } from '../core/runtime/cursor-spec';
 
 /* The one dark ink (#43413F) behind frame / load-pill / text — a single base so the three
  * semantic aliases below can never diverge. */
@@ -105,6 +105,8 @@ export const z = {
   overlay: 200,      // modal backdrop (cozyOverlay)
   toast: 300,        // toasts, above modals
   popover: 400,      // dropdowns/bubbles anchored to a control, above a modal's own content
+  tour: 500,         // first-launch tour scrim/spotlight/bubble, above a popover so an open
+                     // dropdown can never paint over the tour that is teaching someone to use it
   contextMenu: 9990, // right-click menu + delete popover, above everything
   guard: 10000,      // the portrait-lock blocker, above every other layer including contextMenu
 } as const;
@@ -164,6 +166,16 @@ export const easing = {
   springStiff: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
   punchy: 'cubic-bezier(0.2, 0, 0, 1)',
 } as const;
+
+/* A move that SNAPS to its mark, as a Framer transition: easeOutExpo's standard bezier, which
+ * spends most of the distance in its first frames and settles the last of it late. At 0.16s that is
+ * about ten frames at 60Hz with three quarters of the travel inside the first three, so the thing
+ * moving reads as arriving rather than sliding.
+ *
+ * Both control points sit at y <= 1, so it is MONOTONIC: it cannot pass its target and come back.
+ * That is the whole reason it is here rather than a spring — it carries a HIGHLIGHT, and a
+ * highlight that overshoots uncovers the control it is highlighting, which reads as a miss. */
+export const snapTween = { duration: 0.16, ease: [0.16, 1, 0.3, 1] as const };
 
 /* ── Framer Motion spring configs ───────────────────────── */
 

@@ -12,7 +12,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory, TerrainType } from '../../core/model/types';
+import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { getPlacedObjectSize } from '../../state/object-geometry';
@@ -25,7 +25,7 @@ for (const [id, width, height, rotatable] of [
 ] as const) {
   registerCatalogItem({
     id, category: ItemCategory.Building, name: { en: id },
-    emoji: '🏠', width, height, loadValue: 0, rotatable, placementMode: 'point',
+    width, height, loadValue: 0, rotatable, placementMode: 'point',
     traits: [],
   });
 }
@@ -38,7 +38,7 @@ function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: s.catalogId ?? 'rot-hut', position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
       ...(s.locked ? { locked: true } : {}),
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });

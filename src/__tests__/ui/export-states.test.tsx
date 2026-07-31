@@ -8,7 +8,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type Command } from '../../core/model/types';
 import { ProvSource } from '../../core/provenance/types';
 import { I18nProvider } from '../../i18n/context';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -17,7 +17,8 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 function openWith(setup: (e: CommandExecutor) => void) {
   const s = makeState(8, 8); const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry());
-  setup(e); setStoreState({ gridState: s, commandExecutor: e, exportModalOpen: true, locale: 'en' });
+  setup(e); setStoreState({ gridState: s, commandExecutor: e, locale: 'en' });
+  setStoreModal('export');
 }
 const paint = (x: number, y: number): Command => ({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1 } as Command);
 

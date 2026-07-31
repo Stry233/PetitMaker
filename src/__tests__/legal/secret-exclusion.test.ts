@@ -31,7 +31,6 @@ import {
   CommandType,
   ItemCategory,
   TerrainType,
-  objectCategory,
   type GridState,
   type MapTemplate,
   type PlaceObjectCommand,
@@ -103,7 +102,6 @@ function buildStateWithObjects(): GridState {
       catalogId: item.id,
       position: { x: 10 + i, y: 10 },
       rotation: 0,
-      category: objectCategory(item.category),
       elevation: 0,
     });
   }
@@ -274,7 +272,7 @@ describe('history/undo state never enters share payloads (spec §18.3 surface #3
       type: CommandType.PlaceObject, timestamp: 0,
       object: {
         id: 'hist-o0', catalogId: item.id, position: { x: 15, y: 15 },
-        rotation: 0, category: objectCategory(item.category), elevation: 0,
+        rotation: 0, elevation: 0,
       },
       loadValue: item.loadValue ?? 0,
     } as PlaceObjectCommand);
@@ -297,7 +295,7 @@ describe('history/undo state never enters share payloads (spec §18.3 surface #3
     const item = getPlaceableByCategory(ItemCategory.Flora)[0]!;
     state.objects.set('direct-o0', {
       id: 'direct-o0', catalogId: item.id, position: { x: 15, y: 15 },
-      rotation: 0, category: objectCategory(item.category), elevation: 0,
+      rotation: 0, elevation: 0,
     });
     return state;
   }

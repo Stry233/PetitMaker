@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ImportModal } from '../../ui/chrome/import/ImportModal';
 import { I18nProvider } from '../../i18n/context';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;
@@ -14,7 +14,7 @@ describe('ImportModal', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it('renders the drop zone and honest guidance when open', () => {
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
     expect(screen.getByText('Drop a map image or .json file here, or click to choose')).toBeTruthy();
     // v2: any raster (JPEG/screenshot) with an intact share-code band is importable, not just the
@@ -24,13 +24,13 @@ describe('ImportModal', () => {
   });
 
   it('renders nothing when closed', () => {
-    setStoreState({ importModalOpen: false });
+    setStoreModal('import', false);
     const { container } = render(<ImportModal />, { wrapper: Wrapper });
     expect(container.textContent).toBe('');
   });
 
   it('the file picker accepts JPEG/WebP rasters, not just PNG/JSON', () => {
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
     const createSpy = vi.spyOn(document, 'createElement');
     fireEvent.click(screen.getByRole('button'));
@@ -50,7 +50,7 @@ describe('ImportModal', () => {
     const fakeCtx = { drawImage: vi.fn(), getImageData: getImageDataMock } as unknown as CanvasRenderingContext2D;
     const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx);
 
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
     const file = new File([new Uint8Array([1, 2, 3])], 'map.jpg', { type: 'image/jpeg' });
     const dropzone = screen.getByRole('button');

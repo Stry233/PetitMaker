@@ -1,13 +1,13 @@
 import { TerrainType, ToolType } from '../../core/model/types';
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { getTerrainColor } from '../../core/model/colors';
-import { showToast } from '../../ui/chrome/Toast';
+import { showToast } from '../../core/runtime/toast-bus';
 import { reconcileRoadsAfterMountainPaint } from './road-reconcile';
 import { line4, expandLine, curveCells, rectCells, circleCells, rectSpans, circleSpans, snapShapeEnd } from './shapes';
 import { getCell, cellKey } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import type { Tool, ToolContext } from '../types';
-import type { CursorId } from '../../ui/cursors/cursor-spec';
+import type { CursorId } from '../../core/runtime/cursor-spec';
 import { placeTileCell, tileGhostColor } from './tile-coating';
 import type { ContentType } from './paint-plan';
 import { planPaint, buildFloor, autoStackTarget, waterLayerAt } from './paint-plan';

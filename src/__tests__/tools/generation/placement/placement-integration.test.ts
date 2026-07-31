@@ -6,8 +6,8 @@ import { makeState } from '../../../rules/_helpers';
 import { generateTerrain } from '../../../../tools/generation/terrain-generator';
 import { populate } from '../../../../tools/generation/placement';
 import { toGenConfig } from '../../../../tools/generation';
-import { ItemCategory, ObjectCategory, type EditorEvents, type GenerateConfig } from '../../../../core/model/types';
-import { getCatalogByCategory, getCatalogItem } from '../../../../state/catalog';
+import { ItemCategory, type EditorEvents, type GenerateConfig } from '../../../../core/model/types';
+import { getCatalogByCategory, getCatalogItem, isDecoration } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 
 function gen(settlement: number, nature: number, seed: number, size = 48, region: { x: number; y: number }[] | null = null) {
@@ -25,7 +25,6 @@ const SEEDS = [1, 7, 13, 42, 77, 99, 128, 256];
 const idsOf = (cat: ItemCategory) => new Set(getCatalogByCategory(cat).map((r) => r.id));
 const roadIds = idsOf(ItemCategory.Road);
 const crossingIds = new Set([...idsOf(ItemCategory.Bridge), ...idsOf(ItemCategory.Ramp)]);
-// ObjectCategory.House lumps roads/bridges/ramps under it, so count true buildings via the catalog category.
 const isBuilding = (id: string) => { const c = getCatalogItem(id)?.category; return c === ItemCategory.Building || c === ItemCategory.Facility; };
 
 describe('populate (terrain + placement, real executor)', () => {
@@ -38,7 +37,7 @@ describe('populate (terrain + placement, real executor)', () => {
   it('settlement↑ → ≥ buildings; nature↑ → ≥ vegetation (summed)', () => {
     const b = (set: number) => SEEDS.reduce((n, s) => n + gen(set, 0, s).objs.filter((o) => isBuilding(o.catalogId)).length, 0);
     expect(b(1)).toBeGreaterThan(b(0.3));
-    const v = (nat: number) => SEEDS.reduce((n, s) => n + gen(0, nat, s).objs.filter((o) => o.category === ObjectCategory.Tree || o.category === ObjectCategory.Flora).length, 0);
+    const v = (nat: number) => SEEDS.reduce((n, s) => n + gen(0, nat, s).objs.filter(isDecoration).length, 0);
     expect(v(1)).toBeGreaterThan(v(0.3));
   });
   it('a settled map has roads connecting it (network ran)', () => {
@@ -58,7 +57,7 @@ describe('populate (terrain + placement, real executor)', () => {
       const road = new Set<string>();
       for (const o of objs) if (roadIds.has(o.catalogId)) for (const c of footprintCells(o)) road.add(c);
       for (const o of objs) {
-        if (o.category !== ObjectCategory.Tree && o.category !== ObjectCategory.Flora) continue;
+        if (!isDecoration(o)) continue;
         for (const c of footprintCells(o)) {
           expect(road.has(c), `seed ${s}: ${o.catalogId} sits on a road at ${c}`).toBe(false);
         }

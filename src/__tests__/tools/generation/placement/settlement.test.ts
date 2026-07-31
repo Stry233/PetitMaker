@@ -3,11 +3,12 @@ import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { EventBus } from '../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../rules/index';
 import { makeState } from '../../../rules/_helpers';
+import { isDecoration } from '../../../../state/catalog';
 import { makeCtx } from '../../../../tools/generation/placement/object';
 import { analyzeTerrain } from '../../../../tools/generation/placement/analysis';
 import { placeSettlement } from '../../../../tools/generation/placement/settlement';
 import { TUNING } from '../../../../tools/generation/tuning';
-import { ObjectCategory, type EditorEvents } from '../../../../core/model/types';
+import { type EditorEvents } from '../../../../core/model/types';
 
 function run(settlement: number, seed = 7) {
   const state = makeState(60, 60);
@@ -15,7 +16,8 @@ function run(settlement: number, seed = 7) {
   const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), seed);
   const { settled, nodes } = placeSettlement(ctx, analyzeTerrain(state), settlement, new Map());
   exec.commitStrokeGroup(0);
-  const buildings = [...state.objects.values()].filter((o) => !o.locked && (o.category === ObjectCategory.Facility || o.category === ObjectCategory.House));
+  // Everything the settlement places except vegetation.
+const buildings = [...state.objects.values()].filter((o) => !o.locked && !isDecoration(o));
   return { buildings, settled, nodes };
 }
 

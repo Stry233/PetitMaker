@@ -18,7 +18,7 @@ vi.mock('../../io/import-file', async (importOriginal) => {
 });
 
 import { DropImportOverlay } from '../../ui/chrome/import/DropImportOverlay';
-import { setStoreState } from '../_store';
+import { setStoreState, setStoreModal } from '../_store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   // reducedMotion="always" collapses every enter/exit to its end state instantly, exactly like
@@ -44,7 +44,8 @@ const HINT = 'Drop a map image or .json file here';
 
 describe('DropImportOverlay', () => {
   beforeEach(() => {
-    setStoreState({ locale: 'en', importModalOpen: false, gridState: makeState() });
+    setStoreState({ locale: 'en', gridState: makeState() });
+    setStoreModal('import', false);
     importFileMock.mockReset();
     importFileMock.mockResolvedValue({ status: 'imported', source: 'json', warnings: [] });
   });
@@ -129,7 +130,7 @@ describe('DropImportOverlay', () => {
   });
 
   it('does not show the hint or import while the ImportModal already owns the drop (avoids a double import)', () => {
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<DropImportOverlay />, { wrapper: Wrapper });
     const file = { name: 'map.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('dragenter'));
@@ -139,7 +140,7 @@ describe('DropImportOverlay', () => {
   });
 
   it('dragover always preventDefault()s a file-carrying drag, modal open or not (stops the browser navigating away)', () => {
-    setStoreState({ importModalOpen: true });
+    setStoreModal('import');
     render(<DropImportOverlay />, { wrapper: Wrapper });
     const e = dragEvent('dragover');
     fireWindow(e);

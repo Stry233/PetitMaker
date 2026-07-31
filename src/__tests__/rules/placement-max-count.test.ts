@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { placementMaxCountRule } from '../../rules/placement-max-count';
-import { CommandType, ItemCategory, ObjectCategory, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
+import { CommandType, ItemCategory, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
 import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
 import { makeState } from './_helpers';
 
 const obj = (id: string, catalogId: string, x = 5, y = 5): PlacedObject =>
-  ({ id, catalogId, position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 });
+  ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 const place = (o: PlacedObject): PlaceObjectCommand =>
   ({ type: CommandType.PlaceObject, timestamp: 0, object: o, loadValue: 0 });
@@ -29,7 +29,7 @@ describe('V-PLACE-MAX: per-item placement cap', () => {
   it('handles caps > 1 generically (allows up to N, rejects N+1)', () => {
     registerCatalogItem({
       id: 'test-triple', category: ItemCategory.Building, name: { en: 'Triple', zh: '三' },
-      emoji: '❓', width: 1, height: 1, loadValue: 0, maxCount: 3,
+      width: 1, height: 1, loadValue: 0, maxCount: 3,
       rotatable: false, placementMode: 'point', traits: [],
     });
     const state = makeState(20, 20);

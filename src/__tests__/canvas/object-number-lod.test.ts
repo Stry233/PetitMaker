@@ -8,7 +8,7 @@ import './_pixi-env';
 import { describe, it, expect } from 'vitest';
 import { ObjectLayer } from '../../canvas/map2d/layers/object-layer';
 import { MIN_NUMBER_ZOOM } from '../../canvas/map2d/layers/number-overlay';
-import { ObjectCategory, type PlacedObject } from '../../core/model/types';
+import { type PlacedObject } from '../../core/model/types';
 import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
 
 // A 2x2 sprite building carries an `_elev` elevation label (the general placement label path).
@@ -16,7 +16,7 @@ const house = getCatalogItem('building-myhouse')!;
 registerCatalogItem({ ...house, id: 'test-lod-house', width: 2, height: 2 });
 
 const place = (id: string): PlacedObject =>
-  ({ id, catalogId: 'test-lod-house', position: { x: 2, y: 2 }, rotation: 0, category: ObjectCategory.House, elevation: 3 });
+  ({ id, catalogId: 'test-lod-house', position: { x: 2, y: 2 }, rotation: 0, elevation: 3 });
 
 interface Child { name: string; visible: boolean }
 function elevLabel(layer: ObjectLayer, id: string): Child | undefined {

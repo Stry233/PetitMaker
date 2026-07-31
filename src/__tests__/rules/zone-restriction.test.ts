@@ -1,13 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { zoneRestrictionRule } from '../../rules/zone-restriction';
-import { CellZone, CommandType, ItemCategory, TerrainType, ObjectCategory } from '../../core/model/types';
+import { CellZone, CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import { registerCatalogItem } from '../../state/catalog';
 import { makeState, setZone, paintCmd, placeCmd, makeObject } from './_helpers';
 
 function fixture(id: string, width: number, height: number) {
   registerCatalogItem({
-    id, category: ItemCategory.Building, name: { en: 'x', zh: 'x' }, emoji: '❓',
-    width, height, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+    id, category: ItemCategory.Building, name: { en: 'x', zh: 'x' }, width, height, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
   });
 }
 
@@ -37,13 +36,13 @@ describe('V-ZONE-01: Zone Restriction', () => {
   it('rejects PlaceObject on non-Grass zone', () => {
     const state = makeState();
     setZone(state, 5, 5, CellZone.Beach);
-    expect(zoneRestrictionRule.validate(placeCmd(makeObject('t1', 5, 5, ObjectCategory.Tree)), state)).toHaveLength(1);
+    expect(zoneRestrictionRule.validate(placeCmd(makeObject('t1', 5, 5)), state)).toHaveLength(1);
   });
   it('rejects PlaceObject when ANY footprint cell is non-Grass (not just the anchor)', () => {
     fixture('zone-fix-2x2', 2, 2);
     const state = makeState();
     setZone(state, 6, 6, CellZone.Beach); // a covered cell, NOT the (5,5) anchor
-    const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x2', 5, 5, ObjectCategory.Facility)), state);
+    const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x2', 5, 5)), state);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.some((e) => e.cells[0]!.x === 6 && e.cells[0]!.y === 6)).toBe(true);
   });
@@ -51,7 +50,7 @@ describe('V-ZONE-01: Zone Restriction', () => {
     fixture('zone-fix-2x1', 2, 1);
     const state = makeState(10, 10);
     // anchor at the right edge → the 2-wide footprint reaches x=10, off the grid
-    const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x1', 9, 5, ObjectCategory.Facility)), state);
+    const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x1', 9, 5)), state);
     expect(errors.length).toBeGreaterThan(0);
   });
   // (Plaza no-build moved to V-PLACE-BLOCK / V-PLACE-OVERLAP — the plaza is an

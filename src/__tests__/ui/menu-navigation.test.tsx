@@ -22,7 +22,24 @@ const moveTile = GRID_TILES.find((t) => t.action === 'move')!;
 const generateTile = GRID_TILES.find((t) => t.action === 'generate')!;
 
 describe('useMenuNavigation — hand tile collapses an open spoke', () => {
-  beforeEach(() => { useEditorStore.setState({ activeTool: ToolType.TerrainBrush }); });
+  beforeEach(() => {
+    useEditorStore.setState({ activeTool: ToolType.TerrainBrush });
+    useEditorStore.getState().setMenuCollapsed(true);
+  });
+
+  it('publishes collapsed/expanded through the store, so the tour can see the visitor use the menu', () => {
+    const { result } = renderHook(() => useMenuNavigation(params()));
+    expect(result.current.menuCollapsed).toBe(true); // the app opens collapsed
+    act(() => result.current.setMenuCollapsed(false));
+    expect(useEditorStore.getState().menuCollapsed).toBe(false);
+    expect(result.current.menuCollapsed).toBe(false);
+  });
+
+  it('opening a build spoke by keyboard expands the card through the same store field', () => {
+    const { result } = renderHook(() => useMenuNavigation(params()));
+    act(() => result.current.openBuild('brush'));
+    expect(useEditorStore.getState().menuCollapsed).toBe(false);
+  });
 
   it('tapping the hand tile while a spoke is open returns to home + activates Hand', () => {
     const { result } = renderHook(() => useMenuNavigation(params()));

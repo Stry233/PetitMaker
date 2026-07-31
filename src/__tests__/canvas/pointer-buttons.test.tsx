@@ -100,6 +100,25 @@ describe('pointer machine: middle button navigates like right', () => {
     expect(menu).toMatchObject({ x: 55, y: 35, target: { kind: 'terrain', x: 5, y: 3 } });
   });
 
+  it('opens no context menu while the tour is running', () => {
+    // The tour is not modal: the app under its dim is fully operable, which is how pressing the
+    // real phone advances a step. What is held back is the floating surfaces at z.contextMenu, far
+    // above z.tour, which would paint over the walkthrough they interrupted (the store refuses to
+    // open either one; see the delete popover's half of this in tour-state).
+    useEditorStore.setState({ tourRunning: true });
+    try {
+      const { view } = makeView(true);
+      setActiveView(view);
+      const el = mount();
+      el.dispatchEvent(pointer('pointerdown', { button: RIGHT, clientX: 55, clientY: 35 }));
+      window.dispatchEvent(pointer('pointerup', { button: RIGHT, clientX: 55, clientY: 35 }));
+
+      expect(useEditorStore.getState().contextMenu).toBeNull();
+    } finally {
+      useEditorStore.setState({ tourRunning: false });
+    }
+  });
+
   it('a drag past the threshold is navigation, not a context menu', () => {
     const { view } = makeView(true);
     setActiveView(view);

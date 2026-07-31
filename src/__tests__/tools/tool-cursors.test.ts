@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CURSOR_IDS, FORBIDDABLE, type CursorId } from '../../ui/cursors/cursor-spec';
-import { CommandType, ToolType, TerrainType, objectCategory, type EditorEvents } from '../../core/model/types';
+import { CURSOR_IDS, FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
+import { CommandType, ToolType, TerrainType, type EditorEvents } from '../../core/model/types';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import { ToolManager } from '../../tools/tool-manager';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
@@ -37,17 +37,11 @@ describe('every registered tool names a cursor from the catalogue', () => {
   });
 
   it('accounts for every ToolType member: registered above, or asserted unregistered here', () => {
-    const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
-    const manager = new ToolManager(makeStubRenderer(), exec, state);
-    // Scatter/RoadBrush have no tool class today. If one is ever registered, this assertion
-    // starts failing — the fix is to move its ToolType into REGISTERED_TOOL_TYPES above, which
-    // is what makes the cursor check above start covering it.
-    expect(manager.getToolById(ToolType.Scatter)).toBeUndefined();
-    expect(manager.getToolById(ToolType.RoadBrush)).toBeUndefined();
-    const accounted = new Set<ToolType>([...REGISTERED_TOOL_TYPES, ToolType.Scatter, ToolType.RoadBrush]);
+    // Every ToolType names a tool the manager registers, so the cursor check above covers the
+    // whole vocabulary. Adding a ToolType means adding it to REGISTERED_TOOL_TYPES too.
+    const accounted = new Set<ToolType>(REGISTERED_TOOL_TYPES);
     for (const type of Object.values(ToolType)) {
-      expect(accounted.has(type), `${type} is neither registered nor asserted unregistered — update this test`).toBe(true);
+      expect(accounted.has(type), `${type} is not registered — add its tool, or drop the ToolType`).toBe(true);
     }
   });
 });
@@ -87,7 +81,7 @@ describe('the build brush names its material', () => {
       type: CommandType.PlaceObject, timestamp: Date.now(),
       object: {
         id: 'road-1', catalogId: roadItem.id, position: { x: 4, y: 4 },
-        rotation: 0, category: objectCategory(roadItem.category), elevation: 0,
+        rotation: 0, elevation: 0,
       },
       loadValue: roadItem.loadValue,
     });
@@ -175,7 +169,7 @@ describe('the build brush names its material', () => {
       type: CommandType.PlaceObject, timestamp: Date.now(),
       object: {
         id: 'road-1', catalogId: roadItem.id, position: { x: 6, y: 6 },
-        rotation: 0, category: objectCategory(roadItem.category), elevation: 0,
+        rotation: 0, elevation: 0,
       },
       loadValue: roadItem.loadValue,
     });
@@ -234,7 +228,7 @@ describe('the eraser answers for what its click removes', () => {
       type: CommandType.PlaceObject, timestamp: Date.now(),
       object: {
         id: 'road-1', catalogId: roadItem.id, position: { x: 3, y: 3 },
-        rotation: 0, category: objectCategory(roadItem.category), elevation: 0,
+        rotation: 0, elevation: 0,
       },
       loadValue: roadItem.loadValue,
     });
@@ -284,7 +278,7 @@ describe('the placer names what the click will do', () => {
       type: CommandType.PlaceObject, timestamp: Date.now(),
       object: {
         id: 'stall-1', catalogId: stall.id, position: { x: 4, y: 4 },
-        rotation: 0, category: objectCategory(stall.category), elevation: 0,
+        rotation: 0, elevation: 0,
       },
       loadValue: stall.loadValue,
     });

@@ -1,4 +1,4 @@
-import { CommandType, TerrainType, objectCategory } from '../../core/model/types';
+import { CommandType, TerrainType } from '../../core/model/types';
 import type { MacroCoord, PaintTerrainCommand, PlaceObjectCommand } from '../../core/model/types';
 import { getCell, cellKey } from '../../core/model/grid-model';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
@@ -167,7 +167,6 @@ function planTile(
         catalogId: item.id,
         position: c,
         rotation: 0,
-        category: objectCategory(item.category),
         elevation: cell.terrain?.elevation ?? 0,
       },
       loadValue: item.loadValue,

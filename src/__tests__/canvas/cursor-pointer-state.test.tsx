@@ -15,7 +15,7 @@ import {
 import { cursorCss } from '../../ui/cursors/cursor-css';
 import { setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ObjectCategory, ToolType, type PlacedObject } from '../../core/model/types';
+import { ToolType, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
@@ -152,7 +152,7 @@ describe('a drag survives the pointer leaving the canvas', () => {
 describe('move is published from where the pointer IS', () => {
   const OBJ: PlacedObject = {
     id: 'tree-1', catalogId: 'tree-apple', position: { x: 5, y: 5 },
-    rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+    rotation: 0, elevation: 0,
   };
 
   function withSelectedObject() {

@@ -104,6 +104,14 @@ export class ToolManager {
     const dx = screenX - this.lastScreenX;
     const dy = screenY - this.lastScreenY;
 
+    // Recorded before any camera transform is applied: applyCameraTransform can synchronously
+    // re-enter this method (the 2D renderer emits 'viewport-changed', which
+    // usePointerInteraction's resampler answers with another handlePointerMove call), and that
+    // re-entrant call must see the CURRENT position, not the one from before this move, or it
+    // recomputes this same dx and pans again, recursing until the stack overflows.
+    this.lastScreenX = screenX;
+    this.lastScreenY = screenY;
+
     // If active tool is HandTool, pass raw mouse deltas and update viewport
     // transform — only in views whose left-drag pans HERE (the 2D view). The 3D
     // editor sets leftDragPans=false and pans left-drag in the pointer machine
@@ -116,9 +124,6 @@ export class ToolManager {
         this.view.applyCameraTransform();
       }
     }
-
-    this.lastScreenX = screenX;
-    this.lastScreenY = screenY;
 
     const macro = this.view.projection.screenToMacro(screenX, screenY);
     const micro = this.view.projection.screenToMicro(screenX, screenY);

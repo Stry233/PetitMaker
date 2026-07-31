@@ -10,7 +10,7 @@ import { useRef } from 'react';
 import { usePointerInteraction } from '../../canvas/interaction/usePointerInteraction';
 import { setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ObjectCategory, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -55,7 +55,7 @@ function mapWithObjects(ids: string[]): GridState {
   const gs = makeState(20, 20);
   const objs: PlacedObject[] = ids.map((id, i) => ({
     id, catalogId: 'tree-apple', position: { x: 2 + i * 3, y: 2 },
-    rotation: 0, category: ObjectCategory.Tree, elevation: 0,
+    rotation: 0, elevation: 0,
   }));
   for (const obj of objs) gs.objects.set(obj.id, obj);
   bumpObjectsVersion(gs, { added: objs });

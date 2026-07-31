@@ -6,7 +6,7 @@
  * same components the zone pipeline builds on; they never modify populator
  * internals.
  */
-import { ItemCategory, ObjectCategory, type GridState, type MacroCoord } from '../../core/model/types';
+import { ItemCategory, type GridState, type MacroCoord } from '../../core/model/types';
 import { analyzeTerrain } from '../../tools/generation/placement/analysis';
 import { makeCtx, tryPlace, forEachFootprintCell } from '../../tools/generation/placement/object';
 import { getPlaceableByCategory } from '../../state/catalog';
@@ -16,6 +16,7 @@ import { scanPortals } from '../../tools/generation/placement/portals';
 import type { Node } from '../../tools/generation/placement/settlement';
 import { decorateZone, decorateCrossing } from '../../tools/generation/placement/themes';
 import { makeRng } from '../../core/model/rng';
+import { isDecoration } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import type { Zone } from '../../tools/generation/types';
 import { parseSeed, revertedMsg, runStrokeBody } from './tools-common';
@@ -258,10 +259,10 @@ export async function buildRoadNetworkHandler(
       nodes.push({ kind: 'hub', pos: hubPos, region: hubRegion });
     }
 
-    // Hamlet nodes from existing unlocked buildings (House + Facility).
+    // Hamlet nodes from the existing unlocked structures (anything but decoration, roads and
+    // crossings included — they are settlement, and the network routes through them).
     for (const obj of state.objects.values()) {
-      if (obj.locked) continue;
-      if (obj.category !== ObjectCategory.House && obj.category !== ObjectCategory.Facility) continue;
+      if (obj.locked || isDecoration(obj)) continue;
       const r = objectRect(obj);
       const pos: MacroCoord = {
         x: Math.round(r.x + r.w / 2),

@@ -74,7 +74,7 @@ const dangerReplaceButton: CSSProperties = {
 
 export function DropImportOverlay() {
   const t = useT();
-  const importModalOpen = useEditorStore((s) => s.importModalOpen);
+  const importModalOpen = useEditorStore((s) => s.modals.import);
   const [phase, setPhase] = useState<DropPhase>({ kind: 'idle' });
   const depthRef = useRef(0); // net dragenter - dragleave over the window, incl. all children
   const phaseRef = useRef<DropPhase>(phase); // synchronous mirror of `phase` — see PHASE REF above

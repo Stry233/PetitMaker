@@ -16,29 +16,29 @@ import { arcMotion, arcOffset, type GroupRotation } from '../../canvas/group-arc
 import { animConfig, easeOutBack } from '../../core/runtime/anim-config';
 import { setReducedMotion, __resetMotionState } from '../../canvas/map2d/motion-state';
 import type { ToolOverlay } from '../../canvas/view-projection';
-import { ItemCategory, ObjectCategory } from '../../core/model/types';
+import { ItemCategory } from '../../core/model/types';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { registerCatalogItem } from '../../state/catalog';
 import { makeState } from '../rules/_helpers';
 
 registerCatalogItem({
   id: 'ring-hut', category: ItemCategory.Building, name: { en: 'Ring Hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point',
   traits: [],
 });
 registerCatalogItem({
   id: 'ring-wide', category: ItemCategory.Building, name: { en: 'Ring Wide' },
-  emoji: '🏠', width: 3, height: 1, loadValue: 0, rotatable: true, placementMode: 'point',
+  width: 3, height: 1, loadValue: 0, rotatable: true, placementMode: 'point',
   traits: [],
 });
 registerCatalogItem({
   id: 'ring-fixed', category: ItemCategory.Flora, name: { en: 'Ring Fixed' },
-  emoji: '🌼', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
 function place(gs: GridState, id: string, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): void {
-  const obj: PlacedObject = { id, catalogId, position: { x, y }, rotation, category: ObjectCategory.House, elevation: 0 };
+  const obj: PlacedObject = { id, catalogId, position: { x, y }, rotation, elevation: 0 };
   gs.objects.set(id, obj);
 }
 

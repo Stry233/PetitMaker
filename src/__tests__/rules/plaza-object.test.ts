@@ -3,7 +3,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import {
-  CommandType, ObjectCategory, TerrainType, ItemCategory,
+  CommandType, TerrainType, ItemCategory,
   type EditorEvents, type PlaceObjectCommand,
 } from '../../core/model/types';
 import { createPlazaObject, cellOverlapsRect } from '../../core/model/grid-model';
@@ -30,7 +30,7 @@ function stateWithPlaza(w = 120, h = 120) {
 }
 
 const place = (catalogId: string, x: number, y: number): PlaceObjectCommand =>
-  placeCmd({ id: 't', catalogId, position: { x, y }, rotation: 0, category: ObjectCategory.Facility, elevation: 0 });
+  placeCmd({ id: 't', catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 describe('Central plaza as an immutable object', () => {
   it('createPlazaObject builds a locked, fractional, sized object (null when no plaza)', () => {
@@ -89,7 +89,7 @@ describe('Central plaza as an immutable object', () => {
     setTerrain(withBase, 5, 5, TerrainType.Mountain, 4);
     withBase.objects.set(PLAZA_ID, {
       id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 3.5, y: 3.5 }, width: 4, height: 4,
-      rotation: 0, category: ObjectCategory.Facility, elevation: 1, locked: true,
+      rotation: 0, elevation: 1, locked: true,
     });
     expect(baseSupportRule.validate(withBase)).toHaveLength(0); // terrainBase covers the 3x3 at elev 1
   });

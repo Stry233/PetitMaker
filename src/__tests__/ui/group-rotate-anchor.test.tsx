@@ -14,7 +14,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory } from '../../core/model/types';
+import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { setActiveView } from '../../canvas/active-view';
@@ -30,7 +30,7 @@ vi.mock('../../ui/menu/scale', async (importOriginal) => {
 
 registerCatalogItem({
   id: 'gra-hut', category: ItemCategory.Building, name: { en: 'gra-hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
+  width: 1, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [],
 });
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -62,7 +62,7 @@ function renderWithGroup(specs: Spec[]) {
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: 'gra-hut', position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
     expect(res.success).toBe(true);
@@ -138,7 +138,7 @@ describe('the group row anchor across a rotation burst', () => {
     act(() => {
       const object: PlacedObject = {
         id: 'far', catalogId: 'gra-hut', position: { x: 18, y: 18 }, rotation: 0,
-        category: ObjectCategory.House, elevation: 0,
+        elevation: 0,
       };
       exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
       useEditorStore.setState({

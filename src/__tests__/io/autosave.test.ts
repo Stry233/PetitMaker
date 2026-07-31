@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { scheduleAutosave, readAutosave, clearAutosave, hasAutosave } from '../../io/autosave';
+import { scheduleAutosave, readAutosave, clearAutosave, hasAutosave, autosaveWorthy } from '../../io/autosave';
 import { serialize } from '../../io/json-codec';
 import { CURRENT_VERSION } from '../../io/save-format';
 import { DEFAULT_MAP } from '../../config/maps';
@@ -159,5 +159,18 @@ describe('autosave', () => {
     clearAutosave();
     expect(hasAutosave()).toBe(false);
     expect(readAutosave()).toBeNull();
+  });
+
+  it('walks a grid with a sparse row instead of throwing', () => {
+    // The first-launch tour check calls this before anything has drawn, so a hole in a row has to
+    // read as "no terrain here", not take the app down on startup.
+    const state = makeWorkingMap();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a hole is exactly what a typed array cannot express
+    state.cells[0] = [undefined as any, ...state.cells[0]!.slice(1)];
+    expect(() => autosaveWorthy(state)).not.toThrow();
+    expect(autosaveWorthy(state)).toBe(true); // the painted mountain is still found
+
+    const empty: GridState = { ...state, cells: [[undefined as unknown as never]], objects: new Map() };
+    expect(autosaveWorthy(empty)).toBe(false);
   });
 });

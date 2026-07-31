@@ -1,7 +1,7 @@
 /*
  * useMenuNavigation.ts — the hub → spoke menu navigation state machine extracted
- * from App.tsx. Owns the view state (menuView / menuCollapsed / activeSpoke /
- * placementCategory) and the three navigation actions:
+ * from App.tsx. Owns the view state (menuView / activeSpoke / placementCategory,
+ * plus `menuCollapsed`, which lives in the store) and the three navigation actions:
  *   - navigate(view): switches the view and applies the per-view side-effects
  *     (clear selection/menus, exit region-select, set the matching tool).
  *   - openBuild(mode): opens the build subpanel for the current content in a draw
@@ -29,7 +29,6 @@ type MenuView = 'home' | 'build' | 'placement' | 'generate';
 export interface MenuNavigationParams {
   setSelectingRegion: (v: boolean) => void;
   setGenRegion: (cells: MacroCoord[]) => void;
-  setShowNewProject: (v: boolean) => void;
   handleImage: () => void;
   handleExport: () => void;
   handleImport: () => void;
@@ -52,13 +51,15 @@ export interface MenuNavigation {
 export function useMenuNavigation({
   setSelectingRegion,
   setGenRegion,
-  setShowNewProject,
   handleImage,
   handleExport,
   handleImport,
 }: MenuNavigationParams): MenuNavigation {
   const [menuView, setMenuView] = useState<MenuView>('home');
-  const [menuCollapsed, setMenuCollapsed] = useState(true); // start collapsed (phone icon)
+  // Collapsed/expanded is store state, not local: the tour reads it to notice that the visitor
+  // opened or put away the menu themselves (see `advanceWhen` in chrome/tour/steps).
+  const menuCollapsed = useEditorStore((s) => s.menuCollapsed);
+  const setMenuCollapsed = useEditorStore((s) => s.setMenuCollapsed);
   const [placementCategory, setPlacementCategory] = useState<ItemCategory | undefined>(undefined);
   const [activeSpoke, setActiveSpoke] = useState<TileSpec | null>(null);
 
@@ -112,7 +113,7 @@ export function useMenuNavigation({
   // Dispatches a home-screen tile tap to its action.
   const handleTileAction = useCallback((spec: TileSpec) => {
     if (spec.action === 'file') {
-      if (spec.payload === 'new') setShowNewProject(true);
+      if (spec.payload === 'new') useEditorStore.getState().setModal('newProject', true);
       else if (spec.payload === 'image') handleImage();
       else if (spec.payload === 'export') handleExport();
       else if (spec.payload === 'import') handleImport();

@@ -1,7 +1,7 @@
 import { CommandType, TerrainType, ToolType } from '../../core/model/types';
 import type { Corners, CornerTrim, GridState, MacroCoord, MicroCoord, PlacedObject, TrimCornersCommand } from '../../core/model/types';
 import type { Tool, ToolContext } from '../types';
-import type { CursorId } from '../../ui/cursors/cursor-spec';
+import type { CursorId } from '../../core/runtime/cursor-spec';
 import { getCell } from '../../core/model/grid-model';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { cornerWrappedAt, highestNeighborTerrain, groundConvexCornerInWater } from '../../core/edge-cut/terrain-silhouette';

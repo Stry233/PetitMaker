@@ -12,7 +12,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { registerCatalogItem } from '../../state/catalog';
-import { CommandType, ItemCategory, ObjectCategory } from '../../core/model/types';
+import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { deleteGroup, reportDeleteGroup } from '../../ui/chrome/group-actions';
@@ -22,7 +22,7 @@ import { petitWindow } from '../../core/runtime/window-bridge';
 
 registerCatalogItem({
   id: 'del-hut', category: ItemCategory.Building, name: { en: 'del-hut' },
-  emoji: '🏠', width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [],
 });
 
@@ -34,7 +34,7 @@ function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: 'del-hut', position: { x: s.x, y: s.y },
-      rotation: 0, category: ObjectCategory.House, elevation: 0,
+      rotation: 0, elevation: 0,
       ...(s.locked ? { locked: true } : {}),
     };
     const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
