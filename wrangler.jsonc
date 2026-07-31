@@ -6,5 +6,8 @@
   // Response headers come from public/_headers, generated from security/headers-policy.ts.
   "name": "petitmaker",
   "compatibility_date": "2026-07-30",
-  "assets": { "directory": "./dist" }
+  // drop-trailing-slash: the canonical tags and sitemap.xml both name `/privacy`, so the default
+  // (which 307s that to `/privacy/`) would mean every URL this site publishes redirects before it
+  // resolves. This serves the unslashed form and redirects the other way instead.
+  "assets": { "directory": "./dist", "html_handling": "drop-trailing-slash" }
 }

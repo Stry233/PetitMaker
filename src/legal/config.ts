@@ -78,7 +78,7 @@ export type LegalConfig = {
  */
 export const LEGAL: LegalConfig = {
   canonicalOrigin: 'https://petit-maker.com',
-  legacyOrigins: ['https://petitworks.com'],
+  legacyOrigins: [],
   productName: APP_NAME,
 
   operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
@@ -91,11 +91,11 @@ export const LEGAL: LegalConfig = {
   psbUrl: null,
 
   effectiveDates: {
-    privacy: '2026-07-15',
+    privacy: '2026-07-30',
     terms: '2026-07-15',
   },
   policyVersions: {
-    privacy: '1.0',
+    privacy: '1.1',
     terms: '1.0',
   },
 

@@ -400,18 +400,19 @@ describe('privacy — deployment-facts disclosure (§8)', () => {
   // Tokens chosen to sit on a single source line (the raw markdown hard-wraps,
   // so a phrase that crosses a line break is not a contiguous substring).
   const DEPLOY_TOKENS_EN = [
-    'Alibaba Cloud',
-    'Object Storage Service',
-    'Alibaba Cloud ESA',
-    'mainland China',
+    'Cloudflare',
+    'Workers static asset hosting',
+    // The mainland-China fact is pinned in its NEGATIVE form: this edge network has no locations
+    // there, and softening that to a bare mention of the region is the exact drift this guards.
+    'no locations in mainland China',
     'Microsoft Outlook',
     'no servers of our own',
     'This service is operated by',
   ];
   const DEPLOY_TOKENS_ZH = [
-    '阿里云对象存储服务',
-    '阿里云 ESA',
-    '中国大陆',
+    'Cloudflare',
+    'Workers 静态资源托管',
+    '在中国大陆没有节点',
     '微软 Outlook',
     '不运营任何自有服务器',
     '本服务由',

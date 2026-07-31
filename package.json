@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.2.71",
+  "version": "0.3.2",
   "type": "module",
   "engines": {
     "node": ">=24"

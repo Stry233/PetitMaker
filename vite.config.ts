@@ -10,6 +10,17 @@ import {
   toCspMeta,
   withExtraConnectSrc,
 } from './security/headers-policy';
+import { LEGAL } from './src/legal/config';
+
+// The search snippet and link preview for the app's entry page, in index.html's own words rather
+// than a doc body's. BILINGUAL on purpose: the app is one page that switches language in place,
+// so there is no /zh/ URL to carry a Chinese description and hreflang it. Both names therefore
+// have to be findable on this one page, or a reader searching 谷地工坊 or 星布谷地 finds nothing.
+const INDEX_DESCRIPTION =
+  'Plan a Petit Planet island in your browser, then build it in the game. '
+  + 'Draw terrain and water, place buildings and roads, generate an island, and edit in 2D or 3D. '
+  + '星布谷地地图规划工具：在浏览器里规划好一座岛，再到游戏里照着搭。'
+  + '绘制地形与水系、摆放建筑与道路、生成整座岛屿，并可在 2D 与 3D 视图中编辑。';
 
 /**
  * DEV-ONLY: append `VITE_EXTRA_CONNECT_SRC` origins to the served index.html CSP
@@ -35,6 +46,47 @@ function devCspExtensionPlugin(raw: string | undefined) {
       },
     };
   }
+
+/**
+ * The crawler-facing head of index.html. The app's entry page is an empty React container, so
+ * the tags a search engine and a link preview read have to be injected at build time; the
+ * prerendered legal pages get theirs from build-legal-pages.mts instead.
+ *
+ * A build served from a PATH rather than a domain root carries `noindex` in place of them. That
+ * is the dev site (yuetian.me/Apollonius/) and any future preview: a second host serving the same
+ * app competes with production for the same results, and shows unreleased work. robots.txt cannot
+ * express it — a crawler only reads robots.txt at the domain root, which for a path deployment
+ * belongs to a different site. Keyed on the base path rather than the release marker because
+ * `npm run build:release` is run locally to check a release, and a local tree is never stamped
+ * as published — that would make every local release build noindex itself.
+ */
+function indexHeadPlugin(canonicalOrigin: string, basePath: string) {
+  const origin = canonicalOrigin.replace(/\/$/, '');
+  return {
+    name: 'petit-index-head',
+    apply: 'build' as const,
+    transformIndexHtml(html: string) {
+      // og:title reads the <title> already in index.html rather than restating it, so the tab
+      // label and the link preview cannot drift apart.
+      const title = html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '';
+      const tags = basePath === '/'
+        ? [
+            `<meta name="description" content="${INDEX_DESCRIPTION}" />`,
+            `<link rel="canonical" href="${origin}/" />`,
+            `<meta property="og:type" content="website" />`,
+            `<meta property="og:url" content="${origin}/" />`,
+            `<meta property="og:title" content="${title}" />`,
+            `<meta property="og:description" content="${INDEX_DESCRIPTION}" />`,
+            `<meta property="og:image" content="${origin}/logo-256.png" />`,
+            `<meta property="og:locale" content="en_US" />`,
+            `<meta property="og:locale:alternate" content="zh_CN" />`,
+            `<meta name="twitter:card" content="summary" />`,
+          ]
+        : ['<meta name="robots" content="noindex, nofollow" />'];
+      return html.replace('</head>', `  ${tags.join('\n    ')}\n  </head>`);
+    },
+  };
+}
 
   // Build metadata injected at build time. The identity is read from the COMMITTED
   // `build-info.json` and from nowhere else — not from local git, not from a deploy
@@ -83,6 +135,7 @@ const APP_VERSION = resolveVersion({
       react(),
       bundleReportPlugin(),
       devCspExtensionPlugin(loadEnv(mode, process.cwd(), 'VITE_').VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC),
+      indexHeadPlugin(LEGAL.canonicalOrigin, process.env.PETIT_BASE_PATH || '/'),
     ],
     resolve: {
       alias: {

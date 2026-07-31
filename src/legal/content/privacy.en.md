@@ -125,8 +125,8 @@ The tool and these pages link to third-party services, including the team's Bili
 
 The following locations are disclosed separately because they are distinct: the location of the legal operator; the location at which the site is hosted; the location at which edge and CDN processing occurs; the AI-provider destinations that you select; and your own location.
 
-- **The site's files.** {app} is served as static files from Alibaba Cloud Object Storage Service (OSS). We operate no servers of our own: there is no application backend that receives, processes, or stores your map projects.
-- **Edge delivery.** Those static files are delivered through Alibaba Cloud ESA (Edge Security Acceleration). Its edge nodes may process your requests in or near your own region, which for many users includes mainland China. This edge processing serves the files and protects the service; it does not receive the map projects that remain in your browser.
+- **The site's files.** {app} is served as static files from Cloudflare's network (Workers static asset hosting). We operate no servers of our own: there is no application backend that receives, processes, or stores your map projects.
+- **Edge delivery.** Those static files are delivered from whichever of Cloudflare's edge locations is nearest to you. That network has no locations in mainland China, so a request made from mainland China is served from outside it. This edge processing serves the files and protects the service; it does not receive the map projects that remain in your browser.
 - **Correspondence.** Email that you send to us is hosted on Microsoft Outlook infrastructure and handled under Microsoft's terms.
 - **AI-provider requests.** When you use the AI Agent, requests go directly from your browser to the provider you select, are processed in that provider's own regions, and are governed by that provider's terms, as described in [Section 6](#6-ai-providers-byok).
 - **Your own location.** Your requests originate from wherever you use {app}.

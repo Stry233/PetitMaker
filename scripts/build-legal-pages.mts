@@ -28,7 +28,7 @@
 // detection is a defense-in-depth re-check, not the primary gate.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
@@ -49,6 +49,18 @@ async function main(): Promise<void> {
     console.warn(`[build-legal-pages] ${distDir} does not exist yet — run "vite build" first.`);
   }
   mkdirSync(distDir, { recursive: true });
+
+  // vite.config.ts writes `noindex` into index.html for any build with no release marker, which
+  // is right for the dev site and catastrophic for production: the site would leave the search
+  // index silently, and nothing else in the pipeline reads that tag. A release build is the one
+  // place the two can be told apart, so it is checked here rather than trusted.
+  const indexPath = join(distDir, 'index.html');
+  if (mode === 'release' && existsSync(indexPath) && /name="robots"[^>]*noindex/.test(readFileSync(indexPath, 'utf8'))) {
+    throw new Error(
+      'dist/index.html carries noindex in a RELEASE build — it was built from an unstamped tree, '
+      + 'so the site would be dropped from search. Publish through the workflow, which stamps first.'
+    );
+  }
 
   writeAll(distDir, LEGAL, mode);
 
