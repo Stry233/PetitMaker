@@ -180,16 +180,16 @@ describe('the build brush names its material', () => {
   });
 });
 
-describe('the hand does not track its own grip', () => {
-  it('keeps one cursor, leaving the closed hand to the controller\'s drag state', () => {
-    // Two owners of "am I panning" drift. The pointer machine reports the pan; the tool
-    // only says which hand it is.
+describe('the move tool does not track its own grip', () => {
+  it('keeps one cursor, leaving any drag reading to the controller\'s drag state', () => {
+    // Two owners of "am I panning" drift. The pointer machine reports the pan; the tool only
+    // names the mode, and this one holds `move` whether or not a pan is live.
     const tool = new HandTool();
     const ctx = makeToolCtx(makeState(10, 10), new CommandExecutor(
       makeState(10, 10), new EventBus<EditorEvents>(), createDefaultRegistry()));
-    expect(tool.cursor).toBe('hand-open');
+    expect(tool.cursor).toBe('move');
     tool.onPointerDown({ x: 1, y: 1 }, { x: 1, y: 1 }, ctx);
-    expect(tool.cursor).toBe('hand-open');
+    expect(tool.cursor).toBe('move');
     expect(tool.getIsPanning()).toBe(true); // the pan itself still works
   });
 });

@@ -20,7 +20,7 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { colors as C, inkTint, font, springs, cursors } from '../../styles';
 import { usePx } from '../scale';
-import { useUiZooming } from '../ui-zoom-anim';
+import { useInstantLayout } from '../layout-settle';
 import { useAgentStore } from '../../../agent/store';
 import { PROVIDER_ACCENT } from '../../../agent/providers/defaults';
 import { ProviderLogo } from './logos';
@@ -45,7 +45,9 @@ export function HeaderRow({ top, regionCells, onRegionToggle, onSetup, onReset, 
   const t = useT();
   const reduced = useReducedMotionConfig();
   const { px, pxf, fw } = usePx();
-  const zooming = useUiZooming();
+  // Layout animations stand down while the UI zoom eases OR the window is being resized:
+  // both move everything at once, and animating toward a target that is still moving lags visibly.
+  const zooming = useInstantLayout();
   const agent = useAgentStore();
   const provider = agent.settings.provider;
   const model = agent.settings.model[provider] ?? '';

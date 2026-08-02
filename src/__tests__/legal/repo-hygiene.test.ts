@@ -322,17 +322,25 @@ describe('applying a snapshot to the public checkout', () => {
 
     it('leaves the public repository its own files, even after we have published over them', () => {
       // The case that motivated all of this. A publish commit's TREE contains these too,
-      // so "in the previous publish" alone would delete a maintainer's bug-report template
-      // on the NEXT run — which is exactly what happened in rehearsal.
-      const theirs = ['.github/ISSUE_TEMPLATE/bug_report.yml', '.github/FUNDING.yml', 'CODE_OF_CONDUCT.md'];
+      // so "in the previous publish" alone would delete a maintainer's own file on the
+      // NEXT run — which is exactly what happened to a bug-report template in rehearsal.
+      // (Issue templates have since become manifest-public and authored here, so the
+      // maintainer-owned examples are the funding file and a PR template.)
+      const theirs = ['.github/workflows/codeql.yml', '.github/FUNDING.yml', 'CODE_OF_CONDUCT.md'];
       const previousTree = ['README.md', ...theirs]; // the whole repo, as a tree always is
       const { deletions, foreign, orphaned } = plan(['README.md'], ['README.md', ...theirs], previousTree);
       expect(deletions).toEqual([]);
-      // .github/** and a code of conduct are internal or unclaimed here, never something
-      // we published, so they read as the public repository's own and stay silent.
-      expect(foreign).toContain('.github/ISSUE_TEMPLATE/bug_report.yml');
-      expect(foreign).toContain('.github/FUNDING.yml');
-      expect(orphaned).toEqual(['CODE_OF_CONDUCT.md']);
+      // A maintainer-added workflow matches an internal glob (foreign); a funding file and a code
+      // of conduct match nothing at all (orphaned). Both readings leave the file in place.
+      expect(foreign).toContain('.github/workflows/codeql.yml');
+      expect(orphaned).toEqual(['.github/FUNDING.yml', 'CODE_OF_CONDUCT.md']);
+    });
+
+    it('retires an issue template we published, now that templates are ours', () => {
+      const path = '.github/ISSUE_TEMPLATE/bug_report.yml';
+      const { deletions, foreign } = plan(['README.md'], ['README.md', path], ['README.md', path]);
+      expect(deletions).toEqual([path]);
+      expect(foreign).toEqual([]);
     });
 
     it('retires a file we published that the snapshot no longer contains', () => {

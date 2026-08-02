@@ -28,6 +28,8 @@ interface AgentStore {
   setAskBeforeEdits(v: boolean): void;
   setOversight(v: Oversight): void;
   setCustomBaseUrl(url: string): void;
+  /** Record which regional host a platform's key authenticated against. */
+  setRegionBaseUrl(p: ProviderId, url: string): void;
 
   modelList: Partial<Record<ProviderId, string[]>>;
   setModelList(p: ProviderId, models: string[]): void;
@@ -74,6 +76,15 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setOversight: (v) =>
     set((s) => {
       const settings: AgentSettings = { ...s.settings, oversight: v, askBeforeEdits: v === 'strict' };
+      saveAgentSettings(settings);
+      return { settings };
+    }),
+  setRegionBaseUrl: (p, url) =>
+    set((s) => {
+      const settings: AgentSettings = {
+        ...s.settings,
+        regionBaseUrl: { ...s.settings.regionBaseUrl, [p]: url },
+      };
       saveAgentSettings(settings);
       return { settings };
     }),

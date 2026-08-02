@@ -5,7 +5,9 @@ import type { CursorId } from '../core/runtime/cursor-spec';
 
 export class HandTool implements Tool {
   readonly id = ToolType.Hand;
-  readonly cursor: CursorId = 'hand-open';
+  // The four arrows: this tool MOVES the view, and holds that reading whether or not a drag is
+  // live. The hands mean grabbing an object, which is a different gesture in the same mode.
+  readonly cursor: CursorId = 'move';
   // The CLOSED hand is not ours to track: the pointer machine reports the pan through
   // setCursorDrag, which is also what closes it for space-drag and middle/right-drag.
 

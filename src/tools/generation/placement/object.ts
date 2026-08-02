@@ -6,8 +6,9 @@ import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
 import { isCoating } from '../../../core/model/traits';
 import type { PlacementAnalysis } from './analysis';
 import { objectPlacementCommand, removeObjectCommand } from '../../objects/object-placer';
+import { generateObjectId } from '../../utils';
 
-/** Context threaded through every placement stage. Deterministic ids come from the counter. */
+/** Context threaded through every placement stage. */
 export interface PlaceCtx {
   state: GridState;
   execute: (c: Command) => ValidationResult;
@@ -15,7 +16,6 @@ export interface PlaceCtx {
   seed: number;
   /** Geometry-style knob from the generator config (1 = organic default; consumed via geoStyle). */
   naturalness: number;
-  counter: { n: number };
   /** Cells reserved as navigation clearance around building gates and ramp/bridge ends. ALL
    *  decorations (trees, flora, facilities) are rejected here — gates and crossing approaches
    *  stay visibly open. Populated by buildNetwork; consumed via `tryDecorate`. */
@@ -34,7 +34,7 @@ export function makeCtx(state: GridState, execute: (c: Command) => ValidationRes
     const item = getCatalogItem(o.catalogId);
     if (item && isCoating(item)) forEachFootprintCell(o, (x, y) => roads.add(y * W + x));
   }
-  return { state, execute, reg, seed, naturalness, counter: { n: 0 }, clearance: new Set(), roads };
+  return { state, execute, reg, seed, naturalness, clearance: new Set(), roads };
 }
 
 /** Reserve an N×N navigation-clearance square around (cx, cy). size 3 → a centred 3×3 (radius 1);
@@ -72,7 +72,7 @@ function placeObjectCommand(ctx: PlaceCtx, catalogId: string, x: number, y: numb
   const item = getCatalogItem(catalogId);
   if (!item) return null;
   const obj: PlacedObject = {
-    id: `gen-${ctx.seed}-${ctx.counter.n}`,
+    id: generateObjectId(),
     catalogId,
     position: { x, y },
     rotation,
@@ -105,8 +105,8 @@ export function buildingGate(r: { x: number; y: number; w: number; h: number }, 
 export const hasGate = (item: { category: ItemCategory; width: number; height: number }): boolean =>
   item.category === ItemCategory.Building && item.width * item.height >= 4;
 
-/** Attempt a placement through the LIVE rules. On success the object is committed + the id counter
- *  advances; on any rule rejection nothing changes (reject-and-skip). Returns the placed object (so
+/** Attempt a placement through the LIVE rules. On success the object is committed; on any rule
+ *  rejection nothing changes (reject-and-skip). Returns the placed object (so
  *  callers can mark/roll-back its footprint without rescanning state.objects), or null on rejection.
  *  Two gate REGULATIONS live here so every placement phase inherits them:
  *  - solid structures (anything but a road/bridge/ramp) may not land on reserved clearance, so a
@@ -133,7 +133,6 @@ export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number,
     }
   }
   if (ctx.execute(cmd).success) {
-    ctx.counter.n++;
     if (coating) forEachFootprintCell(cmd.object, (xx, yy) => ctx.roads.add(yy * W + xx));
     if (hasGate(item)) {
       const strip = new Set<number>();

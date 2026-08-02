@@ -146,9 +146,11 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     expect(getCell(state.cells, 6, 6)!.terrain?.corners?.[0]).toBe('fan');
   });
 
-  it('rounding an EMPTY notch NEVER creates a base — cosmetic at every tier (consistent with tier 1)', () => {
-    // The user's bug: an L at tier N with an EMPTY notch. Rounding the inner corner must NOT raise the
-    // notch into a tier-(N-1) block; it is a cosmetic fillet (patchBase 0, no structural mass) at every N.
+  it('rounding an EMPTY notch NEVER creates a base, and never hangs one in the air', () => {
+    // Two properties at once. A fillet is COSMETIC: rounding the inner corner must not raise the
+    // notch into a tier-(N-1) block. And it has no mass of its own, so it must REST on the notch
+    // floor: over bare ground that means tier 1 and no higher — a tier-3 fillet on a floor of
+    // nothing is a quarter block hanging two layers up, plain to see in the 3D view.
     for (const N of [1, 2, 3]) {
       const state = makeState(20, 20);
       setTerrain(state, 5, 5, TerrainType.Mountain, N);
@@ -157,13 +159,17 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
       // (6,6) deliberately EMPTY
       const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
       new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
-      const t = getCell(state.cells, 6, 6)!.terrain!;
-      expect(t.patchOnly, `N=${N}: a cosmetic patch`).toBe(true);
-      expect(t.elevation, `N=${N}: fillet renders at the surrounding tier`).toBe(N);
-      expect(t.patchBase, `N=${N}: NO real base captured`).toBe(0);
-      expect(t.corners?.[0], `N=${N}: NW fanned`).toBe('fan');
-      expect(solidTopOf(t, TerrainType.Mountain), `N=${N}: contributes NO structural mass (no base block)`).toBe(0);
-      expect(surfaceElevation(t), `N=${N}: placement/support sees ground, not a block`).toBe(0);
+      const t = getCell(state.cells, 6, 6)!.terrain;
+      if (N > 1) {
+        expect(t, `N=${N}: the fillet would hang, so the corner stays square`).toBeNull();
+        continue;
+      }
+      expect(t!.patchOnly, `N=${N}: a cosmetic patch`).toBe(true);
+      expect(t!.elevation, `N=${N}: fillet renders at the surrounding tier`).toBe(N);
+      expect(t!.patchBase, `N=${N}: NO real base captured`).toBe(0);
+      expect(t!.corners?.[0], `N=${N}: NW fanned`).toBe('fan');
+      expect(solidTopOf(t!, TerrainType.Mountain), `N=${N}: contributes NO structural mass (no base block)`).toBe(0);
+      expect(surfaceElevation(t!), `N=${N}: placement/support sees ground, not a block`).toBe(0);
     }
   });
 
@@ -234,9 +240,10 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
 
   it('cycling a from-empty gamma OFF returns to EMPTY — no base block is left behind', () => {
     const state = makeState(20, 20);
-    setTerrain(state, 5, 5, TerrainType.Mountain, 2);
-    setTerrain(state, 6, 5, TerrainType.Mountain, 2);
-    setTerrain(state, 5, 6, TerrainType.Mountain, 2);
+    // Tier 1, so the fillet rests on the ground: at any higher tier it would hang and is not offered.
+    setTerrain(state, 5, 5, TerrainType.Mountain, 1);
+    setTerrain(state, 6, 5, TerrainType.Mountain, 1);
+    setTerrain(state, 5, 6, TerrainType.Mountain, 1);
     // (6,6) EMPTY — no real base anywhere
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
     const tool = new EdgeCutTool();

@@ -9,6 +9,23 @@ import { lerpColor } from '../layers/object-animations';
 
 const RAMP_ARROWS: Record<number, string> = { 0: '↑', 90: '←', 180: '↓', 270: '→' };
 
+/**
+ * How to turn the ramp's icon so the art climbs the way the ramp does.
+ *
+ * Every ramp is drawn the same way: low on the left, high on the right. A ramp that climbs the
+ * other way is the same picture MIRRORED — not turned upside down, which is what a half turn would
+ * give. The two vertical directions are quarter turns of it. Uphill by rotation is the arrow table
+ * above: 0 north, 90 west, 180 south, 270 east.
+ */
+export function rampIconTurn(rotation: number): { rotation: number; flipX: boolean } {
+  switch (((rotation % 360) + 360) % 360) {
+    case 90: return { rotation: 0, flipX: true };              // uphill west — mirrored
+    case 0: return { rotation: -Math.PI / 2, flipX: false };   // uphill north
+    case 180: return { rotation: Math.PI / 2, flipX: false };  // uphill south
+    default: return { rotation: 0, flipX: false };             // uphill east — the art as drawn
+  }
+}
+
 // Per-type base colour for the ramp footprint gradient: the HUE encodes the
 // ramp type, while the high→low brightness ramp encodes the slope direction.
 // (Layer is read from the high/low elevation numbers.) Falls back to grey.
@@ -67,9 +84,10 @@ export function drawRamp(
   }
   wrapper.addChild(g);
 
-  // Per-type sprite — a small UPRIGHT icon badge (never rotated, never
-  // stretched to the footprint). It only carries TYPE identity; the gradient
-  // hue + the arrow + the elevation numbers carry direction and layer.
+  // Per-type sprite — a small icon badge, never stretched to the footprint. It carries the ramp's
+  // TYPE and, turned by `rampIconTurn`, the way it climbs: the art is drawn low-left to high-right,
+  // so a ramp running the other way shows the same picture mirrored and a vertical one a quarter
+  // turn of it. The gradient and the elevation numbers still carry the layers.
   const fw = size.w * TILE_SIZE, fh = size.h * TILE_SIZE;
   const spriteUrl = item.icon ? iconUrl(item.icon) : undefined;
   if (spriteUrl) {
@@ -78,8 +96,10 @@ export function drawRamp(
     sprite.anchor.set(0.5);
     sprite.x = fw / 2;
     sprite.y = fh / 2;
+    const turn = rampIconTurn(obj.rotation);
+    sprite.rotation = turn.rotation;
     const badge = Math.min(fw, fh) * 0.8; // fits the short side, aspect preserved
-    fitSpriteToTexture(sprite, tex, (tw, th) => badge / Math.max(tw, th));
+    fitSpriteToTexture(sprite, tex, (tw, th) => badge / Math.max(tw, th), turn.flipX);
     wrapper.addChild(sprite);
   }
 

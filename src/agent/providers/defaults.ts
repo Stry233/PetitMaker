@@ -3,15 +3,20 @@
  * chunk (key-storage defaults, the phone-menu busy badge reading the agent
  * store) must import from here, never from providers/index.ts, which pulls in
  * @anthropic-ai/sdk + openai. `label` is the platform's company/brand name (the
- * UI localizes it via the agent2.prov_<id> i18n keys); `defaultModel` seeds the
- * initial selection. The model dropdown is populated ONLY by a live listModels()
- * fetch — there is no placeholder fallback list, so a bad key/config shows none.
+ * UI localizes it via the agent2.prov_<id> i18n keys); `preferredModel` is which of a
+ * platform's models to select when the user has not chosen one, and applies ONLY when the
+ * live list offers it. The model dropdown is populated by a live listModels() fetch and
+ * nothing else — there is no placeholder or fallback list, so an unreachable endpoint or a
+ * bad key offers no models at all and the user types one instead.
  */
 import type { ProviderId } from '../types';
 
 export interface ProviderMeta {
   label: string;
-  defaultModel: string;
+  /** Selected when the user has not picked a model, IF the live list carries it; otherwise the
+   *  first live model wins. Never shown on its own — a model the endpoint does not list is not
+   *  a model the user can run. */
+  preferredModel: string;
   /** Narrow listModels() output to chat-capable ids. */
   modelFilter(id: string): boolean;
 }
@@ -22,45 +27,64 @@ export interface ProviderMeta {
 const isChatModel = (id: string): boolean =>
   !/embed|whisper|tts|audio|image|vision-?only|rerank|moderation|dall|guard/i.test(id);
 
+/**
+ * OpenAI-compatible base URLs per provider, in probe order.
+ *
+ * Moonshot, Qwen and Zhipu each run SEPARATE regional deployments, and a key issued on one is
+ * rejected by the other (`api.moonshot.cn` answers a `.ai` key with 401 Invalid Authentication).
+ * Which one a key belongs to is settled by asking them — see `resolveBaseUrl`.
+ */
+export const BASE_URLS: Partial<Record<ProviderId, readonly string[]>> = {
+  deepseek: ['https://api.deepseek.com'],
+  gemini: ['https://generativelanguage.googleapis.com/v1beta/openai/'],
+  openrouter: ['https://openrouter.ai/api/v1'],
+  zhipu: ['https://open.bigmodel.cn/api/paas/v4', 'https://api.z.ai/api/paas/v4'],
+  qwen: [
+    'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  ],
+  moonshot: ['https://api.moonshot.cn/v1', 'https://api.moonshot.ai/v1'],
+};
+
 export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   claude: {
     label: 'Anthropic',
-    defaultModel: 'claude-opus-4-8',
+    preferredModel: 'claude-opus-4-8',
     modelFilter: (id) => id.startsWith('claude'),
   },
   deepseek: {
     label: 'DeepSeek',
-    defaultModel: 'deepseek-v4-pro',
+    preferredModel: 'deepseek-v4-pro',
     modelFilter: () => true,
   },
   openai: {
     label: 'OpenAI',
-    defaultModel: 'gpt-5.5',
+    preferredModel: 'gpt-5.5',
     modelFilter: (id) => /^(gpt-|o\d)/.test(id),
   },
   gemini: {
     label: 'Google',
-    defaultModel: 'gemini-2.5-pro',
+    preferredModel: 'gemini-2.5-pro',
     modelFilter: (id) => id.includes('gemini') && isChatModel(id),
   },
   openrouter: {
     label: 'OpenRouter',
-    defaultModel: 'openrouter/auto',
+    preferredModel: 'openrouter/auto',
     modelFilter: isChatModel,
   },
   zhipu: {
     label: 'Zhipu',
-    defaultModel: 'glm-4.6',
+    preferredModel: 'glm-4.6',
     modelFilter: (id) => id.startsWith('glm') && isChatModel(id),
   },
   qwen: {
     label: 'Alibaba',
-    defaultModel: 'qwen-max',
+    preferredModel: 'qwen-max',
     modelFilter: (id) => id.startsWith('qwen') && isChatModel(id),
   },
   moonshot: {
     label: 'Moonshot',
-    defaultModel: 'moonshot-v1-32k',
+    preferredModel: 'moonshot-v1-32k',
     modelFilter: (id) => /^(moonshot|kimi)/.test(id) && isChatModel(id),
   },
   custom: {
@@ -68,7 +92,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     // gateway…). No default/fallback models — the live /models list is the source
     // of truth; the model row auto-fills from it once the endpoint answers.
     label: 'Custom',
-    defaultModel: '',
+    preferredModel: '',
     modelFilter: isChatModel,
   },
 };
@@ -76,6 +100,28 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
 export const PROVIDER_IDS: ProviderId[] = [
   'claude', 'openai', 'deepseek', 'gemini', 'openrouter', 'zhipu', 'qwen', 'moonshot', 'custom',
 ];
+
+/** Every host a provider answers on, primary first. Empty for the providers whose SDK carries its
+ *  own default, and for `custom`, where the user supplies the URL. */
+export function providerBaseUrls(id: ProviderId): readonly string[] {
+  return BASE_URLS[id] ?? [];
+}
+
+/** Providers running more than one regional deployment: connecting settles which one a key
+ *  belongs to, since neither the key format nor the platform name says. */
+export const REGION_SPLIT: ReadonlySet<ProviderId> = new Set(
+  PROVIDER_IDS.filter((id) => providerBaseUrls(id).length > 1),
+);
+
+/** The endpoint to call for a provider: the host resolved for this key, else its primary. */
+export function baseUrlFor(
+  id: ProviderId,
+  settings: { customBaseUrl?: string; regionBaseUrl?: Partial<Record<ProviderId, string>> },
+): string | undefined {
+  if (id === 'custom') return settings.customBaseUrl;
+  return settings.regionBaseUrl?.[id] ?? providerBaseUrls(id)[0];
+}
+
 
 /** Accent color per provider for detection badges/dots. */
 export const PROVIDER_ACCENT: Record<ProviderId, string> = {

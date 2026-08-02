@@ -1,4 +1,5 @@
 import { APP_NAME } from '../version';
+import { activeTarget } from './deploy-targets';
 
 /**
  * The single structured source for every legal/filing fact the app surfaces:
@@ -76,19 +77,24 @@ export type LegalConfig = {
  * Current values (2026-07-15). `npm run legal:validate` checks them against
  * `validate-config.ts`; `repoUrl` is not validated.
  */
+/** The deployment this build is for. Its URL and filing rows are facts ABOUT the site, so they come
+ *  from the one table that describes both sites (`deploy-targets`) rather than being written here
+ *  a second time — see the SINGLE-SOURCE URL POLICY above. */
+const TARGET = activeTarget();
+
 export const LEGAL: LegalConfig = {
-  canonicalOrigin: 'https://petit-maker.com',
-  legacyOrigins: [],
+  canonicalOrigin: TARGET.canonicalOrigin,
+  legacyOrigins: TARGET.legacyOrigins,
   productName: APP_NAME,
 
   operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
   privacyContactEmail: 'selka.craft@outlook.com',
   securityContactEmail: 'selka.craft@outlook.com',
 
-  icpNumber: null,
-  icpUrl: null,
-  psbNumber: null,
-  psbUrl: null,
+  icpNumber: TARGET.icpNumber,
+  icpUrl: TARGET.icpUrl,
+  psbNumber: TARGET.psbNumber,
+  psbUrl: TARGET.psbUrl,
 
   effectiveDates: {
     privacy: '2026-07-30',

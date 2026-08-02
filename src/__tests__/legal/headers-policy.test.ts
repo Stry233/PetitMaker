@@ -29,12 +29,15 @@ const PROVIDER_ORIGINS = [
   'https://generativelanguage.googleapis.com',
   'https://openrouter.ai',
   'https://open.bigmodel.cn',
+  'https://api.z.ai',
   'https://dashscope-intl.aliyuncs.com',
+  'https://dashscope.aliyuncs.com',
   'https://api.moonshot.cn',
+  'https://api.moonshot.ai',
 ];
 
 describe('HEADERS_POLICY — shape', () => {
-  it('carries all 8 named-provider origins in connect-src, plus self and the custom-endpoint sources', () => {
+  it('carries every named-provider origin in connect-src, plus self and the custom-endpoint sources', () => {
     const connect = HEADERS_POLICY.cspDirectives['connect-src'];
     expect(connect).toBeDefined();
     expect(connect).toContain("'self'");
@@ -47,7 +50,24 @@ describe('HEADERS_POLICY — shape', () => {
     expect(connect).toContain('https:');
     expect(connect).toContain('http://localhost:*');
     expect(connect).toContain('http://127.0.0.1:*');
+    // CSP's host grammar cannot express an IPv6 literal; sanitizeEndpointUrl writes such an
+    // endpoint as localhost.
+    expect((connect ?? []).join(' ')).not.toContain('[::1]');
+    // 'self' + the named providers + the three custom-endpoint sources, and nothing else: a new
+    // origin has to be a deliberate edit here, not an accident of the policy file.
     expect(connect).toHaveLength(1 + PROVIDER_ORIGINS.length + 3);
+  });
+
+  it('names every host the provider adapters actually call', async () => {
+    // These origins are documentation: connect-src's broad `https:` is what actually admits them.
+    // The list is worth reading only while it equals what the adapters call, which this holds.
+    const { PROVIDER_IDS } = await import('../../agent/providers/defaults');
+    const { providerBaseUrls } = await import('../../agent/providers');
+    for (const id of PROVIDER_IDS) {
+      for (const url of providerBaseUrls(id)) {
+        expect(PROVIDER_ORIGINS, `${id} calls ${url}`).toContain(new URL(url).origin);
+      }
+    }
   });
 
   it('names no operator-specific / campus gateway in the canonical policy', () => {
@@ -108,7 +128,7 @@ describe('toCspMeta() — meta-expressible subset only', () => {
     expect(toCspMeta()).not.toContain('Strict-Transport-Security');
   });
 
-  it('includes connect-src with all 8 named-provider origins', () => {
+  it('includes connect-src with every named-provider origin', () => {
     const meta = toCspMeta();
     expect(meta).toContain('connect-src');
     for (const origin of PROVIDER_ORIGINS) {

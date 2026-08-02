@@ -343,3 +343,18 @@ describe('SelectionHandles: what triggers a re-track', () => {
     expect(box().style.left).toBe('40px');
   });
 });
+
+describe('the rotate handle is a button, not a camera control', () => {
+  it('sets no cursor of its own, so the global clickable rule applies', () => {
+    // `orbit` means the 3D CAMERA turning. Turning an OBJECT is a press on a button, and the
+    // handle used to override its cursor to `orbit`, which promised a drag gesture it never had.
+    renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
+    const rotate = screen.getByTestId('handle-rotate');
+    const del = screen.getByTestId('handle-delete');
+    expect(rotate.tagName).toBe('BUTTON');
+    // The clickable pointer, exactly like its delete sibling — the handle used to override this
+    // to `orbit`, promising a drag gesture it never had.
+    expect(rotate.style.cursor).toContain('--pw-cursor-clickable');
+    expect(rotate.style.cursor).toBe(del.style.cursor);
+  });
+});

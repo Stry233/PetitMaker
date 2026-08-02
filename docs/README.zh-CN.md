@@ -55,7 +55,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》打造、好用而规则
 </div>
 
 <div align="center">
-<img src="./media/item-showcase.png" alt="全部可摆放物品分四层陈列：十栋小屋和两座设施、七座桥与七条坡道、十二棵树、二十一种花草" width="900">
+<img src="./media/item-showcase.png" alt="全部可摆放物品分五层陈列：十栋小屋和两座设施、七座桥与七条坡道、十二棵树、四十种花草" width="900">
 
 <sub>全部可放置物品：小屋、桥、坡道、树和花草。另有两种道路，用笔刷直接画。</sub>
 </div>
@@ -63,7 +63,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》打造、好用而规则
 ## 这张图片就是地图本身
 
 <div align="center">
-<img src="./media/share-map.zh.png" alt="谷地工坊的分享图：顶部是标题和一行说明，小岛画在带行列坐标的网格上，右侧是逐层缩略图，下方一排四张 3D 视图，再往下是 PetitGlyph 分享码色带，页脚标注导出日期与图片尺寸" width="480">
+<img src="./media/share-map.zh.png" alt="谷地工坊的分享图：顶部是标题和一行说明，小岛画在带行列坐标的网格上，右侧是逐层缩略图，下方一排四张 3D 视图，再往下是 PetitGlyph色带，页脚标注导出日期与图片尺寸" width="480">
 </div>
 
 这张图片里存的就是地图数据。**[下载这张图片](./media/share-map.zh.png)**（保存文件本体，不要截屏），拖进 **[petit-maker.com](https://petit-maker.com)** 的导入框，得到的就是上面这座岛：每一级台地、每一段河道、两千九百件物品，一格不差。

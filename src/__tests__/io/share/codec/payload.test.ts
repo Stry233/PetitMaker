@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { encodeMapPayload, decodeMapPayload } from '../../../../io/share/codec/payload';
 import { canonicalize, canonicalBytes } from '../../../../io/share/canonical';
-import { createBlankGridState } from '../../../../io/share/codec/predictors';
+import { createBlankGridState } from '../../../../io/share/codec/blank-grid';
 import { makeState } from '../../../rules/_helpers';
 import { MAP_TEMPLATES } from '../../../../config/maps';
 import { TerrainType } from '../../../../core/model/types';
@@ -36,12 +36,12 @@ describe('payload frame', () => {
   });
   it('tampered bytes throw corrupt (hash gate)', async () => {
     const state = registerSynthetic(makeState(16, 16));
-    // A wholly-blank map compresses to a residual that is almost entirely the range coder's
-    // trailing flush margin (never read back by the decoder), so a handful of edits give the
-    // tampered byte real content to corrupt.
+    // A wholly-blank map codes to a residual that is almost entirely the range coder's trailing
+    // flush margin (never read back), so the map carries some shape and the edit lands inside the
+    // coded run rather than in that margin.
     for (let y = 2; y < 8; y++) for (let x = 2; x < 8; x++) state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
     const bytes = await encodeMapPayload(state, null, META);
-    bytes[bytes.length - 3]! ^= 0x40;
+    bytes[Math.floor(bytes.length * 0.9)]! ^= 0x40;
     await expect(decodeMapPayload(bytes)).rejects.toMatchObject({ code: expect.stringMatching(/corrupt|decode-failed/) });
   });
   it('future frame version throws future-version', async () => {

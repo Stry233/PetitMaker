@@ -60,22 +60,29 @@ const continueBtn: CSSProperties = {
 };
 
 /**
- * The turn itself: the phone you are holding, faded, an arrow, and the phone you want. A single
- * landscape phone cannot say "rotate" — it shows the destination and leaves the instruction to the
- * text. Stroke icon in `currentColor`, matching `glyph-icons.tsx`.
+ * The turn itself: ONE phone, caught mid-rotation, with an arc sweeping it toward landscape.
+ *
+ * One device that is visibly turning says "rotate" on its own; two phones and an arrow between them
+ * read as a before/after diagram, which needs the caption to explain it. The body is tilted a third
+ * of the way through the quarter turn — enough to be unmistakably in motion, not so far that it
+ * stops reading as upright. Stroke icon in `currentColor`, matching `glyph-icons.tsx`.
  */
 function RotateIcon() {
   return (
-    <svg width={84} height={50} viewBox="0 0 40 24" fill="none" stroke="currentColor"
-      strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <g opacity={0.38}>
-        <rect x="3" y="2.5" width="11" height="19" rx="2.4" />
-        <path d="M6.8 5.6h3.4" />
+    <svg width={76} height={76} viewBox="0 0 48 48" fill="none" stroke="currentColor"
+      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {/* The sweep, struck around the phone's own centre so the motion belongs to the device
+          rather than floating beside it. Open at the bottom, where the hand is. */}
+      <path d="M11.2 31.5A15 15 0 0 1 18.6 9.9" opacity={0.55} />
+      <path d="M18.6 9.9 15.1 9.2M18.6 9.9 18.2 13.5" opacity={0.55} />
+      <path d="M36.8 16.5a15 15 0 0 1-7.4 21.6" opacity={0.55} />
+      <path d="M29.4 38.1l3.5.7M29.4 38.1l.4-3.6" opacity={0.55} />
+      {/* The device, a third of the way through the quarter turn. */}
+      <g transform="rotate(-30 24 24)">
+        <rect x="17.5" y="13" width="13" height="22" rx="3" />
+        <path d="M21.8 16.4h4.4" />
+        <path d="M22.6 31.3h2.8" opacity={0.5} />
       </g>
-      <path d="M16.6 8.4A7.4 7.4 0 0 1 23.4 4.2" />
-      <path d="M23.4 4.2 20.7 2.7M23.4 4.2 22 7" />
-      <rect x="24" y="7.5" width="13" height="9.6" rx="2.4" />
-      <path d="M27.1 10.6v3.4" />
     </svg>
   );
 }

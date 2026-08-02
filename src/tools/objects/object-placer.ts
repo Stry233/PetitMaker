@@ -156,6 +156,25 @@ export function removeOverlappingCoatings(
   }
 }
 
+/**
+ * The same strip, for callers holding an executor rather than a ToolContext: everything that
+ * MOVES an object onto new cells (a drag, a group move, a group rotation).
+ *
+ * V-PLACE-OVERLAP exempts coatings, so landing on a road is legal and raises nothing — which
+ * means without this the object simply sits on top of a road that is still there. Caller owns the
+ * stroke, so the removals undo with the placement they made room for.
+ */
+export function stripCoatingsFor(
+  executor: CommandExecutor, gs: GridState, dest: PlacedObject,
+): void {
+  const size = getPlacedObjectSize(dest);
+  const cells = getFootprint(dest.position.x, dest.position.y, size.w, size.h);
+  for (const obj of overlappingCoatings(gs, cells)) {
+    if (obj.id === dest.id) continue; // moving a road: it is its own coating, not one to strip
+    executor.execute(removeObjectCommand(obj));
+  }
+}
+
 /** What the placement ghost draws for one hovered cell, and whether the click would be accepted. */
 export interface PlacementGhostPlan {
   /** The cells to outline: the real footprint, a snapped bridge/ramp span, or (when a snapping

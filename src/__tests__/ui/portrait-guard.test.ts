@@ -17,17 +17,30 @@ describe('shouldBlockPortrait (pure)', () => {
   it('never fires without a touch-primary pointer, however the signals combine', () => {
     // A desktop, including a tall monitor or a narrow window: portrait can be true, but the
     // pointer signals are what a mouse/trackpad always report, so this must stay false.
-    expect(shouldBlockPortrait({ coarsePointer: false, noHover: false, portrait: true })).toBe(false);
-    expect(shouldBlockPortrait({ coarsePointer: false, noHover: true, portrait: true })).toBe(false);
-    expect(shouldBlockPortrait({ coarsePointer: true, noHover: false, portrait: true })).toBe(false);
+    expect(shouldBlockPortrait({ coarsePointer: false, noHover: false, inAppBrowser: false, portrait: true })).toBe(false);
+    expect(shouldBlockPortrait({ coarsePointer: false, noHover: true, inAppBrowser: false, portrait: true })).toBe(false);
+    expect(shouldBlockPortrait({ coarsePointer: true, noHover: false, inAppBrowser: false, portrait: true })).toBe(false);
   });
 
   it('fires only for a touch-primary device actually held in portrait', () => {
-    expect(shouldBlockPortrait({ coarsePointer: true, noHover: true, portrait: true })).toBe(true);
+    expect(shouldBlockPortrait({ coarsePointer: true, noHover: true, inAppBrowser: false, portrait: true })).toBe(true);
   });
 
   it('does not fire for the same device in landscape', () => {
-    expect(shouldBlockPortrait({ coarsePointer: true, noHover: true, portrait: false })).toBe(false);
+    expect(shouldBlockPortrait({ coarsePointer: true, noHover: true, inAppBrowser: false, portrait: false })).toBe(false);
+  });
+
+  it('still fires in an in-app browser that wrongly reports hover', () => {
+    // Several in-app WebViews report `hover: hover` on a phone, which left the guard silent exactly
+    // where it was needed. Being in one is itself evidence of a phone.
+    expect(shouldBlockPortrait({ coarsePointer: true, noHover: false, inAppBrowser: true, portrait: true })).toBe(true);
+  });
+
+  it('cannot be talked into firing on a desktop by the in-app signal alone', () => {
+    // The coarse pointer is the part that can never be true on a desktop, so it stays required —
+    // an Electron-style shell or a spoofed agent must not black out a real computer.
+    expect(shouldBlockPortrait({ coarsePointer: false, noHover: false, inAppBrowser: true, portrait: true })).toBe(false);
+    expect(shouldBlockPortrait({ coarsePointer: false, noHover: true, inAppBrowser: true, portrait: true })).toBe(false);
   });
 });
 

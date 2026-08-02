@@ -9,10 +9,30 @@ import './_pixi-env';
 import { describe, it, expect } from 'vitest';
 import { OverlayLayer } from '../../canvas/map2d/layers/overlay-layer';
 
-type Sprite = { visible: boolean; tint: number };
+type Sprite = {
+  visible: boolean; tint: number; scale: { x: number; y: number };
+  texture: { baseTexture: { setRealSize: (w: number, h: number) => void } };
+};
 
 function ghosts(overlay: OverlayLayer): Sprite[] {
   return (overlay as unknown as { groupGhosts: Sprite[] }).groupGhosts;
+}
+
+/**
+ * Mark every ghost's icon decoded and repaint.
+ *
+ * The sprite fit waits on texture decode before sizing or revealing anything, which is what keeps
+ * a 0x0 sprite off the screen. jsdom never decodes an image, so without this the assertions below
+ * would all read the pre-decode state; a browser reaches a ghost with these icons long since
+ * decoded by the object layer.
+ *
+ * The size is deliberately NOT square. Catalog icons are not, and a stretch to the footprint box
+ * is invisible when texture and footprint share an aspect — a square icon in a 1x1 footprint
+ * scales the same on both axes however it is fitted, so it could not tell the two apart.
+ */
+function decodeIcons(overlay: OverlayLayer, repaint: () => void): void {
+  for (const s of ghosts(overlay)) s.texture.baseTexture.setRealSize(64, 32);
+  repaint();
 }
 
 describe('OverlayLayer group placement ghost', () => {
@@ -26,10 +46,19 @@ describe('OverlayLayer group placement ghost', () => {
       ],
       true,
     );
+    const members = [
+      { catalogId: 'tree-apple', x: 5, y: 5, rotation: 0, elevation: 0 },
+      { catalogId: 'tree-apple', x: 6, y: 5, rotation: 0, elevation: 0 },
+      { catalogId: 'tree-apple', x: 7, y: 5, rotation: 0, elevation: 0 },
+    ];
+    decodeIcons(overlay, () => overlay.showGroupPlacementGhost(members, true));
     const sprites = ghosts(overlay);
     expect(sprites).toHaveLength(3);
     expect(sprites.every((s) => s.visible)).toBe(true);
     expect(new Set(sprites.map((s) => s.tint)).size).toBe(1); // one shared tint, not per-member
+    // ONE scale on both axes: the ghost has to show the shape the drop will produce, and sizing
+    // width and height separately would stretch the icon into its footprint box.
+    expect(sprites.every((s) => s.scale.x === s.scale.y)).toBe(true);
   });
 
   it('retints every sprite together on the next call (invalid → red)', () => {

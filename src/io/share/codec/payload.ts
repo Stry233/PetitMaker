@@ -1,20 +1,15 @@
-// src/io/share/codec/payload.ts — PetitGlyph v2 payload frame: assembles/parses the byte frame
-// the visible glyph code carries. Sits on top of the canonical/predictor/residual-coder layers
-// (canonical.ts, codec/predictors.ts, codec/terrain-coder.ts, codec/object-coder.ts): picks the
-// smallest self-verified {predictor + residual} encoding via a tiny MDL competition, then wraps
-// it with a small header (template/catalog identity + a binary provenance record + a SHA-256
-// content-hash gate) so a corrupted or foreign payload is rejected before it ever reaches the
-// map-reconstruction path.
+// src/io/share/codec/payload.ts — PetitGlyph payload frame: assembles/parses the byte frame the
+// visible glyph code carries. It holds the map coded by codec/map-coder.ts wrapped in a small
+// header — template and catalog identity, a binary provenance record, and a SHA-256 content-hash
+// gate, so a corrupted or foreign payload is rejected before it reaches the reconstruction path.
 import type { CanonicalSave } from '../canonical';
-import { canonicalize, canonicalBytes, templateHash, catalogHash } from '../canonical';
+import { canonicalize, canonicalBytes, templateHash, catalogHash, objKey } from '../canonical';
 import { getMapTemplate } from '../../../config/maps';
 import { sha256 } from '../crypto/sha256';
 import { ShareError } from '../errors';
 import type { MapProvenanceSummary } from '../../../core/provenance/types';
-import { P_EMPTY, P_REPLAY, emptyCanonical, replayCanonical } from './predictors';
-import { tokensOf, tokensToCells } from './grid-io';
-import { encodeTerrain, decodeTerrain } from './terrain-coder';
-import { encodeObjects, decodeObjects } from './object-coder';
+import { tokensOf, tokensToCells, tokenOf, parseToken } from './grid-io';
+import { encodeMap, decodeMap, MODEL_VARIANTS, type MapModelOpts } from './map-coder';
 import { RangeEncoder, RangeDecoder } from './bitio';
 import type { GenerateConfig, GridState } from '../../../core/model/types';
 
@@ -39,7 +34,7 @@ const MAGIC1 = 0x32; // '2'
 /** The payload wire format. A reader rejects any frame that does not carry this exact version, so
  *  bumping it whenever the object or terrain encoding changes turns a stale code into a named
  *  refusal instead of a content-hash mismatch further down. */
-const FRAME_VERSION = 2;
+const FRAME_VERSION = 3;
 const TITLE_MAX_CHARS = 48;
 
 // ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──
@@ -148,79 +143,55 @@ function decodeProvenanceRecord(bytes: Uint8Array): ProvenanceInfo {
   return info;
 }
 
-// ── MDL predictor candidates + frame assembly ───────────────────────────────────────────────
+// ── frame assembly ──────────────────────────────────────────────────────────────────────────
 
-interface Candidate { id: number; predicted: CanonicalSave; blob: Uint8Array }
-
-function buildFrame(canonical: CanonicalSave, contentHash: Uint8Array, c: Candidate, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Uint8Array {
+function buildFrame(
+  canonical: CanonicalSave, contentHash: Uint8Array, generation: GenerateConfig | undefined,
+  summary: MapProvenanceSummary | null, meta: ShareCodeMeta, variant: number,
+): Uint8Array {
   const template = getMapTemplate(canonical.templateId);
-  const width = template.width;
-  const actualTokens = tokensOf(canonical.cells);
-
-  let predictorId = c.id;
-  let predicted = c.predicted;
-  let blob = c.blob;
-  let predictedTokens = tokensOf(predicted.cells);
-  if (predictedTokens.length !== actualTokens.length) {
-    // Predictor/template mismatch (e.g. a stale generator replay) — fall back to the empty
-    // predictor, which matches by construction whenever the templateId resolves correctly. If it
-    // still doesn't match, this candidate fails its self-verify below and the MDL loop drops it.
-    predictorId = P_EMPTY;
-    predicted = emptyCanonical(canonical.templateId);
-    blob = new Uint8Array(0);
-    predictedTokens = tokensOf(predicted.cells);
-  }
-
   const enc = new RangeEncoder();
-  encodeTerrain(enc, actualTokens, predictedTokens, width);
-  encodeObjects(enc, canonical.objects, predicted.objects);
+  encodeMap(enc, template, tokensOf(canonical.cells).map(parseToken), canonical.objects, MODEL_VARIANTS[variant]!);
   const residual = enc.finish();
-
   const prov = encodeProvenanceRecord(summary, meta);
+  // The recipe rides along as a NOTE: the editor shows it and can regenerate from it. Nothing in
+  // the map's reconstruction reads it, so a code stays readable however the generator changes.
+  const note = generation ? new TextEncoder().encode(JSON.stringify(generation)) : new Uint8Array(0);
 
   const w = new ByteWriter();
   w.u8(MAGIC0);
   w.u8(MAGIC1);
   w.u8(FRAME_VERSION);
-  w.u8(predictorId);
+  w.u8(variant);
   w.u8(canonical.version);
   w.str8(canonical.templateId);
   w.u32(templateHash(template));
   w.u32(catalogHash());
   w.blob8(prov);
   w.raw(contentHash);
-  w.blob16(blob);
+  w.blob16(note);
   w.raw(residual);
   return w.toBytes();
 }
 
-/** MDL over {P_EMPTY, P_REPLAY if `state.generation`}: each candidate frame is self-verified
- *  (decoded and hash-checked) before it is eligible; the smallest eligible frame wins. */
+/**
+ * Build the payload frame. A map has ONE encoding, so this is not a search: the frame is built,
+ * then decoded back and hash-checked before it is handed out, which turns a coder bug into a
+ * refusal here rather than a wrong map in someone else's editor.
+ */
 export async function encodeMapPayload(state: GridState, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Promise<Uint8Array> {
   const canonical = canonicalize(state);
   const want = await sha256(canonicalBytes(canonical));
-
-  const candidates: Candidate[] = [
-    { id: P_EMPTY, predicted: emptyCanonical(canonical.templateId), blob: new Uint8Array(0) },
-  ];
-  if (state.generation) {
-    try {
-      const predicted = await replayCanonical(canonical.templateId, state.generation);
-      candidates.push({ id: P_REPLAY, predicted, blob: new TextEncoder().encode(JSON.stringify(state.generation)) });
-    } catch { /* replay unavailable → P_EMPTY only */ }
+  // The model has a couple of shapes (see MapModelOpts) and which one suits a map is a property
+  // of the map, not of the format. Coding is cheap, so every shape is tried and the smallest
+  // kept; the frame names the winner, so the reader does no searching.
+  let frame: Uint8Array | null = null;
+  for (let v = 0; v < MODEL_VARIANTS.length; v++) {
+    const f = buildFrame(canonical, want, state.generation, summary, meta, v);
+    if (!frame || f.length < frame.length) frame = f;
   }
-
-  let best: Uint8Array | null = null;
-  for (const c of candidates) {
-    try {
-      const frame = buildFrame(canonical, want, c, summary, meta);
-      await decodeMapPayload(frame); // self-verify (hash gate inside) — throws if it doesn't round-trip
-      if (!best || frame.length < best.length) best = frame;
-    } catch { /* candidate ineligible — encodeObjects can throw on an unknown catalogId, or
-                 self-verify can fail; either way this candidate is skipped. */ }
-  }
-  if (!best) throw new ShareError('decode-failed', 'No payload candidate self-verified.');
-  return best;
+  await decodeMapPayload(frame!);
+  return frame!;
 }
 
 export interface DecodedMapPayload {
@@ -241,8 +212,9 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
     if (version > FRAME_VERSION) throw new ShareError('future-version', `Payload version ${version} is newer than this build supports.`);
     if (version !== FRAME_VERSION) throw new ShareError('decode-failed', `Unsupported payload version ${version}.`);
 
-    const predictorId = r.u8();
-    if (predictorId !== P_EMPTY && predictorId !== P_REPLAY) throw new ShareError('decode-failed', 'Unknown predictor id.');
+    const variant = r.u8();
+    const model: MapModelOpts | undefined = MODEL_VARIANTS[variant];
+    if (!model) throw new ShareError('decode-failed', `Unknown model variant ${variant}.`);
 
     const canonicalVersion = r.u8();
     const templateId = r.str8();
@@ -251,42 +223,29 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
     const provBytes = r.blob8();
     const provenance = decodeProvenanceRecord(provBytes);
     const contentHash = r.raw(32);
-    const predictorBlob = r.blob16();
+    const note = r.blob16();
     const residual = r.rest();
 
     const template = getMapTemplate(templateId);
-    const width = template.width;
-    const cellCount = template.width * template.height;
 
-    let predicted: CanonicalSave;
     let generation: GenerateConfig | undefined;
-    if (predictorId === P_REPLAY) {
-      let cfg: GenerateConfig;
+    if (note.length > 0) {
       try {
-        cfg = JSON.parse(new TextDecoder().decode(predictorBlob)) as GenerateConfig;
+        generation = JSON.parse(new TextDecoder().decode(note)) as GenerateConfig;
       } catch {
-        throw new ShareError('decode-failed', 'Malformed predictor blob.');
+        throw new ShareError('decode-failed', 'Malformed generation note.');
       }
-      predicted = await replayCanonical(templateId, cfg);
-      generation = cfg;
-    } else {
-      predicted = emptyCanonical(templateId);
     }
 
-    const predictedTokens = tokensOf(predicted.cells);
-    if (predictedTokens.length !== cellCount) {
-      throw new ShareError('decode-failed', 'Predictor/template cell-count mismatch.');
-    }
-
-    const dec = new RangeDecoder(residual);
-    const tokens = decodeTerrain(dec, predictedTokens, width);
-    const objects = decodeObjects(dec, predicted.objects);
-
+    const { cells, objects } = decodeMap(new RangeDecoder(residual), template, model);
     const canonical: CanonicalSave = {
       version: canonicalVersion,
       templateId,
-      cells: tokensToCells(tokens),
-      objects,
+      cells: tokensToCells(cells.map(tokenOf)),
+      // Canonical order is by objKey, not the raster order the object plane decodes in.
+      objects: [...objects]
+        .sort((a, b) => { const ka = objKey(a), kb = objKey(b); return ka < kb ? -1 : ka > kb ? 1 : 0; })
+        .map((o, i) => ({ ...o, id: `o${i}` })),
     };
 
     const gotHash = await sha256(canonicalBytes(canonical));

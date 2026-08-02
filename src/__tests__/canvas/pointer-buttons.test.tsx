@@ -49,6 +49,12 @@ function pointer(type: string, init: MouseEventInit): MouseEvent {
   return new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
 }
 
+/** The pan-drag key (Space) has no per-event field the machine reads: it announces itself through
+ *  the same global keydown/keyup tracker a real held key would fire. */
+function setPanKeyHeld(held: boolean): void {
+  window.dispatchEvent(new KeyboardEvent(held ? 'keydown' : 'keyup', { code: 'Space' }));
+}
+
 function mount(): HTMLElement {
   const { getByTestId } = render(<Host />);
   return getByTestId('canvas');
@@ -132,6 +138,27 @@ describe('pointer machine: middle button navigates like right', () => {
     setActiveView(view);
     dragWith(mount(), 0, 30, 12);
 
+    expect(camera.orbit).not.toHaveBeenCalled();
+  });
+
+  it('pans a left drag while the pan-drag key is held, even over a tool that would otherwise draw', () => {
+    useEditorStore.setState({ activeTool: ToolType.TerrainBrush });
+    const { view, camera } = makeView(true);
+    setActiveView(view);
+    const el = mount();
+    setPanKeyHeld(true);
+    try {
+      el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 100, clientY: 100 }));
+      // buttons: 0 here is load-bearing: the pan-drag key pans on ANY move, with no button guard,
+      // while a left-drag pan only applies while (e.buttons & 1) !== 0 — a move reporting no
+      // buttons held distinguishes the two, and only passes under the pan-key mapping.
+      window.dispatchEvent(pointer('pointermove', { button: 0, buttons: 0, clientX: 130, clientY: 112 }));
+      window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 130, clientY: 112 }));
+    } finally {
+      setPanKeyHeld(false);
+    }
+
+    expect(camera.pan).toHaveBeenCalledWith(-30, -12);
     expect(camera.orbit).not.toHaveBeenCalled();
   });
 });

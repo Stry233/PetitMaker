@@ -27,7 +27,7 @@
 import { onActiveViewChange, getActiveView } from '../active-view';
 import type { ActiveView } from '../view-projection';
 import { useEditorStore } from '../../state/store';
-import { canHoldSelection } from './selection-hover';
+import { canHoldSelection } from '../../core/interaction/tool-modes';
 import { paintSelection } from './usePointerInteraction';
 
 /** Draw the current selection into the active view. */

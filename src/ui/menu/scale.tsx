@@ -5,7 +5,9 @@
  * scale via context and convert design px → screen px with px()/pxf().
  */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { CANVAS, HOME_POS, CARD } from './metrics';
+import { pageZoom } from '../../core/runtime/page-zoom';
+import { readMatch } from '../../core/runtime/portrait-signals';
+import { CANVAS, CONTENT_BOTTOM_Y, HOME_POS, CARD } from './metrics';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
 
 /** Phone card's vertical centre in design px — the anchor the UI zoom scales around. */
@@ -35,26 +37,60 @@ function currentDpr(): number {
 /**
  * The viewport height the scale is derived from, with the cap applied.
  *
- * Page zoom multiplies devicePixelRatio and divides the CSS viewport by the same
- * factor, so `vh × dpr` — the viewport measured in real device pixels — does not
- * move when the user zooms, and the UNCAPPED scale therefore already draws the UI
- * at one physical size at every zoom level. The cap is what breaks that: it is a
- * CSS-px threshold, so zooming OUT inflates vh past it, the scale stops growing,
- * and the UI gets physically smaller the further out you zoom — backwards.
+ * Page zoom multiplies devicePixelRatio and divides the CSS viewport by the same factor, so
+ * `vh × dpr` — the viewport in real device pixels — does not move when the user zooms, and the
+ * UNCAPPED mapping therefore already draws the UI at one physical size at every zoom level. The cap
+ * is the one term that breaks it: a threshold in CSS px, which zoom changes underneath. Zooming out
+ * inflates vh past the cap, the scale stops growing, and the UI gets physically smaller the further
+ * out you zoom — backwards.
  *
- * No display has a device-pixel-ratio below 1, so `dpr < 1` can only mean the page
- * is zoomed out, and 1/dpr is exactly that zoom factor. Dividing the cap by it
- * keeps `cap × dpr` constant, which is what holds the on-screen size still. At
- * dpr >= 1 the cap is left alone: there, zoom and display scale are the same
- * number (dpr = zoom × displayScale) and cannot be separated, so guessing would
- * resize the UI on every HiDPI screen instead.
+ * So the cap is compared against the UNZOOMED height (`vh × zoom`, which is what vh would be at the
+ * page's reference zoom) and then converted back. Both edges of the expression carry the same
+ * factor, which is what leaves the on-screen size unmoved.
  */
 export function cappedVh(vh: number, dpr: number = currentDpr()): number {
-  return Math.min(vh, DESIGN_VH_CAP / Math.min(dpr, 1));
+  const zoom = pageZoom(dpr);
+  return Math.min(vh, DESIGN_VH_CAP / zoom);
 }
 
-export function computeScale(vh: number, dpr: number = currentDpr()): number {
-  return cappedVh(vh, dpr) / CANVAS.h;
+/**
+ * How much bigger the UI is drawn on a touch-primary device, at most. A CSS px is a smaller
+ * physical thing on a phone than on a desktop (~150 css ppi against ~96), so mapping the canvas to
+ * viewport height — right on a monitor — lands the phone card at barely an inch and a half tall.
+ * The boost buys that back without abandoning the proportional mapping.
+ *
+ * The ceiling is the room the LAYOUT has, not a taste: the plain mapping fits the whole design
+ * canvas in the viewport, so the boost may spend only the part of that canvas the UI leaves empty
+ * below itself. Past it the Generate spoke hangs off the bottom of the screen, which is worse than
+ * a small card on any device.
+ */
+/** Design px of air kept under the lowest panel, so a locale whose text wraps a line further than
+ *  the measured one does not put its edge on the screen edge. */
+const BOOST_BOTTOM_MARGIN = 24;
+export const TOUCH_BOOST_MAX = CANVAS.h / (CONTENT_BOTTOM_Y + BOOST_BOTTOM_MARGIN);
+/** Full strength at or below a phone's landscape height; nothing at or above a small laptop's. */
+const BOOST_VH_FULL = 380;
+const BOOST_VH_NONE = 700;
+
+/**
+ * The touch boost for a viewport, ramped so a big tablet is untouched and a phone gets all of it.
+ *
+ * Gated on the pointer being COARSE, never on size alone: a small desktop window is a normal thing
+ * and must keep desktop proportions. That is the same signal the portrait guard reads, and for the
+ * same reason — it describes the device, not the window.
+ */
+export function touchBoost(vh: number, coarsePointer: boolean): number {
+  if (!coarsePointer) return 1;
+  const t = Math.min(1, Math.max(0, (BOOST_VH_NONE - vh) / (BOOST_VH_NONE - BOOST_VH_FULL)));
+  return 1 + (TOUCH_BOOST_MAX - 1) * t;
+}
+
+export function computeScale(
+  vh: number,
+  dpr: number = currentDpr(),
+  coarsePointer: boolean = readMatch('(pointer: coarse)'),
+): number {
+  return (cappedVh(vh, dpr) / CANVAS.h) * touchBoost(vh, coarsePointer);
 }
 
 /** Reactive scale derived from the viewport, times the user's UI zoom (Ctrl
@@ -66,8 +102,15 @@ export function useMenuScale(): number {
   useEffect(() => {
     const onResize = () => setScale(computeScale(window.innerHeight));
     window.addEventListener('resize', onResize);
+    // The touch boost keys off the pointer, which can change under a tablet as a mouse is attached
+    // or removed; a resize does not necessarily follow.
+    const pointerMq = window.matchMedia?.('(pointer: coarse)');
+    pointerMq?.addEventListener('change', onResize);
     onResize();
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      pointerMq?.removeEventListener('change', onResize);
+    };
   }, []);
   const uiZoom = useAnimatedUiZoom();
   return scale * uiZoom;
@@ -89,9 +132,9 @@ export function useMenuCenterOffset(): number {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   // The anchor (phone centre) sits at ANCHOR_Y·base in screen px; keep it there
-  // regardless of uiZoom: shift by anchorScreen·(1 − uiZoom). Uses the same
-  // capped height as computeScale so the anchor matches the actual layout.
-  return (ANCHOR_Y / CANVAS.h) * cappedVh(vh) * (1 - uiZoom);
+  // regardless of uiZoom: shift by anchorScreen·(1 − uiZoom). Reads the SAME base scale the layout
+  // uses, so the cap and the touch boost cannot drift out of the anchor.
+  return ANCHOR_Y * computeScale(vh) * (1 - uiZoom);
 }
 
 /**
@@ -140,7 +183,13 @@ export function usePx() {
   // Drop the rounding mid-zoom (subpixel = smooth); restore it when the zoom
   // settles (crisp static layout). One flip per zoom, not per frame.
   const zooming = useUiZooming();
-  const px = zooming ? (n: number) => n * scale : (n: number) => Math.round(n * scale);
+  // Rounding to whole DEVICE pixels, not CSS ones. Snapping is what keeps edges crisp, but the CSS
+  // pixel is not the grid the screen actually has: at a fractional dpr — which is every page-zoom
+  // step — rounding to it lands elements on a grid that browser zoom moves underneath, so the whole
+  // layout shifts by up to a pixel each time the zoom changes. The device grid does not move.
+  const px = zooming
+    ? (n: number) => n * scale
+    : (n: number) => Math.round(n * scale * dpr) / dpr;
   return {
     scale,
     px,
@@ -178,10 +227,12 @@ export function useContentScale(contentScale: number, origin: { x: number; y: nu
   const scale = useScale();
   const { px } = usePx();
   const inner = scale * contentScale;
-  const ipx = zooming ? (n: number) => n * inner : (n: number) => Math.round(n * inner);
-  const ipxf = (n: number) => +(n * inner).toFixed(2);
-  // Font-weight cap using the inner (content-scaled) effective resolution.
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  // Device-pixel snapping, same as `usePx` — see the note there.
+  const ipx = zooming
+    ? (n: number) => n * inner
+    : (n: number) => Math.round(n * inner * dpr) / dpr;
+  const ipxf = (n: number) => +(n * inner).toFixed(2);
   const ifw = (w: number) => effectiveWeight(w, inner, dpr);
   const innerOffset = { left: px(origin.x * (1 - contentScale)), top: px(origin.y * (1 - contentScale)) };
   return { inner, ipx, ipxf, ifw, innerOffset };

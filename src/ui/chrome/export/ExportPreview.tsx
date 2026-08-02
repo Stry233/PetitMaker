@@ -27,8 +27,10 @@ export function ExportPreview({ options, summary, codeImg, codePending }: { opti
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   // The preview image pans, so it wears the same hand the canvas does. Both are resolved here
   // because the drag state that picks between them is a ref, read during render.
-  const grab = useCursorCss('hand-open');
-  const grabbing = useCursorCss('hand-closed');
+  // The pointer is captured by the STAGE for the whole drag, so the cursor belongs there and not
+  // on the image: an image-only cursor reverts to the arrow the moment the drag starts. `move` is
+  // what the map views show while panning, and this pans a picture.
+  const panCursor = useCursorCss('move');
 
   // EXPENSIVE: capture the 2D map — only when the map or the grid toggle changes (the grid
   // is baked into the capture by the real 2D renderer, so toggling it must recapture). The
@@ -79,11 +81,11 @@ export function ExportPreview({ options, summary, codeImg, codePending }: { opti
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, flex: 1 }}>
-      <div style={stage} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onDoubleClick={() => setView({ tx: 0, ty: 0, scale: 1 })}>
+      <div style={{ ...stage, cursor: panCursor }} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onDoubleClick={() => setView({ tx: 0, ty: 0, scale: 1 })}>
         {loading && <div style={hintStyle}><Spinner /><div>{t('export.load_t')}</div></div>}
         {dataUrl && !loading && (
           <img src={dataUrl} alt="" draggable={false}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, transition: drag.current ? 'none' : 'transform .08s', cursor: drag.current ? grabbing : grab }} />
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, transition: drag.current ? 'none' : 'transform .08s' }} />
         )}
         {!loading && !dataUrl && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
         <div style={hintPill}>{t('export.preview_hint')}</div>

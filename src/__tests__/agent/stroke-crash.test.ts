@@ -16,7 +16,7 @@ import { makeState } from '../rules/_helpers';
 function world() {
   const state = makeState(10, 10);
   const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
-  const deps = { getState: () => state, getExecutor: () => executor } as unknown as AgentToolDeps;
+  const deps = { getState: () => state, getExecutor: () => executor, getRegion: () => [] } as unknown as AgentToolDeps;
   return { state, executor, deps };
 }
 

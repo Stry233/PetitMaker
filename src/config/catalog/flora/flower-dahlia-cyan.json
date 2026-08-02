@@ -1,0 +1,279 @@
+{
+  "id": "flower-dahlia-cyan",
+  "category": "flora",
+  "name": {
+    "en": "Cyan Dahlia",
+    "zh": "青小丽花",
+    "ja": "シアンダリア",
+    "ru": "Бирюзовая георгина",
+    "th": "ดอกรักเร่ฟ้า",
+    "id": "Dahlia Toska",
+    "fr": "Dahlia turquoise"
+  },
+  "icon": "flower-dahlia-cyan",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.09,
+          0.38
+        ],
+        "pos": [
+          0,
+          0.0,
+          0
+        ],
+        "color": "#3f7d2e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          0.141,
+          0.0,
+          0.051
+        ],
+        "color": "#3f7d2e",
+        "rotY": -20.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          -0.051,
+          0.0,
+          0.141
+        ],
+        "color": "#3f7d2e",
+        "rotY": -110.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          -0.141,
+          0.0,
+          -0.051
+        ],
+        "color": "#3f7d2e",
+        "rotY": -200.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          0.051,
+          0.0,
+          -0.141
+        ],
+        "color": "#3f7d2e",
+        "rotY": -290.0
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.04,
+          0.32,
+          0.04
+        ],
+        "pos": [
+          -0.12,
+          0.02,
+          0.04
+        ],
+        "color": "#4c8a33",
+        "rotY": 18.4,
+        "rotZ": 16,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.26,
+          0.1,
+          0.26
+        ],
+        "pos": [
+          -0.204,
+          0.308,
+          0.068
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.18,
+          0.1,
+          0.18
+        ],
+        "pos": [
+          -0.204,
+          0.378,
+          0.068
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.1,
+          0.09,
+          0.1
+        ],
+        "pos": [
+          -0.204,
+          0.438,
+          0.068
+        ],
+        "color": "#77d7e2"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.04,
+          0.25,
+          0.04
+        ],
+        "pos": [
+          0.13,
+          0.02,
+          -0.08
+        ],
+        "color": "#4c8a33",
+        "rotY": -148.4,
+        "rotZ": 24,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.208,
+          0.08,
+          0.208
+        ],
+        "pos": [
+          0.217,
+          0.228,
+          -0.133
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.144,
+          0.08,
+          0.144
+        ],
+        "pos": [
+          0.217,
+          0.288,
+          -0.133
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.08,
+          0.072,
+          0.08
+        ],
+        "pos": [
+          0.217,
+          0.336,
+          -0.133
+        ],
+        "color": "#77d7e2"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.04,
+          0.19,
+          0.04
+        ],
+        "pos": [
+          0.03,
+          0.02,
+          0.15
+        ],
+        "color": "#4c8a33",
+        "rotY": 101.3,
+        "rotZ": 30,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.169,
+          0.065,
+          0.169
+        ],
+        "pos": [
+          0.049,
+          0.165,
+          0.243
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.117,
+          0.065,
+          0.117
+        ],
+        "pos": [
+          0.049,
+          0.217,
+          0.243
+        ],
+        "color": "#6bc3df"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.065,
+          0.058,
+          0.065
+        ],
+        "pos": [
+          0.049,
+          0.256,
+          0.243
+        ],
+        "color": "#77d7e2"
+      }
+    ]
+  }
+}

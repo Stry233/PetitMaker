@@ -2,13 +2,13 @@
   "id": "flower-rose",
   "category": "flora",
   "name": {
-    "en": "Rose",
-    "zh": "月季",
-    "ja": "バラ",
-    "ru": "Роза",
-    "th": "กุหลาบ",
-    "id": "Mawar",
-    "fr": "Rose"
+    "en": "Pink Rose",
+    "zh": "粉月季",
+    "ja": "ピンクバラ",
+    "ru": "Розовая роза",
+    "th": "กุหลาบชมพู",
+    "id": "Mawar Merah Muda",
+    "fr": "Rose rose"
   },
   "icon": "flower-rose",
   "width": 1,

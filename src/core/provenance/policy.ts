@@ -73,6 +73,18 @@ export function applyOpToTaint(prev: UnitTaint | null, source: ProvSource, kind:
   };
 }
 
+/**
+ * Whose work a unit is: the source holding the largest share of its authorship, or null for a unit
+ * nothing has touched. Ties go to 'human' — the caller is deciding what it may take back, and a
+ * shared cell is the person's as much as the machine's.
+ */
+export function dominantAuthor(t: UnitTaint | null | undefined): 'ai' | 'human' | 'procedural' | null {
+  if (!t) return null;
+  const { ai, human, procedural } = t.contribution;
+  if (human >= ai && human >= procedural) return 'human';
+  return ai >= procedural ? 'ai' : 'procedural';
+}
+
 export function deriveSummary(
   cellTaint: (UnitTaint | null)[][],
   objectTaint: Map<string, UnitTaint>,

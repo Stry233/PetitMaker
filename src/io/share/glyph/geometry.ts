@@ -18,7 +18,7 @@
 
 /** Fixed grid footprint, in "base cells" (a T0/T1 data module IS one base cell; finer tiers
  *  subdivide a base cell into `div` modules per axis). */
-export const GRID_COLS = 132;
+export const GRID_COLS = 124;
 export const GRID_ROWS = 30;
 
 /** Finder-pattern size (cells) — corner markers used for orientation/scale detection. */
@@ -30,10 +30,19 @@ export const TOP_ROWS = 3;
 /** Base (T0/T1) data region row count: GRID_ROWS - TOP_ROWS. */
 export const DATA_ROWS = 27;
 
-/** Reed-Solomon block shape: RS(255, 184) — 255 total symbols per block, 184 data symbols
- *  (71 parity symbols), one byte per symbol. */
+/** Reed-Solomon block shape: 255 total symbols per block, RS_K data symbols, one byte per symbol.
+ *
+ *  The parity is sized for the threat this code actually faces: an image recompressed by a chat
+ *  app or a social platform, which perturbs colours. It is NOT sized for a camera photographing a
+ *  screen, or for a crop taking a bite out of the band — neither is a way anyone shares one of
+ *  these. Measured across the corpus: the rated envelope (chroma subsampling, JPEG q60, a 0.75
+ *  downscale) survives even at 9% parity, so 28% was far more than that envelope asks for. Past
+ *  it the levels do separate — the largest map holds to q30/0.5 here and to q25/0.45 at 28% — so
+ *  the surplus is spent, but not all of it: what is left over pays for the margin the band sits
+ *  in, a narrower band at the same module size, and every tier still carries at least what the
+ *  full-width band did. */
 export const RS_N = 255;
-export const RS_K = 184;
+export const RS_K = 200;
 
 /** Header: an 8-byte fixed record (tier id, dims, payload length, etc. — see encode.ts),
  *  protected by its own tiny RS(HEADER_NSYM, HEADER_BYTES) code so it survives independently of
@@ -90,12 +99,12 @@ function makeTier(id: Tier['id'], div: Tier['div'], bits: Tier['bits'], colors: 
  *  (div=1) and differ only in colors-per-module (8→16); T1..T5 hold 16 colors and grow the
  *  module grid itself (div 1→1.5→2→3→4, i.e. dataCols/dataRows = GRID_COLS/DATA_ROWS * div). */
 export const TIERS: readonly Tier[] = [
-  makeTier(0, 1, 3, 8, 132, 27),
-  makeTier(1, 1, 4, 16, 132, 27),
-  makeTier(2, 1.5, 4, 16, 198, 40),
-  makeTier(3, 2, 4, 16, 264, 54),
-  makeTier(4, 3, 4, 16, 396, 81),
-  makeTier(5, 4, 4, 16, 528, 108),
+  makeTier(0, 1, 3, 8, GRID_COLS, 27),
+  makeTier(1, 1, 4, 16, GRID_COLS, 27),
+  makeTier(2, 1.5, 4, 16, GRID_COLS * 1.5, 40),
+  makeTier(3, 2, 4, 16, GRID_COLS * 2, 54),
+  makeTier(4, 3, 4, 16, GRID_COLS * 3, 81),
+  makeTier(5, 4, 4, 16, GRID_COLS * 4, 108),
 ];
 
 /** Smallest tier whose payload capacity fits `payloadLen` bytes; null if it exceeds every tier
@@ -107,12 +116,12 @@ export function tierFor(payloadLen: number): Tier | null {
   return null;
 }
 
-/** Largest module-base (px/base-cell), a multiple of 6, that fits within `compositionWidth`
- *  (the physical pixel width available for the code band): 6 * floor(w / 792) — 792 = GRID_COLS
- *  * 6, the smallest sane module-base. Null if that falls below MIN_MODULE_BASE (i.e. the
- *  composition is too small to host a legible code at all). */
-export function moduleBaseFor(compositionWidth: number): number | null {
-  const mb = 6 * Math.floor(compositionWidth / 792);
+/** Largest module-base (px/base-cell), a multiple of 6, whose band fits in `availableWidth` — the
+ *  pixel width the composition gives the band, already inset by whatever margin it wants. A
+ *  multiple of 6 keeps every tier's subdivision on whole pixels, which is what lets the band be
+ *  painted rather than resampled. Null below MIN_MODULE_BASE: too small to host a legible code. */
+export function moduleBaseFor(availableWidth: number): number | null {
+  const mb = 6 * Math.floor(availableWidth / (GRID_COLS * 6));
   return mb < MIN_MODULE_BASE ? null : mb;
 }
 

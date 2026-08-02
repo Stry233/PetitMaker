@@ -4,21 +4,23 @@
  * value text centered over the track. Geometry is a 1:1 transcription of the
  * design canvas.
  *
- * The fill width/value are data-driven (value/max); the design source's
- * "8996/10000" is just a mock sample.
+ * The fill and the figure are data-driven (value/max) and shown only while chunk-load enforcement
+ * is on; the design source's "8996/10000" is a mock sample.
  */
 import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { useT } from '../../i18n/context';
 import { colors, font } from '../styles';
+import { CHUNK_LOAD_ENABLED } from '../../core/model/constants';
 import { LOAD } from './metrics';
 import { usePx } from './scale';
-import { measureTextW } from './measure-text';
+import { inkCenterOffset, measureTextW } from './measure-text';
 import { squircleClip } from './squircle';
 
 interface LoadBarProps {
-  value: number;
-  max: number;
+  /** Only read while `CHUNK_LOAD_ENABLED`; the meter shows N/A otherwise. */
+  value?: number;
+  max?: number;
 }
 
 // ── Adaptive layout for the "load" label ────────────────────────────────────
@@ -35,20 +37,41 @@ const TRACK_RIGHT = LOAD.track.x + LOAD.track.w; // fixed right edge the track s
 const TRACK_MIN_W = 132; // never shrink the track below this (safety net for an extreme translation)
 
 
-export function LoadBar({ value, max }: LoadBarProps) {
+export function LoadBar({ value = 0, max = 0 }: LoadBarProps) {
   const t = useT();
-  const { px, pxf, fw } = usePx();
-  const ratio = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  const { scale, px, pxf, fw } = usePx();
+  // The in-game load values are unknown, so enforcement is off (see constants) and there is no
+  // figure to show. A meter reading 0/10000 forever is worse than one that says so: it looks like a
+  // budget the map is not using. The SAME flag governs the rule, so the meter can never claim a
+  // number the editor is not actually holding anyone to.
+  const enabled = CHUNK_LOAD_ENABLED;
+  const ratio = enabled && max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  const countText = enabled ? `${value}/${max}` : t('hud.load_na');
   const labelText = t('hud.load');
 
-  const [labelW, setLabelW] = useState(() => measureTextW(labelText, LOAD.label.fontSize));
-  useLayoutEffect(() => { setLabelW(measureTextW(labelText, LOAD.label.fontSize)); }, [labelText]);
+  // Width for the layout below, plus how far each string's INK sits off its box centre — the pill
+  // is short enough that riding high in the line box reads as top-aligned (see `inkCenterOffset`).
+  //
+  // The ink nudge is measured at the size the text is actually DRAWN at, and applied unscaled. Taken
+  // at the design size and multiplied up, the measurement's own rounding is multiplied with it — a
+  // fraction of a pixel at 100% becomes a visible lift once the UI is scaled well past it, which
+  // reads as the text losing its top padding. The effects below therefore depend on the SCALE, a
+  // number: `pxf` is a fresh closure every render, and an effect that re-measures on it would set
+  // state on every render, which is a render loop.
+  const measure = () => ({
+    labelW: measureTextW(labelText, LOAD.label.fontSize),
+    labelInk: inkCenterOffset(labelText, pxf(LOAD.label.fontSize)),
+    countInk: inkCenterOffset(countText, pxf(LOAD.count.fontSize), 700),
+  });
+  const [text, setText] = useState(measure);
+  useLayoutEffect(() => { setText(measure()); }, [labelText, countText, scale]);
   useEffect(() => {
     const fonts = (document as { fonts?: { ready: Promise<unknown> } }).fonts;
     let alive = true;
-    fonts?.ready.then(() => { if (alive) setLabelW(measureTextW(labelText, LOAD.label.fontSize)); });
+    fonts?.ready.then(() => { if (alive) setText(measure()); });
     return () => { alive = false; };
-  }, [labelText]);
+  }, [labelText, countText, scale]);
+  const labelW = text.labelW;
 
   // Track left edge slides right to clear the label; right edge stays fixed, so
   // the track shrinks. zh lands exactly on track.x (no change); longer labels
@@ -96,7 +119,7 @@ export function LoadBar({ value, max }: LoadBarProps) {
     position: 'absolute',
     left: px(LOAD.label.x - LOAD.bg.x),
     top: '50%',
-    transform: 'translateY(-50%)',
+    transform: `translateY(calc(-50% + ${text.labelInk}px))`,
     fontFamily: font.family,
     fontWeight: fw(900),
     fontSize: pxf(LOAD.label.fontSize),
@@ -110,7 +133,7 @@ export function LoadBar({ value, max }: LoadBarProps) {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    transform: 'translate(-50%, -50%)',
+    transform: `translate(-50%, calc(-50% + ${text.countInk}px))`,
     fontFamily: font.family,
     fontWeight: 700,
     fontSize: pxf(LOAD.count.fontSize),
@@ -123,9 +146,9 @@ export function LoadBar({ value, max }: LoadBarProps) {
   return (
     <div style={container}>
       <span style={label}>{labelText}</span>
-      <div style={track}>
+      <div data-track style={track}>
         <div style={fill} />
-        <span style={count}>{value}/{max}</span>
+        <span data-count style={count}>{countText}</span>
       </div>
     </div>
   );

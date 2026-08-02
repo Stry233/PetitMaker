@@ -1,9 +1,10 @@
-import { useEffect, type RefObject } from 'react';
+import { useCallback, useEffect, type RefObject } from 'react';
 import type { MapRenderer } from '../map2d/map-renderer';
 import { getActiveView } from '../active-view';
 import { useEditorStore } from '../../state/store';
 import { clampUiZoom } from '../map2d/zoom-accum';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
+import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { bindingIndex, effectiveCombo, normalizeCombo, useKeybinds, type Overrides } from '../../ui/keybindings/store';
 import { ALIASES } from '../../ui/keybindings/commands';
 
@@ -38,73 +39,119 @@ function panKeyMap(overrides: Overrides): Map<string, Dir> {
   return m;
 }
 
-/** WASD / arrow-key continuous pan. The rAF loop runs ONLY while a pan key is
- *  held (armed on keydown, self-stops one frame after the last release), so an
- *  idle editor schedules no per-frame callback. Pan keys are ignored while an
- *  input/textarea/select is focused. The WASD half reads the user's rebindable
- *  pan keys from the keybind store (live); the arrows pan unless the user binds something else to
- *  them. */
-export function useWasdPan(rendererRef: RefObject<MapRenderer | null>) {
+/** Screen px a held pan key walks per frame. */
+const PAN_SPEED = 8;
+
+/** Tap a pan key twice inside this and the second press is a RUN, held for as long as it is down —
+ *  the double-tap-to-sprint every game uses. Long enough to be reachable, short enough that two
+ *  deliberate nudges do not become one sprint. */
+const DOUBLE_TAP_MS = 260;
+/** Speed multipliers. Sprint is what a double tap buys; creep is the precision modifier. */
+const RUN_FACTOR = 2.6;
+const CREEP_FACTOR = 0.3;
+
+/**
+ * The speed a held pan runs at, given what the hand is doing.
+ *
+ * Creep WINS over run: the modifier is a deliberate act taken during the sprint, so it has to be
+ * able to take it back — otherwise a double tap locks the camera fast until every key is released.
+ */
+export function panFactor(running: boolean, creeping: boolean): number {
+  if (creeping) return CREEP_FACTOR;
+  return running ? RUN_FACTOR : 1;
+}
+
+/**
+ * Held pan keys walk a camera. The rAF loop runs ONLY while a key is held (armed on keydown,
+ * self-stops one frame after the last release), so an idle surface schedules no per-frame callback.
+ * Keys are ignored while an input/textarea/select is focused.
+ *
+ * The key map is the user's, read live from the keybind store: WASD (or whatever the pan commands
+ * are rebound to) plus the arrows unless something else claims them. Every surface that pans by
+ * keyboard goes through here, which is what makes a rebind reach all of them.
+ *
+ * Two speeds ride on top: double-tap a direction to RUN while it stays down, and hold the constrain
+ * modifier (Shift, rebindable) to CREEP. Shift rather than Ctrl for the slow one because Ctrl+W
+ * closes the tab in Chromium and a page cannot intercept it.
+ */
+export function useHeldPan(pan: (dx: number, dy: number) => void, enabled: () => boolean) {
   useEffect(() => {
-    const PAN_SPEED = 8;
     let map = panKeyMap(useKeybinds.getState().overrides);
     const unsub = useKeybinds.subscribe((s) => { map = panKeyMap(s.overrides); });
     const keysDown = new Set<string>();
-    let wasdFrame = 0;
-    const wasdTick = () => {
-      const renderer = rendererRef.current;
-      if (renderer && keysDown.size > 0) {
+    /** Keys currently held as a RUN, and when each was last released, for the double-tap test. */
+    const running = new Set<string>();
+    const lastUp = new Map<string, number>();
+    let frame = 0;
+    const tick = () => {
+      if (keysDown.size > 0) {
+        // One factor for the whole step, not per key: a diagonal held with one key sprinting and
+        // one not would otherwise curve away from the diagonal.
+        const speed = PAN_SPEED * panFactor(running.size > 0, isConstrainHeld());
         let dx = 0;
         let dy = 0;
         for (const key of keysDown) {
           const dir = map.get(key);
-          if (dir === 'up') dy -= PAN_SPEED;
-          else if (dir === 'down') dy += PAN_SPEED;
-          else if (dir === 'left') dx -= PAN_SPEED;
-          else if (dir === 'right') dx += PAN_SPEED;
+          if (dir === 'up') dy -= speed;
+          else if (dir === 'down') dy += speed;
+          else if (dir === 'left') dx -= speed;
+          else if (dir === 'right') dx += speed;
         }
-        if (dx !== 0 || dy !== 0) {
-          // Route through the active view: the 3D scene ground-pans (it also has
-          // its own WASD handling, gated off while the pointer machine owns input).
-          const v = getActiveView();
-          if (v) v.camera.pan(dx, dy);
-          else {
-            renderer.viewport.pan(dx, dy);
-            renderer.applyViewportTransform();
-          }
-        }
+        if (dx !== 0 || dy !== 0) pan(dx, dy);
       }
-      wasdFrame = keysDown.size > 0 ? requestAnimationFrame(wasdTick) : 0;
+      frame = keysDown.size > 0 ? requestAnimationFrame(tick) : 0;
     };
-    const startWasd = () => { if (wasdFrame === 0) wasdFrame = requestAnimationFrame(wasdTick); };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      // The 3D preview owns WASD while it's open — don't also pan the hidden 2D map.
-      if (useEditorStore.getState().modals.preview3d) return;
-      // A blocking modal is foregrounded over a blurred map — keys belong to the popup, not the map.
-      if (anyOverlayOpen()) return;
+      if (!enabled()) return;
       const key = e.key.toLowerCase();
-      if (map.has(key)) {
-        const target = e.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
-        keysDown.add(key);
-        startWasd();
+      if (!map.has(key)) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+      // Auto-repeat is the SAME press held down, not a second tap.
+      if (!e.repeat && !keysDown.has(key)) {
+        const since = performance.now() - (lastUp.get(key) ?? -Infinity);
+        if (since <= DOUBLE_TAP_MS) running.add(key);
       }
+      keysDown.add(key);
+      if (frame === 0) frame = requestAnimationFrame(tick);
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      keysDown.delete(e.key.toLowerCase());
+      const key = e.key.toLowerCase();
+      keysDown.delete(key);
+      running.delete(key);
+      lastUp.set(key, performance.now());
     };
+    const onBlur = () => { keysDown.clear(); running.clear(); lastUp.clear(); };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       unsub();
-      cancelAnimationFrame(wasdFrame);
+      cancelAnimationFrame(frame);
     };
-  }, [rendererRef]);
+  }, [pan, enabled]);
 }
+
+/** The editor's held pan: through the ACTIVE view's camera, suppressed while a modal owns the
+ *  foreground (the map behind it is a blurred backdrop, and the keys belong to the popup). */
+export function useWasdPan(rendererRef: RefObject<MapRenderer | null>) {
+  const pan = useCallback((dx: number, dy: number) => {
+    const v = getActiveView();
+    if (v) { v.camera.pan(dx, dy); return; }
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.viewport.pan(dx, dy);
+    renderer.applyViewportTransform();
+  }, [rendererRef]);
+  useHeldPan(pan, notOverlaid);
+}
+
+const notOverlaid = () => !anyOverlayOpen();
 
 /** Ctrl/Cmd + (= / + / - / _) scales the UI (panels), VS Code-style — the map
  *  is untouched. Writes the store's uiZoom TARGET directly (the single

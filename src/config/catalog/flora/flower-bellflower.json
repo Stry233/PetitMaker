@@ -2,13 +2,13 @@
   "id": "flower-bellflower",
   "category": "flora",
   "name": {
-    "en": "Bellflower",
-    "zh": "风铃",
-    "ja": "ホタルブクロ",
-    "ru": "Колокольчик",
-    "th": "ดอกระฆัง",
-    "id": "Bunga Lonceng",
-    "fr": "Campanule"
+    "en": "White Bellflower",
+    "zh": "白风铃",
+    "ja": "ホワイトホタルブクロ",
+    "ru": "Белый колокольчик",
+    "th": "ดอกระฆังขาว",
+    "id": "Bunga Lonceng Putih",
+    "fr": "Campanule blanche"
   },
   "icon": "flower-bellflower",
   "width": 1,

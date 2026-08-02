@@ -12,12 +12,12 @@
  * Corners use the same figma-squircle as the rest of the UI. Wires to the
  * generation handlers passed from App (preview / generate / clear + region select).
  */
-import { useState, Fragment, lazy, Suspense, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, Fragment, lazy, Suspense, type Dispatch, type SetStateAction } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../i18n/context';
 import { colors, inkTint, font, springs, btnReset, exitTransition, cursors } from '../styles';
 import { usePx, useMenuCenterOffset, ScaleProvider, useContentScale } from './scale';
-import { useUiZooming } from './ui-zoom-anim';
+import { useInstantLayout } from './layout-settle';
 import { squircleClip } from './squircle';
 import { iconUrl } from './icons';
 import { FitText } from './FitText';
@@ -61,25 +61,19 @@ const TIP_Y = TAIL.y + (TAIL.tipPct / 100) * TAIL.h; // tail tip / button anchor
 // dynamic (the Advanced section grows it) — see `dynCard` in the component.
 const C = colors;
 
-/* Algorithm pills: icon center + text center (PSD ink-bbox centers).
- * Widened from the PSD's 264 to 340: "Random" (the widest label, 220px @ fs53)
- * doesn't fit beside the icon in 264, so rather than shrink it the pills grow
- * rightward — the noise pill keeps the x172 grid line (shared by the sliders/
- * terrain/seed) and the maze pill stops short of the card's right edge. Icons
- * keep their PSD positions (ic[0]-px); the label fills the reclaimed space.
- * Chinese (随机/迷宫, 104px) was already comfortable. */
-/* Mode selector: an expandable 3-button group in the same gutter the two PSD
- * pills occupied (x172..876). The ACTIVE mode stretches (flex 1) and shows its
- * label; inactive modes collapse to icon squares. `layout` animates the width
- * with springs.gentle (the panel's collapse family); labels mount/unmount via
- * AnimatePresence. Squircle clips would distort while width animates, so these
- * buttons use a plain border radius (28, the algorithm pills' corner). */
+/* Mode selector: a 3-button group on the panel's content column. The ACTIVE mode widens into a
+ * pill carrying its icon and label; the other two are icon squares. Widths animate on springs
+ * and labels mount/unmount via AnimatePresence. A squircle clip distorts while a width animates,
+ * so these buttons take a plain border radius. */
 type PanelMode = GenerateAlgorithm | 'agent';
-const MODES: { id: PanelMode; fill: string; icon: string; iw: number; ih: number; labelKey: string }[] = [
+const MODES: { id: PanelMode; fill: string; icon: string; iw: number; ih: number; labelKey: string; beta?: true }[] = [
   { id: 'random', fill: colors.sliderYellow, icon: 'random', iw: 88, ih: 99, labelKey: 'generate.algo_noise' },
   { id: 'maze', fill: colors.tileModeOrange, icon: 'maze', iw: 101, ih: 84, labelKey: 'generate.algo_maze' },
-  { id: 'agent', fill: colors.tileModeGreen, icon: 'agent', iw: 88, ih: 88, labelKey: 'generate.algo_agent' },
+  { id: 'agent', fill: colors.tileModeGreen, icon: 'agent', iw: 88, ih: 88, labelKey: 'generate.algo_agent', beta: true },
 ];
+/** The BETA marker rides in the button's top-right corner, superscript-style. Small and low
+ *  contrast: it is a caveat on the mode, not a second label competing with the mode's own. */
+const MODE_BETA = { size: 22, top: 10, right: 12 };
 /* The row sits on the panel's content COLUMN (x172..800 — the slider-track grid),
  * not the design source's two-pill span (..876): the card body runs 88..887, so
  * 172..800 gives near-symmetric margins (~84/87 design px) while ..876 would
@@ -89,11 +83,42 @@ const MODE_ROW = { x: 172, y: 167, w: 628, h: 124, gap: 20, square: 124, r: 28 }
  *  so it never covers the mode-selector buttons. */
 const CLIP_TOP = MODE_ROW.y + MODE_ROW.h;
 
-/** Label font size that fits the active pill across locales (CJK counts double).
- *  Cap 50 ~ the PSD pills' fs 53; long labels (AIエージェント) scale down to fit. */
-function modeLabelSize(label: string): number {
-  const vlen = [...label].reduce((n, ch) => n + (ch.charCodeAt(0) > 0x2e80 ? 2 : 1), 0);
-  return Math.min(50, Math.floor(430 / Math.max(vlen, 1)));
+/** The size the label is DRAWN at when it fits; FitText shrinks from here when it does not.
+ *  50 ~ the PSD pills' fs 53. */
+const MODE_LABEL_SIZE = 50;
+/** Breathing room between the label and the pill's right edge. */
+const MODE_LABEL_PAD = 16;
+/** Clear air between the mode icon and its label. */
+const MODE_LABEL_GAP = 18;
+/** How far the inactive squares may give up width to the active pill. The floor clears the
+ *  widest mode icon (the 101px maze) with a margin either side. */
+const MODE_SQUARE_MIN = 110;
+
+/** Design-px width of the widest label, measured in the face the pill draws it in. Design px are
+ *  the panel's own units, so this is independent of the viewport scale. */
+function measureModeLabels(labels: string[]): number {
+  if (typeof document === 'undefined') return 0;
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return 0;
+  ctx.font = `900 ${MODE_LABEL_SIZE}px ${font.family}`;
+  return Math.max(...labels.map((l) => ctx.measureText(l).width));
+}
+
+/**
+ * The square side that lets every mode hold its label at full size. The row's total width is
+ * fixed, so the two inactive squares are where the active pill's width comes from:
+ *
+ *   pill  = ROW.w - 2*(square + gap)          the active button
+ *   label = pill - (square - iw)/2 - iw - GAP - PAD   what is left once the icon has its inset,
+ *                                                     its own width, and clear air either side
+ *
+ * Solving `label >= measured` for `square` gives the bound below; the widest label across the
+ * modes wins, so the geometry does not shift as the user switches between them.
+ */
+function modeSquareFor(needs: { labelW: number; iw: number }[]): number {
+  const bounds = needs.map(({ labelW, iw }) =>
+    (MODE_ROW.w - 2 * MODE_ROW.gap - MODE_LABEL_PAD - MODE_LABEL_GAP - iw / 2 - labelW) / 2.5);
+  return Math.max(MODE_SQUARE_MIN, Math.min(MODE_ROW.square, Math.floor(Math.min(...bounds))));
 }
 
 function ModeIcon({ icon, iw, ih, px }: { icon: string; iw: number; ih: number; px: (n: number) => number }) {
@@ -102,19 +127,36 @@ function ModeIcon({ icon, iw, ih, px }: { icon: string; iw: number; ih: number; 
 
 /** Mode-selector row: the ACTIVE mode expands to icon+label, inactive modes
  *  collapse to icon squares. Rendered under the content ScaleProvider so it takes
- *  the inner px helpers (ipx/ipxf/ifw). See the MODE_ROW note above. */
+ *  the inner px helper. See the MODE_ROW note above. */
 function ModeSelector({
-  panelMode, setPanelMode, reduced, zooming, ipx, ipxf, ifw, t,
+  panelMode, setPanelMode, reduced, instant, ipx, t,
 }: {
   panelMode: PanelMode;
   setPanelMode: Dispatch<SetStateAction<PanelMode>>;
   reduced: boolean | null;
-  zooming: boolean;
+  instant: boolean;
   ipx: (n: number) => number;
-  ipxf: (n: number) => number;
-  ifw: (w: number) => number;
   t: ReturnType<typeof useT>;
 }) {
+  const labels = MODES.map((m) => t(m.labelKey));
+  // Measured after the webfont lands: a fallback face measures differently, and the design square
+  // is the right answer until the real one is available.
+  const [square, setSquare] = useState(MODE_ROW.square);
+  useEffect(() => {
+    let live = true;
+    const measure = () => {
+      if (!live) return;
+      const labelW = measureModeLabels(labels);
+      setSquare(labelW > 0
+        ? modeSquareFor(MODES.map((m) => ({ labelW, iw: m.iw })))
+        : MODE_ROW.square);
+    };
+    if (document.fonts) void document.fonts.ready.then(measure);
+    else measure();
+    return () => { live = false; };
+  }, [labels.join(' ')]);
+
+  const pill = MODE_ROW.w - 2 * (square + MODE_ROW.gap);
   return (
     <div style={{ position: 'absolute', left: ipx(MODE_ROW.x), top: ipx(MODE_ROW.y), width: ipx(MODE_ROW.w), height: ipx(MODE_ROW.h), display: 'flex', gap: ipx(MODE_ROW.gap) }}>
       {MODES.map((m) => {
@@ -127,19 +169,38 @@ function ModeSelector({
              * the icon mid-flight. Width keeps geometry rigid; the icon is
              * anchored at a fixed left inset so nothing jumps as space grows. */
             initial={false}
-            animate={{ width: ipx(active ? MODE_ROW.w - 2 * (MODE_ROW.square + MODE_ROW.gap) : MODE_ROW.square), opacity: active ? 1 : 0.5 }}
-            transition={reduced || zooming ? { duration: 0 } : springs.stiff}
+            animate={{ width: ipx(active ? pill : square), opacity: active ? 1 : 0.5 }}
+            transition={reduced || instant ? { duration: 0 } : springs.stiff}
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
             aria-label={label} aria-pressed={active}
-            style={{ position: 'relative', height: '100%', flex: '0 0 auto', borderRadius: ipx(MODE_ROW.r), background: m.fill, border: 'none', appearance: 'none', cursor: cursors.clickable, padding: `0 0 0 ${ipx((MODE_ROW.square - m.iw) / 2)}px`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+            style={{ position: 'relative', height: '100%', flex: '0 0 auto', borderRadius: ipx(MODE_ROW.r), background: m.fill, border: 'none', appearance: 'none', cursor: cursors.clickable, padding: `0 0 0 ${ipx((square - m.iw) / 2)}px`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
             <ModeIcon icon={m.icon} iw={m.iw} ih={m.ih} px={ipx} />
+            <AnimatePresence initial={false}>
+              {/* Only on the expanded pill: a collapsed mode is an icon square with barely more
+                  room than the icon, where the mark crowds it and cannot be read anyway. It rides
+                  the same fade as the label so the pill gains and loses both together. */}
+              {m.beta && active && (
+                <motion.span key="beta" aria-hidden
+                  initial={reduced ? false : { opacity: 0 }}
+                  animate={{ opacity: 0.72, transition: { delay: 0.06, duration: 0.15 } }}
+                  exit={{ opacity: 0, transition: exitTransition }}
+                  style={{
+                    position: 'absolute', top: ipx(MODE_BETA.top), right: ipx(MODE_BETA.right),
+                    fontFamily: font.family, fontWeight: 900, fontSize: ipx(MODE_BETA.size),
+                    lineHeight: 1, letterSpacing: '0.06em', color: C.white, pointerEvents: 'none',
+                  }}>{t('generate.beta')}</motion.span>
+              )}
+            </AnimatePresence>
             <AnimatePresence initial={false}>
               {active && (
                 <motion.span key="label"
                   initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.06, duration: 0.15 } }}
                   exit={{ opacity: 0, transition: exitTransition }}
-                  style={{ flex: 1, textAlign: 'center', paddingRight: ipx(16), fontFamily: font.family, fontWeight: ifw(900), fontSize: ipxf(modeLabelSize(label)), color: C.white, whiteSpace: 'nowrap' }}>
-                  {label}
+                  style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center', padding: `0 ${ipx(MODE_LABEL_PAD)}px 0 ${ipx(MODE_LABEL_GAP)}px` }}>
+                  {/* The slot is what the pill has left once its icon inset, its icon and the
+                      air either side are taken out. */}
+                  <FitText flow maxW={pill - (square - m.iw) / 2 - m.iw - MODE_LABEL_GAP - MODE_LABEL_PAD}
+                    size={MODE_LABEL_SIZE} color={C.white}>{label}</FitText>
                 </motion.span>
               )}
             </AnimatePresence>
@@ -222,10 +283,15 @@ function GenerateControls({
       {/* recipe id (formerly "seed"): left-anchored label + a help "?" in a flex row, below the
           slider stack. The value box is shifted right to clear the wider label. */}
       <div style={{ position: 'absolute', left: ipx(172), top: ipx(seedTop + 44), transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: ipx(14) }}>
-        <span style={{ fontFamily: font.family, fontWeight: ifw(900), fontSize: ipxf(40), color: C.inkText, lineHeight: 1, whiteSpace: 'nowrap', userSelect: 'none' }}>{t('generate.recipe_id')}</span>
+        {/* Bounded so the "?" beside it still lands before the value box at x=430: a longer
+            label used to push the button under the box, which paints after it — in French the
+            help button simply disappeared. */}
+        <FitText flow maxW={430 - 172 - 46 - 14} size={40} color={C.inkText} style={{ userSelect: 'none' }}>
+          {t('generate.recipe_id')}
+        </FitText>
         <motion.button type="button" onClick={() => setShowRecipeHelp((v) => !v)}
           whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} transition={springs.stiff} aria-label={t('generate.recipe_help')}
-          style={{ width: ipx(46), height: ipx(46), borderRadius: '50%', background: showRecipeHelp ? C.frameDark : '#C8C8C8', color: showRecipeHelp ? C.white : C.frameDark, border: 'none', appearance: 'none', cursor: cursors.clickable, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: font.family, fontWeight: ifw(900), fontSize: ipxf(30), lineHeight: 1 }}>?</motion.button>
+          style={{ width: ipx(46), height: ipx(46), flexShrink: 0, borderRadius: '50%', background: showRecipeHelp ? C.frameDark : '#C8C8C8', color: showRecipeHelp ? C.white : C.frameDark, border: 'none', appearance: 'none', cursor: cursors.clickable, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: font.family, fontWeight: ifw(900), fontSize: ipxf(30), lineHeight: 1 }}>?</motion.button>
       </div>
       <div style={{ ...box(430, seedTop, 230, 89), clipPath: squircleClip(ipx(230), ipx(89), ipx(42)), background: '#C8C8C8' }} />
       <input type="text" inputMode="numeric" maxLength={10} value={String(seed)}
@@ -338,7 +404,7 @@ export function GeneratePanel({
   // (see the `useContentScale` derivation): inner px helpers + the non-scaling
   // wrapper offset that keeps the card's LEFT edge pinned so the tail meets it.
   const { inner, ipx, ipxf, ifw, innerOffset } = useContentScale(CONTENT_SCALE, { x: CARD.x, y: TIP_Y });
-  const zooming = useUiZooming();
+  const instant = useInstantLayout();
   const reduced = useReducedMotionConfig();
   const [panelMode, setPanelMode] = useState<PanelMode>('random');
   const algorithm: GenerateAlgorithm = panelMode === 'agent' ? 'random' : panelMode;
@@ -452,7 +518,7 @@ export function GeneratePanel({
 
       <div style={{ ...dim, position: 'absolute', inset: 0 }}>
         {/* mode selector: active pill expands to icon+label, inactive collapse to icon squares */}
-        <ModeSelector panelMode={panelMode} setPanelMode={setPanelMode} reduced={reduced} zooming={zooming} ipx={ipx} ipxf={ipxf} ifw={ifw} t={t} />
+        <ModeSelector panelMode={panelMode} setPanelMode={setPanelMode} reduced={reduced} instant={instant} ipx={ipx} t={t} />
 
         {/* AI Agent mode: settings + chat replace the whole Random/Maze stack.
             AnimatePresence drives the exit fade; the clip container starts BELOW

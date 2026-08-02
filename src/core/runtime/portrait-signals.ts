@@ -25,20 +25,31 @@
  * the component that owns the live subscription mounts.
  */
 
-/** The three already-resolved signals the decision needs, as booleans: the decision itself touches
- *  no browser API. */
+import { isInAppBrowser } from './browser-env';
+
+/** The already-resolved signals the decision needs, as booleans: the decision itself touches no
+ *  browser API. */
 export interface OrientationSignals {
   /** `matchMedia('(pointer: coarse)').matches` */
   coarsePointer: boolean;
   /** `matchMedia('(hover: none)').matches` */
   noHover: boolean;
+  /** The page is inside an app's built-in browser (see `browser-env`). */
+  inAppBrowser: boolean;
   /** The device is physically portrait right now (see `readDeviceOrientation`). */
   portrait: boolean;
 }
 
-/** Pure predicate: block only a touch-primary device that is actually held in portrait. */
+/**
+ * Pure predicate: block only a touch-primary device that is actually held in portrait.
+ *
+ * `coarsePointer` is the part that can never be true on a desktop, so it is required. `noHover`
+ * normally rides with it, but several in-app WebViews report `hover: hover` on a phone, which left
+ * the guard silent exactly where it was needed; being in one of those is itself evidence of a phone,
+ * so it stands in. Neither substitute can fire on a desktop, which is the property that matters.
+ */
 export function shouldBlockPortrait(signals: OrientationSignals): boolean {
-  return signals.coarsePointer && signals.noHover && signals.portrait;
+  return signals.coarsePointer && (signals.noHover || signals.inAppBrowser) && signals.portrait;
 }
 
 /** Every `screen.orientation.type` value is one of four strings, prefixed `portrait-` or
@@ -78,6 +89,7 @@ export function readOrientationSignals(): OrientationSignals {
   return {
     coarsePointer: readMatch('(pointer: coarse)'),
     noHover: readMatch('(hover: none)'),
+    inAppBrowser: isInAppBrowser(),
     portrait: readDeviceOrientation(),
   };
 }

@@ -2,13 +2,13 @@
   "id": "flower-dahlia",
   "category": "flora",
   "name": {
-    "en": "Dahlia",
-    "zh": "小丽花",
-    "ja": "ダリア",
-    "ru": "Георгина",
-    "th": "ดอกรักเร่",
-    "id": "Dahlia",
-    "fr": "Dahlia"
+    "en": "Yellow Dahlia",
+    "zh": "黄小丽花",
+    "ja": "イエローダリア",
+    "ru": "Жёлтая георгина",
+    "th": "ดอกรักเร่เหลือง",
+    "id": "Dahlia Kuning",
+    "fr": "Dahlia jaune"
   },
   "icon": "flower-dahlia",
   "width": 1,

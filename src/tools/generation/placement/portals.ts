@@ -96,15 +96,9 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis): { portals: Por
   const realizable = (kind: 'bridge' | 'ramp', anchor: MacroCoord): boolean => {
     const id = kind === 'bridge' ? bridgeId : rampId;
     if (!id) return false;
-    // A dry-run must not consume generated-object ids: every later real placement is
-    // named `gen-<seed>-<n>`, so a probe that advances the counter couples the whole
-    // id stream to how many probes happened to succeed — one flipped probe would
-    // rename every subsequent object (spurious save diffs across versions).
-    const n = ctx.counter.n;
     const obj = tryPlace(ctx, id, anchor.x, anchor.y);
-    if (!obj) { ctx.counter.n = n; return false; }
+    if (!obj) return false;
     removePlaced(ctx, obj);
-    ctx.counter.n = n;
     return true;
   };
 

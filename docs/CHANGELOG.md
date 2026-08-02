@@ -4,6 +4,46 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.149] - 2026-08-02
+
+### Added
+
+- **A guided tour on first launch.** It covers moving the map, where the menu is, reading the height of a block, and switching between the 2D and 3D views. It can be skipped, and reopened from Settings under Getting started.
+- **The curve tool passes through the points you place.** Click to add a point, drag to move one, double-click to finish. The points remain after the curve is drawn, each with a handle either side for adjusting the path; hold Alt to move one side independently. Each adjustment is a single undo step, and Escape dismisses the handles.
+- **The brush preview shows the auto-trimmed result.** With auto-trim on, the preview rounds the corners the stroke will round, in every shape tool; the freehand brush trims as it draws.
+- **Nineteen additional flower colours**, bringing the catalog to 81 placeable items.
+- **A quick-hints panel beside the zoom buttons.** It lists the few most useful actions for what you are doing right now: how to move the map in 2D or 3D, the curve tool's handles, what a selection can do, and the tricks each brush hides. The keys it shows follow your own rebindings, a small button on the card collapses it to its three best lines, another closes it, and Settings chooses Full, Concise or Off.
+- **Keyboard shortcuts for both exports.** Ctrl+S saves the JSON file, Ctrl+P exports the share image, and Ctrl+Alt+N starts a new map, as Ctrl+N is reserved by the browser. The keyboard page lists and rebinds Alt combinations alongside Ctrl and Shift, and `m` shows or hides the menu.
+- **A confirmation before starting a new map** when the current one has not been exported.
+- **Bridge and ramp icons indicate orientation** in the 2D view: a bridge's icon rotates with the bridge, and a ramp's points from its low end to its high end.
+- **Camera inertia in the 3D views**, and one held-key pan shared by both, at two speeds: double-tap a direction for the faster one, hold Shift for the slower one.
+- **Support for phone-sized screens**, a notice when the app is opened inside another application's in-app browser, where some features are unavailable, and a beta marker.
+- **The AI agent is confined to a painted region**, as the generator already was.
+- **Chinese versions of the changelog and the asset licences**, in the app and in the repository.
+
+### Changed
+
+- **A new code format for share images**, which carries less data and reads back the same map. The code is named PetitGlyph, sits at the page margin, and is shorter for the same map. Images exported by earlier builds can no longer be imported; re-export any map you intend to keep sharing. JSON save files are unaffected.
+- **Clear reverses the last generation instead of emptying the map.** It is limited to the region that generation was given, and leaves manually placed content in place.
+- **Objects can no longer stand on a road.** Placing an object on a paved cell removes the road under it, which matches the game's rule.
+- **Browser zoom no longer affects the 2D map.** Zooming the page does not rescale or shift the map, and the view no longer jumps on the next pan.
+
+### Fixed
+
+- **Auto-trim could leave an empty cell** in terrain that had just been painted, reported afterwards as a floating-block violation.
+- **A shape crossing ground it may not build on placed nothing at all.** Rectangle, circle, line and curve now place the permitted part of the shape and skip the rest.
+- **The brush preview could modify the map it was previewing**, removing blocks that were already there.
+- **Generating into a region removed placements in a previously generated region**, and the newly generated region could appear empty.
+- **Locked layers flickered** in the layer panel during a brush drag.
+- **The Generate panel's mode buttons shifted** when the window was resized.
+- **The page title showed two languages** until the app finished loading.
+- **Clicking the plaza now reports why the action was refused**, rather than doing nothing.
+- **A share image that predates a catalog addition now reports why the import failed.**
+- **Modifier-key hints appear when the key is pressed**, rather than on the next pointer movement.
+- **Dragging the 2D map with the hand tool** could move it far beyond the pointer.
+- **Rotating an item with the comma and period keys before placement** now updates the preview immediately.
+- **The device-rotation notice** uses an icon that reads as a rotation.
+
 ## [0.3.2] - 2026-07-30
 
 _No user-facing changes._

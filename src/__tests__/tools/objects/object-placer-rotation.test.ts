@@ -17,7 +17,7 @@ import { COMMAND_BY_ID } from '../../../ui/keybindings/commands';
 
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
-const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, onHelp: () => {} };
+const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
 // 7x4, rotatable, plain 'flat' trait only — big enough that a 90/270 rotation visibly swaps
 // the footprint's width and height.

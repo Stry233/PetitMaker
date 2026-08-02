@@ -166,10 +166,62 @@ describe('the committed stamp', () => {
  * snapshot's stamp has `release`, so every build from the source repository is a dev build
  * and every build of a published snapshot is a release, with nothing to set per environment.
  */
+/** Semver compare, enough for the ordering these tests assert. */
+function semverAbove(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  }
+  return false;
+}
+
 describe('version numbering', () => {
-  it('renders a dev version from the package series and the build number', () => {
+  it('renders a dev version from the package series when nothing has been published', () => {
     expect(resolveVersion({ pkgVersion: '0.1.0', buildNumber: '1485' })).toBe('0.1.1485-dev');
     expect(resolveVersion({ pkgVersion: '1.4.9', buildNumber: '2000' })).toBe('1.4.2000-dev');
+  });
+
+  it('shows the version the tree WOULD be released as, once a release is on record', () => {
+    // The point of recording it: a dev build has to sort ABOVE the release it descends from, and
+    // package.json's own MINOR does not move, so `0.1.<build>-dev` sank below `0.3.2` as soon as
+    // the third sync happened. The next sync's MINOR is one past the last one's, so this cannot.
+    const dev = resolveVersion({
+      pkgVersion: '0.1.0', buildNumber: '1747',
+      lastRelease: { version: '0.3.2', buildNumber: '1718' },
+    });
+    expect(dev).toBe('0.4.29-dev');          // minor +1, patch = builds since that publish
+    expect(semverAbove(dev.replace('-dev', ''), '0.3.2')).toBe(true);
+  });
+
+  it('falls back rather than throwing when the tree is BEHIND the last release', () => {
+    // Building an old commit: `nextReleaseVersion` refuses to count backwards, and a version is
+    // still needed. The fallback is truthful about a tree that is behind.
+    expect(resolveVersion({
+      pkgVersion: '0.1.0', buildNumber: '1000',
+      lastRelease: { version: '0.3.2', buildNumber: '1718' },
+    })).toBe('0.1.1000-dev');
+  });
+
+  it('carries the recorded release through a re-stamp', () => {
+    // The dev site stamps in its own runner on every deploy. A stamp that rewrote the file from
+    // git alone would drop the record there, and the dev version would sink back below the
+    // release on the very build that is supposed to show it.
+    const git = (cmd: string): string | null =>
+      cmd.includes('rev-list') ? '1900'
+      : cmd.includes('rev-parse --short') ? 'abc1234'
+      : cmd.includes('log -1') ? '2026-07-31'
+      : cmd.includes('is-shallow') ? 'false' : '';
+    const prev = { buildNumber: '1747', sha: 'deadbee', date: '2026-07-30',
+                   lastRelease: { version: '0.3.2', buildNumber: '1718' } };
+    const { json } = stampFromGit(git, prev);
+    expect(JSON.parse(json).lastRelease).toEqual({ version: '0.3.2', buildNumber: '1718' });
+  });
+
+  it('lets a real release marker outrank the recorded one', () => {
+    expect(resolveVersion({
+      pkgVersion: '0.1.0', buildNumber: '1747', release: '0.4.29',
+      lastRelease: { version: '0.3.2', buildNumber: '1718' },
+    })).toBe('0.4.29');
   });
 
   it('drops -dev only when the stamp says the tree was published', () => {

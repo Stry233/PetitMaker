@@ -14,6 +14,7 @@ import { designModeToToolType } from './ui/menu/design-mode';
 import { GeneratePanel } from './ui/menu/GeneratePanel';
 import { HistoryControls } from './ui/chrome/HistoryControls';
 import { ZoomControls } from './ui/chrome/ZoomControls';
+import { HintPanel } from './ui/hints/HintPanel';
 import { MainMenuCard } from './ui/menu/MainMenuCard';
 import { CollapsedPhone } from './ui/menu/PhoneCard';
 import { BuildPanel } from './ui/menu/BuildPanel';
@@ -25,6 +26,8 @@ import { NewProjectModal } from './ui/chrome/NewProjectModal';
 import { RestoreBubble } from './ui/chrome/RestoreBubble';
 import { discardStoredSession } from './agent/session';
 import { ToastContainer } from './ui/chrome/Toast';
+import { CurveHandles } from './ui/chrome/CurveHandles';
+import { InAppBrowserNotice } from './ui/chrome/InAppBrowserNotice';
 import { DevBuildNotice } from './ui/chrome/DevBuildNotice';
 import { PortraitGuard } from './ui/chrome/PortraitGuard';
 import { TourOverlay } from './ui/chrome/tour/TourOverlay';
@@ -105,6 +108,10 @@ export default function App() {
   const setMotionPref = useEditorStore((s) => s.setMotionPref);
   const systemCursors = useEditorStore((s) => s.systemCursors);
   const setSystemCursors = useEditorStore((s) => s.setSystemCursors);
+  const hintLevel = useEditorStore((s) => s.hintLevel);
+  const setHintLevel = useEditorStore((s) => s.setHintLevel);
+  const classicCursors = useEditorStore((s) => s.classicCursors);
+  const setClassicCursors = useEditorStore((s) => s.setClassicCursors);
 
   const menuScale = useMenuScale();
   const selectedItemId = useEditorStore((s) => s.selectedItemId);
@@ -237,7 +244,18 @@ export default function App() {
   }, []);
 
   /* ── Editor keyboard shortcuts (the full keymap lives in one hook) ───── */
-  useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo });
+  // Expanding retires the restore offer for the same reason the phone's own onExpand does:
+  // reaching the menu is the user starting fresh.
+  const expandMenu = useCallback(() => {
+    setMenuCollapsed(false);
+    if (restoreCandidate) discardStoredSession();
+    setRestoreCandidate(null);
+  }, [setMenuCollapsed, restoreCandidate]);
+  const toggleMenu = useCallback(() => {
+    if (useEditorStore.getState().menuCollapsed) expandMenu();
+    else setMenuCollapsed(true);
+  }, [expandMenu, setMenuCollapsed]);
+  useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu });
 
   // Suppress the browser's native right-click menu app-wide (copy image / link
   // etc.) so only our own context menu shows. Text fields keep theirs (copy/paste).
@@ -341,12 +359,8 @@ export default function App() {
       {menuCollapsed ? (
         // Opening the menu = "start fresh": clear the restore offer. Hover hints the bubble dismissal.
         <CollapsedPhone
-          onExpand={() => {
-            setMenuCollapsed(false);
-            // expanding past the offer = start fresh; the agent history starts fresh too
-            if (restoreCandidate) discardStoredSession();
-            setRestoreCandidate(null);
-          }}
+          // expanding past the offer = start fresh; the agent history starts fresh too
+          onExpand={expandMenu}
           onHoverStart={() => setPhoneHover(true)}
           onHoverEnd={() => setPhoneHover(false)}
         />
@@ -354,8 +368,6 @@ export default function App() {
         <>
         <MainMenuCard
           onCollapse={() => setMenuCollapsed(true)}
-          load={0}
-          loadMax={10000}
           onAction={handleTileAction}
           onSettings={() => setModal('settings', true)}
           onHelp={() => setModal('help', true)}
@@ -462,6 +474,9 @@ export default function App() {
         tilt={viewMode === '3d'}
       />
 
+      {/* Quick hints — beside the zoom cluster, self-subscribing */}
+      <HintPanel />
+
       {/* Layer management panel — right side. Self-subscribing so brush strokes
           re-render only the panel (and only when cell stats actually change). */}
       {gridState && (
@@ -489,11 +504,15 @@ export default function App() {
         showChunks={showChunkBounds}
         motionPref={motionPref}
         systemCursors={systemCursors}
+        hintLevel={hintLevel}
+        classicCursors={classicCursors}
         onLocaleChange={setLocale}
         onShowGridChange={setShowGrid}
         onShowChunksChange={setShowChunkBounds}
         onMotionPrefChange={setMotionPref}
         onSystemCursorsChange={setSystemCursors}
+        onHintLevelChange={setHintLevel}
+        onClassicCursorsChange={setClassicCursors}
         onAbout={() => setModal('about', true)}
         onClose={() => setModal('settings', false)}
       />
@@ -533,7 +552,9 @@ export default function App() {
       </ScaleProvider>
 
       <ToastContainer />
+      <CurveHandles />
       <DevBuildNotice />
+      <InAppBrowserNotice />
       <LegalBar />
       <PortraitGuard />
       <SelectionHandles />

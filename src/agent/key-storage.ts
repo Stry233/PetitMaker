@@ -14,7 +14,7 @@
  * this browser only". Users on shared machines should clear site data.
  */
 import type { ProviderId } from './types';
-import { PROVIDER_META, PROVIDER_IDS } from './providers/defaults';
+import { PROVIDER_META, PROVIDER_IDS, providerBaseUrls } from './providers/defaults';
 import { sealSecret, openSecret, type SealedBlob } from './vault';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
@@ -31,6 +31,10 @@ export interface AgentSettings {
   /** Base URL of the 'custom' provider's OpenAI-compatible endpoint (e.g. an
    *  Open WebUI/LiteLLM gateway). Not a secret — stored plain. */
   customBaseUrl?: string;
+  /** Which regional deployment a key belongs to, for the platforms that run more than one
+   *  (Moonshot, Qwen, Zhipu). Filled in when the key is connected; absent means the provider's
+   *  primary host. Not a secret — stored plain. */
+  regionBaseUrl?: Partial<Record<ProviderId, string>>;
 }
 
 const LS_KEY = 'petit-agent-settings-v1';
@@ -56,6 +60,24 @@ interface StoredRecord {
   /** Widened: a record written before a rename still holds the old name. */
   oversight?: string;
   customBaseUrl?: string;
+  regionBaseUrl?: Record<string, string>;
+}
+
+/**
+ * Stored regional hosts, keeping only a URL the provider itself declares.
+ *
+ * The key travels to whatever this names, and localStorage is writable by anything running in
+ * the origin, so an arbitrary string here would be an arbitrary destination for a key. The
+ * declared host list is the allowlist — same posture as json-codec dropping unknown catalogIds.
+ */
+function readRegionBaseUrl(rec: StoredRecord['regionBaseUrl']): AgentSettings['regionBaseUrl'] {
+  if (!rec || typeof rec !== 'object') return undefined;
+  const out: Partial<Record<ProviderId, string>> = {};
+  for (const [id, url] of Object.entries(rec)) {
+    if (!PROVIDER_IDS.includes(id as ProviderId)) continue;
+    if (providerBaseUrls(id as ProviderId).includes(url)) out[id as ProviderId] = url;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 const OVERSIGHTS: readonly string[] = ['strict', 'checkpoint', 'yolo'];
@@ -81,8 +103,8 @@ function readOversight(rec: Pick<StoredRecord, 'oversight' | 'askBeforeEdits'>):
 /**
  * Normalize a user-typed custom endpoint: add a missing scheme, force https
  * for anything that is not loopback (an http endpoint would carry the API key
- * in cleartext), drop non-http(s) schemes, trim trailing slashes. Returns ''
- * for unusable input.
+ * in cleartext), drop non-http(s) schemes, drop embedded credentials, trim
+ * trailing slashes. Returns '' for unusable input.
  */
 export function sanitizeEndpointUrl(raw: string): string {
   let u = raw.trim();
@@ -90,10 +112,18 @@ export function sanitizeEndpointUrl(raw: string): string {
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) u = `https://${u}`;
   try {
     const url = new URL(u);
-    if (url.protocol === 'http:' && !/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname)) {
+    // CSP cannot express an IPv6 literal (its host grammar is letters, digits and hyphens), so an
+    // endpoint written that way is unreachable however it is stored. `localhost` is the spelling
+    // that connect-src can name, and it resolves to the same loopback interface.
+    if (url.hostname === '[::1]') url.hostname = 'localhost';
+    if (url.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
       url.protocol = 'https:';
     }
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    // A password in `https://user:pass@host` would sit in a field persisted in the clear, beside
+    // a key the vault seals; a browser also refuses to fetch a URL carrying credentials.
+    url.username = '';
+    url.password = '';
     return url.toString().replace(/\/+$/, '');
   } catch {
     return '';
@@ -136,6 +166,7 @@ export function loadAgentSettings(): AgentSettings {
       askBeforeEdits: oversight === 'strict',
       oversight,
       customBaseUrl: typeof parsed.customBaseUrl === 'string' && parsed.customBaseUrl ? parsed.customBaseUrl : undefined,
+      regionBaseUrl: readRegionBaseUrl(parsed.regionBaseUrl),
     };
   } catch {
     return defaultAgentSettings();
@@ -214,6 +245,7 @@ export function saveAgentSettings(s: AgentSettings): void {
       askBeforeEdits: s.oversight === 'strict',   // back-compat mirror
       oversight: s.oversight,
       customBaseUrl: s.customBaseUrl,
+      regionBaseUrl: s.regionBaseUrl,
     }),
   );
   void upgradeToSealed().catch(() => {});

@@ -43,6 +43,24 @@ export class Viewport {
   }
 
   /**
+   * Re-express the camera after the page zoom changed by `ratio`, so the map holds the size it
+   * had on screen.
+   *
+   * `zoom` and the offsets are both in CSS px, and page zoom redefines what a CSS px is: at 110%
+   * the same numbers draw the map 10% bigger. Dividing both by the ratio cancels that exactly — the
+   * map keeps its PHYSICAL scale, which is the thing the user is looking at and the thing the 3D
+   * view already holds (its canvas covers the same device pixels either way). Without this the two
+   * views disagree about how big the world is, and only one of them answers to the app's own zoom.
+   */
+  rebaseForPageZoom(ratio: number): void {
+    if (!Number.isFinite(ratio) || ratio <= 0 || ratio === 1) return;
+    this.zoom /= ratio;
+    this.offsetX /= ratio;
+    this.offsetY /= ratio;
+    this.clampOffset();
+  }
+
+  /**
    * Keep the map on screen: at least PAN_KEEP_PX of it (or half of it, when it
    * renders smaller) stays inside the canvas on each axis. One clamp under
    * every camera mutation, so no pan/zoom/tween/restore path can lose the map.

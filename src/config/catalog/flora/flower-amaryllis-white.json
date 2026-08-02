@@ -1,0 +1,291 @@
+{
+  "id": "flower-amaryllis-white",
+  "category": "flora",
+  "name": {
+    "en": "White Amaryllis",
+    "zh": "白朱顶红",
+    "ja": "ホワイトアマリリス",
+    "ru": "Белый амариллис",
+    "th": "ว่านสี่ทิศขาว",
+    "id": "Amarilis Putih",
+    "fr": "Amaryllis blanche"
+  },
+  "icon": "flower-amaryllis-white",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.09,
+          0.38
+        ],
+        "pos": [
+          0,
+          0.0,
+          0
+        ],
+        "color": "#3f7d2e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          0.17,
+          0.0,
+          0.0
+        ],
+        "color": "#3f7d2e",
+        "rotY": -0.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          0.0,
+          0.0,
+          0.17
+        ],
+        "color": "#3f7d2e",
+        "rotY": -90.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          -0.17,
+          0.0,
+          0.0
+        ],
+        "color": "#3f7d2e",
+        "rotY": -180.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.4,
+          0.07,
+          0.13
+        ],
+        "pos": [
+          -0.0,
+          0.0,
+          -0.17
+        ],
+        "color": "#3f7d2e",
+        "rotY": -270.0
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.05,
+          0.32,
+          0.05
+        ],
+        "pos": [
+          -0.13,
+          0.02,
+          0.05
+        ],
+        "color": "#4c8a33",
+        "rotY": 21.0,
+        "rotZ": 22,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.187,
+          0.165,
+          0.187
+        ],
+        "pos": [
+          -0.242,
+          0.297,
+          0.093
+        ],
+        "color": "#fefbea",
+        "seg": 8,
+        "taper": 1.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.209,
+          0.04,
+          0.209
+        ],
+        "pos": [
+          -0.242,
+          0.452,
+          0.093
+        ],
+        "color": "#fdf7cb",
+        "seg": 8,
+        "taper": 1.05
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.077,
+          0.077,
+          0.077
+        ],
+        "pos": [
+          -0.242,
+          0.492,
+          0.093
+        ],
+        "color": "#fcf8cc"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.05,
+          0.26,
+          0.05
+        ],
+        "pos": [
+          0.15,
+          0.02,
+          -0.09
+        ],
+        "color": "#4c8a33",
+        "rotY": -149.0,
+        "rotZ": 30,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.162,
+          0.142,
+          0.162
+        ],
+        "pos": [
+          0.261,
+          0.225,
+          -0.157
+        ],
+        "color": "#fefbea",
+        "seg": 8,
+        "taper": 1.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.181,
+          0.04,
+          0.181
+        ],
+        "pos": [
+          0.261,
+          0.358,
+          -0.157
+        ],
+        "color": "#fdf7cb",
+        "seg": 8,
+        "taper": 1.05
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.067,
+          0.067,
+          0.067
+        ],
+        "pos": [
+          0.261,
+          0.398,
+          -0.157
+        ],
+        "color": "#fcf8cc"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.05,
+          0.2,
+          0.05
+        ],
+        "pos": [
+          0.03,
+          0.02,
+          0.17
+        ],
+        "color": "#4c8a33",
+        "rotY": 100.0,
+        "rotZ": 36,
+        "seg": 6
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.136,
+          0.12,
+          0.136
+        ],
+        "pos": [
+          0.05,
+          0.162,
+          0.286
+        ],
+        "color": "#fefbea",
+        "seg": 8,
+        "taper": 1.75
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.152,
+          0.04,
+          0.152
+        ],
+        "pos": [
+          0.05,
+          0.272,
+          0.286
+        ],
+        "color": "#fdf7cb",
+        "seg": 8,
+        "taper": 1.05
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.056,
+          0.056,
+          0.056
+        ],
+        "pos": [
+          0.05,
+          0.312,
+          0.286
+        ],
+        "color": "#fcf8cc"
+      }
+    ]
+  }
+}

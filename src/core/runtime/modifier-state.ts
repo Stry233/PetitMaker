@@ -13,44 +13,88 @@
  *
  * The multi-select key (turns a click into a membership toggle, a drag into a rubber band) is
  * tracked the same way, mirroring the constrain key: a dedicated boolean for its default modifier
- * (ctrlHeld, alongside shiftHeld) plus the shared heldTokens set for a rebound key.
+ * (ctrlHeld, alongside shiftHeld) plus the shared heldTokens set for a rebound key. So is the
+ * break-handle key, which splits a curve anchor's direction line so its two sides turn apart, and
+ * the pan-drag key, which turns a left drag into a camera pan in any tool mode.
  */
 import { eventKeyToken } from './key-token';
 
 let shiftHeld = false;
 let ctrlHeld = false;
+let altHeld = false;
 let spaceHeld = false;
 let installed = false;
 /** The user's chosen constrain key token ('shift' by default). */
 let constrainKey = 'shift';
 /** The user's chosen multi-select key token ('ctrl' by default). */
 let multiSelectKey = 'ctrl';
+/** The user's chosen break-handle key token ('alt' by default). */
+let breakHandleKey = 'alt';
+/** The user's chosen pan-drag key token ('space' by default). */
+let panDragKey = 'space';
 /** Currently-held non-modifier key tokens (for a rebound constrain/multi-select key). */
 const heldTokens = new Set<string>();
+/** Notified when the multi-select key goes down or up — see `onMultiSelectChange`. */
+const multiSelectListeners = new Set<() => void>();
+
+/**
+ * Subscribe to the multi-select key changing. Returns an unsubscribe.
+ *
+ * A key press runs with no pointer event beside it, so a reader that only recomputes on
+ * pointer-move sees the new state one mouse-move late. The pointer machine uses this to
+ * re-sample in place, the way it does for a camera move under a still cursor.
+ */
+export function onMultiSelectChange(fn: () => void): () => void {
+  multiSelectListeners.add(fn);
+  return () => { multiSelectListeners.delete(fn); };
+}
 
 /** Install the window keydown/keyup listeners once (idempotent, browser-only). */
 export function installModifierTracking(): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
+  // Compared around every mutation: `sync` fires on EVERY key, and only a change in this one
+  // fact is worth waking the pointer machine for.
+  const announceIfChanged = (was: boolean) => {
+    if (isMultiSelectHeld() !== was) for (const fn of multiSelectListeners) fn();
+  };
   const sync = (e: KeyboardEvent) => {
+    const was = isMultiSelectHeld();
     shiftHeld = e.shiftKey;
     // Cmd counts as Ctrl, matching what ShortcutManager already does for every `ctrl+*` binding:
     // on macOS Ctrl+click IS the secondary click, opening context menus rather than multi-selecting.
     ctrlHeld = e.ctrlKey || e.metaKey;
+    altHeld = e.altKey;
     if (e.code === 'Space') spaceHeld = e.type === 'keydown';
     const tok = eventKeyToken(e);
     if (e.type === 'keydown') heldTokens.add(tok);
     else heldTokens.delete(tok);
+    announceIfChanged(was);
   };
   window.addEventListener('keydown', sync, { passive: true });
   window.addEventListener('keyup', sync, { passive: true });
   // a window blur can swallow the keyup (e.g. alt-tab), so clear on blur — a modifier stuck on
   // would silently turn every later click into a toggle / drag into a rubber band.
-  window.addEventListener('blur', () => { shiftHeld = false; ctrlHeld = false; spaceHeld = false; heldTokens.clear(); }, { passive: true });
+  window.addEventListener('blur', () => {
+    const was = isMultiSelectHeld();
+    shiftHeld = false; ctrlHeld = false; altHeld = false; spaceHeld = false; heldTokens.clear();
+    announceIfChanged(was);
+  }, { passive: true });
 }
 
 export function isShiftHeld(): boolean {
   return shiftHeld;
+}
+
+/** Set which key breaks a curve handle (from the keybind store; 'alt' = default, '' = disabled). */
+export function setBreakHandleKey(token: string): void {
+  breakHandleKey = token;
+}
+
+/** Whether the (possibly rebound) break-handle key is held. Read while a curve's direction knob is
+ *  dragged: held, the two sides of the line turn apart instead of staying one straight tangent. */
+export function isBreakHandleHeld(): boolean {
+  return breakHandleKey === 'alt' ? altHeld : heldTokens.has(breakHandleKey);
 }
 
 /** Set which key constrains shape drags (from the keybind store; 'shift' = default, '' = disabled). */
@@ -64,10 +108,16 @@ export function isConstrainHeld(): boolean {
   return constrainKey === 'shift' ? shiftHeld : heldTokens.has(constrainKey);
 }
 
-/** Space held: the pointer machine turns a left-drag into a camera pan in any
- *  tool mode — the standard navigate-while-drawing escape hatch. */
-export function isSpaceHeld(): boolean {
-  return spaceHeld;
+/** Set which key turns a left drag into a camera pan (from the keybind store; 'space' = default,
+ *  '' = disabled). */
+export function setPanDragKey(token: string): void {
+  panDragKey = token;
+}
+
+/** Whether the (possibly rebound) pan-drag key is held. The pointer machine turns a left drag into
+ *  a camera pan while it is: the navigate-while-drawing escape hatch, live in any tool mode. */
+export function isPanDragHeld(): boolean {
+  return panDragKey === 'space' ? spaceHeld : heldTokens.has(panDragKey);
 }
 
 /** Set which key drives multi-select (from the keybind store; 'ctrl' = default, '' = disabled). */

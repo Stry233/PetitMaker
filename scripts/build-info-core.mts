@@ -37,6 +37,9 @@ export interface BuildInfo {
    *  the publish workflow writes it, and its presence is what makes a build a release
    *  rather than a dev build (see `resolveVersion`). */
   release?: string;
+  /** What the last publish put out, copied back into THIS repository by the publish workflow.
+   *  Only a dev version reads it — see `resolveVersion`. */
+  lastRelease?: { version: string; buildNumber: string };
 }
 
 export interface BuildInfoDeps {
@@ -68,6 +71,11 @@ export function parseStamp(raw: string | null): Partial<BuildInfo> {
     }
     if (typeof data.sha === 'string' && /^[0-9a-f]{7,40}$/.test(data.sha)) out.sha = data.sha;
     if (typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date)) out.date = data.date;
+    const last = data.lastRelease as { version?: unknown; buildNumber?: unknown } | undefined;
+    if (last && typeof last === 'object'
+        && SEMVER.test(String(last.version)) && /^\d+$/.test(String(last.buildNumber))) {
+      out.lastRelease = { version: String(last.version), buildNumber: String(last.buildNumber) };
+    }
     if (typeof data.release === 'string' && SEMVER.test(data.release)) out.release = data.release;
     return out;
   } catch {
@@ -109,6 +117,7 @@ export function resolveBuildInfo(deps: BuildInfoDeps): { info: BuildInfo; stampe
     info: {
       buildNumber: stamp.buildNumber, sha: stamp.sha, date: stamp.date ?? '',
       ...(stamp.release ? { release: stamp.release } : {}),
+      ...(stamp.lastRelease ? { lastRelease: stamp.lastRelease } : {}),
     },
     stamped: true,
   };
@@ -118,19 +127,37 @@ export function resolveBuildInfo(deps: BuildInfoDeps): { info: BuildInfo; stampe
  * The version string a build displays: `MAJOR.MINOR.BUILD`, with `-dev` unless this is a
  * published snapshot.
  *
- * A RELEASE's PATCH counts the builds in its milestone (see `nextReleaseVersion`). A DEV
- * build's PATCH is the absolute build number instead: the source repository keeps no record
- * of what has been released (the public repository does, in its committed stamp), and an
- * absolute count is the honest thing to show for a build that is not a release. Either way
- * the number comes from the same stamp, so two builds of one commit cannot disagree.
+ * A DEV build shows the version its tree WOULD be released as, marked `-dev`. That is the same
+ * `nextReleaseVersion` a publish would compute, from the same inputs, so a dev build always sorts
+ * ABOVE the release it descends from: MINOR advances on every sync, and the next sync's MINOR is
+ * one past the last one's.
+ *
+ * It needs to know what was last published, which the source repository does not otherwise track
+ * — the record lives in the PUBLIC repository's committed stamp. The publish workflow copies it
+ * back here as `lastRelease`. Without it (before the first publish, or an older stamp) the version
+ * falls back to package.json's own MAJOR.MINOR over the absolute build number; that is a valid
+ * version but it can sort BELOW a release, which is the whole reason `lastRelease` exists.
  *
  * `-dev` is decided by data, not by configuration: only the publish workflow writes
  * `release` into a snapshot's stamp, so ANY build from the source repository is a dev
  * build and any build of a published snapshot is a release. Nothing has to be remembered
  * or set per environment.
  */
-export function resolveVersion(opts: { pkgVersion: string; buildNumber: string; release?: string }): string {
+export function resolveVersion(opts: {
+  pkgVersion: string; buildNumber: string; release?: string;
+  lastRelease?: { version: string; buildNumber: string };
+}): string {
   if (opts.release && SEMVER.test(opts.release)) return opts.release;
+  if (opts.lastRelease && /^\d+$/.test(opts.buildNumber)) {
+    try {
+      return `${nextReleaseVersion(opts.pkgVersion, opts.buildNumber, {
+        lastVersion: opts.lastRelease.version, lastBuildNumber: opts.lastRelease.buildNumber,
+      })}-dev`;
+    } catch {
+      // Building a commit OLDER than the last publish; `nextReleaseVersion` refuses to count
+      // backwards, and the fallback below is a truthful version for a tree that is behind.
+    }
+  }
   const [major = '0', minor = '0'] = opts.pkgVersion.split('.');
   // An unstamped build has no number to use as PATCH; 0 keeps the string valid semver.
   const patch = /^\d+$/.test(opts.buildNumber) ? opts.buildNumber : '0';
@@ -242,12 +269,20 @@ export function stampFromGit(
       + 'this is not the history that produced the committed stamp. Stamp only in the repository that owns the build number.',
     );
   }
-  const full: BuildInfo = { buildNumber: info.buildNumber, sha: info.sha ?? head, date: info.date ?? '' };
+  const full: BuildInfo = {
+    buildNumber: info.buildNumber, sha: info.sha ?? head, date: info.date ?? '',
+    // CARRIED, not recomputed: stamping answers "which commit is this", and what was last
+    // published is a different fact that only the publish workflow learns. Rewriting the stamp
+    // without it would drop the record on the next build — including the dev site's, which
+    // stamps in its own runner.
+    ...(previous.lastRelease ? { lastRelease: previous.lastRelease } : {}),
+  };
   const json = `${JSON.stringify({
     '//': 'GENERATED by `npm run stamp` from this repository\'s git history — the ONE source of the build number. Every build (any host, any clone depth, no git at all) reads this file; see scripts/build-info-core.mts.',
     buildNumber: Number(full.buildNumber),
     sha: full.sha,
     date: full.date,
+    ...(full.lastRelease ? { lastRelease: full.lastRelease } : {}),
   }, null, 2)}\n`;
   return { json, info: full };
 }

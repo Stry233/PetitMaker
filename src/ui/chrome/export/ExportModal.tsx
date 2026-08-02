@@ -199,6 +199,7 @@ export function ExportModal() {
       }
 
       downloadBlob(blob, `petit-planet-${now}.png`);
+      useEditorStore.getState().markExported();   // this map has now left the browser
       if (codeTooSmall) showToast(translate('export.code_too_small'), 'info');
       showToast(translate(codeImg ? 'toast.exported_embedded' : 'toast.exported_image'), 'info');
       setExporting(false);

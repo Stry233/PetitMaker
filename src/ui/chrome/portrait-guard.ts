@@ -29,7 +29,7 @@ export interface PortraitGuard {
  */
 export function usePortraitGuard(): PortraitGuard {
   const [signals, setSignals] = useState<OrientationSignals>(() =>
-    typeof window === 'undefined' ? { coarsePointer: false, noHover: false, portrait: false } : readOrientationSignals(),
+    typeof window === 'undefined' ? { coarsePointer: false, noHover: false, inAppBrowser: false, portrait: false } : readOrientationSignals(),
   );
   const [dismissed, setDismissed] = useState(false);
 

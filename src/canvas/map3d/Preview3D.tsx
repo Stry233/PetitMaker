@@ -5,7 +5,9 @@
  * close button. Respects prefers-reduced-motion.
  */
 import { useChromeScale } from '../../ui/menu/scale';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCameraOnly } from '../interaction/use-camera-only';
+import { useHeldPan } from '../interaction/use-view-shortcuts';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
 import { useT } from '../../i18n/context';
@@ -45,6 +47,10 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
     if (!host || !gridState) return;
     const scene = new ThreeScene(host, gridState);
     sceneRef.current = scene;
+    // The gestures below drive the camera verbs directly, so OrbitControls must stop handling
+    // pointers — it stays for what the scene reads it for: the orbit target, the polar clamps and
+    // the distance limits.
+    scene.setEditorInput(true);
     // Edit mode: jump straight to the shot's angle instead of the intro fly-in, so the user tweaks
     // from where the thumbnail was framed.
     const ed = useEditorStore.getState().preview3DEdit;
@@ -55,12 +61,24 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
     return () => { scene.dispose(); sceneRef.current = null; };
   }, [gridState]);
 
+  // Camera-only surface: the editor's gestures and the editor's cursors, minus the tools. Right
+  // or middle drag orbits, left drags pan, the wheel dollies — the same reflexes as the 3D editor,
+  // because they are the same module.
+  useCameraOnly(hostRef, useCallback(() => sceneRef.current?.cameraVerbs() ?? null, []), visible);
+
   // Esc closes (triggers the exit animation).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setVisible(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // The user's pan keys walk the camera here too. This overlay is the foreground, so it pans even
+  // though the export modal behind it holds the overlay lock that suppresses the editor's.
+  useHeldPan(
+    useCallback((dx: number, dy: number) => { sceneRef.current?.cameraVerbs().pan(dx, dy); }, []),
+    useCallback(() => visible, [visible]),
+  );
 
   const close = () => setVisible(false);
 
@@ -123,7 +141,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* exit — cozy float button (orbit/zoom/WASD/Esc controls live in Help). */}
+          {/* exit — cozy float button. */}
           <motion.button
             type="button"
             onClick={close}

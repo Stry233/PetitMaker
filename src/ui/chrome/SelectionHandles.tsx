@@ -63,7 +63,6 @@
  * to match the floating zoom/history controls.
  */
 import { useChromeScale } from '../menu/scale';
-import { useCursorCss } from '../cursors/cursor-vars';
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
@@ -161,8 +160,6 @@ const TrashIcon = ({ size }: { size: number }) => (
 
 export function SelectionHandles() {
   const t = useT();
-  // Rotate is a spatial action (like an orbit drag), not a plain button click.
-  const orbitCursor = useCursorCss('orbit');
   // `block` below stays the SINGLE-selection reading: null for 0 or 2+ members.
   const selection = useEditorStore((s) => s.selection);
   const plural = selection.length > 1;
@@ -439,9 +436,11 @@ export function SelectionHandles() {
             <motion.button
               type="button"
               data-testid="handle-rotate"
+              // No cursor of its own: it is a button, and the global rule gives every button the
+              // clickable pointer. `orbit` means the 3D CAMERA turning, not an object being turned.
               style={row
-                ? { ...rowHandleStyle(false, size), cursor: orbitCursor }
-                : { ...cornerHandleStyle(false, 'left', size), cursor: orbitCursor, ...anchorStyle(anchors?.left ?? null) }}
+                ? rowHandleStyle(false, size)
+                : { ...cornerHandleStyle(false, 'left', size), ...anchorStyle(anchors?.left ?? null) }}
               initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
               whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
               transition={springs.bouncy}

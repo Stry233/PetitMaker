@@ -43,9 +43,14 @@ const PROVIDER_ORIGINS: readonly string[] = [
   'https://api.deepseek.com',
   'https://generativelanguage.googleapis.com',
   'https://openrouter.ai',
+  // Zhipu, Qwen and Moonshot each run a second regional deployment; both hosts are named because
+  // which one serves a user is decided by which one issued their key.
   'https://open.bigmodel.cn',
+  'https://api.z.ai',
   'https://dashscope-intl.aliyuncs.com',
+  'https://dashscope.aliyuncs.com',
   'https://api.moonshot.cn',
+  'https://api.moonshot.ai',
 ];
 
 /** Broad sources that make the Custom endpoint reachable everywhere:
@@ -54,6 +59,9 @@ const CUSTOM_ENDPOINT_SOURCES: readonly string[] = [
   'https:',
   'http://localhost:*',
   'http://127.0.0.1:*',
+  // CSP's host-source grammar admits only letters, digits and hyphens, so no IPv6 literal can
+  // appear here; `sanitizeEndpointUrl` writes such an endpoint as `localhost`, the spelling that
+  // names the same interface and that this grammar can express.
 ];
 
 export interface HeadersPolicy {

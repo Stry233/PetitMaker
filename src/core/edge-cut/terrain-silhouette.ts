@@ -75,6 +75,30 @@ export function cornerWrappedAt(state: GridState, x: number, y: number, i: numbe
   return terrainSolidAt(diag, type, e) || diag.type === TerrainType.Water; // reaches the tier, or a (safe) pond
 }
 
+/**
+ * Is (x,y) a PIT in the surface rather than a notch in it — a cell with nothing of its own to
+ * render, with terrain standing on all FOUR edges?
+ *
+ * A Γ fillet rounds a corner the mass wraps and the ground walks out of: a notch is open on at
+ * least one side, and the bare ground inside it is the same ground that continues outside. Where
+ * terrain stands all the way round, that is not a notch but a hole in the surface. Filleting its
+ * corners floats a fillet at the wrapping tier with bare ground under it — a cell that LOOKS like
+ * terrain, renders as a scrap of grass inside the mass, and refuses the paint that would fill it
+ * because it holds no support ("no base"). With all four corners cut it reads as a diamond of
+ * grass inside a solid plateau.
+ *
+ * A cell that holds a real block (a pit one level down, a pond) is NOT this — its own surface
+ * renders, and rounding the rim above it is exactly what a fillet is for. Neither is a cell ringed
+ * by ground-level water: an island in a pond stands at the same height as the ground inside it, and
+ * rounds through its own path (`groundConvexCornerInWater`).
+ */
+export function enclosedGap(state: GridState, x: number, y: number): boolean {
+  const t = getCell(state.cells, x, y)?.terrain;
+  const bare = !t || t.type === TerrainType.None || (!!t.patchOnly && (t.patchBase ?? t.elevation - 1) < 1);
+  if (!bare) return false;
+  return NEIGHBORS4.every(([dx, dy]) => surfaceElevation(getCell(state.cells, x + dx, y + dy)?.terrain) >= 1);
+}
+
 /** The top solid layer this terrain holds as `type` mass (a Γ patch counts as its real base = patchBase,
  *  0 for a from-empty gamma), or 0. */
 export function solidTopOf(t: TerrainCell | null | undefined, type: TerrainType): number {

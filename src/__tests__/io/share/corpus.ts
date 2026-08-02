@@ -38,7 +38,7 @@ import { readFileSync } from 'node:fs';
 
 /** Drive the real Generate path inside one silent stroke group: generateTerrain, then populate
  *  for the 'random' algorithm only (mirrors both the live GeneratePanel path and
- *  codec/predictors.ts:replayCanonical, so P_REPLAY-predicted maps match what this produces). Does
+ *  the live Generate path, so these are maps the app itself can produce — what this produces). Does
  *  NOT set `state.generation` — callers do that explicitly so hand-built states never carry it. */
 function genOn(state: GridState, cfg: GenerateConfig): GridState {
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());

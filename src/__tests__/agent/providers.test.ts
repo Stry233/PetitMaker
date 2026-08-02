@@ -206,7 +206,7 @@ describe('expanded provider detection', () => {
     for (const id of PROVIDER_IDS) {
       expect(PROVIDER_META[id].label).toBeTruthy();
       // custom has no meaningful default model — it adopts the endpoint's live list
-      if (id !== 'custom') expect(PROVIDER_META[id].defaultModel).toBeTruthy();
+      if (id !== 'custom') expect(PROVIDER_META[id].preferredModel).toBeTruthy();
       expect(PROVIDER_ACCENT[id]).toMatch(/^#/);
     }
     expect(PROVIDER_IDS).toHaveLength(9);
@@ -259,9 +259,72 @@ describe('identifyProviderByProbe deadline', () => {
     try {
       await expect(
         identifyProviderByProbe('sk-0123456789abcdef0123456789abcdef', undefined, 'https://genai.example.edu/api'),
-      ).resolves.toBe('custom');
+      ).resolves.toEqual({ provider: 'custom', baseUrl: 'https://genai.example.edu/api' });
     } finally {
       spies.forEach((sp) => sp.mockRestore());
     }
+  });
+
+  it('names the regional host that authenticated the key, not just the platform', async () => {
+    // Moonshot, Qwen and Zhipu run separate regional deployments and reject each other's keys, so
+    // the answer has to say WHICH one, or the adapter goes on calling the host that said no.
+    const { PROVIDERS, identifyProviderByProbe, providerBaseUrls } = await import('../../agent/providers');
+    const hosts = providerBaseUrls('moonshot');
+    expect(hosts.length).toBeGreaterThan(1);
+    const intl = hosts[1]!;
+    const hanging = { listModels: () => new Promise<string[]>(() => {}), stream: () => Promise.reject(new Error('n/a')) };
+    const spies = (['deepseek', 'openai', 'qwen'] as const).map((id) =>
+      vi.spyOn(PROVIDERS[id], 'create').mockReturnValue(hanging),
+    );
+    // Only the second host accepts this key.
+    spies.push(vi.spyOn(PROVIDERS.moonshot, 'create').mockImplementation((_k, baseUrl) =>
+      (baseUrl === intl
+        ? { listModels: () => Promise.resolve(['kimi-k2']), stream: () => Promise.reject(new Error('n/a')) }
+        : { listModels: () => Promise.reject(new Error('401')), stream: () => Promise.reject(new Error('n/a')) })));
+    try {
+      await expect(identifyProviderByProbe('sk-0123456789abcdef0123456789abcdef'))
+        .resolves.toEqual({ provider: 'moonshot', baseUrl: intl });
+    } finally {
+      spies.forEach((sp) => sp.mockRestore());
+    }
+  });
+});
+
+describe('browser reachability of the OpenAI-compatible endpoints', () => {
+  it('sends no x-stainless telemetry header the SDK would otherwise add', async () => {
+    // These names cost reachability, not privacy: each is a non-standard header, so the browser
+    // preflights the call and asks the endpoint to allow all of them BY NAME. An endpoint that
+    // allowlists headers instead of reflecting them answers that preflight with no CORS headers at
+    // all, and the platform is then unusable from a browser. Verified against the live APIs:
+    // Moonshot and Gemini both refuse the full set and both accept an Authorization-only request.
+    //
+    // The expected set is discovered from the INSTALLED SDK by watching what a stock client puts on
+    // the wire, so a version that adds another telemetry header fails here.
+    const OpenAI = (await import('openai')).default;
+    let sent: string[] = [];
+    const probe = new OpenAI({
+      apiKey: 'k', dangerouslyAllowBrowser: true,
+      fetch: async (_url: string | URL | Request, init?: { headers?: HeadersInit }) => {
+        sent = [...new Headers(init?.headers).keys()];
+        return new Response('{"data":[]}', { status: 200, headers: { 'content-type': 'application/json' } });
+      },
+    });
+    await probe.models.list();
+    const telemetry = sent.filter((h) => h.startsWith('x-stainless-'));
+    expect(telemetry.length, 'the SDK stopped sending these; drop the workaround').toBeGreaterThan(3);
+
+    const captured: Array<Record<string, unknown>> = [];
+    vi.doMock('openai', () => ({
+      default: class { constructor(opts: Record<string, unknown>) { captured.push(opts); } },
+    }));
+    vi.resetModules();
+    const { createOpenAIAdapter } = await import('../../agent/providers/openai');
+    createOpenAIAdapter('k', 'https://api.moonshot.cn/v1');
+    vi.doUnmock('openai');
+    vi.resetModules();
+
+    const headers = captured[0]?.defaultHeaders as Record<string, unknown> | undefined;
+    expect(headers, 'no defaultHeaders reached the SDK').toBeDefined();
+    for (const name of telemetry) expect(headers![name], `${name} still reaches the wire`).toBeNull();
   });
 });

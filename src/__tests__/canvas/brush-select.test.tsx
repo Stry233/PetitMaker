@@ -16,7 +16,7 @@ import { useRef } from 'react';
 import { usePointerInteraction } from '../../canvas/interaction/usePointerInteraction';
 import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import { __resetCursorController, registerCursorSurface, setToolCursor } from '../../canvas/interaction/cursor-controller';
-import { isBrushTool } from '../../canvas/interaction/selection-hover';
+import { isBrushTool } from '../../core/interaction/tool-modes';
 import { cursorCss } from '../../ui/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
 import { ToolType, TerrainType, type GridState, type PlacedObject } from '../../core/model/types';

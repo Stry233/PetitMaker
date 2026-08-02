@@ -35,7 +35,7 @@ function inComposition(g: { rgba: Uint8Array; width: number; height: number }, p
   return { rgba: out, width, height };
 }
 
-describe('PetitGlyph v2 end-to-end (buildShareCode → PNG → importFromRaster)', () => {
+describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', () => {
   it('every corpus map survives the full composed-PNG round trip exactly', async () => {
     for (const { name, state } of await corpusCases()) {
       const code = await buildShareCode(state, null, META, 1600);
@@ -71,7 +71,26 @@ describe('PetitGlyph v2 end-to-end (buildShareCode → PNG → importFromRaster)
     }
   });
 
-  it('sticky replay: re-exporting an imported generated map stays within 10% of the original payload size', async () => {
+  it('the largest map holds well past the rated envelope', async () => {
+    // The rated envelope above is what a chat app or a social platform does to an image. This
+    // pins the HEADROOM beyond it, because that is what the Reed-Solomon parity buys and what a
+    // change to RS_K or the band geometry would quietly spend. Measured at 21% parity: the full
+    // island survives a q30 recompression at half scale — roughly an image forwarded, re-saved
+    // and screenshotted again. It does not survive q25 at 0.45, which is where this stops.
+    const { state } = (await corpusCases()).find((c) => c.name === 'generated-hexia')!;
+    const code = await buildShareCode(state, null, META, 1600);
+    expect(code).not.toBeNull();
+    const comp = inComposition(code!);
+    let rgba = chromaSubsample420(comp.rgba, comp.width, comp.height);
+    rgba = jpegLike(rgba, comp.width, comp.height, 30);
+    rgba = downUp(rgba, comp.width, comp.height, 0.5);
+    const result = await importFromRaster(rgba, comp.width, comp.height);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(canonicalBytes(canonicalize(result.state))).toEqual(canonicalBytes(canonicalize(state)));
+  }, TIMEOUT);
+
+  it('re-exporting an imported map reproduces the same code', async () => {
     const { state } = (await corpusCases()).find((c) => c.name === 'generated-64')!;
     expect(state.generation).toBeDefined();
 

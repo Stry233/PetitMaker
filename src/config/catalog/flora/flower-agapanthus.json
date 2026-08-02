@@ -2,13 +2,13 @@
   "id": "flower-agapanthus",
   "category": "flora",
   "name": {
-    "en": "Agapanthus",
+    "en": "Purple Agapanthus",
     "zh": "紫百子莲",
-    "ja": "アガパンサス",
-    "ru": "Агапантус",
-    "th": "อะกาแพนทัส",
-    "id": "Agapanthus",
-    "fr": "Agapanthe"
+    "ja": "パープルアガパンサス",
+    "ru": "Фиолетовый агапантус",
+    "th": "อะกาแพนทัสม่วง",
+    "id": "Agapanthus Ungu",
+    "fr": "Agapanthe violette"
   },
   "icon": "flower-agapanthus",
   "width": 1,

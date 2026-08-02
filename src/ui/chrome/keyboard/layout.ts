@@ -91,14 +91,14 @@ export const KEY_ROWS: KeyDef[][] = [
     { base: 'shift', label: 'Shift', w: 2.75, layerOf: 'shift' },
   ],
   [
-    // Ctrl carries the rebindable 'multi-select' command, so like Shift it is SELECTABLE rather
-    // than a layer toggle — the layer chips above the board switch layers. Alt stays a toggle
-    // because no command binds to it: a modifier keycap becomes bindable only once something is
-    // actually bound to it, or clicking it would offer to edit nothing.
+    // Ctrl carries the rebindable 'multi-select' command and Alt the 'break curve handle' one, so
+    // like Shift they are SELECTABLE rather than layer toggles — the layer chips above the board
+    // switch layers. A modifier keycap becomes bindable once something is bound to it; one with
+    // nothing on it would offer to edit nothing.
     { base: 'ctrl', label: 'Ctrl', w: 1.5, layerOf: 'ctrl' },
-    FIX('alt', 'Alt', 1.5, 'alt'),
-    FIX('space', 'Space', 9),
-    FIX('alt', 'Alt', 1.5, 'alt'),
+    { base: 'alt', label: 'Alt', w: 1.5, layerOf: 'alt' },
+    { base: 'space', label: 'Space', w: 9 },
+    { base: 'alt', label: 'Alt', w: 1.5, layerOf: 'alt' },
     { base: 'ctrl', label: 'Ctrl', w: 1.5, layerOf: 'ctrl' },
   ],
 ];
@@ -176,13 +176,12 @@ export const CATEGORY_ORDER: CommandCategory[] = [
 ];
 
 /** Build a normalized combo string from a KeyboardEvent (for chord recording). Returns null for a
- *  bare modifier press or Space (reserved for the pan-hold gesture). Numpad keys resolve to their
- *  own tokens via the shared `eventKeyToken`, so recording matches what the engine will dispatch. */
+ *  bare modifier press. Numpad keys resolve to their own tokens via the shared `eventKeyToken`, so
+ *  recording matches what the engine will dispatch. */
 export function comboFromEvent(e: KeyboardEvent): string | null {
   const k = e.key;
   if (k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return null;
   const char = eventKeyToken(e); // 'escape', 'backspace', 'num5', 'b', 'space', …
-  if (char === 'space') return null; // reserved for the pan-hold gesture
   const parts: string[] = [];
   if (e.ctrlKey || e.metaKey) parts.push('ctrl');
   if (e.altKey) parts.push('alt');

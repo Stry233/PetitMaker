@@ -12,7 +12,6 @@ import helvetikerBold from 'three/examples/fonts/helvetiker_bold.typeface.json';
 import { ItemCategory, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
 import { ELEVATION_MAX } from '../../../core/model/constants';
 import { maxRenderScale } from '../../../core/runtime/device-quality';
-import { anyOverlayOpen } from '../../../core/runtime/overlay-state';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { resolveHistoryFlash } from '../../map2d/layers/error-flash';
@@ -32,7 +31,7 @@ import { isMotionReduced } from '../../map2d/motion-state';
 import { getCell } from '../../../core/model/grid-model';
 import { Overlay3D } from './overlay3d';
 import { Projection3D } from '../interaction/projection';
-import type { ActiveView } from '../../view-projection';
+import type { ActiveView, ViewCamera } from '../../view-projection';
 import { CommandType } from '../../../core/model/types';
 import { cellsAffectedByLayerToggle } from '../../map2d/layers/layer-visibility';
 import { CHUNK_SIZE } from '../../../core/model/constants';
@@ -43,6 +42,7 @@ import { modelGeometry, disposeModels } from '../models/build-model';
 import { introStartOffset, reportedCameraAngle, type CameraAngle } from '../capture';
 import { clamp } from '../../../core/model/math';
 import { makeCamera, makeControls, frameBounds, type MapBounds } from './camera-controls';
+import { CameraInertia } from './camera-inertia';
 import { CameraRestDetector } from './camera-rest';
 import { layerToY, mapCenterOffset, cellCornerWorld } from '../core/coords';
 
@@ -105,7 +105,6 @@ function maxHeight(state: GridState): number {
   return Math.min(top, ELEVATION_MAX);
 }
 
-const MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
 
 // Proximity fade: object fragments dissolve (ordered-dither screen door) as they come within
 // FADE_START world units of the camera, fully gone inside FADE_END — so pushing the camera into or
@@ -344,7 +343,6 @@ export class ThreeScene {
   private renderWindow = 0;
   private running = true;
   private raf = 0;
-  private keys = new Set<string>();
   private sun!: THREE.DirectionalLight;
   /** Per-chunk terrain, rebuilt chunk-by-chunk when cells change. */
   private terrainChunks = new Map<string, TerrainChunk>();
@@ -518,8 +516,6 @@ export class ThreeScene {
     this.renderer.shadowMap.needsUpdate = true;
 
     window.addEventListener('resize', this.onResize);
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
     this.requestRender();
     this.loop();
   }
@@ -674,7 +670,7 @@ export class ThreeScene {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.loop);
     this.frame++;
-    let move = this.applyKeyPan();
+    let move = this.tickInertia();
     if (this.introActive) { this.animateIntro(); move = true; }
     if (this.camTween) { this.animateCamTween(); move = true; }
     // Gentle water swell updates its VERTICES on every second frame (the halved
@@ -697,61 +693,21 @@ export class ThreeScene {
     if (move) this.renderWindow = Math.max(this.renderWindow, 2);
     if (this.renderWindow <= 0) return;
     this.renderWindow--;
-    // Damping decays exponentially, so after a gesture the controls keep applying
-    // sub-visible camera motion for over a second — and with the water animation
-    // holding the render window open, every one of those frames re-antialiases
-    // all thin silhouettes (strobing borders on small models). Once the detector
-    // sees visual rest, controls.update() is skipped so the pose truly freezes.
-    // The detector is fed the pose EVERY frame and is purely observational:
-    // motion from any source (a new gesture applies inside the controls' own
-    // handlers, key pan and view changes write the camera directly) unfreezes
-    // it by itself — no wake calls that a damping-tail 'change' event could spam.
+    // A camera glide decays exponentially, so it approaches rest without reaching it — and with the
+    // water animation holding the render window open, every one of those frames re-antialiases all
+    // thin silhouettes (strobing borders on small models). Once the detector sees visual rest, the
+    // controls' update is skipped so the pose truly freezes. The detector is fed the pose EVERY
+    // frame and is purely observational: motion from any source (a gesture, the glide, key pan, a
+    // view change — all of which write the camera directly) unfreezes it by itself.
     if (!this.introActive && !this.camTween) {       // intro/tween drive the camera directly; controls resume after
       if (!this.cameraRest.isResting()) {
-        const damping = this.controls.update();      // applies damping; true while still settling
-        if (damping) this.renderWindow = Math.max(this.renderWindow, 2);
+        if (this.controls.update()) this.renderWindow = Math.max(this.renderWindow, 2);
       }
       const restingNow = this.cameraRest.update(this.camera.position.toArray(), this.camera.quaternion.toArray(), this.controls.getDistance());
       if (!restingNow) this.bus?.emit('viewport-changed', { zoom: this.zoomPercent() / 100 });
     }
     this.renderFrame();
   };
-
-  private onKeyDown = (e: KeyboardEvent): void => {
-    if (this.editorInput) return; // the app's WASD hook pans via the camera verbs
-    const k = e.key.toLowerCase();
-    if (!MOVE_KEYS.has(k)) return;
-    if (anyOverlayOpen()) return; // a modal is foregrounded over the scene — keys belong to it
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    this.keys.add(k);
-    this.requestRender();
-  };
-
-  private onKeyUp = (e: KeyboardEvent): void => { this.keys.delete(e.key.toLowerCase()); };
-
-  /** WASD / arrow keys glide the camera across the ground plane (forward = where
-   *  you're looking, flattened to the ground; speed scales with zoom distance).
-   *  Returns true if it moved this frame. */
-  private applyKeyPan(): boolean {
-    if (this.keys.size === 0) return false;
-    let f = 0, r = 0;
-    if (this.keys.has('w') || this.keys.has('arrowup')) f += 1;
-    if (this.keys.has('s') || this.keys.has('arrowdown')) f -= 1;
-    if (this.keys.has('d') || this.keys.has('arrowright')) r += 1;
-    if (this.keys.has('a') || this.keys.has('arrowleft')) r -= 1;
-    if (f === 0 && r === 0) return false;
-    const cam = this.camera, tgt = this.controls.target;
-    const fwd = new THREE.Vector3().subVectors(tgt, cam.position);
-    fwd.y = 0;
-    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1); else fwd.normalize();
-    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);     // camera-right on the ground
-    const step = cam.position.distanceTo(tgt) * 0.02;
-    const move = new THREE.Vector3().addScaledVector(fwd, f * step).addScaledVector(right, r * step);
-    cam.position.add(move);
-    tgt.add(move);
-    return true;
-  }
 
   private addLights(): void {
     // Bright sky/ground fill keeps every face vivid (shadows stay soft, not muddy);
@@ -1649,20 +1605,103 @@ export class ThreeScene {
           }
           this.requestRender();
         },
-        camera: {
-          pan: (dx, dy) => this.panCamera(dx, dy),
-          zoomStep: (dir) => this.dollyBy(dir > 0 ? 1 / 1.15 : 1.15),   // wheel notch: instant
-          zoomBy: (factor) => this.dollyBy(1 / factor),                  // wheel/pinch scroll: instant
-          zoomStepAnimated: (dir) => this.animateDolly(dir > 0 ? 0.8 : 1.25), // toolkit button: glide
-          orbit: (dx, dy) => this.orbitBy(dx * 0.005, dy * 0.005),
-          orbitTwist: (dRad) => this.orbitBy(-dRad, 0),
-          tilt: (v) => this.animateTilt(v),      // toolkit tilt steppers: glide
-          fitToMap: () => this.animateFit(),     // toolkit fit: glide
-          wheelZooms: true, // scroll dollies (a ground-plane pan would read as W/S)
-        },
+        camera: this.cameraVerbs(),
       };
     }
     return this.editorView;
+  }
+
+  /** The camera verbs on their own, without the editing overlay `asEditorView` builds. The shot
+   *  editor drives the same camera through the same gestures and never needs ghosts or rings. */
+  cameraVerbs(): ViewCamera {
+    if (!this.verbs) {
+      this.verbs = {
+        pan: (dx, dy) => this.dragCamera('pan', dx, dy),
+        // Both eased through the zoom accumulator, so a notch reads as a short glide rather than a
+        // jump and a run of them adds up into one continuous move — the same treatment the orbit
+        // verb gets, which is why horizontal scroll already felt smooth and this did not.
+        zoomStep: (dir) => this.dollyEased(dir > 0 ? 1 / 1.15 : 1.15),
+        zoomBy: (factor) => this.dollyEased(1 / factor),
+        zoomStepAnimated: (dir) => this.animateDolly(dir > 0 ? 0.8 : 1.25), // toolkit button: glide
+        orbit: (dx, dy) => this.dragCamera('orbit', dx, dy),
+        // Twist arrives in radians, not screen px, so it is applied raw: feeding it to the inertia
+        // would mix units into one velocity.
+        orbitTwist: (dRad) => this.orbitBy(-dRad, 0),
+        tilt: (v) => this.animateTilt(v),      // toolkit tilt steppers: glide
+        fitToMap: () => this.animateFit(),     // toolkit fit: glide
+        endGesture: () => {
+          // Decorative continuation the user did not ask for: under reduced motion the camera
+          // stops where the hand left it.
+          if (isMotionReduced()) this.inertia.cancel();
+          else this.inertia.release(performance.now());
+        },
+        wheelZooms: true, // scroll dollies (a ground-plane pan would read as W/S)
+      };
+    }
+    return this.verbs;
+  }
+
+  private verbs: ViewCamera | null = null;
+  private inertia = new CameraInertia();
+  private inertiaMode: 'orbit' | 'pan' = 'pan';
+  /**
+   * The dolly's own accumulator. It holds the LOG of the pending distance factor, because a dolly
+   * composes by multiplication and the accumulator adds: log turns "1.15 then 1.15" into one
+   * additive 2x0.14 that drains to the same place. Its floor is therefore in log units, not pixels
+   * (0.0008 is under a tenth of a percent of distance), and it follows a little slower than a drag
+   * — a wheel notch is a discrete event with no hand to keep up with, so it can afford to glide.
+   */
+  private zoomInertia = new CameraInertia({ minTravel: 0.0008, followTau: 90 });
+
+  /** Screen px of drag → radians of orbit. The one place the two units meet, so the live drag and
+   *  the glide that follows it cannot use different rates. */
+  private static readonly ORBIT_RAD_PER_PX = 0.005;
+
+  /** Apply travel through one of the two drag verbs. */
+  private applyDrag(mode: 'orbit' | 'pan', dx: number, dy: number): void {
+    if (mode === 'orbit') {
+      this.orbitBy(dx * ThreeScene.ORBIT_RAD_PER_PX, dy * ThreeScene.ORBIT_RAD_PER_PX);
+    } else {
+      this.panCamera(dx, dy);
+    }
+  }
+
+  /**
+   * A drag step. It is NOT applied here: it goes into the inertia accumulator and the render loop
+   * drains it, which is what gives the camera weight going in as well as coming out. Reduced motion
+   * skips the accumulator entirely and applies the step at once.
+   */
+  private dragCamera(mode: 'orbit' | 'pan', dx: number, dy: number): void {
+    if (isMotionReduced()) { this.applyDrag(mode, dx, dy); return; }
+    if (mode !== this.inertiaMode) {
+      // Travel measured while orbiting must never be applied as a pan. Hand back what is owed
+      // through the verb that earned it, then switch.
+      const owed = this.inertia.flush();
+      if (owed) this.applyDrag(this.inertiaMode, owed.dx, owed.dy);
+      this.inertiaMode = mode;
+    }
+    this.inertia.sample(dx, dy, performance.now());
+    this.requestRender(); // nothing moved yet — the loop has to run to drain it
+  }
+
+  /** One frame of the camera catching up: the tail of a live drag, or the glide after one.
+   *  Returns whether the camera moved. */
+  private tickInertia(): boolean {
+    const now = performance.now();
+    let moved = false;
+    const step = this.inertia.step(now);
+    if (step) { this.applyDrag(this.inertiaMode, step.dx, step.dy); moved = true; }
+    const zoom = this.zoomInertia.step(now);
+    if (zoom) { this.dollyBy(Math.exp(zoom.dx)); moved = true; }
+    return moved;
+  }
+
+  /** A wheel/pinch dolly, eased. Reduced motion applies it outright: the smoothing is decoration,
+   *  and the zoom itself is not. */
+  private dollyEased(factor: number): void {
+    if (isMotionReduced()) { this.dollyBy(factor); return; }
+    this.zoomInertia.sample(Math.log(factor), 0, performance.now());
+    this.requestRender();
   }
 
   // ── Editor camera verbs ────────────────────────────────────────────────────
@@ -1838,6 +1877,8 @@ export class ThreeScene {
    *  its GL resources warm); resume() restarts it. No-ops after dispose(). */
   pause(): void {
     this.running = false;
+    this.inertia.cancel(); // a glide must not resume when the view comes back, minutes later
+    this.zoomInertia.cancel();
     cancelAnimationFrame(this.raf);
   }
 
@@ -1862,8 +1903,6 @@ export class ThreeScene {
     }
     this.terrainChunks.clear();
     window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
     this.controls.removeEventListener('change', this.requestRender);
     this.controls.dispose();
     // Free per-instance buffers (instanceMatrix/instanceColor). NOT their

@@ -2,13 +2,13 @@
   "id": "flower-sunflower",
   "category": "flora",
   "name": {
-    "en": "Sunflower",
-    "zh": "向日葵",
-    "ja": "ヒマワリ",
-    "ru": "Подсолнух",
-    "th": "ทานตะวัน",
-    "id": "Bunga Matahari",
-    "fr": "Tournesol"
+    "en": "Yellow Sunflower",
+    "zh": "黄向日葵",
+    "ja": "イエローヒマワリ",
+    "ru": "Жёлтый подсолнух",
+    "th": "ทานตะวันเหลือง",
+    "id": "Bunga Matahari Kuning",
+    "fr": "Tournesol jaune"
   },
   "icon": "flower-sunflower",
   "width": 1,

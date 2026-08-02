@@ -11,7 +11,7 @@
  */
 import { useEditorStore } from '../../state/store';
 import { singleSelection, selectedObjectIds } from '../../state/selection';
-import { getActiveView } from '../../canvas/active-view';
+import { getActiveToolManager, getActiveView } from '../../canvas/active-view';
 import { getCatalogItem } from '../../state/catalog';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import { petitWindow } from '../../core/runtime/window-bridge';
@@ -29,6 +29,11 @@ export type CommandCategory =
 export interface CommandContext {
   openBuild: (mode: DesignMode) => void;
   handleTileAction: (spec: TileSpec) => void;
+  /** Put the phone menu away, or bring it back. Wired in App rather than writing `menuCollapsed`
+   *  here, because opening the menu also means "start fresh": it retires the restore offer, which
+   *  lives in React state beside the phone. Flipping the flag alone would leave that bubble up
+   *  over an open menu. */
+  toggleMenu: () => void;
   /** Pop the Generate region's OWN undo/redo stack (ui/hooks/useRegionBrush) — a painted
    *  region is a scope for a future generate, not a map edit, so it keeps a history
    *  separate from the command executor's. Return false when there was nothing to pop
@@ -102,8 +107,21 @@ function rotateArmedOrSelected(delta: 90 | -90): void {
   else rotatePendingPlacement(delta);
 }
 
+/** A multi-click gesture in progress (the curve's anchors) answers these keys first: while one is
+ *  being drawn, Escape and Delete plainly mean "that thing I am drawing", not the selection. */
+function pendingGesture(): { cancel: () => boolean; undoStep: () => boolean } {
+  const mgr = getActiveToolManager();
+  const tool = mgr?.getActiveTool();
+  const ctx = mgr?.getContext();
+  return {
+    cancel: () => (tool && ctx ? tool.cancelPending?.(ctx) === true : false),
+    undoStep: () => (tool && ctx ? tool.undoPendingStep?.(ctx) === true : false),
+  };
+}
+
 function deleteSelected(): void {
   const s = store();
+  if (pendingGesture().undoStep()) return;
   if (s.deletePopover) return;
   // The delete popover confirms ONE block, so a single selection still routes through it.
   const sel = singleSelection(s.selection);
@@ -122,9 +140,20 @@ function deleteSelected(): void {
   reportDeleteGroup(s.eventBus, translate, result);
 }
 
+/**
+ * Escape puts down whatever is currently "held": a curve being drawn, then an ARMED catalog item,
+ * then the selection.
+ *
+ * One at a time, armed item first, because they are two different things to be rid of and the armed
+ * item is the one the pointer is about to act on — clearing both at once would take a selection the
+ * user still wanted while they were only trying to stop placing. Disarming used to need a trip back
+ * to the panel to click the item off.
+ */
 function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
+  if (pendingGesture().cancel()) return;
+  if (s.selectedItemId) { s.setSelectedItemId(null); return; }
   s.clearSelection();
 }
 
@@ -172,6 +201,11 @@ export const COMMANDS: EditorCommand[] = [
   // a no-op and the discrete engine skips it. Its key drives setConstrainKey (see useEditorShortcuts).
   { id: 'tool.constrain', category: 'tool', labelKey: 'shortcut.shape_constrain', defaultCombo: 'shift', continuous: true, run: () => {} },
 
+  // Curve handle break (HELD): dragging one end of an anchor's direction line turns the other with
+  // it; held, the two sides turn apart. Continuous — CurveHandles reads
+  // modifier-state.isBreakHandleHeld, so `run` is a no-op and the discrete engine skips it.
+  { id: 'tool.break_handle', category: 'tool', labelKey: 'shortcut.break_handle', defaultCombo: 'alt', continuous: true, run: () => {} },
+
   // Brush size + active layer
   { id: 'brush.bigger',  category: 'brush', labelKey: 'a11y.brush_increase', defaultCombo: ']', run: () => { const s = store(); s.setBrushSize(Math.min(5, s.brushSize + 1)); } },
   { id: 'brush.smaller', category: 'brush', labelKey: 'a11y.brush_decrease', defaultCombo: '[', run: () => { const s = store(); s.setBrushSize(Math.max(1, s.brushSize - 1)); } },
@@ -201,6 +235,11 @@ export const COMMANDS: EditorCommand[] = [
   { id: 'camera.pan_left',  category: 'camera', labelKey: 'kbd.pan_left',  defaultCombo: 'a', continuous: true, run: () => {} },
   { id: 'camera.pan_down',  category: 'camera', labelKey: 'kbd.pan_down',  defaultCombo: 's', continuous: true, run: () => {} },
   { id: 'camera.pan_right', category: 'camera', labelKey: 'kbd.pan_right', defaultCombo: 'd', continuous: true, run: () => {} },
+
+  // Held: a left drag pans the camera while this is down, in ANY tool mode, so a brush never has to
+  // fight the camera. Continuous, so the pointer machine reads `modifier-state.isPanDragHeld` and the
+  // discrete engine skips `run`.
+  { id: 'camera.pan_drag', category: 'camera', labelKey: 'shortcut.pan_drag', defaultCombo: 'space', continuous: true, run: () => {} },
   { id: 'view.toggle',     category: 'view',   labelKey: 'shortcut.toggle_view', defaultCombo: '`',     run: () => { const s = store(); s.setViewMode(s.viewMode === '2d' ? '3d' : '2d'); } },
 
   // History (reserved — not rebindable/stealable). While painting a Generate region,
@@ -218,8 +257,16 @@ export const COMMANDS: EditorCommand[] = [
 
   // App actions
   { id: 'app.generate', category: 'app', labelKey: 'menu.generate', defaultCombo: 'ctrl+g', run: (c) => doTile(c, 'generate') },
-  { id: 'app.new',      category: 'app', labelKey: 'menu.new',      defaultCombo: 'ctrl+n', run: (c) => doTile(c, 'new') },
+  // Ctrl+N belongs to the browser (new window) and preventDefault does not reach it, so the editor
+  // asks for the modifier the browser has left alone rather than binding a key that never arrives.
+  { id: 'app.new',      category: 'app', labelKey: 'menu.new',      defaultCombo: 'ctrl+alt+n', run: (c) => doTile(c, 'new') },
+  // The two exports on the keys their output matches: the save file goes on Save, the picture on
+  // Print. Both shadow a browser binding, which the engine's preventDefault takes care of on a
+  // match — so unbinding either here hands that key back to the browser, as it should.
+  { id: 'app.export_json',  category: 'app', labelKey: 'menu.export', defaultCombo: 'ctrl+s', run: (c) => doTile(c, 'export') },
+  { id: 'app.export_image', category: 'app', labelKey: 'menu.image',  defaultCombo: 'ctrl+p', run: (c) => doTile(c, 'image') },
   { id: 'app.help',     category: 'app', labelKey: 'menu.help',     defaultCombo: 'shift+?', run: () => store().setModal('help', true) },
+  { id: 'app.menu',     category: 'app', labelKey: 'shortcut.toggle_menu', defaultCombo: 'm', run: (c) => c.toggleMenu() },
 
   // Overlay toggles
   { id: 'overlay.grid',    category: 'overlay', labelKey: 'shortcut.toggle_grid',        defaultCombo: 'shift+g', run: () => { const s = store(); s.setShowGrid(!s.showGrid); } },

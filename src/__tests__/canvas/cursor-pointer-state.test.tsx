@@ -63,7 +63,7 @@ function pointer(type: string, init: MouseEventInit & { pointerType?: string }):
 
 /** Mount, and hand the container to the controller as the cursor surface (useCursor's job in
  *  the app; this suite is about what the pointer machine publishes, not about ownership). */
-function mount(tool: 'hand-open' | 'select'): HTMLElement {
+function mount(tool: 'move' | 'select'): HTMLElement {
   const { getByTestId } = render(<Host />);
   const el = getByTestId('canvas');
   registerCursorSurface(el);
@@ -80,36 +80,36 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); setActiveView(null); __resetCursorController(); });
 
-describe('every path that pans closes the hand', () => {
-  it('closes it for the 2D Hand LEFT-drag, which the tool layer pans', () => {
+describe('every path that pans keeps the move cursor', () => {
+  it('holds it for the 2D move-tool LEFT-drag, which the tool layer pans', () => {
     // The primary 2D pan gesture. HandTool deliberately does not track its own grip, so if the
     // machine does not report this drag, nothing ever closes the hand.
     const { view } = makeView({ leftDragPans: true });
     setActiveView(view);
-    const el = mount('hand-open');
-    expect(el.style.cursor).toBe(cursorCss('hand-open'));
+    const el = mount('move');
+    expect(el.style.cursor).toBe(cursorCss('move'));
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 100, clientY: 100 }));
-    expect(el.style.cursor).toBe(cursorCss('hand-closed'));
+    expect(el.style.cursor).toBe(cursorCss('move'));
 
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 130, clientY: 100 }));
-    expect(el.style.cursor).toBe(cursorCss('hand-open'));
+    expect(el.style.cursor).toBe(cursorCss('move'));
   });
 
-  it('closes it for the 3D left-drag, which the MACHINE pans, and reports it exactly once', () => {
+  it('holds it for the 3D left-drag, which the MACHINE pans, and reports it exactly once', () => {
     const { view, camera } = makeView({ canOrbit: true, leftDragPans: false });
     setActiveView(view);
-    const el = mount('hand-open');
+    const el = mount('move');
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 100, clientY: 100 }));
-    expect(el.style.cursor).toBe(cursorCss('hand-closed'));
+    expect(el.style.cursor).toBe(cursorCss('move'));
     // One owner of the pan: the machine pans here, and the 2D branch must not also fire.
     window.dispatchEvent(pointer('pointermove', { button: 0, buttons: 1, clientX: 130, clientY: 100 }));
     expect(camera.pan).toHaveBeenCalledTimes(1);
     expect(camera.pan).toHaveBeenCalledWith(-30, 0);
 
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 130, clientY: 100 }));
-    expect(el.style.cursor).toBe(cursorCss('hand-open'));
+    expect(el.style.cursor).toBe(cursorCss('move'));
   });
 
   it('does NOT claim a pan for an idle placer in a view that pans left-drag through the tool', () => {
@@ -130,7 +130,7 @@ describe('a drag survives the pointer leaving the canvas', () => {
     // Orbiting to the window edge, or space-panning across a floating panel, is ONE gesture.
     const { view } = makeView({ canOrbit: true, leftDragPans: false });
     setActiveView(view);
-    const el = mount('hand-open');
+    const el = mount('move');
 
     el.dispatchEvent(pointer('pointerdown', { button: 2, buttons: 2, clientX: 100, clientY: 100 }));
     expect(el.style.cursor).toBe(cursorCss('orbit'));
@@ -141,15 +141,15 @@ describe('a drag survives the pointer leaving the canvas', () => {
   it('clears it on a leave with no button held, which means the gesture is over', () => {
     const { view } = makeView({ canOrbit: true, leftDragPans: false });
     setActiveView(view);
-    const el = mount('hand-open');
+    const el = mount('move');
 
     el.dispatchEvent(pointer('pointerdown', { button: 2, buttons: 2, clientX: 100, clientY: 100 }));
     el.dispatchEvent(pointer('pointerleave', { buttons: 0, clientX: 0, clientY: 100 }));
-    expect(el.style.cursor).toBe(cursorCss('hand-open'));
+    expect(el.style.cursor).toBe(cursorCss('move'));
   });
 });
 
-describe('move is published from where the pointer IS', () => {
+describe('the grab is published from where the pointer IS', () => {
   const OBJ: PlacedObject = {
     id: 'tree-1', catalogId: 'tree-apple', position: { x: 5, y: 5 },
     rotation: 0, elevation: 0,
@@ -165,14 +165,14 @@ describe('move is published from where the pointer IS', () => {
     });
   }
 
-  it('is move over the selected object and select everywhere else on the same map', () => {
+  it('is an open hand over the selected object and select everywhere else on the same map', () => {
     const { view } = makeView({ leftDragPans: true });
     setActiveView(view);
     withSelectedObject();
     const el = mount('select');
 
     el.dispatchEvent(pointer('pointermove', { clientX: 55, clientY: 55 })); // macro (5,5)
-    expect(el.style.cursor).toBe(cursorCss('move'));
+    expect(el.style.cursor).toBe(cursorCss('hand-open'));
 
     el.dispatchEvent(pointer('pointermove', { clientX: 155, clientY: 155 })); // macro (15,15)
     expect(el.style.cursor).toBe(cursorCss('select'));
@@ -185,7 +185,7 @@ describe('move is published from where the pointer IS', () => {
     const el = mount('select');
 
     el.dispatchEvent(pointer('pointermove', { clientX: 55, clientY: 55 }));
-    expect(el.style.cursor).toBe(cursorCss('move'));
+    expect(el.style.cursor).toBe(cursorCss('hand-open'));
     el.dispatchEvent(pointer('pointerleave', { buttons: 0, clientX: 0, clientY: 0 }));
     expect(el.style.cursor).toBe(cursorCss('select'));
   });
@@ -197,7 +197,7 @@ describe('move is published from where the pointer IS', () => {
     const el = mount('select');
 
     el.dispatchEvent(pointer('pointermove', { clientX: 55, clientY: 55 }));
-    expect(el.style.cursor).toBe(cursorCss('move'));
+    expect(el.style.cursor).toBe(cursorCss('hand-open'));
     el.dispatchEvent(pointer('pointermove', { clientX: 55, clientY: 55, pointerType: 'touch' }));
     expect(el.style.cursor).toBe(cursorCss('select'));
   });

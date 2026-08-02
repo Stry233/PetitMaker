@@ -11,14 +11,14 @@ import { useEffect } from 'react';
 import { ShortcutManager } from '../../tools/shortcut-manager';
 import { COMMANDS, COMMAND_BY_ID, ALIASES, type CommandContext } from '../keybindings/commands';
 import { effectiveCombo, useKeybinds } from '../keybindings/store';
-import { setConstrainKey, setMultiSelectKey } from '../../core/runtime/modifier-state';
+import { setBreakHandleKey, setConstrainKey, setMultiSelectKey, setPanDragKey } from '../../core/runtime/modifier-state';
 
 /** The React-provided deps the command handlers need (everything else is read from the store). */
 type Deps = CommandContext;
 
-export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo }: Deps): void {
+export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu }: Deps): void {
   useEffect(() => {
-    const ctx: CommandContext = { openBuild, handleTileAction, regionUndo, regionRedo };
+    const ctx: CommandContext = { openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu };
     const build = (): ShortcutManager => {
       const sc = new ShortcutManager();
       const overrides = useKeybinds.getState().overrides;
@@ -31,12 +31,16 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
         const cmd = COMMAND_BY_ID.get(alias.commandId);
         if (cmd && !cmd.continuous) sc.register(alias.combo, () => cmd.run(ctx)); // continuous = held (pan), driven by use-view-shortcuts
       }
-      // Keep the shape-constrain and multi-select modifiers (held keys, read by modifier-state) in
-      // sync with their rebindable bindings — '' when the user unbinds one (disabled).
-      const cc = effectiveCombo(overrides, 'tool.constrain');
-      setConstrainKey(cc ? cc.split('+').pop()! : '');
-      const mc = effectiveCombo(overrides, 'selection.multi');
-      setMultiSelectKey(mc ? mc.split('+').pop()! : '');
+      // Keep the held modifiers (read by modifier-state) in sync with their rebindable bindings —
+      // '' when the user unbinds one (disabled).
+      const heldKey = (id: string) => {
+        const combo = effectiveCombo(overrides, id);
+        return combo ? combo.split('+').pop()! : '';
+      };
+      setConstrainKey(heldKey('tool.constrain'));
+      setMultiSelectKey(heldKey('selection.multi'));
+      setBreakHandleKey(heldKey('tool.break_handle'));
+      setPanDragKey(heldKey('camera.pan_drag'));
       return sc;
     };
     let sc = build();
@@ -45,5 +49,5 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
     // Rebuild the binding table whenever the user rebinds / clears / resets a shortcut.
     const unsub = useKeybinds.subscribe(() => { sc = build(); });
     return () => { window.removeEventListener('keydown', onKey); unsub(); };
-  }, [openBuild, handleTileAction, regionUndo, regionRedo]);
+  }, [openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu]);
 }

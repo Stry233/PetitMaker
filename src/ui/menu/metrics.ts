@@ -19,6 +19,16 @@ import { colors } from '../styles';
  */
 export const CANVAS = { w: 3754, h: 1918 } as const;
 
+/**
+ * The lowest design-canvas y the UI actually reaches: the bottom of the Generate spoke, the tallest
+ * thing the app opens (measured from the running app, in every one of its modes).
+ *
+ * The canvas maps onto viewport HEIGHT, so at the plain mapping everything fits by construction and
+ * this is the only number that says how much room is left over. Anything that draws the UI larger
+ * than that mapping — the touch boost — may only spend the gap between here and CANVAS.h.
+ */
+export const CONTENT_BOTTOM_Y = 1724;
+
 /** Each screen-state's top-left on the canvas (= where it appears on screen). */
 export const HOME_POS = { x: 44, y: 366 } as const;             // home card
 export const COLLAPSED = { x: 108, y: 41, w: 176, h: 233 } as const; // collapsed phone (top-left)

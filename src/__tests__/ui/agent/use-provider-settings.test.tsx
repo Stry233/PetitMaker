@@ -10,12 +10,19 @@ import { useAgentStore } from '../../../agent/store';
 import { useProviderSettings } from '../../../ui/menu/agent/useProviderSettings';
 
 // The probe never identifies a platform here, so detection always "fails".
+/** Swapped per test to make listModels() throw (an unreachable endpoint) instead of listing. */
+const listModels = { fn: async (): Promise<string[]> => [] };
+
 vi.mock('../../../agent/providers', () => ({
   PROVIDERS: new Proxy(
     {},
-    { get: () => ({ create: () => ({ listModels: async () => [] }), modelFilter: () => true, fallbackModels: [] }) },
+    { get: () => ({ create: () => ({ listModels: () => listModels.fn() }), modelFilter: () => true, fallbackModels: [] }) },
   ),
   identifyProviderByProbe: vi.fn(async () => null),
+  // A single-host provider resolves to nothing, which is the shape every provider in this file has.
+  REGION_SPLIT: new Set<string>(),
+  baseUrlFor: () => undefined,
+  resolveBaseUrl: vi.fn(async () => undefined),
 }));
 
 const backing = new Map<string, string>();
@@ -71,6 +78,45 @@ describe('useProviderSettings — setup-open timing', () => {
     const s = useAgentStore.getState();
     expect(s.modelList.claude).toEqual([]);       // no fetched models
     expect(s.settings.model.claude).toBe('');     // stale selection dropped
+  });
+
+  it('offers no model at all when the endpoint is unreachable', async () => {
+    // An unreachable endpoint must leave the dropdown EMPTY rather than showing a model the user
+    // cannot actually run: every model offered has to have come from that endpoint saying so.
+    // The user types one by hand instead.
+    listModels.fn = async () => { throw new Error('CORS / offline'); };
+    try {
+      setStore(true, { claude: 'sk-ant-x' });
+      useAgentStore.setState((s) => ({
+        settings: { ...s.settings, model: { ...s.settings.model, claude: 'remembered-model' } },
+        modelList: { claude: ['remembered-model'] },
+      }));
+      const { result } = renderHook(() => useProviderSettings(vi.fn()));
+      await act(async () => { await result.current.refreshModels(); });
+      const s = useAgentStore.getState();
+      expect(s.modelList.claude).toEqual([]);
+      expect(s.settings.model.claude).toBe('');
+    } finally {
+      listModels.fn = async () => [];
+    }
+  });
+
+  it('never selects a preferred model the live list does not offer', async () => {
+    // preferredModel RANKS the live list; it is not a value the app can fall back to. A platform
+    // whose preferred id is stale must land on a model the endpoint actually named.
+    listModels.fn = async () => ['some-other-model'];
+    try {
+      setStore(true, { claude: 'sk-ant-x' });
+      useAgentStore.setState((s) => ({
+        settings: { ...s.settings, model: { ...s.settings.model, claude: '' } },
+        modelList: {},
+      }));
+      const { result } = renderHook(() => useProviderSettings(vi.fn()));
+      await act(async () => { await result.current.refreshModels(); });
+      expect(useAgentStore.getState().settings.model.claude).toBe('some-other-model');
+    } finally {
+      listModels.fn = async () => [];
+    }
   });
 
   it('saveKey falls back to Custom when the platform cannot be identified (no auto-chooser)', async () => {

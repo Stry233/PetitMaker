@@ -1,12 +1,15 @@
 // src/core/provenance/tracker.ts
 import { cellKey } from '../model/grid-model';
 import type { MacroCoord } from '../model/types';
-import { applyOpToTaint, deriveSummary, type OpKind, sourceClass } from './policy';
+import { applyOpToTaint, deriveSummary, dominantAuthor, type OpKind, sourceClass } from './policy';
 import { APP_VERSION } from '../../version';
 import {
   ProvSource, type SourceContext, type UnitTaint, type ProvenanceOperation,
   type ProvenanceState, type MapProvenanceSummary, type OperationScope, type ActorType, type DisclosureClass,
 } from './types';
+
+/** Whose work a unit is — see `dominantAuthor`. */
+export type Author = 'ai' | 'human' | 'procedural' | null;
 
 export interface TaintDelta {
   cells: { x: number; y: number; before: UnitTaint | null; after: UnitTaint | null }[];
@@ -148,6 +151,16 @@ export class ProvenanceTracker {
     }
     this.state.summary = null;
     return merged;
+  }
+
+  /** Whose work this cell is (see `dominantAuthor`); null if nothing has touched it. */
+  cellAuthor(x: number, y: number): Author {
+    return dominantAuthor(this.state.cellTaint[y]?.[x] ?? null);
+  }
+
+  /** Whose work this object is; null if it predates the ledger (a map loaded without provenance). */
+  objectAuthor(id: string): Author {
+    return dominantAuthor(this.state.objectTaint.get(id) ?? null);
   }
 
   getSummary(): MapProvenanceSummary {

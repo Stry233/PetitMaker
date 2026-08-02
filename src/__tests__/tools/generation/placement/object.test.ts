@@ -16,12 +16,11 @@ function ctxFor(size = 12) {
 }
 
 describe('placement/object', () => {
-  it('places flora on flat grass and returns the object with a deterministic id', () => {
+  it('places flora on flat grass and returns the object it put on the map', () => {
     const { state, ctx } = ctxFor();
     const placed = tryPlace(ctx, floraId, 5, 5);
-    expect(placed?.id).toBe('gen-42-0');
     expect(state.objects.size).toBe(1);
-    expect([...state.objects.values()][0]!.id).toBe('gen-42-0');
+    expect([...state.objects.values()][0]!.id).toBe(placed?.id);
   });
   it('returns null + places nothing when the rule rejects (water under a flat item)', () => {
     const { state, ctx } = ctxFor();

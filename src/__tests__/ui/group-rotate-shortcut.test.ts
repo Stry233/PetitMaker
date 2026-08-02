@@ -15,7 +15,7 @@ import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject, ValidationError } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
-const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, onHelp: () => {} };
+const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
 registerCatalogItem({
   id: 'grs-hut', category: ItemCategory.Building, name: { en: 'grs-hut' },

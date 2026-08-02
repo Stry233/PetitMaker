@@ -179,7 +179,7 @@ describe('reportDeleteGroup', () => {
   });
 });
 
-const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, onHelp: () => {} };
+const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
 describe('selection.delete (plural path, wired to deleteGroup)', () => {
   it('Ctrl+A then Delete clears everything but the locked plaza, in one undo, leaving the plaza selected', () => {

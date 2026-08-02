@@ -13,12 +13,13 @@ import { chunkLoadRule } from './chunk-load';
 import { baseSupportRule } from './base-support';
 import { waterContainmentRule } from './water-containment';
 import { waterfallAdjacentUniformityRule } from './waterfall-uniformity';
+import { objectOnCoatingRule } from './object-on-coating';
 
 /**
  * Creates a RuleRegistry with all game rules in canonical order.
  *
  * Pre-command order: lock → zone → elevation → floating → placement → chunk
- * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity
+ * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity → object-on-coating
  *
  * Order matters for pre-command rules: lock check runs first so locked-layer
  * errors take priority.
@@ -47,6 +48,7 @@ const ALL_RULES: AnyRule[] = [
   baseSupportRule,
   waterContainmentRule,
   waterfallAdjacentUniformityRule,
+  objectOnCoatingRule,
 ];
 
 export function createDefaultRegistry(): RuleRegistry {

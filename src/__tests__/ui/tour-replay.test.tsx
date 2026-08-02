@@ -10,9 +10,10 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{
 
 const props = {
   open: true, locale: 'en' as const, showGrid: true, showChunks: true,
-  motionPref: 'system' as const, systemCursors: false,
+  motionPref: 'system' as const, systemCursors: false, classicCursors: false,
   onLocaleChange: vi.fn(), onShowGridChange: vi.fn(), onShowChunksChange: vi.fn(),
-  onMotionPrefChange: vi.fn(), onSystemCursorsChange: vi.fn(),
+  onMotionPrefChange: vi.fn(), onSystemCursorsChange: vi.fn(), onClassicCursorsChange: vi.fn(),
+  hintLevel: 'full' as const, onHintLevelChange: vi.fn(),
   onAbout: vi.fn(), onClose: vi.fn(),
 };
 

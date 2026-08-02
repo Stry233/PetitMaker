@@ -1,5 +1,5 @@
 import { CommandType, TerrainType } from '../../core/model/types';
-import type { Command, GridState, MacroCoord, ValidationResult } from '../../core/model/types';
+import type { Command, GridState, MacroCoord, PlacedObject, ValidationResult } from '../../core/model/types';
 import { runLandform, toGenConfig } from './index';
 import type { ZonePlan } from './types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
@@ -54,19 +54,26 @@ export function generateTerrain(
 export function clearAllTerrain(
   state: GridState,
   executeCommand: (cmd: Command) => ValidationResult,
+  /** Restrict to these cells. Omitted = the whole map, which is what Generate does when no region
+   *  is painted. Same parameter, same meaning as `clearAllObjects`. */
+  region?: readonly MacroCoord[],
+  /** Cells to leave standing. Same role as `clearAllObjects`'s. */
+  spare?: (x: number, y: number) => boolean,
 ): number {
   const { width, height } = state.template;
   const cells: MacroCoord[] = [];
   const occ = buildObjectOccupancy(state);
+  const scope = region ?? (function* all() {
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) yield { x, y };
+  })();
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const cell = getCell(state.cells, x, y);
-      if (!cell?.terrain) continue;
-      if (!isBuildableZone(cell.zone)) continue;
-      if (occ.has(`${x},${y}`)) continue;
-      cells.push({ x, y });
-    }
+  for (const { x, y } of scope) {
+    const cell = getCell(state.cells, x, y);
+    if (!cell?.terrain) continue;
+    if (!isBuildableZone(cell.zone)) continue;
+    if (occ.has(`${x},${y}`)) continue;
+    if (spare?.(x, y)) continue;
+    cells.push({ x, y });
   }
 
   if (cells.length === 0) return 0;
@@ -89,13 +96,17 @@ export function clearAllTerrain(
 export function clearAllObjects(
   state: GridState,
   executeCommand: (cmd: Command) => ValidationResult,
-  region?: MacroCoord[],
+  region?: readonly MacroCoord[],
+  /** Objects to leave standing. Clear passes the map's own authorship here, so taking back a
+   *  generation never takes a placement the person made with it. */
+  spare?: (obj: PlacedObject) => boolean,
 ): number {
   const inRegion = region ? new Set(region.map((c) => `${c.x},${c.y}`)) : null;
   let count = 0;
   for (const obj of [...state.objects.values()]) {
     if (obj.locked) continue;   // never dissolve immutable structures (the central plaza); V-LOCK-02 also guards this
     if (inRegion && !inRegion.has(`${obj.position.x},${obj.position.y}`)) continue;
+    if (spare?.(obj)) continue;
     const res = executeCommand(removeObjectCommand(obj));
     if (res.success) count++;
   }

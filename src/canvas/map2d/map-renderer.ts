@@ -10,6 +10,8 @@ import type { EventBus } from '../../core/commands/event-bus';
 import { CommandType } from '../../core/model/types';
 import type { EditorEvents, GridState, MacroCoord } from '../../core/model/types';
 import { CHUNK_SIZE, TILE_SIZE, WATER_COLOR } from '../../core/model/constants';
+import { getCell } from '../../core/model/grid-model';
+import { pageZoom } from '../../core/runtime/page-zoom';
 import { hexStringToNumber } from '../../core/model/colors';
 import { maxRenderScale } from '../../core/runtime/device-quality';
 import { BaseLayer } from './layers/base-layer';
@@ -128,6 +130,8 @@ export class MapRenderer {
     this.terrainLayer = new TerrainLayer();
     this.objectLayer = new ObjectLayer();
     this.overlayLayer = new OverlayLayer();
+    this.overlayLayer.setShapeSource((x, y) =>
+      (this.currentState ? getCell(this.currentState.cells, x, y)?.terrain : null) ?? null);
 
     this.worldContainer.addChild(this.baseLayer.container);
     this.worldContainer.addChild(this.terrainLayer.container);
@@ -366,11 +370,24 @@ export class MapRenderer {
     this.objectLayer.cull(rect);
   }
 
+  private lastPageZoom = pageZoom();
+
   resize(width: number, height: number): void {
+    // A page-zoom step arrives here as a resize (the CSS viewport changed), so this is where the
+    // map is held still against it — see `Viewport.rebaseForPageZoom`. Compared against the LAST
+    // seen factor, not against 1, so an ordinary window resize rebases nothing.
+    const zoom = pageZoom();
+    if (zoom !== this.lastPageZoom) {
+      this.viewport.rebaseForPageZoom(zoom / this.lastPageZoom);
+      this.lastPageZoom = zoom;
+    }
     this.app.renderer.resize(width, height);
     this.viewport.resize(width, height);
-    this.cullLayers(this.viewport.getZoom(), this.viewport.getOffset()); // a larger canvas reveals more chunks
-    this.requestRender();
+    // Push the camera to the stage rather than only re-culling: a resize can move the camera (the
+    // page-zoom rebase, and the clamp that keeps the map on screen inside a smaller canvas). Left
+    // in the model, that change would sit invisible until the next pan or zoom applied it, and the
+    // map would jump then.
+    this.applyViewportTransform();
   }
 
   /** Capture the full map (independent of current pan/zoom) as a PNG data URL

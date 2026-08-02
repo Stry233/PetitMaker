@@ -1,21 +1,56 @@
-import { TerrainType, ToolType } from '../../core/model/types';
+import { CommandType, TerrainType, ToolType } from '../../core/model/types';
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { getTerrainColor } from '../../core/model/colors';
 import { showToast } from '../../core/runtime/toast-bus';
 import { reconcileRoadsAfterMountainPaint } from './road-reconcile';
-import { line4, expandLine, curveCells, rectCells, circleCells, rectSpans, circleSpans, snapShapeEnd } from './shapes';
+import { line4, expandLine, rectCells, circleCells, rectSpans, circleSpans, snapShapeEnd, splineCells } from './shapes';
 import { getCell, cellKey } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
+import type { Command, Corners, TerrainCell } from '../../core/model/types';
+import type { RowSpan } from '../../canvas/map2d/layers/ghost-geometry';
 import type { Tool, ToolContext } from '../types';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { placeTileCell, tileGhostColor } from './tile-coating';
 import type { ContentType } from './paint-plan';
 import { planPaint, buildFloor, autoStackTarget, waterLayerAt } from './paint-plan';
+import { previewAutoTrim, shapeOfCells, shapeOfSpans, type TrimmedCell } from '../edge-cut/trim-preview';
 import { applyAutoEdgeCut } from '../edge-cut/auto-edge-cut';
+import { reconcileCuts } from '../../core/edge-cut/cut-reconcile';
 import { useEditorStore } from '../../state/store';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
+import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
+import { getCatalogItem } from '../../state/catalog';
+import {
+  beginCurveSession, endCurveSession, isCurveSessionOpen, resetCurveAnchors,
+} from './curve-session';
+import type { CurveAnchor } from './shapes';
+import type { PlacedObject, ValidationError } from '../../core/model/types';
 
 export type DrawingMode = 'brush' | 'line' | 'curve' | 'rect' | 'circle';
+
+/** What a curve cell held before the curve reached it: the WHOLE terrain, so a hand-cut corner
+ *  beside the path comes back as it was. Null = the cell was bare ground. */
+type CellBaseline = {
+  type: TerrainType; elevation: number; corners?: Corners; patchOnly?: boolean; patchBase?: number;
+} | null;
+
+/** Same cell, to the last corner? Governs whether a restore touches it at all. */
+function sameTerrain(a: TerrainCell | null, b: CellBaseline): boolean {
+  if (!a || !b) return !a && !b;
+  if (a.type !== b.type || a.elevation !== b.elevation || !!a.patchOnly !== !!b.patchOnly) return false;
+  if (a.patchBase !== b.patchBase) return false;
+  const ac = a.corners, bc = b.corners;
+  if (!ac || !bc) return !ac && !bc;
+  return ac.every((v, i) => v === bc[i]);
+}
+
+/** The cell itself plus its 8 neighbours — the reach of the auto-trim pass (`withBorder`). */
+const BASELINE_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+];
+
+/** Two clicks on one cell inside this window finish the curve. */
+const CURVE_DOUBLE_CLICK_MS = 400;
 export type { ContentType } from './paint-plan';
 
 /** The probe asks as if the stroke had not started: a hover is not part of anyone's stroke. */
@@ -57,13 +92,59 @@ export class DrawingTool implements Tool {
     return ctx.validateCommand(first).length === 0;
   }
 
-  mode: DrawingMode = 'brush';
-  contentType: ContentType = 'mountain';
+  /**
+   * The five shape modes and the surface being painted, both written DIRECTLY by the canvas when
+   * the Build panel changes (there is no setter call to hook). They are accessors so that either
+   * change can put the curve's adjust handles away: a tweak repaints through the tool's CURRENT
+   * settings, so handles left over from a curve drawn in another mode would re-lay it as something
+   * else — and handles for a curve you have stopped editing are clutter in any case.
+   */
+  private modeValue: DrawingMode = 'brush';
+  private contentValue: ContentType = 'mountain';
+
+  get mode(): DrawingMode { return this.modeValue; }
+  set mode(next: DrawingMode) {
+    if (next === this.modeValue) return;
+    this.modeValue = next;
+    if (isCurveSessionOpen()) endCurveSession();
+  }
+
+  get contentType(): ContentType { return this.contentValue; }
+  set contentType(next: ContentType) {
+    if (next === this.contentValue) return;
+    this.contentValue = next;
+    if (isCurveSessionOpen()) endCurveSession();
+  }
 
   private painting = false;
   private lastCoord: MacroCoord | null = null;
   private strokeStartUndoSize = 0;
-  private curvePoints: MacroCoord[] = [];
+  /* ── curve: a chain of anchors the path runs THROUGH ──────────────────────
+   * Click to drop one, drag a placed one to move it, double-click to finish. See `splinePath` for
+   * why the path interpolates its anchors rather than being pulled toward control points. */
+  private curvePoints: CurveAnchor[] = [];
+  /* ── the ADJUST phase's bookkeeping ───────────────────────────────────────
+   * What each cell held BEFORE the curve first touched it, and which coatings the curve removed or
+   * added. A tweak puts all of that back and lays the curve again from scratch, so the result is
+   * the curve that would have been drawn at the new anchors — not a patch over the old one. */
+  private curveBaseline = new Map<string, CellBaseline>();
+  /** Whether this stroke has been trimmed as it was drawn (freehand only) — see `squareCorners`. */
+  private liveTrimmed = false;
+  private curveRemovedCoatings: PlacedObject[] = [];
+  private curveAddedCoatings = new Set<string>();
+  /** The frozen context the curve was painted with: a shallow copy, so brush size and elevation
+   *  stay what they were while the grid and the command closures stay live. */
+  private curveCtx: ToolContext | null = null;
+  /** The anchors the MAP currently reflects. Not the session's — those are already the new ones by
+   *  the time a repaint is asked for, so a refusal has nothing to go back to without this. */
+  private curveAnchors: CurveAnchor[] = [];
+  /** Index of the anchor the press landed on, and whether it has actually moved. A press on an
+   *  anchor is only a DRAG once it travels — until then it is still a click, and which one it is
+   *  cannot be known until the release. */
+  private dragAnchor: number | null = null;
+  private dragMoved = false;
+  /** The last curve CLICK (a press that did not turn into a drag), for the double-click test. */
+  private lastClick: { coord: MacroCoord; at: number } | null = null;
   private shapeOrigin: MacroCoord | null = null;
   private strokeCells = new Set<string>();
   private tileStrokeCells = new Set<string>();
@@ -78,6 +159,14 @@ export class DrawingTool implements Tool {
   }
 
   onPointerDown(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    // A click anywhere on the map puts the adjust handles away — a press ON one never reaches the
+    // tool, since they are React elements above the canvas. In curve mode that is ALL the click
+    // does: dismissing is its own act, not the first anchor of the next curve. The same check
+    // catches a mode switch, which PixiCanvas performs by writing `mode` directly.
+    if (isCurveSessionOpen()) {
+      endCurveSession();
+      if (this.mode === 'curve') return;
+    }
     this.strokeStartUndoSize = ctx.getUndoStackSize();
     // Start a fresh per-stroke cell record (used for road reconcile + auto
     // edge-trim). Curve collects 3 clicks into one stroke, so only reset on its
@@ -97,12 +186,15 @@ export class DrawingTool implements Tool {
     }
 
     switch (this.mode) {
-      case 'brush':
+      case 'brush': {
         this.painting = true;
         this.lastCoord = coord;
         this.updateDisplay(coord, ctx);
-        this.paintCells(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
+        const dab = brushCells(coord.x, coord.y, ctx.brushSize);
+        this.paintCells(dab, ctx);
+        this.liveTrim(dab, ctx);
         break;
+      }
 
       case 'line':
       case 'rect':
@@ -110,18 +202,20 @@ export class DrawingTool implements Tool {
         this.shapeOrigin = coord;
         break;
 
-      case 'curve':
-        this.curvePoints.push(coord);
-        if (this.curvePoints.length === 3) {
-          // strokeStartUndoSize was captured at the top of this onPointerDown; no command runs
-          // between the 3 curve clicks, so it already marks the stroke start.
-          const cells = curveCells(this.curvePoints[0]!, this.curvePoints[1]!, this.curvePoints[2]!, ctx.brushSize);
-          this.paintCells(cells, ctx);
-          this.curvePoints = [];
-          ctx.overlay.clearGhost();
-          this.finishStroke(ctx, coord);
+      case 'curve': {
+        // A press on an existing anchor is either a drag or a click on it, and which one is not
+        // knowable yet — decided on release (see onPointerUp). Either way it must NOT stack a
+        // second anchor on the same cell.
+        const hit = this.curvePoints.findIndex((a) => a.x === coord.x && a.y === coord.y);
+        if (hit >= 0) {
+          this.dragAnchor = hit;
+          this.dragMoved = false;
+          break;
         }
+        this.curvePoints.push(coord);
+        this.previewCurve(coord, ctx);
         break;
+      }
     }
   }
 
@@ -134,7 +228,7 @@ export class DrawingTool implements Tool {
 
     switch (this.mode) {
       case 'brush': {
-        ctx.overlay.showGhost(brushCells(coord.x, coord.y, ctx.brushSize), ghostColor, terrainGrid);
+        this.ghost(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
         if (this.painting && (coord.x !== this.lastCoord?.x || coord.y !== this.lastCoord?.y)) {
           const from = this.lastCoord;
           this.lastCoord = coord;
@@ -142,7 +236,9 @@ export class DrawingTool implements Tool {
           // Fill the WHOLE path between the last sample and this one with a 4-connected line, so a fast drag
           // (sparse pointer samples) stays an edge-connected band — no skipped cells, no diagonal-only links.
           const path = from ? line4(from.x, from.y, coord.x, coord.y) : [coord];
-          this.paintCells(expandLine(path, ctx.brushSize), ctx);
+          const dab = expandLine(path, ctx.brushSize);
+          this.paintCells(dab, ctx);
+          this.liveTrim(dab, ctx);
         }
         break;
       }
@@ -150,26 +246,27 @@ export class DrawingTool implements Tool {
       case 'line':
         if (this.shapeOrigin) {
           const end = isConstrainHeld() ? snapShapeEnd(this.shapeOrigin, coord, 'line') : coord;
-          ctx.overlay.showGhost(this.shapeCells('line', this.shapeOrigin, end, ctx.brushSize), ghostColor, terrainGrid);
+          this.ghost(this.shapeCells('line', this.shapeOrigin, end, ctx.brushSize), ctx);
         } else {
           // Pre-click hover: preview the brush footprint so its size is visible
           // before the line is started (rather than a single cell).
-          ctx.overlay.showGhost(brushCells(coord.x, coord.y, ctx.brushSize), ghostColor, terrainGrid);
+          this.ghost(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
         }
         break;
 
       case 'curve':
-        if (this.curvePoints.length === 1) {
-          // Show straight line preview from start to cursor
-          const points = line4(this.curvePoints[0]!.x, this.curvePoints[0]!.y, coord.x, coord.y);
-          ctx.overlay.showGhost(expandLine(points, ctx.brushSize), ghostColor, terrainGrid);
-        } else if (this.curvePoints.length === 2) {
-          // Show curve preview with cursor as control point
-          const preview = curveCells(this.curvePoints[0]!, this.curvePoints[1]!, coord, ctx.brushSize);
-          ctx.overlay.showGhost(preview, ghostColor, terrainGrid);
+        if (this.dragAnchor !== null) {
+          // Editing a placed anchor: the ghost has to show the path the MOVED anchor produces, or
+          // the drag is blind — the whole point of being able to adjust one.
+          const anchor = this.curvePoints[this.dragAnchor]!;
+          if (anchor.x !== coord.x || anchor.y !== coord.y) this.dragMoved = true;
+          this.curvePoints[this.dragAnchor] = coord;
+          this.ghost(splineCells(this.curvePoints, ctx.brushSize), ctx);
+        } else if (this.curvePoints.length > 0) {
+          this.previewCurve(coord, ctx);
         } else {
           // Pre-click hover: preview the brush footprint so its size is visible.
-          ctx.overlay.showGhost(brushCells(coord.x, coord.y, ctx.brushSize), ghostColor, terrainGrid);
+          this.ghost(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
         }
         break;
 
@@ -182,12 +279,286 @@ export class DrawingTool implements Tool {
           const spans = this.mode === 'rect'
             ? rectSpans(this.shapeOrigin, end)
             : circleSpans(this.shapeOrigin, Math.abs(end.x - this.shapeOrigin.x), Math.abs(end.y - this.shapeOrigin.y));
-          ctx.overlay.showGhostSpans(spans, ghostColor, terrainGrid);
+          ctx.overlay.showGhostSpans(spans, ghostColor, terrainGrid, this.trimOfSpans(spans, ctx));
         } else {
-          ctx.overlay.showGhost([coord], ghostColor, terrainGrid);
+          this.ghost([coord], ctx);
         }
         break;
     }
+  }
+
+  /** The live curve, previewed through the anchors placed so far plus wherever the cursor is. */
+  private previewCurve(cursor: MacroCoord, ctx: ToolContext): void {
+    this.ghost(splineCells([...this.curvePoints, cursor], ctx.brushSize), ctx);
+  }
+
+  /** Paint the finished curve, then open the ADJUST phase on it. */
+  private commitCurve(ctx: ToolContext, at: MacroCoord): void {
+    const anchors = this.curvePoints;
+    // Frozen: brush size and elevation must stay what the curve was drawn with, while the grid and
+    // the command closures stay live. A shallow copy is exactly that split.
+    this.curveCtx = { ...ctx };
+    this.curveBaseline.clear();
+    this.curveRemovedCoatings = [];
+    this.curveAddedCoatings.clear();
+    // strokeStartUndoSize was captured at the top of this onPointerDown; no command runs between
+    // the curve's clicks, so it already marks the stroke start.
+    this.layCurve(anchors, this.curveCtx);
+    this.curveAnchors = anchors.map((a) => ({ ...a }));
+    this.curvePoints = [];
+    this.dragAnchor = null;
+    this.lastClick = null;
+    ctx.overlay.clearGhost();
+    this.finishStroke(this.curveCtx, at);
+
+    // The anchors stay on the map so the curve can be tuned. They are NOT shown while it is being
+    // drawn: what matters then is the path, and a handle under the cursor would be in the way of
+    // the next click.
+    if (anchors.length >= 2) {
+      beginCurveSession(anchors, { width: this.curveCtx.brushSize, terrainGrid: this.contentType !== 'tile' }, {
+        preview: (next) => this.previewAdjust(next),
+        repaint: (next) => this.repaintCurve(next),
+        finalize: () => {
+          this.curveCtx?.overlay.clearGhost();
+          this.curveCtx = null;
+          this.curveBaseline.clear();
+        },
+      });
+    }
+  }
+
+  /**
+   * Record what a cell holds now, the first time the curve reaches it — the path AND its 8-neighbour
+   * border.
+   *
+   * The border is not padding. Auto-trim sweeps the stroke plus that border (`withBorder`) and can
+   * MATERIALISE a Γ patch on a cell that was empty. A patch is a real cell that reads as standable
+   * surface, so one left behind by a tweak is a block nobody placed: they pile up as the curve is
+   * dragged around, and they make the base-support rule refuse perfectly good ground next to them.
+   *
+   * The whole terrain is recorded, corners included, so a hand-cut edge beside the curve comes back
+   * as it was rather than squared off.
+   */
+  private captureBaseline(cells: readonly MacroCoord[], ctx: ToolContext): void {
+    for (const c of cells) {
+      for (const [dx, dy] of BASELINE_OFFSETS) {
+        const x = c.x + dx, y = c.y + dy;
+        const key = cellKey(x, y);
+        if (this.curveBaseline.has(key)) continue;
+        const t = getCell(ctx.gridState.cells, x, y)?.terrain ?? null;
+        this.curveBaseline.set(key, t ? {
+          type: t.type, elevation: t.elevation,
+          corners: t.corners ? ([...t.corners] as Corners) : undefined,
+          patchOnly: t.patchOnly, patchBase: t.patchBase,
+        } : null);
+      }
+    }
+  }
+
+  /** Every surfaceCoating object on the map right now, by id — the before/after of a tile paint. */
+  private coatingSnapshot(ctx: ToolContext): Map<string, PlacedObject> {
+    const out = new Map<string, PlacedObject>();
+    for (const obj of ctx.gridState.objects.values()) {
+      if (getCatalogItem(obj.catalogId)?.traits.some((t) => t.type === 'surfaceCoating')) out.set(obj.id, obj);
+    }
+    return out;
+  }
+
+  /** Paint the curve at these anchors, recording what it displaced so a later tweak can undo it. */
+  private layCurve(anchors: readonly CurveAnchor[], ctx: ToolContext): void {
+    const cells = splineCells(anchors, ctx.brushSize);
+    this.captureBaseline(cells, ctx);
+    const before = this.contentType === 'tile' ? this.coatingSnapshot(ctx) : null;
+    this.paintCells(cells, ctx);
+    if (before) {
+      const after = this.coatingSnapshot(ctx);
+      for (const [id, obj] of before) if (!after.has(id)) this.curveRemovedCoatings.push(obj);
+      for (const id of after.keys()) if (!before.has(id)) this.curveAddedCoatings.add(id);
+    }
+  }
+
+  /**
+   * Run a command, and where allowed, retry it cell by cell if it is refused.
+   *
+   * A batch is refused WHOLE if any one of its cells is: the plan groups a shape into one command
+   * per target elevation, so a figure that so much as clips the sea, the plaza or a locked layer
+   * would otherwise paint nothing at all. The retry only ever runs on the rejection path, so an
+   * ordinary stroke still costs one command.
+   */
+  private execute(ctx: ToolContext, cmd: Command, splitOnRefusal: boolean): void {
+    if (ctx.executeCommand(cmd).success || !splitOnRefusal) return;
+    if (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain) {
+      for (const c of cmd.cells) ctx.executeCommand({ ...cmd, cells: [c] });
+    }
+  }
+
+  /**
+   * Did the curve actually reach the map?
+   *
+   * Not "did the undo stack grow": a paint whose cells are ALL off-map passes validation (the zone
+   * rule skips out-of-bounds rather than erroring) and records an entry that changed nothing. What
+   * matters is whether anything is there afterwards.
+   */
+  private curveLaidAnything(cells: readonly MacroCoord[], ctx: ToolContext): boolean {
+    if (this.contentType === 'tile') return this.tileStrokeCells.size > 0;
+    return cells.some((c) => getCell(ctx.gridState.cells, c.x, c.y)?.terrain != null);
+  }
+
+  /** Put the map back to how it was before the curve, ready for it to be laid again. */
+  /**
+   * The terrain commands that put the curve's cells back to what they held before it — the same
+   * list `restoreBaseline` executes, and what the adjust ghost has to run FIRST: the map still
+   * holds the previous curve, so a preview taken against it reads corners pinned by mass the tweak
+   * is about to remove.
+   *
+   * Only cells that ACTUALLY CHANGED are included. Most of the border never does, and repainting an
+   * untouched neighbour would square a cut the user made by hand.
+   */
+  private baselineCommands(ctx: ToolContext): Command[] {
+    const erase: MacroCoord[] = [];
+    const paint = new Map<string, { type: TerrainType; elevation: number; cells: MacroCoord[] }>();
+    const recut: { x: number; y: number; base: CellBaseline }[] = [];
+    for (const [key, base] of this.curveBaseline) {
+      const [x, y] = key.split(',').map(Number) as [number, number];
+      const now = getCell(ctx.gridState.cells, x, y)?.terrain ?? null;
+      if (sameTerrain(now, base)) continue;
+      // A Γ patch is a fillet, not a block: it is cleared and then MATERIALISED again below, never
+      // painted as a real column.
+      if (!base || base.patchOnly) { erase.push({ x, y }); }
+      else {
+        const k = `${base.type}:${base.elevation}`;
+        const group = paint.get(k) ?? { type: base.type, elevation: base.elevation, cells: [] };
+        group.cells.push({ x, y });
+        paint.set(k, group);
+      }
+      if (base && (base.corners || base.patchOnly)) recut.push({ x, y, base });
+    }
+    const out: Command[] = [];
+    if (erase.length > 0) out.push({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells: erase });
+    for (const g of paint.values()) {
+      out.push({
+        type: CommandType.PaintTerrain, timestamp: Date.now(),
+        cells: g.cells, terrainType: g.type, elevation: g.elevation,
+      });
+    }
+    // Corners and Γ patches last, on the cells that had them: a paint writes a fresh square cell, so
+    // the silhouette has to be put back on top of it.
+    for (const { x, y, base } of recut) {
+      if (!base?.corners && !base?.patchOnly) continue;
+      out.push({
+        type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
+        beforeCorners: getCell(ctx.gridState.cells, x, y)?.terrain?.corners,
+        afterCorners: (base.corners ?? ['square', 'square', 'square', 'square']) as Corners,
+        patchOnly: base.patchOnly,
+        ...(base.patchOnly
+          ? { terrainType: base.type, elevation: base.elevation, patchBase: base.patchBase }
+          : {}),
+      });
+    }
+    return out;
+  }
+
+  private restoreBaseline(ctx: ToolContext): void {
+    // Coatings first: the curve's own tiles come off, and whatever it displaced goes back.
+    for (const id of this.curveAddedCoatings) {
+      const obj = ctx.gridState.objects.get(id);
+      if (obj) ctx.executeCommand(removeObjectCommand(obj));
+    }
+    this.curveAddedCoatings.clear();
+    for (const obj of this.curveRemovedCoatings) {
+      if (!ctx.gridState.objects.has(obj.id)) ctx.executeCommand(objectPlacementCommand(obj));
+    }
+    this.curveRemovedCoatings = [];
+
+    // Split on refusal, always: the baseline covers every cell the curve ASKED for, forbidden ones
+    // included, and one of those in a batch would refuse the whole restore — leaving the old curve
+    // standing while the new one is laid over it. A corner command carries one cell, so it never
+    // needs splitting.
+    for (const cmd of this.baselineCommands(ctx)) {
+      this.execute(ctx, cmd, cmd.type !== CommandType.TrimCorners);
+    }
+  }
+
+  /** Mid-drag: the path the curve would take, as a ghost. The map is not touched until release. */
+  private previewAdjust(anchors: readonly CurveAnchor[]): void {
+    const ctx = this.curveCtx;
+    if (!ctx) return;
+    this.ghost(splineCells(anchors, ctx.brushSize), ctx, this.baselineCommands(ctx));
+  }
+
+  /**
+   * One tweak: put the map back and lay the curve again at the new anchors, as ONE undo entry.
+   *
+   * Restore-then-relay rather than patching the difference, because the two are not the same
+   * picture: a mountain curve STACKS on what is under it, so painting over the old path would raise
+   * it twice, and a cell the old path covered has to go back to what it held before the curve — not
+   * to bare ground. The whole thing is one stroke group, so Ctrl+Z steps back one tweak at a time.
+   */
+  private repaintCurve(anchors: readonly CurveAnchor[]): void {
+    const ctx = this.curveCtx;
+    if (!ctx) return;
+    const start = ctx.getUndoStackSize();
+    // Everything needed to put the tweak back if the rules refuse it: where the anchors were, and
+    // the bookkeeping that says what the curve currently displaces.
+    const prev = {
+      anchors: this.curveAnchors,
+      baseline: new Map(this.curveBaseline),
+      removed: [...this.curveRemovedCoatings],
+      added: new Set(this.curveAddedCoatings),
+    };
+    this.strokeStartUndoSize = start;
+    this.strokeCells.clear();
+    this.tileStrokeCells.clear();
+    this.restoreBaseline(ctx);
+    this.layCurve(anchors, ctx);
+    // A curve dragged off the map, or onto sea or plaza, has every command refused or ignored — no
+    // post-stroke violation to report, just a stroke that removed the old curve and laid no new one.
+    const laidSomething = this.curveLaidAnything(splineCells(anchors, ctx.brushSize), ctx);
+    ctx.overlay.clearGhost();   // the map now shows what the ghost was promising
+    const violations = this.finishStroke(ctx, anchors[anchors.length - 1]);
+    if (violations.length === 0 && laidSomething) {
+      this.curveAnchors = anchors.map((a) => ({ ...a }));
+      return;
+    }
+
+    // Refused, one way or the other. Post-stroke, `commitStroke` stops reverting as soon as the
+    // state is LEGAL, which for a stroke that restores and then re-lays can leave the restore
+    // standing and the new curve gone; pre-command, nothing was laid at all. Either way the map has
+    // lost the curve while the handles still show the shape that was asked for, so the whole tweak
+    // is rolled back exactly and the anchors go back with it: the handles must never describe a
+    // curve the map does not have.
+    ctx.rollbackTo(start);
+    this.curveBaseline = prev.baseline;
+    this.curveRemovedCoatings = prev.removed;
+    this.curveAddedCoatings = prev.added;
+    resetCurveAnchors(prev.anchors);
+  }
+
+  /** Take back the last anchor (Delete/Backspace while drawing). */
+  undoPendingStep(ctx: ToolContext): boolean {
+    if (this.mode !== 'curve' || this.curvePoints.length === 0) return false;
+    this.curvePoints.pop();
+    this.dragAnchor = null;
+    if (this.curvePoints.length === 0) ctx.overlay.clearGhost();
+    else this.ghost(splineCells(this.curvePoints, ctx.brushSize), ctx);
+    return true;
+  }
+
+  /**
+   * Escape. While DRAWING that abandons the curve, which has painted nothing; during the ADJUST
+   * phase it only puts the handles away, exactly as clicking off the curve does — the curve is real
+   * terrain by then, and Escape is not an undo.
+   */
+  cancelPending(ctx: ToolContext): boolean {
+    if (this.mode === 'curve' && this.curvePoints.length > 0) {
+      this.curvePoints = [];
+      this.dragAnchor = null;
+      this.lastClick = null;
+      ctx.overlay.clearGhost();
+      return true;
+    }
+    if (isCurveSessionOpen()) { endCurveSession(); return true; }
+    return false;
   }
 
   /** The cells a drag shape covers — ONE builder for ghost preview and commit, so
@@ -231,6 +602,33 @@ export class DrawingTool implements Tool {
         this.commitShape(this.mode, coord, ctx);
         break;
 
+      case 'curve': {
+        if (this.dragAnchor !== null) {
+          const moved = this.dragMoved;
+          this.dragAnchor = null;
+          if (moved) {
+            // A drag is not a click: it must not count toward the double-click that finishes.
+            this.lastClick = null;
+            this.previewCurve(coord, ctx);
+            break;
+          }
+        }
+        // A press that did not travel is a CLICK, and it is the RELEASE that says so — recording it
+        // on the press would let one click's own release read it as the second of a pair. Two
+        // clicks on one cell finish the curve, whether the second landed on empty ground or on the
+        // anchor the first one dropped there.
+        const prev = this.lastClick;
+        if (prev && performance.now() - prev.at <= CURVE_DOUBLE_CLICK_MS
+            && prev.coord.x === coord.x && prev.coord.y === coord.y
+            && this.curvePoints.length >= 2) {
+          this.commitCurve(ctx, coord);
+          break;
+        }
+        this.lastClick = { coord, at: performance.now() };
+        this.previewCurve(coord, ctx);
+        break;
+      }
+
       default:
         break;
     }
@@ -248,7 +646,109 @@ export class DrawingTool implements Tool {
     // the plan must see the heights as they were before this batch, and a cell already in the set
     // is one this stroke has raised already.
     for (const c of cells) this.strokeCells.add(cellKey(c.x, c.y));
-    for (const cmd of plan.commands) ctx.executeCommand(cmd);
+    // A SHAPE is one deliberate figure, so it lays the part of itself that is legal. The freehand
+    // brush keeps its footprint atomic: a dab is a single mark, and one command per dab is what the
+    // rest of the tool is built around.
+    for (const cmd of plan.commands) this.execute(ctx, cmd, this.mode !== 'brush');
+  }
+
+  /**
+   * Trim what a freehand dab just laid, while the drag is still going.
+   *
+   * The other modes have a ghost to promise the finished shape with; the brush paints as it moves,
+   * so without this the stroke reads square under the cursor and only rounds when the button comes
+   * up. The stroke-end pass still runs and is still what decides the final shape — it squares the
+   * stroke's own cells first (see `finishStroke`), so a corner rounded here and then built against
+   * later is re-derived rather than left as it was.
+   */
+  /** Put the stroke's own cells back to square, so the final pass derives their shape from the
+   *  finished mass rather than from what the drag happened to round on its way through. */
+  private squareCorners(cells: readonly MacroCoord[], ctx: ToolContext): void {
+    this.liveTrimmed = false;
+    for (const { x, y } of cells) {
+      const t = getCell(ctx.gridState.cells, x, y)?.terrain;
+      // A Γ patch IS its corners — squaring one leaves a cell that is a patch of nothing. Only a
+      // real block's silhouette is the stroke's to re-derive; the trim pass owns the patches.
+      if (t?.patchOnly) continue;
+      const corners = t?.corners;
+      if (!corners || corners.every((c) => c === 'square')) continue;
+      ctx.executeCommand({
+        type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
+        beforeCorners: corners, afterCorners: ['square', 'square', 'square', 'square'],
+      });
+    }
+  }
+
+  private liveTrim(cells: MacroCoord[], ctx: ToolContext): void {
+    if (!this.trimActive()) return;
+    this.liveTrimmed = true;
+    // The dab plus the ring around it, and only cells THIS STROKE laid: the next dab lands against
+    // the last one, so a corner rounded a moment ago is interior now. The trim pass keeps the
+    // corners it finds — that is what preserves a hand cut beside a stroke — so the stroke's own
+    // cells in the window go back to square and the whole window is derived again. Without it the
+    // drag leaves rounded notches through the middle of its own band.
+    const window: MacroCoord[] = [];
+    const seen = new Set<string>();
+    for (const c of cells) {
+      for (const [dx, dy] of BASELINE_OFFSETS) {
+        const x = c.x + dx, y = c.y + dy, k = cellKey(x, y);
+        if (seen.has(k) || !this.strokeCells.has(k)) continue;
+        seen.add(k);
+        window.push({ x, y });
+      }
+    }
+    // The same three steps the commit runs, on the window instead of the stroke: repair the cuts
+    // the dab invalidated, put the stroke's own corners back to square, derive the shape again.
+    // Without the repair, a Γ patch made while a cell was still a notch survives the stroke closing
+    // around it, and the drag ends up a cell richer than the same mass painted in one go.
+    reconcileCuts(window, ctx.gridState, { execute: ctx.executeCommand });
+    this.squareCorners(window, ctx);
+    applyAutoEdgeCut(ctx, useEditorStore.getState().autoEdgeCut, window, []);
+  }
+
+  /**
+   * Draw the ghost, in the shape the stroke will actually leave.
+   *
+   * With auto-trim on, the committed shape has cut corners and can gain Γ patches in its notches,
+   * so a square ghost promises something the click does not produce. The preview runs the real trim
+   * pass over a scratch grid (`previewAutoTrim`); tiles are excluded because a road's trim follows
+   * its connectivity, which is not known until the road is placed.
+   */
+  private ghost(cells: MacroCoord[], ctx: ToolContext, before: Command[] = []): void {
+    ctx.overlay.showGhost(cells, this.getGhostColor(ctx), this.contentType !== 'tile',
+      this.trimOf(cells, ctx, before));
+  }
+
+  /** `before` runs on the scratch ahead of the paint — the curve's baseline restore, so an adjust
+   *  ghost is not shaped by the curve it is replacing. */
+  /** Whether a ghost of this content would carry a trim at all. */
+  private trimActive(): boolean {
+    return useEditorStore.getState().autoEdgeCut !== 'off' && this.contentType !== 'tile';
+  }
+
+  /** The same preview for a span-form ghost (rect / circle), which never builds its own cell list:
+   *  only the rim of a shape can be trimmed, and that is derivable from the spans directly. */
+  private trimOfSpans(spans: readonly RowSpan[], ctx: ToolContext): TrimmedCell[] | undefined {
+    const mode = useEditorStore.getState().autoEdgeCut;
+    if (!this.trimActive() || spans.length === 0) return undefined;
+    const shape = shapeOfSpans(spans);
+    return previewAutoTrim(ctx.gridState, mode, shape, ctx.rules,
+      (paint, on) => planPaint(paint, { ...ctx, gridState: on }, this.contentType, FRESH_STROKE).commands)
+      .filter((t) => t.patch || shape.contains(t.x, t.y));
+  }
+
+  private trimOf(cells: MacroCoord[], ctx: ToolContext, before: Command[]): TrimmedCell[] | undefined {
+    const mode = useEditorStore.getState().autoEdgeCut;
+    if (!this.trimActive() || cells.length === 0) return undefined;
+    const shape = shapeOfCells(cells);
+    const own = new Set(cells.map((c) => cellKey(c.x, c.y)));
+    return previewAutoTrim(ctx.gridState, mode, shape, ctx.rules,
+      (paint, on) => planPaint(paint, { ...ctx, gridState: on }, this.contentType, FRESH_STROKE).commands,
+      before)
+      // The trim also reshapes the corners of terrain the stroke lands against. That is a change to
+      // the map, not to the shape being placed, and drawing it puts a ghost over ground that is
+      // already there. A Γ patch is kept: the stroke's shape genuinely grows into that cell.
+      .filter((t) => t.patch || own.has(cellKey(t.x, t.y)));
   }
 
   private getGhostColor(ctx: ToolContext): number {
@@ -268,7 +768,8 @@ export class DrawingTool implements Tool {
     });
   }
 
-  private finishStroke(ctx: ToolContext, focus?: MacroCoord): void {
+  /** Returns the post-stroke violations, so a caller that must be all-or-nothing can act on them. */
+  private finishStroke(ctx: ToolContext, focus?: MacroCoord): ValidationError[] {
     if (this.contentType === 'mountain' && this.strokeCells.size > 0) {
       reconcileRoadsAfterMountainPaint(this.cellsFromSet(this.strokeCells), ctx);
     }
@@ -278,20 +779,8 @@ export class DrawingTool implements Tool {
       showToast(msg, 'warning');
     }
 
-    // Acknowledge a successful terrain/tile commit with one regional
-    // flash over the painted cells (a rejected stroke gets the toast above).
-    // Only the discrete shape tools (line/curve/rect/circle) flash — a freehand
-    // brush commits continuously, so a per-stroke flash there is just noise.
-    // Gate on the stroke actually committing: a fully-rejected stroke (locked
-    // layer / illegal cells) pushes nothing, so the undo stack never grows.
     const isTile = this.contentType === 'tile';
     const committed = ctx.getUndoStackSize() > this.strokeStartUndoSize;
-    if (violations.length === 0 && committed && this.mode !== 'brush') {
-      const painted = this.cellsFromSet(isTile ? this.tileStrokeCells : this.strokeCells);
-      if (painted.length > 0) {
-        ctx.overlay.flashCommit(painted, { terrainMode: !isTile });
-      }
-    }
 
     // Auto edge-trim (post-validation): trim the corners the stroke just exposed
     // on whatever cells survived. The toggle lives in the Build panel.
@@ -303,14 +792,36 @@ export class DrawingTool implements Tool {
       if (isTile) {
         applyAutoEdgeCut(ctx, autoMode, [], this.cellsFromSet(this.tileStrokeCells));
       } else {
-        applyAutoEdgeCut(ctx, autoMode, this.cellsFromSet(this.strokeCells), []);
+        const cells = this.cellsFromSet(this.strokeCells);
+        // A corner the drag rounded early can be built against later in the same drag, and the trim
+        // pass keeps corners it finds (that is what preserves a hand cut beside the stroke). So the
+        // stroke's OWN cells go back to square first and the shape is derived once, from the mass
+        // the stroke actually ended with. Only they are squared: a neighbour's cut is not ours.
+        if (this.liveTrimmed) this.squareCorners(cells, ctx);
+        applyAutoEdgeCut(ctx, autoMode, cells, []);
       }
       if (ctx.getUndoStackSize() > trimStart) {
         ctx.collapseHistory(Math.max(this.strokeStartUndoSize, trimStart - 1));
       }
     }
 
+    // Acknowledge a successful terrain/tile commit with one regional flash over the painted cells
+    // (a rejected stroke gets the toast above). Only the discrete shape tools (line/curve/rect/
+    // circle) flash — a freehand brush commits continuously, so a per-stroke flash there is just
+    // noise. Gate on the stroke actually committing: a fully-rejected stroke (locked layer /
+    // illegal cells) pushes nothing, so the undo stack never grows.
+    //
+    // AFTER the trim, not before: the flash reads each cell's shape off the map, so running it
+    // first would announce square blocks where the stroke left rounded ones.
+    if (violations.length === 0 && committed && this.mode !== 'brush') {
+      const painted = this.cellsFromSet(isTile ? this.tileStrokeCells : this.strokeCells);
+      if (painted.length > 0) {
+        ctx.overlay.flashCommit(painted, { terrainMode: !isTile });
+      }
+    }
+
     this.syncDisplayLayer(ctx, focus);
+    return violations;
   }
 
   // Live layer-panel highlight while painting: the auto-stack target under the
@@ -335,9 +846,12 @@ export class DrawingTool implements Tool {
   }
 
   private reset(): void {
+    if (isCurveSessionOpen()) endCurveSession();
     this.painting = false;
     this.lastCoord = null;
     this.curvePoints = [];
+    this.dragAnchor = null;
+    this.lastClick = null;
     this.shapeOrigin = null;
     this.strokeCells.clear();
     this.tileStrokeCells.clear();

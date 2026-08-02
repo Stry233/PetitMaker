@@ -2,13 +2,13 @@
   "id": "flower-lily",
   "category": "flora",
   "name": {
-    "en": "Lily",
-    "zh": "百合",
-    "ja": "ユリ",
-    "ru": "Лилия",
-    "th": "ลิลลี่",
-    "id": "Bunga Lili",
-    "fr": "Lys"
+    "en": "White Lily",
+    "zh": "白百合",
+    "ja": "ホワイトユリ",
+    "ru": "Белая лилия",
+    "th": "ลิลลี่ขาว",
+    "id": "Bunga Lili Putih",
+    "fr": "Lys blanc"
   },
   "icon": "flower-lily",
   "width": 1,

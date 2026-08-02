@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useAgentStore } from '../../../agent/store';
-import { PROVIDERS, identifyProviderByProbe } from '../../../agent/providers';
+import { PROVIDERS, REGION_SPLIT, baseUrlFor, identifyProviderByProbe, resolveBaseUrl } from '../../../agent/providers';
 import { detectProviderFromKey, PROVIDER_META } from '../../../agent/providers/defaults';
 import type { ProviderId } from '../../../agent/types';
 
@@ -25,7 +25,7 @@ export interface ProviderSettings {
   chooserOpen: boolean;
   setChooserOpen: Dispatch<SetStateAction<boolean>>;
   saveKey: (collapseAfter?: boolean, keyOverride?: string) => Promise<void>;
-  commitKey: (id: ProviderId, k: string, collapseAfter: boolean) => void;
+  commitKey: (id: ProviderId, k: string, collapseAfter: boolean, baseUrl?: string) => void;
   refreshModels: () => Promise<void>;
   /** Abort an in-flight probe and open the manual chooser immediately. */
   skipDetection: () => void;
@@ -69,12 +69,12 @@ export function useProviderSettings(
       if (ids.length === 0) {
         if (cur) agent.setModel(provider, '');
       } else if (!cur || !ids.includes(cur)) {
-        const def = PROVIDER_META[provider].defaultModel;
+        const def = PROVIDER_META[provider].preferredModel;
         agent.setModel(provider, ids.includes(def) ? def : ids[0]!);
       }
     };
     try {
-      const ids = (await PROVIDERS[provider].create(apiKey, agent.settings.customBaseUrl).listModels())
+      const ids = (await PROVIDERS[provider].create(apiKey, baseUrlFor(provider, agent.settings)).listModels())
         .filter(PROVIDERS[provider].modelFilter);
       // Only the LIVE list is authoritative: on an empty result we store [] (never
       // a placeholder/fallback list), so a wrong key or bad config shows nothing.
@@ -91,18 +91,26 @@ export function useProviderSettings(
     // ?.length (not just presence): custom's fallback list is EMPTY, and it gets
     // stored before the endpoint URL exists — retry once the URL arrives.
     if (apiKey && !agent.modelList[provider]?.length) void refreshModels();
-  }, [provider, apiKey, agent.settings.customBaseUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The regional host resolves after the key is committed, and it changes which endpoint the
+    // list comes from, so a resolution re-asks.
+  }, [provider, apiKey, agent.settings.customBaseUrl, baseUrlFor(provider, agent.settings)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** File the key under `id`, switch to it, optionally collapse settings.
    *  A custom provider without an endpoint URL keeps settings open — the URL
    *  row is the next thing the user must fill in. */
-  const commitKey = (id: ProviderId, k: string, collapseAfter: boolean) => {
+  const commitKey = (id: ProviderId, k: string, collapseAfter: boolean, baseUrl?: string) => {
     if (id !== provider) agent.setProvider(id);
     agent.setKey(id, k);
+    if (baseUrl) agent.setRegionBaseUrl(id, baseUrl);
     setChooserOpen(false);
     setDetecting(false);
     const needsUrl = id === 'custom' && !useAgentStore.getState().settings.customBaseUrl;
     if (k && collapseAfter && !needsUrl) setSettingsOpen(false);
+    // Which regional deployment issued the key is not in the key or the platform name, so the
+    // hosts are asked. Runs after the commit: the answer only narrows an endpoint already in use.
+    if (REGION_SPLIT.has(id) && !baseUrl && k) {
+      void resolveBaseUrl(id, k).then((url) => { if (url) agent.setRegionBaseUrl(id, url); });
+    }
   };
 
   /** Pasting a key is the only required action: identify the provider from the
@@ -122,7 +130,8 @@ export function useProviderSettings(
     const probed = await identifyProviderByProbe(k, ctrl.signal, agent.settings.customBaseUrl);
     if (ctrl.signal.aborted) return;
     setDetecting(false);
-    commitKey(probed ?? 'custom', k, collapseAfter); // no match: default to Custom
+    // no match: default to Custom
+    commitKey(probed?.provider ?? 'custom', k, collapseAfter, probed?.baseUrl);
   };
 
   /** The user can bail out of probing (unreachable endpoints can eat the whole

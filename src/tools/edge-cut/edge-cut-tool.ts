@@ -120,8 +120,11 @@ export class EdgeCutTool implements Tool {
       //     column, so the fillet's real base (`patchBase`) is whatever the notch ALREADY was: a real
       //     lower block's tier, or 0 (empty). The fillet renders at the higher tier; structurally the
       //     notch is unchanged.
+
+      // `isInnerCorner` carries the rest of the test — the notch, the pit, and the rule that a
+      // fillet rests one tier above the cell's own support rather than hanging over it.
       if (hi && hi.type === TerrainType.Mountain && !cellIsDifferentReal && hi.elevation > cellElev
-          && cornerWrappedAt(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx, hi.type, hi.elevation)) {
+          && isInnerCorner(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx, hi.type, hi.elevation)) {
         sites.push({ slot, gamma: { type: hi.type, elev: hi.elevation } });
         continue;
       }

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useT, localizedName } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
 import { MAP_LIST } from '../../config/maps';
-import { font, colors, inkTint, pressable, modalTitle, cursors } from '../styles';
+import { font, colors, inkTint, pressable, modalTitle, cursors, radii, primaryButton } from '../styles';
 import { ModalShell } from './ModalShell';
 import { iconUrl } from '../../assets/icon-urls';
 
@@ -50,13 +50,44 @@ const templateBtnStyle: CSSProperties = {
   WebkitTapHighlightColor: 'transparent',
 };
 
+/** The unsaved-work notice above the map choices, and the way out of it. */
+const warnStyle: CSSProperties = {
+  // The sentence reads left-aligned against the button on the right; centred, a two-line wrap
+  // straggles under a fixed-width button and looks like a mistake.
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
+  margin: '0 20px 14px', padding: '10px 16px',
+  background: colors.tileYellow, borderRadius: radii.md,
+  fontFamily: font.family, fontSize: 15, fontWeight: 800, color: colors.frameDark,
+};
+const exportBtnStyle: CSSProperties = {
+  ...primaryButton, flex: '0 0 auto', padding: '6px 14px', fontSize: 14, whiteSpace: 'nowrap',
+};
+
 export function NewProjectModal({ open = true, onSelect, onClose }: NewProjectModalProps) {
   const t = useT();
   const locale = useEditorStore((s) => s.locale);
+  // A new map replaces this one, and the browser is the only copy of anything not exported. The
+  // undo stack's length at the last export is the mark; anything past it lives only here.
+  const exportedAt = useEditorStore((s) => s.exportedAt);
+  const executor = useEditorStore((s) => s.commandExecutor);
+  const setModal = useEditorStore((s) => s.setModal);
+  const edits = executor?.getUndoStackSize() ?? 0;
+  const unsaved = edits > 0 && edits !== exportedAt;
 
   return (
-    <ModalShell open={open} onClose={onClose} width={420} cardStyle={cardStyle} ariaLabel={t('modal.new_title')}>
+    <ModalShell open={open} onClose={onClose} width={520} cardStyle={cardStyle} ariaLabel={t('modal.new_title')}>
         <div style={titleStyle}>{t('modal.new_title')}</div>
+        {unsaved && (
+          <div style={warnStyle}>
+            <span>{t('modal.new_unsaved')}</span>
+            <motion.button
+              type="button"
+              style={exportBtnStyle}
+              onClick={() => { onClose?.(); setModal('exportJson', true); }}
+              {...pressable}
+            >{t('modal.new_export_first')}</motion.button>
+          </div>
+        )}
         <div style={gridStyle}>
           {/* Each built-in map (from the maps registry) is shown as its little
               "planet" icon (basename convention `planet-<id>`) above its own

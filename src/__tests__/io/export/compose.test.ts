@@ -1,6 +1,7 @@
 // src/__tests__/io/export/compose.test.ts
 import { describe, it, expect } from 'vitest';
-import { computeComposition, fitAspect, RESOLUTION_WIDTHS, BASE_WIDTH, type ExportOptions, type Rect } from '../../../io/export/compose';
+import { GRID_COLS } from '../../../io/share/glyph/geometry';
+import { computeComposition, fitAspect, RESOLUTION_WIDTHS, BASE_WIDTH, PAD, type ExportOptions, type Rect } from '../../../io/export/compose';
 
 const base: ExportOptions = { title: '', description: '', preset: 'plain', importable: false, showBadge: false, layerPreview: false, card3d: false, grid: true, footer: false, footerTemplate: '{date}{fill} · {dims}', resolution: 'standard' };
 function overlaps(a: Rect, b: Rect) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -76,12 +77,15 @@ describe('computeComposition', () => {
     expect(c.footer!.y).toBeGreaterThanOrEqual(c.codeBand!.y + c.codeBand!.h - 1);
     expect(overlaps(c.map, c.codeBand!)).toBe(false);
   });
-  it('share-code band is exactly 132×30 module-base cells, centered, when importable', () => {
+  it('the PetitGlyph band sits at the page margin, on whole module pixels', () => {
     const c = computeComposition({ ...base, importable: true, resolution: 'high' }, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeDefined();
-    // Standard/High width (2400) → mb = 6*floor(2400/792) = 18 → band width = 132*18 = 2376.
-    expect(c.codeBand!.w).toBe(132 * 18);
+    // High is 2400 wide; at PAD*S = 84 either side the band gets 2232, which holds GRID_COLS
+    // modules of 18px exactly — so the margin is the page's, and no module is resampled.
+    const mb = c.codeBand!.w / GRID_COLS;
+    expect(Number.isInteger(mb) && mb % 6 === 0, `module base ${mb}`).toBe(true);
     expect(c.codeBand!.x).toBe(Math.round((c.width - c.codeBand!.w) / 2));
+    expect(c.codeBand!.x).toBeGreaterThanOrEqual(Math.round(PAD * (c.width / 800)) - 1);
     expect(c.codeBandUnavailable).toBeUndefined();
   });
   it('a composition too small for any module base reports codeBandUnavailable, no band', () => {

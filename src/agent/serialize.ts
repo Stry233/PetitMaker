@@ -181,5 +181,8 @@ export function selectionContext(region: MacroCoord[]): string {
     if (c.y < minY) minY = c.y;
     if (c.y > maxY) maxY = c.y;
   }
-  return `User selection: ${region.length} cells in bbox (${minX},${minY})-(${maxX},${maxY}). When the user says "here"/"the selected area", they mean this region.`;
+  return `User selection: ${region.length} cells in bbox (${minX},${minY})-(${maxX},${maxY}). When the user says "here"/"the selected area", they mean this region. `
+    + 'It is also a HARD BOUNDARY while it is set: every cell you paint or erase, and the whole footprint '
+    + 'of every object you place or remove, must lie inside it. An edit that reaches outside is refused '
+    + 'and applies nothing, so plan within these cells.';
 }

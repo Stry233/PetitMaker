@@ -28,7 +28,7 @@ const GAP = 18;
 const TITLE_H = 34, DESC_H = 26, BADGE_ONLY_H = 34;   // header sub-heights
 const LAYER_LABEL_H = 20;                              // "LAYERS" strip above the column
 export const CARD_3D_H = 130;                          // optional 3D card row
-const CODE_LABEL_H = 20;                               // "share code" label above the code band
+const CODE_LABEL_H = 20;                               // PetitGlyph label above the code band
 const FOOTER_H = 40;                                   // footer band
 const COL_GAP = 16;                                    // gap between map and layer area
 const SUB_COL_W = 148;                                 // width of one layer sub-column
@@ -113,7 +113,11 @@ export function computeComposition(
   // scaleRect — a share code's modules must land on whole device pixels (see glyph/geometry.ts),
   // so its size is derived straight from moduleBaseFor(out.width) instead of the BASE-800 layout.
   if (hasShareCode(opts)) {
-    const mb = moduleBaseFor(out.width);
+    // The band sits at the same PAD as everything else. Its module base comes from the INSET
+    // width, so it is painted at a whole number of device pixels and never scaled to fit a
+    // margin — scaling is what would soften its modules.
+    const padPx = Math.round(PAD * S);
+    const mb = moduleBaseFor(out.width - 2 * padPx);
     if (mb === null) {
       out.codeBandUnavailable = true; // composition too small to host a legible code
     } else {

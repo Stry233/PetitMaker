@@ -9,7 +9,7 @@ import { ModalShell } from './ModalShell';
 import { Switch } from './Switch';
 import { resetAllLocalData } from '../../io/local-reset';
 import { Spinner } from '../Spinner';
-import { useEditorStore } from '../../state/store';
+import { useEditorStore, type HintLevel } from '../../state/store';
 import { startTour } from './tour/use-tour';
 
 // UI-scale slider bounds — mirror the Ctrl+(+/−) shortcut exactly: the store's
@@ -163,11 +163,15 @@ export interface SettingsModalProps {
   showChunks: boolean;
   motionPref: 'system' | 'reduced' | 'full';
   systemCursors: boolean;
+  hintLevel: HintLevel;
+  classicCursors: boolean;
   onLocaleChange: (locale: Locale) => void;
   onShowGridChange: (show: boolean) => void;
   onShowChunksChange: (show: boolean) => void;
   onMotionPrefChange: (p: 'system' | 'reduced' | 'full') => void;
   onSystemCursorsChange: (on: boolean) => void;
+  onHintLevelChange: (level: HintLevel) => void;
+  onClassicCursorsChange: (on: boolean) => void;
   onAbout: () => void;
   onClose: () => void;
 }
@@ -303,11 +307,15 @@ export function SettingsModal({
   showChunks,
   motionPref,
   systemCursors,
+  hintLevel,
+  classicCursors,
   onLocaleChange,
   onShowGridChange,
   onShowChunksChange,
   onMotionPrefChange,
   onSystemCursorsChange,
+  onHintLevelChange,
+  onClassicCursorsChange,
   onAbout,
   onClose,
 }: SettingsModalProps) {
@@ -460,12 +468,32 @@ export function SettingsModal({
           />
         </div>
 
+        {/* Quick hints — how much the on-canvas hint panel says, 'off' hiding it. */}
+        <div style={rowStyle}>
+          <span style={labelStyle}>{t('modal.settings_hints')}</span>
+          <SegmentedControl
+            idPrefix="settings-hints"
+            value={hintLevel}
+            options={['full', 'concise', 'off'] as const}
+            onChange={onHintLevelChange}
+            render={(l) => t(`modal.settings_hints_${l}`)}
+            stretch={false}
+          />
+        </div>
+
         {/* System cursors — the accessibility opt-out. A custom CSS cursor is an image, so it
             cannot honour the pointer size or theme the OS is configured with; a user who relies
             on those needs a way back to them, and the app's coverage is now app-wide. */}
         <div style={rowStyle}>
           <span style={labelStyle}>{t('modal.settings_system_cursors')}</span>
           <Switch on={systemCursors} onClick={() => onSystemCursorsChange(!systemCursors)} label={t('modal.settings_system_cursors')} />
+        </div>
+
+        {/* Classic cursors — the drawn SVG set the app shipped before its pixel art. Off is the
+            shipped set; the row does nothing while the OS is drawing the pointer above. */}
+        <div style={rowStyle}>
+          <span style={labelStyle}>{t('modal.settings_classic_cursors')}</span>
+          <Switch on={classicCursors} onClick={() => onClassicCursorsChange(!classicCursors)} label={t('modal.settings_classic_cursors')} />
         </div>
 
         {/* About — opens the About page; the chip shows the current build number */}

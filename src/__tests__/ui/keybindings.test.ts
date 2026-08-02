@@ -18,7 +18,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 
-const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, onHelp: () => {} };
+const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
 describe('command registry (single source of truth)', () => {
   it('has unique ids', () => {
@@ -37,6 +37,14 @@ describe('command registry (single source of truth)', () => {
   it('default combos are unique among mapped commands', () => {
     const combos = COMMANDS.map((c) => c.defaultCombo).filter((c): c is string => !!c).map(normalizeCombo);
     expect(new Set(combos).size, 'duplicate default combos').toBe(combos.length);
+  });
+
+  it('routes the menu toggle through the host, not straight at the store', () => {
+    // Opening the menu also retires the restore offer, which lives in App's own state. A command
+    // that wrote `menuCollapsed` itself would skip that and strand the bubble over an open menu.
+    const toggleMenu = vi.fn();
+    COMMAND_BY_ID.get('app.menu')!.run({ ...noopCtx, toggleMenu });
+    expect(toggleMenu).toHaveBeenCalledTimes(1);
   });
 
   it('marks undo/redo reserved', () => {
@@ -204,12 +212,13 @@ describe('keyboard layout', () => {
     expect(NAV.find((k) => k.base === 'arrowdown')?.row).toBe(6);
   });
 
-  it('comboFromEvent lowercases letters and orders modifiers, ignoring bare modifiers + space', () => {
+  it('comboFromEvent lowercases letters and orders modifiers, ignoring bare modifiers', () => {
     const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent;
     expect(comboFromEvent(ev({ key: 'B' }))).toBe('b');
     expect(comboFromEvent(ev({ key: 'z', ctrlKey: true, shiftKey: true }))).toBe('ctrl+shift+z');
     expect(comboFromEvent(ev({ key: 'Shift', shiftKey: true }))).toBeNull();
-    expect(comboFromEvent(ev({ key: ' ' }))).toBeNull(); // Space reserved for pan-hold
+    // The pan-hold gesture is a bound command like any other, so its key records like any other.
+    expect(comboFromEvent(ev({ key: ' ' }))).toBe('space');
   });
 
   it('numpad keys bind independently of the top-row digits (via event.code)', () => {
@@ -230,6 +239,18 @@ describe('keyboard layout', () => {
     expect(prettyCombo('arrowleft')).toBe('←');
     expect(prettyCombo('ctrl+home')).toBe('Ctrl Home');
     expect(prettyCombo(null)).toBe('');
+  });
+});
+
+describe('the pan-drag key', () => {
+  it('is a held command like the other three modifiers', () => {
+    const cmd = COMMAND_BY_ID.get('camera.pan_drag');
+    expect(cmd?.continuous).toBe(true);
+    expect(cmd?.defaultCombo).toBe('space');
+  });
+
+  it('is rebindable, so Space can be recorded as a combo', () => {
+    expect(isReservedCombo('space')).toBe(false);
   });
 });
 

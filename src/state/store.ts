@@ -4,6 +4,7 @@ import {
   type MapTemplate,
   type EditorEvents,
   type PlacedObject,
+  type BlockRef,
   ToolType,
   type Locale,
   type AutoEdgeCut,
@@ -18,9 +19,7 @@ import { detectPortraitBlocked } from '../core/runtime/portrait-signals';
 import type { RuleRegistry } from '../rules/registry';
 import { sameRef } from './selection';
 
-export type BlockRef =
-  | { kind: 'object'; id: string }
-  | { kind: 'terrain'; x: number; y: number };
+export type { BlockRef };
 
 /** All UI locales, ordered most- to least-specific for prefix matching. */
 const SUPPORTED_LOCALES: Locale[] = ['zh', 'ja', 'ru', 'th', 'id', 'fr', 'en'];
@@ -60,6 +59,28 @@ export const SYSTEM_CURSORS_STORAGE_KEY = 'petit-planet-system-cursors';
  *  Persisted. */
 function detectSystemCursors(): boolean {
   return typeof localStorage !== 'undefined' && localStorage.getItem(SYSTEM_CURSORS_STORAGE_KEY) === '1';
+}
+
+export type HintLevel = 'full' | 'concise' | 'off';
+
+export const HINT_LEVEL_STORAGE_KEY = 'petit-planet-hint-level';
+
+/** How much the quick-hints panel says: the full hint, a one-line form, or nothing. Persisted. */
+export function detectHintLevel(): HintLevel {
+  if (typeof localStorage !== 'undefined') {
+    const v = localStorage.getItem(HINT_LEVEL_STORAGE_KEY);
+    if (v === 'concise' || v === 'off') return v;
+  }
+  return 'full';
+}
+
+export const CLASSIC_CURSORS_STORAGE_KEY = 'petit-planet-classic-cursors';
+
+/** Whether to draw the pointer with the app's earlier SVG cursor set instead of its pixel art,
+ *  a taste choice. Only consulted while `systemCursors` is off. Persisted; ON unless the user
+ *  stored an explicit opt-out. */
+export function detectClassicCursors(): boolean {
+  return typeof localStorage === 'undefined' || localStorage.getItem(CLASSIC_CURSORS_STORAGE_KEY) !== '0';
 }
 
 /** Every overlay the editor can open. Adding a modal is one member here plus its component. */
@@ -106,6 +127,11 @@ export interface EditorStore {
    *  Several can be open at once: About opens over Settings and closing it returns there. */
   modals: Record<ModalId, boolean>;
   setModal: (id: ModalId, open: boolean) => void;
+  /** How long the undo stack was when the map was last exported — an image or a JSON, either
+   *  counts, since both carry the whole map. `null` = this map has never left the browser.
+   *  Everything after that point exists only here, which is what "New map" has to warn about. */
+  exportedAt: number | null;
+  markExported: () => void;
   /** Whether the "please rotate" overlay covers the app right now, including its dismiss. Single-
    *  sourced here (rather than each caller running its own `usePortraitGuard()`) so a "continue
    *  anyway" tap and the tour's own gate always agree — two independent hook instances each hold
@@ -133,6 +159,11 @@ export interface EditorStore {
   /** Draw the pointer with the OS cursors instead of the app's own set, everywhere: the DOM
    *  reads it through `ui/cursors/cursor-vars`, the canvas through the cursor controller. */
   systemCursors: boolean;
+  /** How verbose the quick-hints panel is, 'off' hiding it entirely. */
+  hintLevel: HintLevel;
+  /** Draw the pointer with the app's earlier SVG cursor set instead of its pixel art. Read at the
+   *  one seam that resolves an id to art, so both canvases and every DOM surface follow it. */
+  classicCursors: boolean;
   selectingRegion: boolean;
   regionTool: RegionTool;
   regionBrushSize: number;
@@ -160,6 +191,8 @@ export interface EditorStore {
   setPreview3DEdit: (v: { index: number; angle: CameraAngle } | null) => void;
   setMotionPref: (p: 'system' | 'reduced' | 'full') => void;
   setSystemCursors: (on: boolean) => void;
+  setHintLevel: (level: HintLevel) => void;
+  setClassicCursors: (on: boolean) => void;
   selectedItemId: string | null;
   setSelectedItemId: (id: string | null) => void;
   /** The armed item's PENDING rotation — turned by the rotate shortcuts while its ghost is showing,
@@ -203,6 +236,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   uiZoom: detectUiZoom(),
   motionPref: 'system',
   systemCursors: detectSystemCursors(),
+  hintLevel: detectHintLevel(),
+  classicCursors: detectClassicCursors(),
   locale: detectLocale(),
   showGrid: true,
   showChunkBounds: true,
@@ -210,6 +245,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   viewMode: detectViewMode(),
   modals: { help: false, settings: false, about: false, newProject: false, preview3d: false, export: false, exportJson: false, import: false, tourDone: false },
   setModal: (id, open) => set((st) => (st.modals[id] === open ? st : { modals: { ...st.modals, [id]: open } })),
+  exportedAt: null,
+  markExported: () => set({ exportedAt: get().commandExecutor?.getUndoStackSize() ?? 0 }),
   // Seeded from the live device signals, not from `false`: passive effects flush children-first,
   // so PortraitGuard's mirror-write and the tour's first-launch check land in the SAME flush and
   // the check would read the pre-mount default, latch its once-only ref and start the tour under
@@ -297,6 +334,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set({ systemCursors: on });
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(SYSTEM_CURSORS_STORAGE_KEY, on ? '1' : '0');
+    }
+  },
+  setHintLevel: (level) => {
+    set({ hintLevel: level });
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(HINT_LEVEL_STORAGE_KEY, level);
+    }
+  },
+  setClassicCursors: (on) => {
+    set({ classicCursors: on });
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(CLASSIC_CURSORS_STORAGE_KEY, on ? '1' : '0');
     }
   },
 

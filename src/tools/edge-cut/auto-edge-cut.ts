@@ -21,10 +21,9 @@
  */
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { AutoEdgeCut, Command, Corners, GridState, MacroCoord, TrimCornersCommand, ValidationResult } from '../../core/model/types';
-import type { ToolContext } from '../types';
 import { getCell } from '../../core/model/grid-model';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
-import { groundConvexCornerInWater, highestNeighborTerrain } from '../../core/edge-cut/terrain-silhouette';
+import { groundConvexCornerInWater, highestNeighborTerrain, surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { validateCut, isInnerCorner, OUTER_TRI, INNER_TRI } from '../../core/edge-cut/cut-validator';
 import {
   CANONICAL_ROAD_STATES, canonicalToActual, detectRoadConn, findRoadAt,
@@ -144,8 +143,11 @@ function cutTerrainInner(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean, a
     const lowerBlock = realBlock && allowLowerBlock && t!.type === ref.type && t!.elevation < ref.elevation;
     if (realBlock && !lowerBlock) continue;
     // A fillet must sit at the tier of the mass that wraps it; an existing patch left BELOW a since-stacked
-    // mass is re-issued at the current tier so the rounding tracks the height.
-    const underTall = isPatch && t!.elevation < ref.elevation;
+    // mass is re-issued at the current tier so the rounding tracks the height — but only as far as it can
+    // still REST there. Raising a from-empty fillet with the mass leaves it hanging in the air, which is
+    // the state `isInnerCorner` refuses to create in the first place.
+    const support = surfaceElevation(t);
+    const underTall = isPatch && t!.elevation < ref.elevation && ref.elevation === support + 1;
 
     const before: Corners = (isPatch || lowerBlock) && t!.corners
       ? [...t!.corners]
@@ -176,7 +178,8 @@ function cutTerrainInner(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean, a
       // column, so the notch stays open ground behind a rounded top corner. Do NOT raiseToTier a solid
       // block here, and never omit patchBase: `patchBase ?? elevation-1` would then fabricate a phantom
       // mountain@N-1 base, visible as a lower step at the inner corner and absent from hand-drawn
-      // terrain. Rounding cosmetically keeps generated and painted gammas identical at any elevation.
+      // terrain. Over an empty notch that means tier 1 and no higher — `isInnerCorner` offers the corner
+      // only where the fillet RESTS on the notch floor, since a cosmetic fillet cannot hang in the air.
       ctx.executeCommand({
         type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
         beforeCorners: undefined, afterCorners: after, patchOnly: true,
@@ -266,7 +269,7 @@ function cutRoads(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
  * cells; `roadCells` are tile/road cells. No-op when mode is 'off'.
  */
 export function applyAutoEdgeCut(
-  ctx: ToolContext,
+  ctx: EdgeCutCtx,
   mode: AutoEdgeCut,
   terrainCells: MacroCoord[],
   roadCells: MacroCoord[],

@@ -9,7 +9,7 @@
  * layer store actions. Coordinates are measured from the design canvas (group 349x654).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../i18n/context';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import type { LayerInfo } from '../../core/model/layer-utils';
@@ -27,6 +27,8 @@ const ROW = 72;      // row pitch
 const CARD_H = 654;
 const CARD_R = 42;
 const BROWN = '#574735';
+/** How strongly a locked row is tinted while paints on it are being refused. */
+const LOCK_TINT = 0.42;
 const WHITE = colors.white;
 
 // ── Adaptive column layout ──────────────────────────────────────────────────
@@ -95,19 +97,23 @@ export function LayerPanel({ layers, activeLayer, highlightLayer, layerVisibilit
   const setShowLayerNumbers = useEditorStore((s) => s.setShowLayerNumbers);
   const viewMode = useEditorStore((s) => s.viewMode);
 
-  // When a paint is rejected because its layer is locked (cause is
-  // off-canvas), pulse the locked rows so the reason is visible.
+  // When a paint is rejected because its layer is locked (cause is off-canvas), tint the locked
+  // rows so the reason is visible.
+  //
+  // A brush dragged across a locked layer is refused dozens of times a second, and each refusal
+  // used to restart the fade from full — a strobe over the yellow active pill, which is what the
+  // panel looks like for as long as the drag lasts. The tint HOLDS instead: it fades in on the
+  // first refusal, stays while they keep coming, and fades out once they stop.
   const eventBus = useEditorStore((s) => s.eventBus);
-  const [lockPulse, setLockPulse] = useState(0);
+  const reduced = useReducedMotionConfig();
   const [pulsing, setPulsing] = useState(false);
   const pulseTimer = useRef<number | null>(null);
   useEffect(() => {
     const onFail = (data: { errors: { ruleId: string }[] }) => {
       if (data.errors.some((e) => e.ruleId === 'V-LOCK-01')) {
-        setLockPulse((n) => n + 1);
         setPulsing(true);
-        // One tracked timeout: rapid rejections (a brush dragged across a locked
-        // layer) must extend the pulse, not let an older timer cut a newer one short.
+        // One tracked timeout, so a later refusal extends the tint rather than an older timer
+        // cutting a newer one short.
         if (pulseTimer.current !== null) window.clearTimeout(pulseTimer.current);
         pulseTimer.current = window.setTimeout(() => { pulseTimer.current = null; setPulsing(false); }, 550);
       }
@@ -256,8 +262,11 @@ export function LayerPanel({ layers, activeLayer, highlightLayer, layerVisibilit
                   initial={{ scale: 0.92, opacity: 0.85 }} animate={{ scale: 1, opacity: 1 }} transition={springs.bouncy}
                   style={{ position: 'absolute', left: px(pillLeft), top: px((ROW - 84) / 2), width: px(pillW), height: px(84), clipPath: squircleClip(px(pillW), px(84), px(39)), background: '#FFF481' }} />
               )}
-              {locked && pulsing && (
-                <motion.div key={lockPulse} initial={{ opacity: 0.5 }} animate={{ opacity: 0 }} transition={{ duration: 0.5 }}
+              {locked && (
+                <motion.div
+                  initial={false}
+                  animate={{ opacity: pulsing ? LOCK_TINT : 0 }}
+                  transition={reduced ? { duration: 0 } : { duration: pulsing ? 0.12 : 0.35, ease: 'easeOut' }}
                   style={{ position: 'absolute', left: px(pillLeft), top: px((ROW - 84) / 2), width: px(pillW), height: px(84), clipPath: squircleClip(px(pillW), px(84), px(39)), background: '#ff6b6b', pointerEvents: 'none' }} />
               )}
               <button type="button" onClick={() => onSelectLayer(elev)} aria-label={name}

@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.149",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "stamp": "vite-node scripts/stamp-build.mts",
+    "hooks:install": "git config core.hooksPath .githooks && echo 'git hooks enabled (.githooks)'",
     "stamp:check": "vite-node scripts/stamp-build.mts --check",
     "build:release": "npm run legal:validate && npm run stamp:check && tsc -b && vite build && PETIT_RELEASE=1 vite-node scripts/build-legal-pages.mts",
     "preview": "vite preview",

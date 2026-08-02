@@ -58,7 +58,7 @@ describe('useCursor', () => {
     tm.setActiveTool(ToolType.Hand);
     registerToolManager(tm);
     act(() => { setStoreState({ activeTool: ToolType.Hand }); });
-    expect(getByTestId('surface').style.cursor).toBe(cursorCss('hand-open'));
+    expect(getByTestId('surface').style.cursor).toBe(cursorCss('move'));
   });
 
   it('follows the build MATERIAL, which switches without ever touching activeTool', () => {

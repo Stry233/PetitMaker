@@ -92,6 +92,15 @@ export interface PlacedObject {
   locked?: boolean;
 }
 
+/**
+ * A selected block: an object by id, or a terrain cell by coordinate. The editor's selection is an
+ * ordered list of these (`state/store.selection`); `[]` is the one representation of "nothing
+ * selected". Compared by VALUE (`state/selection.sameRef`), because a ref is rebuilt on every hover.
+ */
+export type BlockRef =
+  | { kind: 'object'; id: string }
+  | { kind: 'terrain'; x: number; y: number };
+
 // --- Item Catalog (Placement System) ---
 export enum ItemCategory {
   Building = 'building',

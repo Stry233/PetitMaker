@@ -14,16 +14,34 @@ import { requestRender } from '../render-scheduler';
  * (deferred) fit also calls `requestRender()` so render-on-demand repaints the
  * now-visible sprite (the synchronous path already runs inside a render pass).
  */
+/** Sprite size relative to the object footprint: catalog art carries transparent margin, so a
+ *  small overshoot makes the drawn thing read at the size of its cells. */
+export const SPRITE_FILL = 1.1;
+
+/**
+ * The scale that CONTAINS an item's icon inside its footprint box, keeping the icon's own aspect.
+ *
+ * ONE number for both axes — the placed sprite and the drag/placement ghost both fit through this,
+ * so a ghost can never show the item at a shape the placement will not produce.
+ */
+export function footprintFit(fw: number, fh: number, fill: number = SPRITE_FILL) {
+  return (tw: number, th: number): number => Math.min(fw / tw, fh / th) * fill;
+}
+
 export function fitSpriteToTexture(
   sprite: PIXI.Sprite,
   tex: PIXI.Texture,
   computeScale: (texW: number, texH: number) => number,
+  /** Mirror the art across its own vertical axis. Applied HERE because the fit re-runs when the
+   *  texture finishes decoding, and a flip written by the caller beforehand would be overwritten. */
+  flipX = false,
 ): void {
   const fit = (rerender: boolean) => {
     if (sprite.destroyed || !sprite.transform) return;
     const tw = tex.width, th = tex.height;
     if (!tw || !th) return;
-    sprite.scale.set(computeScale(tw, th));
+    const s = computeScale(tw, th);
+    sprite.scale.set(flipX ? -s : s, s);
     sprite.visible = true;
     if (rerender) requestRender();
   };

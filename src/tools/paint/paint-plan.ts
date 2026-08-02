@@ -121,7 +121,11 @@ function planMountain(
     const key = cellKey(c.x, c.y);
     if (alreadyPainted.has(key) || seen.has(key)) continue;
     seen.add(key);
-    const from = getCell(ctx.gridState.cells, c.x, c.y)?.terrain?.elevation ?? 0;
+    // The STRUCTURAL surface, never the raw elevation: a Γ patch's elevation is its cosmetic
+    // fillet tier, so reading it starts the ladder a tier too high. Every rung above the cell's
+    // real support is then refused for having no base — the paint leaves that cell behind, and the
+    // patch it could not replace is dropped later, leaving a hole in the middle of the new mass.
+    const from = surfaceElevation(getCell(ctx.gridState.cells, c.x, c.y)?.terrain);
     const target = autoStackTarget(from, floor);
     if (from < target) {
       toRaise.push({ c, from, target });

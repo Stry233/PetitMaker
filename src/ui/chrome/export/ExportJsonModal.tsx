@@ -272,6 +272,7 @@ export function ExportJsonModal() {
 
         const json = serializeWithSections(state, opts);
         downloadJSON(json, `petit-planet-${state.template.id}-${Date.now()}.json`);
+        useEditorStore.getState().markExported();   // this map has now left the browser
         showToast(translate('toast.exported_json'), 'info');
         setExporting(false);
         close(false);

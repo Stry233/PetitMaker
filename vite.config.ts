@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { execSync } from 'node:child_process';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { bundleReportPlugin } from './security/bundle-report-plugin';
 import {
   HEADERS_POLICY,
@@ -10,17 +11,7 @@ import {
   toCspMeta,
   withExtraConnectSrc,
 } from './security/headers-policy';
-import { LEGAL } from './src/legal/config';
-
-// The search snippet and link preview for the app's entry page, in index.html's own words rather
-// than a doc body's. BILINGUAL on purpose: the app is one page that switches language in place,
-// so there is no /zh/ URL to carry a Chinese description and hreflang it. Both names therefore
-// have to be findable on this one page, or a reader searching 谷地工坊 or 星布谷地 finds nothing.
-const INDEX_DESCRIPTION =
-  'Plan a Petit Planet island in your browser, then build it in the game. '
-  + 'Draw terrain and water, place buildings and roads, generate an island, and edit in 2D or 3D. '
-  + '星布谷地地图规划工具：在浏览器里规划好一座岛，再到游戏里照着搭。'
-  + '绘制地形与水系、摆放建筑与道路、生成整座岛屿，并可在 2D 与 3D 视图中编辑。';
+import { activeTarget } from './src/legal/deploy-targets';
 
 /**
  * DEV-ONLY: append `VITE_EXTRA_CONNECT_SRC` origins to the served index.html CSP
@@ -60,26 +51,30 @@ function devCspExtensionPlugin(raw: string | undefined) {
  * `npm run build:release` is run locally to check a release, and a local tree is never stamped
  * as published — that would make every local release build noindex itself.
  */
-function indexHeadPlugin(canonicalOrigin: string, basePath: string) {
-  const origin = canonicalOrigin.replace(/\/$/, '');
+function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: string) {
+  const origin = target.canonicalOrigin.replace(/\/$/, '');
   return {
     name: 'petit-index-head',
     apply: 'build' as const,
     transformIndexHtml(html: string) {
-      // og:title reads the <title> already in index.html rather than restating it, so the tab
-      // label and the link preview cannot drift apart.
-      const title = html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '';
+      // The title, the description and the document language belong to the DEPLOYMENT (see
+      // src/legal/deploy-targets): the two sites want different ones, and a crawler reads them
+      // out of the static file, so they are written in here rather than chosen at runtime.
+      html = html
+        .replace(/<html lang="[^"]*"/, `<html lang="${target.htmlLang}"`)
+        .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`);
+      const title = target.title;
       const tags = basePath === '/'
         ? [
-            `<meta name="description" content="${INDEX_DESCRIPTION}" />`,
+            `<meta name="description" content="${target.description}" />`,
             `<link rel="canonical" href="${origin}/" />`,
             `<meta property="og:type" content="website" />`,
             `<meta property="og:url" content="${origin}/" />`,
             `<meta property="og:title" content="${title}" />`,
-            `<meta property="og:description" content="${INDEX_DESCRIPTION}" />`,
+            `<meta property="og:description" content="${target.description}" />`,
             `<meta property="og:image" content="${origin}/logo-256.png" />`,
-            `<meta property="og:locale" content="en_US" />`,
-            `<meta property="og:locale:alternate" content="zh_CN" />`,
+            `<meta property="og:locale" content="${target.htmlLang === 'zh-CN' ? 'zh_CN' : 'en_US'}" />`,
+            `<meta property="og:locale:alternate" content="${target.htmlLang === 'zh-CN' ? 'en_US' : 'zh_CN'}" />`,
             `<meta name="twitter:card" content="summary" />`,
           ]
         : ['<meta name="robots" content="noindex, nofollow" />'];
@@ -112,11 +107,38 @@ function indexHeadPlugin(canonicalOrigin: string, basePath: string) {
   const { info: BUILD_INFO, stamped: BUILD_IS_STAMPED } = resolveBuildInfo({ readStamp });
 // MAJOR.MINOR.BUILD, with -dev unless the stamp says this tree was published. package.json
 // supplies only the MAJOR.MINOR series; the publish workflow assigns the released version.
+/** Which deployment this build is for (PETIT_TARGET). Read once: vite.config and the bundle must
+ *  agree, so the id is also `define`d below rather than re-read inside the app. */
+const TARGET = activeTarget();
+
 const APP_VERSION = resolveVersion({
   pkgVersion: pkgVersion(), buildNumber: BUILD_INFO.buildNumber, release: BUILD_INFO.release,
+  lastRelease: BUILD_INFO.lastRelease,
 });
 
-  export default defineConfig(({ mode }) => {
+  /**
+ * DEV-ONLY: restart the server when the build stamp changes.
+ *
+ * The build identity is `define`d once when the config loads, so a commit — which re-stamps
+ * `build-info.json` through the pre-commit hook — leaves a running dev server serving the number it
+ * started with. Restarting is what makes the version in the page answer the question it exists to
+ * answer: whether what is loaded is what was just built.
+ */
+function stampWatchPlugin() {
+  const stamp = resolve(process.cwd(), STAMP_PATH);
+  return {
+    name: 'petit-stamp-watch',
+    apply: 'serve' as const,
+    configureServer(server: import('vite').ViteDevServer) {
+      server.watcher.add(stamp);
+      server.watcher.on('change', (file: string) => {
+        if (resolve(file) === stamp) void server.restart();
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
     // An unstamped PRODUCTION build would ship a build number that identifies nothing,
     // so it fails here instead. Dev/test only warns.
     if (!BUILD_IS_STAMPED) {
@@ -135,7 +157,8 @@ const APP_VERSION = resolveVersion({
       react(),
       bundleReportPlugin(),
       devCspExtensionPlugin(loadEnv(mode, process.cwd(), 'VITE_').VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC),
-      indexHeadPlugin(LEGAL.canonicalOrigin, process.env.PETIT_BASE_PATH || '/'),
+      indexHeadPlugin(TARGET, process.env.PETIT_BASE_PATH || '/'),
+      stampWatchPlugin(),
     ],
     resolve: {
       alias: {
@@ -143,6 +166,7 @@ const APP_VERSION = resolveVersion({
       },
     },
     define: {
+      __PETIT_TARGET__: JSON.stringify(TARGET.id),
       __APP_VERSION__: JSON.stringify(APP_VERSION),
       __BUILD_NUMBER__: JSON.stringify(BUILD_INFO.buildNumber),
       __BUILD_SHA__: JSON.stringify(BUILD_INFO.sha),

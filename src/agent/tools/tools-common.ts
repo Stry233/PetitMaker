@@ -15,6 +15,7 @@
  *   rule's agentHint (see rules/index.ts RULE_HINTS) for the violated rule.
  */
 import {
+  CommandType,
   type CatalogItem,
   type Command,
   type GridState,
@@ -24,6 +25,8 @@ import {
 } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { translateFor } from '../../i18n/context';
+import { getFootprint } from '../../core/model/grid-model';
+import { getPlacedObjectSize } from '../../state/object-geometry';
 import { circleCells, lineCells } from '../../tools/paint/shapes';
 import { regionTokens } from '../serialize';
 import { RULE_HINTS } from '../../rules';
@@ -100,6 +103,48 @@ function bboxSnapshot(deps: AgentToolDeps, cells: MacroCoord[]): string {
   return `\nResult (current state of the edited area):\n${regionTokens(deps.getState(), { x1, y1, x2, y2 })}`;
 }
 
+/**
+ * Every macro cell a command touches — the FOOTPRINT for an object, not its anchor, so a building
+ * straddling the boundary counts as outside.
+ */
+export function commandCells(cmd: Command): MacroCoord[] {
+  switch (cmd.type) {
+    case CommandType.PaintTerrain:
+    case CommandType.EraseTerrain:
+      return cmd.cells;
+    case CommandType.PlaceObject: {
+      const size = getPlacedObjectSize(cmd.object);
+      return getFootprint(cmd.object.position.x, cmd.object.position.y, size.w, size.h);
+    }
+    case CommandType.RemoveObject: {
+      const size = getPlacedObjectSize(cmd.removedObject);
+      return getFootprint(cmd.removedObject.position.x, cmd.removedObject.position.y, size.w, size.h);
+    }
+    case CommandType.TrimCorners:
+      return [{ x: cmd.x, y: cmd.y }];
+  }
+}
+
+/**
+ * The region the agent is confined to, as a membership test plus the bounds to quote back, or null
+ * when the user has painted nothing and the whole map is fair game.
+ */
+function regionGuard(region: MacroCoord[]): { has(c: MacroCoord): boolean; bounds: string } | null {
+  if (region.length === 0) return null;
+  const inside = new Set(region.map((c) => `${c.x},${c.y}`));
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const c of region) {
+    if (c.x < x1) x1 = c.x;
+    if (c.y < y1) y1 = c.y;
+    if (c.x > x2) x2 = c.x;
+    if (c.y > y2) y2 = c.y;
+  }
+  return {
+    has: (c) => inside.has(`${c.x},${c.y}`),
+    bounds: `${region.length} cells within (${x1},${y1})-(${x2},${y2})`,
+  };
+}
+
 export function runStroke(
   deps: AgentToolDeps,
   commands: Command[],
@@ -119,15 +164,36 @@ export function runStroke(
   exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
   let ok = 0; const failures: string[] = [];
   let violations: ReturnType<typeof exec.commitStrokeGroup>;
+  // A painted region is a boundary, not a suggestion. Checked AFTER each command applies, because
+  // the bridge and ramp traits SNAP position during validation — the cells a command finally
+  // occupies are only knowable once it has run.
+  const guard = regionGuard(deps.getRegion());
+  let strayed: MacroCoord | null = null;
   try {
     exec.runSilently(() => {
       for (const cmd of commands) {
         const r = exec.execute(cmd);
-        if (r.success) ok++;
-        else failures.push(formatErrors(r.errors));
+        if (!r.success) { failures.push(formatErrors(r.errors)); continue; }
+        ok++;
+        if (guard) {
+          const out = commandCells(cmd).find((c) => !guard.has(c));
+          if (out) { strayed = out; return; }
+        }
       }
       if (ok > 0) afterApply?.(exec);
     });
+    if (strayed) {
+      // Nothing half-applies: an undo has to restore what the user was looking at.
+      exec.rollbackTo(start);
+      const at = strayed as MacroCoord;
+      return {
+        isError: true,
+        content: `OUT OF REGION: this edit reached (${at.x},${at.y}), outside the region the user selected `
+          + `(${guard!.bounds}). Nothing was applied. Every cell you write, and every object you place or `
+          + `remove, must lie inside that region — an object counts by its whole footprint, not its corner. `
+          + `Re-plan within it, or ask the user to change the selection.`,
+      };
+    }
     violations = exec.commitStrokeGroup(start, opts);
   } catch (err) {
     // A crash mid-stroke must behave like REVERTED: already-executed commands would

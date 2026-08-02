@@ -1,0 +1,51 @@
+name: Feature request
+description: An idea that would make PetitMaker better.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are very welcome, in English or 中文.
+        One thing to know up front: PetitMaker only builds what Petit Planet can hold in-game, so a map made here stays 100% replicable. Requests that would break the game's own building rules cannot be accepted, however good they are.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you were trying to do
+      description: The situation where you missed this feature. The problem is often more useful to us than the solution.
+      placeholder: I wanted to move a whole village two cells left, but...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to happen
+      placeholder: A way to select everything in a rectangle and drag it together.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives you considered (optional)
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app
+      options:
+        - Building tools (brushes, shapes, terrain)
+        - Objects and the catalog
+        - Selection and editing
+        - Generation
+        - AI agent
+        - Import and export
+        - Interface, accessibility, languages
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you send it
+      options:
+        - label: I searched the existing issues and did not find this idea.
+          required: true

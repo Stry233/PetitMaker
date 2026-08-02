@@ -58,8 +58,15 @@ export function FitText({ cx = 0, cy = 0, maxW, anchor = 'center', flow = false,
   // scaled label — the text drifts off-center by ~1px in a scale/DPI-dependent way.
   // Flex blockifies the inner span: outer height == the label's own line box, always.
   // In-flow: a static box the parent (e.g. a flex-centered button) positions; only the fit-scale applies.
+  //
+  // `maxWidth` matters here and not in the absolute case. The fit is a TRANSFORM, which shrinks
+  // what is painted and not what is laid out, so an in-flow label kept reserving its unscaled
+  // width and shoved its flex siblings along — in French the help button beside "ID de recette"
+  // was pushed under the value box and vanished. Capping the box makes the layout agree with what
+  // the eye sees; a label that already fits is unaffected, since the cap is never below its width.
   const outer: CSSProperties = flow
-    ? { display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', userSelect: 'none', ...style }
+    ? { display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: pxf(maxW),
+        pointerEvents: 'none', userSelect: 'none', ...style }
     : { position: 'absolute', left: pxf(cx), top: pxf(cy), transform: anchor === 'center' ? 'translate(-50%, -50%)' : 'translateY(-50%)', display: 'flex', alignItems: 'center', pointerEvents: 'none', userSelect: 'none', ...style };
 
   return (

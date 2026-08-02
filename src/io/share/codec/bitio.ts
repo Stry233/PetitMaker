@@ -94,7 +94,10 @@ export function encodeUint(enc: RangeEncoder, m: UintModel, v: number): void {
 }
 export function decodeUint(dec: RangeDecoder, m: UintModel): number {
   let n = 1;
-  while (dec.decodeBit(m.len[n - 1]!) === 1) n++;
+  // A crafted stream can keep answering "longer"; the continuation run is bounded by the models
+  // that exist, so it stops at the encoder's own limit instead of indexing past them.
+  while (n < m.len.length && dec.decodeBit(m.len[n - 1]!) === 1) n++;
+  if (n >= m.len.length) throw new Error('bitio: integer length out of range');
   const mant = n > 1 ? dec.decodeDirect(n - 1) : 0;
   return (1 << (n - 1)) + mant - 1;
 }

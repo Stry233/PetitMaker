@@ -24,11 +24,12 @@ import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { colors as C, inkTint, font, springs, exitTransition, cursors } from '../../styles';
 import { usePx } from '../scale';
-import { useUiZooming } from '../ui-zoom-anim';
+import { useInstantLayout } from '../layout-settle';
 import { squircleClip } from '../squircle';
 import { FitText } from '../FitText';
 import { useAgentStore } from '../../../agent/store';
 import { PROVIDER_ACCENT, PROVIDER_IDS } from '../../../agent/providers/defaults';
+import { baseUrlFor } from '../../../agent/providers';
 import { Spinner } from '../../Spinner';
 import { ProviderLogo } from './logos';
 import { prettyModel, GoArrowIcon, CheckIcon, CaretDownIcon, FIELD_DEEP, HoverTip, OK_GREEN, REVERT_AMBER, CARD_LINE, pulseProps } from './atoms';
@@ -37,6 +38,11 @@ import { ClickCatcher } from '../../chrome/ClickCatcher';
 import type { ProviderSettings } from './useProviderSettings';
 import type { ProviderId } from '../../../agent/types';
 import type { Oversight } from '../../../agent/key-storage';
+
+/** Roster geometry: the designed card is an 80px badge inside 42px of padding, three to a row. */
+const ROSTER_ROW_H = 164;
+const ROSTER_GAP = 16;
+const ROSTER_ROWS = Math.ceil(PROVIDER_IDS.length / 3);
 
 /** Where to get a key for each platform — the roster links OUT to these (the
  *  auto-detector owns platform selection; the cards are shortcuts to a key). */
@@ -111,17 +117,12 @@ const GUTTER_X = 172;
 const GUTTER_W = 628;
 const ERR_RED = '#D9534F'; // prototype --err (incident badges)
 
-/** Prototype endpoint strings for the locked endpoint row (custom is editable). */
-const ENDPOINT_LABELS: Record<ProviderId, string> = {
+/** The endpoint row shows the URL the adapter calls, resolved for this key — including which
+ *  deployment a region-split platform's key belongs to. These two SDKs carry their own default,
+ *  so there is no base URL to read for them. */
+const SDK_DEFAULT_BASE: Partial<Record<ProviderId, string>> = {
   claude: 'https://api.anthropic.com',
   openai: 'https://api.openai.com/v1',
-  deepseek: 'https://api.deepseek.com',
-  gemini: 'https://generativelanguage.googleapis.com',
-  openrouter: 'https://openrouter.ai/api/v1',
-  zhipu: 'https://open.bigmodel.cn/api/paas/v4',
-  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  moonshot: 'https://api.moonshot.cn/v1',
-  custom: '',
 };
 
 const OVERSIGHTS: { id: Oversight; labelKey: string; hintKey: string }[] = [
@@ -588,7 +589,7 @@ export function SetupScreen({ top, height, ps, notice, onClearNotice, onStartBui
             <div style={{ display: 'flex', alignItems: 'center', gap: px(16), background: C.surfaceSecondary, borderRadius: px(28), padding: `${px(22)}px ${px(26)}px`, opacity: 0.7, boxSizing: 'border-box' }}>
               <input
                 disabled
-                value={ENDPOINT_LABELS[provider]}
+                value={baseUrlFor(provider, agent.settings) ?? SDK_DEFAULT_BASE[provider] ?? ''}
                 aria-label={t('agent2.endpoint')}
                 style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontFamily: font.family, fontWeight: 700, fontSize: pxf(28), color: C.inkText }}
               />
@@ -657,20 +658,29 @@ export function SetupScreen({ top, height, ps, notice, onClearNotice, onStartBui
       </motion.button>,
     );
     below = (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: px(22) }}>
-        <span style={{ ...kickerStyle, textAlign: 'center' }}>{t('agent2.roster_lbl')}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: px(22), height: '100%', minHeight: 0 }}>
+        <span style={{ ...kickerStyle, textAlign: 'center', flexShrink: 0 }}>{t('agent2.roster_lbl')}</span>
         {/* Each card links OUT to its platform's key page (auto-detection owns
             platform selection); custom has no page and just selects itself.
             Hover = the prototype's lift: -4px, 1.03, accent border, deeper
             shadow, an accent tint wash, and the badge tilting up. The name
             is a hover bubble instead of a caption. */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: px(16) }}>
+        {/* The rows are CAPPED at their designed height and share whatever the cards above leave
+            them. The intro card and the key field grow with the language against a locked panel
+            height, so a language that needs the room takes it out of the roster; one that does
+            not keeps the designed card and the breathing space under it. */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridAutoRows: '1fr',
+          gap: px(ROSTER_GAP), flex: 1, minHeight: 0,
+          maxHeight: px(ROSTER_ROW_H * ROSTER_ROWS + ROSTER_GAP * (ROSTER_ROWS - 1)),
+        }}>
           {PROVIDER_IDS.map((id, i) => {
             const url = PLATFORM_URLS[id];
             const cardStyle: React.CSSProperties = {
               position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '100%', background: C.white, border: `${Math.max(1, px(3))}px solid ${CARD_LINE}`,
-              borderRadius: px(32), padding: `${px(42)}px ${px(12)}px`, cursor: cursors.clickable, appearance: 'none',
+              width: '100%', height: '100%',
+              background: C.white, border: `${Math.max(1, px(3))}px solid ${CARD_LINE}`,
+              borderRadius: px(32), padding: `0 ${px(12)}px`, cursor: cursors.clickable, appearance: 'none',
               textDecoration: 'none', boxShadow: `0 ${px(4)}px ${px(12)}px ${inkTint(0.05)}`, boxSizing: 'border-box',
             };
             const inner = (
@@ -825,7 +835,7 @@ function ModelMenu({ models, model, onPick }: { models: string[]; model: string;
 function OversightSegs({ value, onChange }: { value: Oversight; onChange(v: Oversight): void }) {
   const t = useT();
   const reduced = useReducedMotionConfig();
-  const zooming = useUiZooming();
+  const zooming = useInstantLayout(); // also stands down mid-resize — see layout-settle
   const { px, pxf, fw } = usePx();
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);

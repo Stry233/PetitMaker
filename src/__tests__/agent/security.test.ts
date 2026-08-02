@@ -50,6 +50,53 @@ describe('sanitizeEndpointUrl', () => {
   it('trims trailing slashes', () => {
     expect(sanitizeEndpointUrl('https://host/api/')).toBe('https://host/api');
   });
+  it('drops credentials embedded in the URL', () => {
+    // A password here would sit in a field persisted in the clear beside a key the vault seals,
+    // and a browser refuses to fetch a URL carrying credentials.
+    expect(sanitizeEndpointUrl('https://user:hunter2@gateway.example.edu/v1'))
+      .toBe('https://gateway.example.edu/v1');
+    expect(sanitizeEndpointUrl('http://root:toor@localhost:11434/v1'))
+      .toBe('http://localhost:11434/v1');
+  });
+  it('rewrites the IPv6 loopback literal to localhost', () => {
+    // CSP's host grammar admits no IPv6 literal; localhost names the same interface and
+    // connect-src can express it.
+    expect(sanitizeEndpointUrl('http://[::1]:11434/v1')).toBe('http://localhost:11434/v1');
+  });
+  it('accepts only the loopback spellings the CSP also allows', async () => {
+    // An endpoint the field accepts has to be one connect-src can name.
+    const { HEADERS_POLICY } = await import('../../../security/headers-policy');
+    const sources = HEADERS_POLICY.cspDirectives['connect-src'] ?? [];
+    for (const host of ['localhost:11434', '127.0.0.1:11434']) {
+      const url = `http://${host}/v1`;
+      expect(sanitizeEndpointUrl(url), `${host} sanitized away`).toBe(url);
+      // `hostname` already carries the brackets an IPv6 literal needs.
+      expect(sources.some((s) => s.startsWith(`http://${new URL(url).hostname}:`)),
+        `connect-src has no source for ${host}`).toBe(true);
+    }
+  });
+});
+
+describe('stored regional endpoint', () => {
+  it('round-trips a host the provider declares', async () => {
+    const { saveAgentSettings, loadAgentSettings } = await import('../../agent/key-storage');
+    const { providerBaseUrls } = await import('../../agent/providers/defaults');
+    const intl = providerBaseUrls('moonshot')[1]!;
+    const base = loadAgentSettings();
+    saveAgentSettings({ ...base, regionBaseUrl: { moonshot: intl } });
+    expect(loadAgentSettings().regionBaseUrl?.moonshot).toBe(intl);
+  });
+
+  it('keeps only hosts the provider declares', async () => {
+    // The key travels to whatever this names, and anything running in the origin can write
+    // localStorage, so the declared host list is the allowlist.
+    const { loadAgentSettings } = await import('../../agent/key-storage');
+    localStorage.setItem('petit-agent-settings-v1', JSON.stringify({
+      provider: 'moonshot',
+      regionBaseUrl: { moonshot: 'https://exfil.example/v1', qwen: 'http://127.0.0.1:1/v1' },
+    }));
+    expect(loadAgentSettings().regionBaseUrl).toBeUndefined();
+  });
 });
 
 describe('vault', () => {

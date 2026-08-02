@@ -154,9 +154,11 @@ export class ToolManager {
       executeCommand: (cmd: Command): ValidationResult => this.executor.execute(cmd),
       commitStroke: (startSize: number, opts?: { reconcile?: boolean }) => this.executor.commitStroke(startSize, opts),
       validateCommand: (cmd: Command) => this.executor.getRegistry().validatePreCommand(cmd, this.gridState),
+      rules: this.executor.getRegistry(),
       undo: () => this.executor.undo(),
       getUndoStackSize: () => this.executor.getUndoStackSize(),
       collapseHistory: (start: number) => this.executor.collapseHistory(start),
+      rollbackTo: (watermark: number) => this.executor.rollbackTo(watermark),
       t: (key: string) => {
         const locale = useEditorStore.getState().locale;
         return translations[locale]?.[key] ?? translations['en'][key] ?? key;

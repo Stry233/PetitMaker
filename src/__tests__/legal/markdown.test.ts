@@ -303,3 +303,33 @@ describe('sanitizeHref — rejected', () => {
     expect(sanitizeHref('#section')).toEqual({ href: '#section', external: false });
   });
 });
+
+describe('underscore emphasis', () => {
+  const kinds = (src: string) => JSON.stringify(parseLegalMarkdown(src));
+
+  it('reads _em_ and __strong__, the other half of how markdown writes emphasis', () => {
+    expect(kinds('Some _italic_ text.')).toContain('"em"');
+    expect(kinds('Some __bold__ text.')).toContain('"strong"');
+  });
+
+  it('leaves underscores INSIDE a word alone', () => {
+    // An identifier, a filename or a URL path is not emphasis, which is exactly why CommonMark
+    // treats the underscore form as intraword-safe and the asterisk form as not.
+    for (const src of ['a file_name_here stays', 'snake_case_words stay', 'see https://x.test/a_b_c ok']) {
+      expect(kinds(src)).not.toContain('"em"');
+      expect(kinds(src)).not.toContain('"strong"');
+    }
+  });
+
+  it('keeps the character before the emphasis, rather than eating it as a delimiter', () => {
+    // The intraword guard captures the preceding character, so it has to be handed back as text.
+    const nodes = parseLegalMarkdown('go _now_');
+    expect(JSON.stringify(nodes)).toContain('"em"');
+    expect(inlineText((nodes[0] as { children: Inline[] }).children)).toBe('go now');
+  });
+
+  it('still reads the asterisk forms', () => {
+    expect(kinds('Some *italic* text.')).toContain('"em"');
+    expect(kinds('Some **bold** text.')).toContain('"strong"');
+  });
+});

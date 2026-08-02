@@ -7,7 +7,8 @@
  *   - onGenerate(config): clear objects/terrain (region-scoped if a region is set),
  *     runSilentlyAsync generate + populate, support cancel, commit the stroke group,
  *     flash the affected area, toast the placed count.
- *   - onClear(): clear all objects + terrain in one undo step, resync, toast.
+ *   - onClear(): take back the last generation (its scope, its authorship) in one undo step,
+ *     resync, toast.
  *
  * The genRegion / selectingRegion state is shared (region brush + panels + nav),
  * so App owns it and threads it in.
@@ -20,10 +21,7 @@ import { showToast } from '../chrome/Toast';
 import { generateTerrain, clearAllTerrain, clearAllObjects } from '../../tools/generation/terrain-generator';
 import { toGenConfig } from '../../tools/generation';
 import { populate, yieldFrame, type GenSignal } from '../../tools/generation/placement';
-import { CommandType, CellZone } from '../../core/model/types';
-import type { MacroCoord, Command, GenerateConfig } from '../../core/model/types';
-import { getCell } from '../../core/model/grid-model';
-import { buildObjectOccupancy } from '../../state/object-geometry';
+import type { MacroCoord, GenerateConfig } from '../../core/model/types';
 import { ProvSource } from '../../core/provenance/types';
 import { hashJSON } from '../../core/model/hash';
 
@@ -43,6 +41,7 @@ export interface GenerateRun {
 export function useGenerateRun({ menuView, genRegion, setGenRegion, setSelectingRegion }: GenerateRunParams): GenerateRun {
   const [generating, setGenerating] = useState(false);
   const genSignalRef = useRef<GenSignal | null>(null); // the in-flight generation's cancel flag (null = idle)
+  const lastGenRegion = useRef<MacroCoord[] | null>(null); // the last run's scope; null = the whole map
 
   // Leaving the Generate panel mid-run cancels the in-flight generation (it bails at its next yield).
   useEffect(() => {
@@ -70,16 +69,7 @@ export function useGenerateRun({ menuView, genRegion, setGenRegion, setSelecting
           // Clear objects first (object-blocks-terrain would reject erasing/generating under them),
           // then terrain — region-scoped if a region is set. Grouped into one undo via the stroke.
           clearAllObjects(gs, (cmd) => exec.execute(cmd), withRegion.region ?? undefined);
-          if (withRegion.region) {
-            const occ = buildObjectOccupancy(gs);
-            const regionCells = withRegion.region.filter(coord => {
-              const cell = getCell(gs.cells, coord.x, coord.y);
-              return cell?.terrain && cell.zone === CellZone.Grass && !occ.has(`${coord.x},${coord.y}`);
-            });
-            if (regionCells.length > 0) exec.execute({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells: regionCells } as Command);
-          } else {
-            clearAllTerrain(gs, (cmd) => exec.execute(cmd));
-          }
+          clearAllTerrain(gs, (cmd) => exec.execute(cmd), withRegion.region ?? undefined);
           win.__petitClearPreview?.();
           // Generation reject-and-skips many commands by design — silence the validation-failed
           // toasts. populate() yields between stages so the UI stays responsive + can cancel.
@@ -99,6 +89,7 @@ export function useGenerateRun({ menuView, genRegion, setGenRegion, setSelecting
           }
           exec.commitStrokeGroup(strokeStart);
           win.__petitResyncObjects?.();
+          lastGenRegion.current = withRegion.region;
           // Record the replay config for the share exporter: a FULL generation (region null) is
           // exactly reproducible from (seed, config), so the Recovery Poster can carry a tiny
           // procedural-v1 record instead of the whole map. Region-restricted gen depends on prior
@@ -126,10 +117,18 @@ export function useGenerateRun({ menuView, genRegion, setGenRegion, setSelecting
     const exec = useEditorStore.getState().commandExecutor;
     if (!gs || !exec) return;
     const strokeStart = exec.getUndoStackSize();
+    // Clear TAKES BACK A GENERATION; it is not an erase-everything. Two limits, both from what the
+    // last run actually did: its region (a run's `finally` drops the painted one, so the scope is
+    // remembered here — without it, clearing right after generating into a region wiped the rest
+    // of the map), and the map's own authorship. A cell or object the person made inside that
+    // region stays: only what a generator wrote there goes. A map loaded without provenance has no
+    // authorship to read, so nothing is spared and Clear scrubs its scope, as it always did.
+    const region = genRegion.length > 0 ? genRegion : lastGenRegion.current ?? undefined;
+    const prov = exec.getProvenanceTracker();
+    const objs = clearAllObjects(gs, (cmd) => exec.execute(cmd), region, (o) => prov.objectAuthor(o.id) === 'human');
     // Objects first: object-blocks-terrain would otherwise reject
     // erasing terrain under tiles/placements.
-    const objs = clearAllObjects(gs, (cmd) => exec.execute(cmd));
-    const cells = clearAllTerrain(gs, (cmd) => exec.execute(cmd));
+    const cells = clearAllTerrain(gs, (cmd) => exec.execute(cmd), region, (x, y) => prov.cellAuthor(x, y) === 'human');
     gs.generation = undefined; // a cleared map is no longer a replayable generation
     // One undo step: collapseHistory covers object add/removes as well as cells.
     exec.commitStrokeGroup(strokeStart);
@@ -137,7 +136,7 @@ export function useGenerateRun({ menuView, genRegion, setGenRegion, setSelecting
     win.__petitClearPreview?.();
     win.__petitResyncObjects?.(); // authoritative reconcile so cleared objects can't linger on screen
     showToast(translate('toast.cleared_all', { cells, objs }), 'info');
-  }, []);
+  }, [genRegion]);
 
   return { generating, onGenerate, onClear };
 }

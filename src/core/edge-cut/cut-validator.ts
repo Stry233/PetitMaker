@@ -1,7 +1,7 @@
 import type { Corners, CornerTrim, GridState } from '../model/types';
 import { TerrainType } from '../model/types';
 import { getCell } from '../model/grid-model';
-import { cornerWrappedAt } from './terrain-silhouette';
+import { cornerWrappedAt, enclosedGap, surfaceElevation } from './terrain-silhouette';
 import { CORNER_INDEX, type CornerPos } from './corner-index';
 import {
   detectRoadConn, findRoadAt, hasRoadAt, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
@@ -204,10 +204,17 @@ export function validateCut(
   return true;
 }
 
-/** Is corner `cornerIdx` of (cellX,cellY) a Γ notch of the `terrainType`@`elevation` silhouette this cell
- *  may be FILLED into? True when the silhouette wraps the corner AND the cell itself sits strictly below
- *  the reference tier (empty, a patch, or a hidden lower block) — a cell at/above the tier is part of the
- *  structure, not a notch. */
+/**
+ * Is corner `cornerIdx` of (cellX,cellY) a Γ notch of the `terrainType`@`elevation` silhouette this
+ * cell may be FILLED into? True when the silhouette wraps the corner AND the cell itself sits
+ * strictly below the reference tier (empty, a patch, or a hidden lower block) — a cell at/above the
+ * tier is part of the structure, not a notch.
+ *
+ * And only where the fillet would REST on something: it adds no mass of its own, so it has to sit
+ * one tier above the cell's own support. Rounding a tier-3 corner over a notch floored at 1 hangs a
+ * quarter block in the air with a layer of nothing under it — plain to see in the 3D view, and a
+ * corner painted the wrong tier's colour in the 2D one.
+ */
 export function isInnerCorner(
   state: GridState,
   cellX: number, cellY: number,
@@ -217,5 +224,8 @@ export function isInnerCorner(
 ): boolean {
   const t = getCell(state.cells, cellX, cellY)?.terrain;
   if (t && t.type !== TerrainType.None && !t.patchOnly && t.elevation >= elevation) return false;
+  if (elevation !== surfaceElevation(t) + 1) return false;
+  // A pit the surface has closed all the way round is not a notch — see `enclosedGap`.
+  if (enclosedGap(state, cellX, cellY)) return false;
   return cornerWrappedAt(state, cellX, cellY, cornerIdx, terrainType, elevation);
 }

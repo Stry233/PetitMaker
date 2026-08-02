@@ -1,9 +1,11 @@
 import {
   CommandType,
   type Command,
+  type EraseTerrainCommand,
   type GridState,
   type MacroCell,
   type MacroCoord,
+  type PaintTerrainCommand,
   type PlacedObject,
   type TerrainType,
   type ValidationResult,
@@ -70,22 +72,22 @@ export class EditorAPI {
   /* ── Execute methods ─────────────────────────────────── */
 
   paintTerrain(cells: MacroCoord[], type: TerrainType, elevation: number): ValidationResult {
-    const cmd = {
+    const cmd: PaintTerrainCommand = {
       type: CommandType.PaintTerrain,
       timestamp: Date.now(),
       cells,
       terrainType: type,
       elevation,
-    } as unknown as Command;
+    };
     return this.getExecutor().execute(cmd);
   }
 
   eraseTerrain(cells: MacroCoord[]): ValidationResult {
-    const cmd = {
+    const cmd: EraseTerrainCommand = {
       type: CommandType.EraseTerrain,
       timestamp: Date.now(),
       cells,
-    } as unknown as Command;
+    };
     return this.getExecutor().execute(cmd);
   }
 

@@ -10,6 +10,7 @@
  * screen-anchored React chrome (SelectionHandles / ContextMenu / popovers).
  */
 import type { GridState, MacroCoord } from '../core/model/types';
+import type { TrimmedCell } from '../tools/edge-cut/trim-preview';
 import type { RowSpan } from './map2d/layers/ghost-geometry';
 import type { MacroRect } from './interaction/marquee';
 import type { GroupRotation } from './group-arc';
@@ -42,8 +43,11 @@ export interface ViewProjection {
  *  Cell coordinates; `terrainMode`/`terrainGrid` selects the micro grid
  *  (−HALF_TILE) that terrain renders on, vs the macro grid objects use. */
 export interface ToolOverlay {
-  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean): void;
-  showGhostSpans(spans: RowSpan[], color: number, terrainGrid?: boolean): void;
+  /** `trim` is what auto-trim will do to the shape — the ghost draws the corners it will actually
+   *  have, plus any Γ patch the trim fills a notch with. Views without trimmed shapes ignore it and
+   *  draw squares; the cell set still carries the footprint. */
+  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
+  showGhostSpans(spans: RowSpan[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
   clearGhost(): void;
   /** `append` draws this ring alongside whatever is already on screen instead of replacing it
    *  (a GROUP selection paints one ring per member). Omit or false replaces. */
@@ -129,6 +133,9 @@ export interface ViewCamera {
   /** Orbit by screen deltas — 3D only. The machine's right-drag calls
    *  orbit ?? pan, so the 2D view pans where the 3D view orbits. */
   orbit?(dx: number, dy: number): void;
+  /** The drag that was moving the camera has ended. A view with inertia coasts from the velocity
+   *  its pan/orbit verbs were carrying; a view without one omits this and stops dead. */
+  endGesture?(): void;
   /** Re-frame the whole map (the fit chrome/shortcut). */
   fitToMap?(): void;
   /** Two-finger twist → yaw, radians (3D only). */

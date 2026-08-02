@@ -106,8 +106,13 @@ export function sanitizeHref(raw: string): { href: string; external: boolean } |
 // parens (`(?:[^()]|\([^()]*\))*`) so hrefs like a Wikipedia disambiguation
 // link — or an attacker's `javascript:alert(1)` — capture whole, not
 // truncated at the first inner ')'.
+// Emphasis is written both ways in the wild, so both are read. The underscore forms are guarded on
+// both sides against word characters — `snake_case`, `file_name.md` and a URL's path must stay
+// literal, which is exactly the intraword rule CommonMark applies. The guard is a leading CAPTURE
+// rather than a lookbehind: lookbehind is a recent addition to some engines, and a SyntaxError here
+// would take the whole module down at import rather than degrade.
 const INLINE_RE =
-  /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*([^*]+?)\*\*|`([^`]+?)`|\*([^*]+?)\*/g;
+  /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)|\*\*([^*]+?)\*\*|`([^`]+?)`|\*([^*]+?)\*|(^|[^A-Za-z0-9_])__([^_]+?)__(?![A-Za-z0-9_])|(^|[^A-Za-z0-9_])_([^_]+?)_(?![A-Za-z0-9_])/g;
 
 function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -130,6 +135,13 @@ function parseInline(text: string): Inline[] {
       out.push({ t: 'code', text: m[4] });
     } else if (m[5] !== undefined) {
       out.push({ t: 'em', text: m[5] });
+    } else if (m[7] !== undefined) {
+      // The guard character is part of the match, so it has to be handed back as text.
+      if (m[6]) out.push({ t: 'text', text: m[6] });
+      out.push({ t: 'strong', text: m[7] });
+    } else if (m[9] !== undefined) {
+      if (m[8]) out.push({ t: 'text', text: m[8] });
+      out.push({ t: 'em', text: m[9] });
     }
     lastIndex = INLINE_RE.lastIndex;
   }

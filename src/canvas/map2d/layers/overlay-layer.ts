@@ -6,15 +6,28 @@ import { requestRender } from '../render-scheduler';
 import { getCatalogItem } from '../../../state/catalog';
 import { getRotatedSize } from '../../../state/object-geometry';
 import { iconUrl } from '../../../ui/menu/icons';
+import { fitSpriteToTexture, footprintFit } from '../draw/sprite-fit';
+import { drawTrimmedBlock } from '../draw/trim-shapes';
 import { selectionPopAmplitude } from './object-animations';
 import { HALF_TILE } from '../../../core/model/grid-model';
-import type { MacroCoord, ValidationError } from '../../../core/model/types';
+import type { Corners, MacroCoord, ValidationError } from '../../../core/model/types';
+import { shapeOfSpans, type TrimmedCell } from '../../../tools/edge-cut/trim-preview';
 import type { MacroRect } from '../../interaction/marquee';
 import {
   errorFlashSignature, resolveErrorFlashCells, shouldFlashErrors, flashDecay,
   type ErrorFlashCell, type ErrorFlashGate,
 } from './error-flash';
-import { boundaryEdges, boundaryEdgesFromSpans, mergeCellSpans, type CellSpan, type EdgeSegment, type RowSpan } from './ghost-geometry';
+import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RowSpan } from './ghost-geometry';
+
+/** "Is this cell inside the span set?" — built once per ghost build, for the outline. */
+function spanMembership(spans: readonly RowSpan[]): (x: number, y: number) => boolean {
+  const rows = new Map<number, RowSpan[]>();
+  for (const s of spans) {
+    const row = rows.get(s.y);
+    if (row) row.push(s); else rows.set(s.y, [s]);
+  }
+  return (x, y) => (rows.get(y) ?? []).some((s) => x >= s.x && x < s.x + s.w);
+}
 
 const GRID_LINE_COLOR = 0xffffff;
 const GRID_LINE_ALPHA = 0.12;
@@ -73,6 +86,15 @@ export class OverlayLayer {
   private bandGraphics: PIXI.Graphics;
   private selectionGraphics: PIXI.Graphics;
   private selectionLabel: PIXI.Text | null = null;
+  /** What shape a cell actually holds, for the flashes. Auto-trim cuts corners, so a flash of flat
+   *  squares advertises a result the map does not have. Supplied by the renderer, which owns the
+   *  live grid; absent (or for a macro-grid object flash) every cell reads as a plain square. */
+  private shapeAt: (x: number, y: number) => { corners?: Corners; patchOnly?: boolean } | null = () => null;
+
+  /** Point the flashes at the live grid. */
+  setShapeSource(fn: (x: number, y: number) => { corners?: Corners; patchOnly?: boolean } | null): void {
+    this.shapeAt = fn;
+  }
 
   constructor() {
     this.container = new PIXI.Container();
@@ -159,10 +181,12 @@ export class OverlayLayer {
     onEnd: () => void;
   }): void {
     const { g, cells, color, peakAlpha, durationMs } = opts;
+    // Resolved ONCE, against the map as it now stands — see `splitFlashShapes`.
+    const { shaped, plain } = splitFlashShapes(cells, this.shapeAt);
     // Row spans, merged ONCE: the fade refills its Graphics every frame, and a
     // large region (a whole-shape commit, a big footprint) as per-cell rects
     // would tessellate tens of thousands of rects per frame.
-    const spans = mergeCellSpans(cells);
+    const spans = mergeCellSpans(plain);
     const startTime = performance.now();
     const animate = () => {
       requestRender();
@@ -173,6 +197,11 @@ export class OverlayLayer {
         g.beginFill(color, alpha);
         for (const sp of spans) spanRect(g, sp);
         g.endFill();
+        for (const c of shaped) {
+          const off = c.micro ? HALF_TILE : 0;
+          drawTrimmedBlock(g, c.corners as Corners, c.x * TILE_SIZE - off, c.y * TILE_SIZE - off,
+            HALF_TILE, color, alpha, c.patchOnly);
+        }
         opts.setAnimId(requestAnimationFrame(animate));
       } else {
         opts.onEnd();
@@ -257,8 +286,8 @@ export class OverlayLayer {
 
   /** The latest ghost request; rebuilt at most once per frame ('clear' erases). */
   private pendingGhost:
-    | { kind: 'cells'; cells: MacroCoord[]; color: number; micro: boolean }
-    | { kind: 'spans'; spans: RowSpan[]; color: number; micro: boolean }
+    | { kind: 'cells'; cells: MacroCoord[]; color: number; micro: boolean; trim?: readonly TrimmedCell[] }
+    | { kind: 'spans'; spans: RowSpan[]; color: number; micro: boolean; trim?: readonly TrimmedCell[] }
     | 'clear' | null = null;
   private ghostRaf = 0;
 
@@ -269,8 +298,8 @@ export class OverlayLayer {
    * pointer sample (several per frame under coalesced events), and only the
    * latest matters.
    */
-  showGhost(cells: MacroCoord[], color: number, terrainMode = true): void {
-    this.pendingGhost = { kind: 'cells', cells, color, micro: terrainMode };
+  showGhost(cells: MacroCoord[], color: number, terrainMode = true, trim?: readonly TrimmedCell[]): void {
+    this.pendingGhost = { kind: 'cells', cells, color, micro: terrainMode, trim };
     this.scheduleGhostBuild();
   }
 
@@ -280,8 +309,8 @@ export class OverlayLayer {
    * shape's full cell count. Spans must be per-row merged (the shape builders
    * in tools/paint/shapes guarantee it).
    */
-  showGhostSpans(spans: RowSpan[], color: number, terrainMode = true): void {
-    this.pendingGhost = { kind: 'spans', spans, color, micro: terrainMode };
+  showGhostSpans(spans: RowSpan[], color: number, terrainMode = true, trim?: readonly TrimmedCell[]): void {
+    this.pendingGhost = { kind: 'spans', spans, color, micro: terrainMode, trim };
     this.scheduleGhostBuild();
   }
 
@@ -296,21 +325,17 @@ export class OverlayLayer {
     const item = getCatalogItem(catalogId);
     const url = item?.icon ? iconUrl(item.icon) : undefined;
     if (!item || !url) { g.visible = false; return false; }
-    g.texture = PIXI.Texture.from(url);
+    const tex = PIXI.Texture.from(url);
+    g.texture = tex;
     const size = getRotatedSize(item, rotation as 0 | 90 | 180 | 270);
     g.anchor.set(0.5);
     g.position.set((x + size.w / 2) * TILE_SIZE, (y + size.h / 2) * TILE_SIZE);
-    g.width = size.w * TILE_SIZE;
-    g.height = size.h * TILE_SIZE;
-    g.rotation = ((rotation % 360) * Math.PI) / 180;
-    // The rotated sprite must still FIT the rotated footprint: swap the fitted
-    // box back for the 90/270 cases (width/height apply pre-rotation).
-    if (rotation === 90 || rotation === 270) {
-      g.width = size.h * TILE_SIZE;
-      g.height = size.w * TILE_SIZE;
-    }
+    // Every line below matches how ObjectLayer draws the PLACED sprite, so the preview shows the
+    // shape the drop will produce: only a rotatable item turns, and the icon is fitted by ONE
+    // scale. Sizing width and height separately would stretch the art to the footprint box.
+    g.rotation = item.rotatable ? ((rotation % 360) * Math.PI) / 180 : 0;
+    fitSpriteToTexture(g, tex, footprintFit(size.w * TILE_SIZE, size.h * TILE_SIZE));
     g.tint = valid ? 0xffffff : 0xff8a8a;
-    g.visible = true;
     return true;
   }
 
@@ -392,18 +417,38 @@ export class OverlayLayer {
       //    water blue / tile). Kept fairly low so it doesn't hide the terrain underneath. Drawn as merged
       //    row spans: a large drag shape holds tens of thousands of cells, and one rect per cell would
       //    tessellate that many Graphics rects per pointer move.
+      // With auto-trim on, the cells whose corners it will cut are drawn one by one in the shape
+      // they will actually have, and the rest still merge into spans.
+      // Only what the stroke ADDS: a Γ patch's square quadrants are the block underneath it.
+      const trim = (p.trim ?? []).map((t) => ({ ...t, corners: filletOnly(t.corners, t.patch) as Corners }));
+      const trimmed = new Set(trim.map((t) => `${t.x},${t.y}`));
       const spans: CellSpan[] = p.kind === 'spans'
-        ? p.spans.map((sp) => ({ ...sp, micro: p.micro }))
-        : mergeCellSpans(p.cells.map(({ x, y }) => ({ x, y, micro: p.micro })));
+        ? spansWithout(p.spans, trim).map((sp) => ({ ...sp, micro: p.micro }))
+        : mergeCellSpans(p.cells.filter((c) => !trimmed.has(`${c.x},${c.y}`))
+          .map(({ x, y }) => ({ x, y, micro: p.micro })));
       this.ghostGraphics.beginFill(p.color, 0.32);
       for (const sp of spans) spanRect(this.ghostGraphics, sp);
       this.ghostGraphics.endFill();
+      for (const t of trim) {
+        drawTrimmedBlock(this.ghostGraphics, t.corners, t.x * TILE_SIZE - offset, t.y * TILE_SIZE - offset,
+          HALF_TILE, p.color, 0.32);
+      }
 
       // 2) a crisp OUTLINE of the footprint's outer boundary so the preview pops even when the fill colour
       //    nearly matches the terrain below (a flat fill alone would vanish over same-coloured mountain/water).
       //    Drawn as a dark halo + a bright white line, so it reads on ANY background. Boundary only (an edge
       //    whose neighbour is outside the set) — no internal grid clutter.
-      const edges: EdgeSegment[] = p.kind === 'spans' ? boundaryEdgesFromSpans(p.spans) : boundaryEdges(p.cells);
+      // The trimmed silhouette when there is one: a cut corner and the Γ patch filling a notch are
+      // both part of the shape the click leaves, and an outline drawn round the square footprint
+      // would contradict the fill under it. A span ghost only knows its rim, so it hands the
+      // outline a membership test for everything inside.
+      const edges: EdgeSegment[] = trim.length === 0
+        ? (p.kind === 'spans' ? boundaryEdgesFromSpans(p.spans) : boundaryEdges(p.cells))
+        : p.kind === 'spans'
+          // Only the rim is materialised: the interior is answered by the membership test, and
+          // walking a map-sized span set cell by cell is what the span form exists to avoid.
+          ? trimmedOutline(shapeOfSpans(p.spans).rim, trim, spanMembership(p.spans))
+          : trimmedOutline(p.cells, trim);
       const stroke = (width: number, col: number, alpha: number) => {
         this.ghostGraphics.lineStyle(width, col, alpha);
         for (const e of edges) {

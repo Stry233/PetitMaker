@@ -185,6 +185,20 @@ export const springs = {
   gentle: { type: 'spring' as const, stiffness: 200, damping: 20, mass: 1 },
 } as const;
 
+/**
+ * Rest thresholds for a spring driving `scale`. Spread over a spring alongside it:
+ * `transition={{ ...springs.bouncy, ...scaleRest }}`.
+ *
+ * The defaults are tuned for values measured in PIXELS — a spring is finished once it is within
+ * `restDelta` (0.01) of its target, at which point framer writes the target exactly. On a scale,
+ * 0.01 is a whole percent of the element: an underdamped entrance is declared done while still
+ * ~0.0017 away and SNAPS, which on a 300px card is half a pixel appearing in one frame at the very
+ * end of the animation. Measured on the tour's welcome card, where the hard edges of the logo make
+ * it plainly visible. These thresholds are a hundredth of that, so the final approach is continuous
+ * and the last movement is well under a tenth of a pixel.
+ */
+export const scaleRest = { restDelta: 0.0002, restSpeed: 0.02 } as const;
+
 /* Closing a panel/popover should settle, not overshoot — a quick ease-out with
  * NO bounce. Put on a motion element's `exit` (e.g. exit={{ scale, opacity,
  * transition: exitTransition }}) so the entrance can stay springy while the

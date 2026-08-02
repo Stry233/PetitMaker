@@ -1,15 +1,42 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE } from '../../core/runtime/cursor-spec';
-import { cursorSvg } from '../../ui/cursors/cursor-art';
-import { colors } from '../../ui/styles';
-import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
+// @ts-ignore - node:fs is untyped here (no @types/node)
+import { readFileSync } from 'node:fs';
+import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
+import { cursorArt, BADGED_IDS } from '../../ui/cursors/cursor-art';
+import { decodePng } from '../../io/share/raster/png-raster';
 
 vi.mock('../../ui/cursors/cursor-art', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../ui/cursors/cursor-art')>();
   // Wraps the real implementation, so the art tests in this file still exercise it; the spy is
   // only there for the memo test to count rebuilds.
-  return { ...actual, cursorSvg: vi.fn(actual.cursorSvg) };
+  return { ...actual, cursorArt: vi.fn(actual.cursorArt) };
 });
+
+/**
+ * The art is raster now, so these read the SHIPPED PNGs off disk rather than inspecting a
+ * generated string. `cursorArt` resolves to a bundler URL that is a stub under vitest, which is
+ * enough to assert WHICH file an id points at, but not what is in it.
+ */
+const ART_DIR = 'src/assets/cursors';
+const pixels = async (stem: string) => decodePng(new Uint8Array(readFileSync(`${ART_DIR}/${stem}.png`)));
+/**
+ * Coordinates of every pixel the artist drew. `minAlpha` chooses what counts: the default takes
+ * the faintest fringe, which is right for "is anything drawn near here". Locating an APEX wants
+ * SOLID instead — the art is rendered to its shipped size by area-averaging, so a shape carries a
+ * soft edge a pixel outside itself, and the faint threshold would put every apex there.
+ */
+function drawn(img: { width: number; data: Uint8Array }, minAlpha = 8): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let i = 3; i < img.data.length; i += 4) {
+    if (img.data[i]! > minAlpha) out.push([((i - 3) / 4) % img.width, Math.floor((i - 3) / 4 / img.width)]);
+  }
+  return out;
+}
+const SOLID = 128;
+const ART_IDS = CURSOR_IDS.filter((id) => CURSORS[id].hasArt);
+/** One pixel of the 32px source art, in shipped-image pixels, so these hold at any scale. */
+const PX = CURSOR_SIZE / 32;
+const samePixels = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 // Keyword cursors a browser is guaranteed to understand: what the user gets if our image or
 // hotspot is ever rejected.
@@ -24,9 +51,10 @@ describe('cursor catalogue', () => {
   it('puts every hotspot inside the image', () => {
     for (const id of CURSOR_IDS) {
       const [x, y] = CURSORS[id].hotspot;
+      const size = CURSORS[id].size ?? CURSOR_SIZE;
       expect(Number.isInteger(x) && Number.isInteger(y), id).toBe(true);
-      expect(x >= 0 && x < CURSOR_SIZE, `${id} hotspot x`).toBe(true);
-      expect(y >= 0 && y < CURSOR_SIZE, `${id} hotspot y`).toBe(true);
+      expect(x >= 0 && x < size, `${id} hotspot x`).toBe(true);
+      expect(y >= 0 && y < size, `${id} hotspot y`).toBe(true);
     }
   });
 
@@ -57,81 +85,96 @@ describe('cursor catalogue', () => {
 });
 
 describe('cursor art', () => {
-  const MOUNTAIN = ELEVATION_COLORS[3]!;
-
-  it('draws every id that claims art, at the catalogue size', () => {
+  it('points every id that claims art at its own file, and keyword-only ids at nothing', () => {
     for (const id of CURSOR_IDS) {
-      const svg = cursorSvg(id);
-      if (!CURSORS[id].hasArt) { expect(svg, id).toBeNull(); continue; }
-      expect(svg, id).toContain(`viewBox="0 0 ${CURSOR_SIZE} ${CURSOR_SIZE}"`);
-      expect(svg, id).toContain(`width="${CURSOR_SIZE}"`);
-      expect(svg!.startsWith('<svg'), id).toBe(true);
-      expect(svg!.trimEnd().endsWith('</svg>'), id).toBe(true);
+      const url = cursorArt(id);
+      if (!CURSORS[id].hasArt) { expect(url, id).toBeNull(); continue; }
+      expect(url, id).toContain(`${id}.png`);
     }
   });
 
-  it('adds the forbidden badge only when asked', () => {
-    const plain = cursorSvg('mountain')!;
-    const barred = cursorSvg('mountain', { forbidden: true })!;
-    expect(plain).not.toContain(colors.statusError);
-    expect(barred).toContain(colors.statusError);
-    expect(barred.length).toBeGreaterThan(plain.length);
+  it('ships every referenced image at its catalogue size, with something drawn on it', async () => {
+    for (const id of ART_IDS) {
+      const img = await pixels(id);
+      const want = CURSORS[id].size ?? CURSOR_SIZE;
+      expect([img.width, img.height], id).toEqual([want, want]);
+      expect(drawn(img).length, `${id} is blank`).toBeGreaterThan(20);
+    }
+  });
+
+  it('draws a badged variant for exactly the cursors that can refuse', () => {
+    // The badge is hand-placed per silhouette rather than composited, so a cursor entering
+    // FORBIDDABLE without new art would silently show its plain self when refusing.
+    expect([...BADGED_IDS].sort()).toEqual([...FORBIDDABLE].sort());
+  });
+
+  it('uses the badged file only when asked, and it differs from the plain one', async () => {
+    for (const id of FORBIDDABLE) {
+      expect(cursorArt(id), id).toContain(`${id}.png`);
+      expect(cursorArt(id, { forbidden: true }), id).toContain(`${id}-forbidden.png`);
+      const [plain, barred] = [await pixels(id), await pixels(`${id}-forbidden`)];
+      expect(samePixels(plain.data, barred.data), `${id} badged == plain`).toBe(false);
+    }
     // A keyword-only cursor has nothing to badge.
-    expect(cursorSvg('busy', { forbidden: true })).toBeNull();
+    expect(cursorArt('busy', { forbidden: true })).toBeNull();
   });
 
-  it('never stamps a second badge on art that already refuses', () => {
+  it('never reaches for a second badge on art that already refuses', () => {
     // `blocked` IS the arrow-plus-badge, so asking it for `forbidden` must be a no-op rather
-    // than drawing two circle-slashes on top of each other.
-    expect(cursorSvg('blocked', { forbidden: true })).toBe(cursorSvg('blocked'));
-    expect(cursorSvg('blocked')).toContain(colors.statusError);
+    // than looking up a doubly-badged file that does not exist.
+    expect(cursorArt('blocked', { forbidden: true })).toBe(cursorArt('blocked'));
+    expect(BADGED_IDS.has('blocked')).toBe(false);
   });
 
-  it('draws `default` and `select` from one arrow, so the pointer has a single identity', () => {
-    const arrow = cursorSvg('select')!;
-    expect(cursorSvg('default')).toBe(arrow);
-    // …and `blocked` is that same arrow with the refusal badge added, not a second arrow.
-    expect(cursorSvg('blocked')!.startsWith(arrow.slice(0, arrow.indexOf('</svg>')))).toBe(true);
-  });
-
-  it('takes material colours from the palette the map draws with', () => {
-    expect(cursorSvg('mountain')).toContain(MOUNTAIN);
-    expect(cursorSvg('water')).toContain(WATER_COLOR);
-  });
-
-  it('uses palette tokens, never a literal hex of its own', () => {
-    const allowed = new Set([
-      colors.frameDark, colors.panelCream, colors.statusError,
-      MOUNTAIN, WATER_COLOR, '#c4a882',
-    ].map((c) => c.toLowerCase()));
-    for (const id of CURSOR_IDS) {
-      for (const hex of cursorSvg(id, { forbidden: true })?.match(/#[0-9a-fA-F]{3,8}/g) ?? []) {
-        expect(allowed, `${id} uses an unlisted colour ${hex}`).toContain(hex.toLowerCase());
-      }
+  it('puts every hotspot on the art it belongs to', async () => {
+    // The hotspot is the pixel the drawing acts from, so it has to be ON the drawing. `move` is
+    // the one deliberate exception: a four-way arrow is hollow at its centre, which is exactly
+    // where it acts from, so nearby is the most that can be asked.
+    for (const id of ART_IDS) {
+      const [hx, hy] = CURSORS[id].hotspot;
+      const pts = drawn(await pixels(id));
+      const nearest = Math.min(...pts.map(([x, y]) => Math.abs(x - hx) + Math.abs(y - hy)));
+      expect(nearest, `${id} hotspot (${hx},${hy}) is ${nearest}px from anything drawn`).toBeLessThanOrEqual(3 * PX);
     }
   });
 
-  it('tells the user what a Ctrl+click will do', () => {
-    // Without these, holding Ctrl looks identical to not holding it.
-    expect(cursorSvg('select-add')).toContain(colors.frameDark);
-    expect(CURSORS['select-add'].hotspot).toEqual([2, 2]);
-    expect(CURSORS['select-remove'].hotspot).toEqual([2, 2]);
+  it('points the badged selection arrows at the same pixel as the plain one', async () => {
+    // These three are ONE cursor with a mark added, and the app swaps between them as a modifier
+    // goes down under a STANDING pointer. The PSD drew the badged two with the arrow 4px lower and
+    // clipped where the mark crossed it, so the tip moved and the shape changed mid-gesture; the
+    // extractor composes them from `select`'s own arrow instead. Same hotspot, same apex, and the
+    // apex IS the hotspot.
+    const apex = async (id: CursorId): Promise<[number, number]> => {
+      const pts = drawn(await pixels(id), SOLID);
+      const top = Math.min(...pts.map(([, y]) => y));
+      return [Math.min(...pts.filter(([, y]) => y === top).map(([x]) => x)), top];
+    };
+    const family: CursorId[] = ['select', 'select-add', 'select-remove', 'marquee'];
+    for (const id of family) {
+      expect(CURSORS[id].hotspot, id).toEqual([...CURSORS.select.hotspot]);
+    }
+    // `select` carries nothing above its arrow, so its topmost solid pixel IS the tip.
+    expect(await apex('select')).toEqual([...CURSORS.select.hotspot]);
+    // Every other arrow cursor acts from its OWN tip, wherever its composition puts it — pinned
+    // by the "hotspot on the art" test above rather than by a shared number.
+    expect(await apex('default')).toEqual([...CURSORS.default.hotspot]);
+  });
+
+  it('tells the user what a Ctrl+click will do', async () => {
+    // Without distinct art, holding Ctrl looks identical to not holding it.
+    expect(cursorArt('select-add')).not.toBe(cursorArt('select-remove'));
     expect(FORBIDDABLE.has('select-add')).toBe(false);
     expect(FORBIDDABLE.has('select-remove')).toBe(false);
-    expect(cursorSvg('select-add')).not.toBe(cursorSvg('select-remove'));
-    // Both compose the same pointer arrow `select` draws, badged like `blocked` is — the same
-    // apex, the same identity, just a different mark in the corner.
-    const arrow = cursorSvg('select')!;
-    expect(cursorSvg('select-add')!.startsWith(arrow.slice(0, arrow.indexOf('</svg>')))).toBe(true);
-    expect(cursorSvg('select-remove')!.startsWith(arrow.slice(0, arrow.indexOf('</svg>')))).toBe(true);
+    const [add, remove] = [await pixels('select-add'), await pixels('select-remove')];
+    expect(samePixels(add.data, remove.data)).toBe(false);
   });
 });
 
 describe('cursor CSS', () => {
-  it('is a data-URI image, a hotspot, and a keyword fallback', async () => {
+  it('is an image URL, a hotspot, and a keyword fallback', async () => {
     const { cursorCss } = await import('../../ui/cursors/cursor-css');
     const css = cursorCss('mountain');
-    expect(css.startsWith('url("data:image/svg+xml,')).toBe(true);
+    expect(css.startsWith('url("')).toBe(true);
     const [, hx, hy, fallback] = /"\)\s+(\d+)\s+(\d+),\s*([a-z-]+)$/.exec(css)!;
     expect([Number(hx), Number(hy)]).toEqual([...CURSORS.mountain.hotspot]);
     expect(fallback).toBe(CURSORS.mountain.fallback);
@@ -144,7 +187,7 @@ describe('cursor CSS', () => {
       if (CURSORS[id].hasArt) {
         // A closed url(), then the hotspot, then the mandatory keyword. An unclosed url()
         // makes the whole declaration invalid and the element gets no cursor at all.
-        expect(css, id).toMatch(/^url\("data:image\/svg\+xml,[^"]+"\)\s+\d+\s+\d+,\s*[a-z-]+$/);
+        expect(css, id).toMatch(/^url\("[^"]+"\)\s+\d+\s+\d+,\s*[a-z-]+$/);
       } else {
         // Keyword-only: the value IS the fallback, exactly.
         expect(css, id).toBe(CURSORS[id].fallback);
@@ -157,22 +200,22 @@ describe('cursor CSS', () => {
     expect(cursorCss('busy')).toBe('progress');
   });
 
-  it('encodes the SVG, so a hex colour cannot truncate the URI', async () => {
+  it('emits a URL the double-quoted url() can actually hold', async () => {
+    // A `"` would close the url() early and invalidate the whole declaration, leaving the
+    // element with no cursor at all; the bundler decides this string, so it is worth asserting.
     const { cursorCss } = await import('../../ui/cursors/cursor-css');
     for (const id of CURSOR_IDS) {
-      const css = cursorCss(id, { forbidden: true });
-      const uri = /url\("([^"]*)"\)/.exec(css)?.[1];
-      if (!uri) continue;
-      expect(uri, id).not.toContain('#');
-      expect(uri, id).toContain('%23'); // the encoded form is present instead
-      expect(() => decodeURIComponent(uri.replace('data:image/svg+xml,', '')), id).not.toThrow();
+      const uri = /url\("([^"]*)"\)/.exec(cursorCss(id, { forbidden: true }))?.[1];
+      if (uri === undefined) continue;
+      expect(uri, id).not.toContain('"');
+      expect(uri.length, id).toBeGreaterThan(0);
     }
   });
 
-  it('memoises, so a pointer-move cannot rebuild a data URI', async () => {
+  it('memoises, so a pointer-move cannot rebuild a value', async () => {
     const { cursorCss, __clearCursorCssCache } = await import('../../ui/cursors/cursor-css');
-    const { cursorSvg } = await import('../../ui/cursors/cursor-art');
-    const spy = vi.mocked(cursorSvg);
+    const { cursorArt } = await import('../../ui/cursors/cursor-art');
+    const spy = vi.mocked(cursorArt);
     __clearCursorCssCache();
     spy.mockClear();
     cursorCss('water');

@@ -55,7 +55,7 @@ The rest of the toolbox is for detail work. The edge-cut tool trims mountain cor
 </div>
 
 <div align="center">
-<img src="./docs/media/item-showcase.png" alt="All placeable items arranged on four shelves: ten cabins and two facilities, seven bridges and seven ramps, twelve trees, and twenty-one flowers and plants" width="900">
+<img src="./docs/media/item-showcase.png" alt="All placeable items arranged on five shelves: ten cabins and two facilities, seven bridges and seven ramps, twelve trees, and forty flowers and plants" width="900">
 
 <sub>The whole toybox: cabins, bridges, ramps, trees, and flowers, ready to place. (Plus two road styles you paint like a brush.)</sub>
 </div>

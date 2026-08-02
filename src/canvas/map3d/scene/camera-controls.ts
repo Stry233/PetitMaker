@@ -1,7 +1,11 @@
 /**
- * Constrained orbit camera for the preview. Drag rotates within a pleasant tilt
- * range (never under the map), scroll dollies within clamped distances, and the
- * camera auto-frames the whole map on open.
+ * The constrained orbit camera: a pleasant tilt range (never under the map), clamped dolly
+ * distances, and a whole-map framing on open.
+ *
+ * OrbitControls is held for its STATE, not its input. Both 3D views drive the camera through the
+ * scene's verbs (`canvas/interaction/camera-gestures` maps the pointer to them), so `enabled` is
+ * false wherever there is a user and the controls' own button map, drag speeds and damping never
+ * run. What the rest of the scene reads from it is the orbit target and the polar/distance clamps.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -25,17 +29,8 @@ export function makeCamera(aspect: number): THREE.PerspectiveCamera {
 
 export function makeControls(camera: THREE.PerspectiveCamera, dom: HTMLElement): OrbitControls {
   const c = new OrbitControls(camera, dom);
-  c.enableDamping = true;
-  c.dampingFactor = 0.08;
-  c.enablePan = true;                  // let the player roam the map, not just spin it
-  c.screenSpacePanning = false;        // pan across the ground plane, not the screen
   c.minPolarAngle = 0.45;              // keep some downward tilt (no straight-down god-view)
   c.maxPolarAngle = 1.52;              // ~87°: can sweep right down to eye-level across the land
-  c.rotateSpeed = 0.8;
-  c.zoomSpeed = 1.0;
-  c.panSpeed = 0.8;
-  // Match the 2D editor: LEFT orbits, MIDDLE + RIGHT drag both pan (wheel zooms).
-  c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
   return c;
 }
 

@@ -2,13 +2,13 @@
   "id": "flower-amaryllis",
   "category": "flora",
   "name": {
-    "en": "Amaryllis",
+    "en": "Red Amaryllis",
     "zh": "红朱顶红",
-    "ja": "アマリリス",
-    "ru": "Амариллис",
-    "th": "ว่านสี่ทิศ",
-    "id": "Amarilis",
-    "fr": "Amaryllis"
+    "ja": "レッドアマリリス",
+    "ru": "Красный амариллис",
+    "th": "ว่านสี่ทิศแดง",
+    "id": "Amarilis Merah",
+    "fr": "Amaryllis rouge"
   },
   "icon": "flower-amaryllis",
   "width": 1,

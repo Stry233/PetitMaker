@@ -13,7 +13,7 @@ import { type Command, type EditorEvents, type GridState, type MacroCoord, type 
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { EventBus } from '../../core/commands/event-bus';
 import { bumpObjectsVersion, getFootprint } from '../../core/model/grid-model';
-import { movedObject, objectPlacementCommand, removeObjectCommand } from '../../tools/objects/object-placer';
+import { movedObject, objectPlacementCommand, removeObjectCommand, stripCoatingsFor } from '../../tools/objects/object-placer';
 import { getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import type { GroupRotation } from '../../canvas/group-arc';
@@ -88,7 +88,7 @@ export type GroupPlaceHook = (member: PlacedObject, next: PlacedObject) => void;
  * were. Move and rotate have that contract; `deleteGroup` applies partially.
  */
 export function applyGroupTransform(
-  executor: CommandExecutor, members: readonly PlacedObject[],
+  executor: CommandExecutor, state: GridState, members: readonly PlacedObject[],
   destination: (obj: PlacedObject) => PlacedObject,
   onWillPlace?: GroupPlaceHook,
 ): GroupOpResult {
@@ -106,6 +106,10 @@ export function applyGroupTransform(
     for (const obj of members) {
       const next = destination(obj);
       onWillPlace?.(obj, next);
+      // Coat over any road the destination covers, as a single placement does. After the removal
+      // loop above, so a member's own cells are already free and a road it was sitting on is not
+      // mistaken for one to strip.
+      stripCoatingsFor(executor, state, next);
       const cmd = objectPlacementCommand(next);
       last = cmd;
       const res = executor.execute(cmd);
@@ -130,6 +134,7 @@ export function moveGroup(
 ): GroupOpResult {
   return applyGroupTransform(
     executor,
+    state,
     groupMembers(state, ids),
     (obj) => movedObject(state, obj, obj.position.x + dx, obj.position.y + dy),
     onWillPlace,
@@ -239,7 +244,7 @@ export function rotateGroup(
   }
   const pivot = rotationPivot(members, quarterTurns);
   const step = quarterTurns === 1 ? 90 : 270;
-  const res = applyGroupTransform(executor, members, (obj) => {
+  const res = applyGroupTransform(executor, state, members, (obj) => {
     const { x, y } = rotatedAnchor(obj, pivot, quarterTurns);
     const turns = getCatalogItem(obj.catalogId)?.rotatable ?? false;
     return {

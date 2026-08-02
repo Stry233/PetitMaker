@@ -19,7 +19,6 @@ import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import {
   __resetCursorController, registerCursorSurface, setToolCursor,
 } from '../../canvas/interaction/cursor-controller';
-import { armedPressSelects } from '../../canvas/interaction/selection-hover';
 import { cursorCss } from '../../ui/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
 import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
@@ -202,6 +201,26 @@ describe('a plain click while an item is armed', () => {
     expect(executor.getUndoStackSize()).toBe(0);
   });
 
+  it('attempts on a LOCKED object, so the refusal reaches the toast', () => {
+    // The user-visible symptom: a click on the central plaza did nothing and said nothing. The
+    // press has to reach the placer for the placement to be attempted, refused, and REPORTED —
+    // Toast listens for `validation-failed`, and no command means no event.
+    arm(ARMED, { ...tree('plaza', 5, 5), locked: true });
+    setHeld(false);
+    const failures: unknown[] = [];
+    const onFail = (e: unknown): void => { failures.push(e); };
+    const bus = useEditorStore.getState().eventBus;
+    bus.on('validation-failed', onFail as never);
+
+    gesture({ x: 5, y: 5 });
+    bus.off('validation-failed', onFail as never);
+
+    expect(failures).toHaveLength(1);       // the user is told why
+    expect(ids()).toEqual([]);              // and the locked object was NOT selected instead
+    expect(gs.objects.size).toBe(1);        // nothing was placed
+    expect(armedItem()).toBe(ARMED);        // the item stays armed to try elsewhere
+  });
+
   it('still places on empty ground', () => {
     arm(ARMED, tree('a', 5, 5));
     setHeld(false);
@@ -254,23 +273,6 @@ describe('the cursor says which of the two a click would do', () => {
     expect(el.style.cursor).toBe(cursorCss('select'));
     el.dispatchEvent(pointer('pointerleave', { buttons: 0, clientX: 0, clientY: 0 }));
     expect(el.style.cursor).toBe(cursorCss('place'));
-  });
-});
-
-describe('armedPressSelects', () => {
-  const hit = tree('a', 1, 1);
-
-  it('only fires for an armed placer, unmodified, over an object, where the placement is refused', () => {
-    expect(armedPressSelects(ToolType.ObjectPlacer, ARMED, false, false, hit, false)).toBe(true);
-    // A LEGAL placement wins: this is what keeps coating over a road, and a bridge/ramp snapping
-    // from a decorated anchor cell, placing exactly as before.
-    expect(armedPressSelects(ToolType.ObjectPlacer, ARMED, false, false, hit, true)).toBe(false);
-    expect(armedPressSelects(ToolType.ObjectPlacer, ARMED, false, false, null, false)).toBe(false);
-    expect(armedPressSelects(ToolType.ObjectPlacer, ARMED, false, true, hit, false)).toBe(false);
-    expect(armedPressSelects(ToolType.ObjectPlacer, ARMED, true, false, hit, false)).toBe(false);
-    expect(armedPressSelects(ToolType.ObjectPlacer, null, false, false, hit, false)).toBe(false);
-    expect(armedPressSelects(ToolType.Hand, ARMED, false, false, hit, false)).toBe(false);
-    expect(armedPressSelects(ToolType.TerrainBrush, ARMED, false, false, hit, false)).toBe(false);
   });
 });
 

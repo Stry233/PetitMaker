@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in PetitMaker did not behave the way it should.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A few minutes of detail here usually saves days of guessing on our side.
+        You are welcome to write in English or 中文.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe what went wrong, in your own words. A screenshot or a short screen recording helps a lot.
+      placeholder: I drew a river next to a mountain and the waterfall arrow pointed the wrong way...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      placeholder: The waterfall should face the lower ground.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest path you know that makes it happen again, starting from a fresh map if possible.
+      placeholder: |
+        1. New map (Hexia)
+        2. Paint a 3-high mountain, then river on top
+        3. Trim the corner next to the waterfall
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PetitMaker version
+      description: Shown in Settings under About, for example "PetitMaker 0.3.2 (build 1718, 0c143142, 2026-07-30)". Copy the whole line.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it happened
+      options:
+        - 2D map view
+        - 3D map view
+        - Menus and panels
+        - Generation
+        - AI agent
+        - Import or export (share image, JSON, share code)
+        - Somewhere else / not sure
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and system
+      description: Browser with version, operating system, and anything unusual (touch screen, high-DPI display, in-app browser).
+      placeholder: Firefox 141 on Fedora 44, 4K display at 150%
+    validations:
+      required: true
+  - type: textarea
+    id: map-data
+    attributes:
+      label: Map that shows the problem (optional)
+      description: |
+        If the bug depends on a specific map, attach the exported JSON or the share image, or paste a share code.
+        Anything you attach here is publicly visible, so only share maps you are comfortable publishing.
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output (optional)
+      description: Open the browser devtools (F12), pick the Console tab, reproduce the bug, and paste anything red.
+      render: text
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you send it
+      options:
+        - label: I searched the existing issues and did not find this one.
+          required: true
+        - label: It still happens on a fresh map.
+        - label: It still happens with browser extensions disabled.

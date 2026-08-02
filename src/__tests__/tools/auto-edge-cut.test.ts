@@ -78,18 +78,20 @@ describe('applyAutoEdgeCut — terrain', () => {
     // column) — the notch stays open ground behind a rounded top corner. Raising a real support column
     // here would violate AUTO-TRIM-IS-COSMETIC (a structural base block the manual tool never adds).
     const state = makeState(10, 10);
-    const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-3 L; notch (4,4) empty
-    for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 3);
+    // Tier 1: a fillet has no mass of its own, so over an empty notch it can only rest on the
+    // ground. Higher up it would hang in the air and is not offered at all.
+    const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-1 L; notch (4,4) empty
+    for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 1);
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', L.map(([x, y]) => ({ x, y })), []);
     const patch = getCell(state.cells, 4, 4)!.terrain!;
-    expect(patch.elevation, 'fillet sits at the wrapping tier').toBe(3);
+    expect(patch.elevation, 'fillet sits at the wrapping tier').toBe(1);
     expect(patch.patchOnly).toBe(true);
     expect(patch.corners![0]).toBe('fan');
     // THE FIX: cosmetic fillet, real support 0 — NOT a structurally-raised base block.
     expect(patch.patchBase, 'cosmetic — no base column added (AUTO-TRIM-IS-COSMETIC)').toBe(0);
     // cut-backing must therefore reveal NOTHING behind the cut (open notch), exactly like the manual tool —
     // not a phantom mountain@N-1 base fabricated by cutBacking's patchBase-undefined fallback (symptom d).
-    const back = cutBackingByCorner(patch, 3, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
+    const back = cutBackingByCorner(patch, 1, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
     expect(back, 'no fabricated base backing').toEqual([null, null, null, null]);
   });
 
@@ -99,11 +101,13 @@ describe('applyAutoEdgeCut — terrain', () => {
     // or omitting patchBase, either of which makes the render fabricate a phantom mountain@N-1 base
     // (a lower step at the inner corner that hand-drawn terrain never has).
     const state = makeState(10, 10);
-    const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-2 L; notch (4,4) empty
-    for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 2);
+    // Tier 1 for the same reason as the stroke path: over an empty notch the fillet rests on the
+    // ground, and there is no tier it could rest on any higher.
+    const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-1 L; notch (4,4) empty
+    for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 1);
     edgeCutGeneratedTerrain(makeToolCtx(state, exec(state)), L.map(([x, y]) => ({ x, y })), 'round');
     const patch = getCell(state.cells, 4, 4)!.terrain!;
-    expect(patch.elevation).toBe(2);
+    expect(patch.elevation).toBe(1);
     expect(patch.patchOnly).toBe(true);
     expect(patch.corners![0]).toBe('fan');
     // A from-empty gamma: patchBase 0, so the notch stays open ground behind the rounded corner — the cut
@@ -130,10 +134,11 @@ describe('applyAutoEdgeCut — terrain', () => {
     expect(block.corners?.[0], 'inner corner rounds').toBe('fan'); // TL faces the notch
   });
 
-  it('raises an under-tall Γ fillet when the shape is stacked higher (fillet tracks the mass tier)', () => {
+  it('raises an under-tall Γ fillet with the mass, as far as it can still rest on the notch floor', () => {
     // Regression: a circle drawn at ground then stacked taller left its inner Γ fillets at the FIRST tier,
-    // so the rounding showed only "on the ground" while the mountain rose square above it. Re-trimming must
-    // lift the fillet to the current mass tier.
+    // so the rounding showed only "on the ground" while the mountain rose square above it. Re-trimming
+    // lifts the fillet — but only onto something. The fillet adds no mass, so over a notch floored one
+    // tier down it rises with the mass, and over an EMPTY notch it stays where it can rest.
     const state = makeState(12, 12);
     const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // notch at (4,4)
     const trim = (e: number) => {
@@ -142,11 +147,19 @@ describe('applyAutoEdgeCut — terrain', () => {
     };
     trim(1);
     expect(getCell(state.cells, 4, 4)!.terrain!.elevation, 'fillet starts at tier 1').toBe(1);
-    trim(3); // stack the L up to tier 3
-    const t = getCell(state.cells, 4, 4)!.terrain!;
-    expect(t.patchOnly, 'still a cosmetic fillet').toBe(true);
-    expect(t.elevation, 'fillet rose to the stacked tier').toBe(3);
-    expect(t.corners![0], 'keeps its rounded corner').toBe('fan');
+    trim(3); // stack the L up to tier 3, over a notch that is still bare ground
+    const overGround = getCell(state.cells, 4, 4)!.terrain!;
+    expect(overGround.patchOnly, 'still a cosmetic fillet').toBe(true);
+    expect(overGround.elevation, 'and still resting on the ground it decorates').toBe(1);
+    expect(overGround.corners![0], 'keeps its rounded corner').toBe('fan');
+
+    // Floor the notch at 2 and the fillet follows the mass to 3, where it now has something to sit on.
+    setTerrain(state, 4, 4, TerrainType.Mountain, 2);
+    applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', L.map(([x, y]) => ({ x, y })), []);
+    const overBlock = getCell(state.cells, 4, 4)!.terrain!;
+    expect(overBlock.patchOnly).toBe(true);
+    expect(overBlock.elevation, 'fillet rose to the stacked tier').toBe(3);
+    expect(overBlock.patchBase, 'on the block that was in the notch').toBe(2);
   });
 
   it('rounds a neighbouring cell made convex by the stroke (mountain peninsula into a new water hole)', () => {

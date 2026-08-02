@@ -12,7 +12,7 @@
 import { useEffect } from 'react';
 import { refreshCursor } from '../../canvas/interaction/cursor-controller';
 import { useEditorStore } from '../../state/store';
-import { cursorCss, setSystemCursors } from './cursor-css';
+import { cursorCss, setClassicCursors, setSystemCursors } from './cursor-css';
 import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../core/runtime/cursor-spec';
 
 /** Write the properties. Idempotent, and safe to call before React mounts. */
@@ -24,15 +24,20 @@ export function applyCursorVars(root: HTMLElement | null = typeof document === '
 }
 
 /**
- * Hand the preference to every gate that resolves a cursor, in the order they read it.
+ * Hand the preferences to every gate that resolves a cursor, in the order they read them.
  *
  * All three gates are dedupe-blind on their own: `cursorCss` answers from a module flag, the custom
  * properties are written once, and the canvas controller skips a write whose resolved value matches
- * what it last wrote. Flipping the preference changes what every id resolves to WITHOUT changing any
+ * what it last wrote. Flipping a preference changes what every id resolves to WITHOUT changing any
  * of their inputs, so each has to be told.
+ *
+ * Both preferences are REQUIRED. This writes the whole cursor preference state, so a defaulted
+ * argument would let a caller minding one preference silently clear the other one's persisted
+ * value.
  */
-export function publishCursorPreference(system: boolean): void {
+export function publishCursorPreference(system: boolean, classic: boolean): void {
   setSystemCursors(system);
+  setClassicCursors(classic);
   applyCursorVars();
   refreshCursor();
 }
@@ -40,21 +45,25 @@ export function publishCursorPreference(system: boolean): void {
 /**
  * Mount once near the app root. `main` also publishes before the first render, so the first paint is
  * already correct; this covers a React tree mounted without that entry point (tests, isolated
- * harnesses) and republishes when the user flips the preference.
+ * harnesses) and republishes when the user flips either preference.
  */
 export function useCursorVars(): void {
   const systemCursors = useEditorStore((s) => s.systemCursors);
-  useEffect(() => { publishCursorPreference(systemCursors); }, [systemCursors]);
+  const classicCursors = useEditorStore((s) => s.classicCursors);
+  useEffect(() => {
+    publishCursorPreference(systemCursors, classicCursors);
+  }, [systemCursors, classicCursors]);
 }
 
 /**
  * `cursorCss` for a component that renders a cursor value into its own inline style.
  *
- * The module flag is not enough here: the store change re-renders these components BEFORE the effect
- * above republishes, so a plain `cursorCss` call would return the previous preference's value and
- * then never be asked again.
+ * The module flags are not enough here: the store change re-renders these components BEFORE the
+ * effect above republishes, so a plain `cursorCss` call would return the previous preference's
+ * value and then never be asked again.
  */
 export function useCursorCss(id: CursorId, opts: { forbidden?: boolean } = {}): string {
   const system = useEditorStore((s) => s.systemCursors);
-  return cursorCss(id, { ...opts, system });
+  const classic = useEditorStore((s) => s.classicCursors);
+  return cursorCss(id, { ...opts, system, classic });
 }

@@ -25,11 +25,15 @@ function renderModal(overrides: Partial<SettingsModalProps> = {}) {
     showChunks: false,
     motionPref: 'system',
     systemCursors: false,
+    hintLevel: 'full',
+    classicCursors: false,
     onLocaleChange: noop,
     onShowGridChange: noop,
     onShowChunksChange: noop,
     onMotionPrefChange: noop,
     onSystemCursorsChange: noop,
+    onHintLevelChange: noop,
+    onClassicCursorsChange: noop,
     onAbout: noop,
     onClose: noop,
     ...overrides,
@@ -104,11 +108,15 @@ describe('SettingsModal — erase-confirm state machine', () => {
           showChunks={false}
           motionPref="system"
           systemCursors={false}
+          hintLevel="full"
+          classicCursors={false}
           onLocaleChange={noop}
           onShowGridChange={noop}
           onShowChunksChange={noop}
           onMotionPrefChange={noop}
           onSystemCursorsChange={noop}
+          onHintLevelChange={noop}
+          onClassicCursorsChange={noop}
           onAbout={noop}
           onClose={noop}
         />
@@ -123,11 +131,15 @@ describe('SettingsModal — erase-confirm state machine', () => {
           showChunks={false}
           motionPref="system"
           systemCursors={false}
+          hintLevel="full"
+          classicCursors={false}
           onLocaleChange={noop}
           onShowGridChange={noop}
           onShowChunksChange={noop}
           onMotionPrefChange={noop}
           onSystemCursorsChange={noop}
+          onHintLevelChange={noop}
+          onClassicCursorsChange={noop}
           onAbout={noop}
           onClose={noop}
         />

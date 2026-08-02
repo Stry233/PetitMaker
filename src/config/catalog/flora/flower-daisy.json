@@ -2,13 +2,13 @@
   "id": "flower-daisy",
   "category": "flora",
   "name": {
-    "en": "Daisy",
-    "zh": "雏菊",
-    "ja": "デイジー",
-    "ru": "Маргаритка",
-    "th": "เดซี่",
-    "id": "Aster",
-    "fr": "Marguerite"
+    "en": "White Daisy",
+    "zh": "白雏菊",
+    "ja": "ホワイトデイジー",
+    "ru": "Белая маргаритка",
+    "th": "เดซี่ขาว",
+    "id": "Aster Putih",
+    "fr": "Marguerite blanche"
   },
   "icon": "flower-daisy",
   "width": 1,

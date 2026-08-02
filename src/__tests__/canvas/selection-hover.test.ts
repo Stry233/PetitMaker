@@ -6,9 +6,8 @@
  * the already-selected block, during region selection, or off the map.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  canHoldSelection, inSelectMode, isDraggableObject, objectUnderPointer, overSelectedObject, selectionHoverBox,
-} from '../../canvas/interaction/selection-hover';
+import { isDraggableObject, objectUnderPointer, selectionHoverBox } from '../../canvas/interaction/selection-hover';
+import { canHoldSelection, inSelectMode } from '../../core/interaction/tool-modes';
 import { ItemCategory, ToolType } from '../../core/model/types';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
@@ -86,9 +85,6 @@ describe('selectionHoverBox', () => {
     };
     s.objects.set(second.id, second);
     const group = [{ kind: 'object', id: 'h1' }, { kind: 'object', id: 'h2' }] as const;
-    expect(overSelectedObject(s, { x: 6, y: 7 }, group)).toBe(true);
-    expect(overSelectedObject(s, { x: 13, y: 3 }, group)).toBe(true);
-    expect(overSelectedObject(s, { x: 1, y: 1 }, group)).toBe(false);
     // ...and neither member gets a grey would-select box, since both already wear a ring.
     expect(selectionHoverBox(s, { x: 13, y: 3 }, ToolType.Hand, null, false, group)).toBeNull();
   });

@@ -2,9 +2,10 @@ import * as PIXI from 'pixi.js-legacy';
 import { maxRenderScale } from '../../../core/runtime/device-quality';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { drawRoadShape } from '../draw/trim-shapes';
-import type { PlacedObject } from '../../../core/model/types';
+import type { PlacedObject, CatalogItem } from '../../../core/model/types';
 import { ItemCategory } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
+import { hasTrait } from '../../../core/model/traits';
 import { detectRoadConn } from '../../../core/edge-cut/road-cut-states';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { hexStringToNumber } from '../../../core/model/colors';
@@ -14,7 +15,7 @@ import { animConfig } from '../../../core/runtime/anim-config';
 import { requestRender } from '../render-scheduler';
 import { spawnPuff } from '../draw/particles';
 import { getIconTexture, iconColor, iconLodVersion } from '../draw/icon-color';
-import { fitSpriteToTexture } from '../draw/sprite-fit';
+import { fitSpriteToTexture, footprintFit, SPRITE_FILL } from '../draw/sprite-fit';
 import { drawRamp, isRampItem } from '../draw/ramp-graphic';
 import { ChunkGrid, type CullRect } from './chunk-grid';
 import { CULL_MARGIN_PX } from './chunk-cull';
@@ -29,7 +30,17 @@ const OBJECT_COLOR = animConfig.fallbackColor;
 const OBJECT_ALPHA = 0.5;
 const CORNER_RADIUS = 6;
 
-const SPRITE_FILL = 1.1; // sprite size relative to the object footprint
+
+/**
+ * Does this item's icon turn with the object's rotation?
+ *
+ * A rotatable item turns because the user turned it. A SPANNING one turns because the placement
+ * turned it: a bridge cannot be rotated by hand, but it lies along the gap it crosses, and an icon
+ * left lying east-west over a deck running north-south describes a bridge the map does not have.
+ */
+function spriteTurns(item: CatalogItem | undefined): boolean {
+  return !!item && (item.rotatable || hasTrait(item, 'waterSpan'));
+}
 
 export class ObjectLayer {
   public readonly container: PIXI.Container;
@@ -300,16 +311,16 @@ export class ObjectLayer {
           sprite.anchor.set(0.5);
           sprite.x = (size.w * TILE_SIZE) / 2;
           sprite.y = (size.h * TILE_SIZE) / 2;
-          // Rotatable items (buildings, facilities) spin their icon with the
-          // placement; fixed-orientation items (bridges, ramps, …) never do.
-          sprite.rotation = item?.rotatable ? (obj.rotation * Math.PI) / 180 : 0;
+          // Rotatable items (buildings, facilities) spin their icon with the placement, and so does
+          // anything whose orientation was decided FOR it — see `spriteTurns`.
+          sprite.rotation = spriteTurns(item) ? (obj.rotation * Math.PI) / 180 : 0;
           if (item?.rotatable) sprite.name = '_icon'; // animateRotation tweens this
           const fw = size.w * TILE_SIZE;
           const fh = size.h * TILE_SIZE;
           // Self-described objects (the plaza) carry a filled platform image — CONTAIN it within the
           // footprint (no 1.1 overflow) so the icon stays inside its grey backing box.
           const spriteFill = obj.icon ? 1 : SPRITE_FILL;
-          fitSpriteToTexture(sprite, tex, (tw, th) => Math.min(fw / tw, fh / th) * spriteFill);
+          fitSpriteToTexture(sprite, tex, footprintFit(fw, fh, spriteFill));
           const lodEntry = { sprite, url: spriteUrl, footprintPx: Math.max(fw, fh) };
           this.lodSprites.push(lodEntry);
           this.pendingLod.push(lodEntry); // starts on the oversized default — next updateLod settles it (O(new))

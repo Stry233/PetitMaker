@@ -25,8 +25,9 @@ import {
 
 interface MainMenuCardProps {
   onCollapse: () => void;
-  load: number;
-  loadMax: number;
+  /** Only read while chunk-load enforcement is on; the meter shows N/A otherwise. */
+  load?: number;
+  loadMax?: number;
   onAction: (spec: TileSpec) => void;
   onSettings: () => void;
   onHelp: () => void;

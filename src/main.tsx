@@ -11,7 +11,10 @@ import { useEditorStore } from './state/store';
 // until these properties exist, so writing them here is what stops a start-up flash of the system
 // arrow. The store is already hydrated from localStorage at module load, so a user who opted out
 // never sees a frame of our set either.
-publishCursorPreference(useEditorStore.getState().systemCursors);
+publishCursorPreference(
+  useEditorStore.getState().systemCursors,
+  useEditorStore.getState().classicCursors,
+);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

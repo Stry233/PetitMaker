@@ -55,8 +55,24 @@ function safeParse(args: string): Record<string, unknown> {
   }
 }
 
+/**
+ * The SDK's telemetry headers, cleared (`null` removes a header in the SDK's header model).
+ *
+ * Each is a non-standard header name, so sending them makes the browser preflight every call and
+ * ask the endpoint to allow all six by name. Endpoints that allowlist header names answer such a
+ * preflight with no CORS headers at all, and the browser then reports the request as having no
+ * `Access-Control-Allow-Origin`. Moonshot answers that way, as do self-hosted and gateway
+ * endpoints; with Authorization alone every provider here is reachable from a browser.
+ */
+const NO_TELEMETRY_HEADERS: Record<string, null> = Object.fromEntries(
+  ['arch', 'lang', 'os', 'package-version', 'retry-count', 'runtime', 'runtime-version', 'timeout']
+    .map((n) => [`x-stainless-${n}`, null]),
+);
+
 export function createOpenAIAdapter(apiKey: string, baseURL?: string): ProviderAdapter {
-  const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true });
+  const client = new OpenAI({
+    apiKey, baseURL, dangerouslyAllowBrowser: true, defaultHeaders: NO_TELEMETRY_HEADERS,
+  });
   return {
     async listModels() {
       const ids: string[] = [];

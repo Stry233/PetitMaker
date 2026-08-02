@@ -26,6 +26,10 @@ export function placeTileCell(coord: MacroCoord, ctx: ToolContext, painted: Set<
   const cmd = planPaint([coord], ctx, 'tile', painted).commands[0];
   if (!cmd) return false;
 
+  // Check BEFORE stripping. The strip is how a tile replaces the one under it, but if the placement
+  // is then refused — the cell is sea, plaza, or off the map — the strip has already deleted a road
+  // that nothing is going to replace. Validating first makes the pair all-or-nothing.
+  if (ctx.validateCommand(cmd).length > 0) return false;
   removeOverlappingCoatings([coord], ctx);
 
   if (!ctx.executeCommand(cmd).success) return false;

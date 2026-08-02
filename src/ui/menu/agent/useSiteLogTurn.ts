@@ -12,7 +12,7 @@ import { translate, useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { singleSelection } from '../../../state/selection';
 import { useAgentStore } from '../../../agent/store';
-import { PROVIDERS } from '../../../agent/providers';
+import { PROVIDERS, baseUrlFor } from '../../../agent/providers';
 import { supportsVision } from '../../../agent/providers/defaults';
 import { takeMapSnapshot } from '../../../agent/snapshot';
 import { buildSystemPrompt } from '../../../agent/system-prompt';
@@ -108,7 +108,7 @@ export function useSiteLogTurn(args: { region: MacroCoord[]; draft: string; setD
       },
     };
     const system = buildSystemPrompt(commandExecutor.getRegistry(), { uiLocale: useEditorStore.getState().locale });
-    const adapter = PROVIDERS[provider].create(apiKey, agent.settings.customBaseUrl);
+    const adapter = PROVIDERS[provider].create(apiKey, baseUrlFor(provider, agent.settings));
 
     const runDelegate = async (task: string): Promise<string> => {
       const before = commandExecutor.getUndoStackSize();

@@ -60,7 +60,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, modalTitle, radii, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../styles';
+import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../styles';
 import { useChromeScale } from '../../menu/scale';
 import { Wavy } from '../../menu/Wavy';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
@@ -153,7 +153,19 @@ export function movedFar(from: Box, to: Box): boolean {
  * The geometry rides on `attrX`/`attrY`, not `x`/`y`: on an SVG element framer reads those two as
  * transforms, and the hole has to move the mask's own rectangle.
  */
-function TourDim({ lit, reduced }: { lit: Box | null; reduced: boolean }) {
+/**
+ * The spotlight's corner radius, in the SCREEN px the mask is drawn in.
+ *
+ * `radii.lg` is a CSS radius, and every control it traces wears it scaled by the chrome zoom — so
+ * the hole matches the control's own corner only if it scales too. It is then clamped to half the
+ * box: on a phone, where the whole UI is scaled well down, a fixed radius is wider than the target
+ * and the highlight reads as a pill or a circle rather than as the control it is pointing at.
+ */
+export function spotlightRx(w: number, h: number, chrome: number): number {
+  return Math.max(2, Math.min(radii.lg * chrome, w / 2, h / 2));
+}
+
+function TourDim({ lit, reduced, chrome }: { lit: Box | null; reduced: boolean; chrome: number }) {
   const style: CSSProperties = { position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: z.tour };
   // The ring sits just OUTSIDE the hole, over the dim, so it does not eat into the lit area.
   const ring = lit && { left: lit.left - 1.5, top: lit.top - 1.5, width: lit.width + 3, height: lit.height + 3 };
@@ -163,6 +175,8 @@ function TourDim({ lit, reduced }: { lit: Box | null; reduced: boolean }) {
   const from = useRef<Box | null>(null);
   const cut = reduced || (lit != null && from.current != null && movedFar(from.current, lit));
   useLayoutEffect(() => { from.current = lit; });
+  const holeRx = lit ? spotlightRx(lit.width, lit.height, chrome) : 0;
+  const ringRx = ring ? spotlightRx(ring.width, ring.height, chrome) : 0;
   return (
     <svg style={style} width="100%" height="100%" aria-hidden data-testid="tour-dim">
       <defs>
@@ -170,12 +184,12 @@ function TourDim({ lit, reduced }: { lit: Box | null; reduced: boolean }) {
           {/* White paints the dim, black cuts the hole out of it. */}
           <rect x="0" y="0" width="100%" height="100%" fill="#fff" />
           {lit && (cut
-            ? <rect x={lit.left} y={lit.top} width={lit.width} height={lit.height} rx={radii.lg} fill="#000" />
+            ? <rect x={lit.left} y={lit.top} width={lit.width} height={lit.height} rx={holeRx} fill="#000" />
             : <motion.rect
                 initial={false}
                 animate={{ attrX: lit.left, attrY: lit.top, width: lit.width, height: lit.height }}
                 transition={snapTween}
-                rx={radii.lg} fill="#000"
+                rx={holeRx} fill="#000"
               />)}
         </mask>
       </defs>
@@ -183,13 +197,13 @@ function TourDim({ lit, reduced }: { lit: Box | null; reduced: boolean }) {
       {ring && (cut
         ? <rect
             x={ring.left} y={ring.top} width={ring.width} height={ring.height}
-            rx={radii.lg + 1.5} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
+            rx={ringRx} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
           />
         : <motion.rect
             initial={false}
             animate={{ attrX: ring.left, attrY: ring.top, width: ring.width, height: ring.height }}
             transition={snapTween}
-            rx={radii.lg + 1.5} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
+            rx={ringRx} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
           />)}
     </svg>
   );
@@ -458,7 +472,7 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
 
   if (!running || !step) return null;
 
-  const dim = <TourDim lit={lit} reduced={!!reduced} />;
+  const dim = <TourDim lit={lit} reduced={!!reduced} chrome={chrome} />;
 
   if (!shown) return dim;
 
@@ -512,11 +526,19 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
           style={{ ...bubble, ...position, zoom: chrome, outline: 'none' }}
           // The centring translate rides in the template rather than in `x`/`y`: framer owns the
           // transform for the entrance scale, and a percentage translate composes with it.
-          transformTemplate={centred ? (_, generated) => `translate(-50%, -50%) ${generated}` : undefined}
+          // ALWAYS a template, even when there is nothing to prepend. Without one, framer collapses
+          // the style to `transform: none` the moment it believes the spring is done — and
+          // `springs.bouncy` is underdamped, so it does that while the scale is still ringing a
+          // fraction under 1, snapping the card (and the logo in it) to full size and back. The
+          // template keeps a real matrix on the element the whole way down; translateZ(0) also keeps
+          // it on its own layer, so the raster never re-snaps either.
+          transformTemplate={(_, generated) => (centred
+            ? `translate(-50%, -50%) ${generated} translateZ(0)`
+            : `${generated} translateZ(0)`)}
           initial={reduced ? false : { scale: 0.4, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { scale: 0.4, opacity: 0, transition: exitTransition }}
-          transition={reduced ? { duration: 0 } : springs.bouncy}
+          transition={reduced ? { duration: 0 } : { ...springs.bouncy, ...scaleRest }}
         >
           {/* A step change that KEEPS the card crosses its copy over in place, and the card GROWS or
               SHRINKS to the incoming copy while it does. The height is animated to a measured value

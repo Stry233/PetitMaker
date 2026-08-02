@@ -132,11 +132,14 @@ export function BuildPanel({ activeMode, contentType, brushSize, tileMaterial, a
     <SpokeShell x={POS.x} y={POS.y} width={SIZE.w} height={sizeH} origin={`1.5% ${originPct}%`}>
       <SpeechBubble px={px} tail={{ x: TAIL.x, y: tailY, w: TAIL.w, h: TAIL.h, tipPct }} card={{ x: CARD.x, y: CARD.y, w: CARD.w, h: cardH, r: CARD.r }} />
 
-      {/* header: Mountain/River show a block illustration; Tile reuses the
-          placement-style yellow splat + tile icon. Title is shared (8px white
-          outer stroke, left-anchored so the icon→title gap stays constant). */}
+      {/* header: Mountain/River show a block illustration with the splat baked
+          in; Tile composes the same splat with the road icon. All three sit on
+          one anchor — the block's bottom corner at (155.5, 116) at a 118-wide
+          block — so the headers differ only in what stands on the block. Title
+          is shared (8px white outer stroke, left-anchored so the icon→title gap
+          stays constant). */}
       {isTile ? (
-        <SplatHeader px={px} icon="road" cx={163} cy={64} iw={96} ih={99} />
+        <SplatHeader px={px} icon="road" cx={156} cy={54} iw={119} ih={127} />
       ) : (
         <img src={iconUrl(headIcon)} alt="" draggable={false} style={{ ...headBox, objectFit: 'contain', pointerEvents: 'none' }} />
       )}
@@ -186,18 +189,18 @@ export function BuildPanel({ activeMode, contentType, brushSize, tileMaterial, a
             scale animation can't clobber the centering and shift the dot. */}
         <motion.div key={brushSize} initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={springs.bouncy}
           style={{ position: 'absolute', left: px(166 - dia / 2), top: px(913 - dia / 2), width: px(dia), height: px(dia), borderRadius: '50%', background: '#9AD573' }} />
-        {/* plus */}
+        {/* minus on the LEFT, plus on the RIGHT: the pair reads as a scale running low to high,
+            which is also the order the size dot beside it grows in. */}
         <motion.button type="button" onClick={() => onBrushSizeChange(Math.min(5, brushSize + 1))}
           {...pressable} aria-label={t('a11y.brush_increase')}
-          style={{ position: 'absolute', left: px(239 - 56 / 2), top: px(911 - 56 / 2), width: px(56), height: px(56), ...btnReset, pointerEvents: sizeDisabled ? 'none' : 'auto' }}>
+          style={{ position: 'absolute', left: px(365 - 56 / 2), top: px(911 - 56 / 2), width: px(56), height: px(56), ...btnReset, pointerEvents: sizeDisabled ? 'none' : 'auto' }}>
           <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: px(48), height: px(15), borderRadius: px(8), background: barColor }} />
           <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: px(15), height: px(48), borderRadius: px(8), background: barColor }} />
         </motion.button>
         <span style={ctext(299, 912, 50, C.white)}>{brushSize}</span>
-        {/* minus */}
         <motion.button type="button" onClick={() => onBrushSizeChange(Math.max(1, brushSize - 1))}
           {...pressable} aria-label={t('a11y.brush_decrease')}
-          style={{ position: 'absolute', left: px(365 - 56 / 2), top: px(911 - 24 / 2), width: px(56), height: px(24), ...btnReset, pointerEvents: sizeDisabled ? 'none' : 'auto' }}>
+          style={{ position: 'absolute', left: px(239 - 56 / 2), top: px(911 - 24 / 2), width: px(56), height: px(24), ...btnReset, pointerEvents: sizeDisabled ? 'none' : 'auto' }}>
           <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: px(48), height: px(15), borderRadius: px(8), background: barColor, display: 'block' }} />
         </motion.button>
         <span style={ctext(277, 982, 29, C.inkText)}>{t('design.brush_size')}</span>

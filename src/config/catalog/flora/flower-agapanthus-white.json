@@ -1,0 +1,278 @@
+{
+  "id": "flower-agapanthus-white",
+  "category": "flora",
+  "name": {
+    "en": "White Agapanthus",
+    "zh": "白百子莲",
+    "ja": "ホワイトアガパンサス",
+    "ru": "Белый агапантус",
+    "th": "อะกาแพนทัสขาว",
+    "id": "Agapanthus Putih",
+    "fr": "Agapanthe blanche"
+  },
+  "icon": "flower-agapanthus-white",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    }
+  ],
+  "model3d": {
+    "parts": [
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.09,
+          0.38
+        ],
+        "pos": [
+          0,
+          0.0,
+          0
+        ],
+        "color": "#3f7d2e"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.07,
+          0.12
+        ],
+        "pos": [
+          0.113,
+          0.0,
+          0.113
+        ],
+        "color": "#3f7d2e",
+        "rotY": -45.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.07,
+          0.12
+        ],
+        "pos": [
+          -0.113,
+          0.0,
+          0.113
+        ],
+        "color": "#3f7d2e",
+        "rotY": -135.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.07,
+          0.12
+        ],
+        "pos": [
+          -0.113,
+          0.0,
+          -0.113
+        ],
+        "color": "#3f7d2e",
+        "rotY": -225.0
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.38,
+          0.07,
+          0.12
+        ],
+        "pos": [
+          0.113,
+          0.0,
+          -0.113
+        ],
+        "color": "#3f7d2e",
+        "rotY": -315.0
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.04,
+          0.42,
+          0.04
+        ],
+        "pos": [
+          -0.1,
+          0.02,
+          0.03
+        ],
+        "color": "#5b9440",
+        "rotY": 16.7,
+        "rotZ": 10,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.34,
+          0.34,
+          0.34
+        ],
+        "pos": [
+          -0.17,
+          0.264,
+          0.051
+        ],
+        "color": "#f0eed6",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.014,
+          0.324,
+          0.141
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.26,
+          0.324,
+          0.207
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.326,
+          0.324,
+          -0.039
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          -0.08,
+          0.324,
+          -0.105
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "cylinder",
+        "size": [
+          0.04,
+          0.33,
+          0.04
+        ],
+        "pos": [
+          0.12,
+          0.02,
+          -0.07
+        ],
+        "color": "#5b9440",
+        "rotY": -149.7,
+        "rotZ": 16,
+        "seg": 6
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.28,
+          0.28,
+          0.28
+        ],
+        "pos": [
+          0.199,
+          0.197,
+          -0.116
+        ],
+        "color": "#f0eed6",
+        "detail": 1
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.328,
+          0.257,
+          -0.041
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.124,
+          0.257,
+          0.014
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.069,
+          0.257,
+          -0.191
+        ],
+        "color": "#f0eed6"
+      },
+      {
+        "shape": "sphere",
+        "size": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "pos": [
+          0.274,
+          0.257,
+          -0.246
+        ],
+        "color": "#f0eed6"
+      }
+    ]
+  }
+}
