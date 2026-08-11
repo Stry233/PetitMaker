@@ -167,10 +167,10 @@ export function findLeakedPaths(copiedPaths: readonly string[], manifest: Manife
 export const DENYLIST_SPOTCHECK: readonly string[] = [
   'CLAUDE.md',
   'docs/internal',
-  'docs/internal/build.md',
-  'docs/internal/EXTENSIBILITY.md',
-  'docs/internal/CODE_REVIEW.md',
   'docs/internal/PRD.md',
+  'docs/internal/deprecated/build.md',
+  'docs/internal/deprecated/EXTENSIBILITY.md',
+  'docs/internal/deprecated/CODE_REVIEW.md',
   'docs/internal/superpowers',
   'docs/internal/design',
   'docs/internal/deprecated',
@@ -351,9 +351,8 @@ export function publicGitignore(): string {
 
 // ---------------------------------------------------------------------------
 // Asset-provenance audit gate — encodes checklist discipline (previously "don't run
-// --verify while docs/internal/legal/asset-provenance.md says the audit is open") as code. See
-// docs/internal/legal/asset-provenance.md's own status line + docs/internal/deployment/legal-release-
-// checklist.md's "Public-repo export verified" item.
+// --verify while docs/internal/legal/asset-provenance.md says the audit is open") as code, reading
+// that file's own status line.
 // ---------------------------------------------------------------------------
 
 export interface AuditStatus {

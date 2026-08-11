@@ -1,24 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { placeTileCell, eraseTileCells, tileCatalogId, tileGhostColor } from '../../tools/paint/tile-coating';
+import { describe, it, expect } from 'vitest';
+import { placeTileCell, eraseTileCells, tileGhostColor } from '../../tools/paint/tile-coating';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { TerrainType, type EditorEvents } from '../../core/model/types';
-import { useEditorStore } from '../../state/store';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from './_tool-ctx';
-import { getObjectIndex } from '../../state/object-index';
+import { getObjectIndex, roadLookup } from '../../state/object-index';
 
-const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 
 describe('tile-coating helper', () => {
-  beforeEach(() => useEditorStore.getState().setTileMaterial('dirt'));
-
-  it('maps material to catalog id', () => {
-    expect(tileCatalogId('dirt')).toBe('road-dirt');
-    expect(tileCatalogId('stone')).toBe('road-stone');
-  });
-
   it('places the active material on a grass cell', () => {
     const state = makeState(10, 10);
     placeTileCell({ x: 1, y: 1 }, makeToolCtx(state, exec(state)), new Set());
@@ -28,11 +20,16 @@ describe('tile-coating helper', () => {
   });
 
   it('places stone when material is stone', () => {
-    useEditorStore.getState().setTileMaterial('stone');
     const state = makeState(10, 10);
-    placeTileCell({ x: 2, y: 2 }, makeToolCtx(state, exec(state)), new Set());
+    placeTileCell({ x: 2, y: 2 }, makeToolCtx(state, exec(state), 1, 1, { tileMaterial: 'road-stone' }), new Set());
     expect(objectsByCatalog(state, 'road-stone').length).toBe(1);
     expect(objectsByCatalog(state, 'road-dirt').length).toBe(0);
+  });
+
+  it('places a material added after the historical dirt/stone pair, the same way', () => {
+    const state = makeState(10, 10);
+    placeTileCell({ x: 7, y: 8 }, makeToolCtx(state, exec(state), 1, 1, { tileMaterial: 'road-brick' }), new Set());
+    expect(objectsByCatalog(state, 'road-brick').length).toBe(1);
   });
 
   it('skips water cells', () => {
@@ -47,8 +44,7 @@ describe('tile-coating helper', () => {
     const state = makeState(10, 10);
     const e = exec(state);
     placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e), new Set());
-    useEditorStore.getState().setTileMaterial('stone');
-    placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e), new Set());
+    placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e, 1, 1, { tileMaterial: 'road-stone' }), new Set());
     expect(objectsByCatalog(state, 'road-dirt').length).toBe(0);
     expect(objectsByCatalog(state, 'road-stone').length).toBe(1);
   });
@@ -98,9 +94,9 @@ describe('tile-coating helper', () => {
     expect(getObjectIndex(state).entries.length).toBe(state.objects.size);
 
     // repainting the same area strips each old coating first: still no rebuild
-    useEditorStore.getState().setTileMaterial('stone');
+    const stoneCtx = makeToolCtx(state, e, 1, 1, { tileMaterial: 'road-stone' });
     const repaint = new Set<string>();
-    for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) placeTileCell({ x, y }, ctx, repaint);
+    for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) placeTileCell({ x, y }, stoneCtx, repaint);
 
     expect(getObjectIndex(state).entries).toBe(before);
     expect(objectsByCatalog(state, 'road-stone').length).toBe(625);
@@ -108,9 +104,7 @@ describe('tile-coating helper', () => {
   });
 
   it('ghost color matches the active material', () => {
-    useEditorStore.getState().setTileMaterial('dirt');
-    expect(tileGhostColor()).toBe(0xc4a882);
-    useEditorStore.getState().setTileMaterial('stone');
-    expect(tileGhostColor()).toBe(0x9ca3af);
+    expect(tileGhostColor('road-dirt')).toBe(0xc4a882);
+    expect(tileGhostColor('road-stone')).toBe(0x9ca3af);
   });
 });

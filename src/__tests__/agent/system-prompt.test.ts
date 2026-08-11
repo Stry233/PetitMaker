@@ -30,6 +30,12 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('REVERTED');
   });
 
+  it('states the region lock, since the model otherwise learns the boundary only by hitting it', () => {
+    expect(prompt).toContain('REGION LOCK');
+    expect(prompt).toContain('OUT OF REGION');
+    expect(prompt).toContain('FOOTPRINT');
+  });
+
   it('carries the recipes section and the search/scatter tool guidance', () => {
     expect(prompt).toContain('# RECIPES');
     expect(prompt).toContain('find_flat_areas');

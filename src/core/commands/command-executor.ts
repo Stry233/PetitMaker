@@ -1,6 +1,7 @@
 import { EventBus } from './event-bus';
 import { cloneCell, getCell, cellKey } from '../model/grid-model';
 import type { RuleDispatcher } from '../model/rule-dispatcher';
+import type { RoadLookup } from '../model/road-lookup';
 import { reconcileCuts } from '../edge-cut/cut-reconcile';
 import {
   CommandType,
@@ -62,11 +63,22 @@ export class CommandExecutor {
   private redoStack: HistoryEntry[] = [];
   private silent = false; // when true, rejected commands don't emit validation-failed (no error toast)
   private provenance: ProvenanceRecorder;
+  /** Satisfies `CutReconcileTarget` — the executor passes itself as the reconcile target. */
+  readonly roadAt: RoadLookup;
 
-  constructor(state: GridState, eventBus: EventBus<EditorEvents>, registry: RuleDispatcher) {
+  /** `roadAt` must answer for `state`. The reconcile pass reads terrain from one and coatings from
+   *  the other and treats them as one map, so a lookup bound to a different grid reports roads that
+   *  are not on the map being repaired. Bind the pair in one expression. */
+  constructor(
+    state: GridState,
+    eventBus: EventBus<EditorEvents>,
+    registry: RuleDispatcher,
+    roadAt: RoadLookup,
+  ) {
     this.state = state;
     this.eventBus = eventBus;
     this.registry = registry;
+    this.roadAt = roadAt;
     this.provenance = new ProvenanceRecorder(state);
   }
 
@@ -219,6 +231,17 @@ export class CommandExecutor {
       for (const s of entry.after) {
         lastAfter.set(cellKey(s.coord.x, s.coord.y), s);
       }
+      // An entry that is ITSELF a collapsed group carries its net object ops in `objectOps`, and
+      // its `cmd` is only the group's last command — deriving from the cmd would drop every other
+      // op the group held. Fold the recorded net through the same add/remove netting instead.
+      if (entry.objectOps) {
+        for (const o of entry.objectOps.removed) {
+          if (added.has(o.id)) added.delete(o.id);
+          else removed.set(o.id, o);
+        }
+        for (const o of entry.objectOps.added) added.set(o.id, o);
+        continue;
+      }
       const c = entry.cmd;
       if (c.type === CommandType.PlaceObject) {
         // Keep any earlier removal of the same id (in `removed`) untouched so a
@@ -354,6 +377,17 @@ export class CommandExecutor {
   /** Read-only view of the undo stack (oldest-first) for the JSON exporter. */
   getUndoEntries(): HistoryEntry[] {
     return [...this.undoStack];
+  }
+
+  /**
+   * The commands APPLIED above `watermark`, oldest first — what a caller that issued its commands
+   * indirectly (through a populator, a macro, a per-cell loop) has to read to learn where its edit
+   * actually landed. A placement trait SNAPS position during validation, so a command's final
+   * footprint is knowable only after it has run, and never from the argument the caller passed.
+   * Read it BEFORE commitStroke: the collapse folds the group into one entry.
+   */
+  commandsSince(watermark: number): Command[] {
+    return this.undoStack.slice(watermark).map(e => e.cmd);
   }
 
   /** Seed the undo stack from an imported save's history section (redo cleared). The entries

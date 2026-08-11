@@ -10,8 +10,8 @@ import {
   UndoneStamp,
   VerbGlyph,
   prettyModel,
-} from '../../../ui/menu/agent/atoms';
-import { Wavy } from '../../../ui/menu/Wavy';
+} from '../../../ui/agent/atoms';
+import { Wavy } from '../../../ui/primitives/Wavy';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;

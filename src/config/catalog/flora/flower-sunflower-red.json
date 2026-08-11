@@ -10,6 +10,10 @@
     "id": "Bunga Matahari Merah",
     "fr": "Tournesol rouge"
   },
+  "aliases": [
+    "橙",
+    "orange"
+  ],
   "icon": "flower-sunflower-red",
   "width": 1,
   "height": 1,

@@ -27,6 +27,7 @@ import { ProvSource } from '../../../core/provenance/types';
 import type {
   Command, EditorEvents, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject,
 } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 function realState(): GridState {
   const template = JSON.parse(readFileSync('src/config/maps/hexia.json', 'utf8')) as MapTemplate;
@@ -93,7 +94,7 @@ function snapshot(state: GridState): Map<string, string> {
 describe('generating into a region', () => {
   it('leaves an earlier region\'s placements exactly as they were', async () => {
     const state = realState();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const west = grassSpot(state, 'w'), east = grassSpot(state, 'e');
     const regionA = square(state, west.x, west.y, 14);
     const regionB = square(state, east.x, east.y, 14);
@@ -111,7 +112,7 @@ describe('generating into a region', () => {
 
   it('never reissues an id a standing object already holds', async () => {
     const state = realState();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const spot = grassSpot(state, 'w');
     const held = new Map<string, string>();
     for (const seed of [42, 42, 7]) {
@@ -128,7 +129,7 @@ describe('generating into a region', () => {
 describe('clearing after a generation', () => {
   it('takes back the generator\'s work and leaves the map\'s own', async () => {
     const state = realState();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const west = grassSpot(state, 'w'), east = grassSpot(state, 'e');
     const region = square(state, west.x, west.y, 14);
 
@@ -164,7 +165,7 @@ describe('clearing after a generation', () => {
   it('scrubs a map that carries no authorship, as it always did', () => {
     // A map loaded from a save without provenance: nothing is anybody's, so nothing is spared.
     const state = realState();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const spot = grassSpot(state, 'w');
     const obj: PlacedObject = { id: 'loaded-1', catalogId: 'tree-apple', position: spot, rotation: 0, elevation: 0 };
     state.objects.set(obj.id, obj);   // straight into the map, no command → no taint

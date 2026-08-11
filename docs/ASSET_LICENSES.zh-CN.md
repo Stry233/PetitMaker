@@ -47,7 +47,7 @@
 | 阿里巴巴普惠体 3.0，文件 `AlibabaPuHuiTi-*.woff2` | 阿里巴巴普惠体 3.0 声明 | 阿里巴巴（中国）有限公司 | 以原始文件、未经修改的形式分发（子集化是否获准并不明确）；见 `THIRD_PARTY_NOTICES.md`。 |
 | Quicksand，文件 `Quicksand-*.woff2` | SIL 开放字体许可 1.1（SIL Open Font License 1.1） | The Quicksand Project Authors | 见 `THIRD_PARTY_NOTICES.md`。 |
 | 团队成员头像（`src/assets/team/`） | 经成员本人同意后使用 | 各位成员本人 | 「关于」页面展示的哔哩哔哩头像，使用范围以每位成员的同意为限；未授权用于其他用途。 |
-| AI 服务商品牌标识（`src/ui/menu/agent/logos.tsx`） | 图标集：MIT（Lobe Icons）。标识本身：名义性商标使用（nominative trademark use），未获授权 | LobeHub（图标集）；各服务商（各自的标识） | 显示在 API 密钥输入框旁，便于用户辨认密钥属于哪个平台。见下方说明与 `THIRD_PARTY_NOTICES.md` 的「Vendored assets」一节。 |
+| AI 服务商品牌标识（`src/ui/agent/logos.tsx`） | 图标集：MIT（Lobe Icons）。标识本身：名义性商标使用（nominative trademark use），未获授权 | LobeHub（图标集）；各服务商（各自的标识） | 显示在 API 密钥输入框旁，便于用户辨认密钥属于哪个平台。见下方说明与 `THIRD_PARTY_NOTICES.md` 的「Vendored assets」一节。 |
 
 **AI 服务商品牌标识。**连接智能体需要你粘贴自己的 API 密钥，密钥界面会显示各个受支持平台的标识，方便你分辨密钥属于哪一个。Anthropic、OpenAI、谷歌、DeepSeek、智谱、阿里巴巴、月之暗面与 OpenRouter，及其名称与 Logo，均为各自权利人的商标。此处显示仅用于识别。本项目与它们均无隶属关系，未获其认可或赞助；显示某个标识既不表示存在合作关系，也不表示对方支持本软件。
 

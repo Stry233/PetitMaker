@@ -10,6 +10,9 @@
     "id": "Tanjakan Lumut",
     "fr": "Rampe moussue"
   },
+  "aliases": [
+    "green"
+  ],
   "width": 2,
   "height": 4,
   "loadValue": 100,
@@ -19,6 +22,9 @@
     {
       "type": "heightDrop",
       "layers": 1
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "icon": "ramp-moss-ramp",

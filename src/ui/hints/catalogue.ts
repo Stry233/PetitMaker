@@ -6,8 +6,8 @@
  * machine uses, so the panel cannot promise a gesture the view will not honor.
  */
 import { navDragVerb, wheelVerb, type CameraCaps } from '../../core/interaction/camera-verbs';
-import { effectiveCombo, type Overrides } from '../keybindings/store';
-import { prettyCombo } from '../chrome/keyboard/layout';
+import { effectiveCombo, type Overrides } from '../../core/runtime/keybindings';
+import { prettyCombo } from '../../core/runtime/keybindings';
 import type { HintScenarioId } from './scenario';
 
 export type MouseButton = 'none' | 'left' | 'right' | 'middle' | 'wheel';
@@ -166,29 +166,47 @@ function panKeyToken(overrides: Overrides): ResolvedToken | null {
  *  fades them out as the card collapses), so the number lives here rather than in the slice below. */
 export const CONCISE_ROWS = 3;
 
+/** A row's spec tokens resolve independently: an unbound `cmd`/`pan-keys` token drops ONLY itself,
+ *  never its row, so a paired hint (e.g. rotate cw/ccw) still shows the half that is bound. The row
+ *  as a whole drops only when it wanted at least one key token and NONE of them resolved (nothing
+ *  left to show). A separator left dangling by a dropped neighbour (leading, trailing, or doubled)
+ *  is stripped in the assembly pass below. */
 export function rowsFor(id: HintScenarioId, overrides: Overrides, caps: CameraCaps, level: 'full' | 'concise'): ResolvedRow[] {
   const rows: ResolvedRow[] = [];
   for (const row of SCENARIO_ROWS[id]) {
     const textKey = row.cameraVerb ? cameraRowTextKey(row.cameraVerb, caps) : row.textKey!;
     if (!textKey) continue;
-    const tokens: ResolvedToken[] = [];
-    let dropped = false;
+    const slots: (ResolvedToken[] | null)[] = [];
+    let wanted = 0, resolved = 0;
     for (const t of row.tokens) {
       if (t.kind === 'cmd') {
+        wanted++;
         const combo = effectiveCombo(overrides, t.id);
-        if (!combo) { dropped = true; break; }
-        tokens.push(...comboTokens(combo, t.held, t.x2));
+        if (!combo) { slots.push(null); continue; }
+        resolved++;
+        slots.push(comboTokens(combo, t.held, t.x2));
       } else if (t.kind === 'pan-keys') {
+        wanted++;
         const pan = panKeyToken(overrides);
-        if (!pan) { dropped = true; break; }
-        tokens.push(pan);
+        if (!pan) { slots.push(null); continue; }
+        resolved++;
+        slots.push([pan]);
       } else if (t.kind === 'key') {
-        tokens.push({ kind: 'cap', label: t.label });
+        slots.push([{ kind: 'cap', label: t.label }]);
       } else {
-        tokens.push(t);
+        slots.push([t]);
       }
     }
-    if (!dropped) rows.push({ tokens, textKey });
+    if (wanted > 0 && resolved === 0) continue; // no key token survived — nothing left to show
+    const tokens: ResolvedToken[] = [];
+    for (const s of slots) {
+      if (!s) continue;
+      const isSep = s.length === 1 && s[0]!.kind === 'sep';
+      if (isSep && (tokens.length === 0 || tokens[tokens.length - 1]!.kind === 'sep')) continue;
+      tokens.push(...s);
+    }
+    while (tokens.length && tokens[tokens.length - 1]!.kind === 'sep') tokens.pop();
+    rows.push({ tokens, textKey });
   }
   return level === 'concise' ? rows.slice(0, CONCISE_ROWS) : rows;
 }

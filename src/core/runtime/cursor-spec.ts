@@ -6,7 +6,7 @@
  * cursor is one entry here plus one file in `src/assets/cursors/`.
  */
 
-/** Semantic cursor names. Tools name one of these; nothing outside ui/cursors knows CSS. */
+/** Semantic cursor names. Tools name one of these; nothing outside ui/design/cursors knows CSS. */
 export type CursorId =
   | 'mountain' | 'water' | 'road' | 'eraser' | 'edge-cut'
   | 'place' | 'select' | 'move'
@@ -90,9 +90,9 @@ export const CURSOR_IDS = Object.keys(CURSORS) as CursorId[];
  * The cursors the DOM shows, and the custom property each is published under.
  *
  * These names are the whole contract between the writer (`cursor-vars`, which resolves each to
- * a CSS value on `<html>`) and the readers (`ui/styles`'s `cursors` tokens, plus the global
- * rules in `cursors.css`). They live here, in the module that imports nothing, so `ui/styles`
- * can name them without importing the art — which imports `ui/styles` back.
+ * a CSS value on `<html>`) and the readers (`ui/design/styles`'s `cursors` tokens, plus the global
+ * rules in `cursors.css`). They live here, in the module that imports nothing, so `ui/design/styles`
+ * can name them without importing the art — which imports `ui/design/styles` back.
  */
 export const DOM_CURSORS = {
   default: '--pw-cursor-default',

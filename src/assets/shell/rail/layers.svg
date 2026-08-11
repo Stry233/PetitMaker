@@ -1,0 +1,8 @@
+<!-- Generated art. Do not edit: change the design source and re-run the extractor. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="75" height="123" viewBox="0 0 75 123">
+  <path id="roundrect" d="M 38 2 C 57.88 2 74 18.12 74 38 L 74 86 C 74 105.88 57.88 122 38 122 C 18.12 122 2 105.88 2 86 L 2 38 C 2 18.12 18.12 2 38 2 Z" fill="#484642"/>
+  <g id="polygon" >
+    <path d="M 38.13 58.28 C 17.69 58.43 12.51 54.62 22.6 36.83 C 32.69 19.04 42.91 18.97 53.27 36.6 C 63.63 54.23 58.58 58.12 38.13 58.28 Z" fill="#FFFFFF"/>
+    <path d="M 38.59 66 C 18.09 65.85 12.9 69.68 23.01 87.55 C 33.13 105.41 43.37 105.49 53.76 87.78 C 64.14 70.07 59.08 66.16 38.59 66 Z" fill="#FFFFFF"/>
+  </g>
+</svg>

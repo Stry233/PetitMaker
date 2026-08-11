@@ -5,8 +5,7 @@ import { useEditorStore } from '../../state/store';
 import { clampUiZoom } from '../map2d/zoom-accum';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
-import { bindingIndex, effectiveCombo, normalizeCombo, useKeybinds, type Overrides } from '../../ui/keybindings/store';
-import { ALIASES } from '../../ui/keybindings/commands';
+import { bindingIndex, effectiveCombo, normalizeCombo, useKeybinds, ALIASES, type Overrides } from '../../core/runtime/keybindings';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 const PAN_CMD: Record<Dir, string> = {
@@ -158,7 +157,11 @@ const notOverlaid = () => !anyOverlayOpen();
  *  persistence path shared with the Settings slider) — one write per press,
  *  no per-frame localStorage churn.
  *
- *  The easing lives at the APPLICATION layer (`ui/menu/ui-zoom-anim.ts`),
+ *  Registered (not re-wired) as the reserved `app.ui_zoom_in`/`app.ui_zoom_out` rows in
+ *  core/runtime/keybindings.ts, so the keyboard modal shows the combo and no rebind can steal it
+ *  out from under this listener.
+ *
+ *  The easing lives at the APPLICATION layer (`ui/design/ui-zoom-anim.ts`),
  *  shared with the Settings slider's release commit and the reset/keyboard
  *  paths, so it applies here by construction. It is a persistent rAF follow
  *  loop that exponentially smooths a live value toward the target: rapid

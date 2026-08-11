@@ -19,6 +19,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { makeToolCtx } from '../tools/_tool-ctx';
 import type { EditorEvents } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 /** A plateau at `tier` covering the 3x3 around (10,10), with holes where told. */
 function plateau(tier: number, holes: MacroCoord[] = [], fill?: (s: GridState) => void): GridState {
@@ -118,7 +119,7 @@ describe('the edge-cut tool on a pit', () => {
     setTerrain(state, 10, 9, TerrainType.Mountain, 2);
     setTerrain(state, 10, 11, TerrainType.Mountain, 1);
     setTerrain(state, 11, 9, TerrainType.Mountain, 2);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeToolCtx(state, executor, 1, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);
@@ -135,7 +136,7 @@ describe('the edge-cut tool on a pit', () => {
     setTerrain(state, 9, 10, TerrainType.Mountain, 1);
     setTerrain(state, 10, 9, TerrainType.Mountain, 1);
     setTerrain(state, 9, 9, TerrainType.Mountain, 1);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeToolCtx(state, executor, 1, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);

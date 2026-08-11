@@ -10,6 +10,10 @@
     "id": "Tangga Retro",
     "fr": "Marches rétro"
   },
+  "aliases": [
+    "pink",
+    "粉"
+  ],
   "width": 2,
   "height": 4,
   "loadValue": 100,
@@ -19,6 +23,9 @@
     {
       "type": "heightDrop",
       "layers": 1
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "icon": "ramp-retro-steps",

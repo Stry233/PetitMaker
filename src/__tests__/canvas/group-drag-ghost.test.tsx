@@ -19,16 +19,17 @@ import { usePointerInteraction } from '../../canvas/interaction/usePointerIntera
 import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import { __resetCursorController } from '../../canvas/interaction/cursor-controller';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ItemCategory, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import { ItemCategory, TerrainType, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
-import { makeState } from '../rules/_helpers';
+import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { registerCatalogItem } from '../../state/catalog';
+import { roadLookup } from '../../state/object-index';
 
 // A plain 1x1 draggable item with NO traits (a real catalog tree carries an exclusionRadius that
 // would refuse two of them sitting one cell apart, which is exactly the tight arrangement these
@@ -87,7 +88,7 @@ function setUp(objects: PlacedObject[], selectedIds: string[]) {
   gs = makeState(20, 20);
   for (const obj of objects) gs.objects.set(obj.id, obj);
   bumpObjectsVersion(gs, { added: objects });
-  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
   const tm = new ToolManager(makeStubRenderer(), executor, gs);
   const { view, overlay } = makeMockView();
   setActiveView(view);
@@ -180,5 +181,35 @@ describe('dragging a plural selection', () => {
     expect(view.plopObject).toHaveBeenCalledTimes(3);
     const plopped = (view.plopObject as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]).sort();
     expect(plopped).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a halfStep member of a group reads its OWN planned elevation, not the ground under a half index', () => {
+    // Finding 2 (final review, half-step span items): the group ghost duplicated the same broken
+    // inline lookup (`gs.cells[y]?.[x]` with a fractional x is undefined) the solo drag ghost had.
+    // A mountain band at y <= 9, a shoulder at x = 7 and a water bank at x = 4 for y in [10, 14]
+    // leave a lane only the HALF anchor at x = 4.5 clears — a real ramp sitting there already
+    // (elevation 1, the mountain's own height) is what a group slide must keep reporting, not 0.
+    const ramp: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 9 }, rotation: 0, elevation: 1 };
+    const { overlay } = setUp([ramp, tree('h', 2, 2)], ['r', 'h']);
+    for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if (y <= 9) setTerrain(gs, x, y, TerrainType.Mountain, 1);
+    for (let y = 10; y <= 14; y++) {
+      setTerrain(gs, 7, y, TerrainType.Mountain, 1);
+      setTerrain(gs, 4, y, TerrainType.Water, 0);
+    }
+
+    // Press on the ramp at macro cell (5, 9) (inside its footprint [4, 7) x [9, 13)); the mock
+    // view has no screenToHalf, so the group path's own whole-cell grab offset applies:
+    // grabOffset = (4.5 - 5, 9 - 9) = (-0.5, 0). Drag to macro (5, 10): dx = 5 - 0.5 - 4.5 = 0,
+    // dy = 10 - 9 = 1 — the ramp's candidate lands back at (4.5, 10), which the heightDrop trait
+    // re-detects to (4.5, 9), elevation 1 (the SAME lane, one row down from where it's probed).
+    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 95 }));
+    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 55, clientY: 105 }));
+
+    expect(overlay.showGroupPlacementGhost).toHaveBeenCalled();
+    const groupCalls = overlay.showGroupPlacementGhost.mock.calls;
+    const [members] = groupCalls[groupCalls.length - 1]!;
+    const rampGhost = members.find((m: { catalogId: string }) => m.catalogId === 'ramp-teak-stair');
+    expect(rampGhost, 'the ramp member is in the ghost').toBeTruthy();
+    expect(rampGhost.elevation, 'the deck elevation, not the ground under a half index').toBe(1);
   });
 });

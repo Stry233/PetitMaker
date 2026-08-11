@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
-import { OrderSlip } from '../../../ui/menu/agent/entries/OrderSlip';
-import { AgentNote } from '../../../ui/menu/agent/entries/AgentNote';
-import { BuildTicket } from '../../../ui/menu/agent/entries/BuildTicket';
+import { OrderSlip } from '../../../ui/agent/entries/OrderSlip';
+import { AgentNote } from '../../../ui/agent/entries/AgentNote';
+import { BuildTicket } from '../../../ui/agent/entries/BuildTicket';
 import type { NoteEntry, OrderSlipEntry, TicketEntry } from '../../../agent/session';
 
 function Wrapper({ children }: { children: React.ReactNode }) {

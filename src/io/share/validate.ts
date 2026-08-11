@@ -3,6 +3,8 @@ import type { GridState } from '../../core/model/types';
 import { TerrainType } from '../../core/model/types';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import { getCatalogItem } from '../../state/catalog';
+import { hasHalfStep } from '../../state/object-geometry';
+import { onHalfGrid } from '../../core/model/grid-model';
 import { getMapTemplate, MAP_TEMPLATES } from '../../config/maps';
 import { templateHash, catalogHash } from './canonical';
 import { ShareError } from './errors';
@@ -37,9 +39,12 @@ export function validateImportedState(state: GridState, info: ImportedStateInfo)
   // Objects — never trust ids, coords, rotations, elevations.
   for (const o of state.objects.values()) {
     if (o.locked) continue;
-    if (!getCatalogItem(o.catalogId)) throw new ShareError('missing-catalog-item', `Unknown catalog item "${o.catalogId}".`);
+    const item = getCatalogItem(o.catalogId);
+    if (!item) throw new ShareError('missing-catalog-item', `Unknown catalog item "${o.catalogId}".`);
     const { x, y } = o.position;
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= W || y >= H) {
+    // A halfStep item (ramps, bridges) anchors on the half grid; everything else on whole cells.
+    const onGrid = (v: number) => (hasHalfStep(item) ? onHalfGrid(v) : Number.isInteger(v));
+    if (!onGrid(x) || !onGrid(y) || x < 0 || y < 0 || x >= W || y >= H) {
       throw new ShareError('validation-failed', 'Object coordinate out of bounds.');
     }
     if (![0, 90, 180, 270].includes(o.rotation)) throw new ShareError('validation-failed', 'Illegal object rotation.');

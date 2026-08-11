@@ -10,6 +10,10 @@
     "id": "Rumah Yunguo",
     "fr": "Maison de Yunguo"
   },
+  "aliases": [
+    "红",
+    "red"
+  ],
   "icon": "building-bamboo-cabin",
   "width": 5,
   "height": 5,

@@ -13,9 +13,7 @@
  * `public/_headers`, `vercel.json`, `docs/internal/deployment/esa-headers.md`, or the
  * `index.html` CSP `<meta>` line; the drift guard will catch it if you do.
  *
- * See docs/internal/superpowers/specs/2026-07-14-legal-docs-design.md §13 "Headers policy
- * — Alibaba-first" + "CSP meta limitations", and docs/THREAT_MODEL.md's "Headers / CSP"
- * + "Maintenance" sections.
+ * See docs/THREAT_MODEL.md's "Headers / CSP" + "Maintenance" sections.
  *
  * PROVENANCE: this policy reproduces the protections that were live in
  * `index.html` + `public/_headers` + `vercel.json` as of 2026-07-14, MINUS the
@@ -345,7 +343,7 @@ export function toEsaDoc(
     ...(legacy.length
       ? [`- [ ] Confirm each legacy domain 301s to \`${canonical}\` with the path preserved (e.g. \`curl -sI ${legacy[0]}/privacy | grep -i 'HTTP/\\|location'\`).`]
       : []),
-    '- [ ] Re-run this check after any ESA rule change; the release checklist (`docs/internal/deployment/legal-release-checklist.md`) gates launch on this being green.',
+    '- [ ] Re-run this check after any ESA rule change; the release checklist gates launch on this being green.',
   ];
   return lines.join('\n') + '\n';
 }

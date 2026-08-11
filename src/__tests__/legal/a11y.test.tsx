@@ -4,7 +4,7 @@
  *  - full keyboard-only walkthrough (open a doc, reach the language toggle,
  *    Escape closes the modal, focus returns to the opener);
  *  - the ModalShell focus trap + Escape handler (shared by all 7 modals —
- *    unit-tested directly in `src/__tests__/ui/modal-shell.test.tsx`; this
+ *    unit-tested directly in `src/__tests__/ui/primitives/modal-shell.test.tsx`; this
  *    file only exercises them through the real About/LegalDocView surface);
  *  - accessible names for the back button, the language selector, and the
  *    "open page" link;
@@ -28,16 +28,17 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { useState } from 'react';
 import { MotionGlobalConfig } from 'framer-motion';
-import { AboutModal } from '../../ui/chrome/AboutModal';
+import { AboutModal } from '../../ui/chrome/modals/AboutModal';
 import { LegalMarkdown } from '../../legal/LegalMarkdown';
 import { parseLegalMarkdown } from '../../legal/markdown';
 import { DOCS, docNodes, type DocId } from '../../legal/registry';
 import { LEGAL } from '../../legal/config';
 import { I18nProvider } from '../../i18n/context';
 import { TourOverlay } from '../../ui/chrome/tour/TourOverlay';
+import { SHELL_TOUR_STEPS } from '../../ui/shell/tour-steps';
 import { startTour } from '../../ui/chrome/tour/use-tour';
 import { useEditorStore } from '../../state/store';
-import { colors } from '../../ui/styles';
+import { colors } from '../../ui/design/styles';
 import { setStoreState } from '../_store';
 
 // ── WCAG 2.x relative-luminance contrast ratio, computed from the hex tokens
@@ -146,7 +147,7 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     // background comes off the card too, so the check cannot drift from the surface it is about.
     startTour();
     try {
-      render(<I18nProvider><TourOverlay /></I18nProvider>);
+      render(<I18nProvider><TourOverlay steps={SHELL_TOUR_STEPS} /></I18nProvider>);
       const card = screen.getByRole('dialog');
       const surface = renderedHex(card.style.background);
       const texts = [

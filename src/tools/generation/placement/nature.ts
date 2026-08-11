@@ -1,13 +1,11 @@
 import { ItemCategory } from '../../../core/model/types';
 import { makeRng } from '../../../core/model/rng';
-import { clamp01 } from '../../../core/model/math';
+import { clamp01, smoothstep } from '../../../core/model/math';
 import { valueNoise01 } from '../../../core/model/noise';
 import { TUNING } from '../tuning';
 import { tryDecorate, type PlaceCtx } from './object';
 import { getPlaceableByCategory } from '../../../state/catalog';
 import { distanceField, type PlacementAnalysis } from './analysis';
-
-const smoothstep = (e0: number, e1: number, v: number): number => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
 // Tree species grouped into climate bands; the populator picks a band from (elevation, moisture) so a
 // stand reads as one ecosystem. Ids missing from the catalog are filtered out (graceful if it changes).
@@ -18,15 +16,38 @@ const TREE_BANDS: Record<string, string[]> = {
   temperate: ['tree-apple', 'tree-peach', 'tree-plum'],
 };
 
+/**
+ * What species to plant at a cell, for a caller with a species policy of its own (the smart-build
+ * press's habitat-sorted community). Handed the WHOLE placeable pool of the category, not the
+ * climate band this module would otherwise narrow to: a caller that supplies a picker is replacing
+ * the species policy, not filtering it.
+ *
+ * Called only where a plant is about to go in, and it must draw no randomness from this module's
+ * `rng` — the WHERE is decided by that stream, and a picker that consumed from it would move every
+ * later plant on the map.
+ */
+export type SpeciesPicker = (
+  category: ItemCategory, pool: readonly string[], x: number, y: number, i: number,
+) => string;
+
 /** Layered ecology: forest STANDS (clustered, with glades + soft edges) of biome-appropriate species,
  *  wildflowers along forest edges / shorelines / meadows, thinning toward the village. Multi-tier:
- *  trees + flora populate flat plateaus too (driven by analysis.open). Deterministic from ctx.seed. */
-export function placeNature(ctx: PlaceCtx, a: PlacementAnalysis, nature: number, settled: Set<string>): void {
+ *  trees + flora populate flat plateaus too (driven by analysis.open). Deterministic from ctx.seed.
+ *
+ *  `categories` narrows what may be planted (the smart-build patch is bound to one brush mode at a
+ *  time). Omitted means both, and an emptied pool skips its branch without drawing from `rng`, so
+ *  the unrestricted run is bit-identical to one that never had the parameter.
+ *
+ *  `pick` replaces the species choice only (see `SpeciesPicker`); where a plant goes is unchanged. */
+export function placeNature(ctx: PlaceCtx, a: PlacementAnalysis, nature: number, settled: Set<string>, categories?: readonly ItemCategory[], pick?: SpeciesPicker): void {
   if (nature <= 0) return;
   const W = a.width, H = a.height;
   const rng = makeRng(ctx.seed ^ 0x9a7e2e);
-  const trees = getPlaceableByCategory(ItemCategory.Tree), flora = getPlaceableByCategory(ItemCategory.Flora);
+  const wanted = (c: ItemCategory): boolean => !categories || categories.includes(c);
+  const trees = wanted(ItemCategory.Tree) ? getPlaceableByCategory(ItemCategory.Tree) : [];
+  const flora = wanted(ItemCategory.Flora) ? getPlaceableByCategory(ItemCategory.Flora) : [];
   const allTreeIds = trees.map((t) => t.id);
+  const allFloraIds = flora.map((f) => f.id);
   // Resolve each band to the trees that actually exist; empty bands fall back to the whole list.
   const bandTrees: Record<string, string[]> = {};
   for (const k of Object.keys(TREE_BANDS)) {
@@ -91,7 +112,9 @@ export function placeNature(ctx: PlaceCtx, a: PlacementAnalysis, nature: number,
       const core = smoothstep(0, TUNING.standEdgeSoft, depthInStand[i] ?? 0);
       if (rng.float() < nature * TUNING.treeDensity * (0.35 + 0.65 * core) * wild) {
         const band = pickTreeBand(a.elev[i] ?? 0, moisture);
-        const species = band[Math.floor(treeSpeciesN(x * TUNING.treeSpeciesScale, y * TUNING.treeSpeciesScale) * band.length) % band.length]!;
+        const species = pick
+          ? pick(ItemCategory.Tree, allTreeIds, x, y, i)
+          : band[Math.floor(treeSpeciesN(x * TUNING.treeSpeciesScale, y * TUNING.treeSpeciesScale) * band.length) % band.length]!;
         tryDecorate(ctx, species, x, y); // exclusionRadius spaces them; clearance keeps gates/crossings clear; reject → skip
         continue;
       }
@@ -105,8 +128,10 @@ export function placeNature(ctx: PlaceCtx, a: PlacementAnalysis, nature: number,
       const drift = meadowN(x * TUNING.meadowDriftScale, y * TUNING.meadowDriftScale) >= TUNING.meadowDriftThreshold ? TUNING.floraMeadow : 0;
       const p = nature * Math.max(drift, ecotone, waterside) * wild;
       if (rng.float() < p) {
-        const sp = flora[Math.floor(floraSpeciesN(x * TUNING.floraSpeciesScale, y * TUNING.floraSpeciesScale) * flora.length) % flora.length]!;
-        tryDecorate(ctx, sp.id, x, y); // 1×1 flora stays allowed in clearance zones
+        const sp = pick
+          ? pick(ItemCategory.Flora, allFloraIds, x, y, i)
+          : flora[Math.floor(floraSpeciesN(x * TUNING.floraSpeciesScale, y * TUNING.floraSpeciesScale) * flora.length) % flora.length]!.id;
+        tryDecorate(ctx, sp, x, y); // 1×1 flora stays allowed in clearance zones
       }
     }
   }

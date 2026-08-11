@@ -8,7 +8,7 @@
  * brand casing (GPT/GLM/QwQ/DeepSeek/o3…).
  */
 import { describe, it, expect } from 'vitest';
-import { prettyModel } from '../../../ui/menu/agent/atoms';
+import { prettyModel } from '../../../ui/agent/atoms';
 
 const CASES: [string, string][] = [
   // platform defaults

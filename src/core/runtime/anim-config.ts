@@ -4,7 +4,7 @@
  * palette, and shared caps. Renderer layers and tools read from here so no
  * animation "magic numbers" live in render/tool code.
  *
- * (DOM / Framer-Motion timings live separately in `ui/styles.ts`: `springs`,
+ * (DOM / Framer-Motion timings live separately in `ui/design/styles.ts`: `springs`,
  * `easing`, `durations` — that is the React side's source of truth. Keep the
  * two in sync conceptually, but each owns its own domain.)
  *
@@ -71,6 +71,11 @@ export const animConfig = {
   /** Layer-visibility fade: the whole per-elevation object container, as one
    *  fade — never per-object. */
   layerFade: { durationMs: 180 },
+
+  /** The 3D view's opening camera fly-in (far → the resting frame). AMBIENT: skipped outright
+   *  under reduced motion, and landed early by any camera verb, so this is how long it runs for
+   *  someone who watches it rather than how long the view is held. */
+  intro3d: { durationMs: 800 },
 
   /** Shared pooled particle emitter (spawnPuff) — placement dust + deletion poof. */
   puff: {

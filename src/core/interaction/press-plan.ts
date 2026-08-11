@@ -35,7 +35,8 @@ export type PressIntent =
   | { kind: 'collapse-select'; id: string }
   | { kind: 'move-selection'; anchorId: string }
   | { kind: 'band-select'; from: MacroCoord }
-  | { kind: 'context-menu'; block: BlockRef };
+  | { kind: 'context-menu'; block: BlockRef }
+  | { kind: 'cancel-pending' };
 
 /** What the press landed on. `draggable` is `isDraggableObject`, resolved by the caller because it
  *  reads the catalog, which this floor may not. */
@@ -53,6 +54,9 @@ export interface PressFacts {
   hit: PressHit | null;
   /** The active tool's own `canActAt` answer for this cell. */
   placementAllowed: boolean;
+  /** Whether the active tool has a multi-tap gesture standing (`Tool.hasPending`). Only the macro
+   *  tool answers true today; a tool that does not implement it is unaffected by the branch below. */
+  pendingGesture: boolean;
   /** The view pans a left drag through its own tool path (2D, through the Hand tool). False where
    *  the pointer machine must pan it (the 3D editor). */
   viewPansLeftDrag: boolean;
@@ -163,6 +167,10 @@ function resolveSelectionPress(f: PressFacts, dragMode: boolean, brushCtrl: bool
  * targets whatever is under the pointer when it lifts, not when it landed.
  */
 export function resolveNavTap(f: PressFacts): readonly PressIntent[] {
+  // A NAV TAP ENDS A PENDING GESTURE, and does nothing else. Right and middle drag the camera, so a
+  // right press that never moved is the one press with no camera meaning left in it, and "put that
+  // down" is what a hand reaches for it to mean.
+  if (f.pendingGesture) return [{ kind: 'cancel-pending' }];
   if (!inSelectMode(f.tool, f.armedItemId)) return [];
   const block = blockFor(f);
   const out: PressIntent[] = [{ kind: 'context-menu', block }];

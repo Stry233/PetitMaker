@@ -15,6 +15,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState, placeCmd } from './_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function withObjects(...objs: PlacedObject[]): GridState {
   const state = makeState(20, 20);
@@ -73,7 +74,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
     // V-PLACE-OVERLAP exempts the road — so this is the only thing standing between a forgotten
     // strip and an illegal map.
     const state = makeState(20, 20);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     expect(executor.execute(placeCmd(at('r', 'road-dirt', 4, 4))).success).toBe(true);
     executor.commitStroke(executor.getUndoStackSize() - 1);
 

@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useCallback } from 'react';
 import { panFactor, useHeldPan } from '../../canvas/interaction/use-view-shortcuts';
-import { useKeybinds } from '../../ui/keybindings/store';
+import { useKeybinds } from '../../core/runtime/keybindings';
 
 function Panner({ onPan, enabled = true }: { onPan: (dx: number, dy: number) => void; enabled?: boolean }) {
   useHeldPan(useCallback(onPan, [onPan]), useCallback(() => enabled, [enabled]));

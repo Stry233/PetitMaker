@@ -10,6 +10,14 @@
     "id": "Pohon Persik",
     "fr": "Pêcher"
   },
+  "aliases": [
+    "樱花",
+    "sakura",
+    "cherry",
+    "cherry blossom",
+    "粉",
+    "pink"
+  ],
   "icon": "tree-peach",
   "width": 1,
   "height": 1,

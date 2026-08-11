@@ -16,6 +16,7 @@
 import type { ProviderId } from './types';
 import { PROVIDER_META, PROVIDER_IDS, providerBaseUrls } from './providers/defaults';
 import { sealSecret, openSecret, type SealedBlob } from './vault';
+import { PREFS } from '../core/runtime/prefs';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 
@@ -36,8 +37,6 @@ export interface AgentSettings {
    *  primary host. Not a secret — stored plain. */
   regionBaseUrl?: Partial<Record<ProviderId, string>>;
 }
-
-const LS_KEY = 'petit-agent-settings-v1';
 
 const enc = (s: string): string => btoa(unescape(encodeURIComponent(s)));
 const dec = (s: string): string => {
@@ -147,7 +146,7 @@ function defaultAgentSettings(): AgentSettings {
 export function loadAgentSettings(): AgentSettings {
   if (typeof localStorage === 'undefined') return defaultAgentSettings();
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(PREFS.agentSettings.key);
     if (!raw) return defaultAgentSettings();
     const parsed = JSON.parse(raw) as StoredRecord;
     const base = defaultAgentSettings();
@@ -185,7 +184,7 @@ export function markKeysHydrated(): void {
 export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
   if (typeof localStorage === 'undefined') return null;
   try {
-    const rec = JSON.parse(localStorage.getItem(LS_KEY) ?? 'null') as StoredRecord | null;
+    const rec = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
     if (!rec?.keysSealed) return null;
     const plain = await openSecret(rec.keysSealed);
     if (!plain) return null;
@@ -201,7 +200,7 @@ export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, st
  * sealing is never clobbered (its own upgrade is in flight and wins).
  */
 async function upgradeToSealed(): Promise<void> {
-  const raw = localStorage.getItem(LS_KEY);
+  const raw = localStorage.getItem(PREFS.agentSettings.key);
   if (!raw) return;
   const rec = JSON.parse(raw) as StoredRecord;
   const obf = rec.keys ?? {};
@@ -213,11 +212,11 @@ async function upgradeToSealed(): Promise<void> {
   }
   const sealed = await sealSecret(JSON.stringify(plain));
   if (!sealed) return; // vault unavailable → obfuscated fallback stays
-  const cur = JSON.parse(localStorage.getItem(LS_KEY) ?? 'null') as StoredRecord | null;
+  const cur = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
   if (!cur || JSON.stringify(cur.keys) !== JSON.stringify(rec.keys)) return; // newer save owns the upgrade
   delete cur.keys;
   cur.keysSealed = sealed;
-  localStorage.setItem(LS_KEY, JSON.stringify(cur));
+  localStorage.setItem(PREFS.agentSettings.key, JSON.stringify(cur));
 }
 
 export function saveAgentSettings(s: AgentSettings): void {
@@ -231,7 +230,7 @@ export function saveAgentSettings(s: AgentSettings): void {
   let keysSealed: SealedBlob | undefined;
   if (!keysHydrated || Object.keys(keys).length > 0) {
     try {
-      keysSealed = (JSON.parse(localStorage.getItem(LS_KEY) ?? 'null') as StoredRecord | null)?.keysSealed;
+      keysSealed = (JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null)?.keysSealed;
     } catch {
       /* corrupted record → write fresh */
     }
@@ -239,7 +238,7 @@ export function saveAgentSettings(s: AgentSettings): void {
   // Sync write keeps the obfuscated form so a mid-seal tab close never loses
   // keys; the async upgrade then swaps it for the encrypted blob.
   localStorage.setItem(
-    LS_KEY,
+    PREFS.agentSettings.key,
     JSON.stringify({
       provider: s.provider, model: s.model, keys, keysSealed,
       askBeforeEdits: s.oversight === 'strict',   // back-compat mirror

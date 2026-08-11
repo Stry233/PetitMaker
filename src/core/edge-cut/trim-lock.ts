@@ -1,7 +1,7 @@
 import { TerrainType, type GridState } from '../model/types';
 import { getCell, NEIGHBORS4 } from '../model/grid-model';
 import { EDGE_NEIGHBORS, CORNER_NEIGHBORS, terrainSolidAt, solidTopOf, structuralTop } from './terrain-silhouette';
-import { hasRoadAt } from './road-cut-states';
+import type { RoadLookup } from '../model/road-lookup';
 import { waterfallFacesAt, type Direction } from '../model/waterfall-geometry';
 
 type LockedCorners = [boolean, boolean, boolean, boolean];
@@ -15,7 +15,7 @@ const SIDE_CORNERS: Record<Direction, [number, number]> = {
 };
 
 export function computeLockedCorners(
-  state: GridState, x: number, y: number, target: 'terrain' | 'road',
+  state: GridState, roads: RoadLookup, x: number, y: number, target: 'terrain' | 'road',
 ): LockedCorners {
   const locked: LockedCorners = [false, false, false, false];
 
@@ -80,10 +80,10 @@ export function computeLockedCorners(
       }
     }
   } else {
-    const top = hasRoadAt(state, x, y - 1);
-    const bottom = hasRoadAt(state, x, y + 1);
-    const left = hasRoadAt(state, x - 1, y);
-    const right = hasRoadAt(state, x + 1, y);
+    const top = roads(x, y - 1) !== null;
+    const bottom = roads(x, y + 1) !== null;
+    const left = roads(x - 1, y) !== null;
+    const right = roads(x + 1, y) !== null;
     const count = [top, bottom, left, right].filter(Boolean).length;
 
     if (count === 0) return locked;

@@ -10,6 +10,11 @@
     "id": "Azalea",
     "fr": "Azalée"
   },
+  "aliases": [
+    "映山红",
+    "粉",
+    "pink"
+  ],
   "icon": "plant-azalea",
   "width": 1,
   "height": 1,

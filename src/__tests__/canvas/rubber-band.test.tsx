@@ -18,6 +18,7 @@ import { useEditorStore } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 function makeView(): { view: ActiveView; overlay: Record<string, ReturnType<typeof vi.fn>> } {
   const overlay = {
@@ -90,7 +91,7 @@ afterEach(() => {
 describe('Ctrl+drag over an already-selected object', () => {
   it('bands instead of arming a move: the object never relocates', () => {
     const gs = mapWithOneObject();
-    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
     setStoreState({ gridState: gs, commandExecutor: executor });
     const { view, overlay } = makeView();
     setActiveView(view);
@@ -122,7 +123,7 @@ describe('Ctrl+drag over an already-selected object', () => {
 describe('Ctrl pressed mid-drag of an unmodified move', () => {
   it('still moves the object AND leaves it selected (does not toggle it off)', () => {
     const gs = mapWithOneObject();
-    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
     setStoreState({ gridState: gs, commandExecutor: executor });
     const { view } = makeView();
     setActiveView(view);

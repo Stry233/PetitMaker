@@ -12,10 +12,11 @@ import { ItemCategory, TerrainType } from '../../core/model/types';
 import type { EditorEvents, GridState } from '../../core/model/types';
 import { getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function world(): { state: GridState; api: EditorAPI } {
   const state = makeState(20, 20);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   return { state, api: new EditorAPI(() => state, () => executor) };
 }
 

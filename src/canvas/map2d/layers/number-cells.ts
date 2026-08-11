@@ -5,11 +5,11 @@
  * island cells) live here where they can be unit-tested.
  */
 import { CHUNK_SIZE } from '../../../core/model/constants';
-import { getCell, getFootprint } from '../../../core/model/grid-model';
+import { getCell } from '../../../core/model/grid-model';
 import { TerrainType } from '../../../core/model/types';
 import type { GridState } from '../../../core/model/types';
 import { entriesNear, getObjectIndex } from '../../../state/object-index';
-import { getPlacedObjectSize } from '../../../state/object-geometry';
+import { footprintCells, getPlacedObjectSize } from '../../../state/object-geometry';
 
 export interface NumberCell { x: number; y: number; label: string }
 
@@ -44,12 +44,15 @@ export function chunkNumberCells(state: GridState, cx: number, cy: number, hidde
   const y1 = Math.min(y0 + CHUNK_SIZE, state.template.height);
   if (x1 <= x0 || y1 <= y0) return [];
 
-  // Occupancy mask from the spatial index — only objects near this chunk matter.
+  // Occupancy mask from the spatial index — only objects near this chunk matter. Covered cells
+  // (floor/ceil-expanded), not position + integer offset: a half-anchored deck (halfStep) would
+  // otherwise mask no cell at all, since `position.x + dx` for a half position never lands on an
+  // integer key this set's lookups (below) ever ask for.
   const occupied = new Set<string>();
   const near = entriesNear(getObjectIndex(state), { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   for (const e of near) {
     const dims = getPlacedObjectSize(e.obj);
-    for (const c of getFootprint(e.obj.position.x, e.obj.position.y, dims.w, dims.h)) {
+    for (const c of footprintCells(e.obj.position.x, e.obj.position.y, dims.w, dims.h)) {
       occupied.add(`${c.x},${c.y}`);
     }
   }

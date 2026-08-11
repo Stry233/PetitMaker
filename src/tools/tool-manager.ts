@@ -3,13 +3,15 @@ import type { Command, GridState, ValidationResult } from '../core/model/types';
 import type { CommandExecutor } from '../core/commands/command-executor';
 import type { MapRenderer } from '../canvas/map2d/map-renderer';
 import type { EditorView } from '../canvas/view-projection';
-import { translations } from '../i18n/translations';
+import type { CursorId } from '../core/runtime/cursor-spec';
+import { translateFor } from '../i18n/context';
 import { useEditorStore } from '../state/store';
 import { HandTool } from './hand';
 import { DrawingTool } from './paint/drawing-tool';
 import { EraserTool } from './paint/eraser';
 import { ObjectPlacerTool } from './objects/object-placer';
 import { EdgeCutTool } from './edge-cut/edge-cut-tool';
+import { MacroTool } from './macros/macro-tool';
 import type { Tool, ToolContext } from './types';
 
 export class ToolManager {
@@ -54,6 +56,7 @@ export class ToolManager {
     this.registerTool(new EraserTool());
     this.registerTool(new ObjectPlacerTool());
     this.registerTool(new EdgeCutTool());
+    this.registerTool(new MacroTool());
   }
 
   setActiveTool(type: ToolType): void {
@@ -72,9 +75,15 @@ export class ToolManager {
     return this.activeTool;
   }
 
-  /** The live tool context, for callers that need to ASK a tool something without acting —
-   *  the cursor's pre-click validity probe. Read-only by convention: nothing here mutates it. */
+  /** The live tool context, for callers that need to ASK a tool something without acting — the
+   *  cursor's pre-click validity probe, a press's `placementAllowed`. Refreshes first: a caller here
+   *  has no pointer event of its own to hang a refresh off (a touch tap's `onPointerDown` never sets
+   *  `pointerKnown`, so no `handlePointerMove` precedes it and the mirror would otherwise answer from
+   *  whenever the pointer last moved — the same staleness `getActiveCursor()` already guards
+   *  against). `refreshCtx` is a cheap field copy, so refreshing on every ask costs nothing callers
+   *  would notice. Read-only by convention beyond that: nothing here mutates the arming itself. */
   getContext(): ToolContext {
+    this.refreshCtx();
     return this.ctx;
   }
 
@@ -97,6 +106,7 @@ export class ToolManager {
     const micro = this.view.projection.screenToMicro(screenX, screenY);
 
     this.refreshCtx();
+    this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
     this.activeTool.onPointerDown(macro, micro, this.ctx);
   }
 
@@ -129,6 +139,7 @@ export class ToolManager {
     const micro = this.view.projection.screenToMicro(screenX, screenY);
 
     this.refreshCtx();
+    this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
     this.activeTool.onPointerMove(macro, micro, this.ctx);
   }
 
@@ -137,16 +148,42 @@ export class ToolManager {
     const micro = this.view.projection.screenToMicro(screenX, screenY);
 
     this.refreshCtx();
+    this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
     this.activeTool.onPointerUp(macro, micro, this.ctx);
   }
 
+  /** The live arming, copied in before every tool call. THE ONE PLACE IN `tools/` THAT KNOWS A
+   *  STORE EXISTS (`__tests__/import-direction.test.ts` pins the rest); everything below reads the
+   *  context. Values, not getters: the pointer machine can supply every one of them per event, and
+   *  a getter would let a tool observe a store change in the middle of a stroke. */
   private refreshCtx(): void {
+    const s = useEditorStore.getState();
     this.ctx.terrainType = this.terrainType;
     this.ctx.elevation = this.elevation;
+    this.ctx.layerPinned = s.layerPinned;
     this.ctx.brushSize = this.brushSize;
+    this.ctx.contentType = s.contentType;
+    this.ctx.layerVisibility = s.layerVisibility;
+    this.ctx.autoEdgeCut = s.autoEdgeCut;
+    this.ctx.eraserShape = s.eraserShape;
+    this.ctx.tileMaterial = s.tileMaterial;
+    this.ctx.tileMaterialPicked = s.tileMaterialPicked;
+    this.ctx.armedItem = s.selectedItemId;
+    this.ctx.placementRotation = s.placementRotation;
+    this.ctx.armedMacro = s.armedMacro;
+    this.ctx.armingEpoch = s.armingEpoch;
+  }
+
+  /** The active tool's cursor, from a context refreshed first (`getContext()`): the push happens on
+   *  a STORE change with no pointer event behind it, so the arming this asks about must be re-read
+   *  here. */
+  getActiveCursor(): CursorId {
+    const ctx = this.getContext();
+    return this.activeTool.cursorFor?.(ctx) ?? this.activeTool.cursor;
   }
 
   private buildCtx(): ToolContext {
+    const s = useEditorStore.getState();
     return {
       gridState: this.gridState,
       viewport: this.view.projection,
@@ -159,15 +196,24 @@ export class ToolManager {
       getUndoStackSize: () => this.executor.getUndoStackSize(),
       collapseHistory: (start: number) => this.executor.collapseHistory(start),
       rollbackTo: (watermark: number) => this.executor.rollbackTo(watermark),
-      t: (key: string) => {
-        const locale = useEditorStore.getState().locale;
-        return translations[locale]?.[key] ?? translations['en'][key] ?? key;
-      },
+      t: (key: string, params?: Record<string, string | number>) => translateFor(useEditorStore.getState().locale, key, params),
       setDisplayLayer: (layer: number | null) => useEditorStore.getState().setDisplayLayer(layer),
       plopObject: (id: string) => this.view.plopObject?.(id),
       terrainType: this.terrainType,
       elevation: this.elevation,
+      layerPinned: s.layerPinned,
       brushSize: this.brushSize,
+      contentType: s.contentType,
+      layerVisibility: s.layerVisibility,
+      autoEdgeCut: s.autoEdgeCut,
+      eraserShape: s.eraserShape,
+      tileMaterial: s.tileMaterial,
+      tileMaterialPicked: s.tileMaterialPicked,
+      armedItem: s.selectedItemId,
+      placementRotation: s.placementRotation,
+      armedMacro: s.armedMacro,
+      armingEpoch: s.armingEpoch,
+      macroContext: { state: this.gridState, executor: this.executor, registry: this.executor.getRegistry() },
     };
   }
 }

@@ -6,6 +6,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules';
 import type { EditorEvents } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 // Mirror the localStorage stub from key-storage.test.ts — jsdom exposes a
 // descriptor that yields undefined on this node version.
@@ -19,7 +20,7 @@ vi.stubGlobal('localStorage', {
 
 function deps(setPlan: (s: { title: string; status: 'pending' | 'active' | 'done' }[]) => void) {
   const state = makeState(10, 10);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   return { getState: () => state, getExecutor: () => exec, getRegion: () => [], setPlan };
 }
 

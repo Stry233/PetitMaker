@@ -9,7 +9,7 @@ import { sha256 } from '../crypto/sha256';
 import { ShareError } from '../errors';
 import type { MapProvenanceSummary } from '../../../core/provenance/types';
 import { tokensOf, tokensToCells, tokenOf, parseToken } from './grid-io';
-import { encodeMap, decodeMap, MODEL_VARIANTS, type MapModelOpts } from './map-coder';
+import { encodeMap, decodeMap, MODEL_VARIANTS, hasHalfPosition, type MapModelOpts } from './map-coder';
 import { RangeEncoder, RangeDecoder } from './bitio';
 import type { GenerateConfig, GridState } from '../../../core/model/types';
 
@@ -182,11 +182,15 @@ function buildFrame(
 export async function encodeMapPayload(state: GridState, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Promise<Uint8Array> {
   const canonical = canonicalize(state);
   const want = await sha256(canonicalBytes(canonical));
-  // The model has a couple of shapes (see MapModelOpts) and which one suits a map is a property
-  // of the map, not of the format. Coding is cheap, so every shape is tried and the smallest
-  // kept; the frame names the winner, so the reader does no searching.
+  // The model has a few shapes (see MapModelOpts) and which one suits a map is a property of the
+  // map, not of the format. Coding is cheap, so every APPLICABLE shape is tried and the smallest
+  // kept; the frame names the winner, so the reader does no searching. Applicable is not a size
+  // question: only a half-capable shape can carry a half-cell anchor, and only it costs anything
+  // to say a map has none — so a map without one searches exactly the shapes it always did.
+  const half = hasHalfPosition(canonical.objects);
   let frame: Uint8Array | null = null;
   for (let v = 0; v < MODEL_VARIANTS.length; v++) {
+    if (MODEL_VARIANTS[v]!.half !== half) continue;
     const f = buildFrame(canonical, want, state.generation, summary, meta, v);
     if (!frame || f.length < frame.length) frame = f;
   }
@@ -214,7 +218,10 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
 
     const variant = r.u8();
     const model: MapModelOpts | undefined = MODEL_VARIANTS[variant];
-    if (!model) throw new ShareError('decode-failed', `Unknown model variant ${variant}.`);
+    // A shape this build does not have is a code from a NEWER build, not a damaged one: the
+    // table is append-only, so an index past its end can only have been written later. Saying
+    // "corrupt" would send the reader looking for a better photograph of a perfectly good code.
+    if (!model) throw new ShareError('future-version', `Model variant ${variant} is newer than this build supports.`);
 
     const canonicalVersion = r.u8();
     const templateId = r.str8();

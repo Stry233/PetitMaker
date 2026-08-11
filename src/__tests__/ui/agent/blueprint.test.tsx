@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
-import { SketchCard } from '../../../ui/menu/agent/entries/SketchCard';
-import { BlueprintCard } from '../../../ui/menu/agent/entries/BlueprintCard';
-import { HelpersBlock } from '../../../ui/menu/agent/entries/HelpersBlock';
+import { SketchCard } from '../../../ui/agent/entries/SketchCard';
+import { BlueprintCard } from '../../../ui/agent/entries/BlueprintCard';
+import { HelpersBlock } from '../../../ui/agent/entries/HelpersBlock';
 import type { BlueprintEntry, Helper, SketchesEntry } from '../../../agent/session';
 
 function Wrapper({ children }: { children: React.ReactNode }) {

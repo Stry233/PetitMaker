@@ -6,11 +6,12 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { makeState } from '../rules/_helpers';
 import { CommandType, TerrainType } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 function deps(state = makeState(8, 8)) {
   const locked: number[] = [];
   let camera: unknown = null;
-  const executor = new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
   return { state, executor, locked, cameraRef: () => camera, d: {
     executor, state,
     setLayerLocked: (l: number) => locked.push(l),
@@ -21,7 +22,7 @@ function deps(state = makeState(8, 8)) {
 describe('applyOptionalSections', () => {
   it('restores generation, session (layers + camera), and history', () => {
     const src = makeState(8, 8);
-    const srcExec = new CommandExecutor(src, new EventBus(), createDefaultRegistry());
+    const srcExec = new CommandExecutor(src, new EventBus(), createDefaultRegistry(), roadLookup(src));
     srcExec.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 });
     srcExec.commitStroke(0);
     const raw = {

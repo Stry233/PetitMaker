@@ -5,6 +5,7 @@ import {
 import { validateCut } from '../../core/edge-cut/cut-validator';
 import { type Corners, type PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 describe('classifyRoadKind', () => {
   it('classifies fan-bearing states as round', () => {
@@ -44,11 +45,11 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
   }
 
   function legalStates(state: any, road: PlacedObject): number[] {
-    const conn = detectRoadConn(state, road);
+    const conn = detectRoadConn(roadLookup(state), road);
     const out: number[] = [];
     for (let s = 1; s < CANONICAL_ROAD_STATES.length; s++) {
       const actual = canonicalToActual([...CANONICAL_ROAD_STATES[s]!], conn);
-      if (validateCut(state, road.position.x, road.position.y, 'road', actual)) out.push(s);
+      if (validateCut(state, roadLookup(state), road.position.x, road.position.y, 'road', actual)) out.push(s);
     }
     return out;
   }
@@ -94,7 +95,7 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
     const state = makeState(12, 12);
     const road = addRoad(state, 5, 5);
     addRoad(state, 5, 4, [...CANONICAL_ROAD_STATES[4]!]); // end-cap above, trimmed to the / diagonal
-    expect(validateCut(state, 5, 5, 'road', ['square', 'square', 'square', 'square']), 'raw must stay legal').toBe(true);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'road', ['square', 'square', 'square', 'square']), 'raw must stay legal').toBe(true);
     expect(legalStates(state, road).length, 'at least one cut state cycles').toBeGreaterThan(0);
   });
 });

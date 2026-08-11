@@ -18,7 +18,8 @@ import {
   type ValidationError,
 } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
-import { cellElevation, DIR_OFFSETS, PERP_DIRS, traceToMountain, type Direction } from '../core/model/waterfall-geometry';
+import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
+import { DIR_OFFSETS, PERP_DIRS, traceToMountain, type Direction } from '../core/model/waterfall-geometry';
 
 const ALL_DIRS: Direction[] = ['north', 'south', 'east', 'west'];
 
@@ -32,17 +33,20 @@ export const waterContainmentRule: PostStrokeRule = {
     const errors: ValidationError[] = [];
 
     for (let y = 0; y < height; y++) {
+      const row = state.cells[y];
       for (let x = 0; x < width; x++) {
-        const cell = getCell(state.cells, x, y);
-        if (!cell?.terrain || cell.terrain.type !== TerrainType.Water) continue;
+        const terrain = row?.[x]?.terrain;
+        if (!terrain || terrain.type !== TerrainType.Water) continue;
 
-        const elev = cell.terrain.elevation;
+        const elev = terrain.elevation;
 
         for (const dir of ALL_DIRS) {
           const { dx, dy } = DIR_OFFSETS[dir];
           const nx = x + dx, ny = y + dy;
           const neighborCell = getCell(state.cells, nx, ny);
-          const neighborElev = cellElevation(state, nx, ny);
+          // Off the map reads as −1, the same "lower than any water" `cellElevation` returns for it,
+          // so the out-of-bounds face below is reached without asking the grid a second time.
+          const neighborElev = neighborCell ? surfaceElevation(neighborCell.terrain) : -1;
           if (neighborElev >= elev) continue;
 
           // Out-of-bounds neighbor means water flows off the map edge — always uncapped

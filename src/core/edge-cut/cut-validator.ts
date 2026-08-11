@@ -3,8 +3,9 @@ import { TerrainType } from '../model/types';
 import { getCell } from '../model/grid-model';
 import { cornerWrappedAt, enclosedGap, surfaceElevation } from './terrain-silhouette';
 import { CORNER_INDEX, type CornerPos } from './corner-index';
+import type { RoadLookup } from '../model/road-lookup';
 import {
-  detectRoadConn, findRoadAt, hasRoadAt, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
+  detectRoadConn, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
 } from './road-cut-states';
 
 type Side = 'N' | 'E' | 'S' | 'W';
@@ -115,18 +116,19 @@ export function hasPositiveEdgeContact(
   return intervalsOverlap(a, b);
 }
 
-function getNeighborCorners(state: GridState, x: number, y: number, layer: 'terrain' | 'road'): Corners | undefined {
+function getNeighborCorners(
+  state: GridState, roads: RoadLookup, x: number, y: number, layer: 'terrain' | 'road',
+): Corners | undefined {
   if (layer === 'terrain') {
     const cell = getCell(state.cells, x, y);
     return cell?.terrain?.corners;
   }
-  // ONE road predicate: findRoadAt is the canonical "coating at (x,y)" lookup
-  // (non-patch, catalog-coated, O(1) via the object index).
-  return findRoadAt(state, x, y)?.corners;
+  return roads(x, y)?.corners;
 }
 
 export function validateCut(
   state: GridState,
+  roads: RoadLookup,
   x: number, y: number,
   layer: 'terrain' | 'road',
   candidateCorners: Corners,
@@ -147,7 +149,7 @@ export function validateCut(
         hasNeighbor = true;
       }
     } else {
-      hasNeighbor = hasRoadAt(state, nx, ny);
+      hasNeighbor = roads(nx, ny) !== null;
     }
 
     if (hasNeighbor) {
@@ -162,10 +164,10 @@ export function validateCut(
         // triangle twin was refused, and some trimmed neighbours dead-locked a cell entirely. Judge both
         // sides of the seam from the drawn geometry's kept-edge table instead; corner arrays that match no
         // canonical state fall back to the token-coverage check.
-        const cand = findRoadAt(state, x, y);
-        const nbr = findRoadAt(state, nx, ny);
-        const cConn = cand ? detectRoadConn(state, cand) : 'left';
-        const nConn = nbr ? detectRoadConn(state, nbr) : 'left';
+        const cand = roads(x, y);
+        const nbr = roads(nx, ny);
+        const cConn = cand ? detectRoadConn(roads, cand) : 'left';
+        const nConn = nbr ? detectRoadConn(roads, nbr) : 'left';
         const cState = matchActualRoadState(candidateCorners, cConn);
         const nState = matchCanonicalRoadState(nbr?.corners);
         if (cState !== null && nState !== null) {
@@ -175,7 +177,7 @@ export function validateCut(
           continue;
         }
       }
-      const neighborCorners = getNeighborCorners(state, nx, ny, layer);
+      const neighborCorners = getNeighborCorners(state, roads, nx, ny, layer);
       if (!hasPositiveEdgeContact(candidateCorners, side, neighborCorners, OPPOSITE[side])) {
         return false;
       }

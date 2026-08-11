@@ -74,6 +74,24 @@ export function getIconTexture(url: string, targetPx = 256): PIXI.Texture {
 }
 
 /**
+ * Waits until each of these icons has decoded, so a caller that draws ONCE gets sprites rather than
+ * holes.
+ *
+ * The editor never needs this: a sprite built on a texture still in flight re-fits itself when the
+ * image lands and the next frame shows it. A capture has no next frame — it is one synchronous
+ * pass over a map nobody is looking at — so the art has to be here before it starts. A texture that
+ * fails to load resolves like any other: one missing sprite, never a caller left waiting.
+ */
+export function decodeIcons(urls: Iterable<string>): Promise<void[]> {
+  return Promise.all([...urls].map((url) => new Promise<void>((resolve) => {
+    const base = PIXI.Texture.from(url).baseTexture;
+    if (base.valid) { resolve(); return; }
+    base.once('loaded', () => resolve());
+    base.once('error', () => resolve());
+  })));
+}
+
+/**
  * The representative body color of an icon, for tinting its place/delete puff so
  * the particles read as that object's hue. Averages mid-tone opaque pixels
  * (skipping the dark outline + white highlights these cartoon icons carry) from

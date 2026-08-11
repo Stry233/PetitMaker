@@ -12,10 +12,11 @@ import { CommandType, TerrainType } from '../../core/model/types';
 import type { Command, EditorEvents } from '../../core/model/types';
 import type { AgentToolDeps } from '../../agent/tools';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function world() {
   const state = makeState(10, 10);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const deps = { getState: () => state, getExecutor: () => executor, getRegion: () => [] } as unknown as AgentToolDeps;
   return { state, executor, deps };
 }

@@ -13,6 +13,7 @@ import { populate } from '../../../tools/generation/placement';
 import { objectRect } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { TerrainType, type EditorEvents, type GenerateConfig, type GridState, type MapTemplate, type PlacedObject } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 function loadHexia(): GridState {
   const template = JSON.parse(readFileSync('src/config/maps/hexia.json', 'utf8')) as MapTemplate;
@@ -35,7 +36,7 @@ describe.runIf(DUMP)('RENDER real map', () => {
       const [label, mode, seed] = combos[k]!;
       const state = loadHexia();
       W = state.template.width; H = state.template.height;
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null, settlement: 0.6, nature: 0.6 };
       exec.runSilently(() => {
         const r = generateTerrain(config, state, (c) => exec.execute(c));

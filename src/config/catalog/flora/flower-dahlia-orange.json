@@ -10,6 +10,9 @@
     "id": "Dahlia Oranye",
     "fr": "Dahlia orange"
   },
+  "aliases": [
+    "大丽花"
+  ],
   "icon": "flower-dahlia-orange",
   "width": 1,
   "height": 1,

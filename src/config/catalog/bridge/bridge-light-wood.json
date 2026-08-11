@@ -21,6 +21,9 @@
       "type": "waterSpan",
       "min": 3,
       "max": 6
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "model3d": {

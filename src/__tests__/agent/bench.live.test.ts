@@ -25,6 +25,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 // @ts-ignore — see above
 import { join } from 'node:path';
+import { roadLookup } from '../../state/object-index';
 
 // node global (bench runs in the node environment only; not part of the app bundle)
 declare const process: { env: Record<string, string | undefined> };
@@ -84,7 +85,7 @@ function pacedAdapter(inner: ProviderAdapter, minIntervalMs: number): ProviderAd
 describe.skipIf(!URL || !KEY)('LIVE agent bench (env-gated)', () => {
   it('closed-loop build on a blank map produces a scored, rule-valid scene', async () => {
     const state = makeState(64, 64);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     let plan: PlanStage[] = [];
     const deps: AgentToolDeps = {
       getState: () => state,

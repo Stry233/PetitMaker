@@ -15,16 +15,47 @@ import {
   type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
-import { getCell, getFootprint } from '../core/model/grid-model';
+import { getCell, getFootprint, onHalfGrid, straddledCells } from '../core/model/grid-model';
 import { realSurface, surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { getCatalogItem } from '../state/catalog';
-import { getPlacedObjectSize } from '../state/object-geometry';
+import { coveredCells, footprintCells, getPlacedObjectSize, hasHalfStep } from '../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../state/object-index';
 import { detectBridgeSpan } from '../core/model/bridge-span';
 
 const CARDINAL_OFFSETS: readonly MacroCoord[] = [
   { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
 ];
+
+/** Where a heightDrop looks for its cliff: each cardinal direction in turn, nearest step first.
+ *  A half anchor sits ON a cell boundary, so the half step is what reads the two cells it
+ *  divides. From a whole anchor that same step straddles the anchor's own cell, so its min read
+ *  can only match when the neighbour is the LOWER one, and then it reports the very numbers the
+ *  whole step reports: the whole grid resolves identically either way. */
+const RAMP_PROBES: readonly { dx: number; dy: number; dist: number }[] =
+  CARDINAL_OFFSETS.flatMap((off) => [0.5, 1].map((dist) => ({ dx: off.x, dy: off.y, dist })));
+
+/** Min-support surface elevation over every cell (x, y) straddles, or null when any of
+ *  them is off the map: a probe that reaches the void has no cliff to report, and support
+ *  counts only where EVERY straddled cell holds it. */
+function straddleElevation(state: GridState, x: number, y: number): number | null {
+  const xs = straddledCells(x), ys = straddledCells(y);
+  let elev = Infinity;
+  for (let cy = ys.lo; cy <= ys.hi; cy++) {
+    for (let cx = xs.lo; cx <= xs.hi; cx++) {
+      const cell = getCell(state.cells, cx, cy);
+      if (!cell) return null;
+      elev = Math.min(elev, surfaceElevation(cell.terrain));
+    }
+  }
+  return elev;
+}
+
+/** The terrain cells a footprint's span [pos, pos + size) rests on, as an inclusive
+ *  range. Terrain renders at −HALF_TILE, so a whole-coordinate span bleeds half a cell
+ *  past each end (size + 1 cells) while a half-coordinate one lands exactly on `size`. */
+function terrainSpan(pos: number, size: number): { lo: number; hi: number } {
+  return { lo: Math.floor(pos + 0.5), hi: Math.ceil(pos + size - 0.5) };
+}
 
 function validateTrait(
   trait: PlacementTrait,
@@ -46,19 +77,26 @@ function validateTrait(
       // part of the real footprint sit off a flat surface.
       const { w, h } = getPlacedObjectSize(cmd.object);
 
+      // Sweep the covered footprint plus one extra cell past the last on each axis (the
+      // dual-grid margin) — covered cells, not pos + integer offset, so a half-integer
+      // anchor never probes a fractional cell key.
+      const xs = coveredCells(pos.x, w);
+      const ys = coveredCells(pos.y, h);
+      const sweepXs = [...xs, xs[xs.length - 1]! + 1];
+      const sweepYs = [...ys, ys[ys.length - 1]! + 1];
+
       // Evidence = every cell in the extended sweep whose surface is water or off the
       // anchor's level (the offenders may sit OUTSIDE the footprint — the +1 sweep).
       const offenders: MacroCoord[] = [];
-      for (let dy = 0; dy <= h; dy++) {
-        for (let dx = 0; dx <= w; dx++) {
-          const cx = pos.x + dx, cy = pos.y + dy;
+      for (const cy of sweepYs) {
+        for (const cx of sweepXs) {
           const cell = getCell(state.cells, cx, cy);
           if (!cell) continue;
           // The plaza is a raised no-build platform, not a cliff the object can
           // float off — skip it so items can sit flush against the plaza. Actual
           // footprint overlap with the plaza object is rejected by V-PLACE-OVERLAP
-          // (and terrain over it by V-PLACE-BLOCK). NOTE: at runtime createGrid rewrites
-          // Plaza zones to Grass, so this branch is a defensive guard, not the real ban.
+          // (and terrain over it by V-PLACE-BLOCK). createGrid rewrites Plaza zones to
+          // Grass, so a live map reaches this only through a hand-built state.
           if (cell.zone === CellZone.Plaza) continue;
           const surf = realSurface(cell.terrain);
           if (surf?.type === TerrainType.Water || (surf?.elevation ?? 0) !== baseElev) {
@@ -102,55 +140,60 @@ function validateTrait(
     }
 
     case 'heightDrop': {
-      const anchorCell = getCell(state.cells, pos.x, pos.y);
-      const anchorElev = surfaceElevation(anchorCell?.terrain);
+      const anchorElev = straddleElevation(state, pos.x, pos.y) ?? 0;
       const item = getCatalogItem(cmd.object.catalogId);
       const spanLen = item?.height ?? 4;
       const perpWidth = item?.width ?? 2;
 
-      for (const off of CARDINAL_OFFSETS) {
-        const neighbor = getCell(state.cells, pos.x + off.x, pos.y + off.y);
-        if (!neighbor) continue;
-        const neighborElev = surfaceElevation(neighbor.terrain);
+      for (const probe of RAMP_PROBES) {
+        const neighborElev = straddleElevation(state, pos.x + probe.dx * probe.dist, pos.y + probe.dy * probe.dist);
+        if (neighborElev === null) continue;   // off-map: no cliff to read
         if (Math.abs(anchorElev - neighborElev) !== trait.layers) continue;
 
+        const anchorIsHigh = anchorElev >= neighborElev;
         const hElev = Math.max(anchorElev, neighborElev);
         const lElev = Math.min(anchorElev, neighborElev);
-        const highX = anchorElev >= neighborElev ? pos.x : pos.x + off.x;
-        const highY = anchorElev >= neighborElev ? pos.y : pos.y + off.y;
-        const slopeDx = anchorElev >= neighborElev ? off.x : -off.x;
-        const slopeDy = anchorElev >= neighborElev ? off.y : -off.y;
+        const highX = anchorIsHigh ? pos.x : pos.x + probe.dx * probe.dist;
+        const highY = anchorIsHigh ? pos.y : pos.y + probe.dy * probe.dist;
+        const slopeDx = anchorIsHigh ? probe.dx : -probe.dx;
+        const slopeDy = anchorIsHigh ? probe.dy : -probe.dy;
 
         // rot=0/90: include high cell (mountain in -HALF_TILE gap direction)
         // rot=180/270: exclude high cell (mountain overlaps naturally)
+        //
+        // The ALONG coordinate (the ramp's run) always lands on a whole cell — proven for the
+        // probe-derived case (a min-support read only ever raises at a step landing on a whole
+        // neighbour), but an anchorIsHigh anchor's own position passes through untouched, and a
+        // doubly-half hover (both axes snapped to the half grid) can hand this branch a fractional
+        // along value directly. Rounded here: `terrainSpan` below reads the SAME cell via
+        // floor(v+0.5), so this aligns the stored position with what the sweep actually validated.
+        // The ACROSS slot (whichever of px/py this branch does NOT round) keeps its half freedom.
         let rot: 0 | 90 | 180 | 270;
         let px: number, py: number;
         let highAtStart: boolean;
-        if (slopeDy > 0) { rot = 0; px = highX; py = highY; highAtStart = true; }
-        else if (slopeDx > 0) { rot = 90; px = highX; py = highY; highAtStart = true; }
-        else if (slopeDy < 0) { rot = 180; px = highX; py = highY - spanLen; highAtStart = false; }
-        else { rot = 270; px = highX - spanLen; py = highY; highAtStart = false; }
+        if (slopeDy > 0) { rot = 0; px = highX; py = Math.round(highY); highAtStart = true; }
+        else if (slopeDx > 0) { rot = 90; px = Math.round(highX); py = highY; highAtStart = true; }
+        else if (slopeDy < 0) { rot = 180; px = highX; py = Math.round(highY) - spanLen; highAtStart = false; }
+        else { rot = 270; px = Math.round(highX) - spanLen; py = highY; highAtStart = false; }
 
         const isVert = rot === 0 || rot === 180;
 
-        // Validate the terrain UNDER the ramp. Terrain renders at -HALF_TILE (up-left), so every
-        // footprint macro cell is visually overlapped by FOUR terrain cells: itself + its +1-right /
-        // +1-down / +1-down-right neighbours. Sweep span 0..spanLen and perp 0..perpWidth — the +1
-        // bleed on BOTH axes (micro-sampling only one axis would let a mountain micro-block poke in
-        // from the un-swept edge). Each swept cell must match the ramp's elevation profile at that span
-        // step: the high step (the cliff edge) is hElev, the run below it is lElev. The TRAILING span
-        // bleed (si === spanLen) faces the low run for a down-ramp (highAtStart → must stay low) but
-        // the HIGH plateau for an up-ramp (the cliff "overlaps naturally") — so both ramp directions
-        // require a 1-high end and a spanLen-low end with flat support at each.
-        const expectedAt = (si: number): number =>
-          si < spanLen ? (highAtStart && si === 0 ? hElev : lElev)
-                       : (highAtStart ? lElev : hElev);
+        // Validate the terrain UNDER the ramp. Terrain renders at -HALF_TILE (up-left), so a
+        // whole-anchored footprint is visually overlapped by one extra cell on each axis, while a
+        // half-anchored one lands exactly on the cells it covers — `terrainSpan` answers both. Each
+        // swept cell must match the ramp's elevation profile: the cell at the cliff end carries the
+        // high plateau, every other one the run below it. That end faces the low run for a down-ramp
+        // (highAtStart) and the plateau for an up-ramp (the cliff "overlaps naturally"), so both ramp
+        // directions require a 1-high end and a spanLen-low run with flat support at each.
+        const along = terrainSpan(isVert ? py : px, spanLen);
+        const perp = terrainSpan(isVert ? px : py, perpWidth);
+        const highCell = highAtStart ? along.lo : along.hi;
         let valid = true;
-        for (let si = 0; si <= spanLen && valid; si++) {
-          const exp = expectedAt(si);
-          for (let wi = 0; wi <= perpWidth && valid; wi++) {
-            const tx = isVert ? px + wi : px + si;
-            const ty = isVert ? py + si : py + wi;
+        for (let a = along.lo; a <= along.hi && valid; a++) {
+          const exp = a === highCell ? hElev : lElev;
+          for (let p = perp.lo; p <= perp.hi && valid; p++) {
+            const tx = isVert ? p : a;
+            const ty = isVert ? a : p;
             // the surface must be LAND at the expected level — water at the right
             // elevation (a lake in the low run, a pool rim as the "cliff") is not support
             const surf = realSurface(getCell(state.cells, tx, ty)?.terrain);
@@ -207,6 +250,13 @@ function validateTrait(
       // Passive marker (terrain may use this footprint as a base — see base-support).
       // It imposes no placement constraint of its own.
       return [];
+
+    case 'halfStep':
+      // Passive marker: grants the item a half-cell anchor on both axes
+      // (state/object-geometry:hasHalfStep). It imposes no placement constraint of its
+      // own — an item WITHOUT this trait is what the fractional-position guard below
+      // rejects, since such an item's own traits list never reaches this arm.
+      return [];
   }
 }
 
@@ -222,7 +272,19 @@ export const traitPlacementRule: PreCommandRule = {
     if (!item) return [];
 
     const pos = cmd.object.position;
-    const footprint = getFootprint(pos.x, pos.y, item.width, item.height);
+    // The half-cell grid is a trait-granted exception (halfStep, ramps/bridges only) — a
+    // fractional position on any other item is refused here, before any trait runs,
+    // since an item without the trait never reaches a 'halfStep' case of its own to
+    // catch this itself. The exception is HALF cells and nothing finer: an anchor off both
+    // grids would otherwise reach detection, which reads it as the nearest half and would
+    // place somewhere the caller never asked for.
+    const onGrid = hasHalfStep(item)
+      ? onHalfGrid(pos.x) && onHalfGrid(pos.y)
+      : Number.isInteger(pos.x) && Number.isInteger(pos.y);
+    if (!onGrid) {
+      return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.placement_off_grid', cells: [pos], severity: 'error' }];
+    }
+    const footprint = footprintCells(pos.x, pos.y, item.width, item.height);
     const errors: ValidationError[] = [];
     for (const trait of item.traits) {
       errors.push(...validateTrait(trait, cmd, state, footprint));

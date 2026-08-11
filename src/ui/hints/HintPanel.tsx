@@ -1,9 +1,12 @@
 /*
- * The standing quick-hints card beside the zoom cluster. It renders whatever the resolver and the
- * catalogue say about the CURRENT state, so it holds no hint knowledge of its own: keys come from
- * the keybind store, camera verbs from the active view's caps, the scenario from store facts.
- * Geometry: the zoom cluster owns right:18 at 46px wide with a 10px gap, so the card sits at
- * right:74; the chrome zoom goes on this fixed element itself, never a wrapper.
+ * The standing quick-hints card. It renders whatever the resolver and the catalogue say about the
+ * CURRENT state, so it holds no hint knowledge of its own: keys come from the keybind store, camera
+ * verbs from the active view's caps, the scenario from store facts.
+ *
+ * Geometry: a fixed element at `right: 74` carrying the chrome zoom itself, never a wrapper. That
+ * inset was measured to clear a 46px-wide control cluster at `right: 18` with a 10px gutter between
+ * them; nothing stands there in this interface, so the number describes no neighbour until the card
+ * is mounted beside one.
  *
  * Which map the hints describe comes from the ACTIVE VIEW, never from the store's `viewMode`: the
  * two are not simultaneous, since the 3D scene builds lazily and registers a frame or more after
@@ -12,10 +15,10 @@
  *
  * The two corner buttons write `hintLevel` through the store's own setter, the same field and the
  * same setter the Settings row uses, so the level has one home and the persistence comes with it.
- * They sit INSIDE the card, in a top padding band deepened to make room for them: the panel is 10px
- * from the zoom cluster, so anything overhanging its top-right corner reaches into that gutter and
- * over the zoom buttons. Only they take a pointer; the card stays `pointerEvents: 'none'` so a brush
- * drag that starts over it reaches the map.
+ * They sit INSIDE the card, in a top padding band deepened to make room for them, rather than
+ * overhanging its top-right corner: the gutter beside that corner is only as wide as whatever the
+ * card is set next to leaves, which is not the card's to spend. Only they take a pointer; the card
+ * stays `pointerEvents: 'none'` so a brush drag that starts over it reaches the map.
  *
  * The row swap's AnimatePresence key is the SCENARIO alone. A level change keeps the same list and
  * only reveals or hides its tail, so putting the level in the key would slide it sideways for a
@@ -33,7 +36,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { showToast } from '../../core/runtime/toast-bus';
 import { useEditorStore } from '../../state/store';
-import { useKeybinds } from '../keybindings/store';
+import { useKeybinds } from '../../core/runtime/keybindings';
 import { isCurveSessionOpen, subscribeCurveSession } from '../../tools/paint/curve-session';
 import { getActiveView, onActiveViewChange } from '../../canvas/active-view';
 import { capsOf } from '../../canvas/interaction/camera-gestures';
@@ -42,9 +45,9 @@ import { getCatalogItem } from '../../state/catalog';
 import { singleSelection } from '../../state/selection';
 import { getCell } from '../../core/model/grid-model';
 import { hasTrait } from '../../core/model/traits';
-import { useChromeScale } from '../menu/scale';
+import { useChromeScale } from '../design/scale';
 import { useT } from '../../i18n/context';
-import { colors, cursors, font, pressable, shadows, springs, exitTransition, z } from '../styles';
+import { colors, cursors, font, pressable, shadows, springs, exitTransition, z } from '../design/styles';
 import { resolveHintScenario, type SingleSelectionKind } from './scenario';
 import { CONCISE_ROWS, rowsFor } from './catalogue';
 import { HintTokens } from './tokens';

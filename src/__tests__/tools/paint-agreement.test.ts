@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   CommandType, TerrainType, type Command, type EditorEvents, type GridState, type MacroCoord, type ValidationResult,
 } from '../../core/model/types';
@@ -9,11 +9,10 @@ import type { ToolContext } from '../../tools/types';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { useEditorStore } from '../../state/store';
 import { getCatalogItem } from '../../state/catalog';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
-import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 /**
  * The cursor's refusal badge and the click must answer the same question, and twice they have not:
@@ -91,11 +90,6 @@ const BUILD_FLOORS = [1, 2, 3];
 type Outcome = 'applied' | 'rejected' | 'nothing';
 
 describe('the paint cursor and the paint click answer the same question', () => {
-  beforeEach(() => {
-    setStoreState({ autoEdgeCut: 'off' });
-    useEditorStore.getState().setTileMaterial('dirt');
-  });
-
   for (const contentType of CONTENT_TYPES) {
     for (const floor of BUILD_FLOORS) {
       for (const situation of SITUATIONS) {
@@ -103,7 +97,7 @@ describe('the paint cursor and the paint click answer the same question', () => 
 
         it(label, () => {
           const state = makeState(12, 12);
-          const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+          const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
           situation.setup(state, exec);
 
           let attempted = 0;
@@ -145,7 +139,7 @@ describe('the paint cursor and the paint click answer the same question', () => 
     for (const contentType of CONTENT_TYPES) {
       for (const situation of SITUATIONS) {
         const state = makeState(12, 12);
-        const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+        const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
         situation.setup(state, exec);
         let attempted = 0;
         let applied = 0;

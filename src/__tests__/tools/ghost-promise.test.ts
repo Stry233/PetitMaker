@@ -14,14 +14,14 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import {
   CommandType, TerrainType,
-  type Corners, type EditorEvents, type GridState, type MacroCoord,
+  type AutoEdgeCut, type Corners, type EditorEvents, type GridState, type MacroCoord,
 } from '../../core/model/types';
 import type { TrimmedCell } from '../../tools/edge-cut/trim-preview';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
-import { useEditorStore } from '../../state/store';
 import { getCell } from '../../core/model/grid-model';
 import { trimmedOutline } from '../../canvas/map2d/layers/ghost-geometry';
+import { roadLookup } from '../../state/object-index';
 
 const MICRO = { x: 0, y: 0 };
 const SQUARE: Corners = ['square', 'square', 'square', 'square'];
@@ -29,12 +29,12 @@ const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 const ARC_STEPS = 6;
 
 /** A world with a layer-1 plain already laid and trimmed, as the user's test had it. */
-function world(elevation: number, brush = 3) {
+function world(elevation: number, brush = 3, autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(50, 50);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ghost: { cells: MacroCoord[]; trim: readonly TrimmedCell[] }[] = [];
   const ctx = {
-    ...makeToolCtx(state, executor, brush, elevation),
+    ...makeToolCtx(state, executor, brush, elevation, { autoEdgeCut }),
     overlay: {
       showGhost(cells: MacroCoord[], _c: number, _t?: boolean, trim?: readonly TrimmedCell[]) {
         ghost.push({ cells, trim: trim ?? [] });
@@ -65,13 +65,11 @@ const shapeOf = (t: TrimmedCell) => `${t.corners.join('|')}${t.patch ? ':patch' 
 
 afterEach(() => {
   __resetCurveSession();
-  useEditorStore.setState({ autoEdgeCut: 'off' });
 });
 
 describe('a curve laid at a higher layer on an existing plain', () => {
   it('promises, while it is being DRAWN, the shape the finish produces', () => {
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const w = world(2);
+    const w = world(2, 3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(c, MICRO, w.ctx); w.tool.onPointerUp(c, MICRO, w.ctx); };
     const anchors = [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }];
     click(anchors[0]!); click(anchors[1]!);
@@ -102,8 +100,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
   });
 
   it('leaves the map in the shape the ghost promised', () => {
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const w = world(2);
+    const w = world(2, 3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(c, MICRO, w.ctx); w.tool.onPointerUp(c, MICRO, w.ctx); };
     for (const a of [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }]) click(a);
     click({ x: 26, y: 14 });
@@ -127,8 +124,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
   it('and promises a shape for every cell that ends up with one', () => {
     // The other direction: a cut the click makes inside the ghost's own footprint that the ghost
     // never mentioned would read as a square in the preview and a rounded block on the map.
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const w = world(2);
+    const w = world(2, 3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(c, MICRO, w.ctx); w.tool.onPointerUp(c, MICRO, w.ctx); };
     for (const a of [{ x: 12, y: 16 }, { x: 20, y: 20 }, { x: 27, y: 16 }]) click(a);
     click({ x: 27, y: 16 });

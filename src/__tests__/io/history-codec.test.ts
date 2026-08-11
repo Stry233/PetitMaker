@@ -6,10 +6,11 @@ import { createDefaultRegistry } from '../../rules/index';
 import { makeState } from '../rules/_helpers';
 import { CommandType, TerrainType, type PlaceObjectCommand } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
+import { roadLookup } from '../../state/object-index';
 
 function editedExecutor() {
   const state = makeState(12, 12);
-  const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
   // Execute 5 commands WITHOUT commitStroke so they remain as separate undo entries
   for (let i = 0; i < 5; i++) {
     exec.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 2 + i, y: 3 }], terrainType: TerrainType.Mountain, elevation: 1 });
@@ -40,7 +41,7 @@ describe('history codec', () => {
     const { state, exec } = editedExecutor();
     const entries = decodeHistory(JSON.parse(JSON.stringify(encodeHistory(exec.getUndoEntries(), 'all'))))!;
     // Fresh executor over the same (already edited) state — like after an import.
-    const fresh = new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+    const fresh = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
     expect(fresh.canUndo()).toBe(false);
     fresh.restoreHistory(entries);
     expect(fresh.canUndo()).toBe(true);
@@ -85,7 +86,7 @@ describe('history codec', () => {
     expect(decoded!.length).toBe(entries.length);
 
     // Create a FRESH executor over the same (already edited) state and restore history
-    const freshExec = new CommandExecutor(originalState, new EventBus(), createDefaultRegistry());
+    const freshExec = new CommandExecutor(originalState, new EventBus(), createDefaultRegistry(), roadLookup(originalState));
     expect(freshExec.canUndo()).toBe(false); // fresh executor has no history yet
 
     freshExec.restoreHistory(decoded!);
@@ -94,6 +95,31 @@ describe('history codec', () => {
     // ONE undo should remove the placed object (the collapsed entry reverts everything)
     freshExec.undo();
     expect(originalState.objects.has(obj.id)).toBe(false); // object removed
+  });
+
+  it('keeps a step that placed a half-anchored ramp, drops one that placed a half-anchored tree', () => {
+    // Undo replays this data verbatim, so the gate is the same one the map loader applies: a
+    // halfStep item may stand on the half grid, nothing else may. One bad object drops the whole
+    // section, so a ramp at 5.5 used to cost the user their entire step history on re-import.
+    const section = (catalogId: string, x: number) => ({
+      v: HISTORY_SCHEMA_VERSION,
+      totalSteps: 1,
+      entries: [{
+        cmd: {
+          type: CommandType.PlaceObject, timestamp: 0, loadValue: 0,
+          object: { id: 'o', catalogId, position: { x, y: 5 }, rotation: 0, elevation: 0 },
+        },
+        before: [], after: [],
+      }],
+    });
+
+    const kept = decodeHistory(section('ramp-plank', 5.5));
+    expect(kept).not.toBeNull();
+    expect((kept![0]!.cmd as PlaceObjectCommand).object.position).toEqual({ x: 5.5, y: 5 });
+
+    expect(decodeHistory(section('tree-ginkgo', 5.5))).toBeNull();
+    expect(decodeHistory(section('ramp-plank', 5.25))).toBeNull();
+    expect(decodeHistory(section('ramp-plank', 5))).not.toBeNull();
   });
 
   it('decodeHistory rejects objectOps with non-array removed or added', () => {

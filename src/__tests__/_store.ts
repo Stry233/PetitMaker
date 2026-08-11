@@ -10,7 +10,7 @@
  * NOT for a test that calls `vi.resetModules()` and re-imports the store: that makes a SECOND store
  * instance, and this helper closes over the outer graph's. Seed the fresh graph's own
  * `useEditorStore` there, or the component under test subscribes to a store nothing wrote to (see
- * `__tests__/ui/dev-build-notice.test.tsx`).
+ * `__tests__/ui/chrome/dev-build-notice.test.tsx`).
  */
 import { useEditorStore, type EditorStore, type ModalId } from '../state/store';
 

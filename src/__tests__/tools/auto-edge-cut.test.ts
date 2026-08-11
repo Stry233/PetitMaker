@@ -10,9 +10,10 @@ import { classifyRoadKind } from '../../core/edge-cut/road-cut-states';
 import { getCell } from '../../core/model/grid-model';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
+import { roadLookup } from '../../state/object-index';
 
 function exec(state: any): CommandExecutor {
-  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 }
 
 describe('applyAutoEdgeCut — terrain', () => {
@@ -93,6 +94,46 @@ describe('applyAutoEdgeCut — terrain', () => {
     // not a phantom mountain@N-1 base fabricated by cutBacking's patchBase-undefined fallback (symptom d).
     const back = cutBackingByCorner(patch, 1, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
     expect(back, 'no fabricated base backing').toEqual([null, null, null, null]);
+  });
+
+  it('a WATER notch keeps its water and rounds its own corner — filled by the mountain that wraps it', () => {
+    // Issue #2: a mountain built into a pond. The water cell in the mountain's Γ notch is a different real
+    // surface, so it is never flooded with a fillet (it rounds its own convex corner instead) — but what
+    // shows behind that cut is the wrapping mountain, not the ground under the mountain. A ground reveal
+    // here draws a wedge of grass at every step of the junction: the reported dent.
+    const state = makeState(10, 10);
+    for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Water, 0);
+    const L: [number, number][] = [[5, 4], [4, 5], [5, 5]]; // wraps the BR corner of the water at (4,4)
+    for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 1);
+    applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'rect', L.map(([x, y]) => ({ x, y })), []);
+
+    const notch = getCell(state.cells, 4, 4)!.terrain!;
+    expect(notch.type, 'the water survives — no mountain patch over it').toBe(TerrainType.Water);
+    expect(notch.corners![3], 'its wrapped corner rounds out').toBe('tri-NW');
+    const back = cutBackingByCorner(notch, 0, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
+    expect(back[3], 'the cut opens onto the wrapping mountain, not bare ground')
+      .toEqual({ type: TerrainType.Mountain, elevation: 1 });
+  });
+
+  it('two mountains attached DIAGONALLY weld across the water corner between them', () => {
+    // Issue #2, second configuration: the 2x2 is mountain / bare ground on one diagonal and mountain / water
+    // on the other. The two shores meet at a point on the water's corner, which rounds out — and what shows
+    // behind it is those shores, not a wedge of grass driven between them. The Γ fillet stays refused there
+    // (adding mass would bridge the pinch); only the backing, which adds none, welds.
+    const state = makeState(12, 12);
+    for (let y = 5; y <= 9; y++) for (let x = 5; x <= 9; x++) setTerrain(state, x, y, TerrainType.Water, 0);
+    const pinch: [number, number][] = [[5, 4], [4, 5]]; // meeting at the TL corner of the water at (5,5)
+    for (const [x, y] of pinch) setTerrain(state, x, y, TerrainType.Mountain, 1);
+    applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'rect', pinch.map(([x, y]) => ({ x, y })), []);
+
+    const diag = getCell(state.cells, 4, 4)!.terrain!;
+    expect(diag.patchOnly, 'the diagonal takes a fillet').toBe(true);
+    expect(diag.patchBase, 'cosmetic only — no mass bridges the pinch, nothing may walk across').toBe(0);
+    const notch = getCell(state.cells, 5, 5)!.terrain!;
+    expect(notch.corners![0], 'the water rounds the corner the two shores meet at').toBe('tri-SE');
+    const back = cutBackingByCorner(notch, 0, (dx, dy) => getCell(state.cells, 5 + dx, 5 + dy)?.terrain);
+    expect(back[0], 'welded, not a fabricated grass wedge')
+      .toEqual({ type: TerrainType.Mountain, elevation: 1 });
   });
 
   it('GENERATION fills an EMPTY Γ notch COSMETICALLY, identical to the manual/stroke path (no phantom base)', () => {

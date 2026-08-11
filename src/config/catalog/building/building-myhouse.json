@@ -10,6 +10,12 @@
     "id": "Rumah Saya",
     "fr": "Ma maison"
   },
+  "aliases": [
+    "home",
+    "家",
+    "绿",
+    "green"
+  ],
   "icon": "building-myhouse",
   "width": 7,
   "height": 4,

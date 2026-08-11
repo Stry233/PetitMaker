@@ -9,10 +9,12 @@ import {
   CellZone,
   TerrainType,
 } from '../core/model/types';
-import { createGrid, createPlazaObject } from '../core/model/grid-model';
+import { cellKey, createGrid, createPlazaObject, onHalfGrid } from '../core/model/grid-model';
 import { PLAZA_ID } from '../core/model/constants';
+import { isCoating } from '../core/model/traits';
 import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
 import { getCatalogItem } from '../state/catalog';
+import { hasHalfStep, objectRect } from '../state/object-geometry';
 import {
   CURRENT_VERSION,
   migrateToCurrent,
@@ -259,6 +261,45 @@ export function readSaveCamera(json: string): PersistedCamera | undefined {
   return result.view2d || result.view3d ? result : undefined;
 }
 
+/**
+ * The coatings a LATER coating has completely covered, by id.
+ *
+ * Nothing in the rules refuses a second road on a paved cell: V-PLACE-OVERLAP exempts surface
+ * coatings so that a placement may coat OVER one, which leaves a tool that forgets to strip the
+ * tile underneath free to stack them. The stack is invisible on screen, charges its load value
+ * once per copy, travels with the save, and is what makes a share code unbuildable (one real map
+ * reached ten dirt roads on a single cell). Read by TRAIT, so any future coating item is covered.
+ *
+ * Last one wins, which is what coating over means. A coating that still owns a cell of its own
+ * survives: two differently sized coatings that merely OVERLAP are not a stack, and dropping one
+ * of those would take ground the other never covered.
+ */
+export function stackedCoatingIds(objects: Iterable<PlacedObject>): Set<string> {
+  const owner = new Map<string, string>();
+  const coatings: PlacedObject[] = [];
+  for (const obj of objects) {
+    const item = getCatalogItem(obj.catalogId);
+    if (!item || !isCoating(item)) continue;
+    coatings.push(obj);
+    const { x, y, w, h } = objectRect(obj);
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) owner.set(cellKey(Math.floor(x) + dx, Math.floor(y) + dy), obj.id);
+    }
+  }
+  const drop = new Set<string>();
+  for (const obj of coatings) {
+    const { x, y, w, h } = objectRect(obj);
+    let owns = false;
+    for (let dy = 0; dy < h && !owns; dy++) {
+      for (let dx = 0; dx < w && !owns; dx++) {
+        owns = owner.get(cellKey(Math.floor(x) + dx, Math.floor(y) + dy)) === obj.id;
+      }
+    }
+    if (!owns) drop.add(obj.id);
+  }
+  return drop;
+}
+
 export function deserialize(json: string, template: MapTemplate): GridState {
   // Lift any older save to the current shape before decoding (throws
   // SaveVersionError on a future-version or unmigratable file).
@@ -297,10 +338,14 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     // save could otherwise smuggle arbitrary strings as catalogId — which the
     // renderer/rules would choke on, and which the AI agent would echo into its
     // model context (prompt-injection vector via shared map files).
-    if (!getCatalogItem(obj.catalogId)) continue;
+    const item = getCatalogItem(obj.catalogId);
+    if (!item) continue;
     // Numeric fields are untrusted: a NaN position or a 45° rotation would pass the
     // type cast and corrupt every downstream footprint read. Drop the object instead.
-    if (!Number.isInteger(obj.x) || !Number.isInteger(obj.y)
+    // A halfStep item (ramps, bridges) anchors on the half grid, so 7.5 is a legal x for
+    // one and only one; 7.33 is legal for neither.
+    const onGrid = (v: number) => (hasHalfStep(item) ? onHalfGrid(v) : Number.isInteger(v));
+    if (!onGrid(obj.x) || !onGrid(obj.y)
       || obj.x < 0 || obj.y < 0 || obj.x >= template.width || obj.y >= template.height) continue;
     if (!isValidRotation(obj.rotation)) continue;
     if (obj.elevation !== undefined && !isValidElevation(obj.elevation)) continue;
@@ -320,6 +365,11 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if ((obj as any).patchOnly) placed.patchOnly = true;
     objects.set(obj.id, placed);
   }
+
+  // Repair a map that arrives with coatings stacked on one cell, beside the unknown-catalogId
+  // drop above: both are about what may enter the state, and a stack is one road tile's worth of
+  // map wearing several objects' worth of load, save size and share-code payload.
+  for (const id of stackedCoatingIds(objects.values())) objects.delete(id);
 
   const plaza = createPlazaObject(template);
   if (plaza) objects.set(plaza.id, plaza);

@@ -2,15 +2,20 @@ import { describe, it, expect, vi } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
-import { cursorArt, BADGED_IDS } from '../../ui/cursors/cursor-art';
+import { cursorArt, BADGED_IDS } from '../../assets/cursors/cursor-art';
 import { decodePng } from '../../io/share/raster/png-raster';
 
-vi.mock('../../ui/cursors/cursor-art', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../ui/cursors/cursor-art')>();
+vi.mock('../../assets/cursors/cursor-art', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../assets/cursors/cursor-art')>();
   // Wraps the real implementation, so the art tests in this file still exercise it; the spy is
   // only there for the memo test to count rebuilds.
   return { ...actual, cursorArt: vi.fn(actual.cursorArt) };
 });
+
+// `USE_CLASSIC_CURSORS` picks which of the two sets `cursorCss` resolves an id through. This file
+// is the PIXEL set's, so it pins the constant rather than letting the shipped choice decide which
+// art these assertions see; `classic-cursors.test.tsx` covers the other side.
+vi.mock('../../assets/cursors/cursor-set', () => ({ USE_CLASSIC_CURSORS: false }));
 
 /**
  * The art is raster now, so these read the SHIPPED PNGs off disk rather than inspecting a
@@ -172,7 +177,7 @@ describe('cursor art', () => {
 
 describe('cursor CSS', () => {
   it('is an image URL, a hotspot, and a keyword fallback', async () => {
-    const { cursorCss } = await import('../../ui/cursors/cursor-css');
+    const { cursorCss } = await import('../../assets/cursors/cursor-css');
     const css = cursorCss('mountain');
     expect(css.startsWith('url("')).toBe(true);
     const [, hx, hy, fallback] = /"\)\s+(\d+)\s+(\d+),\s*([a-z-]+)$/.exec(css)!;
@@ -181,7 +186,7 @@ describe('cursor CSS', () => {
   });
 
   it('never emits a bare url(), for every id', async () => {
-    const { cursorCss } = await import('../../ui/cursors/cursor-css');
+    const { cursorCss } = await import('../../assets/cursors/cursor-css');
     for (const id of CURSOR_IDS) {
       const css = cursorCss(id).trimEnd();
       if (CURSORS[id].hasArt) {
@@ -196,14 +201,14 @@ describe('cursor CSS', () => {
   });
 
   it('returns the keyword alone for a keyword-only cursor', async () => {
-    const { cursorCss } = await import('../../ui/cursors/cursor-css');
+    const { cursorCss } = await import('../../assets/cursors/cursor-css');
     expect(cursorCss('busy')).toBe('progress');
   });
 
   it('emits a URL the double-quoted url() can actually hold', async () => {
     // A `"` would close the url() early and invalidate the whole declaration, leaving the
     // element with no cursor at all; the bundler decides this string, so it is worth asserting.
-    const { cursorCss } = await import('../../ui/cursors/cursor-css');
+    const { cursorCss } = await import('../../assets/cursors/cursor-css');
     for (const id of CURSOR_IDS) {
       const uri = /url\("([^"]*)"\)/.exec(cursorCss(id, { forbidden: true }))?.[1];
       if (uri === undefined) continue;
@@ -213,8 +218,8 @@ describe('cursor CSS', () => {
   });
 
   it('memoises, so a pointer-move cannot rebuild a value', async () => {
-    const { cursorCss, __clearCursorCssCache } = await import('../../ui/cursors/cursor-css');
-    const { cursorArt } = await import('../../ui/cursors/cursor-art');
+    const { cursorCss, __clearCursorCssCache } = await import('../../assets/cursors/cursor-css');
+    const { cursorArt } = await import('../../assets/cursors/cursor-art');
     const spy = vi.mocked(cursorArt);
     __clearCursorCssCache();
     spy.mockClear();

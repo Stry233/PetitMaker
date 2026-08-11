@@ -9,7 +9,7 @@
  */
 
 import { CellZone, TerrainType } from './types';
-import type { ChunkCoord, Corners, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, TerrainCell } from './types';
+import type { ChunkCoord, Corners, GridState, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, TerrainCell } from './types';
 import { CHUNK_SIZE, TILE_SIZE, PLAZA_ID } from './constants';
 
 export const HALF_TILE = TILE_SIZE / 2;
@@ -80,6 +80,19 @@ export function isInBounds(x: number, y: number, width: number, height: number):
   return x >= 0 && x < width && y >= 0 && y < height;
 }
 
+/** Whether a coordinate names a cell or a cell boundary — the only two things a placement
+ *  may sit on (the boundary is what the halfStep trait grants ramps and bridges). */
+export function onHalfGrid(v: number): boolean {
+  return Number.isInteger(v * 2);
+}
+
+/** The macro cell indices a (possibly half) coordinate straddles: one at a whole
+ *  coordinate, the two either side of a half one. */
+export function straddledCells(v: number): { lo: number; hi: number } {
+  const mv = Math.round(v * 2);
+  return mv % 2 === 0 ? { lo: mv / 2, hi: mv / 2 } : { lo: (mv - 1) / 2, hi: (mv + 1) / 2 };
+}
+
 /** Returns null for out-of-bounds coordinates. Never throws. */
 export function getCell(cells: MacroCell[][], x: number, y: number): MacroCell | null {
   const row = cells[y];
@@ -118,6 +131,33 @@ export function cloneCell(cell: MacroCell): MacroCell {
   return cloned;
 }
 
+/**
+ * A detached copy of a map: the same template, deep-copied cells and objects, and none of the
+ * live bookkeeping.
+ *
+ * The provenance ledger is dropped rather than copied. An executor writes THROUGH that object
+ * (`ProvenanceRecorder` adopts it and then owns it), so a copy that carried the reference would
+ * record a throwaway map's edits in the real map's ledger. The version counters go for the same
+ * reason: the memoized object index and map stats key off them, and a copy that started at the
+ * original's numbers would be answered from the original's caches.
+ */
+export function cloneGridState(state: GridState): GridState {
+  const objects = new Map<string, PlacedObject>();
+  for (const [id, obj] of state.objects) {
+    objects.set(id, {
+      ...obj,
+      position: { ...obj.position },
+      ...(obj.corners ? { corners: [...obj.corners] as Corners } : {}),
+    });
+  }
+  return {
+    template: state.template,
+    cells: state.cells.map((row) => row.map(cloneCell)),
+    objects,
+    lockedLayers: new Set(state.lockedLayers),
+  };
+}
+
 export function chunkKey(cx: number, cy: number): string {
   return `${cx},${cy}`;
 }
@@ -135,6 +175,13 @@ export function bumpObjectsVersion(
   const version = (state.objectsVersion ?? 0) + 1;
   state.objectsVersion = version;
   state.objectsDelta = delta ? { version, removed: delta.removed, added: delta.added } : undefined;
+}
+
+/** Mark a mutation of `state.cells` — the sibling of bumpObjectsVersion, read by
+ *  state/map-stats. Call once per command, never per cell: a stroke issues dozens
+ *  of commands and a fill touches hundreds of cells. */
+export function bumpCellsVersion(state: { cellsVersion?: number }): void {
+  state.cellsVersion = (state.cellsVersion ?? 0) + 1;
 }
 
 /** The four orthogonal neighbour offsets — the one true copy. */

@@ -59,6 +59,7 @@ function fakeOverlay(): ToolOverlay & {
     showHover: () => {}, clearHover: () => {},
     flashCommit: () => {},
     showBuildableRegion: () => {}, clearBuildableRegion: () => {},
+    showRoute: () => {}, clearRoute: () => {},
     showBand: () => {}, clearBand: () => {},
   };
 }

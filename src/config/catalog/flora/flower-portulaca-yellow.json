@@ -10,6 +10,11 @@
     "id": "Krokot Kuning",
     "fr": "Pourpier jaune"
   },
+  "aliases": [
+    "太阳花",
+    "moss rose",
+    "sun plant"
+  ],
   "icon": "flower-portulaca-yellow",
   "width": 1,
   "height": 1,

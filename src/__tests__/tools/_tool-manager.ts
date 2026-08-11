@@ -6,6 +6,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import type { EditorEvents, GridState } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 // A stub EditorView: ToolManager.buildCtx only READS projection/overlay (never calls
 // through them) unless a tool's onPointer* handler runs, which cursor-focused suites
@@ -23,6 +24,6 @@ export function makeStubRenderer(): MapRenderer {
 /** A real ToolManager over a fresh grid + executor + stub renderer: the minimum
  *  wiring needed to switch tools and read their cursor/context headlessly. */
 export function makeTestToolManager(state: GridState = makeState(10, 10)): ToolManager {
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   return new ToolManager(makeStubRenderer(), exec, state);
 }

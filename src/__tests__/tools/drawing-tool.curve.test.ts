@@ -11,12 +11,13 @@ import { createDefaultRegistry } from '../../rules/index';
 import { TerrainType, type EditorEvents, type MacroCoord } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
+import { roadLookup } from '../../state/object-index';
 
 const MICRO = { x: 0, y: 0 };
 
 function world() {
   const state = makeState(40, 40);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ctx = makeToolCtx(state, executor);
   const tool = new DrawingTool();
   tool.mode = 'curve';

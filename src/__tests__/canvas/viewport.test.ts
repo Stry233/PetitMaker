@@ -100,6 +100,22 @@ describe('Viewport', () => {
     expect(origin.x).toBe(0);
     expect(origin.y).toBe(0);
   });
+
+  it('screenToHalf rounds to the nearest half-cell grid point', () => {
+    const vp = new Viewport(800, 600);
+    // TILE_SIZE=64. Pixel (16, 80): world=(16,80). x: 16/64=0.25, *2=0.5, round=1, /2=0.5.
+    // y: 80/64=1.25, *2=2.5, round=3, /2=1.5.
+    const half = vp.screenToHalf(16, 80);
+    expect(half.x).toBe(0.5);
+    expect(half.y).toBe(1.5);
+
+    // A whole-cell pixel lands exactly on the same integer screenToMacro already gives.
+    const whole = vp.screenToHalf(64, 128);
+    expect(whole).toEqual({ x: 1, y: 2 });
+    expect(whole).toEqual(vp.screenToMacro(64, 128));
+
+    expect(vp.screenToHalf(0, 0)).toEqual({ x: 0, y: 0 });
+  });
 });
 
 describe('pan bounds', () => {

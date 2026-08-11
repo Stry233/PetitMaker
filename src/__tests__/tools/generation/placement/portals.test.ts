@@ -7,6 +7,7 @@ import { makeCtx } from '../../../../tools/generation/placement/object';
 import { analyzeTerrain } from '../../../../tools/generation/placement/analysis';
 import { scanPortals, routeRegions, type Portal } from '../../../../tools/generation/placement/portals';
 import { TerrainType, type EditorEvents, type MacroCoord } from '../../../../core/model/types';
+import { roadLookup } from '../../../../state/object-index';
 
 const W = 40;
 // A 40x40 grass map split by a 4-wide vertical water ford (x 18..21), with a tier-1 plateau (x 28..33,
@@ -16,7 +17,7 @@ function setup() {
   for (let y = 0; y < 40; y++) for (let x = 18; x <= 21; x++) setTerrain(state, x, y, TerrainType.Water, 0);
   for (let y = 10; y <= 15; y++) for (let x = 28; x <= 33; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
   const a = analyzeTerrain(state);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), 1);
   return { a, ...scanPortals(ctx, a) };
 }

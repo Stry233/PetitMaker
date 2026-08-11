@@ -3,7 +3,7 @@
 // src/io/import-file.ts). Drives the JSON path with a real serialize()/deserialize() round
 // trip and stubs the raster path (createImageBitmap has no jsdom implementation, and a
 // synthetic image carries no real share code), matching the pattern in
-// __tests__/ui/import-modal.test.tsx.
+// __tests__/ui/chrome/import-modal.test.tsx.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { importFile, type ImportFileDeps } from '../../io/import-file';
 import { serialize } from '../../io/json-codec';
@@ -58,6 +58,9 @@ describe('importFile routing', () => {
     const outcome = await importFile(jsonFile(serialize(state)), 'map.json', deps);
     expect(outcome).toEqual({ status: 'imported', source: 'json', warnings: [] });
     expect(deps.loadMap).toHaveBeenCalledTimes(1);
+    // No registry: `deps.loadMap` (kit/operations/map.ts:loadMap in production) builds its own
+    // default one, so importFile must not build a second, discarded RuleRegistry to hand it.
+    expect(deps.loadMap.mock.calls[0]).toHaveLength(1);
   });
 
   it('routes an extensionless file with application/json MIME to the JSON path', async () => {
@@ -118,7 +121,7 @@ describe('importFile routing', () => {
     const deps = makeDeps();
     const outcome = await importFile(new File(['x'], 'map.jpg', { type: 'image/jpeg' }), 'map.jpg', deps);
     expect(outcome).toEqual({ status: 'imported', source: 'raster', warnings: [{ kind: 'template-drift' }] });
-    expect(deps.loadMap).toHaveBeenCalledWith(state, expect.anything());
+    expect(deps.loadMap).toHaveBeenCalledWith(state);
 
     ctxSpy.mockRestore();
     vi.unstubAllGlobals();

@@ -10,3 +10,10 @@ export const clamp01 = (v: number): number => clamp(v, 0, 1);
 
 /** Linear interpolation from `a` to `b` by `t` (unclamped). */
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** Hermite ramp from 0 at `e0` to 1 at `e1`, flat outside them. `e0 > e1` ramps the other way,
+ *  which is how a falloff over a distance is written (`smoothstep(reach, 0, d)`). */
+export const smoothstep = (e0: number, e1: number, v: number): number => {
+  const t = clamp01((v - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};

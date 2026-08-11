@@ -1,15 +1,15 @@
 // src/tools/generation/repair.ts
 import { TerrainType, type GridState, type MapTemplate } from '../../core/model/types';
-import { getCell, createDefaultTerrainCell, isBuildableZone } from '../../core/model/grid-model';
+import { getCell, createDefaultTerrainCell, isBuildableZone, bumpCellsVersion } from '../../core/model/grid-model';
 import type { RuleRegistry } from '../../rules/registry';
 import { makeScratchState } from './field';
 import { TUNING } from './tuning';
 import type { TerrainPlan } from './types';
 
-// ONE cached scratch per template, rewritten fully on every call. Safe because every caller
-// consumes the returned state synchronously (validatePostStroke, which never mutates) and
-// discards it — and generation validates plans hundreds of times (repair passes + per-waterfall
-// candidates), so a fresh W×H MacroCell grid per call was the pipeline's dominant allocation.
+// ONE cached scratch per template, rewritten fully on every call. Callers must consume the
+// returned state synchronously and discard it — it is invalid after the next applyPlanToScratch.
+// Generation validates plans hundreds of times (repair passes + per-waterfall candidates), so a
+// fresh W×H MacroCell grid per call was the pipeline's dominant allocation.
 const scratchCache = new WeakMap<MapTemplate, GridState>();
 
 /** Build a GridState whose cells reflect the plan (terrain only on grass), reusing makeScratchState.
@@ -32,6 +32,10 @@ export function applyPlanToScratch(plan: TerrainPlan, template: MapTemplate): Gr
       else cell.terrain = null;
     }
   }
+  // The scratch is a live GridState like any other (state/map-stats.ts caches per cellsVersion);
+  // this rewrites it in place on every call, so a future consumer that reads stats off it needs
+  // the version bumped or it would read a cache keyed to the PREVIOUS plan's cells.
+  bumpCellsVersion(state);
   return state;
 }
 

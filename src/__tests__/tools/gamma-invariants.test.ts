@@ -36,7 +36,7 @@ import { EdgeCutTool } from '../../tools/edge-cut/edge-cut-tool';
 import { TerrainType, type EditorEvents, type GridState, type MacroCoord } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
-import { useEditorStore } from '../../state/store';
+import { roadLookup } from '../../state/object-index';
 
 const FIXTURES = 'src/__tests__/fixtures/gamma-maps';   // vitest runs from the repo root
 const MAPS = ['report-1.json', 'report-2.json', 'report-3.json', 'report-4.json'];
@@ -56,7 +56,7 @@ function violations(state: GridState): Violation[] {
       const ringed = [[-1, 0], [1, 0], [0, -1], [0, 1]]
         .every(([dx, dy]) => surfaceElevation(getCell(state.cells, x + dx!, y + dy!)?.terrain) >= 1);
       if (support < 1 && ringed) why.push('I2 fillet on a pit');
-    } else if (t.corners && !validateCut(state, x, y, 'terrain', t.corners)) {
+    } else if (t.corners && !validateCut(state, roadLookup(state), x, y, 'terrain', t.corners)) {
       why.push(`I3 cut does not validate: ${t.corners.join('|')}`);
     }
     if (why.length > 0) out.push({ x, y, why: why.join(' + ') });
@@ -113,8 +113,8 @@ describe('the maps that were reported broken', () => {
     const state = load(name);
     const bad = violations(state);
     if (bad.length === 0) return;
-    const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
-    reconcileCuts(bad.map((v) => ({ x: v.x, y: v.y })), state, { execute: (cmd) => ex.execute(cmd) });
+    const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    reconcileCuts(bad.map((v) => ({ x: v.x, y: v.y })), state, { execute: (cmd) => ex.execute(cmd), roadAt: ex.roadAt });
     expect(violations(state)).toEqual([]);
   });
 });
@@ -150,10 +150,12 @@ describe('random painting and cutting', () => {
     const failures: string[] = [];
     for (let seed = 1; seed <= 80 && failures.length < 5; seed++) {
       const rand = rng(seed);
-      useEditorStore.setState({ autoEdgeCut: rand() < 0.5 ? 'round' : 'rect' });
+      // Preserve the original draw order (mode roll, then brush-size roll) so a seed's replay is
+      // unchanged: `makeToolCtx`'s options object would otherwise be built AFTER the size argument.
+      const autoEdgeCut = rand() < 0.5 ? 'round' : 'rect';
       const state = makeState(24, 24);
-      const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
-      const ctx = makeToolCtx(state, ex, 1 + Math.floor(rand() * 3), 1);
+      const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+      const ctx = makeToolCtx(state, ex, 1 + Math.floor(rand() * 3), 1, { autoEdgeCut });
       const paint = new DrawingTool();
       paint.contentType = 'mountain';
       const cut = new EdgeCutTool();
@@ -195,7 +197,6 @@ describe('random painting and cutting', () => {
         mass = now;
       }
     }
-    useEditorStore.setState({ autoEdgeCut: 'off' });
     expect(failures.join('\n---\n')).toBe('');
   });
 });
@@ -209,7 +210,7 @@ describe('a pit left in a map', () => {
     const state = load('report-4.json');
     const holes = pits(state);
     expect(holes.length).toBeGreaterThan(0);
-    const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeToolCtx(state, ex, 1, 2);
     const paint = new DrawingTool();
     paint.contentType = 'mountain';

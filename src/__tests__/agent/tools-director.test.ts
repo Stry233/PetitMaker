@@ -5,11 +5,12 @@ import { createDefaultRegistry } from '../../rules';
 import { type EditorEvents } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { executeToolCall, type AgentToolDeps } from '../../agent/tools';
+import { roadLookup } from '../../state/object-index';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry());
+  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
   const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   return { state, exec, deps };
 }

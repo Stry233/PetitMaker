@@ -1,0 +1,8 @@
+<!-- Generated art. Do not edit: change the design source and re-run the extractor. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="118" height="119" viewBox="0 0 118 119">
+  <path id="ellipse" d="M 59.5 2 C 91.26 2 117 27.85 117 59.73 C 117 91.61 91.26 117.45 59.5 117.45 C 27.74 117.45 2 91.61 2 59.73 C 2 27.85 27.74 2 59.5 2 Z" fill="#FFFBE3"/>
+  <g id="shape" >
+    <path d="M 69.1 41.08 L 69.03 89.58 L 28.18 65.27 L 69.1 41.08 Z" fill="#5B4833"/>
+    <path d="M 57.94 29.87 C 57.94 29.87 72.61 34.12 74.67 41.07 C 76.72 48.01 65.37 52.26 65.37 52.26 L 65.37 74.66 C 65.37 74.66 84.96 72.06 89.54 59.73 C 94.11 47.4 87.26 33.93 57.94 29.87 Z" fill="#5B4833"/>
+  </g>
+</svg>

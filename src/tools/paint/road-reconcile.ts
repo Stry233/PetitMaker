@@ -2,6 +2,7 @@ import { TerrainType } from '../../core/model/types';
 import type { Corners, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 import type { ToolContext } from '../types';
 import { getCell } from '../../core/model/grid-model';
+import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { getCatalogItem } from '../../state/catalog';
 import { isCoating } from '../../core/model/traits';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
@@ -17,11 +18,14 @@ function footprint(x: number, y: number): MacroCoord[] {
 }
 
 function footprintUnchanged(state: GridState, road: PlacedObject): boolean {
-  // True if the footprint is uniform at the road's current elevation, no water.
+  // True if the footprint is uniform at the road's current elevation, no water. Read through the
+  // STRUCTURAL surface, not raw `terrain.elevation`: a neighbouring paint can fillet a footprint
+  // corner into a Γ patch without changing what it structurally rests on, and a raw read would see
+  // that cosmetic tier as a real change and re-place the road a tier too high.
   for (const c of footprint(road.position.x, road.position.y)) {
     const cell = getCell(state.cells, c.x, c.y);
     if (cell?.terrain?.type === TerrainType.Water) return false;
-    const elev = cell?.terrain?.elevation ?? 0;
+    const elev = surfaceElevation(cell?.terrain);
     if (elev !== road.elevation) return false;
   }
   return true;
@@ -47,7 +51,7 @@ export function reconcileRoadsAfterMountainPaint(paintedCells: MacroCoord[], ctx
     ctx.executeCommand(removeObjectCommand(road));
 
     const cell = getCell(ctx.gridState.cells, road.position.x, road.position.y);
-    const newElevation = cell?.terrain?.elevation ?? 0;
+    const newElevation = surfaceElevation(cell?.terrain);
     const candidate: PlacedObject = {
       id: road.id,
       catalogId: road.catalogId,

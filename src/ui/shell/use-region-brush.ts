@@ -1,0 +1,300 @@
+/*
+ * use-region-brush.ts — the region-selection brush state machine for Generate.
+ * While `selectingRegion` is on, it registers on the region-brush channel
+ * (core/runtime/region-brush) the pointer machine reports painted cells
+ * through, accumulating buildable cells (brush/eraser/rect/circle/line/curve
+ * over grass, skipping plaza/non-grass) into a mutable buffer and committing
+ * to the store's `region` on pointer-up. Extracted from App.tsx so
+ * the orchestrator stays an orchestrator.
+ *
+ * OWNS THE REGION'S OWN UNDO/REDO too (`regionUndo`/`regionRedo`), a stack
+ * separate from the map's command history: a painted region is a SCOPE for a
+ * future generate, not a map edit, so it must never share the executor's undo
+ * stack (see kit/commands.ts, which routes Ctrl+Z here while
+ * `selectingRegion` is on instead of touching the executor). One snapshot per
+ * perceived action — a brush/eraser drag, a shape drag, the whole curve
+ * 3-click sequence, or a Clear tap — never per cell, guarded by
+ * `strokeActiveRef`. The stack lives on refs (not React state): it is read
+ * only imperatively (from the keyboard command, outside render), and letting
+ * it survive effect re-runs (which happen on every commit, since the region
+ * is a dependency) is exactly what keeps a multi-move drag one entry.
+ */
+import { useCallback, useEffect, useRef } from 'react';
+import { useEditorStore } from '../../state/store';
+import { getCell, isBuildableZone } from '../../core/model/grid-model';
+import { type GridState, type MacroCoord } from '../../core/model/types';
+import { rectCells, circleCells, lineCells, curveCells, snapShapeEnd } from '../../tools/paint/shapes';
+import { isConstrainHeld } from '../../core/runtime/modifier-state';
+import { host } from '../../kit/host';
+import { setRegionBrushHandler } from '../../core/runtime/region-brush';
+
+/** Whether a cell may be part of a region: buildable ground, placements included — a scoped
+ *  generation replaces what stands in its region, so a cell under an object is as scopeable as a
+ *  bare one. ONE rule, read by every stroke and by Select all — two answers to "may this cell be
+ *  scoped" would show up as a region whose own Select all painted cells its brush refuses. */
+function holdsRegion(gs: GridState, x: number, y: number): boolean {
+  const cell = getCell(gs.cells, x, y);
+  return !!cell && isBuildableZone(cell.zone);
+}
+
+export function useRegionBrush(selectingRegion: boolean) {
+  const region = useEditorStore((s) => s.region);
+  const setRegion = useEditorStore((s) => s.setRegion);
+
+  // Collect coords in a mutable array during drag, only commit to the store on
+  // pointerUp (the channel's `done`).
+  const brushCoordsRef = useRef<MacroCoord[]>([]);
+  const brushSeenRef = useRef(new Set<string>());
+  const regionAnchorRef = useRef<MacroCoord | null>(null);
+  const regionShapeCellsRef = useRef<MacroCoord[]>([]);
+  const regionCurvePointsRef = useRef<MacroCoord[]>([]);
+
+  // The region's own undo/redo — see the file banner. `strokeActiveRef` marks a stroke
+  // in progress so a drag's many move callbacks snapshot only once, at the start.
+  const strokeActiveRef = useRef(false);
+  const regionUndoStackRef = useRef<MacroCoord[][]>([]);
+  const regionRedoStackRef = useRef<MacroCoord[][]>([]);
+
+  // Push the pre-stroke region once per stroke (no-op on a repeat call while the same
+  // stroke is still in progress). A fresh action always clears the redo stack, matching
+  // the map history's own undo/redo contract.
+  const beginRegionStroke = useCallback(() => {
+    if (strokeActiveRef.current) return;
+    strokeActiveRef.current = true;
+    regionUndoStackRef.current.push([...region]);
+    regionRedoStackRef.current = [];
+  }, [region]);
+
+  // Reset both the mid-shape/curve refs and the stroke-in-progress flag, so whatever
+  // gesture was mid-flight is cleanly superseded rather than resuming into stale state.
+  const resetInFlightGesture = useCallback(() => {
+    regionAnchorRef.current = null;
+    regionShapeCellsRef.current = [];
+    regionCurvePointsRef.current = [];
+    strokeActiveRef.current = false;
+  }, []);
+
+  /** Empty the selection, from the scope screen's own Clear. A clear is itself an undoable region
+   *  action — likely the one a misclick most wants back — so it pushes the same way a stroke does
+   *  (skipped when already empty: nothing would change). */
+  const clearRegion = useCallback(() => {
+    if (region.length > 0) {
+      regionUndoStackRef.current.push([...region]);
+      regionRedoStackRef.current = [];
+    }
+    setRegion([]);
+    brushCoordsRef.current = [];
+    brushSeenRef.current.clear();
+    resetInFlightGesture();
+    host.buildableRegion.clear();
+  }, [region, setRegion, resetInFlightGesture]);
+
+  /** Take the whole map, which is every cell a region may hold. One undo entry, the same as a
+   *  stroke, and it seeds the buffer the next stroke edits rather than only the store. */
+  const selectAll = useCallback(() => {
+    const gs = useEditorStore.getState().gridState;
+    if (!gs) return;
+    const cells: MacroCoord[] = [];
+    for (let y = 0; y < gs.template.height; y++) {
+      for (let x = 0; x < gs.template.width; x++) if (holdsRegion(gs, x, y)) cells.push({ x, y });
+    }
+    if (region.length > 0 || cells.length > 0) {
+      regionUndoStackRef.current.push([...region]);
+      regionRedoStackRef.current = [];
+    }
+    brushCoordsRef.current = cells;
+    brushSeenRef.current = new Set(cells.map((c) => `${c.x},${c.y}`));
+    resetInFlightGesture();
+    setRegion(cells);
+    host.buildableRegion.show(cells);
+  }, [region, setRegion, resetInFlightGesture]);
+
+  useEffect(() => {
+    if (!selectingRegion) {
+      // Leaving region-select mode discards the region's undo/redo — it must never fire
+      // later, out of the context the user painted it in (see the file banner).
+      regionUndoStackRef.current = [];
+      regionRedoStackRef.current = [];
+      resetInFlightGesture();
+      return;
+    }
+
+    brushCoordsRef.current = [...region];
+    brushSeenRef.current = new Set(region.map(c => `${c.x},${c.y}`));
+
+    const paint = (coord: MacroCoord) => {
+      // One snapshot per stroke, taken before this move's mutation below — a drag
+      // fires this many times, but beginRegionStroke is a no-op after the first.
+      beginRegionStroke();
+
+      const store = useEditorStore.getState();
+      const tool = store.regionTool;
+      const size = store.regionBrushSize;
+
+      const gs = useEditorStore.getState().gridState;
+      const buildable = (cx: number, cy: number): boolean => (
+        gs ? holdsRegion(gs, cx, cy) : true   // no map loaded → don't filter
+      );
+
+      if (tool === 'brush' || tool === 'eraser') {
+        const half = Math.floor((size - 1) / 2);
+
+        if (tool === 'eraser') {
+          // Gather the dab's keys, drop them from the seen-set, then filter the
+          // coord list ONCE (was an O(N) filter per erased cell).
+          const toDelete = new Set<string>();
+          for (let dy = 0; dy < size; dy++) {
+            for (let dx = 0; dx < size; dx++) {
+              const key = `${coord.x - half + dx},${coord.y - half + dy}`;
+              if (brushSeenRef.current.delete(key)) toDelete.add(key);
+            }
+          }
+          if (toDelete.size > 0) {
+            brushCoordsRef.current = brushCoordsRef.current.filter(c => !toDelete.has(`${c.x},${c.y}`));
+          }
+        } else {
+          for (let dy = 0; dy < size; dy++) {
+            for (let dx = 0; dx < size; dx++) {
+              const cx = coord.x - half + dx;
+              const cy = coord.y - half + dy;
+              if (!buildable(cx, cy)) continue; // skip illegal cells
+              const key = `${cx},${cy}`;
+              if (brushSeenRef.current.has(key)) continue;
+              brushSeenRef.current.add(key);
+              brushCoordsRef.current.push({ x: cx, y: cy });
+            }
+          }
+        }
+        host.buildableRegion.show(brushCoordsRef.current);
+      } else if (tool === 'curve') {
+        // Curve uses 3-click pattern (not click-drag):
+        // Click 1: start point, Click 2: control point, Click 3: end point
+        regionAnchorRef.current = coord;
+        let previewCells: MacroCoord[] = [];
+        const pts = regionCurvePointsRef.current;
+        if (pts.length === 0) {
+          previewCells = [coord];
+        } else if (pts.length === 1) {
+          const e = isConstrainHeld() ? snapShapeEnd(pts[0]!, coord, 'line') : coord;
+          previewCells = lineCells(pts[0]!, e, size);
+        } else if (pts.length >= 2) {
+          previewCells = curveCells(pts[0]!, pts[1]!, coord, size);
+        }
+        if (gs) previewCells = previewCells.filter(c => buildable(c.x, c.y));
+        regionShapeCellsRef.current = previewCells;
+        host.buildableRegion.show([...brushCoordsRef.current, ...previewCells]);
+      } else {
+        // rect/circle/line: anchor on first call, preview on drag
+        if (!regionAnchorRef.current) {
+          regionAnchorRef.current = coord;
+        }
+        let shapeCells: MacroCoord[] = [];
+        const anchor = regionAnchorRef.current;
+        const end = isConstrainHeld() && (tool === 'rect' || tool === 'circle' || tool === 'line')
+          ? snapShapeEnd(anchor, coord, tool)
+          : coord;
+        switch (tool) {
+          case 'rect':
+            shapeCells = rectCells(anchor, end);
+            break;
+          case 'circle': {
+            const rx = Math.abs(end.x - anchor.x);
+            const ry = Math.abs(end.y - anchor.y);
+            shapeCells = circleCells(anchor, rx, ry);
+            break;
+          }
+          case 'line':
+            shapeCells = lineCells(anchor, end, size);
+            break;
+        }
+        // Filter out illegal cells (non-grass, plaza, beach)
+        if (gs) shapeCells = shapeCells.filter(c => buildable(c.x, c.y));
+        regionShapeCellsRef.current = shapeCells;
+        host.buildableRegion.show([...brushCoordsRef.current, ...shapeCells]);
+      }
+    };
+
+    const done = () => {
+      const store = useEditorStore.getState();
+      const tool = store.regionTool;
+
+      if (tool === 'brush' || tool === 'eraser') {
+        setRegion([...brushCoordsRef.current]);
+        strokeActiveRef.current = false; // one drag = one undo entry, already pushed at its start
+      } else if (tool === 'curve') {
+        // Curve: 3-click pattern. Each pointerUp adds the last coord as a point.
+        const pts = regionCurvePointsRef.current;
+        if (pts.length < 2) {
+          // First or second click — store point and wait. The undo snapshot taken at
+          // click 1 covers the WHOLE 3-click gesture, so strokeActiveRef stays true
+          // (do not re-arm it: click 2/3 must not push a second snapshot).
+          if (regionAnchorRef.current) {
+            regionCurvePointsRef.current.push(regionAnchorRef.current);
+          }
+        } else {
+          // Third click — commit the curve cells
+          const cells = regionShapeCellsRef.current;
+          for (const c of cells) {
+            const key = `${c.x},${c.y}`;
+            if (!brushSeenRef.current.has(key)) {
+              brushSeenRef.current.add(key);
+              brushCoordsRef.current.push(c);
+            }
+          }
+          regionCurvePointsRef.current = [];
+          regionShapeCellsRef.current = [];
+          setRegion([...brushCoordsRef.current]);
+          strokeActiveRef.current = false; // the 3-click curve gesture is now complete
+        }
+        regionAnchorRef.current = null;
+      } else {
+        // rect/circle/line: commit the shape cells
+        const cells = regionShapeCellsRef.current;
+        for (const c of cells) {
+          const key = `${c.x},${c.y}`;
+          if (!brushSeenRef.current.has(key)) {
+            brushSeenRef.current.add(key);
+            brushCoordsRef.current.push(c);
+          }
+        }
+        regionShapeCellsRef.current = [];
+        regionAnchorRef.current = null;
+        setRegion([...brushCoordsRef.current]);
+        strokeActiveRef.current = false; // one drag = one undo entry, already pushed at its start
+      }
+    };
+
+    return setRegionBrushHandler({ paint, done, clear: clearRegion, selectAll });
+  }, [selectingRegion, region, setRegion, beginRegionStroke, resetInFlightGesture, clearRegion, selectAll]);
+
+  /**
+   * Pop the region's own undo stack — see the file banner for why this is separate from
+   * the map's command history. Returns false when there is nothing to undo, so the
+   * keyboard command (kit/commands.ts) can no-op instead of falling through to
+   * a map edit: while region-select mode is on, Ctrl+Z means "undo region", full stop.
+   */
+  const regionUndo = useCallback((): boolean => {
+    const stack = regionUndoStackRef.current;
+    if (stack.length === 0) return false;
+    const prev = stack.pop()!;
+    regionRedoStackRef.current.push([...region]);
+    setRegion(prev);
+    host.buildableRegion.show(prev); // the overlay only updates imperatively, never from React state
+    resetInFlightGesture();
+    return true;
+  }, [region, setRegion, resetInFlightGesture]);
+
+  /** Mirror of `regionUndo` — see there for the empty-stack contract. */
+  const regionRedo = useCallback((): boolean => {
+    const stack = regionRedoStackRef.current;
+    if (stack.length === 0) return false;
+    const next = stack.pop()!;
+    regionUndoStackRef.current.push([...region]);
+    setRegion(next);
+    host.buildableRegion.show(next);
+    resetInFlightGesture();
+    return true;
+  }, [region, setRegion, resetInFlightGesture]);
+
+  return { clearRegion, regionUndo, regionRedo };
+}

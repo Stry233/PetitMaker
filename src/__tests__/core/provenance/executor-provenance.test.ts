@@ -5,8 +5,9 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { CommandType, TerrainType, type Command, type GridState } from '../../../core/model/types';
 import { ProvSource } from '../../../core/provenance/types';
+import { roadLookup } from '../../../state/object-index';
 
-function exec(state: GridState) { return new CommandExecutor(state, new EventBus(), createDefaultRegistry()); }
+function exec(state: GridState) { return new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state)); }
 function paint(x: number, y: number): Command {
   return { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1 } as Command;
 }

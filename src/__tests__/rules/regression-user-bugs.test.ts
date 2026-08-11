@@ -16,7 +16,8 @@ import { detectWaterfalls } from '../../core/model/waterfall-geometry';
 import { CommandType, TerrainType, type EditorEvents, type PaintTerrainCommand } from '../../core/model/types';
 import { makeState, setTerrain } from './_helpers';
 import { cellOverlapsRect, createPlazaObject } from '../../core/model/grid-model';
-import { getActiveLayers } from '../../core/model/layer-utils';
+import { getActiveLayers } from '../../state/layer-utils';
+import { roadLookup } from '../../state/object-index';
 
 function paint(x: number, y: number, type: TerrainType, elev: number): PaintTerrainCommand {
   return { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: type, elevation: elev };
@@ -52,7 +53,7 @@ describe('User Bug 2: Enclosed water row must not be rejected', () => {
       for (let x = 2; x <= 7; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const strokeStart = executor.getUndoStackSize();
 
     for (let x = 3; x <= 6; x++) {
@@ -101,7 +102,7 @@ describe('User Bug 3: Cross pattern water in 3x3 mountain', () => {
       for (let x = 4; x <= 6; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const strokeStart = executor.getUndoStackSize();
 
     const crossCells = [[5, 5], [5, 4], [4, 5], [6, 5], [5, 6]];
@@ -120,7 +121,7 @@ describe('User Bug 3: Cross pattern water in 3x3 mountain', () => {
       for (let x = 4; x <= 6; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const result = executor.execute(paint(4, 5, TerrainType.Water, 2));
     expect(result.success).toBe(true);
   });
@@ -210,7 +211,7 @@ describe('User Bug 5: Plaza collision boundary', () => {
     return state;
   };
   const exec = (state: ReturnType<typeof makeState>) =>
-    new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 
   it('allows mountain/water on terrain cells adjacent to the plaza (touching, no overlap)', () => {
     const e = exec(withPlaza());
@@ -289,7 +290,7 @@ describe('User Bug 7: Two-layer structure with inner water at elev 2', () => {
       for (let x = 7; x <= 14; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const strokeStart = executor.getUndoStackSize();
     for (let x = 8; x <= 13; x++) {
       const result = executor.execute(paint(x, 8, TerrainType.Water, 2));

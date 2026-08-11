@@ -2,6 +2,10 @@
  * The first-launch tour's one visible surface: a dim over the app, a spotlight on the thing being
  * explained, and a bubble that names it.
  *
+ * The machinery only; the CONTENT is the mounted interface's. It hands in its own step list and
+ * prepares each step from `onStepEnter`, because a step can point at nothing the interface does not
+ * draw, and some targets are not in the DOM until the host has revealed them.
+ *
  * The dim is ONE element (`TourDim`, an SVG whose hole is masked out) doing both jobs: a plain
  * full-viewport dim until the current step's target has been measured, then that same dim with the
  * target's box cut out of it. One element rather than a scrim plus a spotlight, because two
@@ -12,8 +16,8 @@
  * The CARD is the opposite of a tracked highlight: it never travels. Which transition a step change
  * gets is POSITIONAL, decided by where the new card lands:
  *
- *   - somewhere else: a NEW card, entering and exiting the way every other panel surface in this
- *     app does (SpokeShell, RestoreBubble) — springs.bouncy in, exitTransition out, an asymmetry
+ *   - somewhere else: a NEW card, entering and exiting the way every other floating surface in this
+ *     app does (ContextMenu, DeletePopover) — springs.bouncy in, exitTransition out, an asymmetry
  *     styles.ts documents: a panel arrives with life and is put away cleanly. Both are on screen for
  *     the length of the exit, one leaving the control it described as the other pops at its own.
  *   - the same place (the two centred steps at the start): the SAME card, its copy crossing over
@@ -29,10 +33,10 @@
  * Focus is taken by each card as it MOUNTS, which is what keeps the keyboard path unbroken across
  * the remount; the card that is kept never loses focus in the first place.
  *
- * Measuring a step's target only AFTER the app has prepared that step (the phone card is collapsed,
- * and therefore absent from the DOM, when the app opens; onStepEnter is what expands it) rests on
- * two invariants, spelled out at the effects that carry them: the announcement is a layout effect,
- * and the measurement is deferred to a rAF.
+ * Measuring a step's target only AFTER the app has prepared that step (the bottom bar belongs to the
+ * selected build mode, so the step about the tools has nothing to point at until `onStepEnter` has
+ * selected one) rests on two invariants, spelled out at the effects that carry them: the
+ * announcement is a layout effect, and the measurement is deferred to a rAF.
  *
  * The measurement TRACKS rather than sampling once: getBoundingClientRect reports the TRANSFORMED
  * box and a target animates in under a spring, so a single read lands on a box the target is still
@@ -43,8 +47,8 @@
  * agrees with itself) or at the frame cap.
  *
  * A step whose target cannot be measured is passed over rather than drawing a spotlight at the
- * origin. A resize, a viewport change, a UI-scale change and the phone card opening or closing all
- * re-run the same tracking: those are the four things that move a target. A step that names NO target measures
+ * origin. A resize, a map viewport change and a UI-scale change all re-run the same tracking: those
+ * are the three things that move a target the tour is already pointing at. A step that names NO target measures
  * nothing at all: it keeps the full-viewport scrim and centres its bubble, and it is on screen from
  * the commit that made it current.
  *
@@ -53,16 +57,16 @@
  * of the control the step is describing.
  *
  * The bubble scales with `useChromeScale()` as css `zoom`, like every other chrome surface here
- * (ContextMenu, DeletePopover, FloatingCluster). The spotlight does NOT: it is positioned from the
+ * (ContextMenu, DeletePopover, Toast). The spotlight does NOT: it is positioned from the
  * live rect and has to sit exactly on the real element, in visual px.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../styles';
-import { useChromeScale } from '../../menu/scale';
-import { Wavy } from '../../menu/Wavy';
+import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
+import { useChromeScale } from '../../design/scale';
+import { Wavy } from '../../primitives/Wavy';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
 import { BrandLockup } from '../BrandLockup';
 import { placeBubble, type Box } from './place-bubble';
@@ -76,9 +80,8 @@ const GAP = 18; // between the spotlight edge and the bubble
 const LIT_INSET = 8; // how far the lit hole is grown past the target on every side, in visual px
 
 /** The box that is actually LIT: the measured target, grown by the inset the ring is drawn at. The
- *  bubble has to clear what is drawn, not what was measured. Exported so a test can build one from
- *  a measured rect without duplicating the inset math. */
-export function litBox(rect: DOMRect): Box {
+ *  bubble has to clear what is drawn, not what was measured. */
+function litBox(rect: DOMRect): Box {
   return {
     left: rect.left - LIT_INSET,
     top: rect.top - LIT_INSET,
@@ -116,13 +119,11 @@ const HOLE_MASK_ID = 'petit-tour-hole';
  *  of the screen the eye saccades to the new position instead of tracking the box across it, so the
  *  glide is played to someone already looking at the destination: all it adds is the wait, and a
  *  streak back across ground the eye has left. Under it the move is short enough to follow, and
- *  following is what ties the highlight to what it moved to. Exported so a test can check the tour's
- *  OWN step pairs against the same threshold, rather than a copy of it. */
-export const GLIDE_MAX_TRAVEL = 1 / 3;
+ *  following is what ties the highlight to what it moved to. */
+const GLIDE_MAX_TRAVEL = 1 / 3;
 
-/** Distance between two lit boxes' centres, against that fraction of the viewport diagonal.
- *  Exported for the same reason as `GLIDE_MAX_TRAVEL`. */
-export function movedFar(from: Box, to: Box): boolean {
+/** Distance between two lit boxes' centres, against that fraction of the viewport diagonal. */
+function movedFar(from: Box, to: Box): boolean {
   const dx = (from.left + from.width / 2) - (to.left + to.width / 2);
   const dy = (from.top + from.height / 2) - (to.top + to.height / 2);
   return Math.hypot(dx, dy) > Math.hypot(window.innerWidth, window.innerHeight) * GLIDE_MAX_TRAVEL;
@@ -237,6 +238,9 @@ export interface TourOverlayProps {
    *  measurable, so this is where the app prepares a step (e.g. revealing its target), not where
    *  it reacts to the step already being shown. */
   onStepEnter?: (step: TourStep) => void;
+  /** The mounted shell's own step list, since a step can only point at what that interface draws.
+   *  A module singleton: an inline array would be a new list on every render. */
+  steps: readonly TourStep[];
 }
 
 /** A measurement result, tied to the step it was taken for. */
@@ -245,9 +249,9 @@ interface Measurement {
   rect: DOMRect | null;
 }
 
-export function TourOverlay({ onStepEnter }: TourOverlayProps) {
+export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
   const t = useT();
-  const { running, step, total, indexOf, next, advanceFrom, skip } = useTour();
+  const { running, step, total, indexOf, next, advanceFrom, skip } = useTour(steps);
   const reduced = useReducedMotionConfig();
   const chrome = useChromeScale();
   const eventBus = useEditorStore((s) => s.eventBus);
@@ -263,7 +267,6 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
    *  passed over never becomes shown at all. */
   const [shown, setShown] = useState<Measurement | null>(null);
   const announced = useRef<TourStep | null>(null);
-  const armed = useRef<TourStep | null>(null);
   const frame = useRef<number | null>(null);
   /** Where the last card RENDERED sat, so the next step can tell whether its card lands on the same
    *  pixels. */
@@ -285,18 +288,14 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
   // stealing focus back from a control the visitor had tabbed to.
   const focusCard = useCallback((el: HTMLDivElement | null) => { el?.focus(); }, []);
 
-  const menuCollapsed = useEditorStore((s) => s.menuCollapsed);
   const uiZoom = useEditorStore((s) => s.uiZoom);
-  const satisfied = step?.advanceWhen === 'menu-open' ? !menuCollapsed
-    : step?.advanceWhen === 'menu-closed' ? menuCollapsed
-    : false;
 
   useOverlayLock(running);
 
   // MUST BE A LAYOUT EFFECT, and the measurement below MUST STAY DEFERRED to a rAF: together those
   // two facts, not the order these effects are declared in, are what gets a step's target measured
-  // only after the app has prepared it (`menu: 'expand'` opens the phone card, which is what brings
-  // that step's target into the DOM at all). React runs the layout pass at DiscreteEventPriority,
+  // only after the app has prepared it (`mode: 'mountain'` selects a build mode, which is what puts
+  // that step's target — the mode's own bottom bar — in the DOM at all). React runs the layout pass at DiscreteEventPriority,
   // so a setState from ANY layout effect lands on SyncLane and is flushed synchronously inside the
   // same task as the commit, while a rAF registered during that commit cannot run until the task
   // yields — so the host's expansion is in the DOM first. Announce from a passive effect and it
@@ -304,22 +303,20 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
   // happens before that sync flush (the whole layout pass precedes it) and finds the collapsed card.
   //
   // It fires the moment a step becomes CURRENT, not once the step can be shown: gating it on the
-  // rect that the announcement itself is supposed to produce would deadlock. A step that is
-  // announced and then passed over (its own measurement lands absent anyway) has run its side
-  // effect for a step nobody saw — for the card's expand/collapse that is harmless and desired, since
-  // the choreography is defined by the step order, not by which steps turned out to be showable.
+  // rect that the announcement itself is supposed to produce would deadlock. So a step that is
+  // announced and then passed over still runs its side effect — the choreography is defined by
+  // the step order, not by which steps turned out to be showable.
   //
-  // The same effect ENDS a run: this overlay is mounted for the app's whole life and TOUR_STEPS
+  // The same effect ENDS a run: this overlay is mounted for the app's whole life and the step list's
   // entries are module singletons, so a value left on a ref would be read by the NEXT run as its
-  // own. ANNOUNCED and ARMED are the two values that is true for, and are cleared here (a step
-  // whose gesture was armed and then passed by the BUTTON must not credit a later run for it). The
+  // own. `announced` is that value, and is cleared here. The
   // card's travel origin (`lastPos`) and its measured height (`contentH`) are left as they are: the
   // ordinary step-to-step comparison already reads the former as wherever the outgoing card sat, run
   // boundary or not, and the layout effect that measures the latter re-runs before every paint
   // regardless.
   useLayoutEffect(() => {
     if (step && announced.current !== step) { announced.current = step; onStepEnter?.(step); }
-    if (!step) { announced.current = null; armed.current = null; }
+    if (!step) { announced.current = null; }
   }, [step, onStepEnter]);
 
   // One read per frame. A rect is published the moment there is one, and republished on every
@@ -381,11 +378,9 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
     };
   }, [running, onGeometryChange, eventBus]);
 
-  // Two more ways a target moves, neither of which fires `resize` or emits `viewport-changed`:
-  // Ctrl +/- rescales the menu and every chrome surface with it, and the phone card's own state
-  // decides whether the targets ON it are in the DOM at all. Without this the spotlight sits at
-  // the old scale, or keeps pointing at a card the visitor has since put away.
-  useEffect(() => { onGeometryChange(); }, [uiZoom, menuCollapsed, onGeometryChange]);
+  // One more way a target moves, which fires no `resize` and emits no `viewport-changed`: Ctrl +/-
+  // rescales every chrome surface. Without this the spotlight sits at the old scale.
+  useEffect(() => { onGeometryChange(); }, [uiZoom, onGeometryChange]);
 
   // What the bubble shows: a targetless step the moment it becomes current (there is nothing to
   // wait for), a targeted one on the first frame its OWN measurement carries a rect. Every later
@@ -404,17 +399,6 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [running, skip]);
-
-  // Doing the thing a step describes counts as pressing Next. The condition is ARMED ONLY FROM THE
-  // UNSATISFIED SIDE: a later step's programmatic `menu` action leaves the store in exactly the
-  // state one of these asks for, so a step that opens with its condition already true must wait for
-  // the visitor to act rather than advancing on arrival. Armed per step object, so the arming can
-  // never carry across a step change.
-  useEffect(() => {
-    if (!running || !step?.advanceWhen) return;
-    if (armed.current !== step) { if (!satisfied) armed.current = step; return; }
-    if (satisfied) { armed.current = null; advanceFrom(step); }
-  }, [running, step, satisfied, advanceFrom]);
 
   // A step whose OWN measurement has landed and come back absent has nothing to point at, so it is
   // passed over rather than drawn against the origin. The last step finishes, so a map with no
@@ -508,8 +492,8 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
   return (
     <>
       {dim}
-      {/* A card that MOVES is a new card, entering and exiting the way every other panel surface
-          here does (SpokeShell, RestoreBubble): springs.bouncy in, exitTransition out, so it
+      {/* A card that MOVES is a new card, entering and exiting the way every other floating surface
+          here does (ContextMenu, DeletePopover): springs.bouncy in, exitTransition out, so it
           arrives with life and is put away cleanly. Both are on screen for the length of the exit,
           which is the point — one leaves the control it was describing as the next pops at another.
           A card born at its own anchor sized to its own copy needs nothing animated into place. */}
@@ -518,9 +502,10 @@ export function TourOverlay({ onStepEnter }: TourOverlayProps) {
           key={cardTag.id}
           ref={focusCard}
           role="dialog"
-          // No aria-modal: the app under the dim is fully operable (that is how pressing the real
-          // phone advances a step), and there is no focus trap. Claiming modality would tell a screen
-          // reader to hide an app its user can still drive.
+          // No aria-modal: the dim is `pointerEvents: 'none'`, so the app under it still takes the
+          // pointer — panning the map during a step is expected enough that `viewport-changed`
+          // re-tracks the spotlight — and there is no focus trap. Claiming modality would tell a
+          // screen reader to hide an app its user can still drive.
           aria-label={t(shown.step.titleKey)}
           tabIndex={-1}
           style={{ ...bubble, ...position, zoom: chrome, outline: 'none' }}

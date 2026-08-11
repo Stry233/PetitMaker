@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { terrainSolidAt, cornerWrappedAt, cornerRevealTier, highestNeighborTerrain, groundConvexCornerInWater } from '../../core/edge-cut/terrain-silhouette';
+import { terrainSolidAt, cornerWrappedAt, cornerWrappedBy, cornerRevealTier, cornerEdgeCoverTier, highestNeighborTerrain, groundConvexCornerInWater } from '../../core/edge-cut/terrain-silhouette';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { TerrainType } from '../../core/model/types';
 import type { TerrainCell } from '../../core/model/types';
@@ -108,6 +108,35 @@ describe('cornerRevealTier — EDGE-only, layer-gated (what shows behind a cut)'
     // OWN layer — its higher mass rises behind the corner, it is not what the
     // rounded water opens onto — so the reveal is tier 2, never the cliff's 4.
     expect(cornerRevealTier(at({ '0,-1': cell(M, 4) }), 0, W, 2)).toBe(2);
+  });
+});
+
+describe('cornerEdgeCoverTier — the tier two flanking masses MEET at, judged by offset', () => {
+  // corner indices: 0=TL, 1=TR, 2=BL, 3=BR. TL(0) edges are W(-1,0)+N(0,-1); its diagonal is NW(-1,-1).
+  it('mass on both edges → the tier they meet at', () => {
+    expect(cornerEdgeCoverTier(at({ '-1,0': cell(M, 1), '0,-1': cell(M, 1) }), 0, M)).toBe(1);
+  });
+
+  it('the tier is the LOWER of the two edges, not the taller one', () => {
+    expect(cornerEdgeCoverTier(at({ '-1,0': cell(M, 4), '0,-1': cell(M, 2) }), 0, M)).toBe(2);
+  });
+
+  it('DIAGONAL-BLIND: an open diagonal (a pinch) does not change the answer', () => {
+    // The pinch governs whether a Γ fillet may add MASS at the corner, which `cornerWrappedBy` decides and
+    // still refuses. This asks only where the two flanking masses meet, so the diagonal has no say.
+    const open = at({ '-1,0': cell(M, 2), '0,-1': cell(M, 2) });
+    expect(cornerEdgeCoverTier(open, 0, M)).toBe(2);
+    expect(cornerWrappedBy(open, 0, M, 2), 'the fillet question still answers pinch').toBe(false);
+    expect(cornerEdgeCoverTier(at({ '-1,0': cell(M, 2), '0,-1': cell(M, 2), '-1,-1': cell(M, 2) }), 0, M)).toBe(2);
+    expect(cornerEdgeCoverTier(at({ '-1,0': cell(M, 2), '0,-1': cell(M, 2), '-1,-1': cell(W, 0) }), 0, M)).toBe(2);
+  });
+
+  it('one bare edge → nothing meets here', () => {
+    expect(cornerEdgeCoverTier(at({ '0,-1': cell(M, 2), '-1,-1': cell(M, 2) }), 0, M)).toBe(0);
+  });
+
+  it('reads the OTHER type as absent (a water edge holds no mountain)', () => {
+    expect(cornerEdgeCoverTier(at({ '-1,0': cell(M, 2), '0,-1': cell(W, 0) }), 0, M)).toBe(0);
   });
 });
 

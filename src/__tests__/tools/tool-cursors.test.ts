@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { CURSOR_IDS, FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
 import { CommandType, ToolType, TerrainType, type EditorEvents } from '../../core/model/types';
 import { ELEVATION_MAX } from '../../core/model/constants';
@@ -15,6 +15,7 @@ import { makeState, setTerrain } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
 import { makeStubRenderer } from './_tool-manager';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 // registerDefaultTools() (tool-manager.ts) wires up exactly these 5; Scatter/RoadBrush are
 // ToolType members with no tool class anywhere in src/ — setActiveTool no-ops for them, so
@@ -22,12 +23,13 @@ import { setStoreState } from '../_store';
 // was already active for those two, which is not "covering" them.
 const REGISTERED_TOOL_TYPES: ToolType[] = [
   ToolType.Hand, ToolType.TerrainBrush, ToolType.Eraser, ToolType.ObjectPlacer, ToolType.EdgeCut,
+  ToolType.Macro,
 ];
 
 describe('every registered tool names a cursor from the catalogue', () => {
   it('covers every REGISTERED ToolType, so a new tool cannot silently skip one', () => {
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const manager = new ToolManager(makeStubRenderer(), exec, state);
     for (const type of REGISTERED_TOOL_TYPES) {
       manager.setActiveTool(type);
@@ -60,7 +62,7 @@ describe('the build brush names its material', () => {
   it('reports a locked layer as "cannot act here"', () => {
     const state = makeState(10, 10);
     state.lockedLayers.add(1);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
     const tool = new DrawingTool();
     tool.contentType = 'mountain';
@@ -75,7 +77,7 @@ describe('the build brush names its material', () => {
     // ctx.terrainType is left at Mountain here on purpose (it is ToolManager's fixed field,
     // never reassigned) — canActAt must ignore it and read this.contentType instead.
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const roadItem = getCatalogItem('road-dirt')!;
     exec.execute({
       type: CommandType.PlaceObject, timestamp: Date.now(),
@@ -100,7 +102,7 @@ describe('the build brush names its material', () => {
     const state = makeState(10, 10);
     setTerrain(state, 4, 4, TerrainType.Mountain, 2); // already built to elevation 2
     state.lockedLayers.add(3); // the NEXT level up (the real target) is locked; level 1 (ctx.elevation) is not
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
     const tool = new DrawingTool();
     tool.contentType = 'mountain';
@@ -118,7 +120,7 @@ describe('the build brush names its material', () => {
     // while the click succeeded. Floor 1 HIDES the bug (there from+1 == target), which is why
     // these floors are 2 and 3.
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new DrawingTool();
     tool.contentType = 'mountain';
     for (const floor of [2, 3]) {
@@ -137,7 +139,7 @@ describe('the build brush names its material', () => {
     // from >= target: a no-op is not a refusal (the same reading that keeps `select` unbadged).
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, ELEVATION_MAX);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
     const tool = new DrawingTool();
     tool.contentType = 'mountain';
@@ -147,7 +149,7 @@ describe('the build brush names its material', () => {
   it('asks the OBJECT-PLACEMENT question for tile: refused on water, allowed on plain ground', () => {
     const state = makeState(10, 10);
     setTerrain(state, 2, 2, TerrainType.Water, 1);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
     const tool = new DrawingTool();
     tool.contentType = 'tile';
@@ -163,7 +165,7 @@ describe('the build brush names its material', () => {
     // false (stricter than the click). It does exempt it (see placement-overlap.ts: `if
     // (e.coating) continue;`), so the two agree without any extra tile-branch code.
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const roadItem = getCatalogItem('road-dirt')!;
     exec.execute({
       type: CommandType.PlaceObject, timestamp: Date.now(),
@@ -185,8 +187,9 @@ describe('the move tool does not track its own grip', () => {
     // Two owners of "am I panning" drift. The pointer machine reports the pan; the tool only
     // names the mode, and this one holds `move` whether or not a pan is live.
     const tool = new HandTool();
-    const ctx = makeToolCtx(makeState(10, 10), new CommandExecutor(
-      makeState(10, 10), new EventBus<EditorEvents>(), createDefaultRegistry()));
+    const state = makeState(10, 10);
+    const ctx = makeToolCtx(state, new CommandExecutor(
+      state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state)));
     expect(tool.cursor).toBe('move');
     tool.onPointerDown({ x: 1, y: 1 }, { x: 1, y: 1 }, ctx);
     expect(tool.cursor).toBe('move');
@@ -195,13 +198,11 @@ describe('the move tool does not track its own grip', () => {
 });
 
 describe('the eraser answers for what its click removes', () => {
-  beforeEach(() => setStoreState({ contentType: 'mountain', layerVisibility: {} }));
-
   it('refuses a peel on a locked layer, the one thing that can reject the command it issues', () => {
     const state = makeState(10, 10);
     setTerrain(state, 4, 4, TerrainType.Mountain, 2);
     state.lockedLayers.add(2); // the cell occupies layer 2, so V-LOCK-01 rejects the peel
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeToolCtx(state, exec);
     const tool = new EraserTool();
     expect(tool.canActAt!({ x: 4, y: 4 }, ctx)).toBe(false);
@@ -212,17 +213,17 @@ describe('the eraser answers for what its click removes', () => {
   it('stays silent where the click SKIPS: bare ground and a hidden layer are no-ops, not refusals', () => {
     const state = makeState(10, 10);
     setTerrain(state, 6, 6, TerrainType.Mountain, 3);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeToolCtx(state, exec);
     const tool = new EraserTool();
     expect(tool.canActAt!({ x: 1, y: 1 }, ctx)).toBe(true); // nothing to erase
-    setStoreState({ layerVisibility: { 3: false } });
-    expect(tool.canActAt!({ x: 6, y: 6 }, ctx)).toBe(true); // eraseAt `continue`s past it
+    const hidden = makeToolCtx(state, exec, 1, 1, { layerVisibility: { 3: false } });
+    expect(tool.canActAt!({ x: 6, y: 6 }, hidden)).toBe(true); // eraseAt `continue`s past it
   });
 
   it('validates the coating REMOVALS in tile mode, and calls a bare cell a no-op', () => {
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const roadItem = getCatalogItem('road-dirt')!;
     exec.execute({
       type: CommandType.PlaceObject, timestamp: Date.now(),
@@ -232,8 +233,7 @@ describe('the eraser answers for what its click removes', () => {
       },
       loadValue: roadItem.loadValue,
     });
-    setStoreState({ contentType: 'tile' });
-    const ctx = makeToolCtx(state, exec);
+    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'tile' });
     const tool = new EraserTool();
     expect(tool.canActAt!({ x: 3, y: 3 }, ctx)).toBe(true); // an ordinary coating comes right up
     expect(tool.canActAt!({ x: 9, y: 9 }, ctx)).toBe(true); // no coating: nothing refused
@@ -241,36 +241,42 @@ describe('the eraser answers for what its click removes', () => {
 });
 
 describe('the placer names what the click will do', () => {
-  beforeEach(() => setStoreState({ selectedItemId: null, selection: [] }));
-
   it('is place when armed and select when idle', () => {
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new ObjectPlacerTool();
     expect(tool.cursor).toBe('select');
-    setStoreState({ selectedItemId: 'tree-apple' });
-    expect(tool.cursor).toBe('place');
+    expect(tool.cursorFor!(makeToolCtx(state, exec, 1, 1, { armedItem: 'tree-apple' }))).toBe('place');
   });
 
   it('is select over a terrain selection, since a terrain cell cannot be dragged', () => {
+    // `tool.cursor` alone is now the static literal `'select'` and can never fail; asking
+    // `cursorFor` (the live answer) with nothing armed is what actually exercises the tool.
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new ObjectPlacerTool();
     setStoreState({ selection: [{ kind: 'terrain', x: 1, y: 1 }] });
-    expect(tool.cursor).toBe('select');
+    expect(tool.cursorFor!(makeToolCtx(state, exec))).toBe('select');
   });
 
   it('stays SELECT with an object selected: `move` is positional, not a mode', () => {
     // Drag-to-move arms only on a press over the already-selected object; a drag anywhere else
     // pans the camera. A store-driven getter cannot know where the pointer is, so answering
     // `move` here turned the whole map into a four-arrow cursor after one click. The upgrade
-    // now happens in the controller, from the pointer machine's hover state.
+    // now happens in the controller, from the pointer machine's hover state — this only pins that
+    // an idle placer's LIVE answer (`cursorFor`, not the static `cursor` field) is `select`.
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new ObjectPlacerTool();
     setStoreState({ selection: [{ kind: 'object', id: 'obj-1' }] });
-    expect(tool.cursor).toBe('select');
+    expect(tool.cursorFor!(makeToolCtx(state, exec))).toBe('select');
   });
 
   it('answers with the SAME computation that tints the ghost, cell by cell', () => {
     // One function (planPlacementGhost) feeds both, so this asserts they cannot disagree: the
     // ghost colour and the probe are read for the same cells and must line up everywhere.
     const state = makeState(20, 20);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // A REPEATABLE item (the stall), so the only thing that can refuse it is the overlap at the
     // occupied cell — a maxCount-1 cabin would read false everywhere and prove nothing.
     const stall = getCatalogItem('building-stall')!;
@@ -282,11 +288,10 @@ describe('the placer names what the click will do', () => {
       },
       loadValue: stall.loadValue,
     });
-    setStoreState({ selectedItemId: stall.id });
 
     let lastColor = 0;
     const ctx = {
-      ...makeToolCtx(state, exec),
+      ...makeToolCtx(state, exec, 1, 1, { armedItem: stall.id }),
       overlay: { showGhost(_c: unknown, color: number) { lastColor = color; }, clearGhost() {} },
     } as never as import('../../tools/types').ToolContext;
     const tool = new ObjectPlacerTool();
@@ -304,10 +309,9 @@ describe('the placer names what the click will do', () => {
 
   it('refuses a bridge where no legal span exists, matching its red span ghost', () => {
     const state = makeState(12, 12);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const item = getCatalogItem('bridge-plank')!;
-    setStoreState({ selectedItemId: item.id });
-    const ctx = makeToolCtx(state, exec);
+    const ctx = makeToolCtx(state, exec, 1, 1, { armedItem: item.id });
     const tool = new ObjectPlacerTool();
     // Flat grass, no gap to span: detectBridgeSpan finds nothing, so the click would be refused.
     expect(tool.canActAt!({ x: 5, y: 5 }, ctx)).toBe(false);
@@ -315,16 +319,101 @@ describe('the placer names what the click will do', () => {
 
   it('is silent with nothing armed, since an idle placer\'s click places nothing', () => {
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new ObjectPlacerTool();
     expect(tool.canActAt!({ x: 2, y: 2 }, makeToolCtx(state, exec))).toBe(true);
+  });
+});
+
+describe('tools read from the context, not the store', () => {
+  it('the eraser ACTS from the context surface, not the store — the click itself proves it', () => {
+    // A canActAt probe cannot discriminate the two readings here: a water cell reads `true` from
+    // BOTH a mountain surface (nothing to erase, a no-op) and a water surface (erasable, and
+    // legal) — so a probe-only pin would have passed against the pre-refactor eraser too. Driving
+    // the real click is what tells them apart: pre-refactor, `erasesHere` read
+    // `useEditorStore.getState().contentType` ('mountain' here) and SKIPPED a water cell outright
+    // (erasesHere(Water, 'mountain') is false), leaving the water standing. Reading ctx.contentType
+    // ('water') instead means erasesHere(Water, 'water') is true, so the click ACTS: the water
+    // converts to this layer's mountain (see terrain-peel.ts — water CONVERTS, it is not dug out).
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    setTerrain(state, 3, 3, TerrainType.Water, 1);
+    setStoreState({ contentType: 'mountain' });                                 // the store says mountain…
+    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'water' });       // …the context says water
+    const tool = new EraserTool();
+    tool.onPointerDown({ x: 3, y: 3 }, { x: 3, y: 3 }, ctx);
+    tool.onPointerUp({ x: 3, y: 3 }, { x: 3, y: 3 }, ctx);
+    expect(state.cells[3]![3]!.terrain?.type, 'the ctx (water) reading acted; the store (mountain) reading would have left the water standing').not.toBe(TerrainType.Water);
+    setStoreState({ contentType: 'mountain' });
+  });
+
+  it('the placer names its cursor from the context', () => {
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    setStoreState({ selectedItemId: null });
+    const tool = new ObjectPlacerTool();
+    expect(tool.cursorFor!(makeToolCtx(state, exec, 1, 1, { armedItem: 'tree-apple' }))).toBe('place');
+    expect(tool.cursorFor!(makeToolCtx(state, exec))).toBe('select');
+  });
+});
+
+describe('ToolContext carries the arming', () => {
+  it('the manager mirrors the store into the live context', () => {
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    // brushSize is NOT a store read inside refreshCtx — PixiCanvas syncs it onto the manager's own
+    // field (`tm.brushSize = brushSize`), so mirroring it here means setting the manager's field.
+    manager.brushSize = 4;
+    setStoreState({
+      contentType: 'tile', selectedItemId: 'tree-apple', placementRotation: 90, autoEdgeCut: 'round',
+      layerVisibility: { 3: false }, tileMaterial: 'road-stone', armedMacro: 'raise',
+      layerPinned: true,
+    });
+    manager.setActiveTool(ToolType.Eraser);      // setActiveTool refreshes
+    const ctx = manager.getContext();
+    expect(ctx.contentType).toBe('tile');
+    expect(ctx.armedItem).toBe('tree-apple');
+    expect(ctx.placementRotation).toBe(90);
+    expect(ctx.autoEdgeCut).toBe('round');
+    expect(ctx.layerVisibility).toEqual({ 3: false });
+    expect(ctx.tileMaterial).toBe('road-stone');
+    expect(ctx.armedMacro).toBe('raise');
+    expect(ctx.brushSize).toBe(4);
+    expect(ctx.macroContext.state).toBe(state);
+    // Whether a hand chose the build floor is the water brush's per-cell question, so it has to
+    // ride the same mirror rather than be read out of the store from inside a tool.
+    expect(ctx.layerPinned).toBe(true);
+
+    setStoreState({
+      contentType: 'mountain', selectedItemId: null, placementRotation: 0, autoEdgeCut: 'off',
+      layerVisibility: {}, tileMaterial: 'road-dirt', armedMacro: null, activeLayer: 0,
+      layerPinned: false, displayLayer: null,
+    });
+  });
+
+  it('getContext() refreshes on its own: a caller with no pointer event (a touch tap) must not see a stale mirror', () => {
+    // final-review.md finding 1: `usePointerInteraction`'s press path builds `PressFacts` from
+    // `ToolManager.getContext()`, and for a TOUCH tap `onPointerDown` never sets `pointerKnown` — no
+    // move ever precedes it, so nothing else resamples the ctx before the press decides
+    // `placementAllowed`. This pins the fix at the seam directly: `setActiveTool` is the only
+    // refresh in this test, and nothing runs between the store change and `getContext()` that would
+    // paper over a plain getter.
+    const state = makeState(10, 10);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    manager.setActiveTool(ToolType.ObjectPlacer);
+    setStoreState({ selectedItemId: 'tree-apple', placementRotation: 90 });
+    expect(manager.getContext().armedItem).toBe('tree-apple');
+    expect(manager.getContext().placementRotation).toBe(90);
+    setStoreState({ selectedItemId: null, placementRotation: 0 });
   });
 });
 
 describe('FORBIDDABLE declares exactly the badges the tools can produce', () => {
   it('every badgeable id is shown by a registered tool that implements canActAt', () => {
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const manager = new ToolManager(makeStubRenderer(), exec, state);
     const withProbe = new Set<CursorId>();
     const withoutProbe = new Set<CursorId>();
@@ -339,7 +428,7 @@ describe('FORBIDDABLE declares exactly the badges the tools can produce', () => 
         }
       } else if (tool instanceof ObjectPlacerTool) {
         setStoreState({ selectedItemId: 'tree-apple' });
-        sink.add(tool.cursor);
+        sink.add(manager.getActiveCursor());
         setStoreState({ selectedItemId: null });
       } else {
         sink.add(tool.cursor);

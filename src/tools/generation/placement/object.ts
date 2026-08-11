@@ -1,5 +1,6 @@
 import { ItemCategory, type Command, type GridState, type MacroCoord, type PlaceObjectCommand, type PlacedObject, type ValidationResult } from '../../../core/model/types';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
+import { NEIGHBORS4 } from '../../../core/model/grid-model';
 import { getCatalogItem, isDecoration } from '../../../state/catalog';
 import { objectRect, getRotatedSize } from '../../../state/object-geometry';
 import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
@@ -25,16 +26,28 @@ export interface PlaceCtx {
    *  paved cells itself — a generated flower on a road is illegal in-game. Seeded from any roads
    *  already on the map; `tryPlace` records every road it lays. */
   roads: Set<number>;
+  /** What a clearance-reserving placement does with a decoration already sitting where it just
+   *  reserved: a HOUSE's own gate strip (`tryPlace`'s `hasGate` branch below), or `road-link.ts`'s
+   *  own crossing-end sweep (`realizeCrossings`), which reads this field directly since it never
+   *  goes through `tryPlace` for the sweep itself. `remove` (generation's, and the default when
+   *  absent) sweeps it — the populator plants before it knows where a door or a crossing will
+   *  land, so that is its own mistake to clear. `refuse` (every live-map gesture's) leaves it
+   *  standing; the cells are still reserved, so nothing new lands there, but nothing already there
+   *  is taken. */
+  sweep?: 'remove' | 'refuse';
 }
 
-export function makeCtx(state: GridState, execute: (c: Command) => ValidationResult, reg: RuleDispatcher, seed: number, naturalness = 1): PlaceCtx {
+export function makeCtx(
+  state: GridState, execute: (c: Command) => ValidationResult, reg: RuleDispatcher, seed: number,
+  naturalness = 1, sweep?: 'remove' | 'refuse',
+): PlaceCtx {
   const roads = new Set<number>();
   const W = state.template.width;
   for (const o of state.objects.values()) {
     const item = getCatalogItem(o.catalogId);
     if (item && isCoating(item)) forEachFootprintCell(o, (x, y) => roads.add(y * W + x));
   }
-  return { state, execute, reg, seed, naturalness, clearance: new Set(), roads };
+  return { state, execute, reg, seed, naturalness, clearance: new Set(), roads, ...(sweep ? { sweep } : {}) };
 }
 
 /** Reserve an N×N navigation-clearance square around (cx, cy). size 3 → a centred 3×3 (radius 1);
@@ -45,11 +58,27 @@ export function reserveClearance(set: Set<number>, cx: number, cy: number, size:
   else { for (let dy = 0; dy <= 1; dy++) for (let dx = -1; dx <= 0; dx++) add(cx + dx, cy + dy); }
 }
 
+/** True when (x, y) reads as PART OF THE STREET rather than beside it: 2 or more of its four edge
+ *  neighbours are paved (`ctx.roads`). One paved side is a curb — `roadsideTreeLining` and the
+ *  macro grammar's road border plant there on purpose — but two or more means the cell sits in a
+ *  median strip or a pocket a widened/looped road encloses, which reads as flowers in the middle
+ *  of the street even though the cell itself was never coated. */
+function insideRoad(ctx: PlaceCtx, x: number, y: number): boolean {
+  const W = ctx.state.template.width, H = ctx.state.template.height;
+  let paved = 0;
+  for (const [dx, dy] of NEIGHBORS4) {
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    if (ctx.roads.has(ny * W + nx)) paved++;
+  }
+  return paved >= 2;
+}
+
 /** Place a DECORATION through the rules, but first reject any decoration whose footprint would
- *  intrude on a reserved clearance zone (gates/crossing approaches stay open) or sit on a PAVED
+ *  intrude on a reserved clearance zone (gates/crossing approaches stay open), sit on a PAVED
  *  road cell (the overlap rule exempts coatings, so this is the only guard against a generated
- *  flower/tree on a road). Infrastructure (buildings/roads/crossings) goes through tryPlace
- *  directly and is never gated. */
+ *  flower/tree on a road), or land INSIDE the road (`insideRoad`, a median/enclosed pocket).
+ *  Infrastructure (buildings/roads/crossings) goes through tryPlace directly and is never gated. */
 export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlacedObject | null {
   if (ctx.clearance.size || ctx.roads.size) {
     const item = getCatalogItem(catalogId);
@@ -59,6 +88,7 @@ export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: numb
       for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
         const i = yy * W + xx;
         if (ctx.clearance.has(i) || ctx.roads.has(i)) return null;
+        if (ctx.roads.size && insideRoad(ctx, xx, yy)) return null;
       }
     }
   }
@@ -139,7 +169,7 @@ export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number,
       for (const c of buildingGate(objectRect(cmd.object), rotation).clear) {
         if (c.x >= 0 && c.y >= 0 && c.x < W && c.y < H) { ctx.clearance.add(c.y * W + c.x); strip.add(c.y * W + c.x); }
       }
-      if (strip.size) sweepClearanceCells(ctx, strip);
+      if (strip.size && ctx.sweep !== 'refuse') sweepClearanceCells(ctx, strip);
     }
     return cmd.object;
   }
@@ -147,9 +177,11 @@ export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number,
 }
 
 /** Final navigation sweep: remove any DECORATION (tree or flora) that intrudes on a reserved
- *  clearance zone or sits on a paved road cell. `tryDecorate` prevents this for every decoration
- *  placed AFTER clearance/roads exist; this catches themed decor (hedges/orchards/garden rings)
- *  placed BEFORE a crossing's clearance or a road was laid. Deterministic (insertion order). */
+ *  clearance zone, sits on a paved road cell, or ends up INSIDE the road (`insideRoad`).
+ *  `tryDecorate` prevents this for every decoration placed AFTER clearance/roads exist; this
+ *  catches themed decor (hedges/orchards/garden rings) placed BEFORE a crossing's clearance or a
+ *  road was laid around it, including a bed a later loop of pavement grows around into a median.
+ *  Deterministic (insertion order). */
 export function enforceClearance(ctx: PlaceCtx): void {
   if (!ctx.clearance.size && !ctx.roads.size) return;
   const W = ctx.state.template.width;
@@ -160,7 +192,7 @@ export function enforceClearance(ctx: PlaceCtx): void {
     let hit = false;
     for (let y = Math.floor(r.y); y < r.y + r.h && !hit; y++) for (let x = Math.floor(r.x); x < r.x + r.w; x++) {
       const i = y * W + x;
-      if (ctx.clearance.has(i) || ctx.roads.has(i)) { hit = true; break; }
+      if (ctx.clearance.has(i) || ctx.roads.has(i) || (ctx.roads.size && insideRoad(ctx, x, y))) { hit = true; break; }
     }
     if (hit) toRemove.push(o);
   }
@@ -196,7 +228,12 @@ export function sweepClearanceCells(ctx: PlaceCtx, cells: Set<number>): PlacedOb
 /** Visit every macro cell of an object's footprint (the one shared rasterizer for footprint marking). */
 export function forEachFootprintCell(obj: PlacedObject, visit: (x: number, y: number) => void): void {
   const r = objectRect(obj);
-  for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) visit(xx, yy);
+  // Integer CELLS covered by the rect, not the rect's own coordinates: the plaza's rect is
+  // fractional (sub-block precision), and a fractional visit becomes a fractional grid index —
+  // a Set member no integer lookup ever finds. That is how the road router's network seed came
+  // to hold cells no route could reach.
+  const x0 = Math.floor(r.x), y0 = Math.floor(r.y), x1 = Math.ceil(r.x + r.w), y1 = Math.ceil(r.y + r.h);
+  for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) visit(xx, yy);
 }
 
 /** Whether (x,y) is a buildable/open cell in the placement analysis (in-bounds + open mask encodes

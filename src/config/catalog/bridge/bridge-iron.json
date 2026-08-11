@@ -10,6 +10,10 @@
     "id": "Jembatan Besi",
     "fr": "Pont en fer"
   },
+  "aliases": [
+    "metal",
+    "green"
+  ],
   "icon": "bridge-iron",
   "width": 2,
   "height": 1,
@@ -21,6 +25,9 @@
       "type": "waterSpan",
       "min": 3,
       "max": 6
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "model3d": {

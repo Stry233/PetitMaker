@@ -12,6 +12,7 @@ import { geoStyle } from '../style';
 import type { ZonePlan } from '../types';
 import { realizeCrossings, crossingEnds } from './themes';
 import { bySizeDesc } from '../geometry';
+import { makeNetworkVariation, orderTail, VARY, type NetworkVariation } from './network-variation';
 
 /** Everything a road should reach: every placed object except the vegetation. Buildings and
  *  facilities want a door spur, and a road/bridge/ramp is already part of the network it links
@@ -19,11 +20,62 @@ import { bySizeDesc } from '../geometry';
 const wantsRoadSpur = (o: PlacedObject): boolean => !isDecoration(o);
 const pairKey = (p: Portal): string => (p.regionA < p.regionB ? `${p.regionA},${p.regionB}` : `${p.regionB},${p.regionA}`);
 
+/** The trailing option bag `buildNetwork` runs at. Absent ⇒ generation's behaviour, unchanged:
+ *  every field defaults to what the populator has always done. */
+export interface NetworkOptions {
+  /**
+   * What to do with a decoration standing where the road must go.
+   *
+   * `remove` is GENERATION's: the populator plants its themed decor before it knows where a
+   * crossing or a gate strip will be, so a hedge in a doorway is its own mistake to clear up.
+   * `refuse` is every LIVE-MAP gesture's: on a built map that hedge was placed by a hand, and a
+   * press that quietly deletes it is the one thing this design will not do. The cells stay
+   * occupied, the route goes round, and where it cannot the plan reports the plant instead.
+   */
+  clearance?: 'remove' | 'refuse';
+  /** Whether the run tree-lines what it paved. Generation does; a smart press lays roads, bridges
+   *  and ramps, and nothing the user did not ask a road tool for. */
+  treeLining?: boolean;
+  /**
+   * Whether the run spends its scenic-crossing budget: bridges and ramps beyond the ones the
+   * spanning tree needed, at fords and plateaus where nothing stands (`scenicFreeCrossings`).
+   *
+   * Generation does, and they are half of why a generated island reads as explorable. A LIVE-MAP
+   * press does not, for two reasons that are the same reason. A press promises to connect what is
+   * standing, and a crossing nothing needs stands in bare grass with no pavement at either end
+   * (26 of 33 after four presses on one island) — `crossingConnections` can only tie in a crossing
+   * whose banks the network can already reach. And the budget is spent per RUN, so pressing again
+   * spends it again at a fresh anchor for the same region pair: the run always changed something,
+   * and the honest "every building here already meets the network" report could never fire.
+   */
+  scenic?: boolean;
+  /**
+   * Whether a bridge or ramp ALREADY STANDING is somewhere the network may route THROUGH.
+   *
+   * Generation builds every crossing on the map in this same pass and adds each one to `extra` as it
+   * lands, so at setup there is nothing standing to read and the answer cannot matter. A LIVE-MAP
+   * press meets decks a hand built, and a router that reads one as a wall walks round the lake it
+   * spans. `roads.ts` already reads a deck as walkable when it asks whether a house is SERVED, which
+   * left the run answering that question two ways.
+   */
+  standingCrossings?: boolean;
+  /**
+   * A seed the router's own shaping decisions read, so pressing again offers another layout.
+   *
+   * ABSENT IS GENERATION'S, and has to be: the populator runs this same router and its output is
+   * hash-pinned, so a seeded decision taken by default would move every existing generation seed.
+   * Present, `network-variation.ts` supplies a corridor field, a crossing tie-break and two orderings
+   * — see its header for what each one moves and why it cannot move what makes a network good.
+   */
+  variation?: number;
+}
+
 /** The shared mutable plumbing threaded through every road-network phase. The three route-laying
  *  closures (`pavePath`/`linkToNetwork`/`realizePortal`) capture the SAME Set instances stored here, so
  *  phases and closures mutate one shared state — never copies. */
 interface NetCtx {
   ctx: PlaceCtx;
+  opts: NetworkOptions;
   a: PlacementAnalysis;
   W: number;
   H: number;
@@ -37,6 +89,8 @@ interface NetCtx {
   center: MacroCoord;
   maxNodes: number;
   turnPenalty: number;  // A* cost per direction change (geoStyle; 0 = organic winding)
+  vary: NetworkVariation | null;  // seeded shaping decisions; null ⇒ generation's own arithmetic
+  cost: AstarCost | undefined;    // what every astar call in this run pays beyond the step cost
   hub: Node;
   hubObj: PlacedObject | undefined;
   objs: PlacedObject[];
@@ -57,9 +111,13 @@ interface NetCtx {
 
 /** Pools/hub setup + the three shared route-laying closures. Returns null on the early-outs (no road tile,
  *  no hub node, or no reachable network seed) — buildNetwork then returns without doing any work. */
-function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj: Map<number, Portal[]>): NetCtx | null {
+function setupNet(
+  ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj: Map<number, Portal[]>, surfaceId?: string,
+  opts: NetworkOptions = {},
+): NetCtx | null {
   const { width: W, height: H } = a;
-  const roadId = getPlaceableByCategory(ItemCategory.Road)[0]?.id;
+  const roadPool = getPlaceableByCategory(ItemCategory.Road);
+  const roadId = roadPool.find((r) => r.id === surfaceId)?.id ?? roadPool[0]?.id;
   // Bridges/ramps with CHARACTER: the main (spanning-tree) crossings get the grandest bridge (largest
   // footprint — the stone one), scenic crossings draw varied designs from the whole pool by seed.
   const bridgePool = getPlaceableByCategory(ItemCategory.Bridge);
@@ -83,6 +141,8 @@ function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj:
   const maxNodes = Math.max(TUNING.networkMaxNodesFloor, W * H);
   const center = hub.pos;
   const turnPenalty = geoStyle(ctx.naturalness).turnPenalty;
+  const vary = opts.variation === undefined ? null : makeNetworkVariation(opts.variation, road, W);
+  const cost = vary?.cost;
 
   // The hub object (plaza, or whatever sits at the hub point) is the connective CORE: a road need only
   // reach its perimeter to be joined to the rest "through" it (you cross the plaza). Mark its footprint
@@ -108,7 +168,7 @@ function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj:
   const linkToNetwork = (from: MacroCoord | null): boolean => {
     if (!from || !passable(from.x, from.y)) return false;
     if (network.has(idx(from.x, from.y))) return true;
-    const path = astar(from, network, passable, W, H, road, center, maxNodes, turnPenalty);
+    const path = astar(from, network, passable, W, H, road, center, maxNodes, turnPenalty, cost);
     if (!path) return false;
     pavePath(path);
     return true;
@@ -118,13 +178,45 @@ function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj:
   // `extra` so the open approaches (which sit past the eroded shore) can route ACROSS to the network.
   const placedPairs = new Set<string>();
   const crossings: PlacedObject[] = [];
+
+  // A DECK THAT ALREADY STANDS IS A CROSSING THAT ALREADY HAPPENED. Its cells and their apron go
+  // into `extra` so a route may walk it, and its two banks' regions go into `placedPairs` so the
+  // spanning tree treats that pair as linked: without the second half the router reads the two banks
+  // as unjoined regions and builds a SECOND bridge beside the one the user already put there.
+  if (opts.standingCrossings) {
+    const regionBeyond = (from: MacroCoord, dx: number, dy: number): number => {
+      for (let d = 0; d <= TUNING.portalScanReach; d++) {
+        const x = from.x + dx * d, y = from.y + dy * d;
+        if (!inB(x, y)) return -1;
+        const r = a.region[idx(x, y)]!;
+        if (r >= 0) return r;
+      }
+      return -1;
+    };
+    for (const o of objs) {
+      const cat = getCatalogItem(o.catalogId)?.category;
+      if (cat !== ItemCategory.Bridge && cat !== ItemCategory.Ramp) continue;
+      forEachFootprintCell(o, (x, y) => {
+        if (inB(x, y)) extra.add(idx(x, y));
+        for (const [dx, dy] of NEIGHBORS4) if (inB(x + dx, y + dy)) extra.add(idx(x + dx, y + dy)); // apron over the shore ring
+      });
+      const [exitA, exitB] = crossingExitCells(o);
+      const eA = exitA[0], eB = exitB[0];
+      if (!eA || !eB) continue;
+      const dx = Math.sign(eA.x - eB.x), dy = Math.sign(eA.y - eB.y);
+      const rA = regionBeyond(eA, dx, dy), rB = regionBeyond(eB, -dx, -dy);
+      if (rA >= 0 && rB >= 0 && rA !== rB) placedPairs.add(rA < rB ? `${rA},${rB}` : `${rB},${rA}`);
+    }
+  }
   const realizePortal = (p: Portal, scenic = false): boolean => {
     if (placedPairs.has(pairKey(p))) return true;
     const pool = p.kind === 'bridge' ? bridgePool : rampPool;
     const main = p.kind === 'bridge' ? mainBridgeId : mainRampId;
     const id = scenic && pool.length ? pool[stylePick.int(pool.length)]!.id : main;
     if (!id) return false;
-    const candidates = [p, ...(regionAdj.get(p.regionA) ?? []).filter((q) => q !== p && pairKey(q) === pairKey(p))];
+    const sites = [p, ...(regionAdj.get(p.regionA) ?? []).filter((q) => q !== p && pairKey(q) === pairKey(p))];
+    // The first site that PLACES wins, so which one a seed offers first is which crossing gets built.
+    const candidates = vary ? vary.order(sites, VARY.crossingSite) : sites;
     for (const c of candidates) {
       const crossing = tryPlace(ctx, id, c.anchor.x, c.anchor.y)
         ?? (id !== main && main ? tryPlace(ctx, main, c.anchor.x, c.anchor.y) : null); // styled pick may not fit — fall back
@@ -137,8 +229,11 @@ function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj:
       for (const e of crossingEnds(crossing)) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (inB(e.x + dx, e.y + dy)) ends3.add(idx(e.x + dx, e.y + dy)); }
       for (const i of ends3) ctx.clearance.add(i); // 3×3 entrance clearance
       // Open the approaches NOW: themed decor placed before this crossing existed would block the
-      // road routing below (occupied cells aren't passable) — sweep it and free its cells.
-      for (const o of sweepClearanceCells(ctx, ends3)) forEachFootprintCell(o, (x, y) => { if (inB(x, y)) occupied.delete(idx(x, y)); });
+      // road routing below (occupied cells aren't passable) — sweep it and free its cells. A
+      // `refuse` policy leaves a hand-placed one standing; the cells stay reserved regardless.
+      if (opts.clearance !== 'refuse') {
+        for (const o of sweepClearanceCells(ctx, ends3)) forEachFootprintCell(o, (x, y) => { if (inB(x, y)) occupied.delete(idx(x, y)); });
+      }
       placedPairs.add(pairKey(c));
       crossings.push(crossing);
       linkToNetwork(c.approachA); linkToNetwork(c.approachB);
@@ -148,8 +243,8 @@ function setupNet(ctx: PlaceCtx, a: PlacementAnalysis, nodes: Node[], regionAdj:
   };
 
   return {
-    ctx, a, W, H, roadId, bridgePool, rampPool, mainBridgeId, mainRampId, stylePick, regionAdj,
-    center, maxNodes, turnPenalty, hub, hubObj, objs, occupied, road, extra, network, placedPairs,
+    ctx, opts, a, W, H, roadId, bridgePool, rampPool, mainBridgeId, mainRampId, stylePick, regionAdj,
+    center, maxNodes, turnPenalty, vary, cost, hub, hubObj, objs, occupied, road, extra, network, placedPairs,
     realizedPlanned: 0, crossings, idx, inB, passable, pavePath, linkToNetwork, realizePortal,
   };
 }
@@ -180,16 +275,22 @@ function realizePlannedCrossings(net: NetCtx, zonePlan?: ZonePlan): void {
 /** Prim-like spanning over the (non-hub, non-edge) nodes: attach the cheapest reachable node each round,
  *  realizing the portal path to it, then connecting its cluster with roads. */
 function primSpanningTree(net: NetCtx, nodes: Node[]): void {
-  const { a, W, H, occupied, regionAdj } = net;
+  const { a, W, H, occupied, regionAdj, vary } = net;
   const connected = new Set<number>([net.hub.region]);
-  const remaining = new Set(nodes.filter((n) => n.kind !== 'hub' && n.kind !== 'edge'));
+  // THE ORDER IS THE TRUNK. The first node in a connected region is attached before any other, so
+  // this list decides what the network grows out of and which streets become the spines it hangs on.
+  const joinable = nodes.filter((n) => n.kind !== 'hub' && n.kind !== 'edge');
+  const remaining = new Set(vary ? vary.order(joinable, VARY.joinOrder) : joinable);
+  // The chain is CHOSEN by one weight, so it is compared by the same one — mixing the two would rank
+  // a chain the Dijkstra never offered above the one it did.
+  const weigh = vary?.weight ?? ((p: Portal) => p.cost);
   let guard = remaining.size + 1;
   while (remaining.size && guard-- > 0) {
     let pick: Node | null = null, pickPath: Portal[] = [], pickCost = Infinity;
     for (const n of remaining) {
       if (connected.has(n.region)) { pick = n; pickPath = []; break; } // same region → free, do first
-      const path = routeRegionsMulti(connected, n.region, regionAdj);
-      if (path) { const cost = path.reduce((s, p) => s + p.cost, 0); if (cost < pickCost) { pick = n; pickPath = path; pickCost = cost; } }
+      const path = routeRegionsMulti(connected, n.region, regionAdj, vary?.weight);
+      if (path) { const cost = path.reduce((s, p) => s + weigh(p), 0); if (cost < pickCost) { pick = n; pickPath = path; pickCost = cost; } }
     }
     if (!pick) break; // remaining nodes are in regions with no portal path → leave them placed but unlinked
     remaining.delete(pick);
@@ -230,17 +331,24 @@ function doorSpurs(net: NetCtx): void {
       const { approach, clear } = buildingGate(r, b.rotation);
       const strip = new Set<number>();
       for (const c of clear) if (net.inB(c.x, c.y)) { ctx.clearance.add(net.idx(c.x, c.y)); strip.add(net.idx(c.x, c.y)); }
-      // Open the doorstep: garden-ring decor placed with the house would block the gate spur.
+      // Open the doorstep: garden-ring decor placed with the house would block the gate spur. A
+      // `refuse` policy leaves it standing; the strip is still reserved above regardless.
       let freed = false;
-      for (const o of sweepClearanceCells(ctx, strip)) {
-        freed = true;
-        forEachFootprintCell(o, (x, y) => { if (net.inB(x, y)) occupied.delete(net.idx(x, y)); });
+      if (net.opts.clearance !== 'refuse') {
+        for (const o of sweepClearanceCells(ctx, strip)) {
+          freed = true;
+          forEachFootprintCell(o, (x, y) => { if (net.inB(x, y)) occupied.delete(net.idx(x, y)); });
+        }
       }
       if (freed) reach = networkReach(net); // the sweep can open a new connection
       doors = [approach, ...approachCells(r, a, W, H, occupied)];
     } else {
       doors = approachCells(r, a, W, H, occupied);
     }
+    // WHICH SIDE THE STREET ARRIVES ON: the first candidate that reaches the network wins. The head
+    // stays put — the gate approach where a regulation names one, the nearest ring cell where it
+    // does not — and the rest, which are equals ranked only by how the ring was walked, reorder.
+    if (net.vary) doors = orderTail(net.vary, doors, VARY.doorSide);
     for (const door of doors) {
       if (net.inB(door.x, door.y) && !reach[net.idx(door.x, door.y)]) continue; // provably unreachable — skip the A*
       if (net.linkToNetwork(door)) break; // first door that reaches the network wins
@@ -277,7 +385,7 @@ function networkReach(net: NetCtx): Uint8Array {
  *  isolated pocket) is left untouched — "connected when possible". */
 /** The exit cells just outside BOTH short edges of a crossing, full deck width — a 2-wide ramp has
  *  two exit cells per end, and a building may block one while the other stays open. */
-function crossingExitCells(obj: PlacedObject): [MacroCoord[], MacroCoord[]] {
+export function crossingExitCells(obj: PlacedObject): [MacroCoord[], MacroCoord[]] {
   const r = objectRect(obj);
   const horizontal = r.w >= r.h;
   const A: MacroCoord[] = [], B: MacroCoord[] = [];
@@ -302,7 +410,7 @@ function crossingConnections(net: NetCtx): void {
     let linkedB = false; for (const c of edgeB) if (net.linkToNetwork(c)) { linkedB = true; break; }
     if (!linkedA && !linkedB) continue;
     // Bank→bank across the deck: guarantees the through-route is paved on both approaches.
-    const path = astar(eA, new Set([net.idx(eB.x, eB.y)]), passable, W, net.H, road, center, maxNodes, net.turnPenalty);
+    const path = astar(eA, new Set([net.idx(eB.x, eB.y)]), passable, W, net.H, road, center, maxNodes, net.turnPenalty, net.cost);
     if (path) net.pavePath(path);
     // Road tiles directly on the exit cells, then a short driveway RAY continuing outward from each
     // end centre — the flat rule often refuses the tile right at the transition beside a cliff/water
@@ -349,7 +457,7 @@ function hamletLoopClosure(net: NetCtx, nodes: Node[]): void {
         if (net.inB(gx, gy) && network.has(net.idx(gx, gy))) goals.add(net.idx(gx, gy));
       }
       if (!goals.size || goals.has(net.idx(from.x, from.y))) continue;
-      const path = astar(from, goals, passable, W, net.H, road, toW, maxNodes, net.turnPenalty);
+      const path = astar(from, goals, passable, W, net.H, road, toW, maxNodes, net.turnPenalty, net.cost);
       if (!path) continue;
       net.pavePath(path);
     }
@@ -401,24 +509,30 @@ function roadsideTreeLining(net: NetCtx): void {
  *  inter-region hops cross PORTALS (bridges over fords, ramps up tiers) and intra-region links are directed
  *  A* roads. Plus an external road to the edge node, and short spurs from each building to the network.
  *  Rule-valid by construction (every road/bridge/ramp via tryPlace). A thin dispatcher over the phase
- *  functions above — each runs in the exact original order, sharing one mutable NetCtx. */
-export function buildNetwork(ctx: PlaceCtx, a: PlacementAnalysis, settlement: number, nodes: Node[], regionAdj: Map<number, Portal[]>, zonePlan?: ZonePlan): void {
+ *  functions above — each runs in the exact original order, sharing one mutable NetCtx.
+ *  `surfaceId` picks the road tile to pave with; anything outside the road pool falls back to its
+ *  first entry, so a stale id lays the default surface rather than nothing at all. */
+export function buildNetwork(
+  ctx: PlaceCtx, a: PlacementAnalysis, settlement: number, nodes: Node[],
+  regionAdj: Map<number, Portal[]>, zonePlan?: ZonePlan, surfaceId?: string,
+  opts: NetworkOptions = {},
+): void {
   if (settlement <= 0 || !nodes.length) return;
-  const net = setupNet(ctx, a, nodes, regionAdj);
+  const net = setupNet(ctx, a, nodes, regionAdj, surfaceId, opts);
   if (!net) return;
   realizePlannedCrossings(net, zonePlan);
   primSpanningTree(net, nodes);
   edgeAndDoorSpurs(net, nodes);
   plazaRing(net);
   hamletLoopClosure(net, nodes);
-  scenicFreeCrossings(net);
+  if (opts.scenic !== false) scenicFreeCrossings(net);
   crossingConnections(net);
   doorSpurs(net);          // retry: rooms opened by late crossings link their doors now
-  roadsideTreeLining(net);
+  if (opts.treeLining !== false) roadsideTreeLining(net);
 }
 
 /** Nearest walkable (open + unoccupied) cell to `p`, scanning rings out to doorSearchRadius. */
-function nearestWalkable(p: MacroCoord, a: PlacementAnalysis, occupied: Set<number>, W: number, H: number): MacroCoord | null {
+export function nearestWalkable(p: MacroCoord, a: PlacementAnalysis, occupied: Set<number>, W: number, H: number): MacroCoord | null {
   const ok = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && a.open[y * W + x] === 1 && !occupied.has(y * W + x);
   if (ok(p.x, p.y)) return p;
   for (let d = 1; d <= TUNING.doorSearchRadius; d++) {
@@ -431,7 +545,7 @@ function nearestWalkable(p: MacroCoord, a: PlacementAnalysis, occupied: Set<numb
 /** Candidate door cells near a building's footprint that A* can route FROM (walkable + an orthogonal open
  *  neighbour, since A* is 4-connected), nearest ring first; the spur tries each until one reaches the
  *  network, so a building beside a region edge can connect from whichever side actually links. */
-function approachCells(r: { x: number; y: number; w: number; h: number }, a: PlacementAnalysis, W: number, H: number, occupied: Set<number>): MacroCoord[] {
+export function approachCells(r: { x: number; y: number; w: number; h: number }, a: PlacementAnalysis, W: number, H: number, occupied: Set<number>): MacroCoord[] {
   const wlk = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && a.open[y * W + x] === 1 && !occupied.has(y * W + x);
   const hasOrthOpen = (x: number, y: number): boolean => NEIGHBORS4.some(([dx, dy]) => wlk(x + dx, y + dy));
   const x0 = Math.floor(r.x), y0 = Math.floor(r.y), x1 = Math.ceil(r.x + r.w) - 1, y1 = Math.ceil(r.y + r.h) - 1;
@@ -494,6 +608,15 @@ class NodeHeap {
   }
 }
 
+/** A profile's extra costs, layered ON TOP of the road/ground step. Absent ⇒ the classic
+ *  arithmetic, byte for byte: the generation path passes nothing and its seeds cannot move. */
+export interface AstarCost {
+  /** Extra cost for entering `i` from `prev`. Alignment discounts and the scenic bonus ride here. */
+  enter?: (i: number, prev: number) => number;
+  /** Cost for turning at `i`, replacing the flat `turnPenalty` where a profile wants its own. */
+  turn?: (i: number, prev: number) => number;
+}
+
 /** Directed A* (Manhattan-to-hub heuristic, index tie-break → deterministic) from start to ANY goal cell
  *  over `passable`, preferring existing road. `turnPenalty` adds cost per direction change (the
  *  rectilinear style's long straight streets; 0 keeps the classic obstacle-driven winding — the
@@ -521,7 +644,11 @@ function ensureAstarBuffers(cells: number): void {
   bufGen = 0;
 }
 
-function astar(start: MacroCoord, goals: Set<number>, passable: (x: number, y: number) => boolean, W: number, H: number, road: Set<number>, center: MacroCoord, maxNodes: number, turnPenalty: number): MacroCoord[] | null {
+export function astar(
+  start: MacroCoord, goals: Set<number>, passable: (x: number, y: number) => boolean,
+  W: number, H: number, road: Set<number>, center: MacroCoord, maxNodes: number, turnPenalty: number,
+  cost?: AstarCost,
+): MacroCoord[] | null {
   const si = start.y * W + start.x;
   if (goals.has(si)) return [start];
   ensureAstarBuffers(W * H);
@@ -545,8 +672,12 @@ function astar(start: MacroCoord, goals: Set<number>, passable: (x: number, y: n
       if (!passable(nx, ny)) continue;
       const ni = ny * W + nx;
       if (seenBuf[ni] === gen) continue;
-      const turn = turnPenalty > 0 && pi >= 0 && ni - cur !== cur - pi ? turnPenalty : 0;
-      const ng = gcur + (road.has(ni) ? TUNING.roadReuseCost : TUNING.roadCost) + turn;
+      // The gate opens for a profile's own turn cost even at turnPenalty 0, or the 'straight'
+      // profile would silently equal 'short' on every organic-default map. With no `cost` the
+      // arithmetic is exactly the classic one.
+      const turn = (turnPenalty > 0 || cost?.turn) && pi >= 0 && ni - cur !== cur - pi
+        ? (cost?.turn?.(ni, cur) ?? turnPenalty) : 0;
+      const ng = gcur + (road.has(ni) ? TUNING.roadReuseCost : TUNING.roadCost) + turn + (cost?.enter?.(ni, cur) ?? 0);
       const known = markBuf[ni] === gen ? gBuf[ni]! : Infinity;
       if (ng < known) { cameBuf[ni] = cur; gBuf[ni] = ng; markBuf[ni] = gen; open.push(ng + h(ni), ni); }
     }

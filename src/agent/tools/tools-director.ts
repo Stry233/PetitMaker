@@ -5,19 +5,21 @@
  * Wrappers ADAPT arguments to the populator's unzoned (no-ZonePlan) path — the
  * same components the zone pipeline builds on; they never modify populator
  * internals.
+ *
+ * plant_forest and build_road_network are the editor's `patch` and `roads`
+ * macros, so their bodies come from `tools/macros`. The stroke stays here because
+ * authorship differs: a macro run from the shell is the generator's work, one
+ * run from a tool call is the model's, and the export disclosure reads that.
  */
 import { ItemCategory, type GridState, type MacroCoord } from '../../core/model/types';
 import { analyzeTerrain } from '../../tools/generation/placement/analysis';
 import { makeCtx, tryPlace, forEachFootprintCell } from '../../tools/generation/placement/object';
 import { getPlaceableByCategory } from '../../state/catalog';
-import { placeNature } from '../../tools/generation/placement/nature';
-import { buildNetwork } from '../../tools/generation/placement/network';
 import { scanPortals } from '../../tools/generation/placement/portals';
-import type { Node } from '../../tools/generation/placement/settlement';
 import { decorateZone, decorateCrossing } from '../../tools/generation/placement/themes';
 import { makeRng } from '../../core/model/rng';
-import { isDecoration } from '../../state/catalog';
-import { objectRect } from '../../state/object-geometry';
+import { layRoadNetwork, plantPatch } from '../../tools/macros';
+import type { KitContext } from '../../kit/context';
 import type { Zone } from '../../tools/generation/types';
 import { parseSeed, revertedMsg, runStrokeBody } from './tools-common';
 import type { AgentToolDeps } from './tools';
@@ -87,7 +89,7 @@ export async function decorateZoneHandler(
 
   let placed = 0;
 
-  const { reverted, violations } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
     // Restrict analysis to the rect so the open mask only covers our area,
     // exactly mirroring the run_generator region-restricted path.
     const a = analyzeTerrain(state, rectCells);
@@ -135,6 +137,7 @@ export async function decorateZoneHandler(
     placed = state.objects.size - before;
   });
 
+  if (outOfRegion) return outOfRegion;
   if (reverted) {
     return { isError: true, content: revertedMsg('the decoration', violations) };
   }
@@ -148,8 +151,9 @@ export async function decorateZoneHandler(
 }
 
 /**
- * plant_forest: run the populator's layered ecology (stands with glades, biome
- * bands, ecotone drifts) restricted to the given rect. ONE stroke group.
+ * plant_forest: the `patch` macro over the given rect, so the tool and the editor's smart-build
+ * shelf plant from one implementation. ONE stroke group, authored by the model rather than by the
+ * generator — which is why the stroke stays here and only the planting comes from `tools/macros`.
  */
 export async function plantForestHandler(
   deps: AgentToolDeps,
@@ -169,21 +173,13 @@ export async function plantForestHandler(
   const seed = parseSeed(input, DEFAULT_SEED);
 
   const exec = deps.getExecutor();
-  const reg = exec.getRegistry();
+  const kit: KitContext = { state, executor: exec, registry: exec.getRegistry() };
 
-  let placed = 0;
+  const { reverted, violations, result: placed, outOfRegion } = await runStrokeBody(deps, () =>
+    plantPatch(kit, { cells: rectCells, density, seed }),
+  );
 
-  const { reverted, violations } = await runStrokeBody(deps, () => {
-    // Restrict analysis to the rect — the open mask covers only the selected
-    // area, so placeNature's noise walks are bounded to this region.
-    const a = analyzeTerrain(state, rectCells);
-    const ctx = makeCtx(state, (c) => exec.execute(c), reg, seed);
-    const settled = new Set<string>();
-    const before = state.objects.size;
-    placeNature(ctx, a, density, settled);
-    placed = state.objects.size - before;
-  });
-
+  if (outOfRegion) return outOfRegion;
   if (reverted) {
     return { isError: true, content: revertedMsg('the forest', violations) };
   }
@@ -197,21 +193,11 @@ export async function plantForestHandler(
 }
 
 /**
- * build_road_network: connect all existing unlocked buildings via the
- * procedural router (scanPortals + buildNetwork, the UNZONED path).
- *
- * Node derivation: hub = the locked plaza (if present), else the centroid of
- * the largest open region (mirroring placeSettlement's hub logic). Every
- * unlocked House/Facility on the map becomes a hamlet node — this mirrors how
- * placeSettlement registers each placed building as a network node without
- * re-running the settlement stage. No placeSettlement logic is duplicated;
- * Node is a plain struct with {kind, pos, region} that we fill from existing
- * object positions.
- *
- * scanPortals mutation-safety: inside runSilently, each portal candidate is
- * validated with tryPlace then removePlaced (synchronous, paired). The remove
- * call cleanly undoes the dry-run place; net state change is zero before the
- * road/bridge placements that intentionally stick.
+ * build_road_network: the `roads` macro over the user's painted region, or the whole map when
+ * nothing is painted, so the tool and the editor's
+ * smart-build shelf route from one implementation. ONE stroke group, authored by the model rather
+ * than by the generator — which is why the stroke stays here and only the routing comes from
+ * `tools/macros`.
  */
 export async function buildRoadNetworkHandler(
   deps: AgentToolDeps,
@@ -221,73 +207,28 @@ export async function buildRoadNetworkHandler(
   const seed = parseSeed(input, DEFAULT_SEED);
 
   const exec = deps.getExecutor();
-  const reg = exec.getRegistry();
+  const kit: KitContext = { state, executor: exec, registry: exec.getRegistry() };
+  // The router plans over the whole analysis, so a region has to reach it as an input: a network
+  // designed island-wide and then refused for straying would never lay a road at all.
+  const region = deps.getRegion();
 
-  let placed = 0;
+  const { reverted, violations, result: routed, outOfRegion } = await runStrokeBody(deps, () =>
+    layRoadNetwork(kit, { seed, ...(region.length > 0 ? { region } : {}) }),
+  );
 
-  const { reverted, violations } = await runStrokeBody(deps, () => {
-    // Full-map analysis (unzoned path: no rect restriction).
-    const a = analyzeTerrain(state, null);
-    const ctx = makeCtx(state, (c) => exec.execute(c), reg, seed);
-
-    // scanPortals validates ramp portals via tryPlace+removePlaced dry-runs.
-    // All inside runSilently → event bus is quiet, removePlaced is clean.
-    const { regionAdj } = scanPortals(ctx, a);
-
-    const { width: W } = a;
-    const nodes: Node[] = [];
-
-    // Hub: the locked plaza centre, or centroid of the largest open region.
-    const plaza = [...state.objects.values()].find((o) => o.locked);
-    if (plaza) {
-      const r = objectRect(plaza);
-      const hubPos: MacroCoord = {
-        x: Math.round(r.x + r.w / 2),
-        y: Math.round(r.y + r.h / 2),
-      };
-      const hubRegion = a.region[hubPos.y * W + hubPos.x] ?? (a.rankedRegions[0] ?? 0);
-      nodes.push({ kind: 'hub', pos: hubPos, region: hubRegion });
-    } else if (a.rankedRegions.length > 0) {
-      const cells = a.regionCells[a.rankedRegions[0]!]!;
-      let sx = 0, sy = 0;
-      for (const i of cells) { sx += i % W; sy += (i / W) | 0; }
-      const hubPos: MacroCoord = {
-        x: Math.round(sx / cells.length),
-        y: Math.round(sy / cells.length),
-      };
-      const hubRegion = a.region[hubPos.y * W + hubPos.x] ?? a.rankedRegions[0]!;
-      nodes.push({ kind: 'hub', pos: hubPos, region: hubRegion });
-    }
-
-    // Hamlet nodes from the existing unlocked structures (anything but decoration, roads and
-    // crossings included — they are settlement, and the network routes through them).
-    for (const obj of state.objects.values()) {
-      if (obj.locked || isDecoration(obj)) continue;
-      const r = objectRect(obj);
-      const pos: MacroCoord = {
-        x: Math.round(r.x + r.w / 2),
-        y: Math.round(r.y + r.h / 2),
-      };
-      const region = a.region[pos.y * W + pos.x] ?? -1;
-      if (region < 0) continue;
-      nodes.push({ kind: 'hamlet', pos, region });
-    }
-
-    if (nodes.length === 0) return;
-
-    const before = state.objects.size;
-    buildNetwork(ctx, a, 0.5, nodes, regionAdj);
-    placed = state.objects.size - before;
-  });
-
+  if (outOfRegion) return outOfRegion;
   if (reverted) {
     return { isError: true, content: revertedMsg('the road network', violations) };
   }
+  if (routed.reason) return { isError: true, content: `No road network was laid: ${routed.reason}.` };
 
   const buildingCount = [...state.objects.values()].filter((o) => !o.locked).length;
+  const narrowNote = routed.narrowedByPlanting
+    ? ` The corridor stayed narrow at ${routed.narrowedByPlanting} cell(s) where a hand-placed tree or flower stood its ground.`
+    : '';
   return {
     isError: false,
-    content: `Road network placed ${placed} object(s) (roads + any bridges/ramps) connecting ${buildingCount} buildings. Rule-rejected placement spots were skipped.`,
+    content: `Road network placed ${routed.laid} object(s) (roads + any bridges/ramps) connecting ${buildingCount} buildings. Rule-rejected placement spots were skipped.${narrowNote}`,
   };
 }
 
@@ -313,10 +254,14 @@ export async function frameCrossingHandler(
   const exec = deps.getExecutor();
   const reg = exec.getRegistry();
 
+  // Same reason as build_road_network: the portal scan reaches every seam on the map unless the
+  // placeable mask confines it, and a crossing framed outside the user's region is refused anyway.
+  const region = deps.getRegion();
+
   let resultMsg = '';
 
-  const { reverted, violations } = await runStrokeBody(deps, () => {
-    const a = analyzeTerrain(state, null);
+  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+    const a = analyzeTerrain(state, region.length > 0 ? region : null);
     const ctx = makeCtx(state, (c) => exec.execute(c), reg, seed);
 
     // scanPortals validates each candidate (tryPlace + removePlaced dry-run)
@@ -363,6 +308,7 @@ export async function frameCrossingHandler(
     resultMsg = `Placed ${nearest.kind} at (${nearest.anchor.x},${nearest.anchor.y}) connecting regions ${nearest.regionA} and ${nearest.regionB}, with mirrored flora scene.`;
   });
 
+  if (outOfRegion) return outOfRegion;
   if (reverted) {
     return { isError: true, content: revertedMsg('the crossing', violations) };
   }

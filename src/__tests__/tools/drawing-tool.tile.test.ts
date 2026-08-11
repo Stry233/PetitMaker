@@ -1,19 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { type EditorEvents, type MacroCoord } from '../../core/model/types';
-import { useEditorStore } from '../../state/store';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from './_tool-ctx';
+import { roadLookup } from '../../state/object-index';
 
-const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 
 describe('DrawingTool: tile surface', () => {
-  beforeEach(() => useEditorStore.getState().setTileMaterial('dirt'));
-
   it('brush places a single tile (size 1)', () => {
     const state = makeState(10, 10);
     const tool = new DrawingTool();

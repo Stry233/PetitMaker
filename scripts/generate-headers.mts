@@ -1,7 +1,7 @@
 // Headers-policy generator CLI: renders security/headers-policy.ts into every
 // derived surface — public/_headers, vercel.json, docs/internal/deployment/esa-headers.md
 // — and rewrites index.html's CSP <meta> line (+ its explanation comment) in
-// place. See docs/internal/superpowers/specs/2026-07-14-legal-docs-design.md §13.
+// place.
 //
 // This file is CLI-ONLY (side-effecting: reads/writes real files, may set
 // process.exitCode) and unconditionally runs `main()` at the bottom — it is

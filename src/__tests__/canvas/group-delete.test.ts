@@ -15,10 +15,11 @@ import { registerCatalogItem } from '../../state/catalog';
 import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
-import { deleteGroup, reportDeleteGroup } from '../../ui/chrome/group-actions';
+import { deleteGroup } from '../../tools/objects/group-actions';
+import { reportDeleteGroup } from '../../kit/group-edit';
 import { useEditorStore } from '../../state/store';
-import { COMMAND_BY_ID } from '../../ui/keybindings/commands';
-import { petitWindow } from '../../core/runtime/window-bridge';
+import { COMMAND_BY_ID } from '../../kit/commands';
+import { roadLookup } from '../../state/object-index';
 
 registerCatalogItem({
   id: 'del-hut', category: ItemCategory.Building, name: { en: 'del-hut' },
@@ -30,7 +31,7 @@ interface Spec { id: string; x: number; y: number; locked?: boolean }
 
 function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   const gs = makeState(24, 24);
-  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(gs));
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: 'del-hut', position: { x: s.x, y: s.y },
@@ -101,33 +102,22 @@ describe('deleteGroup', () => {
     expect(deleteGroup(exec, gs, ['ghost'])).toEqual({ deleted: 0, kept: 0, refusal: null });
   });
 
-  describe('the collapse animation (widened from the single-object trigger)', () => {
-    it('plays for every member actually removed, not for a kept (locked) one', () => {
+  describe('the onWillRemove hook (widened from the single-object trigger)', () => {
+    it('fires for every member actually removed, not for a kept (locked) one', () => {
       const { gs, exec } = mapWith([
         { id: 'a', x: 4, y: 4 }, { id: 'b', x: 6, y: 4 }, { id: 'plaza', x: 10, y: 10, locked: true },
       ]);
       const animated: string[] = [];
-      const prev = petitWindow().__petitAnimateRemove;
-      petitWindow().__petitAnimateRemove = (id) => animated.push(id);
-      try {
-        expect(deleteGroup(exec, gs, ['a', 'b', 'plaza'])).toEqual({ deleted: 2, kept: 1, refusal: null });
-        expect(animated.sort()).toEqual(['a', 'b']);
-      } finally {
-        petitWindow().__petitAnimateRemove = prev;
-      }
+      const result = deleteGroup(exec, gs, ['a', 'b', 'plaza'], (obj) => animated.push(obj.id));
+      expect(result).toEqual({ deleted: 2, kept: 1, refusal: null });
+      expect(animated.sort()).toEqual(['a', 'b']);
     });
 
-    it('never plays when nothing is removed (a locked-only selection refuses outright)', () => {
+    it('never fires when nothing is removed (a locked-only selection refuses outright)', () => {
       const { gs, exec } = mapWith([{ id: 'plaza', x: 10, y: 10, locked: true }]);
       const animated: string[] = [];
-      const prev = petitWindow().__petitAnimateRemove;
-      petitWindow().__petitAnimateRemove = (id) => animated.push(id);
-      try {
-        expect(deleteGroup(exec, gs, ['plaza']).deleted).toBe(0);
-        expect(animated).toEqual([]);
-      } finally {
-        petitWindow().__petitAnimateRemove = prev;
-      }
+      expect(deleteGroup(exec, gs, ['plaza'], (obj) => animated.push(obj.id)).deleted).toBe(0);
+      expect(animated).toEqual([]);
     });
   });
 });

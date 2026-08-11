@@ -35,6 +35,7 @@ import {
   type MapTemplate,
   type PlaceObjectCommand,
 } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 // jsdom's built-in localStorage is unreliable under this node version (see
 // src/__tests__/agent/key-storage.test.ts) — back it with a real Map-based stub.
@@ -109,7 +110,7 @@ function buildStateWithObjects(): GridState {
 }
 
 function newExecutor(state: GridState): CommandExecutor {
-  return new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+  return new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
 }
 
 describe('secret exclusion (spec §18.3) — codecs never touch storage', () => {

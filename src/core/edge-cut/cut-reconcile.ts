@@ -4,14 +4,17 @@ import { getCell, cellKey } from '../model/grid-model';
 import { computeLockedCorners } from './trim-lock';
 import { groundConvexCornerInWater } from './terrain-silhouette';
 import { validateCut, isInnerCorner } from './cut-validator';
+import type { RoadLookup } from '../model/road-lookup';
 import {
   CANONICAL_ROAD_STATES, ROTATION_TO_CONN,
-  canonicalToActual, classifyRoadKind, countRoadNeighbors, detectRoadConn, findRoadAt,
+  canonicalToActual, classifyRoadKind, countRoadNeighbors, detectRoadConn,
 } from './road-cut-states';
 
-/** Minimal sink for repair commands — satisfied by CommandExecutor. */
+/** Minimal sink for repair commands plus the paved-cell lookup the road repairs
+ *  need — satisfied by CommandExecutor. */
 export interface CutReconcileTarget {
   execute(cmd: Command): unknown;
+  roadAt: RoadLookup;
 }
 
 const MAX_RECONCILE_PASSES = 16;
@@ -39,7 +42,7 @@ function reconcileTerrainCell(state: GridState, target: CutReconcileTarget, x: n
   const corners = cell.terrain.corners;
   if (!corners || corners.every(c => c === 'square')) return false;
 
-  const locked = computeLockedCorners(state, x, y, 'terrain');
+  const locked = computeLockedCorners(state, target.roadAt, x, y, 'terrain');
   const next = [...corners] as Corners;
   let changed = false;
   for (let i = 0; i < 4; i++) {
@@ -86,9 +89,9 @@ interface RoadReplacement {
 
 /** Find a same-kind canonical state whose actual form is valid in the current context. */
 function findSameKindRoadState(
-  state: GridState, road: PlacedObject, conn: string, kind: 'round' | 'direct',
+  state: GridState, roads: RoadLookup, road: PlacedObject, conn: string, kind: 'round' | 'direct',
 ): RoadReplacement | null {
-  const isolated = countRoadNeighbors(state, road) === 0;
+  const isolated = countRoadNeighbors(roads, road) === 0;
   const { x, y } = road.position;
   for (let i = 1; i < CANONICAL_ROAD_STATES.length; i++) {
     const canonical = CANONICAL_ROAD_STATES[i]!;
@@ -96,11 +99,11 @@ function findSameKindRoadState(
     if (isolated) {
       for (const rot of [0, 90, 180, 270] as const) {
         const actual = canonicalToActual(canonical, ROTATION_TO_CONN[rot]!);
-        if (validateCut(state, x, y, 'road', actual)) return { corners: [...canonical], rotation: rot };
+        if (validateCut(state, roads, x, y, 'road', actual)) return { corners: [...canonical], rotation: rot };
       }
     } else {
       const actual = canonicalToActual(canonical, conn);
-      if (validateCut(state, x, y, 'road', actual)) return { corners: [...canonical] };
+      if (validateCut(state, roads, x, y, 'road', actual)) return { corners: [...canonical] };
     }
   }
   return null;
@@ -108,15 +111,16 @@ function findSameKindRoadState(
 
 /** Reconcile a cut road at (x,y): keep same kind if possible (rotated to fit), else raw. */
 function reconcileRoadAt(state: GridState, target: CutReconcileTarget, x: number, y: number): boolean {
-  const road = findRoadAt(state, x, y);
+  const roads = target.roadAt;
+  const road = roads(x, y);
   if (!road?.corners || road.corners.every(c => c === 'square')) return false;
 
-  const conn = detectRoadConn(state, road);
+  const conn = detectRoadConn(roads, road);
   const actual = canonicalToActual(road.corners, conn);
-  if (validateCut(state, x, y, 'road', actual)) return false; // still valid
+  if (validateCut(state, roads, x, y, 'road', actual)) return false; // still valid
 
   const kind = classifyRoadKind(road.corners);
-  const replacement = kind ? findSameKindRoadState(state, road, conn, kind) : null;
+  const replacement = kind ? findSameKindRoadState(state, roads, road, conn, kind) : null;
   if (replacement) {
     // Carry the rotation change on the command (rather than mutating road.rotation
     // directly) so undo/redo can restore it; applyCommand applies afterRotation.
@@ -198,9 +202,7 @@ export function reconcileCuts(changedCells: MacroCoord[], state: GridState, targ
   // The working region grows as repairs propagate: a repair at a cell can invalidate a
   // neighbour just outside the initial 8-neighbourhood (a road change can cascade hop by
   // hop), so when a cell is repaired we fold its neighbourhood into the region for a later
-  // pass. Each pass re-scans the current region; new cells are picked up next pass. Bounded
-  // by MAX_RECONCILE_PASSES — safe because every repair moves an element toward square
-  // (always legal), so the total number of repairs is finite.
+  // pass. Each pass re-scans the current region; new cells are picked up next pass.
   // Key → coord map: the key dedupes, the stored coord spares every pass a
   // string-parse round trip back to numbers.
   const region = new Map<string, MacroCoord>();

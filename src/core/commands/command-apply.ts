@@ -1,5 +1,5 @@
 import { EventBus } from './event-bus';
-import { bumpObjectsVersion, cloneCell, createDefaultTerrainCell, getCell, setCell } from '../model/grid-model';
+import { bumpCellsVersion, bumpObjectsVersion, cloneCell, createDefaultTerrainCell, getCell, setCell } from '../model/grid-model';
 import {
   CommandType,
   TerrainType,
@@ -68,6 +68,7 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
           }
         }
       }
+      if (cmd.cells.length) bumpCellsVersion(state);
       break;
     }
     case CommandType.EraseTerrain: {
@@ -75,6 +76,7 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
         const cell = getCell(state.cells, coord.x, coord.y);
         if (cell) cell.terrain = null;
       }
+      if (cmd.cells.length) bumpCellsVersion(state);
       break;
     }
     case CommandType.PlaceObject: {
@@ -117,6 +119,7 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
           // reads as ground (realSurface null) but renders grass rounded + the water it sits in behind.
           cell.terrain = { type: TerrainType.None, elevation: 0, corners: cmd.afterCorners };
         }
+        if (cell) bumpCellsVersion(state);
         // cells-changed is emitted by execute() after applyCommand returns; no duplicate emit needed here.
       } else if (cmd.layer === 'road' && cmd.objectId) {
         const obj = state.objects.get(cmd.objectId);
@@ -153,6 +156,7 @@ export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));
     coords.push(snap.coord);
   }
+  if (coords.length) bumpCellsVersion(state);
   // Collapsed (grouped) entry: replay the net object ops in reverse. Delete
   // the added set BEFORE restoring the removed set so an in-place modify (same
   // id in both, e.g. rotate) lands on the original instead of being wiped.
@@ -205,6 +209,7 @@ export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBu
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));
     coords.push(snap.coord);
   }
+  if (coords.length) bumpCellsVersion(state);
   // Collapsed (grouped) entry: replay the net object ops forward.
   if (entry.objectOps) {
     for (const o of entry.objectOps.removed) state.objects.delete(o.id);

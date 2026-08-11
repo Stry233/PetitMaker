@@ -11,6 +11,7 @@ import type { Node } from '../../../../tools/generation/placement/settlement';
 import { getCatalogByCategory } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 import { ItemCategory, TerrainType, type EditorEvents, type MacroCoord } from '../../../../core/model/types';
+import { roadLookup } from '../../../../state/object-index';
 
 const W = 80, H = 80;
 const idOf = (cat: ItemCategory) => new Set(getCatalogByCategory(cat).map((i) => i.id));
@@ -33,7 +34,7 @@ function build() {
 describe('buildNetwork (region-portal router)', () => {
   it('connects hub + plateau hamlet + across-ford hamlet with a ramp + a bridge; rule-clean', () => {
     const state = build();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), 7);
     const a = analyzeTerrain(state);
     const hub: MacroCoord = { x: 28, y: 40 }, plat: MacroCoord = { x: 13, y: 23 }, far: MacroCoord = { x: 60, y: 40 };

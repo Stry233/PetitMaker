@@ -22,13 +22,13 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { makeRng } from '../../../core/model/rng';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, modalTitle, radii, buttonMotion, primaryButton } from '../../styles';
-import { Wavy } from '../../menu/Wavy';
-import { ModalShell } from '../ModalShell';
+import { colors, font, modalTitle, radii, buttonMotion, primaryButton } from '../../design/styles';
+import { Wavy } from '../../primitives/Wavy';
+import { ModalShell } from '../../primitives/ModalShell';
 
 const CARD_W = 360;
 
-/** The menu tiles' own colours, so the pieces read as bits of the app rather than party stock. The
+/** The app's own tile colours, so the pieces read as bits of it rather than party stock. The
  *  card's own cream and plain white are deliberately not in the set: a piece the colour of what it
  *  falls on is not a piece. */
 const PIECE_COLORS = [

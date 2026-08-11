@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderHook, render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
-import { useMotionEnabled } from '../../ui/useMotionEnabled';
+import { useMotionEnabled } from '../../ui/hooks/useMotionEnabled';
 import { useEditorStore } from '../../state/store';
 import { isMotionReduced, __resetMotionState } from '../../canvas/map2d/motion-state';
 import { I18nProvider } from '../../i18n/context';
@@ -73,7 +73,7 @@ describe('useMotionEnabled publishes the effective preference', () => {
 });
 
 describe('the CSS gate agrees with the attribute the hook writes', () => {
-  const css = readFileSync('src/ui/animations.css', 'utf8');
+  const css = readFileSync('src/ui/design/animations.css', 'utf8');
 
   it('keys its reduced rules off data-reduced-motion, not only the media query', () => {
     expect(css).toContain("[data-reduced-motion='1']");
@@ -88,7 +88,7 @@ describe('the CSS gate agrees with the attribute the hook writes', () => {
 
   it('exempts the busy indicator so a spinner never freezes', () => {
     expect(css).toContain(':not(.pw-busy)');
-    expect(readFileSync('src/ui/Spinner.tsx', 'utf8')).toContain('pw-busy');
+    expect(readFileSync('src/ui/primitives/Spinner.tsx', 'utf8')).toContain('pw-busy');
   });
 });
 

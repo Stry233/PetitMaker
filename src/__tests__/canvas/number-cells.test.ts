@@ -16,6 +16,12 @@ registerCatalogItem({
   traits: [],
 });
 
+registerCatalogItem({
+  id: 'num-half-pier', category: ItemCategory.Facility, name: { en: 'Number Half Pier' },
+  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  traits: [{ type: 'halfStep' }],
+});
+
 const find = (cells: { x: number; y: number; label: string }[], x: number, y: number) =>
   cells.find((c) => c.x === x && c.y === y);
 
@@ -50,6 +56,25 @@ describe('chunkNumberCells', () => {
     const cells = chunkNumberCells(state, 0, 0, new Set([3]));
     expect(find(cells, 2, 2)).toBeUndefined(); // its layer is hidden
     expect(find(cells, 6, 6)).toBeUndefined(); // island-cut cell carries no number
+  });
+
+  it('masks the covered cells under a half-anchored footprint (halfStep), not a fractional key', () => {
+    // A 2-wide deck at x = 7.5 covers macro cells 7, 8, 9 (floor/ceil expansion) — one MORE cell
+    // than an integer anchor of the same width, since a half origin lands exactly on the cells it
+    // covers with no dual-grid bleed to absorb. `position.x + dx` (getFootprint) would instead
+    // mask "7.5,5"/"8.5,5", which chunkNumberCells's integer-keyed lookups never ask for.
+    const state = makeState(20, 20);
+    const pier: PlacedObject = {
+      id: 'p', catalogId: 'num-half-pier', position: { x: 7.5, y: 5 },
+      rotation: 0, elevation: 0,
+    };
+    state.objects.set(pier.id, pier);
+    const cells = chunkNumberCells(state, 0, 0, new Set());
+    expect(find(cells, 7, 5)).toBeUndefined();
+    expect(find(cells, 8, 5)).toBeUndefined();
+    expect(find(cells, 9, 5)).toBeUndefined();
+    expect(find(cells, 6, 5)?.label).toBe('0'); // one short of the footprint labels again
+    expect(find(cells, 10, 5)?.label).toBe('0'); // one past it too
   });
 
   it('an edge chunk clips to the map', () => {

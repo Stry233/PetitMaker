@@ -11,7 +11,7 @@
  */
 import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
-import { colors, font, radii } from '../styles';
+import { colors, font, radii } from '../design/styles';
 
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;

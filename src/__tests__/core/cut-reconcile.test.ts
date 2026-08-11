@@ -6,9 +6,10 @@ import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type Command, type Corners, type EditorEvents } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { type PlacedObject } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 function exec(state: any): CommandExecutor {
-  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 }
 function setCorners(state: any, x: number, y: number, corners: Corners): void {
   state.cells[y][x].terrain.corners = corners;

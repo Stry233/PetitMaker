@@ -2,12 +2,13 @@ import * as PIXI from 'pixi.js-legacy';
 import { maxRenderScale } from '../../../core/runtime/device-quality';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { drawRoadShape } from '../draw/trim-shapes';
-import type { PlacedObject, CatalogItem } from '../../../core/model/types';
+import type { GridState, PlacedObject, CatalogItem } from '../../../core/model/types';
 import { ItemCategory } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import { hasTrait } from '../../../core/model/traits';
 import { detectRoadConn } from '../../../core/edge-cut/road-cut-states';
-import { getPlacedObjectSize } from '../../../state/object-geometry';
+import { roadLookup } from '../../../state/object-index';
+import { objectElevation, getPlacedObjectSize } from '../../../state/object-geometry';
 import { hexStringToNumber } from '../../../core/model/colors';
 import { useEditorStore } from '../../../state/store';
 import { iconUrl } from '../../../assets/icon-urls';
@@ -42,13 +43,45 @@ function spriteTurns(item: CatalogItem | undefined): boolean {
   return !!item && (item.rotatable || hasTrait(item, 'waterSpan'));
 }
 
+/**
+ * The sprite an object draws with, or nothing where it draws as a shape.
+ *
+ * A self-described object (the plaza) names its own; a ramp wears its item's icon as a badge on the
+ * drawn wedge; everything else wears it as the object itself, unless the item is colour-only (a
+ * road), which is drawn rather than pictured. Exported because a caller that must have the art
+ * DECODED before it draws — a capture of a map nobody is looking at, which cannot wait for a
+ * texture to arrive and re-draw — has to ask the same question this layer answers.
+ */
+export function objectSpriteUrl(obj: PlacedObject, item: CatalogItem | undefined): string | undefined {
+  const name = obj.icon ?? (isRampItem(item) || !item?.color ? item?.icon : undefined);
+  return name ? iconUrl(name) : undefined;
+}
+
+/**
+ * Everything about an object that its drawing depends on, as one comparable string.
+ *
+ * The fields are exactly those `addObjects` reads: change this when that does, or `sync` stops
+ * noticing an edit it should redraw. `patchOnly` is in because it decides whether a road is drawn as
+ * a trimmed shape at all, and `corners` because it decides which way.
+ */
+function drawnAs(o: PlacedObject): string {
+  return [
+    o.catalogId, o.position.x, o.position.y, o.rotation, o.elevation,
+    o.icon ?? '', o.color ?? '', o.patchOnly ? 1 : 0, o.corners?.join('') ?? '',
+  ].join('|');
+}
+
 export class ObjectLayer {
   public readonly container: PIXI.Container;
   private objectMap: Map<string, PIXI.Container> = new Map();
-  /** Icon sprites tracked for zoom-driven LOD swaps: near-1:1 texture sampling
-   *  is what keeps icons panel-crisp; a fixed LOD always minifies through
-   *  trilinear mip-blends at rest zoom (uniformly soft on hi-res displays). */
-  private lodSprites: Array<{ sprite: PIXI.Sprite; url: string; footprintPx: number }> = [];
+  /** What each drawn object looked like when its sprite was built, by id — see `drawnAs`. `sync`
+   *  compares against it, which is the only way that pass can notice an object EDITED IN PLACE. */
+  private drawnFrom: Map<string, string> = new Map();
+  /** Icon sprites tracked for zoom-driven LOD swaps, keyed by object id: near-1:1 texture
+   *  sampling is what keeps icons panel-crisp; a fixed LOD always minifies through trilinear
+   *  mip-blends at rest zoom (uniformly soft on hi-res displays). Keyed (not a flat array) so
+   *  removeObjects drops an id in O(1) instead of filtering every tracked sprite on the map. */
+  private lodSprites: Map<string, { sprite: PIXI.Sprite; url: string; footprintPx: number }> = new Map();
   private hiddenLayers = new Set<number>();
   private showNumbers = false;
   // Elevation labels also honour the number-overlay zoom LOD: below MIN_NUMBER_ZOOM they'd be an
@@ -233,17 +266,25 @@ export class ObjectLayer {
     this.lastLodScale = scale;
     this.lastLodVersion = version;
     this.pendingLod = [];
-    for (const e of this.lodSprites) this.settleLod(e, scale);
+    for (const e of this.lodSprites.values()) this.settleLod(e, scale);
   }
 
   /**
-   * Synchronize the layer with the full set of placed objects.
-   * Adds new objects and removes deleted ones.
+   * Reconcile the layer with the full set of placed objects: drop what is gone, add what is new,
+   * and REDRAW what changed under an id it already holds.
+   *
+   * That last case is why this compares `drawnAs` rather than only the id set. A road's corner cut
+   * edits its object IN PLACE — same id, new corners/rotation/patchOnly — so a pass that asks only
+   * "which ids exist" agrees with state and leaves the stale sprite standing. Under the old id-only
+   * test this reconcile was strictly weaker than the per-object events it exists to back up.
    */
-  sync(objects: Map<string, PlacedObject>): void {
-    this.lodSprites = this.lodSprites.filter((e) => !e.sprite.destroyed);
+  sync(objects: Map<string, PlacedObject>, forState?: GridState): void {
+    // Defensive only: every ordinary removal path (removeObjects, below) drops its own id from
+    // this map already. This bulk pass is a backstop for an id that left objectMap some OTHER
+    // way (see animateRemove, which detaches from objectMap immediately but destroys the sprite
+    // later) — sync() runs only at bulk moments (load/undo/generate), never per stroke.
+    for (const [id, e] of this.lodSprites) if (e.sprite.destroyed) this.lodSprites.delete(id);
     requestRender();
-    // Remove objects no longer present
     const toRemove: string[] = [];
     for (const id of this.objectMap.keys()) {
       if (!objects.has(id)) {
@@ -252,26 +293,36 @@ export class ObjectLayer {
     }
     this.removeObjects(toRemove);
 
-    // Add objects not yet rendered
     const toAdd: PlacedObject[] = [];
     for (const [id, obj] of objects) {
-      if (!this.objectMap.has(id)) {
+      // Never drawn, or drawn from something this object no longer is. `addObjects` replaces an id
+      // it already holds, so a redraw needs no removal first.
+      if (!this.objectMap.has(id) || this.drawnFrom.get(id) !== drawnAs(obj)) {
         toAdd.push(obj);
       }
     }
-    this.addObjects(toAdd);
+    this.addObjects(toAdd, forState);
   }
 
   /**
    * Add visual placeholders for the given objects.
    * Each is a colored rounded rectangle with a 3-char label.
    */
-  addObjects(objects: PlacedObject[]): void {
+  /** `forState` is the map these objects belong to, for the questions a placement's drawing asks of
+   *  its surroundings (which way a trimmed road is cut). It defaults to the LIVE map, which is what
+   *  every editing path wants; a capture of some other map must pass its own or the roads on it are
+   *  cut the way the live map's are. */
+  addObjects(objects: PlacedObject[], forState?: GridState): void {
+    const gridState = forState ?? useEditorStore.getState().gridState;
+    const roads = gridState ? roadLookup(gridState) : null;
     for (const obj of objects) {
       if (this.objectMap.has(obj.id)) this.removeObjects([obj.id]); // idempotent: re-adding an id replaces, never orphans the old sprite
       const item = getCatalogItem(obj.catalogId);
       const size = getPlacedObjectSize(obj);
       const ramp = isRampItem(item);
+      // The LIVE surface, not the one the placement recorded: raise the ground under a road and the
+      // stored number is the height the ground used to have (`objectElevation`).
+      const elev = gridState ? objectElevation(gridState, obj) : obj.elevation;
       // Resolved backing color: self-described off-catalog objects (the plaza) carry their own color;
       // catalog objects use item.color. This lets the plaza render through the normal object path.
       const bgColor = obj.color ?? item?.color;
@@ -282,10 +333,7 @@ export class ObjectLayer {
       if (ramp && item) {
         drawRamp(wrapper, obj, item, size, this.labelsVisible());
       } else {
-        // Icon: self-described objects (plaza) carry obj.icon; catalog objects use item.icon unless
-        // they are color-only (roads). spriteUrl drives the sprite path; otherwise a colored box.
-        const iconName = obj.icon ?? (!item?.color ? item?.icon : undefined);
-        const spriteUrl = iconName ? iconUrl(iconName) : undefined;
+        const spriteUrl = objectSpriteUrl(obj, item);
 
         if (spriteUrl) {
           // Non-1x1 footprints keep their background box (so the multi-cell
@@ -322,7 +370,7 @@ export class ObjectLayer {
           const spriteFill = obj.icon ? 1 : SPRITE_FILL;
           fitSpriteToTexture(sprite, tex, footprintFit(fw, fh, spriteFill));
           const lodEntry = { sprite, url: spriteUrl, footprintPx: Math.max(fw, fh) };
-          this.lodSprites.push(lodEntry);
+          this.lodSprites.set(obj.id, lodEntry);
           this.pendingLod.push(lodEntry); // starts on the oversized default — next updateLod settles it (O(new))
           wrapper.addChild(sprite);
         } else {
@@ -332,8 +380,7 @@ export class ObjectLayer {
           if (item?.category === ItemCategory.Road) {
             // Roads always go through drawRoadShape: uncut → square full tile
             // (continuous), cut → the canonical trimmed state.
-            const state = useEditorStore.getState().gridState;
-            const connSide = state ? detectRoadConn(state, obj) : 'left';
+            const connSide = roads ? detectRoadConn(roads, obj) : 'left';
             drawRoadShape(g, obj.corners, connSide, 0, 0, size.w * TILE_SIZE, size.h * TILE_SIZE, fillColor, fillAlpha);
           } else {
             g.beginFill(fillColor, fillAlpha);
@@ -358,9 +405,9 @@ export class ObjectLayer {
 
         // Elevation label: geometry recorded now, the Text built only while numbers are
         // shown (see labelMeta — a Text per object is a rasterized texture each).
-        this.labelMeta.set(obj.id, { text: String(obj.elevation), y: size.h * TILE_SIZE - 3 });
+        this.labelMeta.set(obj.id, { text: String(elev), y: size.h * TILE_SIZE - 3 });
         if (this.labelsVisible()) {
-          wrapper.addChild(this.makeElevLabel(String(obj.elevation), size.h * TILE_SIZE - 3));
+          wrapper.addChild(this.makeElevLabel(String(elev), size.h * TILE_SIZE - 3));
           this.labelBuilt.add(obj.id);
         }
       }
@@ -369,6 +416,7 @@ export class ObjectLayer {
       wrapper.y = obj.position.y * TILE_SIZE;
 
       this.objectMap.set(obj.id, wrapper);
+      this.drawnFrom.set(obj.id, drawnAs(obj));
       // Into its chunk bucket inside the per-elevation container (which carries this layer's
       // visibility/alpha), so layer fades stay one operation AND off-screen chunks cull.
       // Chunks are bucketed by the ANCHOR cell with a CULL_MARGIN_PX overscan for spill —
@@ -376,10 +424,10 @@ export class ObjectLayer {
       // its anchor chunk is culled, so it skips the buckets and never culls (still fades
       // with its elevation container; a map holds at most a handful of such giants).
       if (Math.max(size.w, size.h) * TILE_SIZE > CULL_MARGIN_PX) {
-        this.layerContainerFor(obj.elevation).addChild(wrapper);
+        this.layerContainerFor(elev).addChild(wrapper);
         this.unculledWrappers.add(wrapper);
       } else {
-        this.bucketFor(obj.elevation, wrapper.x, wrapper.y).addChild(wrapper);
+        this.bucketFor(elev, wrapper.x, wrapper.y).addChild(wrapper);
       }
 
       // A deliberately point-placed object plops (squash + dust puff) the
@@ -424,13 +472,13 @@ export class ObjectLayer {
         wrapper.destroy({ children: true });
         this.objectMap.delete(id);
       }
+      this.drawnFrom.delete(id);
       this.labelMeta.delete(id);
       this.labelBuilt.delete(id);
+      // O(1) by key: removal must never cost a walk over every sprite on the map,
+      // since a trim stroke removes and re-adds coatings several times per dab.
+      this.lodSprites.delete(id);
     }
-    // Destroyed sprites must leave the LOD list here too — sync() only runs on bulk
-    // ops, and a long editing session would otherwise sweep an ever-growing tail of
-    // dead entries on every zoom change.
-    this.lodSprites = this.lodSprites.filter((e) => !e.sprite.destroyed);
   }
 
   /**

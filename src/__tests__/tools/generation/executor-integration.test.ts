@@ -9,12 +9,13 @@ import { createDefaultRegistry } from '../../../rules/index';
 import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
 import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 interface Outcome { placedLayers: number; rejects: number; postViol: number; mtn: number; water: number; ground: number; grass: number; waterfalls: number; }
 
 function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Outcome {
   const state = makeState(size, size);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   // No relief override — exercise the DEFAULT (toGenConfig defaults relief to 0.8), i.e. the
   // out-of-box experience. 48² is closer to the real map; smaller grids can flatten a few seeds.
   const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null };

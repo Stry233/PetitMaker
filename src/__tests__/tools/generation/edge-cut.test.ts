@@ -6,11 +6,12 @@ import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
 import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
 import { cutBackingByCorner } from '../../../core/edge-cut/cut-backing';
+import { roadLookup } from '../../../state/object-index';
 
 const SIZE = 80;
 function gen(seed: number) {
   const state = makeState(SIZE, SIZE);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = { algorithm: 'random', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed, region: null, relief: 0.7, settlement: 0, nature: 0 };
   const start = exec.getUndoStackSize();
   exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c)));
@@ -41,7 +42,7 @@ describe('generation edge-cut', () => {
     const isCut = (c?: string) => !!c && c !== 'square' && c !== 'empty';
     for (const seed of [1, 42, 200]) {
       const state = makeState(SIZE, SIZE);
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       const config: GenerateConfig = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed, region: null, relief: 0.6 };
       exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c)));
       exec.commitStrokeGroup(exec.getUndoStackSize());
@@ -74,7 +75,7 @@ describe('generation edge-cut', () => {
     let tier2Cuts = 0;
     for (const seed of [1, 13, 42, 200]) {
       const state = makeState(SIZE, SIZE);
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       const config: GenerateConfig = { algorithm: 'random', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed, region: null, relief: 0.7 };
       exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c)));
       exec.commitStrokeGroup(exec.getUndoStackSize());

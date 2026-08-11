@@ -19,6 +19,9 @@
     {
       "type": "heightDrop",
       "layers": 1
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "icon": "ramp-teak-stair",

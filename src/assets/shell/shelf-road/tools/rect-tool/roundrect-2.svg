@@ -1,0 +1,10 @@
+<!-- Generated art. Do not edit: change the design source and re-run the extractor. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <mask id="cut-roundrect-2" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+    <path d="M 12 2 L 53 2 C 58.52 2 63 6.48 63 12 L 63 53 C 63 58.52 58.52 63 53 63 L 12 63 C 6.48 63 2 58.52 2 53 L 2 12 C 2 6.48 6.48 2 12 2 Z" fill="#FFF"/>
+    <path d="M 16 11 L 49 11 C 51.76 11 54 13.24 54 16 L 54 49 C 54 51.76 51.76 54 49 54 L 16 54 C 13.24 54 11 51.76 11 49 L 11 16 C 11 13.24 13.24 11 16 11 Z" fill="#000"/>
+  </mask>
+  <g id="roundrect-2" mask="url(#cut-roundrect-2)">
+    <path d="M 12 2 L 53 2 C 58.52 2 63 6.48 63 12 L 63 53 C 63 58.52 58.52 63 53 63 L 12 63 C 6.48 63 2 58.52 2 53 L 2 12 C 2 6.48 6.48 2 12 2 Z" fill="#574935"/>
+  </g>
+</svg>

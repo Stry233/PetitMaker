@@ -6,12 +6,13 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { CommandType, TerrainType, type Command } from '../../../core/model/types';
 import { ProvSource } from '../../../core/provenance/types';
+import { roadLookup } from '../../../state/object-index';
 
-// Mirrors the wrapping useGenerateRun will apply: paint inside a procedural source.
+// Mirrors the wrapping `kit/operations/generate.ts` applies: paint inside a procedural source.
 describe('generation provenance', () => {
   it('procedurally-painted terrain is procedural, not AI', () => {
     const s = makeState(8, 8);
-    const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry());
+    const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry(), roadLookup(s));
     const start = e.getUndoStackSize();
     e.withSource({ source: ProvSource.Procedural, procedural: { seed: 42, algorithm: 'random', configHash: 'abc' } }, () => {
       e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command);

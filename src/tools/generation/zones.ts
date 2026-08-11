@@ -11,7 +11,7 @@ import { valueNoise01 } from '../../core/model/noise';
 import { geoStyle, type GeoStyle } from './style';
 import { TUNING } from './tuning';
 import type { Field, ShapingParams, Zone, ZonePlan, ZoneTheme, MacroCoord } from './types';
-import { centroid } from './geometry';
+import { centroid, largestComponent } from './geometry';
 
 export function buildZones(f: Field, p: ShapingParams, seed: number, town: MacroCoord): ZonePlan {
   const W = f.width, H = f.height;
@@ -368,28 +368,6 @@ function carveCrown(zp: ZonePlan, parent: Zone, inset: number, scenic: boolean, 
   zp.adjacency.set(crown.id, new Set([parent.id]));
   zp.adjacency.get(parent.id)!.add(crown.id);
   return crown;
-}
-
-/** Largest 4-connected component of a cell set. */
-function largestComponent(cells: number[], W: number): number[] {
-  const set = new Set(cells);
-  const seen = new Set<number>();
-  let best: number[] = [];
-  for (const s of cells) {
-    if (seen.has(s)) continue;
-    const comp: number[] = [], q = [s];
-    seen.add(s);
-    while (q.length) {
-      const i = q.pop()!;
-      comp.push(i);
-      for (const d of [1, -1, W, -W]) {
-        const n = i + d;
-        if (set.has(n) && !seen.has(n)) { seen.add(n); q.push(n); }
-      }
-    }
-    if (comp.length > best.length) best = comp;
-  }
-  return best;
 }
 
 /** Themes from zone properties: one town (id 0), one peak (highest), waterfront on a border

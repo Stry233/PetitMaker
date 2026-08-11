@@ -3,8 +3,8 @@
 // either file ever drift, this fails before the READMEs lie. There are two of them (the header is
 // localized), and they are exports of the SAME island, so the pair is checked against one map:
 // a composition change around the band must not reach the payload inside it.
-// (Regenerate with `npx vite-node scripts/internal/build-readme-figures.mts share-map`, which
-// drives the app's own Export dialog; the counts below are that island, exactly.)
+// (This artifact is generated from the app's own Export dialog and must be regenerated
+// whenever its source island changes; the counts below are that island, exactly.)
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, existsSync } from 'node:fs';

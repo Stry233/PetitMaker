@@ -211,7 +211,6 @@ export class TerrainLayer {
   }
 
   private drawWaterfallIndicators(state: GridState): void {
-    // Clear previous indicators
     this.waterfallContainer.removeChildren();
 
     const arrowSize = TILE_SIZE / 3;

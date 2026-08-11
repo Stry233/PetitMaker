@@ -10,6 +10,11 @@
     "id": "Jembatan Papan",
     "fr": "Pont en planches"
   },
+  "aliases": [
+    "wood",
+    "wooden",
+    "木桥"
+  ],
   "icon": "bridge-plank",
   "width": 1,
   "height": 1,
@@ -21,6 +26,9 @@
       "type": "waterSpan",
       "min": 3,
       "max": 6
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "model3d": {

@@ -75,8 +75,12 @@ function scanRampPortals(
 
 /** Scan every region boundary for ford/tier-step crossing sites and build the region-adjacency graph.
  *  Deterministic (row-major scan; deduped + spread per region-pair). The two scans are independent
- *  full-grid passes sharing the probe/accept/commit closures below. */
-export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis): { portals: Portal[]; regionAdj: Map<number, Portal[]> } {
+ *  full-grid passes sharing the probe/accept/commit closures below.
+ *  `perPair`: how many candidate sites to keep per region-pair. `TUNING.maxPortalsPerPair` (2) is
+ *  generation's and stays its default; an AIMED route asks for many more, because the cap is taken
+ *  in SCAN order — the first sites found along a seam, which on a long river or cliff are all at one
+ *  end of the island whatever the route was asked to join. */
+export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis, perPair: number = TUNING.maxPortalsPerPair): { portals: Portal[]; regionAdj: Map<number, Portal[]> } {
   const W = a.width, H = a.height, state = ctx.state;
   const portals: Portal[] = [];
 
@@ -111,7 +115,7 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis): { portals: Por
   const accept: Accept = (ra, rb, anchor) => {
     if (ra < 0 || rb < 0 || ra === rb) return false;
     const list = pairAnchors.get(key(ra, rb)) ?? [];
-    if (list.length >= TUNING.maxPortalsPerPair) return false;
+    if (list.length >= perPair) return false;
     return !list.some((p) => Math.abs(p.x - anchor.x) + Math.abs(p.y - anchor.y) <= TUNING.portalMinSeparation);
   };
   const commit: Commit = (p) => {
@@ -140,11 +144,18 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis): { portals: Por
   return { portals, regionAdj };
 }
 
+/** What one hop of the region graph costs. Generation weighs a portal by its KIND alone (`p.cost`,
+ *  the default), which is all the spanning tree ever knew; an aimed route hands in a weight that
+ *  also carries how far the anchor lies off the line between the two points it was asked to join,
+ *  so the cheapest chain is one that goes the right WAY rather than merely over the fewest bridges.
+ *  Must be non-negative — Dijkstra settles a region the moment it is popped. */
+export type PortalWeight = (p: Portal) => number;
+
 /** Deterministic Dijkstra over the region-adjacency graph: the cheapest portal sequence linking `from`
  *  region to `to` region. Returns [] if same region, null if unreachable. Single-source wrapper over
  *  {@link routeRegionsMulti}. */
-export function routeRegions(from: number, to: number, regionAdj: Map<number, Portal[]>): Portal[] | null {
-  return routeRegionsMulti(new Set([from]), to, regionAdj);
+export function routeRegions(from: number, to: number, regionAdj: Map<number, Portal[]>, weight?: PortalWeight): Portal[] | null {
+  return routeRegionsMulti(new Set([from]), to, regionAdj, weight);
 }
 
 /** The set of regions reachable from `start` through the portal graph (BFS). The settlement places its
@@ -161,7 +172,9 @@ export function reachableRegions(start: number, regionAdj: Map<number, Portal[]>
 
 /** Multi-source variant: cheapest portal sequence from ANY region in `sources` to `to`. [] if `to` is
  *  already a source, null if unreachable. (Used by the router to attach a node to the growing network.) */
-export function routeRegionsMulti(sources: Set<number>, to: number, regionAdj: Map<number, Portal[]>): Portal[] | null {
+export function routeRegionsMulti(
+  sources: Set<number>, to: number, regionAdj: Map<number, Portal[]>, weight: PortalWeight = (p) => p.cost,
+): Portal[] | null {
   if (sources.has(to)) return [];
   const dist = new Map<number, number>();
   const prevPortal = new Map<number, Portal>();
@@ -177,7 +190,7 @@ export function routeRegionsMulti(sources: Set<number>, to: number, regionAdj: M
     for (const p of regionAdj.get(cur) ?? []) {
       const nb = p.regionA === cur ? p.regionB : p.regionA;
       if (visited.has(nb)) continue;
-      const nd = best + p.cost;
+      const nd = best + weight(p);
       if (nd < (dist.get(nb) ?? Infinity)) { dist.set(nb, nd); prevPortal.set(nb, p); prevRegion.set(nb, cur); }
     }
   }

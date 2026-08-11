@@ -9,6 +9,7 @@ import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { EdgeCutTool } from '../../tools/edge-cut/edge-cut-tool';
 import { TerrainType, type Command, type EditorEvents, type GridState } from '../../core/model/types';
 import type { ToolContext } from '../../tools/types';
+import { roadLookup } from '../../state/object-index';
 
 function ctxFor(state: GridState, exec: CommandExecutor): ToolContext {
   return {
@@ -28,7 +29,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1); // the hidden layer-1 block in the notch
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // Intersection (5,5) is the shared corner of cells (5,5),(6,5),(5,6),(6,6) — the L's concave corner.
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
@@ -50,7 +51,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
     setTerrain(state, 3, 4, TerrainType.Mountain, 1); // the layer-1 cell (bottom-left)
     setTerrain(state, 4, 4, TerrainType.Mountain, 2);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
 
     tool.onPointerDown({ x: 2, y: 4 }, { x: 2, y: 4 }, ctxFor(state, exec)); // bevel the exposed BL corner
@@ -77,7 +78,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1); // a layer-1 block in an L's concave
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
 
     const surf = (x: number, y: number) => surfaceElevation(getCell(state.cells, x, y)?.terrain);
@@ -101,7 +102,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
     setTerrain(state, 3, 4, TerrainType.Mountain, 1);
     setTerrain(state, 4, 4, TerrainType.Mountain, 2);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     tool.onPointerDown({ x: 2, y: 4 }, { x: 2, y: 4 }, ctxFor(state, exec)); // BL bevel
     tool.onPointerDown({ x: 3, y: 3 }, { x: 3, y: 3 }, ctxFor(state, exec)); // TR gamma (fan)
@@ -124,7 +125,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1); // the layer-1 base the fillet rounds
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     const click = () => tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
@@ -157,7 +158,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
       setTerrain(state, 6, 5, TerrainType.Mountain, N);
       setTerrain(state, 5, 6, TerrainType.Mountain, N);
       // (6,6) deliberately EMPTY
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
       const t = getCell(state.cells, 6, 6)!.terrain;
       if (N > 1) {
@@ -183,12 +184,12 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
     setTerrain(state, 3, 4, TerrainType.Mountain, 1); // the layer-1 cell (bottom-left)
     setTerrain(state, 4, 4, TerrainType.Mountain, 2);
-    const locked = computeLockedCorners(state, 3, 4, 'terrain');
+    const locked = computeLockedCorners(state, roadLookup(state), 3, 4, 'terrain');
     expect(locked[2], 'BL (SW, both edges open ground) is the one convex corner → cuttable').toBe(false);
     expect(locked[0], 'TL toward the taller N neighbour is NOT a corner here → locked').toBe(true);
     expect(locked[3], 'BR toward the taller E neighbour is NOT a corner here → locked').toBe(true);
     // the taller cell DOES round down toward the lower one (the lower step does not reach its layer)
-    expect(computeLockedCorners(state, 4, 4, 'terrain')[2], 'layer-2 (4,4) BL toward the lower (3,4) is cuttable').toBe(false);
+    expect(computeLockedCorners(state, roadLookup(state), 4, 4, 'terrain')[2], 'layer-2 (4,4) BL toward the lower (3,4) is cuttable').toBe(false);
   });
 
   it('a low cell mid-edge has NO cuttable corner toward a taller neighbour; the taller cell beside it does', () => {
@@ -202,15 +203,15 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
                              [2,4,1],[3,4,1],[4,4,2],[5,4,2],[2,5,1],[3,5,1],[4,5,2],[5,5,2]] as const) {
       setTerrain(state, x, y, M, e);
     }
-    expect(computeLockedCorners(state, 3, 5, 'terrain'), '1* (low, mid-edge) has no cuttable corner').toEqual([true, true, true, true]);
-    expect(computeLockedCorners(state, 4, 5, 'terrain')[2], '2* BL (convex toward the lower 1*) cuts').toBe(false);
+    expect(computeLockedCorners(state, roadLookup(state), 3, 5, 'terrain'), '1* (low, mid-edge) has no cuttable corner').toEqual([true, true, true, true]);
+    expect(computeLockedCorners(state, roadLookup(state), 4, 5, 'terrain')[2], '2* BL (convex toward the lower 1*) cuts').toBe(false);
   });
 
   it('a corner toward a SAME-height neighbour stays locked (a flat interior seam is not cuttable)', () => {
     const state = makeState(12, 12);
     setTerrain(state, 3, 3, TerrainType.Mountain, 1);
     setTerrain(state, 4, 3, TerrainType.Mountain, 1); // equal-height east neighbour
-    const locked = computeLockedCorners(state, 3, 3, 'terrain');
+    const locked = computeLockedCorners(state, roadLookup(state), 3, 3, 'terrain');
     expect(locked[1], 'TR toward the equal E neighbour stays locked').toBe(true);
     expect(locked[3], 'BR toward the equal E neighbour stays locked').toBe(true);
     expect(locked[0], 'TL toward open ground stays cuttable').toBe(false);
@@ -225,7 +226,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 1, 1, W, 0); setTerrain(state, 2, 1, W, 0); setTerrain(state, 3, 1, M, 1); setTerrain(state, 4, 1, M, 1);
     setTerrain(state, 1, 2, W, 0); setTerrain(state, 2, 2, W, 0); setTerrain(state, 3, 2, M, 1); setTerrain(state, 4, 2, M, 1);
     setTerrain(state, 1, 3, M, 1); setTerrain(state, 2, 3, M, 1); setTerrain(state, 1, 4, M, 1); setTerrain(state, 2, 4, M, 1);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     const digit = (c?: string) => (c === 'fan' ? 1 : c === 'tri-NW' ? 2 : 0); // OUTER_TRI[3] === INNER_TRI[0] === 'tri-NW'
     const outer = () => digit(getCell(state.cells, 2, 2)!.terrain?.corners?.[3]); // w(2,2).BR
@@ -245,7 +246,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     setTerrain(state, 5, 6, TerrainType.Mountain, 1);
     // (6,6) EMPTY — no real base anywhere
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     const click = () => tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
     click(); // empty → fan patch (patchBase 0)
@@ -263,7 +264,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     setTerrain(state, 5, 6, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Water, 0); // the water tucked into the mountain notch
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
     const t = getCell(state.cells, 6, 6)!.terrain!;
@@ -279,7 +280,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // clicking macro (5,5) takes the island cell (5,5) at its BR corner (the corner poking SE into water)
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
@@ -296,7 +297,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec)); // BR: square→fan
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec)); // fan→tri
@@ -309,7 +310,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     // two mountain blocks meeting only at a diagonal point (a pinch); both pinch corners are cuttable
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const tool = new EdgeCutTool();
     // clicking macro cell (5,5) processes (5,5).BR [1*] and (6,6).TL [2*] together
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
@@ -329,7 +330,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
       const s = makeState(12, 12);
       setTerrain(s, 5, 5, t1, t1 === TerrainType.Water ? 0 : 1); // ground-level lake / a low hill
       setTerrain(s, 6, 6, t2, t2 === TerrainType.Water ? 0 : 1);
-      new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(s, new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry())));
+      new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(s, new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s))));
       expect(getCell(s.cells, 5, 5)!.terrain!.corners?.[3], `${t1}+${t2}: 1* rounds`).toBe('fan');
       expect(getCell(s.cells, 6, 6)!.terrain?.corners?.[0] ?? 'square', `${t1}+${t2}: 2* independent`).toBe('square');
     }
@@ -341,7 +342,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0); // a lake around it
     }
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
     const t = getCell(state.cells, 5, 5)!.terrain!;
     expect(t.type, 'still a mountain rock (not flooded)').toBe(TerrainType.Mountain);
@@ -355,7 +356,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
     expect(getCell(state.cells, 6, 6)!.terrain?.patchOnly, 'gamma applied').toBe(true);
@@ -364,5 +365,21 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     const t = getCell(state.cells, 6, 6)!.terrain;
     expect(t?.elevation, 'one undo restores the original tier-1 block').toBe(1);
     expect(t?.patchOnly ?? false).toBe(false);
+  });
+});
+
+describe('EdgeCutTool — leaving the tool', () => {
+  it('takes its hover ghost with it, the way the brushes and the placer do', () => {
+    // The tool paints a green/red cell under the pointer on every move. Leaving trim for another
+    // mode is a mode switch, not a pointer event, so nothing else comes along to overdraw it.
+    const state = makeState(20, 20);
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const ctx = ctxFor(state, exec);
+    let cleared = 0;
+    (ctx as { overlay: { clearGhost: () => void } }).overlay = { clearGhost: () => { cleared++; } };
+
+    new EdgeCutTool().onDeactivate(ctx);
+
+    expect(cleared).toBe(1);
   });
 });

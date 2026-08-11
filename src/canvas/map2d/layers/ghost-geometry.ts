@@ -6,6 +6,9 @@
  * collapses a filled W×H shape to ~H rects, and the outline derives from
  * numeric row sets instead of string keys.
  */
+import type { Corners } from '../../../core/model/types';
+import type { RoadConnSide } from '../../../core/edge-cut/road-cut-states';
+import { roadShapePoints } from '../../../core/edge-cut/road-shape';
 import type { ErrorFlashCell } from './error-flash';
 
 /** A horizontal run of cells: covers [x, x+w) × [y, y+1). */
@@ -278,6 +281,65 @@ export function trimmedOutline(
       const p = { x: c.x + Math.cos(ang) * H, y: c.y + Math.sin(ang) * H };
       out.push({ ax: prev.x, ay: prev.y, bx: p.x, by: p.y });
       prev = p;
+    }
+  }
+  return out;
+}
+
+/** One road tile of a ghost whose shape auto-trim will cut, in the frame it is DRAWN in: canonical
+ *  corners plus the side it connects on (see `core/edge-cut/road-shape`). */
+export interface RoadTrimmedGhostCell { x: number; y: number; corners: Corners; road: RoadConnSide }
+
+const ON_EDGE = 1e-9;
+
+/**
+ * The outline of a ROAD ghost some of whose tiles auto-trim will cut.
+ *
+ * Roads are not quadrant geometry — a cut road's corner tokens are canonical-state markers, and its
+ * silhouette is the polygon `drawRoadShape` fills. So this walks polygons rather than quadrants,
+ * and the only thing it has to know is which of their edges are seams rather than silhouette.
+ *
+ * That question has one answer for every state: a cut road ALWAYS keeps its connected edges whole
+ * (`validateCut` refuses any state that does not), so a polygon edge lying on a full cell side with
+ * a paved neighbour across it is interior, and everything else is outline. The square tiles are the
+ * ordinary case — an edge whose neighbour is outside the ghost — with a trimmed neighbour counting
+ * as inside for exactly the same reason.
+ */
+export function roadTrimmedOutline(
+  cells: readonly { x: number; y: number }[],
+  trims: readonly RoadTrimmedGhostCell[],
+  inShape: (x: number, y: number) => boolean = () => false,
+): EdgeSegment[] {
+  const trimAt = new Map(trims.map((t) => [`${t.x},${t.y}`, t] as const));
+  const listed = new Set(cells.map((c) => `${c.x},${c.y}`));
+  const filled = (x: number, y: number): boolean =>
+    trimAt.has(`${x},${y}`) || listed.has(`${x},${y}`) || inShape(x, y);
+  const out: EdgeSegment[] = [];
+  /** The four cell sides as [neighbour step, segment]. */
+  const sides = (x: number, y: number): [number, number, EdgeSegment][] => [
+    [0, -1, { ax: x, ay: y, bx: x + 1, by: y }],
+    [0, 1, { ax: x, ay: y + 1, bx: x + 1, by: y + 1 }],
+    [-1, 0, { ax: x, ay: y, bx: x, by: y + 1 }],
+    [1, 0, { ax: x + 1, ay: y, bx: x + 1, by: y + 1 }],
+  ];
+
+  const squareCell = (x: number, y: number): void => {
+    for (const [dx, dy, seg] of sides(x, y)) if (!filled(x + dx, y + dy)) out.push(seg);
+  };
+  for (const c of cells) if (!trimAt.has(`${c.x},${c.y}`)) squareCell(c.x, c.y);
+
+  for (const t of trims) {
+    const pts = roadShapePoints(t.corners, t.road, t.x, t.y, 1, 1);
+    if (!pts) { squareCell(t.x, t.y); continue; }
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, ay] = pts[i]!, [bx, by] = pts[(i + 1) % pts.length]!;
+      // A kept edge is a WHOLE cell side, so this test is exact for every state that has one.
+      const at = (v: number, edge: number) => Math.abs(v - edge) < ON_EDGE;
+      let dx = 0, dy = 0;
+      if (at(ax, bx)) { if (at(ax, t.x)) dx = -1; else if (at(ax, t.x + 1)) dx = 1; }
+      if (at(ay, by)) { if (at(ay, t.y)) dy = -1; else if (at(ay, t.y + 1)) dy = 1; }
+      if ((dx !== 0 || dy !== 0) && filled(t.x + dx, t.y + dy)) continue;
+      out.push({ ax, ay, bx, by });
     }
   }
   return out;

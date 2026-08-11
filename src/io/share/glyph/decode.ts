@@ -8,11 +8,11 @@
 // Every failure path returns null; the whole per-candidate attempt is wrapped in try/catch so a
 // bounds bug can never throw out of the decoder.
 import {
-  GRID_COLS, GRID_ROWS, TOP_ROWS, RS_N, RS_K, HEADER_NSYM, HEADER_BYTES, HEADER_VERSION,
+  GRID_COLS, GRID_ROWS, TOP_ROWS, RS_N, RS_K, HEADER_NSYM, HEADER_BYTES,
   HEADER_OFFSET, HEADER_ENC_BYTES, HEADER_SYMBOL_BITS, HEADER_MODULES, FINDER, CALIB_CELLS,
   TIERS, type Tier, calibrationRect, headerModuleAt, nBlocks,
 } from './geometry';
-import { PALETTE16, PALETTE8_INDICES, HEADER_LEVELS, BG, rgbToYcc, classify, type RGB } from './palette';
+import { PALETTE8_INDICES, HEADER_LEVELS, BG, rgbToYcc, classify, paletteForVersion, type RGB } from './palette';
 import { rsDecode } from './rs';
 import { deinterleave, deinterleaveErasures } from './interleave';
 import { symbolsToBytes, symbolErasuresToByteErasures } from './bitpack';
@@ -79,13 +79,15 @@ function sampleStripLuma(rgba: Uint8Array, width: number, height: number, x0: nu
  *  132-col span geometry. */
 function findFinders(rgba: Uint8Array, width: number, height: number): Geo[] {
   // Threshold is deliberately tighter than "any dark-ish pixel": the darkest DATA/calibration
-  // palette colors (PALETTE16 luma-band-0, sum in [121, 213]) are intentionally dark for contrast
-  // but must NOT flood-fill-merge with a finder square that happens to sit directly adjacent to
-  // one of them (finders and data share a border with no reserved gap row/col on that side) — a
-  // merge corrupts the finder's bounding box, which the shape/size filters below then reject,
-  // making the TRUE finder undetectable for that image. True finder pixels are exactly (0,0,0)
-  // and stay far under this bound even after heavy capture degradation (see robustness.test.ts);
-  // the nearest confusable non-finder darks sit at sum >= 121, well clear of 100.
+  // palette colors (luma-band-0) are intentionally dark for contrast but must NOT flood-fill-merge
+  // with a finder square that happens to sit directly adjacent to one of them (finders and data
+  // share a border with no reserved gap row/col on that side) — a merge corrupts the finder's
+  // bounding box, which the shape/size filters below then reject, making the TRUE finder
+  // undetectable for that image. True finder pixels are exactly (0,0,0) and stay far under this
+  // bound even after heavy capture degradation (see robustness.test.ts). The nearest confusable
+  // non-finder dark is band 0's channel-sum minimum: 121 in the v1 palette, 119 in v2. That margin
+  // is what caps band 0's chroma scale in palette.ts, since the entry pushing both Cb and Cr
+  // negative darkens as that scale rises.
   const dark = (idx: number) => rgba[idx * 4]! + rgba[idx * 4 + 1]! + rgba[idx * 4 + 2]! < 100;
   const seen = new Uint8Array(width * height);
   const comps: Comp[] = [];
@@ -144,21 +146,16 @@ function findFinders(rgba: Uint8Array, width: number, height: number): Geo[] {
   return out;
 }
 
-interface Header { version: number; tier: Tier; payloadLen: number; crc: number }
+interface Header { version: number; palette: readonly RGB[]; tier: Tier; payloadLen: number; crc: number }
 
-/** Attempt a full decode at one fixed-geometry candidate. Returns payload or null. */
+/** Attempt a full decode at one fixed-geometry candidate. Returns payload or null.
+ *
+ *  The header is read FIRST: it is drawn in grayscale against the finder/quiet-zone references, so
+ *  it needs no color calibration, and the version it carries is what says which palette the band
+ *  below it is drawn in. That palette is resolved once here — the per-module classifier below
+ *  never branches on version. */
 function decodeAt(rgba: Uint8Array, width: number, height: number, geo: Geo): Uint8Array | null {
   const { ox, oy, module } = geo;
-
-  // ── Calibration: learn 16 color centroids from the swatch row. ──
-  const centroids: RGB[] = [];
-  for (let i = 0; i < PALETTE16.length; i++) {
-    const { col } = calibrationRect(i);
-    const x = ox + col * module, y = oy;
-    const s = sampleRect(rgba, width, height, x, y, CALIB_CELLS * module, CALIB_CELLS * module);
-    if (!s) return null;
-    centroids.push(s);
-  }
 
   // Grayscale references: black from the TL finder interior, white from the quiet zone above it.
   const black = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
@@ -193,7 +190,20 @@ function decodeAt(rgba: Uint8Array, width: number, height: number, geo: Geo): Ui
   if (!headerData || headerData.length < HEADER_BYTES) return null;
   const header = parseHeader(headerData);
   if (!header) return null;
-  const { tier, payloadLen, crc } = header;
+  const { palette, tier, payloadLen, crc } = header;
+
+  // ── Calibration: learn one centroid per palette entry from the swatch row. ──
+  // The centroids are MEASURED off this image, not read from the version's table, so the data
+  // region is classified against the colors the band actually carries after whatever recompression
+  // it went through. The version fixes how many swatches there are and what each index means.
+  const centroids: RGB[] = [];
+  for (let i = 0; i < palette.length; i++) {
+    const { col } = calibrationRect(i);
+    const x = ox + col * module, y = oy;
+    const s = sampleRect(rgba, width, height, x, y, CALIB_CELLS * module, CALIB_CELLS * module);
+    if (!s) return null;
+    centroids.push(s);
+  }
 
   // ── Data: sample exactly the codeword-backed module count, classify to symbols. ──
   const blocks = nBlocks(tier);
@@ -248,14 +258,15 @@ function decodeAt(rgba: Uint8Array, width: number, height: number, geo: Geo): Ui
 function parseHeader(bytes: Uint8Array): Header | null {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = dv.getUint8(HEADER_OFFSET.version);
-  if (version !== HEADER_VERSION) return null;
+  const palette = paletteForVersion(version);
+  if (!palette) return null;
   const tierId = dv.getUint8(HEADER_OFFSET.tier);
   if (tierId < 0 || tierId >= TIERS.length) return null;
   const tier = TIERS[tierId]!;
   const payloadLen = dv.getUint16(HEADER_OFFSET.payloadLen, true);
   if (payloadLen > tier.payloadCap) return null;
   const crc = dv.getUint32(HEADER_OFFSET.crc, true);
-  return { version, tier, payloadLen, crc };
+  return { version, palette, tier, payloadLen, crc };
 }
 
 /** Decode a PetitGlyph v2 code band from an RGBA image. Returns the payload bytes, or null on any

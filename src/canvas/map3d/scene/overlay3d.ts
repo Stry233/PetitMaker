@@ -6,11 +6,12 @@
  * numbers the 2D overlay uses, so validity tints match across views.
  */
 import * as THREE from 'three';
-import type { GridState, MacroCoord, ValidationError } from '../../../core/model/types';
+import type { Corners, GridState, MacroCoord, ValidationError } from '../../../core/model/types';
 import type { ToolOverlay } from '../../view-projection';
 import type { MacroRect } from '../../interaction/marquee';
-import type { RowSpan } from '../../map2d/layers/ghost-geometry';
-import { cellDecals, DECAL_LIFT } from '../build/overlay-decals';
+import { filletOnly, type RowSpan } from '../../map2d/layers/ghost-geometry';
+import type { TrimmedCell } from '../../../tools/edge-cut/trim-preview';
+import { cellDecals, DECAL_LIFT, type DecalTrim } from '../build/overlay-decals';
 import { surfaceHeightAt } from '../interaction/pick';
 import { mapCenterOffset } from '../core/coords';
 import { resolveErrorFlashCells, errorFlashSignature, shouldFlashErrors, flashDecay, type ErrorFlashGate } from '../../map2d/layers/error-flash';
@@ -24,11 +25,31 @@ import { type PlacedObject } from '../../../core/model/types';
 import type { ArchetypeKey } from '../core/types';
 
 type PendingGhost =
-  | { kind: 'cells'; cells: MacroCoord[]; color: number; terrainGrid: boolean }
-  | { kind: 'spans'; spans: RowSpan[]; color: number; terrainGrid: boolean }
+  | { kind: 'cells'; cells: MacroCoord[]; color: number; terrainGrid: boolean; trim?: readonly TrimmedCell[]; losses?: readonly MacroCoord[] }
+  | { kind: 'spans'; spans: RowSpan[]; color: number; terrainGrid: boolean; trim?: readonly TrimmedCell[] }
   | { kind: 'clear' };
 
+/** A ghost's `losses` wash: the same warning red `ghostMaterial(false)` already uses for an invalid
+ *  placement, so one tint means one thing across the whole overlay. */
+const GHOST_LOSS = 0xe2574c;
+
 interface Flash { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial; bornMs: number; lifeMs: number; peak: number }
+
+/** A ghost body is TWO meshes over one geometry: a depth-only pre-pass and the translucent colour
+ *  pass that tests against it. Without the pre-pass every part of a merged model blends separately,
+ *  so a trunk shows through its canopy and a post through its deck — the silhouette must read as one
+ *  body, not as a stack of parts.
+ *
+ *  RENDER-ORDER INVARIANT for everything in `group`: the ghost body owns 1 and 2, and EVERY other
+ *  object added to the group must stay at 0. A Group's own renderOrder becomes the shared groupOrder
+ *  of its whole subtree, so the children sort purely by their own number — anything given 1 or more
+ *  draws after the pre-pass and is depth-clipped by it wherever the ghost body stands, silently. The
+ *  decals, boxes, flashes, buildable wash and route all sit at 0 for that reason, which is also what
+ *  keeps the pre-pass from punching the footprint wash out from under a wide canopy.
+ *  Pinned by `__tests__/canvas3d/ghost-depth-prepass.test.ts`. */
+interface GhostBody { mesh: THREE.Mesh; depth: THREE.Mesh }
+const GHOST_DEPTH_ORDER = 1;
+const GHOST_COLOR_ORDER = 2;
 
 function makeMat(color: number, opacity: number): THREE.MeshBasicMaterial {
   const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
@@ -48,6 +69,8 @@ export class Overlay3D implements ToolOverlay {
 
   private pendingGhost: PendingGhost | null = null;
   private ghost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
+  /** The `losses` half of the ghost: its own body, its own material, disposed alongside `ghost`. */
+  private lossGhost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   // One box per SELECTED member: a group selection appends into this array.
   private selection: Array<{ mesh: THREE.Mesh; edge: THREE.LineSegments }> = [];
   private hover: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
@@ -67,13 +90,13 @@ export class Overlay3D implements ToolOverlay {
 
   // ── ghost (rAF-coalesced) ──────────────────────────────────────────────────
 
-  showGhost(cells: MacroCoord[], color: number, terrainGrid = true): void {
-    this.pendingGhost = { kind: 'cells', cells, color, terrainGrid };
+  showGhost(cells: MacroCoord[], color: number, terrainGrid = true, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void {
+    this.pendingGhost = { kind: 'cells', cells, color, terrainGrid, trim, losses };
     this.requestRender();
   }
 
-  showGhostSpans(spans: RowSpan[], color: number, terrainGrid = true): void {
-    this.pendingGhost = { kind: 'spans', spans, color, terrainGrid };
+  showGhostSpans(spans: RowSpan[], color: number, terrainGrid = true, trim?: readonly TrimmedCell[]): void {
+    this.pendingGhost = { kind: 'spans', spans, color, terrainGrid, trim };
     this.requestRender();
   }
 
@@ -87,18 +110,16 @@ export class Overlay3D implements ToolOverlay {
   /** The hovered item's actual mesh, translucent + validity-tinted, standing at
    *  the hover cell — the cell decals underneath carry the exact footprint. */
   showPlacementGhost(catalogId: string, x: number, y: number, rotation: number, valid: boolean, elevation: number): void {
-    if (!this.placementGhost) {
-      this.placementGhost = new THREE.Mesh(new THREE.BufferGeometry(), this.ghostMaterial(true));
-      this.group.add(this.placementGhost);
-    }
+    this.placementGhost ??= this.makeGhostBody();
     if (!this.paintGhostMesh(this.placementGhost, catalogId, x, y, rotation, elevation, valid)) {
       this.dropPlacementGhost();
     }
     this.requestRender();
   }
 
-  private placementGhost: THREE.Mesh | null = null;
+  private placementGhost: GhostBody | null = null;
   private ghostMat: { valid?: THREE.MeshBasicMaterial; invalid?: THREE.MeshBasicMaterial } = {};
+  private ghostDepthMat: THREE.MeshBasicMaterial | null = null;
 
   private ghostMaterial(valid: boolean): THREE.MeshBasicMaterial {
     if (!this.ghostMat.valid) {
@@ -108,12 +129,35 @@ export class Overlay3D implements ToolOverlay {
     return valid ? this.ghostMat.valid! : this.ghostMat.invalid!;
   }
 
-  /** Resolve `catalogId`'s body at (x, y, rotation, elevation) onto mesh `m`. Returns false (and
-   *  hides `m`) when the item has no instanced/modeled body — the caller then falls back to just
-   *  the cell wash. Shared by the single hover ghost and each member of the group drag ghost. */
+  /** The pre-pass material: writes depth, no colour. `transparent` keeps it in the transparent
+   *  queue, where renderOrder decides its place rather than the opaque queue's front-to-back z —
+   *  the opaque queue runs before every decal and would punch the wash out from under a body. */
+  private ghostDepthMaterial(): THREE.MeshBasicMaterial {
+    this.ghostDepthMat ??= new THREE.MeshBasicMaterial({
+      transparent: true, colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
+    });
+    return this.ghostDepthMat;
+  }
+
+  /** One ghost body, added to the overlay group. The pre-pass is a CHILD of the colour mesh, so a
+   *  single transform drives both and hiding the body hides its depth with it. */
+  private makeGhostBody(): GhostBody {
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.ghostMaterial(true));
+    mesh.renderOrder = GHOST_COLOR_ORDER;
+    const depth = new THREE.Mesh(mesh.geometry, this.ghostDepthMaterial());
+    depth.renderOrder = GHOST_DEPTH_ORDER;
+    mesh.add(depth);
+    this.group.add(mesh);
+    return { mesh, depth };
+  }
+
+  /** Resolve `catalogId`'s body at (x, y, rotation, elevation) onto ghost body `b`. Returns false
+   *  (and hides `b`) when the item has no instanced/modeled body — the caller then falls back to
+   *  just the cell wash. Shared by the single hover ghost and each member of the group drag ghost. */
   private paintGhostMesh(
-    m: THREE.Mesh, catalogId: string, x: number, y: number, rotation: number, elevation: number, valid: boolean,
+    b: GhostBody, catalogId: string, x: number, y: number, rotation: number, elevation: number, valid: boolean,
   ): boolean {
+    const m = b.mesh;
     const resolved = objectInstance(this.state(), {
       id: '__ghost__', catalogId, position: { x, y },
       rotation: (rotation as PlacedObject['rotation']), elevation,
@@ -123,7 +167,8 @@ export class Overlay3D implements ToolOverlay {
     const geo = isModel ? modelGeometry(resolved.groupKey.slice(2)) : archetypeGeometry(resolved.groupKey.slice(2) as ArchetypeKey);
     if (!geo) return false;
     m.geometry = geo; // shared caches own the geometry — never disposed here
-    m.material = this.ghostMaterial(valid);
+    b.depth.geometry = geo;
+    m.material = this.ghostMaterial(valid); // cached per validity: a tint switch swaps, never builds
     const inst = resolved.inst;
     m.position.set(inst.x, inst.y, inst.z);
     m.rotation.set(0, inst.rotationY, 0);
@@ -134,38 +179,35 @@ export class Overlay3D implements ToolOverlay {
 
   private dropPlacementGhost(): void {
     if (!this.placementGhost) return;
-    this.placementGhost.visible = false;
+    this.placementGhost.mesh.visible = false;
     this.requestRender();
   }
 
-  /** Pool of meshes for the group drag ghost — one per member, reused across pointer moves so a
+  /** Pool of bodies for the group drag ghost — one per member, reused across pointer moves so a
    *  40-member drag doesn't allocate/dispose 40 meshes per sample. */
-  private groupGhosts: THREE.Mesh[] = [];
+  private groupGhosts: GhostBody[] = [];
 
   showGroupPlacementGhost(
     members: Array<{ catalogId: string; x: number; y: number; rotation: number; elevation: number }>,
     valid: boolean,
   ): void {
     while (this.groupGhosts.length > members.length) {
-      const m = this.groupGhosts.pop()!;
-      this.group.remove(m);
+      this.group.remove(this.groupGhosts.pop()!.mesh);
     }
     while (this.groupGhosts.length < members.length) {
-      const m = new THREE.Mesh(new THREE.BufferGeometry(), this.ghostMaterial(true));
-      this.group.add(m);
-      this.groupGhosts.push(m);
+      this.groupGhosts.push(this.makeGhostBody());
     }
     for (let i = 0; i < members.length; i++) {
       const mem = members[i]!;
-      const mesh = this.groupGhosts[i]!;
-      mesh.visible = this.paintGhostMesh(mesh, mem.catalogId, mem.x, mem.y, mem.rotation, mem.elevation, valid);
+      const body = this.groupGhosts[i]!;
+      body.mesh.visible = this.paintGhostMesh(body, mem.catalogId, mem.x, mem.y, mem.rotation, mem.elevation, valid);
     }
     this.requestRender();
   }
 
   private clearGroupPlacementGhost(): void {
     if (this.groupGhosts.length === 0) return;
-    for (const m of this.groupGhosts) this.group.remove(m);
+    for (const b of this.groupGhosts) this.group.remove(b.mesh);
     this.groupGhosts = [];
     this.requestRender();
   }
@@ -187,9 +229,34 @@ export class Overlay3D implements ToolOverlay {
       this.ghost.mat.dispose();
       this.ghost = null;
     }
+    if (this.lossGhost) {
+      this.group.remove(this.lossGhost.mesh);
+      this.lossGhost.geo.dispose();
+      this.lossGhost.mat.dispose();
+      this.lossGhost = null;
+    }
     if (pending.kind === 'clear') return;
     const cells = pending.kind === 'cells' ? pending.cells : spanCells(pending.spans);
-    const data = cellDecals(this.state(), cells, pending.terrainGrid);
+    // Only what the stroke ADDS: a Γ patch's square quadrants are the block underneath it, so they
+    // belong to no ghost (the same reduction the 2D overlay makes before it draws). That reduction
+    // is TERRAIN's: a road's tokens are not quadrants, and turning its 'square' markers into 'empty'
+    // would leave a state `roadCanonicalPoly` does not recognise, quietly degrading the tile to a
+    // plain square rather than failing. Branch before it, as 2D does.
+    const trim: DecalTrim[] = (pending.trim ?? []).map((t) => ({
+      x: t.x, y: t.y, patch: t.patch, road: t.road,
+      corners: t.road ? t.corners : (filletOnly(t.corners, t.patch) as Corners),
+    }));
+    if (pending.kind === 'cells' && pending.losses && pending.losses.length > 0) {
+      const lossData = cellDecals(this.state(), pending.losses, pending.terrainGrid);
+      if (lossData.positions.length) {
+        const geo = toGeo(lossData);
+        const mat = makeMat(GHOST_LOSS, 0.4);
+        const mesh = new THREE.Mesh(geo, mat);
+        this.group.add(mesh);
+        this.lossGhost = { mesh, geo, mat };
+      }
+    }
+    const data = cellDecals(this.state(), cells, pending.terrainGrid, trim);
     if (!data.positions.length) return;
     const geo = toGeo(data);
     const mat = makeMat(pending.color, 0.4);
@@ -391,7 +458,11 @@ export class Overlay3D implements ToolOverlay {
     const data = cellDecals(this.state(), cells, terrainMode);
     if (!data.positions.length) return;
     const geo = toGeo(data);
-    const mat = makeMat(0x7dd87d, 0.25);
+    // WHITE, as the 2D view draws it, and for the reason the 2D view can ignore: this decal tints
+    // the terrain it lies on, and the terrain is eight greens plus a green grass zone. A green tint
+    // over green changes almost nothing, so the region a person had just painted was invisible over
+    // exactly the surface they were most likely to paint it on. White lightens whatever is under it.
+    const mat = makeMat(0xffffff, 0.25);
     const mesh = new THREE.Mesh(geo, mat);
     this.group.add(mesh);
     this.buildable = { mesh, geo, mat };
@@ -407,19 +478,49 @@ export class Overlay3D implements ToolOverlay {
     this.requestRender();
   }
 
+  // ── maze route ─────────────────────────────────────────────────────────────
+
+  private route: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
+
+  /** The maze's answer, in the 2D view's own yellow, on the TERRAIN grid — the walls stand at the
+   *  −HALF_TILE offset here too, so the corridor floor between them is the shifted rect. Its own
+   *  decal, so it stands beside the buildable-region drape without either replacing the other. */
+  showRoute(cells: MacroCoord[]): void {
+    this.clearRoute();
+    const data = cellDecals(this.state(), cells, true);
+    if (!data.positions.length) return;
+    const geo = toGeo(data);
+    const mat = makeMat(0xffd75e, 0.55);
+    const mesh = new THREE.Mesh(geo, mat);
+    this.group.add(mesh);
+    this.route = { mesh, geo, mat };
+    this.requestRender();
+  }
+
+  clearRoute(): void {
+    if (!this.route) return;
+    this.group.remove(this.route.mesh);
+    this.route.geo.dispose();
+    this.route.mat.dispose();
+    this.route = null;
+    this.requestRender();
+  }
+
   dispose(): void {
     if (this.placementGhost) {
-      this.group.remove(this.placementGhost);
+      this.group.remove(this.placementGhost.mesh);
       this.placementGhost = null;
     }
     this.ghostMat.valid?.dispose();
     this.ghostMat.invalid?.dispose();
+    this.ghostDepthMat?.dispose();
     this.clearGhost();
     this.flush();
     this.clearSelection();
     this.clearHover();
     this.clearBand();
     this.clearBuildableRegion();
+    this.clearRoute();
     for (const f of this.flashes) {
       this.group.remove(f.mesh);
       f.geo.dispose();

@@ -74,8 +74,10 @@ describe('cutBackingByCorner', () => {
   });
 
   it('a ground-level river (water@0) shows its GROUND bank even when an EDGE cliff rises beside it', () => {
+    // A river running ALONG a cliff: mountain on ONE edge of the cut corner. The cliff stands beside the
+    // water, it does not turn a corner over it, so the rounded corner opens on the shore.
     const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
-      '-1,0': cell(TerrainType.Mountain, 2), '0,-1': cell(TerrainType.Mountain, 4),
+      '-1,0': cell(TerrainType.Mountain, 2),
     }));
     expect(backs[0], "the cliff is solid only at layers 1+, never the water's layer 0").toBeNull();
   });
@@ -95,6 +97,51 @@ describe('cutBackingByCorner', () => {
       '-1,0': cell(TerrainType.Mountain, 5),
     }));
     expect(backs[0]).toEqual({ type: TerrainType.Mountain, elevation: 2 });
+  });
+
+  it('Γ notch: cut water flanked by mountain is filled by that mountain, not the ground under it', () => {
+    // The reported dent (issue #2): a pond at the foot of a mountain. The TL corner of the water cell has
+    // mountain on BOTH edges, so the mountain turns a corner over this cell — the rounded-away quadrant
+    // opens onto the mountain, and the junction reads as one straight line down the steps of the notch.
+    const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
+      '-1,0': cell(TerrainType.Mountain, 1), '0,-1': cell(TerrainType.Mountain, 1),
+      '-1,-1': cell(TerrainType.Mountain, 1),
+    }));
+    expect(backs[0]).toEqual({ type: TerrainType.Mountain, elevation: 1 });
+  });
+
+  it('the fill takes the tier the two flanks MEET at, not the tallest edge', () => {
+    const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
+      '-1,0': cell(TerrainType.Mountain, 4), '0,-1': cell(TerrainType.Mountain, 2),
+      '-1,-1': cell(TerrainType.Mountain, 2),
+    }));
+    expect(backs[0]).toEqual({ type: TerrainType.Mountain, elevation: 2 });
+  });
+
+  it('a WATER diagonal (the checkerboard): the two point-touching mountains weld into one band', () => {
+    const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
+      '-1,0': cell(TerrainType.Mountain, 1), '0,-1': cell(TerrainType.Mountain, 1),
+      '-1,-1': cell(TerrainType.Water, 0),
+    }));
+    expect(backs[0]).toEqual({ type: TerrainType.Mountain, elevation: 1 });
+  });
+
+  it('an OPEN diagonal welds too — the pinch rule governs adding MASS, and a backing adds none', () => {
+    // Two mountains attached diagonally with water in the 2x2 and bare ground on the diagonal. A Γ fillet is
+    // still refused there (it would bridge two blocks touching at a point, and you could walk between them);
+    // the backing only says what shows behind a corner already cut, so it welds the two shores rather than
+    // fabricating a grass wedge at the point where they meet.
+    const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
+      '-1,0': cell(TerrainType.Mountain, 1), '0,-1': cell(TerrainType.Mountain, 1),
+    }));
+    expect(backs[0]).toEqual({ type: TerrainType.Mountain, elevation: 1 });
+  });
+
+  it('two cliffs of DIFFERENT height meeting at a cut corner weld at the LOWER one', () => {
+    const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
+      '-1,0': cell(TerrainType.Mountain, 2), '0,-1': cell(TerrainType.Mountain, 4),
+    }));
+    expect(backs[0], 'the tier the two shores actually meet at').toEqual({ type: TerrainType.Mountain, elevation: 2 });
   });
 
   it('cut water with no mountain at the corner rounds against ground (null shore)', () => {

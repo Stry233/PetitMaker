@@ -3,7 +3,7 @@
  * the mouse are SVG because font glyphs for arrows and mice vary by OS and read too thin at 8px.
  */
 import type { CSSProperties } from 'react';
-import { colors, inkTint, radii } from '../styles';
+import { colors, inkTint, radii } from '../design/styles';
 import { useT } from '../../i18n/context';
 import type { MouseButton, MouseMark, ResolvedToken } from './catalogue';
 

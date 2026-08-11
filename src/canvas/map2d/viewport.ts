@@ -145,6 +145,14 @@ export class Viewport {
     };
   }
 
+  screenToHalf(sx: number, sy: number): MacroCoord {
+    const world = this.screenToWorld(sx, sy);
+    return {
+      x: Math.round((world.x / TILE_SIZE) * 2) / 2,
+      y: Math.round((world.y / TILE_SIZE) * 2) / 2,
+    };
+  }
+
   macroToScreen(coord: MacroCoord): { x: number; y: number } {
     return {
       x: coord.x * TILE_SIZE * this.zoom - this.offsetX,

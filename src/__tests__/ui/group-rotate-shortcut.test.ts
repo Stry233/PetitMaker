@@ -1,11 +1,11 @@
 /**
- * The `,`/`.` rotate shortcut on a PLURAL selection: it used to route through `singleSelection`,
+ * The rotate shortcut on a PLURAL selection: it used to route through `singleSelection`,
  * which returns null for a group, so the shortcut silently did nothing. It must instead run the
- * exact call path the SelectionHandles rotate button uses (`group-rotate-action.ts:rotateGroupAction`)
+ * exact call path the SelectionHandles rotate button uses (`kit/group-edit.ts:rotateGroupAction`)
  * — same rigid-body turn, same refusal register — so the keyboard and the button can never diverge.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { COMMAND_BY_ID } from '../../ui/keybindings/commands';
+import { COMMAND_BY_ID } from '../../kit/commands';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
@@ -14,6 +14,7 @@ import { registerCatalogItem } from '../../state/catalog';
 import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject, ValidationError } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
@@ -32,7 +33,7 @@ interface Spec { id: string; catalogId: string; x: number; y: number }
 function place(specs: Spec[]): { gs: GridState; exec: CommandExecutor; eventBus: EventBus<EditorEvents> } {
   const gs = makeState(24, 24);
   const eventBus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(gs, eventBus, createDefaultRegistry());
+  const exec = new CommandExecutor(gs, eventBus, createDefaultRegistry(), roadLookup(gs));
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: s.catalogId, position: { x: s.x, y: s.y },

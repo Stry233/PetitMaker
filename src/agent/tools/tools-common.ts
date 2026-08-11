@@ -25,8 +25,7 @@ import {
 } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { translateFor } from '../../i18n/context';
-import { getFootprint } from '../../core/model/grid-model';
-import { getPlacedObjectSize } from '../../state/object-geometry';
+import { footprintCells, getPlacedObjectSize } from '../../state/object-geometry';
 import { circleCells, lineCells } from '../../tools/paint/shapes';
 import { regionTokens } from '../serialize';
 import { RULE_HINTS } from '../../rules';
@@ -105,7 +104,10 @@ function bboxSnapshot(deps: AgentToolDeps, cells: MacroCoord[]): string {
 
 /**
  * Every macro cell a command touches — the FOOTPRINT for an object, not its anchor, so a building
- * straddling the boundary counts as outside.
+ * straddling the boundary counts as outside. Covered cells (floor/ceil-expanded), not position +
+ * integer offset: a half-anchored bridge/ramp (halfStep) straddling the region boundary must
+ * still be caught by `firstStray` below, which `position + dx` for a half position would miss
+ * (it never lands on an integer cell key the region guard's membership set holds).
  */
 export function commandCells(cmd: Command): MacroCoord[] {
   switch (cmd.type) {
@@ -114,22 +116,24 @@ export function commandCells(cmd: Command): MacroCoord[] {
       return cmd.cells;
     case CommandType.PlaceObject: {
       const size = getPlacedObjectSize(cmd.object);
-      return getFootprint(cmd.object.position.x, cmd.object.position.y, size.w, size.h);
+      return footprintCells(cmd.object.position.x, cmd.object.position.y, size.w, size.h);
     }
     case CommandType.RemoveObject: {
       const size = getPlacedObjectSize(cmd.removedObject);
-      return getFootprint(cmd.removedObject.position.x, cmd.removedObject.position.y, size.w, size.h);
+      return footprintCells(cmd.removedObject.position.x, cmd.removedObject.position.y, size.w, size.h);
     }
     case CommandType.TrimCorners:
       return [{ x: cmd.x, y: cmd.y }];
   }
 }
 
+type RegionGuard = { has(c: MacroCoord): boolean; bounds: string };
+
 /**
  * The region the agent is confined to, as a membership test plus the bounds to quote back, or null
  * when the user has painted nothing and the whole map is fair game.
  */
-function regionGuard(region: MacroCoord[]): { has(c: MacroCoord): boolean; bounds: string } | null {
+function regionGuard(region: MacroCoord[]): RegionGuard | null {
   if (region.length === 0) return null;
   const inside = new Set(region.map((c) => `${c.x},${c.y}`));
   let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -142,6 +146,30 @@ function regionGuard(region: MacroCoord[]): { has(c: MacroCoord): boolean; bound
   return {
     has: (c) => inside.has(`${c.x},${c.y}`),
     bounds: `${region.length} cells within (${x1},${y1})-(${x2},${y2})`,
+  };
+}
+
+/**
+ * THE region rule, in one place: the first cell any of `commands` touches outside the region, or
+ * null. Both stroke runners feed it the commands AS APPLIED — the bridge and ramp traits SNAP
+ * position during validation, so where a command finally lands is only knowable once it has run.
+ */
+function firstStray(guard: RegionGuard, commands: Command[]): MacroCoord | null {
+  for (const cmd of commands) {
+    const out = commandCells(cmd).find((c) => !guard.has(c));
+    if (out) return out;
+  }
+  return null;
+}
+
+/** What a stray earns. One rule, so one wording, whichever runner caught it. */
+function outOfRegionResult(at: MacroCoord, guard: RegionGuard): ToolResultBody {
+  return {
+    isError: true,
+    content: `OUT OF REGION: this edit reached (${at.x},${at.y}), outside the region the user selected `
+      + `(${guard.bounds}). Nothing was applied. Every cell you write, and every object you place or `
+      + `remove, must lie inside that region — an object counts by its whole footprint, not its corner. `
+      + `Re-plan within it, or ask the user to change the selection.`,
   };
 }
 
@@ -164,9 +192,8 @@ export function runStroke(
   exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
   let ok = 0; const failures: string[] = [];
   let violations: ReturnType<typeof exec.commitStrokeGroup>;
-  // A painted region is a boundary, not a suggestion. Checked AFTER each command applies, because
-  // the bridge and ramp traits SNAP position during validation — the cells a command finally
-  // occupies are only knowable once it has run.
+  // A painted region is a boundary, not a suggestion. Checked as each command applies, so a stray
+  // stops the loop before the rest of the batch runs.
   const guard = regionGuard(deps.getRegion());
   let strayed: MacroCoord | null = null;
   try {
@@ -176,7 +203,7 @@ export function runStroke(
         if (!r.success) { failures.push(formatErrors(r.errors)); continue; }
         ok++;
         if (guard) {
-          const out = commandCells(cmd).find((c) => !guard.has(c));
+          const out = firstStray(guard, [cmd]);
           if (out) { strayed = out; return; }
         }
       }
@@ -185,14 +212,7 @@ export function runStroke(
     if (strayed) {
       // Nothing half-applies: an undo has to restore what the user was looking at.
       exec.rollbackTo(start);
-      const at = strayed as MacroCoord;
-      return {
-        isError: true,
-        content: `OUT OF REGION: this edit reached (${at.x},${at.y}), outside the region the user selected `
-          + `(${guard!.bounds}). Nothing was applied. Every cell you write, and every object you place or `
-          + `remove, must lie inside that region — an object counts by its whole footprint, not its corner. `
-          + `Re-plan within it, or ask the user to change the selection.`,
-      };
+      return outOfRegionResult(strayed as MacroCoord, guard!);
     }
     violations = exec.commitStrokeGroup(start, opts);
   } catch (err) {
@@ -229,26 +249,47 @@ export function runStroke(
  * per-cell loop or a populator call rather than a fixed Command[]. It reproduces
  * the same one-stroke-group dance runStroke does — capture the undo size, run the
  * body with validation-failed events silenced (async-safe: keeps silent across
- * awaits, mirroring run_generator's runSilentlyAsync path), then commitStrokeGroup
- * and detect a post-stroke revert — and hands back the body's own data (`result`)
- * plus the raw `violations` so each site formats its own REVERTED string (the eight
- * call sites word that message differently). Unlike runStroke it does NOT push a
- * provenance source: the hand-rolled sites never did, so this stays behaviour-identical.
+ * awaits), then commitStrokeGroup and detect a post-stroke revert — and hands back
+ * the body's own data (`result`) plus the raw `violations` so each site formats its
+ * own REVERTED string (the seven call sites word that message differently). It names
+ * the same author runStroke does — a model wrote this content either way, and the
+ * export disclosure and clearGenerated's sparing both read that authorship.
+ * run_generator delegates to kit/operations instead, which pushes its own
+ * Procedural source.
+ *
+ * The painted region binds here exactly as it binds runStroke, over the same
+ * `firstStray` test. The body issues its own commands, so the check reads them back
+ * off the executor (`commandsSince`) once the body settles rather than per command —
+ * one rule, one set of facts, and a stray still rolls the whole call back. `outOfRegion`
+ * is a finished refusal for the call site to return as-is; `result` is meaningless
+ * beside it, since nothing was applied.
  */
 export async function runStrokeBody<T>(
   deps: AgentToolDeps,
   body: () => T | Promise<T>,
-): Promise<{ reverted: boolean; violations: ValidationError[]; result: T }> {
+): Promise<{ reverted: boolean; violations: ValidationError[]; result: T; outOfRegion: ToolResultBody | null }> {
   const exec = deps.getExecutor();
   const start = exec.getUndoStackSize();
+  const src = deps.getProvenanceSource?.() ?? {};
+  exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
+  const guard = regionGuard(deps.getRegion());
   try {
     const result = await exec.runSilentlyAsync(async () => body());
+    if (guard) {
+      const stray = firstStray(guard, exec.commandsSince(start));
+      if (stray) {
+        exec.rollbackTo(start);
+        return { reverted: false, violations: [], result, outOfRegion: outOfRegionResult(stray, guard) };
+      }
+    }
     const violations = exec.commitStrokeGroup(start);
-    return { reverted: violations.length > 0, violations, result };
+    return { reverted: violations.length > 0, violations, result, outOfRegion: null };
   } catch (err) {
     // Same guarantee as runStroke: a crash never leaves half-applied, unvalidated edits.
     exec.rollbackTo(start);
     throw err;
+  } finally {
+    exec.popSource();
   }
 }
 

@@ -66,6 +66,13 @@ describe('selectionHoverBox', () => {
       .toEqual({ x: 12, y: 3, w: 1, h: 1, terrainMode: true });
   });
 
+  it('a ramp is draggable: its drop re-validates through the snapping trait, so a bad drop refuses', () => {
+    const ramp: PlacedObject = {
+      id: 'r1', catalogId: 'ramp-green-steps', position: { x: 5, y: 5 }, rotation: 0, elevation: 0,
+    };
+    expect(isDraggableObject(ramp)).toBe(true);
+  });
+
   it('a locked object is never draggable: a move is a change, which is exactly what locked forbids', () => {
     // planObjectMove validates only the resulting PlaceObject, which V-LOCK-02 doesn't gate (it
     // excludes the object's own id as a self-overlap and only gates RemoveObject) — so arming a

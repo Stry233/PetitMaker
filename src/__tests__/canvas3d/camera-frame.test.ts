@@ -1,15 +1,20 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { introStartOffset, reportedCameraAngle } from '../../canvas/map3d/capture';
+import { frameBounds, makeCamera } from '../../canvas/map3d/scene/camera-controls';
 
 // The ThreeScene constructor needs WebGL, so these cover the two facts the scene composes: how far
 // out the intro fly-in starts, and which pose a camera read reports while it is in flight.
 //
-// The resting pose is frameBounds' hero framing: camera at (0.72d, 0.46d + centerY, 0.72d) looking
-// at (0, centerY, 0), for a frame distance d.
+// The resting pose is frameBounds' hero framing: camera at (0, 0.46d + centerY, 0.72√2 d) looking
+// at (0, centerY, 0), for a frame distance d. Square on, the way the 2D view opens; the horizontal
+// reach is the one the old 45° corner pose had, spent on one axis instead of split across two, so
+// the radius and the tilt these numbers exercise are unchanged.
 const D = 163;              // ~a real map's frame distance
 const CENTER_Y = 2;
 const restTarget = { x: 0, y: CENTER_Y, z: 0 };
-const restCam = { x: 0.72 * D, y: 0.46 * D + CENTER_Y, z: 0.72 * D };
+const restCam = { x: 0, y: 0.46 * D + CENTER_Y, z: 0.72 * Math.SQRT2 * D };
 const restRadius = Math.hypot(restCam.x - restTarget.x, restCam.y - restTarget.y, restCam.z - restTarget.z);
 
 /** The camera pose the constructor parks at before the fly-in starts. */
@@ -37,6 +42,65 @@ describe('introStartOffset', () => {
 
   it('rises above the target when the resting offset is degenerate', () => {
     expect(introStartOffset(0, 0, 0)).toEqual({ x: 0, y: 0.4, z: 0 });
+  });
+});
+
+/**
+ * THE TWO VIEWS OPEN ON THE SAME PICTURE.
+ *
+ * The 2D renderer letters the rows down the LEFT edge and numbers the columns along the BOTTOM
+ * (`map2d/map-renderer.ts:drawLabels`), and the 3D scene draws the same legend in world space, a
+ * cell's column being world X and its row world Z (`map3d/core/coords.ts`). So "the same picture"
+ * is two facts about where those axes land on the screen, and they are asserted as such rather than
+ * as a position, since a position says nothing about which way a person sees it.
+ *
+ * The frame was a 45° corner view, which arrives at neither: switching views turned the island a
+ * quarter of the way round and a person had to find their place again.
+ *
+ * The framing distance and the tilt are NOT part of the change and are pinned here too. The fly-in
+ * starts at a multiple of the resting offset and every export shot's `dist` is a multiple of the
+ * resting radius, so a yaw that quietly moved the camera closer would move the shipped pictures.
+ */
+describe('the 3D view opens where the 2D view does', () => {
+  /** `frameBounds` reads the orbit target and writes the two dolly clamps; nothing else here needs
+   *  OrbitControls, and the real one wants a DOM element to bind. */
+  function framed(b: { halfX: number; halfZ: number; maxY: number }) {
+    const camera = makeCamera(16 / 9);
+    const controls = {
+      target: new THREE.Vector3(), minDistance: 0, maxDistance: 0, update: () => {},
+    } as unknown as OrbitControls;
+    frameBounds(camera, controls, b);
+    camera.lookAt(controls.target);
+    camera.updateMatrixWorld(true);
+    return { camera, controls };
+  }
+  /** Where a world point lands on the screen, in NDC: x right, y UP. */
+  const screen = (camera: THREE.PerspectiveCamera, x: number, y: number, z: number) =>
+    new THREE.Vector3(x, y, z).project(camera);
+
+  it('puts the columns left to right and the rows top to bottom, as the 2D legend does', () => {
+    const { camera } = framed({ halfX: 84, halfZ: 70, maxY: 8 });
+    // Column 1 is at low X and column 11 at high X: the numbers must read left to right.
+    expect(screen(camera, -60, 0, 0).x).toBeLessThan(screen(camera, 60, 0, 0).x);
+    // Row A is at low Z and row I at high Z: the letters must read top to bottom.
+    expect(screen(camera, 0, 0, -60).y).toBeGreaterThan(screen(camera, 0, 0, 60).y);
+    // And square on rather than merely on the correct side: the two axes are not skewed, so a
+    // straight row of cells runs straight across the screen.
+    expect(screen(camera, -60, 0, 0).y).toBeCloseTo(screen(camera, 60, 0, 0).y, 6);
+  });
+
+  it('is a yaw and nothing else: the framing distance and the tilt are the ones it always had', () => {
+    const { camera, controls } = framed({ halfX: 84, halfZ: 70, maxY: 8 });
+    const off = camera.position.clone().sub(controls.target);
+    // The pose this replaced, for the same bounds: the whole horizontal reach split across X and Z.
+    const reach = Math.hypot(off.x, off.z);
+    expect(off.length()).toBeCloseTo(Math.hypot(reach / Math.SQRT2, off.y, reach / Math.SQRT2), 6);
+    // Still the low hero angle rather than a top-down one.
+    const el = (Math.atan2(off.y, reach) * 180) / Math.PI;
+    expect(el).toBeGreaterThan(20);
+    expect(el).toBeLessThan(30);
+    // Square on, in the azimuth convention the scene and every stored shot are written in.
+    expect((Math.atan2(off.x, off.z) * 180) / Math.PI).toBeCloseTo(0, 9);
   });
 });
 

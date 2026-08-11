@@ -5,9 +5,9 @@ import { isMotionReduced } from '../motion-state';
 import { requestRender } from '../render-scheduler';
 import { getCatalogItem } from '../../../state/catalog';
 import { getRotatedSize } from '../../../state/object-geometry';
-import { iconUrl } from '../../../ui/menu/icons';
+import { iconUrl } from '../../../assets/icon-urls';
 import { fitSpriteToTexture, footprintFit } from '../draw/sprite-fit';
-import { drawTrimmedBlock } from '../draw/trim-shapes';
+import { drawRoadShape, drawTrimmedBlock } from '../draw/trim-shapes';
 import { selectionPopAmplitude } from './object-animations';
 import { HALF_TILE } from '../../../core/model/grid-model';
 import type { Corners, MacroCoord, ValidationError } from '../../../core/model/types';
@@ -17,7 +17,7 @@ import {
   errorFlashSignature, resolveErrorFlashCells, shouldFlashErrors, flashDecay,
   type ErrorFlashCell, type ErrorFlashGate,
 } from './error-flash';
-import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RowSpan } from './ghost-geometry';
+import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, roadTrimmedOutline, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RoadTrimmedGhostCell, type RowSpan } from './ghost-geometry';
 
 /** "Is this cell inside the span set?" — built once per ghost build, for the outline. */
 function spanMembership(spans: readonly RowSpan[]): (x: number, y: number) => boolean {
@@ -33,6 +33,9 @@ const GRID_LINE_COLOR = 0xffffff;
 const GRID_LINE_ALPHA = 0.12;
 const SUB_GRID_ALPHA = 0.06;
 const SELECTION_COLOR = 0xffb347;
+/** A ghost's `losses` wash: the same warning red an invalid placement ghost wears (see
+ *  `map3d/scene/overlay3d.ts`'s `ghostMat.invalid`), so one tint means one thing across both views. */
+const GHOST_LOSS = 0xe2574c;
 // Hover preview: soft white outline over a pure-grey wash. Equal RGB only — a
 // blue-leaning grey reads as water/zone meaning on this map's palette.
 const HOVER_LINE_COLOR = 0xf5f5f5;
@@ -286,7 +289,7 @@ export class OverlayLayer {
 
   /** The latest ghost request; rebuilt at most once per frame ('clear' erases). */
   private pendingGhost:
-    | { kind: 'cells'; cells: MacroCoord[]; color: number; micro: boolean; trim?: readonly TrimmedCell[] }
+    | { kind: 'cells'; cells: MacroCoord[]; color: number; micro: boolean; trim?: readonly TrimmedCell[]; losses?: readonly MacroCoord[] }
     | { kind: 'spans'; spans: RowSpan[]; color: number; micro: boolean; trim?: readonly TrimmedCell[] }
     | 'clear' | null = null;
   private ghostRaf = 0;
@@ -298,8 +301,8 @@ export class OverlayLayer {
    * pointer sample (several per frame under coalesced events), and only the
    * latest matters.
    */
-  showGhost(cells: MacroCoord[], color: number, terrainMode = true, trim?: readonly TrimmedCell[]): void {
-    this.pendingGhost = { kind: 'cells', cells, color, micro: terrainMode, trim };
+  showGhost(cells: MacroCoord[], color: number, terrainMode = true, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void {
+    this.pendingGhost = { kind: 'cells', cells, color, micro: terrainMode, trim, losses };
     this.scheduleGhostBuild();
   }
 
@@ -409,9 +412,20 @@ export class OverlayLayer {
       requestRender();
       try { this.ghostGraphics.clear(); } catch { return; }
       if (p === 'clear') return;
-      const empty = p.kind === 'cells' ? p.cells.length === 0 : p.spans.length === 0;
+      // A gain-less ghost with something to LOSE still has something to draw (a run that only
+      // strips a coating and lays nothing back).
+      const empty = p.kind === 'cells' ? p.cells.length === 0 && !(p.losses && p.losses.length > 0) : p.spans.length === 0;
       if (empty) return;
       const offset = p.micro ? HALF_TILE : 0;
+
+      // 0) the LOSS wash, under the gain: what this shape would replace, drawn first so a cell
+      //    that both loses and gains reads as a gain over a loss rather than the reverse.
+      if (p.kind === 'cells' && p.losses && p.losses.length > 0) {
+        const lossSpans = mergeCellSpans(p.losses.map(({ x, y }) => ({ x, y, micro: p.micro })));
+        this.ghostGraphics.beginFill(GHOST_LOSS, 0.32);
+        for (const sp of lossSpans) spanRect(this.ghostGraphics, sp);
+        this.ghostGraphics.endFill();
+      }
 
       // 1) translucent fill in the CONTENT colour — tells the user WHAT they'll paint (mountain green /
       //    water blue / tile). Kept fairly low so it doesn't hide the terrain underneath. Drawn as merged
@@ -430,8 +444,18 @@ export class OverlayLayer {
       for (const sp of spans) spanRect(this.ghostGraphics, sp);
       this.ghostGraphics.endFill();
       for (const t of trim) {
+        // A ROAD tile's corners are canonical-state tokens, not quadrants, so it is drawn through
+        // the road painter the committed tile goes through — the ghost wears the cut the lay makes.
+        if (t.road) {
+          drawRoadShape(this.ghostGraphics, t.corners, t.road,
+            t.x * TILE_SIZE - offset, t.y * TILE_SIZE - offset, TILE_SIZE, TILE_SIZE, p.color, 0.32);
+          continue;
+        }
+        // `t.patch` picks the INNER fan winding for a Γ fillet — the committed terrain, the flash
+        // path above and the 3D ghost all draw it that way; defaulting it here filled the fillet
+        // with the OUTER fan, an outline/fill mismatch on every patched notch in the preview.
         drawTrimmedBlock(this.ghostGraphics, t.corners, t.x * TILE_SIZE - offset, t.y * TILE_SIZE - offset,
-          HALF_TILE, p.color, 0.32);
+          HALF_TILE, p.color, 0.32, t.patch);
       }
 
       // 2) a crisp OUTLINE of the footprint's outer boundary so the preview pops even when the fill colour
@@ -442,13 +466,18 @@ export class OverlayLayer {
       // both part of the shape the click leaves, and an outline drawn round the square footprint
       // would contradict the fill under it. A span ghost only knows its rim, so it hands the
       // outline a membership test for everything inside.
+      // Only the rim is materialised for a span ghost: the interior is answered by the membership
+      // test, and walking a map-sized span set cell by cell is what the span form exists to avoid.
+      const rim = p.kind === 'spans' ? shapeOfSpans(p.spans).rim : p.cells;
+      const inShape = p.kind === 'spans' ? spanMembership(p.spans) : undefined;
+      // Roads have their own silhouette machinery: a cut road is a polygon, not a set of quadrants.
+      // A ghost lays ONE surface, so a payload is all road or all terrain.
+      const roadTrim = trim.filter((t): t is typeof t & RoadTrimmedGhostCell => !!t.road);
       const edges: EdgeSegment[] = trim.length === 0
         ? (p.kind === 'spans' ? boundaryEdgesFromSpans(p.spans) : boundaryEdges(p.cells))
-        : p.kind === 'spans'
-          // Only the rim is materialised: the interior is answered by the membership test, and
-          // walking a map-sized span set cell by cell is what the span form exists to avoid.
-          ? trimmedOutline(shapeOfSpans(p.spans).rim, trim, spanMembership(p.spans))
-          : trimmedOutline(p.cells, trim);
+        : roadTrim.length > 0
+          ? roadTrimmedOutline(rim, roadTrim, inShape)
+          : trimmedOutline(rim, trim, inShape);
       const stroke = (width: number, col: number, alpha: number) => {
         this.ghostGraphics.lineStyle(width, col, alpha);
         for (const e of edges) {
@@ -601,6 +630,31 @@ export class OverlayLayer {
   clearBuildableRegion(): void {
     requestRender();
     try { this.buildableGraphics.clear(); } catch { /* ignore */ }
+  }
+
+  private routeGraphics = new PIXI.Graphics();
+  private routeAdded = false;
+
+  /** The maze's answer, in the chosen-card yellow: solid enough to read as a path, translucent
+   *  enough that the ground it walks stays visible. ON THE TERRAIN GRID, deliberately: the walls
+   *  render at −HALF_TILE, so the visible corridor floor between two walls IS the corridor cell's
+   *  terrain-shifted rect, and the macro rect would put half the wash under the walls. */
+  showRoute(cells: MacroCoord[]): void {
+    requestRender();
+    if (!this.routeAdded) {
+      this.container.addChildAt(this.routeGraphics, this.buildableAdded ? 1 : 0);
+      this.routeAdded = true;
+    }
+    try { this.routeGraphics.clear(); } catch { /* ignore */ }
+    if (cells.length === 0) return;
+    this.routeGraphics.beginFill(0xffd75e, 0.55);
+    for (const { x, y } of cells) cellRect(this.routeGraphics, x, y, true);
+    this.routeGraphics.endFill();
+  }
+
+  clearRoute(): void {
+    requestRender();
+    try { this.routeGraphics.clear(); } catch { /* ignore */ }
   }
 
   /** The Ctrl+drag rubber band: a translucent fill + dashed outline over the raw

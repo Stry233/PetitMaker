@@ -32,7 +32,7 @@ export interface SaveObject {
  * A view's camera pose at save time, kept PER VIEW because a 2D pan/zoom and a 3D orbit
  * are different shapes — restoring one into the other would be worse than restoring
  * neither. Mirrors (without importing, to keep io/ view-layer-free) the 2D
- * `__petitGetCamera` shape and the 3D `CameraAngle` (canvas/map3d/capture.ts); both sides
+ * `host.camera.get2d` shape and the 3D `CameraAngle` (canvas/map3d/capture.ts); both sides
  * convert structurally.
  */
 export interface PersistedCamera {

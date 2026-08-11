@@ -11,6 +11,7 @@ import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
 import { getCell } from '../../../core/model/grid-model';
 import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 const SIZE = 80, WIN = 30;
 
@@ -20,7 +21,7 @@ const DUMP = Boolean((globalThis as { process?: { env?: Record<string, string> }
 describe.runIf(DUMP)('CUT dump', () => {
   it('dumps a window around a water/mountain boundary with corners', () => {
     const state = makeState(SIZE, SIZE);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // env overrides: CUT_SEED / CUT_MODE / CUT_CX / CUT_CY (centre); default centres on the
     // highest-tier gamma patch (an N>=2 fillet sitting on a real N-1 base).
     // @ts-ignore dev-only harness

@@ -129,8 +129,8 @@ function drawHeader(ctx: CanvasRenderingContext2D, rect: Rect, badges: Badge[], 
 
 /** Space (BASE-800 px) reserved for the chunk index legend when grid is on: row letters sit to the
  *  LEFT of the map, column numbers BELOW it. Shrinking the map band by these keeps map+labels
- *  within the SAME footprint the map-only layout occupies (the labels used to spill into the
- *  padding, making the grid-on map read larger than the grid-off one). */
+ *  within the SAME footprint the map-only layout occupies; labels spilling into the padding make
+ *  the grid-on map read larger than the grid-off one. */
 const LEGEND_LEFT = 18;
 const LEGEND_BOTTOM = 18;
 
@@ -274,8 +274,8 @@ function drawCode(ctx: CanvasRenderingContext2D, rect: Rect, assets: Composition
 
   const my = y + labelH, mh = h - labelH;
   if (!assets.codeImg) return;
-  // Defense-in-depth: clip to the band rect so a code image ever mis-sized upstream can't
-  // paint outside its band. The clip must never introduce scaling — the draw stays an
+  // Clip to the band rect so a code image mis-sized upstream can't paint outside its
+  // band. The clip must never introduce scaling — the draw stays an
   // integer-coord, native-size blit with smoothing off (a code's modules must land on exact
   // device pixels).
   ctx.save();

@@ -14,7 +14,8 @@ import { registerCatalogItem } from '../../state/catalog';
 import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
-import { moveGroup, previewGroupMove } from '../../ui/chrome/group-actions';
+import { moveGroup, previewGroupMove } from '../../tools/objects/group-actions';
+import { roadLookup } from '../../state/object-index';
 
 registerCatalogItem({
   id: 'grp-hut', category: ItemCategory.Building, name: { en: 'Group Hut' },
@@ -26,7 +27,7 @@ interface Spec { id: string; x: number; y: number; locked?: boolean }
 
 function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   const gs = makeState(24, 24);
-  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(gs));
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: 'grp-hut', position: { x: s.x, y: s.y },

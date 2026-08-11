@@ -6,6 +6,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { TerrainType, type EditorEvents, type Command, type PlacedObject } from '../../core/model/types';
 import type { ToolContext } from '../../tools/types';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function makeCtx(state: any, executor: CommandExecutor): ToolContext {
   return {
@@ -24,7 +25,19 @@ function makeCtx(state: any, executor: CommandExecutor): ToolContext {
     setDisplayLayer: () => {},
     terrainType: TerrainType.Mountain,
     elevation: 1,
+    layerPinned: false,
     brushSize: 1,
+    contentType: 'mountain',
+    layerVisibility: {},
+    autoEdgeCut: 'off',
+    eraserShape: 'dot',
+    tileMaterial: 'road-dirt',
+    tileMaterialPicked: true,
+    armedItem: null,
+    placementRotation: 0,
+    armedMacro: null,
+    armingEpoch: 0,
+    macroContext: { state, executor, registry: executor.getRegistry() },
   };
 }
 
@@ -42,7 +55,7 @@ describe('reconcileRoadsAfterMountainPaint', () => {
     const state = makeState(10, 10);
     addRoad(state, 5, 5, 0);
     for (const [cx, cy] of [[5,5],[6,5],[5,6],[6,6]] as [number, number][]) setTerrain(state, cx, cy, TerrainType.Mountain, 1);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     reconcileRoadsAfterMountainPaint([{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }], makeCtx(state, executor));
     const road = [...state.objects.values()].find((o: any) => o.catalogId === 'road-dirt') as PlacedObject | undefined;
     expect(road).toBeDefined();
@@ -54,7 +67,7 @@ describe('reconcileRoadsAfterMountainPaint', () => {
     addRoad(state, 5, 5, 0);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     reconcileRoadsAfterMountainPaint([{ x: 6, y: 5 }, { x: 6, y: 6 }], makeCtx(state, executor));
     const road = [...state.objects.values()].find((o: any) => o.catalogId === 'road-dirt');
     expect(road).toBeUndefined();
@@ -64,7 +77,7 @@ describe('reconcileRoadsAfterMountainPaint', () => {
     const state = makeState(10, 10);
     const road = addRoad(state, 1, 1, 0);
     setTerrain(state, 8, 8, TerrainType.Mountain, 1);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     reconcileRoadsAfterMountainPaint([{ x: 8, y: 8 }], makeCtx(state, executor));
     expect(state.objects.get(road.id)).toBeDefined();
     expect(state.objects.get(road.id)!.elevation).toBe(0);
@@ -75,7 +88,7 @@ describe('reconcileRoadsAfterMountainPaint', () => {
     const road = addRoad(state, 5, 5, 0);
     road.corners = ['square', 'square', 'square', 'fan'];
     for (const [cx, cy] of [[5,5],[6,5],[5,6],[6,6]] as [number, number][]) setTerrain(state, cx, cy, TerrainType.Mountain, 1);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     reconcileRoadsAfterMountainPaint([{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }], makeCtx(state, executor));
     const elevated = [...state.objects.values()].find((o: any) => o.catalogId === 'road-dirt') as PlacedObject | undefined;
     expect(elevated?.elevation).toBe(1);

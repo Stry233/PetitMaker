@@ -1,17 +1,13 @@
 import type { MacroCoord } from '../../core/model/types';
 import { cellKey } from '../../core/model/grid-model';
 import { getCatalogItem } from '../../state/catalog';
-import { useEditorStore } from '../../state/store';
 import { removeOverlappingCoatings } from '../objects/object-placer';
-import { planPaint, tileCatalogId } from './paint-plan';
+import { planPaint } from './paint-plan';
 import type { ToolContext } from '../types';
 
-export type { TileMaterial } from './paint-plan';
-export { tileCatalogId } from './paint-plan';
-
-/** Ghost/preview color (0xRRGGBB) for the currently-selected tile material. */
-export function tileGhostColor(): number {
-  const item = getCatalogItem(tileCatalogId(useEditorStore.getState().tileMaterial));
+/** Ghost/preview color (0xRRGGBB) for the given tile material. */
+export function tileGhostColor(material: string): number {
+  const item = getCatalogItem(material);
   return item?.color ? parseInt(item.color.slice(1), 16) : 0xd2b48c;
 }
 

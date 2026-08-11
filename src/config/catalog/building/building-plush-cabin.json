@@ -10,6 +10,10 @@
     "id": "Rumah Medowlyn",
     "fr": "Maison de Medowlyn"
   },
+  "aliases": [
+    "紫",
+    "purple"
+  ],
   "icon": "building-plush-cabin",
   "width": 5,
   "height": 5,

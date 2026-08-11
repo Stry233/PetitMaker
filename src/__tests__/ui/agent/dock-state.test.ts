@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DOCK_BG, STAGE_ICONS, deriveDock, type DockInput } from '../../../ui/menu/agent/dock-state';
+import { DOCK_BG, STAGE_ICONS, deriveDock, type DockInput } from '../../../ui/agent/dock-state';
 import type { BlueprintEntry, Vitals } from '../../../agent/session';
 
 /** Echo translator: assertions pin the i18n KEYS the dock renders. */

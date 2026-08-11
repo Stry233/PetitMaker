@@ -23,6 +23,7 @@ import { ToolManager } from '../../tools/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 const ARMED = 'tree-apple';
 
@@ -80,7 +81,7 @@ let view: ReturnType<typeof makeView>['view'];
 /** The app's own wiring: a real ToolManager over a fresh grid, pointed at the test view. */
 function activate(tool: ToolType, itemId: string | null = null): void {
   gs = makeState(20, 20);
-  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
   tm = new ToolManager(makeStubRenderer(), executor, gs);
   const made = makeView();
   overlay = made.overlay;

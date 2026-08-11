@@ -1,5 +1,5 @@
 /**
- * The rotate shortcut (`,`/`.`, `rotateArmedOrSelected` in `ui/keybindings/commands.ts`) writes
+ * The rotate shortcut (the E default, `rotateArmedOrSelected` in `kit/commands.ts`) writes
  * `placementRotation` straight into the store — no pointer event runs alongside it — so
  * `ObjectPlacerTool.onPointerMove`, which only runs from a real pointermove, never redraws the
  * ghost at the new orientation until the cursor next moves for real. `usePointerInteraction`
@@ -22,6 +22,7 @@ import { ToolManager } from '../../tools/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 const ARMED = 'building-stall'; // a rotatable, flat 1x1 catalog item
 
@@ -67,7 +68,7 @@ let overlay: ReturnType<typeof makeView>['overlay'];
  *  rotatable item armed for placement. */
 function activate(): void {
   gs = makeState(20, 20);
-  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
   tm = new ToolManager(makeStubRenderer(), executor, gs);
   const made = makeView();
   overlay = made.overlay;

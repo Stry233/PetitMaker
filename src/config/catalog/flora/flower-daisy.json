@@ -10,6 +10,10 @@
     "id": "Aster Putih",
     "fr": "Marguerite blanche"
   },
+  "aliases": [
+    "黄",
+    "yellow"
+  ],
   "icon": "flower-daisy",
   "width": 1,
   "height": 1,

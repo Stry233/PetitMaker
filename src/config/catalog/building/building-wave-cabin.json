@@ -10,6 +10,10 @@
     "id": "Rumah Nerina",
     "fr": "Maison de Nerina"
   },
+  "aliases": [
+    "蓝",
+    "blue"
+  ],
   "icon": "building-wave-cabin",
   "width": 5,
   "height": 4,

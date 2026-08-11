@@ -17,8 +17,9 @@ import { getCell, NEIGHBORS4 } from '../model/grid-model';
 
 /** Corner index (0=TL, 1=TR, 2=BL, 3=BR) → the three cells that meet at that corner: the two
  *  edge-sharing neighbours FIRST, then the diagonal. Single source for all corner adjacency.
- *  The CONCAVE (Γ-wrap) test (`cornerWrappedAt`) reads the two EDGE cells as the wrapping mass and the
- *  diagonal only as an encloser (non-empty); the convex/reveal tests use just the two edges. */
+ *  The CONCAVE (Γ-wrap) test (`cornerWrappedBy`/`cornerWrappedAt`) reads the two EDGE cells as the
+ *  wrapping mass and requires the diagonal to CLOSE the corner at the wrapping tier; the
+ *  convex/reveal tests use just the two edges. */
 export const CORNER_NEIGHBORS: readonly (readonly (readonly [number, number])[])[] = [
   [[-1, 0], [0, -1], [-1, -1]], // TL
   [[1, 0], [0, -1], [1, -1]],   // TR
@@ -65,14 +66,44 @@ export function terrainSolidAt(t: TerrainCell | null | undefined, type: TerrainT
  *  the cells between the two blocks are empty ground or a lower base. Says nothing about the cell itself: the
  *  notch may be empty OR hold a lower (hidden) block; the caller decides what to do with it. */
 export function cornerWrappedAt(state: GridState, x: number, y: number, i: number, type: TerrainType, e: number): boolean {
+  return cornerWrappedBy((dx, dy) => getCell(state.cells, x + dx, y + dy)?.terrain, i, type, e);
+}
+
+/** `cornerWrappedAt` addressed by OFFSET instead of by cell — the form the RENDER side needs, which holds a
+ *  layer-clamped neighbour accessor rather than the grid. Same geometry, one answer for both callers. */
+export function cornerWrappedBy(
+  neighborAt: (dx: number, dy: number) => TerrainCell | null | undefined,
+  i: number, type: TerrainType, e: number,
+): boolean {
   const adj = CORNER_NEIGHBORS[i];
   if (!adj) return false;
-  const edgesWrapped = terrainSolidAt(getCell(state.cells, x + adj[0]![0], y + adj[0]![1])?.terrain, type, e)
-    && terrainSolidAt(getCell(state.cells, x + adj[1]![0], y + adj[1]![1])?.terrain, type, e);
+  const edgesWrapped = terrainSolidAt(neighborAt(adj[0]![0], adj[0]![1]), type, e)
+    && terrainSolidAt(neighborAt(adj[1]![0], adj[1]![1]), type, e);
   if (!edgesWrapped) return false;
-  const diag = getCell(state.cells, x + adj[2]![0], y + adj[2]![1])?.terrain;
+  const diag = neighborAt(adj[2]![0], adj[2]![1]);
   if (!diag || diag.type === TerrainType.None) return false;            // empty gap — not enclosed
   return terrainSolidAt(diag, type, e) || diag.type === TerrainType.Water; // reaches the tier, or a (safe) pond
+}
+
+/** The highest tier at which `type` mass stands on BOTH EDGES of corner `i` — the tier at which the two
+ *  flanking masses meet here. 0 when either edge is bare of it. Mass fills every layer up to its top, so
+ *  the answer is just the lower of the two tops.
+ *
+ *  DIAGONAL-BLIND, unlike `cornerWrappedBy`, and that is the whole distinction between the two: the
+ *  diagonal governs whether MASS may be ADDED at a corner (a Γ fillet over an open diagonal would bridge
+ *  two blocks that touch only at a point, and you could then walk between them), which is a question about
+ *  a fillet. A corner already CUT asks a different one — what shows behind it — and answering it adds
+ *  nothing, so the pinch has no say. */
+export function cornerEdgeCoverTier(
+  neighborAt: (dx: number, dy: number) => TerrainCell | null | undefined,
+  i: number, type: TerrainType,
+): number {
+  const adj = CORNER_NEIGHBORS[i];
+  if (!adj) return 0;
+  return Math.min(
+    solidTopOf(neighborAt(adj[0]![0], adj[0]![1]), type),
+    solidTopOf(neighborAt(adj[1]![0], adj[1]![1]), type),
+  );
 }
 
 /**

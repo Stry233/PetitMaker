@@ -15,8 +15,8 @@ import { hiddenSetFrom } from '../map2d/layers/layer-visibility';
 import { getActiveView, setActiveView } from '../active-view';
 import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
 import { useCursor } from '../interaction/use-cursor';
-import { registerWindowBridge3D } from './interaction/window-bridge-register';
 import { takePendingCameraAngle } from './scene/pending-camera';
+import { setScene3D } from './scene/camera-registry';
 
 export function Editor3DCanvas() {
   const viewMode = useEditorStore((s) => s.viewMode);
@@ -24,6 +24,10 @@ export function Editor3DCanvas() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<ThreeScene | null>(null);
   const builtFor = useRef<GridState | null>(null);
+  // The crossfade follows the MODE, not the scene's readiness. Holding the 2D map up until the
+  // scene had drawn read as a misclick — the press did nothing, then the view swapped by itself a
+  // moment later. An empty view during the build reads as loading, which is what it is; the cost of
+  // that build is attacked by `preloadScene3D` instead.
   const active = viewMode === '3d';
 
   // The same pointer machine the 2D canvas runs — tools, selection, camera
@@ -55,6 +59,7 @@ export function Editor3DCanvas() {
       sceneRef.current.setPassiveOverlays({ grid: st.showGrid, numbers: st.showLayerNumbers, chunks: st.showChunkBounds });
       sceneRef.current.setEditorInput(true);
       builtFor.current = gridState;
+      setScene3D(sceneRef.current, builtFor.current);
       // A camera restored (io/autosave "resume from last") before this scene existed — or before
       // the user ever opened 3D this session — is waiting here. Apply it now instead of running
       // the ~0.8s intro fly-in: landing where the user left off beats flying somewhere else first.
@@ -64,10 +69,6 @@ export function Editor3DCanvas() {
     });
     return () => { cancelled = true; };
   }, [active, gridState]);
-
-  // The camera bridge (io/autosave's read/restore) is registered once; it always reads sceneRef/
-  // builtFor LIVE, so it needs no re-registration as the scene is (re)built above.
-  useEffect(() => registerWindowBridge3D(sceneRef, builtFor), []);
 
   // Layer visibility follows the panel in both views; the scene peels terrain,
   // zero-scales hidden-layer objects, and filters the trimmed-road mesh.
@@ -104,7 +105,7 @@ export function Editor3DCanvas() {
     return () => bus.off('objects-changed', onObjectsChanged);
   }, []);
 
-  useEffect(() => () => { sceneRef.current?.dispose(); sceneRef.current = null; }, []);
+  useEffect(() => () => { sceneRef.current?.dispose(); sceneRef.current = null; setScene3D(null, null); }, []);
 
   return (
     <div
@@ -115,7 +116,8 @@ export function Editor3DCanvas() {
         inset: 0,
         // Crossfades with the 2D canvas; visibility flips after the fade so the
         // hidden view neither paints nor takes pointer events, while client
-        // rects stay meaningful for anything measuring the host.
+        // rects stay meaningful for anything measuring the host (the scene reads
+        // clientWidth/Height at construction, which `visibility: hidden` keeps).
         opacity: active ? 1 : 0,
         visibility: active ? 'visible' : 'hidden',
         transition: active

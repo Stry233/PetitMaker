@@ -10,6 +10,7 @@ import { NEIGHBORS4 } from '../core/model/grid-model';
 import { categoryOf, getPlaceableByCategory, isDecoration } from '../state/catalog';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { computeLockedCorners } from '../core/edge-cut/trim-lock';
+import { roadLookup } from '../state/object-index';
 import { detectWaterfalls } from '../core/model/waterfall-geometry';
 
 interface QualityDimension { score: number; hints: string[] }
@@ -45,9 +46,9 @@ function connectivity(state: GridState): QualityDimension {
     return { ok: true, e: c.terrain?.elevation ?? 0 };
   };
   // Label connected components over all walkable cells, then measure how much
-  // of the LAND belongs to the largest one. (An earlier version flood-filled
-  // from the cell nearest the map centre — a hill or lake AT the centre then
-  // started the walk on an isolated plateau and inverted the score.)
+  // of the LAND belongs to the largest one. Start-point independent: a flood
+  // fill from any fixed cell (say the map centre) can start on an isolated
+  // plateau and invert the score.
   const isLand = (x: number, y: number): boolean =>
     state.cells[y]![x]!.terrain?.type !== TerrainType.Water;
   const comp = new Int32Array(width * height).fill(-1);
@@ -176,6 +177,7 @@ function water(state: GridState): QualityDimension {
  */
 function silhouette(state: GridState): QualityDimension {
   const { width, height } = state.template;
+  const roadAt = roadLookup(state);
   const surf = (x: number, y: number): number => {
     if (x < 0 || y < 0 || x >= width || y >= height) return -1; // off-map reads lower
     return surfaceElevation(state.cells[y]![x]!.terrain);
@@ -206,7 +208,7 @@ function silhouette(state: GridState): QualityDimension {
       for (let k = 0; k < 4; k++) {
         const [ax, ay, bx, by] = CORNER_EDGES[k]!;
         if (surf(x + ax, y + ay) >= e || surf(x + bx, y + by) >= e) continue;
-        locked ??= computeLockedCorners(state, x, y, 'terrain');
+        locked ??= computeLockedCorners(state, roadAt, x, y, 'terrain');
         if (locked[k]) continue;
         candidates++;
         if (corners[k] !== 'square') trimmed++;

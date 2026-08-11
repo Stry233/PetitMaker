@@ -12,10 +12,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { useAgentStore } from '../../../agent/store';
 import { PROVIDER_IDS } from '../../../agent/providers/defaults';
-import { SetupScreen } from '../../../ui/menu/agent/SetupScreen';
-import type { ProviderSettings } from '../../../ui/menu/agent/useProviderSettings';
+import { SetupScreen } from '../../../ui/agent/SetupScreen';
+import type { ProviderSettings } from '../../../ui/agent/useProviderSettings';
 
-vi.mock('../../../ui/menu/agent/atoms', () => ({
+vi.mock('../../../ui/agent/atoms', () => ({
   prettyModel: (id: string) => id,
   GoArrowIcon: () => <span data-testid="ico-go" />,
   CheckIcon: () => <span data-testid="ico-check" />,

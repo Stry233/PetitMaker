@@ -1,6 +1,5 @@
-import type { Corners, CornerTrim, GridState, PlacedObject } from '../model/types';
-import { cellKey } from '../model/grid-model';
-import { getObjectIndex } from '../../state/object-index';
+import type { Corners, CornerTrim, PlacedObject } from '../model/types';
+import type { RoadLookup } from '../model/road-lookup';
 
 // Canonical road states (left-connected form): TL+BL always square, TR+BR get cuts.
 // drawRoadShape + connSide handles rotation for other directions.
@@ -52,35 +51,25 @@ export function cornersMatch(a: Corners | undefined, b: Corners | undefined): bo
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
-/** Non-patch coating at (x,y), from the memoized cell-keyed index. Every edge-cut
- *  reconcile pass asks this per cell, so it must be O(1), never an objects scan. */
-export function findRoadAt(state: GridState, x: number, y: number): PlacedObject | null {
-  return getObjectIndex(state).roadByCell.get(cellKey(x, y)) ?? null;
-}
-
-export function hasRoadAt(state: GridState, x: number, y: number): boolean {
-  return findRoadAt(state, x, y) !== null;
-}
-
 /** Is there a (non-patch) road at (nx,ny) OTHER than `road`? Shared by connection detection + neighbour count. */
-function isRoadNeighbor(state: GridState, road: PlacedObject, nx: number, ny: number): boolean {
-  const o = findRoadAt(state, nx, ny);
+function isRoadNeighbor(roads: RoadLookup, road: PlacedObject, nx: number, ny: number): boolean {
+  const o = roads(nx, ny);
   return !!o && o.id !== road.id;
 }
 
-export function detectRoadConn(state: GridState, road: PlacedObject): 'left' | 'right' | 'top' | 'bottom' {
+export function detectRoadConn(roads: RoadLookup, road: PlacedObject): 'left' | 'right' | 'top' | 'bottom' {
   const { x, y } = road.position;
-  if (isRoadNeighbor(state, road, x - 1, y)) return 'left';
-  if (isRoadNeighbor(state, road, x + 1, y)) return 'right';
-  if (isRoadNeighbor(state, road, x, y - 1)) return 'top';
-  if (isRoadNeighbor(state, road, x, y + 1)) return 'bottom';
+  if (isRoadNeighbor(roads, road, x - 1, y)) return 'left';
+  if (isRoadNeighbor(roads, road, x + 1, y)) return 'right';
+  if (isRoadNeighbor(roads, road, x, y - 1)) return 'top';
+  if (isRoadNeighbor(roads, road, x, y + 1)) return 'bottom';
   return ROTATION_TO_CONN[road.rotation] ?? 'left';
 }
 
-export function countRoadNeighbors(state: GridState, road: PlacedObject): number {
+export function countRoadNeighbors(roads: RoadLookup, road: PlacedObject): number {
   const { x, y } = road.position;
   return ([[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as const)
-    .filter(([nx, ny]) => isRoadNeighbor(state, road, nx, ny)).length;
+    .filter(([nx, ny]) => isRoadNeighbor(roads, road, nx, ny)).length;
 }
 
 export type RoadConnSide = 'left' | 'right' | 'top' | 'bottom';

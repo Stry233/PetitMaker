@@ -12,16 +12,19 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../state/store';
-import { planRun, TOUR_STEPS, type TourStep } from './steps';
+import { PREFS } from '../../../core/runtime/prefs';
+import type { TourStep } from './steps';
 
-export const TOUR_SEEN_KEY = 'petit-planet-tour-seen';
+export const TOUR_SEEN_KEY = PREFS.tourSeen.key;
 
 /** Whether this browser has already been offered the tour. A browser without localStorage reads as
- *  seen: the alternative is showing the tour on every single visit. */
+ *  seen: the alternative is showing the tour on every single visit. Bypasses `readPref`: an
+ *  unreadable/absent flag means "seen" here, the opposite of readPref's generic false fallback,
+ *  since a browser this offer cannot persist to must not repeat it. */
 export function hasSeenTour(): boolean {
   if (typeof localStorage === 'undefined') return true;
   try {
-    return localStorage.getItem(TOUR_SEEN_KEY) === '1';
+    return localStorage.getItem(PREFS.tourSeen.key) === '1';
   } catch {
     return true; // storage present but refusing (private mode, quota) — same reasoning
   }
@@ -30,7 +33,7 @@ export function hasSeenTour(): boolean {
 export function markTourSeen(): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(TOUR_SEEN_KEY, '1');
+    localStorage.setItem(PREFS.tourSeen.key, '1');
   } catch { /* nothing to do: the tour simply offers itself again next time */ }
 }
 
@@ -59,28 +62,15 @@ export interface TourController {
   skip(): void;
 }
 
-/** Drives one run of the tour. The index resets as a run ends, so the next one opens on step one. */
-export function useTour(): TourController {
+/** Drives one run of the tour. The index resets as a run ends, so the next one opens on step one.
+ *
+ *  `steps` is the mounted shell's own step list, since what a step can point at is whatever that
+ *  interface draws. */
+export function useTour(steps: readonly TourStep[]): TourController {
   const running = useEditorStore((s) => s.tourRunning);
   const setTourRunning = useEditorStore((s) => s.setTourRunning);
   const setModal = useEditorStore((s) => s.setModal);
   const [index, setIndex] = useState(0);
-  // The steps THIS run will give, fixed as it starts: a step whose `skipWhen` already holds is left
-  // out, and both halves of the counter are read off this list, so a run that has nothing to say
-  // about opening the phone card reads "1 of 6" instead of jumping from 2 to 4 out of 7.
-  //
-  // Derived DURING RENDER (React's own pattern for state that follows another value) rather than
-  // from an effect, for the same reason `finish` resets the index itself: the plan has to exist on
-  // the first commit of a run, and an effect lands a commit late — after that commit has already
-  // announced a step, applied its menu action and painted it.
-  const [plan, setPlan] = useState<{ running: boolean; steps: readonly TourStep[] }>({ running: false, steps: TOUR_STEPS });
-  if (plan.running !== running) {
-    setPlan({
-      running,
-      steps: running ? planRun({ menuOpen: !useEditorStore.getState().menuCollapsed }) : TOUR_STEPS,
-    });
-  }
-  const steps = plan.steps;
 
   // The index is reset HERE, as a run ends, rather than by an effect watching `running`: the overlay
   // stays mounted for the app's life, so a passive reset lands a commit late and the first commit of

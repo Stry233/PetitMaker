@@ -18,6 +18,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { selectedObjectIds } from '../../state/selection';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 function makeView(): { view: ActiveView } {
   const overlay = {
@@ -171,7 +172,7 @@ describe('Ctrl+click multi-select', () => {
 describe('group drag-to-move', () => {
   /** The drop path needs a live executor over the same grid: the move is real commands. */
   function withExecutor(gs: GridState): CommandExecutor {
-    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+    const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
     setStoreState({ gridState: gs, commandExecutor: executor });
     return executor;
   }

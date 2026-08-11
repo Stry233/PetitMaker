@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildRoadTrimMesh } from '../../canvas/map3d/build/terrain-geometry';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { surfaceY } from '../../canvas/map3d/core/coords';
-import { type GridState } from '../../core/model/types';
+import { type GridState, TerrainType } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
 // A road whose edge-cut gave it non-square corners can't ride the shared full-square instance geometry, so
@@ -76,7 +76,11 @@ describe('preview3d: road edge-cut renders in 3D', () => {
   it('an ELEVATED trimmed road rides its terrain surface like its instanced neighbours', () => {
     const s = makeState(20, 20) as GridState;
     addRoad(s, 'r5', ['square', 'square', 'square', 'fan']);
+    // Raised by the TERRAIN under it: a road takes the surface's height, so moving the stored
+    // number alone would pin the stale-elevation bug rather than the rendering.
     (s.objects.get('r5') as { elevation: number }).elevation = 3;
+    const at = s.objects.get('r5')!.position;
+    s.cells[at.y]![at.x]!.terrain = { type: TerrainType.Mountain, elevation: 3, corners: ['square', 'square', 'square', 'square'] };
     const m = buildRoadTrimMesh(s);
     let maxY = -Infinity;
     for (let i = 1; i < m.positions.length; i += 3) maxY = Math.max(maxY, m.positions[i]!);

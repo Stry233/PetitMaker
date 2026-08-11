@@ -7,7 +7,7 @@
  * doc. The `lang` attribute sits on the scrolling body container, so it covers
  * the whole prose fragment.
  *
- * Espresso-on-cream tokens from `ui/styles`: no invented colors, radii, or
+ * Espresso-on-cream tokens from `ui/design/styles`: no invented colors, radii, or
  * shadows, and no CSS transform on a Framer-positioned element.
  */
 
@@ -15,8 +15,10 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../i18n/context';
 import { useEditorStore } from '../state/store';
-import { colors, font, radii, buttonMotion, cursors } from '../ui/styles';
-import { SegmentedControl } from '../ui/chrome/SegmentedControl';
+import { colors, font, radii, buttonMotion, cursors } from '../ui/design/styles';
+import { skin } from '../ui/design/window-skin';
+import { SegmentedControl } from '../ui/primitives/SegmentedControl';
+import { useScrollFade } from '../ui/primitives/scroll-fade';
 import { DOCS, docNodes, type DocId } from './registry';
 import { LEGAL } from './config';
 import { LegalMarkdown } from './LegalMarkdown';
@@ -44,7 +46,7 @@ const headerRow: CSSProperties = {
   alignItems: 'center',
   gap: 12,
   padding: '18px 22px',
-  borderBottom: `1px solid ${colors.inkBorder}`,
+  borderBottom: `1px solid ${skin.line}`,
   flexShrink: 0,
 };
 
@@ -58,8 +60,8 @@ const backBtn: CSSProperties = {
   border: 'none',
   cursor: cursors.clickable,
   borderRadius: radii.pill,
-  background: colors.surfaceSecondary,
-  color: colors.frameDark,
+  background: skin.inset,
+  color: skin.ink,
 };
 
 const titleStyle: CSSProperties = {
@@ -68,7 +70,7 @@ const titleStyle: CSSProperties = {
   margin: 0,
   fontSize: 18,
   fontWeight: 800,
-  color: colors.frameDark,
+  color: skin.ink,
   fontFamily: font.family,
   lineHeight: 1.2,
   outline: 'none',
@@ -91,16 +93,15 @@ const bodyScroll: CSSProperties = {
   padding: '20px 28px 24px',
 };
 
-// `colors.textSecondary` fails WCAG AA (~3.5-3.9:1) at this size against
-// both `panelCream` (the footer's background) and `surfaceSecondary` (the
-// en-only note's background) — `colors.brownText` is the darkest existing
-// muted/taupe token and clears 4.5:1 against both (see
+// `colors.textSecondary` fails WCAG AA (~3.5-3.9:1) at this size against both the card plate (the
+// footer's background) and `skin.inset` (the en-only note's background) — `colors.brownText` is the
+// darkest existing muted/taupe token and clears 4.5:1 against both (see
 // src/__tests__/legal/a11y.test.tsx's contrast describe block).
 const enOnlyNote: CSSProperties = {
   margin: '0 0 16px',
   padding: '10px 14px',
   borderRadius: radii.md,
-  background: colors.surfaceSecondary,
+  background: skin.inset,
   color: colors.brownText,
   fontSize: 13,
   fontWeight: 700,
@@ -111,7 +112,7 @@ const enOnlyNote: CSSProperties = {
 const footerBar: CSSProperties = {
   flexShrink: 0,
   padding: '12px 28px',
-  borderTop: `1px solid ${colors.inkBorder}`,
+  borderTop: `1px solid ${skin.line}`,
   fontSize: 12,
   fontWeight: 700,
   color: colors.brownText,
@@ -122,6 +123,10 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
   const t = useT();
   const uiLocale = useEditorStore((s) => s.locale);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // No `dep` needed for the doc/lang swap: the hook re-checks the element every render, and a doc
+  // swap re-renders this same body element with new content.
+  const bodyFade = useScrollFade(bodyRef, 'y');
 
   const meta = DOCS[id];
   const hasZh = meta.source.zh !== null;
@@ -185,10 +190,11 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
       </header>
 
       <div
+        ref={bodyRef}
         data-testid="legal-doc-body"
         data-scroll
         lang={effLang === 'zh' ? 'zh-CN' : 'en'}
-        style={bodyScroll}
+        style={{ ...bodyScroll, ...bodyFade }}
       >
         {!hasZh && uiLocale !== 'en' && (
           <div data-testid="en-only-note" style={enOnlyNote}>

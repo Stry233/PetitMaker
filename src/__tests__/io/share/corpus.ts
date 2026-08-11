@@ -33,15 +33,16 @@ import {
 } from '../../../core/model/types';
 // @ts-ignore
 import { readFileSync } from 'node:fs';
+import { roadLookup } from '../../../state/object-index';
 
 // ── Shared generation helpers (the genOn stroke-group pattern) ─────────────────────────────────
 
 /** Drive the real Generate path inside one silent stroke group: generateTerrain, then populate
- *  for the 'random' algorithm only (mirrors both the live GeneratePanel path and
- *  the live Generate path, so these are maps the app itself can produce — what this produces). Does
+ *  for the 'random' algorithm only (the same order and the same gate as `kit/operations/generate.ts`
+ *  :runGeneration, so these are maps the app itself can produce). Does
  *  NOT set `state.generation` — callers do that explicitly so hand-built states never carry it. */
 function genOn(state: GridState, cfg: GenerateConfig): GridState {
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   exec.runSilently(() => {
     const r = generateTerrain(cfg, state, (c: Command) => exec.execute(c));
     if (cfg.algorithm === 'random') {

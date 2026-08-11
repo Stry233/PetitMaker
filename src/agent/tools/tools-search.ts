@@ -15,7 +15,7 @@ import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { getCatalogItem, getCatalogByCategory } from '../../state/catalog';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
-import { objectRect } from '../../state/object-geometry';
+import { footprintCells, objectRect } from '../../state/object-geometry';
 import { type AgentToolDeps, type ToolResultBody, waterSpanTrait } from './tools-common';
 import { objectPlacementCommand } from '../../tools/objects/object-placer';
 
@@ -39,7 +39,10 @@ export function findFlatAreas(deps: AgentToolDeps, input: Record<string, unknown
   const occupied = new Set<string>();
   for (const o of state.objects.values()) {
     const r = objectRect(o);
-    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) occupied.add(`${x},${y}`);
+    // footprintCells, not `pos + integer offset`: a half-integer origin (a halfStep ramp/bridge)
+    // would otherwise add a fractional key ("4.5,4") the integer probe below never matches, so a
+    // deck's own cells came back "flat" and unoccupied.
+    for (const { x, y } of footprintCells(r.x, r.y, r.w, r.h)) occupied.add(`${x},${y}`);
   }
   const ok = (x: number, y: number): boolean => {
     const cell = state.cells[y]?.[x];

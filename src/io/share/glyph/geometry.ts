@@ -51,8 +51,14 @@ export const HEADER_BYTES = 8;
 export const HEADER_NSYM = 8;
 
 /** Header wire format (the single source both `buildHeaderBytes` and `parseHeader` read).
- *  Layout: version(u8) | tier(u8) | payloadLen(u16 LE) | crc32(payload)(u32 LE). */
-export const HEADER_VERSION = 1;
+ *  Layout: version(u8) | tier(u8) | payloadLen(u16 LE) | crc32(payload)(u32 LE).
+ *
+ *  The version is drawn in the grayscale HEADER_LEVELS, so it is readable before any color
+ *  classification happens — which is what lets it name the color palette the rest of the band is
+ *  drawn in. New codes carry this version; a decoder accepts every version it recognizes, and that
+ *  recognition is all a released palette is asked for at decode time (see
+ *  palette.ts:paletteForVersion). */
+export const HEADER_VERSION = 2;
 export const HEADER_OFFSET = { version: 0, tier: 1, payloadLen: 2, crc: 4 } as const;
 
 /** Header transport ladder: the 8-byte record is RS(HEADER_NSYM)-encoded to HEADER_ENC_BYTES,

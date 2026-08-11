@@ -4,8 +4,10 @@
  * crafted/edited file can't collide two commands onto one key. Pure logic, unit-tested directly.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PRESETS, presetBinds, detectPreset, serializeKeybinds, parseKeybinds } from '../../ui/keybindings/presets';
-import { useKeybinds, effectiveCombo } from '../../ui/keybindings/store';
+import {
+  PRESETS, presetBinds, detectPreset, serializeKeybinds, parseKeybinds, useKeybinds, effectiveCombo,
+  normalizeCombo,
+} from '../../core/runtime/keybindings';
 import { translations } from '../../i18n/translations';
 
 describe('keymap presets', () => {
@@ -28,6 +30,39 @@ describe('keymap presets', () => {
     for (const [k, v] of num) if (def.get(k) !== v) diffs++;
     expect(diffs).toBeGreaterThanOrEqual(10);
   });
+
+  it('pro reproduces the pre-game-layout defaults exactly', () => {
+    const pro = presetBinds(PRESETS.find((p) => p.id === 'pro')!);
+    // The frozen 2026-08-09 shipped layout. This fixture is history, not derivation:
+    // if it fails, the PRO map drifted, not this list.
+    const frozen: Record<string, string> = {
+      'surface.mountain': '1', 'surface.river': '2', 'surface.road': '3',
+      'tool.move': 'v', 'tool.brush': 'b', 'tool.eraser': 'e', 'tool.rect': 'r',
+      'tool.circle': 'c', 'tool.line': 'f', 'tool.curve': 'g', 'tool.edgecut': 'x', 'tool.smart': 't',
+      'tool.constrain': 'shift', 'tool.break_handle': 'alt',
+      'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
+      'selection.rotate_cw': '.', 'selection.rotate_ccw': ',', 'selection.delete': 'delete',
+      'selection.deselect': 'escape', 'selection.multi': 'ctrl', 'selection.all': 'ctrl+a',
+      'camera.zoom_in': '=', 'camera.zoom_out': '-', 'camera.fit': 'ctrl+0',
+      'camera.pan_up': 'w', 'camera.pan_left': 'a', 'camera.pan_down': 's', 'camera.pan_right': 'd',
+      'camera.pan_drag': 'space', 'view.toggle': '`',
+      'app.generate': 'ctrl+g', 'app.new': 'ctrl+alt+n', 'app.export_json': 'ctrl+s',
+      'app.export_image': 'ctrl+p', 'app.help': 'shift+?', 'app.menu': 'm',
+      'overlay.grid': 'shift+g', 'overlay.numbers': 'shift+n', 'overlay.chunks': 'shift+c',
+    };
+    for (const [id, combo] of Object.entries(frozen))
+      expect(pro.get(id), id).toBe(normalizeCombo(combo));
+  });
+
+  it('the game default arms the terrain bar row on 1-8 and rotate on E', () => {
+    const expects: Record<string, string | null> = {
+      'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.line': '4',
+      'tool.curve': '5', 'tool.rect': '6', 'tool.circle': '7', 'tool.smart': '8',
+      'selection.rotate_cw': 'e', 'selection.rotate_ccw': null,
+      'surface.mountain': null, 'tool.move': null, 'camera.pan_up': 'w',
+    };
+    for (const [id, combo] of Object.entries(expects)) expect(effectiveCombo({}, id), id).toBe(combo);
+  });
 });
 
 describe('preset apply + detect', () => {
@@ -38,10 +73,17 @@ describe('preset apply + detect', () => {
     expect(detectPreset({})).toBe('default');
   });
 
-  it('applyBinds(preset) makes detectPreset return that preset', () => {
+  it('applyBinds(preset) makes detectPreset return that preset, for every preset', () => {
+    for (const p of PRESETS) {
+      useKeybinds.getState().applyBinds(p.binds);
+      expect(detectPreset(ov()), p.id).toBe(p.id);
+    }
+    // numeric keeps the game default's digits and moves pan to the arrows; spot-check both, and
+    // that move carries no number (it inherits Pro's letter through the spread).
     useKeybinds.getState().applyBinds(PRESETS.find((p) => p.id === 'numeric')!.binds);
-    expect(detectPreset(ov())).toBe('numeric');
-    expect(effectiveCombo(ov(), 'tool.brush')).toBe('2');
+    expect(effectiveCombo(ov(), 'tool.brush')).toBe('1');
+    expect(effectiveCombo(ov(), 'tool.smart')).toBe('8');
+    expect(effectiveCombo(ov(), 'tool.move')).toBe('v');
     expect(effectiveCombo(ov(), 'camera.pan_up')).toBe('arrowup');
   });
 
@@ -62,7 +104,8 @@ describe('keybinds import / export', () => {
     const res = parseKeybinds(serializeKeybinds({ 'tool.brush': 'k' }));
     expect(res.ok).toBe(true);
     expect(res.binds!['tool.brush']).toBe('k');
-    expect(res.binds!['surface.mountain']).toBe('1');
+    // surface.mountain has no game default (null) and no override here, so it round-trips unbound.
+    expect(res.binds!['surface.mountain']).toBe(null);
   });
 
   it('accepts a bare id->combo map and ignores unknown ids', () => {

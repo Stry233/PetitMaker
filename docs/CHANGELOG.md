@@ -4,6 +4,40 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.550] - 2026-08-11
+
+### Added
+
+- **A smart build shelf, where one press lays a whole thing.** Choose what to build and press the map: a terraced hill, a stream that finds its way down to water, a road, or a planting. Each shows a preview of what it would build before you commit, and holding the press grows it. A planting reads what it is standing beside, so a bed appears against a building and a border along a road, and holding it lets the stand mature.
+- **Roads you can route.** Press a point and then another to connect them, and the shelf offers the ways it found and what each would cost. Press again for a different layout of the same island rather than a second one piled on the first. A whole-island press paves the network and ends its streets at the doors.
+- **A way in and a way out of a maze.** Turn the marks on and drag them where you want them; every candidate is built with them, and the route between them can be shown, paved as real road.
+- **The eraser takes back a rectangle or a circle**, beside the dab it has always had. Press at one corner, drag the figure out, and the whole of it goes on release; hold Shift for a square or a round circle. It is one undo step.
+- **Resuming a session restores what you can still undo**, up to the last sixty steps, alongside the map and the camera.
+- **Ramps and bridges sit on the half grid**, so a crossing lands where the gap actually is rather than a cell away from it.
+- **The object shelf forgives a search.** Two words at once, a misspelling, an item's other names, and its colour all find it.
+- **Generate offers candidates you can see.** Each card is a photograph of the map that recipe builds, and clicking one is the confirmation, with no second step.
+
+### Changed
+
+- **A new interface, in the game's own style.** The tools are five mode blocks along the top with a bar for whichever one is chosen, the layers and the view controls stand in a column at the right, and the windows are reached from one menu. It is laid out to fit a laptop, and it scales down rather than covering the map on a smaller screen.
+- **A new default keymap, matched to the game's controls.** The terrain tools sit on the digit row in the order the bar shows them, and WASD pans. Every command is still rebindable, and the previous layout remains as a preset.
+- **Save and share is one window** with three sections: keep working, share a picture, or read the build checklist.
+- **The 3D view opens square on**, the way the 2D view does, and it opens sooner: its scene is fetched in the background while you work in 2D. Touching the camera during the opening fly-in lands the view immediately rather than ignoring you until it finishes.
+- **Editing is quicker on a full map**, most visibly while a large selection is standing. The support check behind every stroke was reduced to about a fifth of its cost, and the 3D water now moves on the graphics card instead of being recomputed every frame.
+- **A painted region reads clearly in 3D**, drawn in white rather than green over green.
+
+### Fixed
+
+- **The brush preview promises what the stroke will do.** It stands on the surface it hovers, trims the corners the stroke will trim, and draws a placement as one body rather than a stack of parts.
+- **Water follows the ground it crosses**, unless you pinned a layer yourself.
+- **A cut corner where mountain meets water opens onto the mountain**, so the junction reads as one line, and two shores meeting at a point now weld.
+- **A saved file with a half-cell crossing no longer loses its undo history** on import.
+- **The recipe field on the Generate panel is a line you write on.** The blank keeps its place and its length as the number grows, and its caret matches the digits beside it.
+- **A road's rounded corner could keep its old shape** after a generation or a smart-build press, until something else nearby was redrawn.
+- **A failing generator run no longer moves every later one onto the main thread**, which had made each press after it slower for the rest of the session.
+- **The digit shortcuts fire by their physical keys**, whatever the keyboard layout types.
+- **The cursor answers for the tool you have arrived at**, not the one you just left.
+
 ## [0.4.149] - 2026-08-02
 
 ### Added

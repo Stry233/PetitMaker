@@ -12,13 +12,17 @@ import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../canvas/interaction/usePointerInteraction';
 import { __resetCursorController, registerCursorSurface, setToolCursor } from '../../canvas/interaction/cursor-controller';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import { installModifierTracking } from '../../core/runtime/modifier-state';
-import { setActiveView } from '../../canvas/active-view';
+import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ToolType, type PlacedObject } from '../../core/model/types';
+import { TerrainType, ToolType, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import { makeState } from '../rules/_helpers';
+import type { ToolManager } from '../../tools/tool-manager';
+import type { DrawingTool } from '../../tools/paint/drawing-tool';
+import { useEditorStore } from '../../state/store';
+import { makeTestToolManager } from '../tools/_tool-manager';
+import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 
 const OBJ_ID = 'o1';
@@ -86,6 +90,7 @@ afterEach(() => {
   key('keyup', false); // never leave the modifier stuck on for the next test
   cleanup();
   setActiveView(null);
+  registerToolManager(null);
   __resetCursorController();
 });
 
@@ -187,5 +192,66 @@ describe('every non-pointer input updates the cursor with no mouse movement', ()
     setStoreState({ activeTool: ToolType.TerrainBrush });
 
     expect(el.style.cursor).toBe(cursorCss('mountain'));
+  });
+});
+
+/**
+ * The refusal badge asks a TOOL whether the hovered cell would be refused, and the tool layer is a
+ * mirror the canvas writes in an effect — after the store has already told its subscribers. So the
+ * order below is the app's, not a convenience: the store first, the mirror second, `tool-synced`
+ * last. A probe run on the store change alone answers for the tool being left AND caches that
+ * answer under the new inputs, which is what left the badge on the eraser over a cell the eraser
+ * allows, through every later pointer move that stayed in the cell.
+ */
+describe('the refusal badge across a tool switch under a stationary pointer', () => {
+  /** Move the tool layer the way PixiCanvas's sync effect does, and say so. */
+  function syncToolLayer(tm: ToolManager, tool: ToolType): void {
+    setStoreState({ activeTool: tool });
+    tm.setActiveTool(tool);
+    useEditorStore.getState().eventBus.emit('tool-synced', { tool });
+  }
+
+  it('drops the brush\'s refusal when the eraser takes over, and takes it back', () => {
+    // The object at (5,5) is what the terrain brush is refused over (V-PLACE-BLOCK); the eraser
+    // has no terrain to peel there, so it allows the same cell.
+    activate();
+    const gs = useEditorStore.getState().gridState!;
+    const tm = makeTestToolManager(gs);
+    registerToolManager(tm);
+    syncToolLayer(tm, ToolType.TerrainBrush);
+    setToolCursor('mountain');
+    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
+    expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
+
+    syncToolLayer(tm, ToolType.Eraser);
+    setToolCursor('eraser');
+    expect(el.style.cursor).toBe(cursorCss('eraser'));
+
+    syncToolLayer(tm, ToolType.TerrainBrush);
+    setToolCursor('mountain');
+    expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
+  });
+
+  it('follows a change of SURFACE, which moves no field the store subscription watches', () => {
+    // Mountain and tile are one ToolType and one designMode apart from `contentType`, which the
+    // DrawingTool holds itself. Nothing the store publishes changes, so the sync is the only
+    // thing that can ask again.
+    activate();
+    const gs = useEditorStore.getState().gridState!;
+    // A cliff on (12,12)'s right: the mountain brush stacks against it, the road brush is refused
+    // for want of flat ground.
+    setTerrain(gs, 13, 12, TerrainType.Mountain, 3);
+    const tm = makeTestToolManager(gs);
+    const brush = tm.getToolById(ToolType.TerrainBrush) as DrawingTool;
+    registerToolManager(tm);
+    syncToolLayer(tm, ToolType.TerrainBrush);
+    setToolCursor('mountain');
+    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 125, clientY: 125 }));
+    expect(el.style.cursor).toBe(cursorCss('mountain'));
+
+    brush.contentType = 'tile';
+    setToolCursor('road');
+    useEditorStore.getState().eventBus.emit('tool-synced', { tool: ToolType.TerrainBrush });
+    expect(el.style.cursor).toBe(cursorCss('road', { forbidden: true }));
   });
 });

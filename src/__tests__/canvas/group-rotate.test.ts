@@ -17,7 +17,8 @@ import type { EditorEvents, GridState, PlacedObject } from '../../core/model/typ
 import { makeState, setTerrain } from '../rules/_helpers';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import type { GroupRotation } from '../../canvas/group-arc';
-import { rotateGroup } from '../../ui/chrome/group-actions';
+import { rotateGroup } from '../../tools/objects/group-actions';
+import { roadLookup } from '../../state/object-index';
 
 for (const [id, width, height, rotatable] of [
   // 'rot-span' stands for the bridges and ramps: unrotatable AND non-square.
@@ -34,7 +35,7 @@ interface Spec { id: string; x: number; y: number; catalogId?: string; locked?: 
 
 function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   const gs = makeState(24, 24);
-  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(gs));
   for (const s of specs) {
     const object: PlacedObject = {
       id: s.id, catalogId: s.catalogId ?? 'rot-hut', position: { x: s.x, y: s.y },

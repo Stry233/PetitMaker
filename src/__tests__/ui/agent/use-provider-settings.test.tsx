@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAgentStore } from '../../../agent/store';
-import { useProviderSettings } from '../../../ui/menu/agent/useProviderSettings';
+import { useProviderSettings } from '../../../ui/agent/useProviderSettings';
 
 // The probe never identifies a platform here, so detection always "fails".
 /** Swapped per test to make listModels() throw (an unreachable endpoint) instead of listing. */

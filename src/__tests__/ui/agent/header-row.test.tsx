@@ -11,9 +11,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { useAgentStore } from '../../../agent/store';
-import { HeaderRow } from '../../../ui/menu/agent/HeaderRow';
+import { HeaderRow } from '../../../ui/agent/HeaderRow';
 
-vi.mock('../../../ui/menu/agent/atoms', () => ({
+vi.mock('../../../ui/agent/atoms', () => ({
   prettyModel: (id: string) => id,
   GBtn: ({ label, onClick }: { label: string; onClick: () => void }) => (
     <button type="button" onClick={onClick}>{label}</button>

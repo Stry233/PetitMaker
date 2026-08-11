@@ -16,7 +16,7 @@ export interface SectionRestoreDeps {
   executor: { restoreHistory(entries: HistoryEntry[]): void } | null;
   state: GridState;
   setLayerLocked: (layer: number, locked: boolean) => void;
-  setCamera: (c: { x: number; y: number; zoom: number }) => void; // wraps __petitSetCamera
+  setCamera: (c: { x: number; y: number; zoom: number }) => void; // wraps host.camera.set2d
 }
 
 export interface SectionRestoreResult { restored: string[]; dropped: string[] }

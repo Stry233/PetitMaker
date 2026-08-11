@@ -4,11 +4,13 @@
  * reads all of this, so a broken invariant would surface as a wrong/unbindable key.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { COMMANDS, COMMAND_BY_ID, ALIASES } from '../../ui/keybindings/commands';
+import { COMMANDS, COMMAND_BY_ID } from '../../kit/commands';
 import {
-  normalizeCombo, effectiveCombo, bindingIndex, aliasIndex, isReservedCombo, useKeybinds, type Overrides,
-} from '../../ui/keybindings/store';
-import { KEY_ROWS, NAV, NUMPAD, comboFor, comboFromEvent, prettyCombo, type Layer } from '../../ui/chrome/keyboard/layout';
+  ALIASES, normalizeCombo, effectiveCombo, bindingIndex, aliasIndex, isReservedCombo, useKeybinds, META_BY_ID,
+  type Overrides,
+} from '../../core/runtime/keybindings';
+import { KEY_ROWS, NAV, NUMPAD, comboFor, comboFromEvent, type Layer } from '../../ui/chrome/modals/keyboard/layout';
+import { prettyCombo } from '../../core/runtime/keybindings';
 import { translations } from '../../i18n/translations';
 import { useEditorStore } from '../../state/store';
 import { setStoreState } from '../_store';
@@ -17,6 +19,7 @@ import { makeState, makeObject } from '../rules/_helpers';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
+import { roadLookup } from '../../state/object-index';
 
 const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
@@ -40,8 +43,8 @@ describe('command registry (single source of truth)', () => {
   });
 
   it('routes the menu toggle through the host, not straight at the store', () => {
-    // Opening the menu also retires the restore offer, which lives in App's own state. A command
-    // that wrote `menuCollapsed` itself would skip that and strand the bubble over an open menu.
+    // Whether the menu is open is the shell's own React state, not a store field, so a command
+    // cannot reach it directly: it has to go through the context the shell supplies.
     const toggleMenu = vi.fn();
     COMMAND_BY_ID.get('app.menu')!.run({ ...noopCtx, toggleMenu });
     expect(toggleMenu).toHaveBeenCalledTimes(1);
@@ -53,7 +56,7 @@ describe('command registry (single source of truth)', () => {
   });
 
   describe('history.undo/redo route to the region brush while selecting a region', () => {
-    const executor = new CommandExecutor(makeState(), new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(makeState(), new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(makeState()));
 
     afterEach(() => {
       setStoreState({ selectingRegion: false, commandExecutor: null });
@@ -144,16 +147,20 @@ describe('keyboard layout', () => {
   });
 
   it('resolves the same combos the registry ships (per active layer)', () => {
-    const b = KEY_ROWS.flat().find((k) => k.base === 'b')!;
+    const e = KEY_ROWS.flat().find((k) => k.base === 'e')!;
     const g = KEY_ROWS.flat().find((k) => k.base === 'g')!;
     const slash = KEY_ROWS.flat().find((k) => k.base === '/')!;
     const idx = bindingIndex({});
-    expect(idx.get(comboFor(b, BASE)!)).toBe('tool.brush');
+    expect(idx.get(comboFor(e, BASE)!)).toBe('selection.rotate_cw');
     expect(idx.get(comboFor(g, { ...BASE, ctrl: true })!)).toBe('app.generate');
-    expect(idx.get(comboFor(g, { ...BASE, shift: true })!)).toBe('overlay.grid');
-    // Shift+/ produces "?", which is app.help's shipped chord.
+    // Shift+/ produces "?", the chord notation the layout renders for that combo.
     expect(comboFor(slash, { ...BASE, shift: true })).toBe('shift+?');
-    expect(idx.get('shift+?')).toBe('app.help');
+  });
+
+  it('a shift-modified combo still resolves through bindingIndex, via an explicit override (no command sits on a shift layer under the game default, so this pins the KeyDef.shift path directly)', () => {
+    const g = KEY_ROWS.flat().find((k) => k.base === 'g')!;
+    const idx = bindingIndex({ 'overlay.grid': 'shift+g' });
+    expect(idx.get(comboFor(g, { ...BASE, shift: true })!)).toBe('overlay.grid');
   });
 
   it('the Shift keys carry the rebindable constrain command', () => {
@@ -221,6 +228,12 @@ describe('keyboard layout', () => {
     expect(comboFromEvent(ev({ key: ' ' }))).toBe('space');
   });
 
+  it('records an AZERTY digit-row press as its physical digit (shares eventKeyToken with the engine)', () => {
+    const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent;
+    expect(comboFromEvent(ev({ key: '&', code: 'Digit1' }))).toBe('1');
+    expect(comboFromEvent(ev({ key: '?', shiftKey: true, code: 'Digit1' }))).toBe('shift+?');
+  });
+
   it('numpad keys bind independently of the top-row digits (via event.code)', () => {
     const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent;
     expect(comboFromEvent(ev({ key: '5', code: 'Numpad5' }))).toBe('num5');
@@ -265,7 +278,7 @@ describe('combo normalization', () => {
 
 describe('effective resolution', () => {
   it('uses the default when unset, the override when set, and null when explicitly unbound', () => {
-    expect(effectiveCombo({}, 'tool.brush')).toBe('b');
+    expect(effectiveCombo({}, 'tool.brush')).toBe('1');
     expect(effectiveCombo({ 'tool.brush': 'j' }, 'tool.brush')).toBe('j');
     expect(effectiveCombo({ 'tool.brush': null }, 'tool.brush')).toBeNull();
   });
@@ -274,8 +287,8 @@ describe('effective resolution', () => {
   });
   it('bindingIndex maps effective combos to ids', () => {
     const idx = bindingIndex({});
-    expect(idx.get('b')).toBe('tool.brush');
-    expect(idx.get('1')).toBe('surface.mountain');
+    expect(idx.get('1')).toBe('tool.brush');
+    expect(idx.get('e')).toBe('selection.rotate_cw');
     expect(idx.get('ctrl+z')).toBe('history.undo');
   });
   it('flags reserved combos', () => {
@@ -297,32 +310,32 @@ describe('rebind store', () => {
   });
 
   it('steals the combo from the prior holder (which becomes unbound)', () => {
-    // 'e' is eraser's default; give it to the brush → eraser loses it.
-    const r = useKeybinds.getState().rebind('tool.brush', 'e');
+    // '2' is eraser's default; give it to the brush → eraser loses it.
+    const r = useKeybinds.getState().rebind('tool.brush', '2');
     expect(r.ok).toBe(true);
     expect(r.displaced).toBe('tool.eraser');
-    expect(eff('tool.brush')).toBe('e');
+    expect(eff('tool.brush')).toBe('2');
     expect(eff('tool.eraser')).toBeNull();
   });
 
   it('assigning a command its own default drops the override', () => {
     useKeybinds.getState().rebind('tool.brush', 'j');
-    useKeybinds.getState().rebind('tool.brush', 'b'); // back to default
+    useKeybinds.getState().rebind('tool.brush', '1'); // back to default
     expect('tool.brush' in useKeybinds.getState().overrides).toBe(false);
-    expect(eff('tool.brush')).toBe('b');
+    expect(eff('tool.brush')).toBe('1');
   });
 
   it('refuses to rebind a reserved command or steal a reserved combo', () => {
     expect(useKeybinds.getState().rebind('history.undo', 'j').ok).toBe(false);
     expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+z').ok).toBe(false);
-    expect(eff('tool.brush')).toBe('b'); // unchanged
+    expect(eff('tool.brush')).toBe('1'); // unchanged
   });
 
   it('clear unbinds, resetAll restores defaults', () => {
     useKeybinds.getState().clear('tool.brush');
     expect(eff('tool.brush')).toBeNull();
     useKeybinds.getState().resetAll();
-    expect(eff('tool.brush')).toBe('b');
+    expect(eff('tool.brush')).toBe('1');
     expect(useKeybinds.getState().overrides).toEqual({});
   });
 
@@ -330,5 +343,27 @@ describe('rebind store', () => {
     useKeybinds.getState().rebind('tool.brush', 'j');
     const raw = localStorage.getItem('petit-planet-keybinds');
     expect(raw && (JSON.parse(raw) as Overrides)['tool.brush']).toBe('j');
+  });
+});
+
+describe('UI zoom is registered, reserved, and matches its listener', () => {
+  it('declares both rows reserved on the combos the listener answers', () => {
+    for (const [id, combo] of [['app.ui_zoom_in', 'ctrl+='], ['app.ui_zoom_out', 'ctrl+-']] as const) {
+      const meta = META_BY_ID.get(id);
+      expect(meta?.reserved, id).toBe(true);
+      expect(meta?.defaultCombo, id).toBe(combo);
+    }
+  });
+  it('the combos cannot be stolen by a rebind', () => {
+    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+=').ok).toBe(false);
+  });
+  it('a shifted variant the listener also answers is reserved too', () => {
+    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+shift+=').ok).toBe(false);
+  });
+  it('labels resolve in all 7 locales', () => {
+    for (const id of ['app.ui_zoom_in', 'app.ui_zoom_out']) {
+      const key = META_BY_ID.get(id)!.labelKey;
+      for (const [loc, d] of Object.entries(translations)) expect(d[key], `${id} in ${loc}`).toBeTruthy();
+    }
   });
 });

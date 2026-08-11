@@ -1,0 +1,27 @@
+{
+  "id": "road-slate",
+  "category": "road",
+  "name": {
+    "en": "Slate Path",
+    "zh": "石板路",
+    "ja": "スレートの道",
+    "ru": "Дорожка из сланца",
+    "th": "ทางหินชนวน",
+    "id": "Jalan Batu Tulis",
+    "fr": "Chemin d'ardoise"
+  },
+  "color": "#6b7785",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -73,6 +73,17 @@ export class Projection3D implements ViewProjection {
     return { x: Math.floor((p.wx + off.x) * 2), y: Math.floor((p.wz + off.z) * 2) };
   }
 
+  screenToHalf(sx: number, sy: number): MacroCoord {
+    const p = this.pointAt(sx, sy);
+    if (!p) return { x: OFF_MAP, y: OFF_MAP };
+    const s = this.host.state();
+    const off = mapCenterOffset(s.template.width, s.template.height);
+    return {
+      x: Math.round((p.wx + off.x) * 2) / 2,
+      y: Math.round((p.wz + off.z) * 2) / 2,
+    };
+  }
+
   cellToScreen(x: number, y: number): { x: number; y: number; scale: number; behind?: boolean } {
     const s = this.host.state();
     const off = mapCenterOffset(s.template.width, s.template.height);

@@ -26,6 +26,7 @@
 import { CHUNK_SIZE } from '../core/model/constants';
 import { chunkKey, cellKey, type Rect } from '../core/model/grid-model';
 import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
+import type { RoadLookup } from '../core/model/road-lookup';
 import { getCatalogItem } from './catalog';
 import { isCoating } from '../core/model/traits';
 import { objectRect } from './object-geometry';
@@ -177,8 +178,32 @@ export function getObjectIndex(state: GridState): ObjectIndex {
 }
 
 /**
- * The object whose footprint covers `coord`, or null. Insertion order decides when footprints
- * overlap (a coating under a solid object), matching a full scan of `state.objects`.
+ * The `RoadLookup` over `state` that `core`'s edge-cut geometry is handed. Bind it
+ * once per operation, never per cell.
+ *
+ * It resolves the index per call rather than closing over one, for two reasons.
+ * A delta the index cannot trust replaces the whole `ObjectIndex` object, so a
+ * captured handle stops tracking the state it was built from. And binding must
+ * stay free: the auto-trim preview builds a scratch grid per pointer move and
+ * binds a lookup over it, where resolving eagerly would cost a full `buildIndex`
+ * per frame for a terrain-only stroke that never asks a road question. The
+ * resolve is a WeakMap hit plus two comparisons on the settled path, which is
+ * what keeps the per-call price at O(1).
+ */
+export function roadLookup(state: GridState): RoadLookup {
+  return (x, y) => getObjectIndex(state).roadByCell.get(cellKey(x, y)) ?? null;
+}
+
+/**
+ * The object whose footprint covers `coord`, or null. Tests CELL OVERLAP (the macro cell at
+ * `coord` intersects the footprint rect), not whether the rect's origin lies inside the cell —
+ * a half-anchored footprint (a halfStep ramp/bridge) has no integer origin, so the origin test
+ * answered a click on the cell its own left half is drawn over with "nothing here" while a
+ * whole-anchor test never noticed, and the 3D view's mesh raycast (which hit-tests the mesh
+ * itself, not a stored rect) answered the same click differently. Byte-identical to the old test
+ * for a whole-integer footprint. Insertion order decides when two footprints overlap (a coating
+ * under a solid object, or a cell straddled by two half-anchored decks), matching a full scan of
+ * `state.objects`.
  *
  * Reports what is THERE, locked or not: whether a found object may change is V-LOCK-02's
  * question. An object whose catalogId is unknown has no footprint to test, so it is skipped.
@@ -187,7 +212,7 @@ export function objectAt(index: ObjectIndex, coord: MacroCoord): PlacedObject | 
   for (const e of entriesNear(index, { x: coord.x, y: coord.y, w: 1, h: 1 })) {
     if (!e.item) continue;
     const { x, y, w, h } = e.rect;
-    if (coord.x >= x && coord.x < x + w && coord.y >= y && coord.y < y + h) return e.obj;
+    if (coord.x + 1 > x && coord.x < x + w && coord.y + 1 > y && coord.y < y + h) return e.obj;
   }
   return null;
 }

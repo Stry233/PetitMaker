@@ -40,19 +40,29 @@ export function useCursor(containerRef: RefObject<HTMLElement | null>, active: b
     // Region select owns the pointer while it is on, so it owns the cursor too.
     if (selectingRegion) { setToolCursor('marquee'); return; }
     const push = () => {
-      const tool = getActiveToolManager()?.getActiveTool();
-      if (!tool) return false;
-      setToolCursor(tool.cursor);
+      const cursor = getActiveToolManager()?.getActiveCursor();
+      if (!cursor) return false;
+      setToolCursor(cursor);
       return true;
     };
-    if (push()) return;
-    // On first mount the canvas registers its ToolManager in a LATER effect than this one,
-    // so there is nothing to read yet. Take the next frame.
+    // The manager and the DrawingTool mirror the store, and the canvas writes that mirror in its
+    // own effect: whether this one runs before or after it is hook order, which is not a fact
+    // about cursors. `tool-synced` is the canvas saying the mirror is written, so the push that
+    // lands is the one made after it, whatever the order of the effects around it.
+    const eventBus = useEditorStore.getState().eventBus;
+    eventBus.on('tool-synced', push);
+    push();
+    // On first mount the canvas registers its ToolManager in a LATER effect than this one, and no
+    // sync follows a registration on its own. Take the next frame.
     const raf = requestAnimationFrame(push);
-    return () => cancelAnimationFrame(raf);
-    // EVERY store field a tool's `cursor` getter reads must be a dependency, or the cursor
-    // outlives the fact it names. `selection` is here as a CHANGE TRIGGER, not a value read
-    // here, so narrowing it to the single member would drop re-pushes. `contentType`: all five
-    // shape modes are one ToolType, and picking River or Tile changes contentType only.
+    return () => {
+      eventBus.off('tool-synced', push);
+      cancelAnimationFrame(raf);
+    };
+    // EVERY store field a tool's cursor answer reads — DrawingTool's own `cursor` getter, or a
+    // `cursorFor(ctx)` — must be a dependency, or the cursor outlives the fact it names.
+    // `selection` is here as a CHANGE TRIGGER, not a value read here, so narrowing it to the single
+    // member would drop re-pushes. `contentType`: all five shape modes are one ToolType, and
+    // picking River or Tile changes contentType only.
   }, [activeTool, selectedItemId, selection, selectingRegion, contentType, active]);
 }

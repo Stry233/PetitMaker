@@ -1,17 +1,16 @@
 /**
  * The ONE file-import routine — routes a picked/dropped/pasted file to the JSON path or the
- * PetitGlyph raster path and installs the result. Shared by `ui/chrome/import/ImportModal`'s file
+ * PetitGlyph raster path and installs the result. Shared by `ui/chrome/modals/import/ImportModal`'s file
  * picker/drop-zone and the window-level drag-drop overlay.
  *
  * Returns a RESULT rather than raising toasts, so the routing needs no DOM and
- * `ui/chrome/import/import-toast.ts` is the single place a result becomes a message.
+ * `ui/chrome/modals/import/import-toast.ts` is the single place a result becomes a message.
  */
 import { deserialize } from './json-codec';
 import { verifyIntegrity } from './export-json';
 import { applyOptionalSections, type SectionRestoreDeps } from './import-sections';
 import { getMapTemplate } from '../config/maps';
 import { importFromRaster, type ShareErrorCode } from './share';
-import { createDefaultRegistry, type RuleRegistry } from '../rules/index';
 import type { GridState } from '../core/model/types';
 
 /** One warning surfaced from a successful import. Carries enough shape for the toast mapper to
@@ -33,8 +32,9 @@ export type FileImportOutcome =
   | { status: 'failed'; code?: ShareErrorCode };
 
 export interface ImportFileDeps {
-  /** Installs the decoded map as the working grid (swaps in a fresh commandExecutor/gridState). */
-  loadMap: (state: GridState, registry: RuleRegistry) => void;
+  /** Installs the decoded map as the working grid (swaps in a fresh commandExecutor/gridState),
+   *  building its own RuleRegistry (`kit/operations/map.ts:loadMap` in production). */
+  loadMap: (state: GridState) => void;
   /** Read AFTER `loadMap` runs: the optional-sections restorer needs the executor/state loadMap
    *  just installed, not whatever was live before this import started. */
   getSectionDeps: () => SectionRestoreDeps;
@@ -65,7 +65,7 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
       // runs. 'absent' (legacy / hand-made / autosave) is silent.
       const integrity = verifyIntegrity(parsed);
       const state = deserialize(text, getMapTemplate(parsed.templateId));
-      deps.loadMap(state, createDefaultRegistry());
+      deps.loadMap(state);
       const sections = applyOptionalSections(parsed, deps.getSectionDeps());
       const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
       if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
@@ -87,7 +87,7 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
       bmp.height,
     );
     if (!result.ok) return { status: 'failed', code: result.error.code };
-    deps.loadMap(result.state, createDefaultRegistry());
+    deps.loadMap(result.state);
     const warnings: ImportWarning[] = result.warnings.map((w) => (w === 'template-drift' ? { kind: 'template-drift' as const } : { kind: 'catalog-drift' as const }));
     return { status: 'imported', source: 'raster', warnings };
   } catch {

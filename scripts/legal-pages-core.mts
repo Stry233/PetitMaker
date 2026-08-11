@@ -2,7 +2,6 @@
 // registry doc (src/legal/registry.ts) through the shared markdown emitter
 // (src/legal/markdown-html.ts) into a full zero-JS HTML document, plus the
 // sitemap/robots/security.txt/license-tree copy that make the site crawlable.
-// See docs/internal/superpowers/specs/2026-07-14-legal-docs-design.md §14/§15.
 //
 // Split from scripts/build-legal-pages.mts (the CLI entry) for EXACTLY the
 // reason scripts/license-audit-core.mts is split from scripts/license-audit.mts
@@ -120,8 +119,8 @@ const STYLE_CSS = `
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: #FFFBE1; /* src/ui/styles.ts colors.panelCream */
-  color: #4A3B32; /* src/ui/styles.ts colors.textPrimary */
+  background: #FFFBE1; /* src/ui/design/styles.ts colors.panelCream */
+  color: #4A3B32; /* src/ui/design/styles.ts colors.textPrimary */
   /* system CJK stack — no webfont download on policy pages (spec §14) */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans", sans-serif;

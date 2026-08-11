@@ -9,10 +9,11 @@ import { toGenConfig } from '../../../../tools/generation';
 import { ItemCategory, type EditorEvents, type GenerateConfig } from '../../../../core/model/types';
 import { getCatalogByCategory, getCatalogItem, isDecoration } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
+import { roadLookup } from '../../../../state/object-index';
 
 function gen(settlement: number, nature: number, seed: number, size = 48, region: { x: number; y: number }[] | null = null) {
   const state = makeState(size, size);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed, region, settlement, nature };
   const start = exec.getUndoStackSize();
   generateTerrain(config, state, (c) => exec.execute(c));
@@ -98,7 +99,7 @@ describe('populate (terrain + placement, real executor)', () => {
     const cfg: GenerateConfig = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, settlement: 0.8, nature: 0.7 };
     const run = async (cancelled: boolean) => {
       const state = makeState(80, 80);
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       generateTerrain(cfg, state, (c) => exec.execute(c));
       return (await populate(toGenConfig(cfg), state, (c) => exec.execute(c), exec.getRegistry(), { cancelled })).placed;
     };

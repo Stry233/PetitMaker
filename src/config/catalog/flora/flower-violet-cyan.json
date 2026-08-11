@@ -10,6 +10,10 @@
     "id": "Violet Toska",
     "fr": "Violette turquoise"
   },
+  "aliases": [
+    "blue",
+    "蓝"
+  ],
   "icon": "flower-violet-cyan",
   "width": 1,
   "height": 1,

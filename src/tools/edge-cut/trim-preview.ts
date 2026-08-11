@@ -10,12 +10,16 @@
  * The scratch is a copy-on-write slice, not a clone of the map: the trim pass reads its
  * neighbourhood and writes only inside the stroke's 8-neighbour border, so cloning that region's
  * cells (and the rows holding them) leaves every other read pointing at the live grid.
+ *
+ * This is the TERRAIN half. A road is an object rather than a cell, so its preview shadows the
+ * coating lookup instead of the grid — `road-trim-preview.ts`, reporting the same `TrimmedCell`.
  */
 import { CommandType, TerrainType } from '../../core/model/types';
 import type {
   AutoEdgeCut, Command, Corners, EditorEvents, GridState, MacroCoord, TerrainCell,
 } from '../../core/model/types';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
+import type { RoadConnSide } from '../../core/edge-cut/road-cut-states';
 import { getCell } from '../../core/model/grid-model';
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
@@ -28,6 +32,16 @@ export interface TrimmedCell {
   corners: Corners;
   /** A Γ patch the trim will CREATE — a cell the stroke does not paint but the shape will occupy. */
   patch: boolean;
+  /**
+   * The connection side this cell's corners are written against — set iff the cell is a paved ROAD
+   * tile rather than a terrain block.
+   *
+   * A road's corners are symbolic canonical-state tokens, not quadrant geometry (see
+   * `core/edge-cut/road-cut-states`), so a view that draws them as quadrants draws the wrong shape.
+   * Its presence is how a view knows to go through the road polygon instead, and the side is what
+   * turns the canonical state to face the way this tile connects.
+   */
+  road?: RoadConnSide;
 }
 
 /**
@@ -101,7 +115,7 @@ const isSquare = (c: Corners | undefined): boolean => !c || c.every((v) => v ===
  * The cells the trim pass may read or write: the stroke, its 8-neighbour border, and one more ring
  * for the neighbour reads those corners depend on.
  */
-function region(cells: readonly MacroCoord[], pad: number): MacroCoord[] {
+export function region(cells: readonly MacroCoord[], pad: number): MacroCoord[] {
   const seen = new Set<string>();
   const out: MacroCoord[] = [];
   for (const { x, y } of cells) {
@@ -167,8 +181,8 @@ export function previewAutoTrim(
   if (mode === 'off' || shape.rim.length === 0 || shape.rim.length > TRIM_PREVIEW_MAX_RIM) return [];
 
   // The rim and the two rings around it: everything the trim reads or writes, and no more. The
-  // shape's interior beyond that is never copied and never painted, which is what the clipping
-  // below relies on being harmless — nothing out there is read.
+  // shape's interior beyond that is never copied, never painted, and never read, so the
+  // clipping below drops nothing the trim depends on.
   const touched = region(shape.rim, 2);
   const owned = new Set(touched.map((c) => key(c.x, c.y)));
   const owns = (x: number, y: number) => owned.has(key(x, y));

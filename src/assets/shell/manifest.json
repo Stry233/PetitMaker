@@ -1,0 +1,2584 @@
+{
+  "design": {
+    "width": 3754,
+    "height": 1918
+  },
+  "assets": [
+    {
+      "file": "assistant.svg",
+      "kind": "group",
+      "x": 262,
+      "y": 327,
+      "w": 754,
+      "h": 375
+    },
+    {
+      "file": "assistant/character.png",
+      "kind": "raster",
+      "x": 115,
+      "y": 333,
+      "w": 153,
+      "h": 150
+    },
+    {
+      "file": "assistant/roundrect-1.svg",
+      "kind": "shape",
+      "x": 262,
+      "y": 327,
+      "w": 754,
+      "h": 375
+    },
+    {
+      "file": "assistant/roundrect-2.svg",
+      "kind": "shape",
+      "x": 344,
+      "y": 355,
+      "w": 640,
+      "h": 239
+    },
+    {
+      "file": "assistant/roundrect-3.svg",
+      "kind": "shape",
+      "x": 573,
+      "y": 603,
+      "w": 131,
+      "h": 81
+    },
+    {
+      "file": "cell-brush/ellipse-1.svg",
+      "kind": "shape",
+      "x": 1503,
+      "y": 767,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-brush/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1503,
+      "y": 881,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-brush/glyph-mountain.svg",
+      "kind": "group",
+      "x": 1519,
+      "y": 786,
+      "w": 96,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/glyph-mountain/rect.svg",
+      "kind": "shape",
+      "x": 1561,
+      "y": 852,
+      "w": 54,
+      "h": 26
+    },
+    {
+      "file": "cell-brush/glyph-mountain/shape.svg",
+      "kind": "shape",
+      "x": 1519,
+      "y": 786,
+      "w": 90,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/glyph-road.svg",
+      "kind": "group",
+      "x": 1519,
+      "y": 786,
+      "w": 114,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/glyph-road/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1582,
+      "y": 857,
+      "w": 33,
+      "h": 22
+    },
+    {
+      "file": "cell-brush/glyph-road/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1563,
+      "y": 834,
+      "w": 70,
+      "h": 34
+    },
+    {
+      "file": "cell-brush/glyph-road/shape.svg",
+      "kind": "shape",
+      "x": 1519,
+      "y": 786,
+      "w": 90,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/glyph-water.svg",
+      "kind": "group",
+      "x": 1519,
+      "y": 786,
+      "w": 117,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/glyph-water/roundrect.svg",
+      "kind": "shape",
+      "x": 1554,
+      "y": 847,
+      "w": 82,
+      "h": 22
+    },
+    {
+      "file": "cell-brush/glyph-water/shape.svg",
+      "kind": "shape",
+      "x": 1519,
+      "y": 786,
+      "w": 90,
+      "h": 106
+    },
+    {
+      "file": "cell-brush/roundrect.svg",
+      "kind": "shape",
+      "x": 1470,
+      "y": 734,
+      "w": 202,
+      "h": 202
+    },
+    {
+      "file": "cell-eraser.svg",
+      "kind": "group",
+      "x": 1639,
+      "y": 669,
+      "w": 346,
+      "h": 353
+    },
+    {
+      "file": "cell-eraser/ellipse-1.svg",
+      "kind": "shape",
+      "x": 1744,
+      "y": 767,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-eraser/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1744,
+      "y": 881,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-eraser/rect.svg",
+      "kind": "shape",
+      "x": 1639,
+      "y": 669,
+      "w": 346,
+      "h": 353
+    },
+    {
+      "file": "cell-eraser/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1711,
+      "y": 734,
+      "w": 202,
+      "h": 202
+    },
+    {
+      "file": "cell-eraser/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1771,
+      "y": 790,
+      "w": 92,
+      "h": 100
+    },
+    {
+      "file": "cell-trim.svg",
+      "kind": "group",
+      "x": 1470,
+      "y": 970,
+      "w": 202,
+      "h": 202
+    },
+    {
+      "file": "cell-trim/ellipse-1.svg",
+      "kind": "shape",
+      "x": 1503,
+      "y": 1003,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-trim/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1503,
+      "y": 1117,
+      "w": 136,
+      "h": 22
+    },
+    {
+      "file": "cell-trim/roundrect.svg",
+      "kind": "shape",
+      "x": 1470,
+      "y": 970,
+      "w": 202,
+      "h": 202
+    },
+    {
+      "file": "cell-trim/shape.svg",
+      "kind": "shape",
+      "x": 1524,
+      "y": 1017,
+      "w": 112,
+      "h": 114
+    },
+    {
+      "file": "load-meter.svg",
+      "kind": "group",
+      "x": 3111,
+      "y": 81,
+      "w": 157,
+      "h": 157
+    },
+    {
+      "file": "load-meter/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3111,
+      "y": 81,
+      "w": 157,
+      "h": 157
+    },
+    {
+      "file": "load-meter/ellipse-2.png",
+      "kind": "raster",
+      "x": 3190,
+      "y": 83,
+      "w": 77,
+      "h": 105
+    },
+    {
+      "file": "load-meter/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3111,
+      "y": 81,
+      "w": 157,
+      "h": 157
+    },
+    {
+      "file": "menu/button.svg",
+      "kind": "shape",
+      "x": 3556,
+      "y": 87,
+      "w": 131,
+      "h": 132
+    },
+    {
+      "file": "menu/sheet.svg",
+      "kind": "group",
+      "x": 3509,
+      "y": 240,
+      "w": 229,
+      "h": 364
+    },
+    {
+      "file": "menu/sheet/roundrect-1.svg",
+      "kind": "shape",
+      "x": 3509,
+      "y": 240,
+      "w": 229,
+      "h": 364
+    },
+    {
+      "file": "menu/sheet/roundrect-2.svg",
+      "kind": "shape",
+      "x": 3540,
+      "y": 392,
+      "w": 168,
+      "h": 11
+    },
+    {
+      "file": "mode-generate/icon-pressed.png",
+      "kind": "raster",
+      "x": 1094,
+      "y": 96,
+      "w": 208,
+      "h": 180
+    },
+    {
+      "file": "mode-generate/icon.png",
+      "kind": "raster",
+      "x": 1110,
+      "y": 77,
+      "w": 176,
+      "h": 174
+    },
+    {
+      "file": "mode-mountain/icon-pressed.png",
+      "kind": "raster",
+      "x": 601,
+      "y": 88,
+      "w": 207,
+      "h": 187
+    },
+    {
+      "file": "mode-mountain/icon.png",
+      "kind": "raster",
+      "x": 618,
+      "y": 85,
+      "w": 172,
+      "h": 165
+    },
+    {
+      "file": "mode-object/icon-pressed.png",
+      "kind": "raster",
+      "x": 116,
+      "y": 63,
+      "w": 207,
+      "h": 212
+    },
+    {
+      "file": "mode-object/icon.png",
+      "kind": "raster",
+      "x": 127,
+      "y": 82,
+      "w": 172,
+      "h": 184
+    },
+    {
+      "file": "mode-road/icon-pressed.png",
+      "kind": "raster",
+      "x": 359,
+      "y": 75,
+      "w": 207,
+      "h": 200
+    },
+    {
+      "file": "mode-road/icon.png",
+      "kind": "raster",
+      "x": 379,
+      "y": 72,
+      "w": 172,
+      "h": 190
+    },
+    {
+      "file": "mode-selected-plate.svg",
+      "kind": "shape",
+      "x": 1064,
+      "y": 111,
+      "w": 265,
+      "h": 196
+    },
+    {
+      "file": "mode-water/icon-pressed.png",
+      "kind": "raster",
+      "x": 844,
+      "y": 75,
+      "w": 207,
+      "h": 200
+    },
+    {
+      "file": "mode-water/icon.png",
+      "kind": "raster",
+      "x": 861,
+      "y": 100,
+      "w": 172,
+      "h": 168
+    },
+    {
+      "file": "polygon.svg",
+      "kind": "shape",
+      "x": 1440,
+      "y": 699,
+      "w": 44,
+      "h": 45
+    },
+    {
+      "file": "rail/hide-ui.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 853,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/hide-ui/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 853,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/hide-ui/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3586,
+      "y": 887,
+      "w": 76,
+      "h": 50
+    },
+    {
+      "file": "rail/layers.svg",
+      "kind": "group",
+      "x": 3607,
+      "y": 284,
+      "w": 75,
+      "h": 123
+    },
+    {
+      "file": "rail/layers/polygon.svg",
+      "kind": "shape",
+      "x": 3618,
+      "y": 301,
+      "w": 55,
+      "h": 90
+    },
+    {
+      "file": "rail/layers/roundrect.svg",
+      "kind": "shape",
+      "x": 3607,
+      "y": 284,
+      "w": 75,
+      "h": 123
+    },
+    {
+      "file": "rail/pressed-plate.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 853,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/redo.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 587,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/redo/ellipse.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 587,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/redo/shape.svg",
+      "kind": "shape",
+      "x": 3588,
+      "y": 615,
+      "w": 69,
+      "h": 63
+    },
+    {
+      "file": "rail/rotate.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 985,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/rotate/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 985,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/rotate/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3590,
+      "y": 1017,
+      "w": 71,
+      "h": 61
+    },
+    {
+      "file": "rail/rotate/roundrect.svg",
+      "kind": "shape",
+      "x": 3623,
+      "y": 1030,
+      "w": 36,
+      "h": 27
+    },
+    {
+      "file": "rail/undo.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 453,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/undo/ellipse.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 453,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/undo/shape.svg",
+      "kind": "shape",
+      "x": 3591,
+      "y": 481,
+      "w": 69,
+      "h": 63
+    },
+    {
+      "file": "rail/view-toggle.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 720,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/view-toggle/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 720,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/view-toggle/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 720,
+      "w": 118,
+      "h": 119
+    },
+    {
+      "file": "rail/zoom-in.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 1118,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/zoom-in/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 1118,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/zoom-in/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3591,
+      "y": 1137,
+      "w": 64,
+      "h": 82
+    },
+    {
+      "file": "rail/zoom-in/roundrect.svg",
+      "kind": "shape",
+      "x": 3606,
+      "y": 1152,
+      "w": 34,
+      "h": 34
+    },
+    {
+      "file": "rail/zoom-out.svg",
+      "kind": "group",
+      "x": 3564,
+      "y": 1250,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/zoom-out/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3564,
+      "y": 1250,
+      "w": 118,
+      "h": 118
+    },
+    {
+      "file": "rail/zoom-out/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3590,
+      "y": 1269,
+      "w": 64,
+      "h": 82
+    },
+    {
+      "file": "rail/zoom-out/roundrect.svg",
+      "kind": "shape",
+      "x": 3605,
+      "y": 1290,
+      "w": 34,
+      "h": 21
+    },
+    {
+      "file": "shape.svg",
+      "kind": "shape",
+      "x": 1434,
+      "y": 694,
+      "w": 65,
+      "h": 32
+    },
+    {
+      "file": "share.svg",
+      "kind": "group",
+      "x": 3359,
+      "y": 85,
+      "w": 130,
+      "h": 136
+    },
+    {
+      "file": "share/button.svg",
+      "kind": "shape",
+      "x": 3359,
+      "y": 85,
+      "w": 130,
+      "h": 136
+    },
+    {
+      "file": "shelf-generate/candidates.svg",
+      "kind": "group",
+      "x": 836,
+      "y": 1376,
+      "w": 2052,
+      "h": 450
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-1.svg",
+      "kind": "shape",
+      "x": 836,
+      "y": 1376,
+      "w": 660,
+      "h": 450
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-2.svg",
+      "kind": "shape",
+      "x": 881,
+      "y": 1411,
+      "w": 568,
+      "h": 333
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-3.svg",
+      "kind": "shape",
+      "x": 1532,
+      "y": 1376,
+      "w": 660,
+      "h": 450
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1577,
+      "y": 1411,
+      "w": 568,
+      "h": 333
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-5.svg",
+      "kind": "shape",
+      "x": 2228,
+      "y": 1376,
+      "w": 660,
+      "h": 450
+    },
+    {
+      "file": "shelf-generate/candidates/roundrect-6.svg",
+      "kind": "shape",
+      "x": 2273,
+      "y": 1411,
+      "w": 568,
+      "h": 333
+    },
+    {
+      "file": "shelf-generate/roundrect-1.svg",
+      "kind": "shape",
+      "x": -84,
+      "y": 1701,
+      "w": 3948,
+      "h": 713
+    },
+    {
+      "file": "shelf-generate/roundrect-2.svg",
+      "kind": "shape",
+      "x": 840,
+      "y": 1317,
+      "w": 150,
+      "h": 16
+    },
+    {
+      "file": "shelf-generate/roundrect-3.svg",
+      "kind": "shape",
+      "x": 1717,
+      "y": 1223,
+      "w": 187,
+      "h": 114
+    },
+    {
+      "file": "shelf-generate/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1919,
+      "y": 1223,
+      "w": 207,
+      "h": 114
+    },
+    {
+      "file": "shelf-generate/roundrect-5.svg",
+      "kind": "shape",
+      "x": 2151,
+      "y": 1223,
+      "w": 207,
+      "h": 114
+    },
+    {
+      "file": "shelf-generate/roundrect-6.svg",
+      "kind": "shape",
+      "x": 2373,
+      "y": 1223,
+      "w": 207,
+      "h": 114
+    },
+    {
+      "file": "shelf-generate/roundrect-7.svg",
+      "kind": "shape",
+      "x": 2601,
+      "y": 1241,
+      "w": 286,
+      "h": 82
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3414,
+      "y": 1603,
+      "w": 96,
+      "h": 96
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3447,
+      "y": 1636,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/roundrect.svg",
+      "kind": "shape",
+      "x": 3038,
+      "y": 1612,
+      "w": 454,
+      "h": 79
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ticks.svg",
+      "kind": "group",
+      "x": 3078,
+      "y": 1640,
+      "w": 374,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ticks/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3078,
+      "y": 1640,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ticks/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3254,
+      "y": 1640,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-max-layer/ticks/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3430,
+      "y": 1640,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3414,
+      "y": 1502,
+      "w": 96,
+      "h": 96
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3447,
+      "y": 1535,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/roundrect.svg",
+      "kind": "shape",
+      "x": 3038,
+      "y": 1511,
+      "w": 454,
+      "h": 79
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ticks.svg",
+      "kind": "group",
+      "x": 3078,
+      "y": 1539,
+      "w": 374,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ticks/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3078,
+      "y": 1539,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ticks/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3254,
+      "y": 1539,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-generate/slider-naturalness/ticks/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3430,
+      "y": 1539,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-mountain/brush-size/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3586,
+      "y": 1756,
+      "w": 96,
+      "h": 96
+    },
+    {
+      "file": "shelf-mountain/brush-size/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3619,
+      "y": 1789,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-mountain/brush-size/roundrect.svg",
+      "kind": "shape",
+      "x": 3210,
+      "y": 1765,
+      "w": 454,
+      "h": 79
+    },
+    {
+      "file": "shelf-mountain/brush-size/ticks.svg",
+      "kind": "group",
+      "x": 3250,
+      "y": 1793,
+      "w": 374,
+      "h": 22
+    },
+    {
+      "file": "shelf-mountain/brush-size/ticks/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3250,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-mountain/brush-size/ticks/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3426,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-mountain/brush-size/ticks/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3602,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-mountain/tools/circle-tool.svg",
+      "kind": "group",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/circle-tool/ellipse.svg",
+      "kind": "shape",
+      "x": 1323,
+      "y": 1750,
+      "w": 70,
+      "h": 70
+    },
+    {
+      "file": "shelf-mountain/tools/circle-tool/roundrect.svg",
+      "kind": "shape",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/curve.svg",
+      "kind": "group",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/curve/ellipse-1.svg",
+      "kind": "shape",
+      "x": 941,
+      "y": 1785,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-mountain/tools/curve/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1023,
+      "y": 1784,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-mountain/tools/curve/rect.svg",
+      "kind": "shape",
+      "x": 959,
+      "y": 1759,
+      "w": 72,
+      "h": 40
+    },
+    {
+      "file": "shelf-mountain/tools/curve/roundrect.svg",
+      "kind": "shape",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/draw-mountain.svg",
+      "kind": "group",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-mountain/tools/draw-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 199,
+      "y": 1744,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-mountain/tools/draw-mountain/shape.svg",
+      "kind": "shape",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-mountain/tools/erase-mountain.svg",
+      "kind": "group",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-mountain/tools/erase-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 420,
+      "y": 1758,
+      "w": 31,
+      "h": 11
+    },
+    {
+      "file": "shelf-mountain/tools/erase-mountain/shape.svg",
+      "kind": "shape",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-mountain/tools/line.svg",
+      "kind": "group",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/line/ellipse-1.svg",
+      "kind": "shape",
+      "x": 769,
+      "y": 1788,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-mountain/tools/line/ellipse-2.svg",
+      "kind": "shape",
+      "x": 824,
+      "y": 1760,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-mountain/tools/line/roundrect-1.svg",
+      "kind": "shape",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/line/roundrect-2.svg",
+      "kind": "shape",
+      "x": 773,
+      "y": 1764,
+      "w": 70,
+      "h": 48
+    },
+    {
+      "file": "shelf-mountain/tools/rect-tool.svg",
+      "kind": "group",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/rect-tool/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/rect-tool/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1143,
+      "y": 1755,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-1.svg",
+      "kind": "shape",
+      "x": 88,
+      "y": 1721,
+      "w": 190,
+      "h": 132
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-2.svg",
+      "kind": "shape",
+      "x": 308,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-3.svg",
+      "kind": "shape",
+      "x": 239,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-4.svg",
+      "kind": "shape",
+      "x": 451,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-5.svg",
+      "kind": "shape",
+      "x": 657,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/roundrect-6.svg",
+      "kind": "shape",
+      "x": 866,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 889,
+      "h": 134
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 296,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1702,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-3.svg",
+      "kind": "shape",
+      "x": 1686,
+      "y": 1773,
+      "w": 29,
+      "h": 30
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1774,
+      "y": 1729,
+      "w": 187,
+      "h": 114
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-5.svg",
+      "kind": "shape",
+      "x": 1967,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build-open/roundrect-6.svg",
+      "kind": "shape",
+      "x": 2161,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 188,
+      "h": 134
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build/polygon.svg",
+      "kind": "shape",
+      "x": 1496,
+      "y": 1755,
+      "w": 93,
+      "h": 67
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/smart-build/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1602,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-mountain/tools/trim.svg",
+      "kind": "group",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/trim/roundrect.svg",
+      "kind": "shape",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-mountain/tools/trim/shape.svg",
+      "kind": "shape",
+      "x": 569,
+      "y": 1756,
+      "w": 57,
+      "h": 59
+    },
+    {
+      "file": "shelf-object.svg",
+      "kind": "group",
+      "x": -84,
+      "y": 1389,
+      "w": 3948,
+      "h": 1025
+    },
+    {
+      "file": "shelf-object/bar.svg",
+      "kind": "shape",
+      "x": -84,
+      "y": 1701,
+      "w": 3948,
+      "h": 713
+    },
+    {
+      "file": "shelf-object/roundrect-1.svg",
+      "kind": "shape",
+      "x": 140,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-10.svg",
+      "kind": "shape",
+      "x": 3007,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-11.svg",
+      "kind": "shape",
+      "x": 3326,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-2.svg",
+      "kind": "shape",
+      "x": 459,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-3.svg",
+      "kind": "shape",
+      "x": 777,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1096,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-5.svg",
+      "kind": "shape",
+      "x": 1414,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-6.svg",
+      "kind": "shape",
+      "x": 1733,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-7.svg",
+      "kind": "shape",
+      "x": 2052,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-8.svg",
+      "kind": "shape",
+      "x": 2370,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/roundrect-9.svg",
+      "kind": "shape",
+      "x": 2689,
+      "y": 1546,
+      "w": 280,
+      "h": 280
+    },
+    {
+      "file": "shelf-object/scroll-thumb.svg",
+      "kind": "shape",
+      "x": 138,
+      "y": 1856,
+      "w": 147,
+      "h": 33
+    },
+    {
+      "file": "shelf-object/scroll-track.svg",
+      "kind": "shape",
+      "x": 138,
+      "y": 1860,
+      "w": 3471,
+      "h": 24
+    },
+    {
+      "file": "shelf-object/search-field.svg",
+      "kind": "shape",
+      "x": 1506,
+      "y": 1389,
+      "w": 476,
+      "h": 82
+    },
+    {
+      "file": "shelf-object/tab-underline.svg",
+      "kind": "shape",
+      "x": 140,
+      "y": 1477,
+      "w": 150,
+      "h": 16
+    },
+    {
+      "file": "shelf-object/thumb-1.png",
+      "kind": "raster",
+      "x": 152,
+      "y": 1611,
+      "w": 253,
+      "h": 184
+    },
+    {
+      "file": "shelf-object/thumb-10.png",
+      "kind": "raster",
+      "x": 3027,
+      "y": 1557,
+      "w": 240,
+      "h": 263
+    },
+    {
+      "file": "shelf-object/thumb-11.png",
+      "kind": "raster",
+      "x": 3337,
+      "y": 1611,
+      "w": 276,
+      "h": 210
+    },
+    {
+      "file": "shelf-object/thumb-2.png",
+      "kind": "raster",
+      "x": 479,
+      "y": 1603,
+      "w": 246,
+      "h": 201
+    },
+    {
+      "file": "shelf-object/thumb-3.png",
+      "kind": "raster",
+      "x": 786,
+      "y": 1573,
+      "w": 255,
+      "h": 222
+    },
+    {
+      "file": "shelf-object/thumb-4.png",
+      "kind": "raster",
+      "x": 1096,
+      "y": 1596,
+      "w": 275,
+      "h": 215
+    },
+    {
+      "file": "shelf-object/thumb-5.png",
+      "kind": "raster",
+      "x": 1416,
+      "y": 1553,
+      "w": 279,
+      "h": 246
+    },
+    {
+      "file": "shelf-object/thumb-6.png",
+      "kind": "raster",
+      "x": 1737,
+      "y": 1603,
+      "w": 269,
+      "h": 189
+    },
+    {
+      "file": "shelf-object/thumb-7.png",
+      "kind": "raster",
+      "x": 2050,
+      "y": 1592,
+      "w": 277,
+      "h": 194
+    },
+    {
+      "file": "shelf-object/thumb-8.png",
+      "kind": "raster",
+      "x": 2368,
+      "y": 1611,
+      "w": 281,
+      "h": 170
+    },
+    {
+      "file": "shelf-object/thumb-9.png",
+      "kind": "raster",
+      "x": 2691,
+      "y": 1573,
+      "w": 281,
+      "h": 222
+    },
+    {
+      "file": "shelf-road/brush-size/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3586,
+      "y": 1756,
+      "w": 96,
+      "h": 96
+    },
+    {
+      "file": "shelf-road/brush-size/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3619,
+      "y": 1789,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-road/brush-size/roundrect.svg",
+      "kind": "shape",
+      "x": 3210,
+      "y": 1765,
+      "w": 454,
+      "h": 79
+    },
+    {
+      "file": "shelf-road/brush-size/ticks.svg",
+      "kind": "group",
+      "x": 3250,
+      "y": 1793,
+      "w": 374,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/brush-size/ticks/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3250,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/brush-size/ticks/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3426,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/brush-size/ticks/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3602,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/road-styles.svg",
+      "kind": "group",
+      "x": 101,
+      "y": 1548,
+      "w": 677,
+      "h": 151
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-1.svg",
+      "kind": "shape",
+      "x": 101,
+      "y": 1548,
+      "w": 151,
+      "h": 151
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-2.svg",
+      "kind": "shape",
+      "x": 111,
+      "y": 1558,
+      "w": 131,
+      "h": 131
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-3.svg",
+      "kind": "shape",
+      "x": 283,
+      "y": 1548,
+      "w": 151,
+      "h": 151
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-4.svg",
+      "kind": "shape",
+      "x": 293,
+      "y": 1558,
+      "w": 131,
+      "h": 131
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-5.svg",
+      "kind": "shape",
+      "x": 455,
+      "y": 1548,
+      "w": 151,
+      "h": 151
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-6.svg",
+      "kind": "shape",
+      "x": 465,
+      "y": 1558,
+      "w": 131,
+      "h": 131
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-7.svg",
+      "kind": "shape",
+      "x": 627,
+      "y": 1548,
+      "w": 151,
+      "h": 151
+    },
+    {
+      "file": "shelf-road/road-styles/roundrect-8.svg",
+      "kind": "shape",
+      "x": 637,
+      "y": 1558,
+      "w": 131,
+      "h": 131
+    },
+    {
+      "file": "shelf-road/tools/circle-tool.svg",
+      "kind": "group",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/circle-tool/ellipse.svg",
+      "kind": "shape",
+      "x": 1323,
+      "y": 1750,
+      "w": 70,
+      "h": 70
+    },
+    {
+      "file": "shelf-road/tools/circle-tool/roundrect.svg",
+      "kind": "shape",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/curve.svg",
+      "kind": "group",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/curve/ellipse-1.svg",
+      "kind": "shape",
+      "x": 941,
+      "y": 1785,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/curve/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1023,
+      "y": 1784,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/curve/rect.svg",
+      "kind": "shape",
+      "x": 959,
+      "y": 1759,
+      "w": 72,
+      "h": 40
+    },
+    {
+      "file": "shelf-road/tools/curve/roundrect.svg",
+      "kind": "shape",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/draw-mountain.svg",
+      "kind": "group",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-road/tools/draw-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 197,
+      "y": 1748,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-road/tools/draw-mountain/shape.svg",
+      "kind": "shape",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-road/tools/draw-road.svg",
+      "kind": "group",
+      "x": 88,
+      "y": 1721,
+      "w": 190,
+      "h": 132
+    },
+    {
+      "file": "shelf-road/tools/draw-road/roundrect-1.svg",
+      "kind": "shape",
+      "x": 88,
+      "y": 1721,
+      "w": 190,
+      "h": 132
+    },
+    {
+      "file": "shelf-road/tools/draw-road/roundrect-2.svg",
+      "kind": "shape",
+      "x": 142,
+      "y": 1777,
+      "w": 38,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/draw-road/roundrect-3.svg",
+      "kind": "shape",
+      "x": 164,
+      "y": 1790,
+      "w": 38,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/draw-road/roundrect-4.svg",
+      "kind": "shape",
+      "x": 164,
+      "y": 1762,
+      "w": 63,
+      "h": 41
+    },
+    {
+      "file": "shelf-road/tools/draw-road/roundrect-5.svg",
+      "kind": "shape",
+      "x": 197,
+      "y": 1756,
+      "w": 25,
+      "h": 25
+    },
+    {
+      "file": "shelf-road/tools/draw-water.svg",
+      "kind": "group",
+      "x": 139,
+      "y": 1747,
+      "w": 94,
+      "h": 69
+    },
+    {
+      "file": "shelf-road/tools/draw-water/roundrect-1.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1794,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/tools/draw-water/roundrect-2.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1778,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/tools/draw-water/roundrect-3.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1757,
+      "w": 91,
+      "h": 27
+    },
+    {
+      "file": "shelf-road/tools/draw-water/roundrect-4.svg",
+      "kind": "shape",
+      "x": 202,
+      "y": 1747,
+      "w": 31,
+      "h": 33
+    },
+    {
+      "file": "shelf-road/tools/erase-mountain.svg",
+      "kind": "group",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-road/tools/erase-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 420,
+      "y": 1758,
+      "w": 31,
+      "h": 11
+    },
+    {
+      "file": "shelf-road/tools/erase-mountain/shape.svg",
+      "kind": "shape",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-road/tools/erase-road.svg",
+      "kind": "group",
+      "x": 308,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/erase-road/roundrect-1.svg",
+      "kind": "shape",
+      "x": 308,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/erase-road/roundrect-2.svg",
+      "kind": "shape",
+      "x": 353,
+      "y": 1777,
+      "w": 38,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/erase-road/roundrect-3.svg",
+      "kind": "shape",
+      "x": 375,
+      "y": 1790,
+      "w": 38,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/erase-road/roundrect-4.svg",
+      "kind": "shape",
+      "x": 375,
+      "y": 1762,
+      "w": 63,
+      "h": 41
+    },
+    {
+      "file": "shelf-road/tools/erase-road/roundrect-5.svg",
+      "kind": "shape",
+      "x": 408,
+      "y": 1764,
+      "w": 25,
+      "h": 9
+    },
+    {
+      "file": "shelf-road/tools/erase-water.svg",
+      "kind": "group",
+      "x": 346,
+      "y": 1757,
+      "w": 91,
+      "h": 59
+    },
+    {
+      "file": "shelf-road/tools/erase-water/roundrect-1.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1794,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/tools/erase-water/roundrect-2.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1778,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-road/tools/erase-water/roundrect-3.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1757,
+      "w": 91,
+      "h": 27
+    },
+    {
+      "file": "shelf-road/tools/erase-water/roundrect-4.svg",
+      "kind": "shape",
+      "x": 408,
+      "y": 1764,
+      "w": 25,
+      "h": 9
+    },
+    {
+      "file": "shelf-road/tools/line.svg",
+      "kind": "group",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/line/ellipse-1.svg",
+      "kind": "shape",
+      "x": 769,
+      "y": 1788,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/line/ellipse-2.svg",
+      "kind": "shape",
+      "x": 824,
+      "y": 1760,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-road/tools/line/roundrect-1.svg",
+      "kind": "shape",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/line/roundrect-2.svg",
+      "kind": "shape",
+      "x": 773,
+      "y": 1764,
+      "w": 70,
+      "h": 48
+    },
+    {
+      "file": "shelf-road/tools/rect-tool.svg",
+      "kind": "group",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/rect-tool/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/rect-tool/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1143,
+      "y": 1755,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "file": "shelf-road/tools/roundrect-1.svg",
+      "kind": "shape",
+      "x": 239,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/roundrect-2.svg",
+      "kind": "shape",
+      "x": 451,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/roundrect-3.svg",
+      "kind": "shape",
+      "x": 657,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/roundrect-4.svg",
+      "kind": "shape",
+      "x": 866,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 889,
+      "h": 134
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 296,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1702,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-3.svg",
+      "kind": "shape",
+      "x": 1686,
+      "y": 1773,
+      "w": 29,
+      "h": 30
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1774,
+      "y": 1729,
+      "w": 187,
+      "h": 114
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-5.svg",
+      "kind": "shape",
+      "x": 1967,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-road/tools/smart-build-open/roundrect-6.svg",
+      "kind": "shape",
+      "x": 2161,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-road/tools/smart-build.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 188,
+      "h": 134
+    },
+    {
+      "file": "shelf-road/tools/smart-build/polygon.svg",
+      "kind": "shape",
+      "x": 1496,
+      "y": 1755,
+      "w": 93,
+      "h": 67
+    },
+    {
+      "file": "shelf-road/tools/smart-build/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/smart-build/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1602,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-road/tools/trim.svg",
+      "kind": "group",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/trim/roundrect.svg",
+      "kind": "shape",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-road/tools/trim/shape.svg",
+      "kind": "shape",
+      "x": 569,
+      "y": 1756,
+      "w": 57,
+      "h": 59
+    },
+    {
+      "file": "shelf-water/brush-size/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3586,
+      "y": 1756,
+      "w": 96,
+      "h": 96
+    },
+    {
+      "file": "shelf-water/brush-size/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3619,
+      "y": 1789,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-water/brush-size/roundrect.svg",
+      "kind": "shape",
+      "x": 3210,
+      "y": 1765,
+      "w": 454,
+      "h": 79
+    },
+    {
+      "file": "shelf-water/brush-size/ticks.svg",
+      "kind": "group",
+      "x": 3250,
+      "y": 1793,
+      "w": 374,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/brush-size/ticks/ellipse-1.svg",
+      "kind": "shape",
+      "x": 3250,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/brush-size/ticks/ellipse-2.svg",
+      "kind": "shape",
+      "x": 3426,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/brush-size/ticks/ellipse-3.svg",
+      "kind": "shape",
+      "x": 3602,
+      "y": 1793,
+      "w": 22,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/tools/circle-tool.svg",
+      "kind": "group",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/circle-tool/ellipse.svg",
+      "kind": "shape",
+      "x": 1323,
+      "y": 1750,
+      "w": 70,
+      "h": 70
+    },
+    {
+      "file": "shelf-water/tools/circle-tool/roundrect.svg",
+      "kind": "shape",
+      "x": 1275,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/curve.svg",
+      "kind": "group",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/curve/ellipse-1.svg",
+      "kind": "shape",
+      "x": 941,
+      "y": 1785,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-water/tools/curve/ellipse-2.svg",
+      "kind": "shape",
+      "x": 1023,
+      "y": 1784,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-water/tools/curve/rect.svg",
+      "kind": "shape",
+      "x": 959,
+      "y": 1759,
+      "w": 72,
+      "h": 40
+    },
+    {
+      "file": "shelf-water/tools/curve/roundrect.svg",
+      "kind": "shape",
+      "x": 908,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/draw-mountain.svg",
+      "kind": "group",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-water/tools/draw-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 197,
+      "y": 1748,
+      "w": 31,
+      "h": 31
+    },
+    {
+      "file": "shelf-water/tools/draw-mountain/shape.svg",
+      "kind": "shape",
+      "x": 127,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-water/tools/draw-water.svg",
+      "kind": "group",
+      "x": 139,
+      "y": 1747,
+      "w": 94,
+      "h": 69
+    },
+    {
+      "file": "shelf-water/tools/draw-water/roundrect-1.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1794,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/tools/draw-water/roundrect-2.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1778,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/tools/draw-water/roundrect-3.svg",
+      "kind": "shape",
+      "x": 139,
+      "y": 1757,
+      "w": 91,
+      "h": 27
+    },
+    {
+      "file": "shelf-water/tools/draw-water/roundrect-4.svg",
+      "kind": "shape",
+      "x": 202,
+      "y": 1747,
+      "w": 31,
+      "h": 33
+    },
+    {
+      "file": "shelf-water/tools/erase-mountain.svg",
+      "kind": "group",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-water/tools/erase-mountain/roundrect.svg",
+      "kind": "shape",
+      "x": 420,
+      "y": 1758,
+      "w": 31,
+      "h": 11
+    },
+    {
+      "file": "shelf-water/tools/erase-mountain/shape.svg",
+      "kind": "shape",
+      "x": 345,
+      "y": 1740,
+      "w": 106,
+      "h": 81
+    },
+    {
+      "file": "shelf-water/tools/erase-water.svg",
+      "kind": "group",
+      "x": 346,
+      "y": 1757,
+      "w": 91,
+      "h": 59
+    },
+    {
+      "file": "shelf-water/tools/erase-water/roundrect-1.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1794,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/tools/erase-water/roundrect-2.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1778,
+      "w": 81,
+      "h": 22
+    },
+    {
+      "file": "shelf-water/tools/erase-water/roundrect-3.svg",
+      "kind": "shape",
+      "x": 346,
+      "y": 1757,
+      "w": 91,
+      "h": 27
+    },
+    {
+      "file": "shelf-water/tools/erase-water/roundrect-4.svg",
+      "kind": "shape",
+      "x": 408,
+      "y": 1764,
+      "w": 25,
+      "h": 9
+    },
+    {
+      "file": "shelf-water/tools/line.svg",
+      "kind": "group",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/line/ellipse-1.svg",
+      "kind": "shape",
+      "x": 769,
+      "y": 1788,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-water/tools/line/ellipse-2.svg",
+      "kind": "shape",
+      "x": 824,
+      "y": 1760,
+      "w": 26,
+      "h": 26
+    },
+    {
+      "file": "shelf-water/tools/line/roundrect-1.svg",
+      "kind": "shape",
+      "x": 725,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/line/roundrect-2.svg",
+      "kind": "shape",
+      "x": 773,
+      "y": 1764,
+      "w": 70,
+      "h": 48
+    },
+    {
+      "file": "shelf-water/tools/rect-tool.svg",
+      "kind": "group",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/rect-tool/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1092,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/rect-tool/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1143,
+      "y": 1755,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "file": "shelf-water/tools/roundrect-1.svg",
+      "kind": "shape",
+      "x": 88,
+      "y": 1721,
+      "w": 190,
+      "h": 132
+    },
+    {
+      "file": "shelf-water/tools/roundrect-2.svg",
+      "kind": "shape",
+      "x": 308,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/roundrect-3.svg",
+      "kind": "shape",
+      "x": 239,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/roundrect-4.svg",
+      "kind": "shape",
+      "x": 451,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/roundrect-5.svg",
+      "kind": "shape",
+      "x": 657,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/roundrect-6.svg",
+      "kind": "shape",
+      "x": 866,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 889,
+      "h": 134
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 296,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1702,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-3.svg",
+      "kind": "shape",
+      "x": 1686,
+      "y": 1773,
+      "w": 29,
+      "h": 30
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-4.svg",
+      "kind": "shape",
+      "x": 1774,
+      "y": 1729,
+      "w": 187,
+      "h": 114
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-5.svg",
+      "kind": "shape",
+      "x": 1967,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-water/tools/smart-build-open/roundrect-6.svg",
+      "kind": "shape",
+      "x": 2161,
+      "y": 1729,
+      "w": 186,
+      "h": 114
+    },
+    {
+      "file": "shelf-water/tools/smart-build.svg",
+      "kind": "group",
+      "x": 1458,
+      "y": 1711,
+      "w": 188,
+      "h": 134
+    },
+    {
+      "file": "shelf-water/tools/smart-build/polygon.svg",
+      "kind": "shape",
+      "x": 1496,
+      "y": 1755,
+      "w": 93,
+      "h": 67
+    },
+    {
+      "file": "shelf-water/tools/smart-build/roundrect-1.svg",
+      "kind": "shape",
+      "x": 1458,
+      "y": 1730,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/smart-build/roundrect-2.svg",
+      "kind": "shape",
+      "x": 1602,
+      "y": 1711,
+      "w": 44,
+      "h": 44
+    },
+    {
+      "file": "shelf-water/tools/trim.svg",
+      "kind": "group",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/trim/roundrect.svg",
+      "kind": "shape",
+      "x": 517,
+      "y": 1729,
+      "w": 166,
+      "h": 115
+    },
+    {
+      "file": "shelf-water/tools/trim/shape.svg",
+      "kind": "shape",
+      "x": 569,
+      "y": 1756,
+      "w": 57,
+      "h": 59
+    }
+  ]
+}

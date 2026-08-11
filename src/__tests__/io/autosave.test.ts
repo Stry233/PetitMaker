@@ -1,11 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../../kit/host', () => ({
+  host: { camera: { get2d: () => undefined, get3d: () => undefined } },
+}));
+
 import { scheduleAutosave, readAutosave, clearAutosave, hasAutosave, autosaveWorthy } from '../../io/autosave';
 import { serialize } from '../../io/json-codec';
 import { CURRENT_VERSION } from '../../io/save-format';
 import { DEFAULT_MAP } from '../../config/maps';
 import { createGrid } from '../../core/model/grid-model';
-import { CellZone, TerrainType, type GridState } from '../../core/model/types';
-import { petitWindow } from '../../core/runtime/window-bridge';
+import { CellZone, CommandType, TerrainType, type EditorEvents, type GridState } from '../../core/model/types';
+import { host } from '../../kit/host';
+import { CommandExecutor } from '../../core/commands/command-executor';
+import { EventBus } from '../../core/commands/event-bus';
+import { createDefaultRegistry } from '../../rules/index';
+import { roadLookup } from '../../state/object-index';
+import { useEditorStore } from '../../state/store';
 
 const STORAGE_KEY = 'petit-planet-autosave';
 
@@ -53,8 +63,8 @@ describe('autosave', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
-    delete petitWindow().__petitGetCamera;
-    delete petitWindow().__petitGet3DCamera;
+    host.camera.get2d = () => undefined;
+    host.camera.get3d = () => undefined;
   });
 
   it('debounces, then persists a restorable map', () => {
@@ -73,10 +83,21 @@ describe('autosave', () => {
     expect(restored!.camera).toBeUndefined();
   });
 
+  it('restores a half-cell anchor (it rides json-codec, so there is nothing of its own to do)', () => {
+    const state = makeWorkingMap();
+    state.objects.set('r', {
+      id: 'r', catalogId: 'ramp-plank', position: { x: 12.5, y: 20 }, rotation: 0, elevation: 1,
+    });
+    scheduleAutosave(state);
+    vi.advanceTimersByTime(2000);
+
+    expect(readAutosave()!.state.objects.get('r')!.position).toEqual({ x: 12.5, y: 20 });
+  });
+
   describe('camera (resume from last restores the view too)', () => {
     it('persists and restores the 2D and 3D cameras independently', () => {
-      petitWindow().__petitGetCamera = () => ({ x: 111, y: -22, zoom: 1.4 });
-      petitWindow().__petitGet3DCamera = () => ({ az: 30, el: 20, dist: 0.7, tx: 1, tz: -1 });
+      host.camera.get2d = () => ({ x: 111, y: -22, zoom: 1.4 });
+      host.camera.get3d = () => ({ az: 30, el: 20, dist: 0.7, tx: 1, tz: -1 });
       scheduleAutosave(makeWorkingMap());
       vi.advanceTimersByTime(2000);
 
@@ -88,8 +109,8 @@ describe('autosave', () => {
     });
 
     it('persists only the view(s) actually reported — a view never opened this session is simply absent', () => {
-      petitWindow().__petitGetCamera = () => ({ x: 5, y: 5, zoom: 1 });
-      // __petitGet3DCamera left unregistered: the 3D editor was never opened.
+      host.camera.get2d = () => ({ x: 5, y: 5, zoom: 1 });
+      // host.camera.get3d left at its default undefined: the 3D editor was never opened.
       scheduleAutosave(makeWorkingMap());
       vi.advanceTimersByTime(2000);
 
@@ -108,14 +129,14 @@ describe('autosave', () => {
 
     it('reads the camera LIVE at write time, not at schedule time — moving the camera between the ' +
       'schedule call and the debounced write does not add a write, and the write carries the latest pose', () => {
-      petitWindow().__petitGetCamera = () => ({ x: 0, y: 0, zoom: 1 }); // pose at schedule time
+      host.camera.get2d = () => ({ x: 0, y: 0, zoom: 1 }); // pose at schedule time
       scheduleAutosave(makeWorkingMap());
       vi.advanceTimersByTime(1000); // still inside the debounce window — no write yet
       expect(hasAutosave()).toBe(false);
 
       // The user pans/zooms; nothing calls scheduleAutosave for this (a camera move must not create
       // a new write on its own — see io/autosave.ts's currentCamera doc).
-      petitWindow().__petitGetCamera = () => ({ x: 999, y: 999, zoom: 2 });
+      host.camera.get2d = () => ({ x: 999, y: 999, zoom: 2 });
       vi.advanceTimersByTime(1000); // the ORIGINAL debounce now fires
 
       expect(hasAutosave()).toBe(true); // exactly the one write the content edit scheduled
@@ -159,6 +180,93 @@ describe('autosave', () => {
     clearAutosave();
     expect(hasAutosave()).toBe(false);
     expect(readAutosave()).toBeNull();
+  });
+
+  describe('undo history rides along', () => {
+    /** A live executor over `state` with `steps` painted commands behind it, installed on the store
+     *  the way the app has one — `currentHistory` reads it there, live, at write time. */
+    function withHistory(state: GridState, steps: number): CommandExecutor {
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+      let laid = 0;
+      for (let y = 0; y < DEFAULT_MAP.height && laid < steps; y++) {
+        for (let x = 0; x < DEFAULT_MAP.width && laid < steps; x++) {
+          if (DEFAULT_MAP.zones[y]?.[x] !== CellZone.Grass) continue;
+          const before = exec.getUndoStackSize();
+          exec.execute({
+            type: CommandType.PaintTerrain, timestamp: 0,
+            cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1,
+          });
+          if (exec.getUndoStackSize() > before) laid++;
+        }
+      }
+      expect(exec.getUndoStackSize()).toBeGreaterThan(0);
+      useEditorStore.setState({ commandExecutor: exec });
+      return exec;
+    }
+
+    afterEach(() => { useEditorStore.setState({ commandExecutor: null }); });
+
+    it('persists the undo stack beside the map and restores it', () => {
+      const state = makeWorkingMap();
+      const exec = withHistory(state, 5);
+      scheduleAutosave(state);
+      vi.advanceTimersByTime(2000);
+
+      const restored = readAutosave();
+      expect(restored!.history).toHaveLength(exec.getUndoStackSize());
+      // Restorable onto a fresh executor, which is what the resume flow does.
+      const fresh = new CommandExecutor(restored!.state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(restored!.state));
+      expect(fresh.canUndo()).toBe(false);
+      fresh.restoreHistory(restored!.history!);
+      expect(fresh.canUndo()).toBe(true);
+      expect(fresh.getUndoStackSize()).toBe(exec.getUndoStackSize());
+    });
+
+    it('keeps only the most recent HISTORY_STEPS entries', () => {
+      const state = makeWorkingMap();
+      const exec = withHistory(state, 70);
+      expect(exec.getUndoStackSize()).toBeGreaterThan(60);
+      scheduleAutosave(state);
+      vi.advanceTimersByTime(2000);
+      expect(readAutosave()!.history).toHaveLength(60);
+    });
+
+    it('a map with no history restores with none, not with the last map\'s', () => {
+      const first = makeWorkingMap();
+      withHistory(first, 3);
+      scheduleAutosave(first);
+      vi.advanceTimersByTime(2000);
+      expect(readAutosave()!.history).toBeDefined();
+
+      // A later save with an empty stack must take the old history down with it.
+      useEditorStore.setState({ commandExecutor: null });
+      scheduleAutosave(makeWorkingMap());
+      vi.advanceTimersByTime(2000);
+      expect(readAutosave()!.history).toBeUndefined();
+    });
+
+    it('clearAutosave forgets the history too', () => {
+      const state = makeWorkingMap();
+      withHistory(state, 3);
+      scheduleAutosave(state);
+      vi.advanceTimersByTime(2000);
+      clearAutosave();
+      expect(localStorage.getItem('petit-planet-autosave-history')).toBeNull();
+    });
+
+    it('drops a history that does not fit the map it would be replayed into', () => {
+      const state = makeWorkingMap();
+      withHistory(state, 3);
+      scheduleAutosave(state);
+      vi.advanceTimersByTime(2000);
+
+      // A snapshot outside the grid: undo replays entries with no rule validation, so the decoder
+      // is the gate and one bad coordinate drops the whole section.
+      const saved = JSON.parse(localStorage.getItem('petit-planet-autosave-history')!);
+      saved.entries[0].after[0].coord = { x: 9999, y: 9999 };
+      localStorage.setItem('petit-planet-autosave-history', JSON.stringify(saved));
+      expect(readAutosave()!.history).toBeUndefined();
+    });
   });
 
   it('walks a grid with a sparse row instead of throwing', () => {

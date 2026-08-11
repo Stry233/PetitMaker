@@ -7,6 +7,7 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { makeState } from '../rules/_helpers';
 import { CommandType, TerrainType, type GenerateConfig } from '../../core/model/types';
+import { roadLookup } from '../../state/object-index';
 
 /**
  * Full loop: real executor edits → serializeWithSections (every section on) →
@@ -21,7 +22,7 @@ describe('export-json e2e: build → export all sections → import → undo', (
     //    commands, then commitStroke — matches the CommandExecutor usage pattern
     //    in src/__tests__/io/history-codec.test.ts).
     const state = makeState(16, 16);
-    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
     const startSize = exec.getUndoStackSize();
     for (let i = 0; i < 5; i++) {
       const result = exec.execute({
@@ -81,7 +82,7 @@ describe('export-json e2e: build → export all sections → import → undo', (
 
     // 4. applyOptionalSections over a FRESH executor on the deserialized state —
     //    generation/session/history all restore, and undo() reverts the last edit.
-    const freshExec = new CommandExecutor(back, new EventBus(), createDefaultRegistry());
+    const freshExec = new CommandExecutor(back, new EventBus(), createDefaultRegistry(), roadLookup(back));
     const locked: number[] = [];
     let camera: { x: number; y: number; zoom: number } | null = null;
     expect(freshExec.canUndo()).toBe(false);
@@ -109,7 +110,7 @@ describe('export-json e2e: build → export all sections → import → undo', (
 
   it('stripping every optional section still loads through plain deserialize', () => {
     const state = makeState(10, 10);
-    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry());
+    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
     exec.execute({
       type: CommandType.PaintTerrain,
       timestamp: 0,

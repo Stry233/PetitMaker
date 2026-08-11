@@ -65,13 +65,16 @@ export function selectionHoverBox(
 /**
  * Can this object be picked up and dropped on an arbitrary cell? Locked objects (the plaza) must
  * be refused HERE: a move is a self-overlap-excluded PlaceObject, which V-LOCK-02 does not gate,
- * so waiting for a rejection would silently relocate it. Bridges (waterSpan) and ramps
- * (heightDrop) snap to a detected span, so they cannot move either.
+ * so waiting for a rejection would silently relocate it.
+ *
+ * Bridges (waterSpan) and ramps (heightDrop) CAN move: their drop goes through the same
+ * trait-validated plan as a fresh placement, which SNAPS the command onto the nearest legal span
+ * at the drop point — a drop with no span to snap to is refused and the object stays put. What
+ * they cannot do is rotate (the span decides the facing), which is the rotate path's own gate.
  *
  * ONE owner of the fact: the press that ARMS a drag and the cursor that PROMISES one must agree.
  */
 export function isDraggableObject(obj: PlacedObject): boolean {
   if (obj.locked) return false;
-  const item = getCatalogItem(obj.catalogId);
-  return !!item && !item.traits.some((tr) => tr.type === 'waterSpan' || tr.type === 'heightDrop');
+  return !!getCatalogItem(obj.catalogId);
 }

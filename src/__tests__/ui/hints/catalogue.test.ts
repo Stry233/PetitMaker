@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { COMMAND_BY_ID } from '../../../ui/keybindings/commands';
+import { COMMAND_BY_ID } from '../../../kit/commands';
 import { translations } from '../../../i18n/translations';
 import { rowsFor, SCENARIO_ROWS } from '../../../ui/hints/catalogue';
+import { effectiveCombo, prettyCombo } from '../../../core/runtime/keybindings';
 import type { CameraCaps } from '../../../core/interaction/camera-verbs';
 
 const CAPS_2D: CameraCaps = { canOrbit: false, wheelZooms: false };
@@ -37,8 +38,9 @@ describe('hint catalogue', () => {
     }
   });
 
-  it('keys render from the live bindings, defaults first', () => {
-    const rows = rowsFor('build', {}, CAPS_2D, 'full');
+  it('keys render from the live bindings', () => {
+    // Brush sizing has no default key under the game layout, so this exercises the override path.
+    const rows = rowsFor('build', { 'brush.smaller': '[', 'brush.bigger': ']' }, CAPS_2D, 'full');
     const size = rows.find((r) => r.textKey === 'hint.build.size')!;
     expect(size.tokens).toEqual([
       { kind: 'cap', label: '[' },
@@ -63,6 +65,17 @@ describe('hint catalogue', () => {
   it('an unbound command drops its whole row', () => {
     const rows = rowsFor('build', { 'brush.bigger': null }, CAPS_2D, 'full');
     expect(rows.some((r) => r.textKey === 'hint.build.size')).toBe(false);
+  });
+
+  it('the rotate row survives under the default keymap even though only cw is bound', () => {
+    // rotate_ccw has no default combo under the game keymap; the row must keep its bound half
+    // rather than vanish because its unbound sibling used to take the whole row down with it.
+    const rows = rowsFor('placer', {}, CAPS_2D, 'full');
+    const rotate = rows.find((r) => r.textKey === 'hint.placer.rotate');
+    expect(rotate).toBeDefined();
+    const cw = effectiveCombo({}, 'selection.rotate_cw');
+    expect(cw).not.toBeNull();
+    expect(rotate!.tokens).toEqual([{ kind: 'cap', label: prettyCombo(cw) }]);
   });
 
   it('a held modifier renders only its held key segment', () => {

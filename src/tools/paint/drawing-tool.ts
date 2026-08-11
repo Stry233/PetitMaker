@@ -3,7 +3,7 @@ import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { getTerrainColor } from '../../core/model/colors';
 import { showToast } from '../../core/runtime/toast-bus';
 import { reconcileRoadsAfterMountainPaint } from './road-reconcile';
-import { line4, expandLine, rectCells, circleCells, rectSpans, circleSpans, snapShapeEnd, splineCells } from './shapes';
+import { line4, expandLine, dragShapeCells, dragShapeSpans, snapShapeEnd, splineCells } from './shapes';
 import { getCell, cellKey } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import type { Command, Corners, TerrainCell } from '../../core/model/types';
@@ -13,13 +13,16 @@ import type { CursorId } from '../../core/runtime/cursor-spec';
 import { placeTileCell, tileGhostColor } from './tile-coating';
 import type { ContentType } from './paint-plan';
 import { planPaint, buildFloor, autoStackTarget, waterLayerAt } from './paint-plan';
-import { previewAutoTrim, shapeOfCells, shapeOfSpans, type TrimmedCell } from '../edge-cut/trim-preview';
+import {
+  previewAutoTrim, shapeOfCells, shapeOfSpans, type GhostShape, type TrimmedCell,
+} from '../edge-cut/trim-preview';
+import { previewRoadTrim } from '../edge-cut/road-trim-preview';
 import { applyAutoEdgeCut } from '../edge-cut/auto-edge-cut';
 import { reconcileCuts } from '../../core/edge-cut/cut-reconcile';
-import { useEditorStore } from '../../state/store';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
 import { getCatalogItem } from '../../state/catalog';
+import { roadLookup } from '../../state/object-index';
 import {
   beginCurveSession, endCurveSession, isCurveSessionOpen, resetCurveAnchors,
 } from './curve-session';
@@ -83,10 +86,7 @@ export class DrawingTool implements Tool {
    *  already painted this stroke), which is a no-op rather than a refusal; a plan that REFUSED
    *  the cell (a tile on water) is a refusal even though it issues nothing. */
   canActAt(coord: MacroCoord, ctx: ToolContext): boolean {
-    // Water resolves its own layer from the hovered cell (see onPointerDown); ask the same
-    // question here via a throwaway clone so the probe never mutates ctx.
-    const planCtx = this.contentType === 'water' ? { ...ctx, elevation: waterLayerAt(coord, ctx) } : ctx;
-    const plan = planPaint([coord], planCtx, this.contentType, FRESH_STROKE);
+    const plan = planPaint([coord], ctx, this.contentType, FRESH_STROKE);
     const first = plan.commands[0];
     if (!first) return !plan.refused;
     return ctx.validateCommand(first).length === 0;
@@ -174,15 +174,7 @@ export class DrawingTool implements Tool {
     if (this.mode !== 'curve' || this.curvePoints.length === 0) {
       this.strokeCells.clear();
       this.tileStrokeCells.clear();
-      // Water paints at what was clicked, not the panel's selected layer (fixed for the whole
-      // stroke, even across a drag or a multi-click shape — only the ORIGIN click decides).
-      // Mutate ctx.elevation directly, not just the store: the store round-trips through
-      // ToolManager's next refreshCtx, which is too late for THIS command.
-      if (this.contentType === 'water') {
-        const layer = waterLayerAt(coord, ctx);
-        ctx.elevation = layer;
-        useEditorStore.getState().setActiveLayer(layer);
-      }
+      this.liveTrimmed = false;
     }
 
     switch (this.mode) {
@@ -246,7 +238,7 @@ export class DrawingTool implements Tool {
       case 'line':
         if (this.shapeOrigin) {
           const end = isConstrainHeld() ? snapShapeEnd(this.shapeOrigin, coord, 'line') : coord;
-          this.ghost(this.shapeCells('line', this.shapeOrigin, end, ctx.brushSize), ctx);
+          this.ghost(dragShapeCells('line', this.shapeOrigin, end, ctx.brushSize), ctx);
         } else {
           // Pre-click hover: preview the brush footprint so its size is visible
           // before the line is started (rather than a single cell).
@@ -276,9 +268,7 @@ export class DrawingTool implements Tool {
           // Span-native preview: a map-size drag never expands to its cell list
           // (the commit on pointer-up builds the cells once).
           const end = isConstrainHeld() ? snapShapeEnd(this.shapeOrigin, coord, this.mode) : coord;
-          const spans = this.mode === 'rect'
-            ? rectSpans(this.shapeOrigin, end)
-            : circleSpans(this.shapeOrigin, Math.abs(end.x - this.shapeOrigin.x), Math.abs(end.y - this.shapeOrigin.y));
+          const spans = dragShapeSpans(this.mode, this.shapeOrigin, end);
           ctx.overlay.showGhostSpans(spans, ghostColor, terrainGrid, this.trimOfSpans(spans, ctx));
         } else {
           this.ghost([coord], ctx);
@@ -509,6 +499,7 @@ export class DrawingTool implements Tool {
     this.strokeStartUndoSize = start;
     this.strokeCells.clear();
     this.tileStrokeCells.clear();
+    this.liveTrimmed = false;
     this.restoreBaseline(ctx);
     this.layCurve(anchors, ctx);
     // A curve dragged off the map, or onto sea or plaza, has every command refused or ignored — no
@@ -561,22 +552,12 @@ export class DrawingTool implements Tool {
     return false;
   }
 
-  /** The cells a drag shape covers — ONE builder for ghost preview and commit, so
-   *  the two can never drift. */
-  private shapeCells(mode: 'line' | 'rect' | 'circle', origin: MacroCoord, end: MacroCoord, brushSize: number): MacroCoord[] {
-    switch (mode) {
-      case 'line': return expandLine(line4(origin.x, origin.y, end.x, end.y), brushSize);
-      case 'rect': return rectCells(origin, end);
-      case 'circle': return circleCells(origin, Math.abs(end.x - origin.x), Math.abs(end.y - origin.y));
-    }
-  }
-
   /** Shared commit path for the three drag shapes (pointer-up). */
   private commitShape(mode: 'line' | 'rect' | 'circle', coord: MacroCoord, ctx: ToolContext): void {
     if (!this.shapeOrigin) return;
     this.strokeStartUndoSize = ctx.getUndoStackSize();
     const end = isConstrainHeld() ? snapShapeEnd(this.shapeOrigin, coord, mode) : coord;
-    this.paintCells(this.shapeCells(mode, this.shapeOrigin, end, ctx.brushSize), ctx);
+    this.paintCells(dragShapeCells(mode, this.shapeOrigin, end, ctx.brushSize), ctx);
     this.shapeOrigin = null;
     ctx.overlay.clearGhost();
     this.finishStroke(ctx, end);
@@ -647,9 +628,11 @@ export class DrawingTool implements Tool {
     // is one this stroke has raised already.
     for (const c of cells) this.strokeCells.add(cellKey(c.x, c.y));
     // A SHAPE is one deliberate figure, so it lays the part of itself that is legal. The freehand
-    // brush keeps its footprint atomic: a dab is a single mark, and one command per dab is what the
-    // rest of the tool is built around.
-    for (const cmd of plan.commands) this.execute(ctx, cmd, this.mode !== 'brush');
+    // MOUNTAIN brush keeps its footprint atomic: its cells hold each other up (the ladder), so a
+    // dab is a single mark. Water neither stacks nor supports anything, so a dab lays the cells
+    // that can hold it and skips the ones the rules refuse.
+    const splitOnRefusal = this.mode !== 'brush' || this.contentType === 'water';
+    for (const cmd of plan.commands) this.execute(ctx, cmd, splitOnRefusal);
   }
 
   /**
@@ -664,7 +647,6 @@ export class DrawingTool implements Tool {
   /** Put the stroke's own cells back to square, so the final pass derives their shape from the
    *  finished mass rather than from what the drag happened to round on its way through. */
   private squareCorners(cells: readonly MacroCoord[], ctx: ToolContext): void {
-    this.liveTrimmed = false;
     for (const { x, y } of cells) {
       const t = getCell(ctx.gridState.cells, x, y)?.terrain;
       // A Γ patch IS its corners — squaring one leaves a cell that is a patch of nothing. Only a
@@ -679,76 +661,116 @@ export class DrawingTool implements Tool {
     }
   }
 
-  private liveTrim(cells: MacroCoord[], ctx: ToolContext): void {
-    if (!this.trimActive()) return;
-    this.liveTrimmed = true;
-    // The dab plus the ring around it, and only cells THIS STROKE laid: the next dab lands against
-    // the last one, so a corner rounded a moment ago is interior now. The trim pass keeps the
-    // corners it finds — that is what preserves a hand cut beside a stroke — so the stroke's own
-    // cells in the window go back to square and the whole window is derived again. Without it the
-    // drag leaves rounded notches through the middle of its own band.
+  /** Put the stroke's own road tiles back to square, the road twin of `squareCorners`. A road's cut
+   *  is derived from which sides it connects on, so a tile the drag has since paved past is no
+   *  longer the end-cap it was trimmed as. `cutRoads` keeps the cuts it finds, so nothing else would
+   *  ever take that end-cap back off. */
+  private squareRoads(cells: readonly MacroCoord[], ctx: ToolContext): void {
+    const roads = roadLookup(ctx.gridState);
+    for (const { x, y } of cells) {
+      const road = roads(x, y);
+      if (!road?.corners || road.corners.every((c) => c === 'square')) continue;
+      ctx.executeCommand({
+        type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'road', objectId: road.id,
+        beforeCorners: [...road.corners] as Corners,
+        afterCorners: ['square', 'square', 'square', 'square'],
+      });
+    }
+  }
+
+  /** The dab plus the ring around it, and only cells THIS STROKE laid: the next dab lands against
+   *  the last one, so a shape derived a moment ago is derived from a different neighbourhood now. */
+  private strokeWindow(cells: readonly MacroCoord[], laid: ReadonlySet<string>): MacroCoord[] {
     const window: MacroCoord[] = [];
     const seen = new Set<string>();
     for (const c of cells) {
       for (const [dx, dy] of BASELINE_OFFSETS) {
         const x = c.x + dx, y = c.y + dy, k = cellKey(x, y);
-        if (seen.has(k) || !this.strokeCells.has(k)) continue;
+        if (seen.has(k) || !laid.has(k)) continue;
         seen.add(k);
         window.push({ x, y });
       }
     }
+    return window;
+  }
+
+  private liveTrim(cells: MacroCoord[], ctx: ToolContext): void {
+    const mode = ctx.autoEdgeCut;
+    if (mode === 'off') return;
+    this.liveTrimmed = true;
+
+    // A ROAD is a coating on an object rather than a terrain cell, so there are no corners to
+    // reconcile and no Γ notch to fill: the trim pass reads the tile's connectivity and picks a
+    // canonical state. The squaring is the same obligation as terrain's — the trim keeps the cuts
+    // it finds, so an end-cap the drag has since paved past would stay cut in the middle of the road.
+    if (this.contentType === 'tile') {
+      const window = this.strokeWindow(cells, this.tileStrokeCells);
+      this.squareRoads(window, ctx);
+      applyAutoEdgeCut(ctx, mode, [], window);
+      return;
+    }
+
+    // The trim pass keeps the corners it finds — that is what preserves a hand cut beside a stroke —
+    // so the stroke's own cells in the window go back to square and the whole window is derived
+    // again. Without it the drag leaves rounded notches through the middle of its own band.
+    const window = this.strokeWindow(cells, this.strokeCells);
     // The same three steps the commit runs, on the window instead of the stroke: repair the cuts
     // the dab invalidated, put the stroke's own corners back to square, derive the shape again.
     // Without the repair, a Γ patch made while a cell was still a notch survives the stroke closing
     // around it, and the drag ends up a cell richer than the same mass painted in one go.
-    reconcileCuts(window, ctx.gridState, { execute: ctx.executeCommand });
+    reconcileCuts(window, ctx.gridState, { execute: ctx.executeCommand, roadAt: roadLookup(ctx.gridState) });
     this.squareCorners(window, ctx);
-    applyAutoEdgeCut(ctx, useEditorStore.getState().autoEdgeCut, window, []);
+    applyAutoEdgeCut(ctx, mode, window, []);
   }
 
   /**
    * Draw the ghost, in the shape the stroke will actually leave.
    *
-   * With auto-trim on, the committed shape has cut corners and can gain Γ patches in its notches,
-   * so a square ghost promises something the click does not produce. The preview runs the real trim
-   * pass over a scratch grid (`previewAutoTrim`); tiles are excluded because a road's trim follows
-   * its connectivity, which is not known until the road is placed.
+   * With auto-trim on, the committed shape has cut corners and can gain Γ patches in its notches
+   * (a road stroke, cut end-caps and bends), so a square ghost promises something the click does
+   * not produce. The preview runs the real trim pass — see `trimOfShape`.
    */
   private ghost(cells: MacroCoord[], ctx: ToolContext, before: Command[] = []): void {
     ctx.overlay.showGhost(cells, this.getGhostColor(ctx), this.contentType !== 'tile',
       this.trimOf(cells, ctx, before));
   }
 
-  /** `before` runs on the scratch ahead of the paint — the curve's baseline restore, so an adjust
-   *  ghost is not shaped by the curve it is replacing. */
-  /** Whether a ghost of this content would carry a trim at all. */
-  private trimActive(): boolean {
-    return useEditorStore.getState().autoEdgeCut !== 'off' && this.contentType !== 'tile';
-  }
-
   /** The same preview for a span-form ghost (rect / circle), which never builds its own cell list:
    *  only the rim of a shape can be trimmed, and that is derivable from the spans directly. */
   private trimOfSpans(spans: readonly RowSpan[], ctx: ToolContext): TrimmedCell[] | undefined {
-    const mode = useEditorStore.getState().autoEdgeCut;
-    if (!this.trimActive() || spans.length === 0) return undefined;
-    const shape = shapeOfSpans(spans);
-    return previewAutoTrim(ctx.gridState, mode, shape, ctx.rules,
-      (paint, on) => planPaint(paint, { ...ctx, gridState: on }, this.contentType, FRESH_STROKE).commands)
-      .filter((t) => t.patch || shape.contains(t.x, t.y));
+    if (spans.length === 0) return undefined;
+    return this.trimOfShape(shapeOfSpans(spans), ctx, []);
   }
 
+  /** `before` runs on the scratch ahead of the paint — the curve's baseline restore, so an adjust
+   *  ghost is not shaped by the curve it is replacing. */
   private trimOf(cells: MacroCoord[], ctx: ToolContext, before: Command[]): TrimmedCell[] | undefined {
-    const mode = useEditorStore.getState().autoEdgeCut;
-    if (!this.trimActive() || cells.length === 0) return undefined;
-    const shape = shapeOfCells(cells);
-    const own = new Set(cells.map((c) => cellKey(c.x, c.y)));
+    if (cells.length === 0) return undefined;
+    return this.trimOfShape(shapeOfCells(cells), ctx, before);
+  }
+
+  /**
+   * ONE trim payload for the ghost, whichever surface is being laid.
+   *
+   * Terrain runs the trim pass over a scratch copy of the CELLS; a road is an object, so its
+   * preview shadows the coating LOOKUP instead (`previewRoadTrim`). Both run the real
+   * `applyAutoEdgeCut` and both come back as `TrimmedCell`s, so a view is handed one payload and
+   * the two never drift into two ghosts.
+   */
+  private trimOfShape(shape: GhostShape, ctx: ToolContext, before: Command[]): TrimmedCell[] | undefined {
+    const mode = ctx.autoEdgeCut;
+    if (mode === 'off') return undefined;
+    if (this.contentType === 'tile') {
+      return previewRoadTrim(ctx.gridState, mode, shape, ctx.rules,
+        (cells) => planPaint(cells, ctx, 'tile', FRESH_STROKE).commands, this.tileStrokeCells);
+    }
     return previewAutoTrim(ctx.gridState, mode, shape, ctx.rules,
       (paint, on) => planPaint(paint, { ...ctx, gridState: on }, this.contentType, FRESH_STROKE).commands,
       before)
       // The trim also reshapes the corners of terrain the stroke lands against. That is a change to
       // the map, not to the shape being placed, and drawing it puts a ghost over ground that is
       // already there. A Γ patch is kept: the stroke's shape genuinely grows into that cell.
-      .filter((t) => t.patch || own.has(cellKey(t.x, t.y)));
+      .filter((t) => t.patch || shape.contains(t.x, t.y));
   }
 
   private getGhostColor(ctx: ToolContext): number {
@@ -756,7 +778,7 @@ export class DrawingTool implements Tool {
       // Ghost previews the colour of the target (selected) layer for mountains.
       case 'mountain': return getTerrainColor(TerrainType.Mountain, buildFloor(ctx));
       case 'water': return getTerrainColor(TerrainType.Water, ctx.elevation);
-      case 'tile': return tileGhostColor();
+      case 'tile': return tileGhostColor(ctx.tileMaterial);
     }
   }
 
@@ -786,17 +808,19 @@ export class DrawingTool implements Tool {
     // on whatever cells survived. The toggle lives in the Build panel.
     // ATOMIC UNDO: the trim/fill commands fold into the last block entry of the
     // stroke, so undo steps are block creations only — never a bare "the shape squared up" step.
-    const autoMode = useEditorStore.getState().autoEdgeCut;
+    const autoMode = ctx.autoEdgeCut;
     if (autoMode !== 'off') {
       const trimStart = ctx.getUndoStackSize();
+      // A shape the drag cut early can be built against later in the same drag, and the trim pass
+      // keeps the shapes it finds (that is what preserves a hand cut beside the stroke). So the
+      // stroke's OWN cells go back to square first and the shape is derived once, from what the
+      // stroke actually ended with. Only they are squared: a neighbour's cut is not ours.
       if (isTile) {
-        applyAutoEdgeCut(ctx, autoMode, [], this.cellsFromSet(this.tileStrokeCells));
+        const cells = this.cellsFromSet(this.tileStrokeCells);
+        if (this.liveTrimmed) this.squareRoads(cells, ctx);
+        applyAutoEdgeCut(ctx, autoMode, [], cells);
       } else {
         const cells = this.cellsFromSet(this.strokeCells);
-        // A corner the drag rounded early can be built against later in the same drag, and the trim
-        // pass keeps corners it finds (that is what preserves a hand cut beside the stroke). So the
-        // stroke's OWN cells go back to square first and the shape is derived once, from the mass
-        // the stroke actually ended with. Only they are squared: a neighbour's cut is not ours.
         if (this.liveTrimmed) this.squareCorners(cells, ctx);
         applyAutoEdgeCut(ctx, autoMode, cells, []);
       }
@@ -828,6 +852,9 @@ export class DrawingTool implements Tool {
   // cursor (mountain only). Non-mountain surfaces clear the override (panel
   // follows the selected layer). Reads the cell BEFORE it's painted this stroke.
   private updateDisplay(coord: MacroCoord, ctx: ToolContext): void {
+    // Water reports where the dab is landing. A HIGHLIGHT, never the build floor: a layer the
+    // ground chose must not become the layer the next stroke is pinned to.
+    if (this.contentType === 'water') { ctx.setDisplayLayer(waterLayerAt(coord, ctx)); return; }
     if (this.contentType !== 'mountain') { ctx.setDisplayLayer(null); return; }
     const existing = getCell(ctx.gridState.cells, coord.x, coord.y)?.terrain?.elevation ?? 0;
     ctx.setDisplayLayer(autoStackTarget(existing, buildFloor(ctx)));
@@ -839,6 +866,13 @@ export class DrawingTool implements Tool {
   // leaves the panel on the floor instead of jumping up to a crossed-over stack.
   // If that cell isn't usable (reverted/empty), keep the live value from painting.
   private syncDisplayLayer(ctx: ToolContext, focus?: MacroCoord): void {
+    // Water settles on the layer the cell the stroke ended over is holding, which is where the last
+    // dab put its water. Left to the mountain branch below it would clear to the selected layer,
+    // and an unpinned stroke's panel would report a floor it never painted at.
+    if (this.contentType === 'water') {
+      if (focus) ctx.setDisplayLayer(waterLayerAt(focus, ctx));
+      return;
+    }
     if (this.contentType !== 'mountain') { ctx.setDisplayLayer(null); return; }
     if (!focus || !this.strokeCells.has(cellKey(focus.x, focus.y))) return;
     const achieved = getCell(ctx.gridState.cells, focus.x, focus.y)?.terrain?.elevation ?? 0;
@@ -855,5 +889,6 @@ export class DrawingTool implements Tool {
     this.shapeOrigin = null;
     this.strokeCells.clear();
     this.tileStrokeCells.clear();
+    this.liveTrimmed = false;
   }
 }

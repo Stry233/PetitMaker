@@ -68,7 +68,9 @@ const UP_AXIS = new THREE.Vector3(0, 1, 0);
 interface TerrainChunk {
   meshes: THREE.Mesh[];
   geometries: THREE.BufferGeometry[];
-  water: { mesh: THREE.Mesh; base: Float32Array; swell: Float32Array } | null;
+  /** Present only so a rebuild can decrement `waterChunks`: the swell itself is a vertex-shader
+   *  displacement off the baked `aSwell` attribute, so nothing here is read per frame. */
+  water: { mesh: THREE.Mesh } | null;
   fall: { mesh: THREE.Mesh; pos: Float32Array } | null;
   numbers: { mesh: THREE.Mesh; tex: THREE.CanvasTexture } | null;
 }
@@ -158,6 +160,47 @@ function addProximityFade(mat: THREE.Material): void {
         '\tif ( fadeK <= fadeDither ) discard;',
         '}',
         '#include <clipping_planes_fragment>',
+      ].join('\n'));
+  };
+}
+
+/** How far the water surface rises at full weight, in world units, and how fast the lobe travels
+ *  per frame. Both were the CPU loop's own constants. */
+const SWELL_RISE = 0.05;
+const SWELL_SPEED = 0.045;
+
+interface SwellUniforms { uSwellTime: { value: number }; uSwellAmp: { value: number } }
+
+/**
+ * The water's gentle swell, as a VERTEX DISPLACEMENT rather than a per-frame rewrite of the
+ * position buffer.
+ *
+ * It is a pure function of a vertex's resting position and the clock, so the CPU had nothing to
+ * contribute: it walked every water vertex of every water chunk, took a `Math.sin` each, and flagged
+ * the whole buffer for re-upload — every other frame, for as long as the view was open. On the GPU
+ * it costs one uniform write per frame for the entire map.
+ *
+ * `aSwell` is the per-vertex weight (0 pins a vertex: the body's outline stays put, so the
+ * water/land silhouette never re-antialiases). A geometry WITHOUT the attribute reads 0 and is
+ * therefore untouched, which is what keeps the waterfall meshes sharing this material flat — the
+ * same fallback `addProximityFade` relies on for `aObjR`.
+ *
+ * The phase keys on WORLD x/z so the lobe is seamless across chunk boundaries; chunk geometry is
+ * built at absolute world coordinates and its meshes carry no translation, so the local position is
+ * the world one. Normals are left alone, exactly as the CPU version left them.
+ */
+function addWaterSwell(mat: THREE.Material, u: SwellUniforms): void {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSwellTime = u.uSwellTime;
+    shader.uniforms.uSwellAmp = u.uSwellAmp;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uSwellTime;\nuniform float uSwellAmp;\nattribute float aSwell;')
+      .replace('#include <begin_vertex>', [
+        '#include <begin_vertex>',
+        '\tif ( aSwell > 0.0 && uSwellAmp > 0.0 ) {',
+        '\t\tfloat swellLobe = sin( uSwellTime + position.x * 1.2 + position.z * 1.4 ) * 0.5 + 0.5;',
+        `\t\ttransformed.y += swellLobe * ${SWELL_RISE.toFixed(3)} * aSwell * uSwellAmp;`,
+        '\t}',
       ].join('\n'));
   };
 }
@@ -329,6 +372,8 @@ export class ThreeScene {
   private overlay3d: Overlay3D | null = null;
   private passive = { grid: false, numbers: false, chunks: false };
   private gridUniforms: GridUniforms = { uGrid: { value: 0 }, uChunks: { value: 0 }, uGridOff: { value: new THREE.Vector2() } };
+  /** The water swell's clock, shared by every water chunk — one write per frame drives the lot. */
+  private swellUniforms: SwellUniforms = { uSwellTime: { value: 0 }, uSwellAmp: { value: 1 } };
   private legendGroup: THREE.Group | null = null;
   private legendMat: THREE.MeshBasicMaterial | null = null;
   private arrowGroup = new THREE.Group();
@@ -347,6 +392,19 @@ export class ThreeScene {
   /** Per-chunk terrain, rebuilt chunk-by-chunk when cells change. */
   private terrainChunks = new Map<string, TerrainChunk>();
   private dirtyTerrain = new Set<string>();
+  /** Set by onObjects (below) instead of rebuilding inline: a dab's remove+add churn fires several
+   *  objects-changed events, and each road-trim/icon-colour rebuild scans every object on the map —
+   *  coalescing to one rebuild per rendered frame is what keeps that scan O(1) per dab rather than
+   *  O(events this dab) x O(map objects). */
+  private roadTrimDirty = false;
+  private iconRefineDirty = false;
+  /** Chrome anchored to the map (selection handles, popovers) repaints on `viewport-changed`, and
+   *  an object moving under it changes where it belongs. Set by onObjects instead of emitting
+   *  there: that emit is the ONE map signal `usePointerInteraction` deliberately answers
+   *  IMMEDIATELY rather than per frame (a camera move must not lag the pointer by a frame), so
+   *  emitting it per object turned every command into a full pointer re-sample — in 3D, a
+   *  heightfield ray-march per command, hundreds of them inside one fast pointermove. */
+  private chromeNudgeDirty = false;
   private waterChunks = 0;
   private fallChunks = 0;
   private opaqueMat!: THREE.MeshLambertMaterial;
@@ -451,14 +509,14 @@ export class ThreeScene {
         let roads = false;
         for (const id of data.removed ?? []) roads = this.removeObjectInstance(id) || roads;
         for (const obj of data.added ?? []) roads = this.addObjectInstance(obj) || roads;
-        if (roads) this.rebuildRoadTrim();
-        if (data.added?.length) this.refineIconColors();
+        // Deferred to the next rendered frame (flushObjectDirty): both rebuilds scan every object on
+        // the map, and a dab's own remove+add churn (auto-trim especially) fires several of these
+        // events — rebuilding inline here paid for that scan once per EVENT instead of once per FRAME.
+        if (roads) this.roadTrimDirty = true;
+        if (data.added?.length) this.iconRefineDirty = true;
         this.renderer.shadowMap.needsUpdate = true;
+        this.chromeNudgeDirty = true;
         this.requestRender();
-        // Chrome (handles / selection box) subscribed before this scene existed,
-        // so its repaint ran against the pre-update instances — nudge it again
-        // now that the slots hold the new transforms.
-        bus.emit('viewport-changed', { zoom: this.zoomPercent() / 100 });
       };
       const onValidationFailed = (data: EditorEvents['validation-failed']) => {
         const terrainMode = data.cmd.type === CommandType.PaintTerrain || data.cmd.type === CommandType.EraseTerrain;
@@ -565,6 +623,7 @@ export class ThreeScene {
    *  through here so on-screen and captured frames share one pipeline. */
   private renderFrame(): void {
     this.flushTerrainDirty();
+    this.flushObjectDirty();
     this.overlay3d?.flush();
     if (this.msaaTarget && this.copyScene) {
       this.renderer.setRenderTarget(this.msaaTarget);
@@ -645,24 +704,34 @@ export class ThreeScene {
     return reportedCameraAngle(this.camera.position, this.controls.target, this.introTo, this.introTarget, this.introActive);
   }
 
+  /**
+   * End the fly-in NOW, at its resting frame. Safe to call when no intro is running.
+   *
+   * Called by the camera verbs as well as the export path: the intro holds the controls dark for
+   * its whole duration, so a user who reaches for the camera during it would otherwise be ignored
+   * until it finished. A hand on the camera IS the request to stop watching.
+   */
+  private landIntro(): void {
+    if (!this.introActive) return;
+    // Snap the camera directly to its resting position and target (computed in the
+    // constructor: introTo = resting camera pos, introTarget = resting orbit target).
+    this.camera.position.copy(this.introTo);
+    this.camera.lookAt(this.introTarget);
+    this.controls.target.copy(this.introTarget);
+    // The controls resume ONLY where they own input: in editor mode the
+    // pointer machine drives the camera and OrbitControls must stay dark —
+    // re-arming it here handed LEFT-drag back to its rotate handler, which
+    // fought every brush stroke.
+    this.controls.enabled = !this.editorInput;
+    this.controls.update();
+    this.introActive = false;
+  }
+
   /** Skip the ~0.8s camera fly-in intro and render one frame at the resting position.
    *  Used by the offscreen export capture path so it gets a fully-framed still without
    *  waiting for the animation loop. Safe to call even when the intro is already done. */
   skipIntroAndRender(): void {
-    if (this.introActive) {
-      // Snap the camera directly to its resting position and target (computed in the
-      // constructor: introTo = resting camera pos, introTarget = resting orbit target).
-      this.camera.position.copy(this.introTo);
-      this.camera.lookAt(this.introTarget);
-      this.controls.target.copy(this.introTarget);
-      // The controls resume ONLY where they own input: in editor mode the
-      // pointer machine drives the camera and OrbitControls must stay dark —
-      // re-arming it here handed LEFT-drag back to its rotate handler, which
-      // fought every brush stroke.
-      this.controls.enabled = !this.editorInput;
-      this.controls.update();
-      this.introActive = false;
-    }
+    this.landIntro();
     this.renderFrame();
   }
 
@@ -682,8 +751,17 @@ export class ThreeScene {
     // borders flicker between smooth and aliased.
     // The water swell and the waterfall scroll are CONTINUOUS ambient motion, which is exactly what
     // the reduced-motion preference is for: freeze them at their built pose rather than idling.
-    if (this.frame % 2 === 0 && !isMotionReduced()) {
-      if (this.waterChunks > 0) { this.animateWater(); move = true; }
+    // The swell is a shader displacement, so switching it off is an AMPLITUDE of zero rather than
+    // simply not advancing the clock: left running down, the water would freeze mid-lobe instead of
+    // at the flat pose it was built at. Read every frame, since the preference can change while the
+    // view is open, and a change is itself something to redraw for.
+    const swelling = !isMotionReduced();
+    if (this.swellUniforms.uSwellAmp.value !== (swelling ? 1 : 0)) {
+      this.swellUniforms.uSwellAmp.value = swelling ? 1 : 0;
+      move = true;
+    }
+    if (this.frame % 2 === 0 && swelling) {
+      if (this.waterChunks > 0) { this.swellUniforms.uSwellTime.value = this.frame * SWELL_SPEED; move = true; }
       if (this.fallChunks > 0) { this.animateFall(); move = true; }
     }
     if (this.overlay3d?.tick()) move = true;
@@ -750,28 +828,11 @@ export class ThreeScene {
    *  the body's OUTLINE (shoreline, rims, map edge) stays pinned at rest, because
    *  a moving outline re-antialiases the water/land silhouette every vertex
    *  update and reads as flickering borders around shoreline objects. */
-  private animateWater(): void {
-    const t = this.frame * 0.045;
-    for (const chunk of this.terrainChunks.values()) {
-      if (!chunk.water) continue;
-      const { mesh, base, swell } = chunk.water;
-      const attr = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const arr = attr.array as Float32Array;
-      // The lobe phase keys on world coordinates, so the swell is seamless
-      // across chunk boundaries.
-      for (let i = 0; i < arr.length; i += 3) {
-        const w = swell[i / 3]!;
-        if (w === 0) continue; // pinned outline vertex — already at its base height
-        const lobe = Math.sin(t + base[i]! * 1.2 + base[i + 2]! * 1.4) * 0.5 + 0.5; // 0..1
-        arr[i + 1] = base[i + 1]! + lobe * 0.05 * w;
-      }
-      attr.needsUpdate = true;
-    }
-  }
 
   private buildTerrain(state: GridState): void {
     this.opaqueMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
     this.wetMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    addWaterSwell(this.wetMat, this.swellUniforms);
     // Trimmed roads use the SAME lit vertex-colour look as terrain but must NOT carry the draped
     // grid (untrimmed roads are instanced with a grid-free material — the grid on only the trimmed
     // ones read as inconsistent). Same config as opaqueMat, minus the addGridOverlay injection.
@@ -1021,11 +1082,10 @@ export class ThreeScene {
       this.scene.add(mesh);
       entry.meshes.push(mesh);
       entry.geometries.push(geo);
-      entry.water = {
-        mesh,
-        base: Float32Array.from((geo.getAttribute('position') as THREE.BufferAttribute).array as Float32Array),
-        swell: waterSwellWeights(this.meshState(), water.positions),
-      };
+      // The swell rides the geometry as a per-vertex weight and is applied in the vertex shader
+      // (see addWaterSwell), so the position buffer stays at its resting values for the mesh's life.
+      geo.setAttribute('aSwell', new THREE.BufferAttribute(waterSwellWeights(this.meshState(), water.positions), 1));
+      entry.water = { mesh };
       this.waterChunks++;
     }
     if (fall.positions.length) {
@@ -1161,6 +1221,19 @@ export class ThreeScene {
     this.dirtyTerrain.clear();
     this.rebuildWaterfallArrows();
     this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  /** Runs the road-trim/icon-colour rebuilds onObjects flagged as dirty, and nudges the chrome —
+   *  once per rendered frame, so however many objects-changed events one dab's remove+add churn
+   *  fires, each whole-map scan (buildRoadTrimMesh over every object, refineIconColors over every
+   *  instance) and each chrome repaint runs only once. */
+  private flushObjectDirty(): void {
+    if (this.roadTrimDirty) { this.roadTrimDirty = false; this.rebuildRoadTrim(); }
+    if (this.iconRefineDirty) { this.iconRefineDirty = false; this.refineIconColors(); }
+    if (this.chromeNudgeDirty) {
+      this.chromeNudgeDirty = false;
+      this.bus?.emit('viewport-changed', { zoom: this.zoomPercent() / 100 });
+    }
   }
 
   /** White flow arrows at waterfall faces — the 3D twin of the 2D indicator
@@ -1422,10 +1495,10 @@ export class ThreeScene {
     part(new THREE.BoxGeometry(s * 0.34, 0.16, s * 0.14), '#b98f5e', cx - W * 0.22, top + 0.08, cz + H * 0.30);
   }
 
-  /** Glide the camera from the far framing to its resting frame (whole-map fly-in). Time-based so it's
-   *  exactly ~0.8s regardless of refresh rate. */
+  /** Glide the camera from the far framing to its resting frame (whole-map fly-in). Time-based, so
+   *  it takes the same wall time at any refresh rate. */
   private animateIntro(): void {
-    const t = (performance.now() - this.introStartMs) / 800;
+    const t = (performance.now() - this.introStartMs) / animConfig.intro3d.durationMs;
     if (t >= 1) {
       this.camera.position.copy(this.introTo);
       this.camera.lookAt(this.introTarget);
@@ -1605,6 +1678,11 @@ export class ThreeScene {
           }
           this.requestRender();
         },
+        // No animateRemove: `deleteGroup` fires this hook, then removes the object, then execute()
+        // emits objects-changed SYNCHRONOUSLY — this scene's own listener frees the departing
+        // instance's slot and repacks a different object into it before any render frame runs. A
+        // tween would need a decoy mesh outside the InstancedMesh's dense packing, which this view
+        // does not have; the object simply disappears with the InstancedMesh's next repaint.
         camera: this.cameraVerbs(),
       };
     }
@@ -1672,6 +1750,7 @@ export class ThreeScene {
    * skips the accumulator entirely and applies the step at once.
    */
   private dragCamera(mode: 'orbit' | 'pan', dx: number, dy: number): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     if (isMotionReduced()) { this.applyDrag(mode, dx, dy); return; }
     if (mode !== this.inertiaMode) {
       // Travel measured while orbiting must never be applied as a pan. Hand back what is owed
@@ -1699,6 +1778,7 @@ export class ThreeScene {
   /** A wheel/pinch dolly, eased. Reduced motion applies it outright: the smoothing is decoration,
    *  and the zoom itself is not. */
   private dollyEased(factor: number): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     if (isMotionReduced()) { this.dollyBy(factor); return; }
     this.zoomInertia.sample(Math.log(factor), 0, performance.now());
     this.requestRender();
@@ -1713,6 +1793,7 @@ export class ThreeScene {
 
   /** Yaw/pitch the camera around the orbit target (radians). */
   orbitBy(dYaw: number, dPitch: number): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const sph = new THREE.Spherical().setFromVector3(offset);
@@ -1842,6 +1923,7 @@ export class ThreeScene {
 
   /** Toolkit ZOOM: glide the orbit distance by `factor` (>1 = away), clamped. */
   animateDolly(factor: number): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const d = Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, offset.length() * factor));
@@ -1851,6 +1933,7 @@ export class ThreeScene {
 
   /** Toolkit TILT: glide to tilt value v (0..1 across the polar clamp range). */
   animateTilt(v: number): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const sph = new THREE.Spherical().setFromVector3(offset);
@@ -1863,6 +1946,7 @@ export class ThreeScene {
 
   /** Toolkit FIT: glide back to the resting whole-map framing. */
   animateFit(): void {
+    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
     this.startCamTween(this.introTo.clone(), this.introTarget.clone());
   }
 

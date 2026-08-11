@@ -1,6 +1,6 @@
 import { TerrainType } from '../model/types';
 import type { TerrainCell } from '../model/types';
-import { cornerRevealTier, EDGE_NEIGHBORS } from './terrain-silhouette';
+import { cornerRevealTier, cornerEdgeCoverTier, EDGE_NEIGHBORS } from './terrain-silhouette';
 
 export interface CutBacking {
   type: TerrainType;
@@ -15,13 +15,12 @@ export interface CutBacking {
  *  - A Γ (gamma) PATCH is a fillet at tier N sitting ON its own solid base (mass 1..N-1 across the WHOLE
  *    cell) → the base renders as a FULL block: every quadrant backs with tier N-1, not just the fillet's.
  *    (A tier-1 fillet has no base — it sits straight on the ground.)
- *  - A cut on a REAL cell goes through its whole pillar, so what shows is NEIGHBOUR mass — judged from
- *    the THREE cells meeting that corner (two edge neighbours + the diagonal; an ortho-only scan misses
- *    diagonal mass and leaks ground). A cut MOUNTAIN corner reveals the highest same-type mass below its
- *    top (a plateau step → that step's tier; a lone pillar → nothing → ground). A cut WATER corner is
- *    FILLED by the adjacent mountain at the corner (the render half of the reveal rule: a cut corner
- *    shows the surface actually behind it — the water rounds, and the adjacent mountain rim fills in
- *    behind it).
+ *  - A cut on a REAL cell goes through its whole pillar, so what shows is NEIGHBOUR mass. A cut MOUNTAIN
+ *    corner reveals the highest EDGE-adjacent same-type mass below its top (a plateau step → that step's
+ *    tier; a lone pillar → nothing → ground, unless it is an island, which shows the water it sits in).
+ *    A cut WATER corner is FILLED by the mountain at the corner (the render half of the reveal rule: a cut
+ *    corner shows the surface actually behind it) — the bank AT the waterline, or, where mountain flanks
+ *    BOTH edges of the corner (`cornerEdgeCoverTier`), the corner that mountain turns over this cell.
  *
  * @param renderElevation the tier this cell is drawn at (its elevation, unless layers are hidden)
  * @param neighborAt the terrain at offset (dx,dy) from this cell
@@ -71,7 +70,17 @@ export function cutBackingByCorner(
     const reveal = cornerRevealTier(neighborAt, i, terrain.type, renderElevation);
     if (reveal >= 1) {
       out[i] = { type: isWater ? TerrainType.Mountain : terrain.type, elevation: reveal };
-    } else if (!isWater) {
+    } else if (isWater) {
+      // The case the waterline rule cannot answer: mountain FLANKING BOTH EDGES of this corner meets itself
+      // here, so the rounded-away quadrant opens onto that mountain — not onto the ground buried under it.
+      // Water at layer 0 can never have a bank AT its own layer (mass starts at layer 1), so without this
+      // every mountain/water junction showed a wedge of ground: down the steps of a Γ notch, and at the
+      // point where two diagonally-attached shores meet. Both are one figure and get one answer, at the
+      // LOWER of the two flanking tiers — the tier at which the shores actually meet.
+      // ONE mountain edge is a river running ALONG a cliff, not a corner it turns: that keeps its ground bank.
+      const flank = cornerEdgeCoverTier(neighborAt, i, TerrainType.Mountain);
+      if (flank > renderElevation) out[i] = { type: TerrainType.Mountain, elevation: flank };
+    } else {
       // A cut MOUNTAIN corner with no lower mountain step behind it — a mountain ISLAND poking into water —
       // reveals the water it sits in (the same generic rule as a cut ground island, and symmetric to cut
       // water revealing its mountain rim above). EDGE-adjacent only. (A mountain that merely BANKS water on

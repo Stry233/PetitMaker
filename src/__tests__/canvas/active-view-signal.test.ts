@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActiveView, getActiveView, onActiveViewChange } from '../../canvas/active-view';
 import { installSelectionViewSync } from '../../canvas/interaction/selection-view-sync';
 import type { ActiveView, ToolOverlay } from '../../canvas/view-projection';
-import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import type { GridState, PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { makeState } from '../rules/_helpers';
@@ -162,7 +162,7 @@ describe('selection-view-sync: the ring follows the active view', () => {
     uninstall = installSelectionViewSync();
     setActiveView(two.view);
 
-    useEditorStore.getState().setActiveTool(ToolType.TerrainBrush);
+    useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'brush' });
     expect(useEditorStore.getState().selection).toEqual([]);
     expect(two.overlay.clearSelection).toHaveBeenCalled();
   });

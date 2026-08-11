@@ -14,8 +14,12 @@ import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import type { CornerPos } from '../../../core/edge-cut/corner-index';
 import { patchCornerSplit } from '../../../core/edge-cut/patch-corners';
 import { detectRoadConn } from '../../../core/edge-cut/road-cut-states';
+import { roadShapePoints } from '../../../core/edge-cut/road-shape';
+import { objectElevation } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
+import { roadLookup } from '../../../state/object-index';
 import { cutBackingByCorner } from '../../../core/edge-cut/cut-backing';
+import { cornerPolygon, fanPoly, type Pt } from './quadrant-poly';
 import { GROUND_SLAB_Y, cellCornerWorld, layerToY, mapCenterOffset, surfaceY, TERRAIN_OFFSET } from '../core/coords';
 import { terrainColor, zoneColor, waterColor, hexToRgb01, objectColor, type Rgb } from '../core/palette';
 import type { MeshData, TerrainMeshes } from '../core/types';
@@ -52,54 +56,6 @@ function quad(m: MeshData, a: Vec3, b: Vec3, c: Vec3, d: Vec3, col: Rgb): void {
 }
 
 function empty(): MeshData { return { positions: [], colors: [], index: [] }; }
-
-type Pt = [number, number];
-const FAN_STEPS = 6;
-
-/** The top-face polygon (XZ) for one trimmed quadrant — mirrors trim-shapes.ts
- *  (square / triangle / outer-or-inner fan). null = 'empty' (no quadrant). */
-function cornerPolygon(trim: CornerTrim, x: number, z: number, s: number, pos: CornerPos, patchOnly: boolean): Pt[] | null {
-  switch (trim) {
-    case 'empty': return null;
-    case 'square': return [[x, z], [x + s, z], [x + s, z + s], [x, z + s]];
-    case 'fan': return fanPoly(pos, x, z, s, patchOnly);
-    case 'tri-NW': return [[x, z], [x + s, z], [x, z + s]];
-    case 'tri-NE': return [[x, z], [x + s, z], [x + s, z + s]];
-    case 'tri-SW': return [[x, z + s], [x, z], [x + s, z + s]];
-    case 'tri-SE': return [[x + s, z], [x + s, z + s], [x, z + s]];
-  }
-}
-
-/** A rounded quarter-fan, centred at the opposite corner (outer) or the same
- *  corner (inner, for Γ patches) — mirrors trim-shapes.ts drawFanCorner. */
-function fanPoly(pos: CornerPos, x: number, z: number, s: number, inverted: boolean): Pt[] {
-  let cx = x, cz = z, startAngle = 0;
-  if (!inverted) {
-    if (pos === 'TL') { cx = x + s; cz = z + s; startAngle = Math.PI; }
-    else if (pos === 'TR') { cx = x; cz = z + s; startAngle = -Math.PI / 2; }
-    else if (pos === 'BL') { cx = x + s; cz = z; startAngle = Math.PI / 2; }
-    else { cx = x; cz = z; startAngle = 0; }
-  } else {
-    if (pos === 'TL') { cx = x; cz = z; startAngle = 0; }
-    else if (pos === 'TR') { cx = x + s; cz = z; startAngle = Math.PI / 2; }
-    else if (pos === 'BL') { cx = x; cz = z + s; startAngle = -Math.PI / 2; }
-    else { cx = x + s; cz = z + s; startAngle = Math.PI; }
-  }
-  const pts: Pt[] = [[cx, cz]];
-  for (let i = 0; i <= FAN_STEPS; i++) {
-    const a = startAngle + (Math.PI / 2) * (i / FAN_STEPS);
-    // The two arc ENDPOINTS (i=0, i=FAN_STEPS) sit at multiples of π/2, where cos/sin are exactly
-    // 0/±1 — but Math.cos/sin return ~1e-16 residues there. Snap them so a fan's straight edges land
-    // BIT-EXACTLY on the grid. The 3D water mesher recovers its wall outline by exact edge-matching a
-    // fan against its square/triangle siblings; the residue would otherwise break that (phantom interior
-    // seams on cells near the map centre, where it survives double precision). Mid-arc points stay exact.
-    const end = i === 0 || i === FAN_STEPS;
-    const ca = end ? Math.round(Math.cos(a)) : Math.cos(a);
-    const sa = end ? Math.round(Math.sin(a)) : Math.sin(a);
-    pts.push([cx + ca * s, cz + sa * s]);
-  }
-  return pts;
-}
 
 /** The CUT-AWAY region of a quadrant — the complement of the kept `cornerPolygon`. This is what an
  *  edge cut REVEALS (2D's drawBacking region, minus the kept shape drawn over it): the rounded corner
@@ -536,55 +492,13 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
 // path reads as disconnected steps.
 const ROAD_BAND_BOTTOM = 0.05; // = ROAD_LIFT
 const ROAD_TOP = 0.1;          // = ROAD_LIFT + ROAD_SLAB_H
-const ROAD_ARC = 16; // fan subdivisions — matches trim-shapes.drawRoadShape `steps`
-
-type ConnSide = 'left' | 'right' | 'top' | 'bottom';
-
-/** Map a canonical road point (u,v) ∈ [0,2]² to world XZ for the road's connection side. EXACT mirror of
- *  trim-shapes.txPt (with hw=hh=0.5 for a unit cell at corner cx,cz) so 3D matches the 2D road shape. */
-function roadTxPt(u: number, v: number, side: ConnSide, cx: number, cz: number): Pt {
-  const h = 0.5;
-  switch (side) {
-    case 'left': return [cx + u * h, cz + v * h];
-    case 'right': return [cx + (2 - u) * h, cz + v * h];
-    case 'top': return [cx + v * h, cz + u * h];
-    case 'bottom': return [cx + (2 - v) * h, cz + (2 - u) * h];
-  }
-}
-
-/** True when this corner set has a trimmed 3D shape (one of the five canonical road-cut
- *  states). object-meshes uses this to decide the split: recognised trims are meshed by
- *  buildRoadTrimMesh, everything else — full squares AND unrecognised states — stays on
- *  the plain instanced decal, so no corner set can ever leave a hole in the paved path. */
-export function hasRoadTrimShape(corners: Corners | undefined): boolean {
-  return !!corners && roadCanonicalPoly(corners) !== null;
-}
-
-/** The FILLED road polygon in canonical (u,v) space for a corner set — a 1:1 port of trim-shapes.drawRoadShape
- *  (the 2D source of truth). `corners` are the stored canonical state; 'square' = a kept (filled) corner.
- *  null = a full square / unrecognised state (drawn as the plain instanced decal, not here). */
-function roadCanonicalPoly(corners: Corners): Pt[] | null {
-  const sq = (s: CornerTrim) => s === 'square';
-  const [tl, tr, bl, br] = corners;
-  const arc = (cx: number, cy: number, a0: number, a1: number): Pt[] => {
-    const p: Pt[] = [];
-    for (let i = 0; i <= ROAD_ARC; i++) { const a = a0 + (a1 - a0) * (i / ROAD_ARC); p.push([cx + 2 * Math.cos(a), cy + 2 * Math.sin(a)]); }
-    return p;
-  };
-  if (sq(tl) && sq(tr) && sq(bl) && !sq(br)) return [[0, 0], ...arc(0, 0, 0, Math.PI / 2)];        // BR fan: (0,0) + arc (2,0)→(0,2)
-  if (sq(tl) && !sq(tr) && sq(bl) && sq(br)) return [[0, 2], ...arc(0, 2, 0, -Math.PI / 2)];        // TR fan: (0,2) + arc (2,2)→(0,0)
-  if (!sq(tl) && !sq(tr) && sq(bl) && sq(br)) return [[0, 0], [0, 2], [2, 2]];                       // diagonal \
-  if (sq(tl) && sq(tr) && !sq(bl) && !sq(br)) return [[0, 0], [2, 0], [0, 2]];                       // diagonal /
-  if (sq(tl) && !sq(tr) && sq(bl) && !sq(br)) return [[0, 0], [1, 1], [0, 2]];                       // wedge
-  return null;
-}
 
 /**
  * Trimmed road tiles as a flat custom mesh. Untrimmed roads stay instanced (object-meshes); a road whose
  * edge-cut gave it non-square corners can't ride the shared full-square instance geometry, so its cut top
- * face is meshed here. It is a 1:1 port of the 2D `drawRoadShape`: the stored CANONICAL corners pick the
- * filled polygon in (u,v) space, transformed to world by the road's connection side (`roadTxPt` mirrors
- * `txPt`) — so the cut direction matches the 2D view exactly. Roads use the macro grid (no TERRAIN_OFFSET).
+ * face is meshed here. The shape comes from `core/edge-cut/road-shape`, the one polygon 2D's
+ * `drawRoadShape` fills too — so the cut direction matches the 2D view by construction. Roads use the
+ * macro grid (no TERRAIN_OFFSET); a unit cell means half-extents of 0.5.
  *
  * `offsets` displaces named roads on the ground plane (cell units = world units). A trim-meshed road has
  * no instance matrix to back-date, so this is how the group-rotation tween carries one along its arc; the
@@ -597,22 +511,23 @@ export function buildRoadTrimMesh(
 ): MeshData {
   const m = empty();
   const { width, height } = state.template;
+  const roads = roadLookup(state);
   for (const obj of state.objects.values()) {
     const item = getCatalogItem(obj.catalogId);
     if (item?.category !== ItemCategory.Road) continue;
-    if (hiddenLayers?.has(obj.elevation)) continue; // hides with its layer, like the instanced decals
+    const elev = objectElevation(state, obj);
+    if (hiddenLayers?.has(elev)) continue; // hides with its layer, like the instanced decals
     const corners = obj.corners;
     if (!corners || corners.every((c) => c === 'square')) continue; // untrimmed → handled by the instanced decal
-    const poly = roadCanonicalPoly(corners);
-    if (!poly) continue;
-    const side = detectRoadConn(state, obj);
+    const side = detectRoadConn(roads, obj);
     const corner = cellCornerWorld(obj.position.x, obj.position.y, width, height);
     const off = offsets?.get(obj.id);
     const cx = corner.x + (off?.dx ?? 0), cz = corner.z + (off?.dz ?? 0);
-    const yTop = surfaceY(obj.elevation) + ROAD_TOP;
-    const yBase = surfaceY(obj.elevation) + ROAD_BAND_BOTTOM;
+    const pts = roadShapePoints(corners, side, cx, cz, 1, 1);
+    if (!pts) continue;
+    const yTop = surfaceY(elev) + ROAD_TOP;
+    const yBase = surfaceY(elev) + ROAD_BAND_BOTTOM;
     const col = objectColor(obj, item);
-    const pts = poly.map(([u, v]) => roadTxPt(u, v, side, cx, cz));
     pushPolyTop(m, pts, yTop, col);
     // Side walls down to the lift base — the tile gets the same thickness as the
     // instanced boxes around it, so the seam shows no gap at grazing angles.

@@ -44,6 +44,15 @@ describe('payload frame', () => {
     bytes[Math.floor(bytes.length * 0.9)]! ^= 0x40;
     await expect(decodeMapPayload(bytes)).rejects.toMatchObject({ code: expect.stringMatching(/corrupt|decode-failed/) });
   });
+  it('a model shape this build does not have reads as future, not corrupt', async () => {
+    // The shape table is append-only, so an index past its end was written by a newer build. The
+    // import toast routes 'corrupt' to "try a better picture" and 'future-version' to "update" —
+    // only the second is honest about a code that is perfectly intact.
+    const state = registerSynthetic(makeState(8, 8));
+    const bytes = await encodeMapPayload(state, null, META);
+    bytes[3] = 250;
+    await expect(decodeMapPayload(bytes)).rejects.toMatchObject({ code: 'future-version' });
+  });
   it('future frame version throws future-version', async () => {
     const state = registerSynthetic(makeState(8, 8));
     const bytes = await encodeMapPayload(state, null, META);

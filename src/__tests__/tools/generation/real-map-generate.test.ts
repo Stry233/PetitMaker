@@ -11,6 +11,7 @@ import { populate } from '../../../tools/generation/placement';
 import { objectRect, getPlacedObjectSize } from '../../../state/object-geometry';
 import { PLAZA_ID } from '../../../core/model/constants';
 import { CellZone, TerrainType, type GridState, type MapTemplate, type EditorEvents, type GenerateConfig, type Command } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 // Generate on the REAL shipped maps (which have a fractional locked plaza + real zones) — the synthetic
 // makeState grids used elsewhere have no plaza, so they miss plaza-interaction bugs (e.g. terrain being
@@ -26,7 +27,7 @@ function realState(file: string): GridState {
 
 function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
   const state = realState(file);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   // A mid-slider config (mode varied): relief/water/settlement/nature pinned at 0.5, maxElev 3.
   const config: GenerateConfig = {
     algorithm: 'random', mode, corridorWidth: 1, maxElevation: 3, seed, region: null,

@@ -10,6 +10,9 @@
     "id": "Pohon Darah Naga",
     "fr": "Dragonnier"
   },
+  "aliases": [
+    "dracaena"
+  ],
   "icon": "tree-dragonblood",
   "width": 1,
   "height": 1,

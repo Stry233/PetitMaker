@@ -1,14 +1,16 @@
 import { CommandType, TerrainType } from '../../core/model/types';
-import type { Command, GridState, MacroCoord, PlacedObject, ValidationResult } from '../../core/model/types';
+import type { Command, Corners, GridState, MacroCoord, PlacedObject, ResolvedMazeGates, ValidationResult } from '../../core/model/types';
 import { runLandform, toGenConfig } from './index';
 import type { ZonePlan } from './types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
-import { buildObjectOccupancy } from '../../state/object-geometry';
+import { buildObjectOccupancy, objectRect } from '../../state/object-geometry';
 import { generateMaze } from './maze-generator';
 import { edgeCutGeneratedTerrain } from '../edge-cut/auto-edge-cut';
 import { generationCutMode } from './style';
 import type { GenerateConfig } from '../../core/model/types';
 import { removeObjectCommand } from '../objects/object-placer';
+
+const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 
 export interface GenerateResult {
   placed: number;
@@ -16,6 +18,11 @@ export interface GenerateResult {
   overwritten: number;
   /** The designed-island plan ('random' algorithm only) — populate() decorates per zone theme. */
   zonePlan?: ZonePlan;
+  /** Where the maze opened ('maze' algorithm only). The requested coordinates are snapped to the
+   *  border ring, so a caller that marks the gates must read them back from here. */
+  mazeGates?: ResolvedMazeGates;
+  /** The one walk between the gates, over the run's own carved corridors ('maze' only). */
+  mazeWalk?: MacroCoord[];
 }
 
 /**
@@ -28,8 +35,8 @@ export function generateTerrain(
 ): GenerateResult {
   switch (config.algorithm) {
     case 'maze': {
-      const result = generateMaze(state, config.seed, config.maxElevation, config.corridorWidth ?? 1, config.region, executeCommand);
-      return { ...result, overwritten: 0 };
+      const { placed, skipped, gates, walk } = generateMaze(state, config.seed, config.maxElevation, config.corridorWidth ?? 1, config.region, executeCommand, config.mazeGates);
+      return { placed, skipped, overwritten: 0, mazeGates: gates, ...(walk ? { mazeWalk: walk } : {}) };
     }
     case 'random':
     default: {
@@ -51,6 +58,18 @@ export function generateTerrain(
   }
 }
 
+/**
+ * Erase the terrain in scope.
+ *
+ * TWO COMMANDS, BECAUSE TWO KINDS OF CELL. An erase is refused outside the buildable zone
+ * (V-ZONE-01) — nothing may be built on the boundary ring, so nothing there needs erasing — but an
+ * auto edge-cut writes COSMETIC Γ patches wherever the island's silhouette turns a corner, and a
+ * corner of the island can sit on a boundary cell. Those patches are terrain the erase cannot take,
+ * so they used to survive every clear: a generated map cleared to a blank map plus a scatter of
+ * quarter blocks along the rim, and the next generation started from ground that still remembered
+ * the last one. A patch is cycled off through the door it came in by, a corner edit, which the zone
+ * rule does not gate because it adds no mass.
+ */
 export function clearAllTerrain(
   state: GridState,
   executeCommand: (cmd: Command) => ValidationResult,
@@ -62,6 +81,7 @@ export function clearAllTerrain(
 ): number {
   const { width, height } = state.template;
   const cells: MacroCoord[] = [];
+  const patches: MacroCoord[] = [];
   const occ = buildObjectOccupancy(state);
   const scope = region ?? (function* all() {
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) yield { x, y };
@@ -70,22 +90,25 @@ export function clearAllTerrain(
   for (const { x, y } of scope) {
     const cell = getCell(state.cells, x, y);
     if (!cell?.terrain) continue;
-    if (!isBuildableZone(cell.zone)) continue;
     if (occ.has(`${x},${y}`)) continue;
     if (spare?.(x, y)) continue;
-    cells.push({ x, y });
+    if (isBuildableZone(cell.zone)) cells.push({ x, y });
+    else if (cell.terrain.patchOnly) patches.push({ x, y });
   }
 
-  if (cells.length === 0) return 0;
+  if (cells.length === 0 && patches.length === 0) return 0;
 
-  const cmd: Command = {
-    type: CommandType.EraseTerrain,
-    timestamp: Date.now(),
-    cells,
-  };
-
-  executeCommand(cmd);
-  return cells.length;
+  if (cells.length) {
+    executeCommand({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells });
+  }
+  for (const { x, y } of patches) {
+    executeCommand({
+      type: CommandType.TrimCorners, timestamp: Date.now(), layer: 'terrain', x, y,
+      beforeCorners: getCell(state.cells, x, y)?.terrain?.corners ?? SQUARE,
+      afterCorners: ['empty', 'empty', 'empty', 'empty'],
+    });
+  }
+  return cells.length + patches.length;
 }
 
 /**
@@ -102,10 +125,23 @@ export function clearAllObjects(
   spare?: (obj: PlacedObject) => boolean,
 ): number {
   const inRegion = region ? new Set(region.map((c) => `${c.x},${c.y}`)) : null;
+  // Footprint intersection, the same membership the marquee and the agent's region lock use: an
+  // object whose footprint reaches into the region blocks every terrain paint on those cells
+  // (V-PLACE-BLOCK), so a region that regenerates must take it with it, wherever its anchor sits.
+  const touchesRegion = (obj: PlacedObject): boolean => {
+    if (!inRegion) return true;
+    const r = objectRect(obj);
+    for (let y = Math.floor(r.y); y < Math.ceil(r.y + r.h); y++) {
+      for (let x = Math.floor(r.x); x < Math.ceil(r.x + r.w); x++) {
+        if (inRegion.has(`${x},${y}`)) return true;
+      }
+    }
+    return false;
+  };
   let count = 0;
   for (const obj of [...state.objects.values()]) {
     if (obj.locked) continue;   // never dissolve immutable structures (the central plaza); V-LOCK-02 also guards this
-    if (inRegion && !inRegion.has(`${obj.position.x},${obj.position.y}`)) continue;
+    if (!touchesRegion(obj)) continue;
     if (spare?.(obj)) continue;
     const res = executeCommand(removeObjectCommand(obj));
     if (res.success) count++;

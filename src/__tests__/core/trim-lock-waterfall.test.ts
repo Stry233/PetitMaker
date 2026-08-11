@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { TerrainType } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 /**
  * WATERFALL-FRAME: the cap mountains flanking a waterfall face keep their
@@ -23,8 +24,8 @@ describe('waterfall-side corner locking', () => {
 
   it('locks the cap mountains’ south (flow-side) corners', () => {
     const state = waterfallSouth();
-    const west = computeLockedCorners(state, 4, 5, 'terrain');
-    const east = computeLockedCorners(state, 6, 5, 'terrain');
+    const west = computeLockedCorners(state, roadLookup(state), 4, 5, 'terrain');
+    const east = computeLockedCorners(state, roadLookup(state), 6, 5, 'terrain');
     // corner order [TL, TR, BL, BR] — south side = BL(2), BR(3)
     expect(west[2]).toBe(true);
     expect(west[3]).toBe(true);
@@ -37,7 +38,7 @@ describe('waterfall-side corner locking', () => {
     // ground-level lake: not a waterfall (no lower neighbor face)
     setTerrain(state, 5, 5, TerrainType.Water, 0);
     setTerrain(state, 4, 5, TerrainType.Mountain, 1);
-    const locked = computeLockedCorners(state, 4, 5, 'terrain');
+    const locked = computeLockedCorners(state, roadLookup(state), 4, 5, 'terrain');
     // BL corner (away from the water) stays cuttable
     expect(locked[2]).toBe(false);
   });

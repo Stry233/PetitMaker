@@ -162,12 +162,22 @@ const RULE_REASON: Record<string, string> = {
   'V-CHUNK-01': 'agent2.rv_chunk',
 };
 
+/** The region refusal, as `outOfRegionResult` words it for the model: where the edit reached, and
+ *  the bounds it was supposed to stay inside. Both are the user's own coordinates, so unlike a rule
+ *  violation they are worth repeating back — the user painted that region and can see it. */
+const OUT_OF_REGION = /^OUT OF REGION: this edit reached \((-?\d+),(-?\d+)\).*?within \((-?\d+),(-?\d+)\)-\((-?\d+),(-?\d+)\)/s;
+
 /** "REVERTED: …" (or any rule failure) → one short, human sentence. The rule
  *  tag, the raw prefix and cell coordinates never reach the user. A user denial
  *  gets its own copy — claiming an undo happened would attribute the user's
  *  choice to the agent. */
 export function revertCopy(content: string, t: Translate): string {
   if (content.startsWith(USER_SKIP)) return t('agent2.rv_skipped');
+  const stray = OUT_OF_REGION.exec(content);
+  if (stray) {
+    const [, x, y, x1, y1, x2, y2] = stray;
+    return t('agent2.rv_region', { x: x!, y: y!, x1: x1!, y1: y1!, x2: x2!, y2: y2! });
+  }
   const ruleKey = RULE_REASON[content.match(/\[(V-[A-Z0-9-]+)\]/)?.[1] ?? ''];
   return ruleKey ? t('agent2.rv_undid', { reason: t(ruleKey) }) : t('agent2.rv_generic');
 }

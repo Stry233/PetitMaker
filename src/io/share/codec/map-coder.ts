@@ -11,7 +11,8 @@
  * the neighbours already decoded as its context. A cell's neighbours predict it well — terrain
  * comes in contiguous masses at terraced heights, roads run in lines, flowers grow in drifts — and
  * an object's POSITION costs nothing beyond the occupancy bit that says it is there, so a crowded
- * region is cheaper per object than a sparse one.
+ * region is cheaper per object than a sparse one. A ramp or bridge can stand half a cell off that
+ * raster, which is the one thing the image cannot say on its own — see `MapModelOpts.half`.
  *
  * THE RULES ARE SHARED KNOWLEDGE. Anything the reader can derive from what it has already decoded
  * is not sent. The largest of these is the corner field: the silhouette alone decides which of a
@@ -72,6 +73,7 @@ class Models {
   objCorners = new BitModel();
   objCorner = models(4, () => new TreeModel(3));
   objPatch = new BitModel();
+  halfOffset = new TreeModel(2);
   more = new BitModel();
 }
 
@@ -131,9 +133,39 @@ const hasCtx = (w: unknown, n: unknown, nw: unknown, ne: unknown, par: number) =
  * the neighbourhood already accounts for most of a lattice, and on an organic island the extra
  * contexts only adapt more slowly: a straight loss. So it is a choice, not a default. The encoder
  * codes the map under each shape and keeps the smaller; the frame names the winner.
+ *
+ * `half` says the object plane carries a sub-cell offset per object. Ramps and bridges anchor on
+ * the half grid, so their raster cell alone no longer fixes where they stand. This is not a size
+ * choice like `parity`: a map either needs it or cannot use it, so it PARTITIONS the table rather
+ * than joining the search (see `hasHalfPosition`, which is what `payload.ts` picks the half from).
+ * Kept as a shape rather than a new frame field precisely so a map without one codes byte-for-byte
+ * as it always did, and so a build too old to know shape 2 refuses by name at the variant lookup.
+ *
+ * THE TABLE IS APPEND-ONLY. A code names its shape by index, so an index means forever what it
+ * meant when it was written.
  */
-export interface MapModelOpts { parity: boolean }
-export const MODEL_VARIANTS: readonly MapModelOpts[] = [{ parity: false }, { parity: true }];
+export interface MapModelOpts { parity: boolean; half: boolean }
+export const MODEL_VARIANTS: readonly MapModelOpts[] = [
+  { parity: false, half: false },
+  { parity: true, half: false },
+  { parity: false, half: true },
+  { parity: true, half: true },
+];
+
+/** Does any object stand off the whole-cell grid? Decides which half of MODEL_VARIANTS applies. */
+export const hasHalfPosition = (objects: readonly SaveObject[]): boolean =>
+  objects.some((o) => !Number.isInteger(o.x) || !Number.isInteger(o.y));
+
+/** The sub-cell offset of an anchor: bit 0 = half a cell along x, bit 1 = along y, 0 = whole. */
+function halfOffsetOf(o: SaveObject): number {
+  const off = (v: number) => {
+    const f = v - Math.floor(v);
+    if (f === 0) return 0;
+    if (f === 0.5) return 1;
+    throw new Error(`map-coder: position ${v} is off the half grid`);
+  };
+  return off(o.x) | (off(o.y) << 1);
+}
 
 interface Neighbourhood { w: CellFields | null; n: CellFields | null; nw: CellFields | null; ne: CellFields | null }
 
@@ -158,7 +190,7 @@ function cornersOf(f: CellFields): string | null { return f.corners; }
 
 export function encodeMap(
   enc: RangeEncoder, template: MapTemplate, cells: (CellFields | null)[], objects: SaveObject[],
-  opts: MapModelOpts = { parity: false },
+  opts: MapModelOpts = { parity: false, half: false },
 ): void {
   const M = new Models();
   const width = template.width;
@@ -211,7 +243,7 @@ export function encodeMap(
   // ── objects: an image of what stands where ──
   const anchor = new Map<number, SaveObject[]>();
   for (const o of objects) {
-    const k = o.y * width + o.x;
+    const k = Math.floor(o.y) * width + Math.floor(o.x);
     const list = anchor.get(k);
     if (list) list.push(o); else anchor.set(k, [o]);
   }
@@ -238,6 +270,9 @@ export function encodeMap(
         enc.encodeBit(M.sameId[j === 0 ? 0 : 1]!, same);
         if (!same) encodeTree(enc, M.catalog, idx);
       } else encodeTree(enc, M.catalog, idx);
+      const half = halfOffsetOf(o);
+      if (opts.half) encodeTree(enc, M.halfOffset, half);
+      else if (half !== 0) throw new Error('map-coder: half position under a whole-cell shape');
       enc.encodeBit(M.rotZero, o.rotation !== 0 ? 1 : 0);
       if (o.rotation !== 0) encodeTree(enc, M.rot, ROTS.indexOf(o.rotation));
       enc.encodeBit(M.hasElev, o.elevation !== undefined ? 1 : 0);
@@ -276,7 +311,7 @@ function occCtx(anchor: Map<number, unknown>, i: number, x: number, width: numbe
 }
 
 export function decodeMap(
-  dec: RangeDecoder, template: MapTemplate, opts: MapModelOpts = { parity: false },
+  dec: RangeDecoder, template: MapTemplate, opts: MapModelOpts = { parity: false, half: false },
 ): { cells: (CellFields | null)[]; objects: SaveObject[] } {
   const M = new Models();
   const width = template.width;
@@ -341,8 +376,14 @@ export function decodeMap(
         if (id === undefined) throw new Error('map-coder: catalog index out of range');
         catalogId = id;
       }
+      const half = opts.half ? decodeTree(dec, M.halfOffset) : 0;
       const rotation = dec.decodeBit(M.rotZero) === 1 ? ROTS[decodeTree(dec, M.rot)]! : 0;
-      const o: SaveObject = { id: 'o?', catalogId, x, y: Math.floor(i / width), rotation };
+      const o: SaveObject = {
+        id: 'o?', catalogId,
+        x: x + (half & 1 ? 0.5 : 0),
+        y: Math.floor(i / width) + (half & 2 ? 0.5 : 0),
+        rotation,
+      };
       if (dec.decodeBit(M.hasElev) === 1) {
         o.elevation = dec.decodeBit(M.elevIsSurface) === 0 ? surface : decodeUint(dec, M.objElev);
       }

@@ -19,14 +19,15 @@ import { buildRoadTrimMesh } from '../../canvas/map3d/build/terrain-geometry';
 import { Overlay3D } from '../../canvas/map3d/scene/overlay3d';
 import { mapCenterOffset } from '../../canvas/map3d/core/coords';
 import { arcMotion, arcOffset, type GroupRotation } from '../../canvas/group-arc';
-import { rotateGroup } from '../../ui/chrome/group-actions';
+import { rotateGroup } from '../../tools/objects/group-actions';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 const BR_FAN: Corners = ['square', 'square', 'square', 'fan']; // a canonical road-cut state
 
 function mapWithRoads(): { gs: GridState; exec: CommandExecutor } {
   const gs = makeState(24, 24) as GridState;
-  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(gs, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(gs));
   // Three, so the trimmed road sits OFF the turn's pivot and actually travels.
   for (const [id, x, y] of [['r1', 5, 5], ['r2', 6, 5], ['r3', 7, 5]] as const) {
     const object: PlacedObject = {

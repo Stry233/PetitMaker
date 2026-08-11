@@ -10,13 +10,13 @@ import {
   type TerrainType,
   type ValidationResult,
 } from '../core/model/types';
-import { getCell } from '../core/model/grid-model';
-import { ChunkTracker } from '../core/model/chunk-tracker';
+import { chunkKey, getCell } from '../core/model/grid-model';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { CommandExecutor } from '../core/commands/command-executor';
-import { getCatalogItem } from '../state/catalog';
+import { ProvSource } from '../core/provenance/types';
+import { getMapStats } from '../state/map-stats';
 import { objectPlacementCommand, removeObjectCommand } from '../tools/objects/object-placer';
-import { getPlacedObjectSize } from '../state/object-geometry';
+import { generateObjectId } from '../tools/utils';
 import { serialize, deserialize } from '../io/json-codec';
 
 /**
@@ -55,13 +55,7 @@ export class EditorAPI {
 
   /** Total object load in chunk (cx, cy), summed from the placed objects' catalog loadValues. */
   getChunkLoad(cx: number, cy: number): number {
-    const tracker = new ChunkTracker();
-    for (const obj of this.getState().objects.values()) {
-      if (obj.patchOnly) continue;
-      const { w, h } = getPlacedObjectSize(obj);
-      tracker.addObject(obj.position, w, h, getCatalogItem(obj.catalogId)?.loadValue ?? 0);
-    }
-    return tracker.getLoad(cx, cy);
+    return getMapStats(this.getState()).chunks.get(chunkKey(cx, cy))?.load ?? 0;
   }
 
   getMapDimensions(): { width: number; height: number } {
@@ -71,6 +65,34 @@ export class EditorAPI {
 
   /* ── Execute methods ─────────────────────────────────── */
 
+  /**
+   * One programmatic write, as a STROKE: the command is validated and applied, then the post-stroke
+   * rules run over the result and the edge-cut reconcile repairs whatever the write invalidated,
+   * all folded into a single undo entry. A bare `execute` gets none of that, so a scripted write
+   * could leave the map in a state the interactive editor cannot produce.
+   *
+   * `Procedural` is the authorship: a script is machine authorship in the same class as the
+   * generator, and `clearGenerated` spares what a person made, so an unsourced write would default
+   * to `Human` and be untakeable-back. The AI sources would be a false claim rather than a vaguer
+   * one: they assert a model wrote the content, and the export disclosure repeats that to whoever
+   * receives the map.
+   */
+  private write(tool: string, run: (executor: CommandExecutor) => ValidationResult): ValidationResult {
+    const executor = this.getExecutor();
+    const watermark = executor.getUndoStackSize();
+    executor.pushSource({ source: ProvSource.Procedural, tool });
+    try {
+      const res = run(executor);
+      if (!res.success) return res;
+      const violations = executor.commitStroke(watermark);
+      // A post-stroke violation reverts the write, so success here would name a change the map
+      // does not hold.
+      return violations.length > 0 ? { success: false, errors: violations } : res;
+    } finally {
+      executor.popSource();
+    }
+  }
+
   paintTerrain(cells: MacroCoord[], type: TerrainType, elevation: number): ValidationResult {
     const cmd: PaintTerrainCommand = {
       type: CommandType.PaintTerrain,
@@ -79,7 +101,7 @@ export class EditorAPI {
       terrainType: type,
       elevation,
     };
-    return this.getExecutor().execute(cmd);
+    return this.write('api.paintTerrain', (executor) => executor.execute(cmd));
   }
 
   eraseTerrain(cells: MacroCoord[]): ValidationResult {
@@ -88,11 +110,11 @@ export class EditorAPI {
       timestamp: Date.now(),
       cells,
     };
-    return this.getExecutor().execute(cmd);
+    return this.write('api.eraseTerrain', (executor) => executor.execute(cmd));
   }
 
   placeObject(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): ValidationResult {
-    const id = `obj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = generateObjectId();
     const obj: PlacedObject = {
       id,
       catalogId,
@@ -103,13 +125,13 @@ export class EditorAPI {
       // elevation. Mirrors the main placement path (ObjectPlacerTool).
       elevation: surfaceElevation(getCell(this.getState().cells, x, y)?.terrain),
     };
-    return this.getExecutor().execute(objectPlacementCommand(obj));
+    return this.write('api.placeObject', (executor) => executor.execute(objectPlacementCommand(obj)));
   }
 
   removeObject(objectId: string): ValidationResult {
     const obj = this.getState().objects.get(objectId);
     if (!obj) return { success: false, errors: [] };
-    return this.getExecutor().execute(removeObjectCommand(obj));
+    return this.write('api.removeObject', (executor) => executor.execute(removeObjectCommand(obj)));
   }
 
   /* ── Validation ──────────────────────────────────────── */

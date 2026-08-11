@@ -12,10 +12,11 @@ import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type EditorEvents, type MacroCoord } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function world() {
   const state = makeState(30, 30);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const cells: MacroCoord[] = [];
   for (let y = 4; y <= 20; y++) for (let x = 4; x <= 20; x++) cells.push({ x, y });
   executor.execute({ type: CommandType.PaintTerrain, timestamp: 1, cells, terrainType: TerrainType.Mountain, elevation: 1 });
@@ -61,5 +62,19 @@ describe('clearAllObjects', () => {
   it('takes the same region parameter, so the pair scope together', () => {
     const w = world();
     expect(clearAllObjects(w.state, (cmd) => w.executor.execute(cmd), rect(6, 6, 8, 8))).toBe(0);
+  });
+
+  it('counts an object by its footprint, not its anchor', () => {
+    // An object anchored outside the region whose footprint reaches in blocks every terrain
+    // paint on those cells (V-PLACE-BLOCK), so a region that regenerates must take it with it.
+    const w = world();
+    const straddler = { id: 'o1', catalogId: 'building-house', position: { x: 5, y: 5 }, rotation: 0 as const, elevation: 0, width: 2, height: 2 };
+    const outsider = { id: 'o2', catalogId: 'building-house', position: { x: 2, y: 2 }, rotation: 0 as const, elevation: 0, width: 2, height: 2 };
+    w.state.objects.set('o1', straddler);
+    w.state.objects.set('o2', outsider);
+    const removed = clearAllObjects(w.state, (cmd) => w.executor.execute(cmd), rect(6, 6, 8, 8));
+    expect(removed).toBe(1);
+    expect(w.state.objects.has('o1'), 'footprint reaches the region').toBe(false);
+    expect(w.state.objects.has('o2'), 'fully outside it').toBe(true);
   });
 });

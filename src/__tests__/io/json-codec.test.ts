@@ -56,6 +56,35 @@ describe('json-codec', () => {
     expect(restoredObj.rotation).toBe(90);
   });
 
+  it('preserves a half-cell anchor through roundtrip', () => {
+    // 7.5 is a JSON number, so the save format carries it with no version bump. What the load
+    // path had to learn is that it is LEGAL — for a halfStep item only.
+    const state = makeState(16, 16);
+    state.objects.set('r', { ...makeObject('r', 0, 0, 90), catalogId: 'ramp-plank', position: { x: 4.5, y: 9 } });
+    state.objects.set('b', { ...makeObject('b', 0, 0, 0), catalogId: 'bridge-teak', position: { x: 6, y: 11.5 }, spanLength: 4 });
+
+    const json = serialize(state);
+    expect(JSON.parse(json).objects.map((o: { x: number; y: number }) => [o.x, o.y]))
+      .toEqual([[4.5, 9], [6, 11.5]]);
+    const restored = deserialize(json, state.template);
+
+    expect(restored.objects.get('r')!.position).toEqual({ x: 4.5, y: 9 });
+    expect(restored.objects.get('b')!.position).toEqual({ x: 6, y: 11.5 });
+  });
+
+  it('drops a fractional anchor the item cannot hold', () => {
+    const state = makeState(16, 16);
+    state.objects.set('tree', { ...makeObject('tree', 0, 0), catalogId: 'tree-ginkgo', position: { x: 3.5, y: 4 } });
+    state.objects.set('quarter', { ...makeObject('quarter', 0, 0), catalogId: 'ramp-plank', position: { x: 5.25, y: 4 } });
+    state.objects.set('ok', { ...makeObject('ok', 8, 8), catalogId: 'building-myhouse' });
+
+    const restored = deserialize(serialize(state), state.template);
+
+    expect(restored.objects.has('tree')).toBe(false);
+    expect(restored.objects.has('quarter')).toBe(false);
+    expect(restored.objects.has('ok')).toBe(true);
+  });
+
   it('drops objects whose catalogId is not a real catalog item (crafted-save injection guard)', () => {
     const state = makeState(10, 10);
     state.objects.set('evil', {

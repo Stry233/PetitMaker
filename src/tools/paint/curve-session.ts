@@ -3,7 +3,7 @@
  * still movable.
  *
  * A module singleton rather than store state, in the shape of `cursor-controller` and
- * `layout-settle`: the handles are a React overlay (`ui/chrome/CurveHandles`) that has to read this
+ * `layout-settle`: the handles are a React overlay (`ui/chrome/floating/CurveHandles`) that has to read this
  * every frame of a drag, while the thing that OWNS the curve is the drawing tool. A subscription is
  * the seam between them, and it keeps a session's bookkeeping — which is not UI state — out of the
  * editor store.

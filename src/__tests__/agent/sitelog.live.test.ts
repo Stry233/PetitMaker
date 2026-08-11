@@ -24,6 +24,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 // @ts-ignore — see above
 import { join } from 'node:path';
+import { roadLookup } from '../../state/object-index';
 
 declare const process: { env: Record<string, string | undefined> };
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -99,7 +100,7 @@ d('site-log live validation', () => {
     const state = makeState(64, 64);
     const bus = new EventBus<EditorEvents>();
     const registry = createDefaultRegistry();
-    const executor = new CommandExecutor(state, bus, registry);
+    const executor = new CommandExecutor(state, bus, registry, roadLookup(state));
     let plan: PlanStage[] = [];
     const deps: AgentToolDeps = {
       getState: () => state,
@@ -219,7 +220,7 @@ d('site-log live validation', () => {
     const allHistoryText = JSON.stringify(useAgentSession.getState().resumeSummary);
     void allHistoryText;
 
-    /* ── dumps for offline/visual inspection (renderable via scripts/internal/render-terrain.py) ── */
+    /* ── dumps for offline/visual inspection (renderable by the project's internal terrain renderer) ── */
     const outDir = join(OUT_DIR, 'sitelog-live');
     mkdirSync(outDir, { recursive: true });
     // render-terrain.py schema: one labeled tile with tier/water arrays + kinded objects

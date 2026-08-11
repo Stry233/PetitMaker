@@ -10,10 +10,17 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import type { GridState, PlacedObject } from '../../core/model/types';
+import { ItemCategory, type GridState, type PlacedObject } from '../../core/model/types';
 import { entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
 import { PLAZA_ID } from '../../core/model/constants';
+import { registerCatalogItem } from '../../state/catalog';
 import { makeState } from '../rules/_helpers';
+
+registerCatalogItem({
+  id: 'hs-hit-test-deck', category: ItemCategory.Facility, name: { en: 'HalfStep Hit-Test Deck' },
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
+  traits: [{ type: 'halfStep' }],
+});
 
 function tree(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0 };
@@ -212,5 +219,27 @@ describe('objectAt', () => {
     const state = makeState(20, 20);
     add(state, { ...tree('x', 2, 2), catalogId: 'nope' });
     expect(objectAt(getObjectIndex(state), { x: 2, y: 2 })).toBeNull();
+  });
+
+  it('hit-tests a half-anchored deck by CELL OVERLAP, not by whether the cell origin sits inside it', () => {
+    // A 1-wide deck anchored at x=10.5 spans [10.5, 11.5): it partially covers BOTH macro
+    // columns 10 and 11 (`footprintCells`' floor/ceil expansion agrees), so a click on either
+    // must hit it — the origin-inside-rect test used to answer column 10 (its origin 10 < 10.5)
+    // and 12 (12 < 11.5 is false, so actually neither — the point is the OLD test disagreed with
+    // what's actually drawn on 10, matching the 3D mesh raycast only by accident on 11).
+    const state = makeState(30, 30);
+    add(state, { id: 'd', catalogId: 'hs-hit-test-deck', position: { x: 10.5, y: 5 }, rotation: 0, elevation: 0 });
+    expect(objectAt(getObjectIndex(state), { x: 10, y: 5 })?.id).toBe('d');
+    expect(objectAt(getObjectIndex(state), { x: 11, y: 5 })?.id).toBe('d');
+    expect(objectAt(getObjectIndex(state), { x: 9, y: 5 })).toBeNull();
+    expect(objectAt(getObjectIndex(state), { x: 12, y: 5 })).toBeNull();
+  });
+
+  it('a whole-anchored object still hit-tests exactly its integer cells (fix is byte-identical there)', () => {
+    const state = makeState(30, 30);
+    add(state, tree('a', 4, 4));
+    expect(objectAt(getObjectIndex(state), { x: 4, y: 4 })?.id).toBe('a');
+    expect(objectAt(getObjectIndex(state), { x: 3, y: 4 })).toBeNull();
+    expect(objectAt(getObjectIndex(state), { x: 5, y: 4 })).toBeNull();
   });
 });

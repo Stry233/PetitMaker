@@ -12,7 +12,7 @@ import { usePointerInteraction } from '../../canvas/interaction/usePointerIntera
 import {
   __resetCursorController, registerCursorSurface, setToolCursor,
 } from '../../canvas/interaction/cursor-controller';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import { setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
 import { ToolType, type PlacedObject } from '../../core/model/types';

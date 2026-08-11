@@ -32,6 +32,14 @@ export type LocalizedName = { en: string } & Partial<Record<Locale, string>>;
  */
 export type AutoEdgeCut = 'off' | 'rect' | 'round';
 
+/**
+ * What one eraser gesture takes back: a DAB under the brush (its size decides the footprint), or a
+ * rectangle/circle dragged out and taken on release. The two drag shapes reuse the drawing tool's
+ * own figures (`tools/paint/shapes.ts:dragShapeCells`), so the eraser takes back exactly the shape
+ * the brush lays, Shift-to-constrain included.
+ */
+export type EraserShape = 'dot' | 'rect' | 'circle';
+
 // --- Coordinate Types ---
 export type MacroCoord = { x: number; y: number };
 export type MicroCoord = { x: number; y: number };
@@ -121,7 +129,11 @@ export type PlacementTrait =
   | { type: 'exclusionRadius'; radius: number }
   // Footprint that other terrain may use as a structural base (3x3 support), at
   // the object's elevation — the central plaza today, any such building later.
-  | { type: 'terrainBase' };
+  | { type: 'terrainBase' }
+  // May anchor on the half-cell grid in both axes (whole or half integer
+  // position), not the macro grid only — the game's exception for ramps and
+  // bridges, which lets a deck align flush with the terrain grid.
+  | { type: 'halfStep' };
 
 export interface CatalogItem {
   id: string;
@@ -143,6 +155,10 @@ export interface CatalogItem {
   traits: PlacementTrait[];
   /** Bespoke low-poly 3D model (declarative). Absent → the item falls back to its ItemCategory archetype. */
   model3d?: ModelSpec;
+  /** Other names the shelf's search should answer to: common alternate names, nicknames, material
+   *  or colour words a person would actually type, mixed en/zh (or any locale) in one list, since
+   *  search already crosses locales. Authored per item in its own JSON, not derived. */
+  aliases?: string[];
 }
 
 // --- Map Template ---
@@ -194,6 +210,9 @@ export interface GridState {
    *  freshness key for state/object-index's memoized spatial index. Absent
    *  (legacy states) reads as 0. Mutators call bumpObjectsVersion. */
   objectsVersion?: number;
+  /** Bumped on every mutation of `cells`. The freshness key for terrain-derived memoized data
+   *  (state/map-stats), the sibling of `objectsVersion`. Absent (legacy states) reads as 0. */
+  cellsVersion?: number;
   /** What the mutation that produced `objectsVersion` actually changed, when the
    *  mutator knows. Volatile bookkeeping, never serialized: it lets the memoized
    *  object index PATCH itself instead of rebuilding from every object, which is
@@ -347,18 +366,19 @@ export enum ToolType {
   Eraser = 'Eraser',
   Hand = 'Hand',
   EdgeCut = 'EdgeCut',
+  Macro = 'Macro',
 }
 
 /**
  * The editor's drawing-mode vocabulary — the UI-facing editing modes a user
  * picks (sibling to ToolType, which is the implementing tool a mode maps to).
- * The mode→tool mapping tables (TOOL_DEFS, designModeToToolType) live in
- * src/ui/menu/design-mode.ts; this union is the core type so state/store can
- * reference it without depending on the ui layer.
+ * The mode→tool mapping (DESIGN_MODE_TOOL, designModeToToolType) and its
+ * inverse (designModeToEditInputs) live in core/model/edit-mode.ts. This union
+ * is the core type so state/store can reference it without depending on ui.
  */
 export type DesignMode = 'brush' | 'line' | 'curve' | 'rect' | 'circle' | 'eraser' | 'hand' | 'edge-cut';
 
-/** Region-select brush vocabulary (RegionSelectPanel + store.regionTool). */
+/** Region-select brush vocabulary: the scope screen's row, and `store.regionTool`. */
 export type RegionTool = 'brush' | 'eraser' | 'rect' | 'circle' | 'line' | 'curve';
 
 // --- Events ---
@@ -366,7 +386,11 @@ export type EditorEvents = {
   'cells-changed': { cells: MacroCoord[] };
   'objects-changed': { added?: PlacedObject[]; removed?: string[] };
   'validation-failed': { cmd: Command; errors: ValidationError[] };
-  'tool-changed': { tool: ToolType };
+  /** The tool layer now matches the store. The ToolManager and the DrawingTool MIRROR the store's
+   *  tool, shape, surface, build floor and brush size, and the canvas writes that mirror in an
+   *  effect — which runs after the store has already told its subscribers. Anything that asks a
+   *  TOOL a question waits for this, or it asks the tool the user has just left. */
+  'tool-synced': { tool: ToolType };
   'history-changed': { canUndo: boolean; canRedo: boolean };
   /** Fired by undo()/redo() with the cells they touched, so the renderer can
    *  flash the reverted/reapplied region without flashing normal edits.
@@ -382,6 +406,15 @@ export type EditorEvents = {
 
 export type GenerateAlgorithm = 'random' | 'maze';
 
+/** Requested maze gates, in map coordinates. Each is snapped to the nearest cell on the maze's
+ *  border ring, so a coordinate may sit anywhere, including deep inside the maze. Either may be
+ *  absent, and both absent means two openings on opposite sides. */
+export interface MazeGates { entrance?: MacroCoord | null; exit?: MacroCoord | null }
+
+/** Where the gates landed once snapped — what a caller pins its entrance/exit markers to. Null on
+ *  a side no gate was carved on. */
+export interface ResolvedMazeGates { entrance: MacroCoord | null; exit: MacroCoord | null }
+
 export interface GenerateConfig {
   algorithm: GenerateAlgorithm;
   mode: 'earth' | 'water' | 'mixed';
@@ -389,6 +422,7 @@ export interface GenerateConfig {
   maxElevation: number;
   seed: number;
   region: MacroCoord[] | null;
+  mazeGates?: MazeGates;
   // Advanced 'random'-algorithm controls (optional; defaulted by toGenConfig — seed-first).
   relief?: number;
   naturalness?: number;  // 0..1 geometry style: 1 organic (default), 0 rectilinear "lego" terrain + roads

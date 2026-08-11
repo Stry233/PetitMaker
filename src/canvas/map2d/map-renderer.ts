@@ -14,11 +14,13 @@ import { getCell } from '../../core/model/grid-model';
 import { pageZoom } from '../../core/runtime/page-zoom';
 import { hexStringToNumber } from '../../core/model/colors';
 import { maxRenderScale } from '../../core/runtime/device-quality';
+import { getCatalogItem } from '../../state/catalog';
+import { decodeIcons } from './draw/icon-color';
 import { BaseLayer } from './layers/base-layer';
 import { resolveHistoryFlash } from './layers/error-flash';
 import { cullRect } from './layers/chunk-grid';
 import { TerrainLayer } from './layers/terrain-layer';
-import { ObjectLayer } from './layers/object-layer';
+import { ObjectLayer, objectSpriteUrl } from './layers/object-layer';
 import { OverlayLayer } from './layers/overlay-layer';
 import { Viewport } from './viewport';
 import { setRenderRequester } from './render-scheduler';
@@ -121,6 +123,12 @@ export class MapRenderer {
       preserveDrawingBuffer: true,
       // Render on demand (see render loop below) — a static map costs no GPU.
       autoStart: false,
+      // Nothing in the scene is a Pixi event target: every pointer, wheel and context-menu
+      // listener the map has is bound to the CONTAINER by usePointerInteraction, and hit-testing
+      // goes through state/object-index. Left on, Pixi's own event system walks the whole display
+      // list per pointermove (hitTestMoveRecursive), which on a decorated map is thousands of
+      // nodes of pure waste on the drag's critical path, growing with every object a stroke lays.
+      eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
     });
     container.appendChild(this.app.view as HTMLCanvasElement);
 
@@ -249,9 +257,10 @@ export class MapRenderer {
     this.chunkGridContainer.addChild(g);
   }
 
-  /** Authoritatively reconcile the object layer with state — drops any sprite no longer in state, adds any
-   *  missing. Bulk ops (Generate, Clear) call this after committing so the render can't drift from state
-   *  even if a per-object event was lost in the burst. */
+  /** Reconcile the object layer with state: drop any sprite state no longer has, add any it is
+   *  missing, redraw any whose object was edited under the same id. Bulk callers (Generate, Clear,
+   *  a macro press) run it after committing — every mutation does emit its own `objects-changed`,
+   *  so this is a backstop rather than the mechanism, and it costs two walks of the object map. */
   resyncObjects(): void {
     if (!this.currentState) return;
     this.objectLayer.sync(this.currentState.objects);
@@ -318,7 +327,9 @@ export class MapRenderer {
       onNextPaint: (cb: () => void) => this.onNextPaint(cb),
       applyCameraTransform: () => this.applyViewportTransform(),
       plopObject: (id: string) => this.objectLayer.requestPlop(id),
+      animateRotation: (id, from, to, onFrame) => this.objectLayer.animateRotation(id, from, to, onFrame),
       animateGroupRotation: (turn, onFrame) => this.objectLayer.animateGroupRotation(turn, onFrame),
+      animateRemove: (id: string) => this.objectLayer.animateRemove(id),
       leftDragPans: true,
       camera: {
         pan: (dx, dy) => {
@@ -499,6 +510,62 @@ export class MapRenderer {
       return null;
     } finally {
       recull();
+    }
+  }
+
+  /**
+   * A PNG-ready canvas of SOME OTHER map, drawn by this renderer.
+   *
+   * The generate shelf shows what a recipe builds before anything is built, and that picture has to
+   * be the map the click produces. It is one map drawn twice otherwise, and two drawings of one
+   * thing drift: the second one grew its own framing and its own idea of what an object looks like,
+   * and the cards stopped resembling the island they promised.
+   *
+   * So the candidate is drawn by the real layers, off the stage. Three fresh layers over `state`
+   * build into a detached container, this renderer's GPU context rasterizes it and the container is
+   * thrown away — the live scene is never touched, so the map under the shelf keeps its camera, its
+   * culling and its sprites. Framed to the template exactly, as `captureMapImage` frames an export:
+   * the whole map, no chrome, which is the view the editor itself opens on.
+   *
+   * Asynchronous for one reason: the drawing itself is a single synchronous pass with no next
+   * frame, so every icon on the map has to have decoded before it starts or those sprites are holes.
+   */
+  async captureState(state: GridState, maxPx = 640): Promise<HTMLCanvasElement | null> {
+    const icons = new Set<string>();
+    for (const obj of state.objects.values()) {
+      const url = objectSpriteUrl(obj, getCatalogItem(obj.catalogId));
+      if (url) icons.add(url);
+    }
+    await decodeIcons(icons);
+    if (this.destroyed) return null;
+
+    const base = new BaseLayer();
+    const terrain = new TerrainLayer();
+    const objects = new ObjectLayer();
+    const world = new PIXI.Container();
+    world.addChild(base.container, terrain.container, objects.container);
+    try {
+      base.drawFull(state);
+      terrain.drawFull(state);
+      objects.sync(state.objects, state);
+
+      const { width, height } = state.template;
+      const half = TILE_SIZE / 2;
+      const region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      if (region.width <= 0 || region.height <= 0) return null;
+      const resolution = Math.min(1, maxPx / Math.max(region.width, region.height));
+      const rt = this.app.renderer.generateTexture(world, {
+        resolution, region, multisample: PIXI.MSAA_QUALITY.NONE,
+      });
+      const canvas = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement;
+      rt.destroy(true);
+      return canvas;
+    } catch {
+      return null;
+    } finally {
+      // The icon textures are shared with the live scene and with the next capture, so only the
+      // nodes go.
+      world.destroy({ children: true, texture: false, baseTexture: false });
     }
   }
 

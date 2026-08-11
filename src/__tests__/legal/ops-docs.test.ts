@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { PREF_STORAGE_KEYS } from '../../core/runtime/prefs';
 
 // Internal operational source documents (data inventory, retention
 // schedule, asset-provenance ledger, consent-record README, release
@@ -78,19 +79,13 @@ describe('data-inventory.md — real storage keys', () => {
   }
   const D = read(DATA_INVENTORY);
 
-  it('names the exact localStorage keys used by the app', () => {
-    for (const key of [
-      'petit-planet-autosave',
-      'petit-planet-locale',
-      'petit-planet-ui-zoom',
-      'petit-agent-settings-v1',
-    ]) {
-      expect(D).toContain(key);
+  it('names every storage key PREFS declares', () => {
+    // PREFS (src/core/runtime/prefs.ts) is the single declaration of every key this origin
+    // persists; the inventory must name each one so this doc cannot drift silently as keys
+    // are added, renamed or removed there.
+    for (const key of PREF_STORAGE_KEYS) {
+      expect(D, `data-inventory.md is missing storage key ${key}`).toContain(key);
     }
-  });
-
-  it('names the IndexedDB vault database', () => {
-    expect(D).toContain('petit-agent-vault');
   });
 
   it('covers off-device categories: CDN/edge logs, email, AI-provider requests, Share Image data', () => {

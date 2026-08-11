@@ -56,6 +56,6 @@ export const BUILD_DATE: string = typeof __BUILD_DATE__ === 'string' ? __BUILD_D
  * a local build, and anything built from a source checkout all report true, while a build of a
  * published snapshot reports false — with nothing to configure per environment.
  *
- * Drives the dev-site notice and watermark (ui/chrome/DevBuildNotice).
+ * Drives the dev-site notice and watermark (ui/chrome/guards/DevBuildNotice).
  */
 export const IS_DEV_BUILD: boolean = APP_VERSION.endsWith('-dev');

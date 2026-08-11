@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { Markdown } from '../../ui/menu/agent/Markdown';
+import { Markdown } from '../../ui/agent/Markdown';
 
 describe('agent chat markdown renderer', () => {
   it('renders bold, italic and inline code as elements (no raw markers)', () => {

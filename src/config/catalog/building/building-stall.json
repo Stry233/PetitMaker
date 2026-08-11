@@ -10,6 +10,9 @@
     "id": "Small Trading Rack",
     "fr": "Étagère commerciale (S)"
   },
+  "aliases": [
+    "摊位"
+  ],
   "width": 1,
   "height": 1,
   "loadValue": 10,

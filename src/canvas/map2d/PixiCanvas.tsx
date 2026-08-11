@@ -6,20 +6,17 @@ import { MapRenderer } from './map-renderer';
 import { createDefaultRegistry } from '../../rules/index';
 import { DEFAULT_MAP } from '../../config/maps';
 import { ToolType } from '../../core/model/types';
-import { useMotionEnabled } from '../../ui/useMotionEnabled';
 
 import { ToolManager } from '../../tools/tool-manager';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
-import { registerMapSnapshotter } from '../../agent/snapshot';
 
 import { useWasdPan, useUiZoomShortcut } from '../interaction/use-view-shortcuts';
 import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
 import { useCursor } from '../interaction/use-cursor';
 import { registerToolManager, setActiveView } from '../active-view';
-import { registerWindowBridge } from './interaction/window-bridge-register';
+import { setMapRenderer } from './renderer-registry';
 
 export function PixiCanvas() {
-  useMotionEnabled(); // sync prefers-reduced-motion into the renderer's motion-state gate
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const toolManagerRef = useRef<ToolManager | null>(null);
@@ -65,30 +62,22 @@ export function PixiCanvas() {
     const h = window.innerHeight;
     const renderer = new MapRenderer(eventBus, container, w, h);
     rendererRef.current = renderer;
+    setMapRenderer(renderer);
 
-    registerMapSnapshotter(async () => renderer.captureFullMap(1024));
-
-    // Always open a fresh map. If an autosave exists, App offers to restore it via a
-    // bubble from the phone (it holds the saved map in memory, so opening fresh here
-    // can't lose it) — the editor is usable immediately, restore is opt-in.
+    // Always open a fresh map. If an autosave exists, the shell offers to restore it from its own
+    // card (which holds the saved map in memory, so opening fresh here can't lose it) — the editor
+    // is usable immediately, restore is opt-in.
     if (!useEditorStore.getState().gridState) {
       initMap(DEFAULT_MAP, createDefaultRegistry());
     }
 
     // ToolManager is (re)built by the gridState effect once a map is loaded —
     // building it here too would double-init the renderer + tools on first load.
-    // Keyboard shortcuts live in ONE place: ui/hooks/useEditorShortcuts (mounted in App).
-
-    // Expose the imperative window.__petit* bridge for the React chrome (zoom
-    // buttons ease the camera; map export + agent preview/animation hooks).
-    // The teardown it returns deletes every hook + cancels any in-flight
-    // camera tween, run from this effect's cleanup.
-    const teardownBridge = registerWindowBridge(rendererRef);
+    // Keyboard shortcuts live in ONE place: ui/shell/use-editor-shortcuts.
 
     return () => {
       renderer.destroy();
-      registerMapSnapshotter(null);
-      teardownBridge();
+      setMapRenderer(null);
       rendererRef.current = null;
       toolManagerRef.current = null;
     };
@@ -115,9 +104,10 @@ export function PixiCanvas() {
       }
       dt.contentType = contentType;
     }
-  }, [activeTool, designMode, contentType, activeLayer, brushSize]);
-
-  // Buildable region overlay removed — errors now flash on invalid placement instead.
+    // The mirror is written; whoever asks a tool a question may ask now. The store told its own
+    // subscribers several steps ago, before any of the lines above ran.
+    eventBus.emit('tool-synced', { tool: activeTool });
+  }, [eventBus, activeTool, designMode, contentType, activeLayer, brushSize]);
 
   // Sync locked layers to GridState
   useEffect(() => {

@@ -7,6 +7,7 @@ import { getCell, createDefaultTerrainCell } from '../../core/model/grid-model';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
+import { roadLookup } from '../../state/object-index';
 
 function simpleExecutor(state: GridState) {
   return (cmd: Command): ValidationResult => {
@@ -69,7 +70,7 @@ describe('clearAllObjects', () => {
       obj('building-stall-1', 9, 9),
     ]) state.objects.set(o.id, o);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const removed = clearAllObjects(state, (cmd) => executor.execute(cmd));
 
     expect(removed).toBe(3);
@@ -85,7 +86,7 @@ describe('clearAllObjects', () => {
       obj('tree-apple-1', 7, 7),
     ]) state.objects.set(o.id, o);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const start = executor.getUndoStackSize();
     clearAllObjects(state, (cmd) => executor.execute(cmd)); // objects first
     clearAllTerrain(state, (cmd) => executor.execute(cmd));

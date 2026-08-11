@@ -48,7 +48,7 @@ export function shouldFlashErrors(prev: ErrorFlashGate | null, sig: string, now:
  * What a `history-applied` (undo/redo) step should flash. An object step flashes each item's
  * footprint on the MACRO grid (no terrain offset); everything else flashes the touched terrain
  * cells on the micro grid. Returns null when there is nothing to flash. Single source shared by
- * both the 2D and 3D renderers (the 3D copy used to inline the footprint loop by hand). */
+ * both the 2D and 3D renderers. */
 export function resolveHistoryFlash(
   cells: MacroCoord[], objects: PlacedObject[] | undefined,
 ): { cells: MacroCoord[]; terrainMode: boolean } | null {

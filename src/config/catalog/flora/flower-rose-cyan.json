@@ -10,6 +10,11 @@
     "id": "Mawar Toska",
     "fr": "Rose turquoise"
   },
+  "aliases": [
+    "blue",
+    "蓝",
+    "玫瑰"
+  ],
   "icon": "flower-rose-cyan",
   "width": 1,
   "height": 1,

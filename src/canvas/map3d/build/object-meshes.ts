@@ -10,8 +10,8 @@
  */
 import { ItemCategory, type GridState, type PlacedObject, type CatalogItem } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
-import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { hasRoadTrimShape } from './terrain-geometry';
+import { getPlacedObjectSize, objectElevation } from '../../../state/object-geometry';
+import { hasRoadTrimShape } from '../../../core/edge-cut/road-shape';
 import { surfaceY, cellCornerWorld, layerToY, LAYER_HEIGHT } from '../core/coords';
 import { objectColor } from '../core/palette';
 import { hasModel } from '../models/registry';
@@ -164,7 +164,7 @@ export function objectInstance(state: GridState, obj: PlacedObject): { groupKey:
     // don't sink under it). Everything else stands on the VISIBLE surface —
     // surfaceY, which is the slab top at layer 0 and the terrain top above.
     const isRoad = item?.category === ItemCategory.Road;
-    const baseY = key === 'platform' ? 0 : surfaceY(obj.elevation) + (isRoad ? ROAD_LIFT : 0);
+    const baseY = key === 'platform' ? 0 : surfaceY(objectElevation(state, obj)) + (isRoad ? ROAD_LIFT : 0);
     inst = {
       x: center.x,
       y: baseY,

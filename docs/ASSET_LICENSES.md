@@ -47,7 +47,7 @@ The images and files the editor produces for you (screenshots, exported map file
 | Alibaba PuHuiTi 3 (阿里巴巴普惠体 3.0), files `AlibabaPuHuiTi-*.woff2` | Alibaba PuHuiTi 3.0 statement | Alibaba (China) Co., Ltd. | Shipped as original, unmodified files (subsetting not clearly permitted); see `THIRD_PARTY_NOTICES.md`. |
 | Quicksand, files `Quicksand-*.woff2` | SIL Open Font License 1.1 | The Quicksand Project Authors | See `THIRD_PARTY_NOTICES.md`. |
 | Team member avatars (`src/assets/team/`) | Used with member consent | The individual members | Bundled Bilibili avatars shown on the About screen, scoped to each member's consent; not licensed for other use. |
-| AI provider brand marks (`src/ui/menu/agent/logos.tsx`) | Collection: MIT (Lobe Icons). Marks: nominative trademark use, unlicensed | LobeHub (the collection); each provider (its own mark) | Shown beside the API-key field so a user can see which platform a key belongs to. See the note below and `THIRD_PARTY_NOTICES.md` → Vendored assets. |
+| AI provider brand marks (`src/ui/agent/logos.tsx`) | Collection: MIT (Lobe Icons). Marks: nominative trademark use, unlicensed | LobeHub (the collection); each provider (its own mark) | Shown beside the API-key field so a user can see which platform a key belongs to. See the note below and `THIRD_PARTY_NOTICES.md` → Vendored assets. |
 
 **AI provider brand marks.** Connecting the agent means pasting your own API key, and the key screen
 shows each supported platform's mark so you can tell which one a key belongs to. Anthropic, OpenAI,

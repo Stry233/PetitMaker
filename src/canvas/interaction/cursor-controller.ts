@@ -5,7 +5,7 @@
  * on every hover change, so it never goes through React and never writes the DOM unless the
  * resolved value changed. Both canvases register their container here.
  */
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import { FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
 
 /** What the pointer is doing, when that outranks the tool. */

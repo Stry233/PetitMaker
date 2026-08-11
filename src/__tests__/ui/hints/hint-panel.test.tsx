@@ -3,7 +3,7 @@ import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import { setToastPresenter, type ToastType } from '../../../core/runtime/toast-bus';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { useKeybinds } from '../../../ui/keybindings/store';
+import { useKeybinds } from '../../../core/runtime/keybindings';
 import { ItemCategory, TerrainType, ToolType } from '../../../core/model/types';
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { registerCatalogItem } from '../../../state/catalog';

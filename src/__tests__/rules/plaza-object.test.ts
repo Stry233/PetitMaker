@@ -12,7 +12,7 @@ import { placementOverlapRule } from '../../rules/placement-overlap';
 import { baseSupportRule } from '../../rules/base-support';
 import { getCatalogByCategory } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
-import { getObjectIndex, objectAt } from '../../state/object-index';
+import { getObjectIndex, objectAt, roadLookup } from '../../state/object-index';
 import { makeState, setTerrain, placeCmd } from './_helpers';
 import { serialize, deserialize } from '../../io/json-codec';
 import { clearAllObjects } from '../../tools/generation/terrain-generator';
@@ -62,7 +62,7 @@ describe('Central plaza as an immutable object', () => {
 
   it('blocks terrain paint overlapping the plaza; allows adjacent (half-block edge)', () => {
     const s = stateWithPlaza();
-    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
     const paint = (x: number) => e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y: 70 }], terrainType: TerrainType.Mountain, elevation: 1 });
     expect(paint(77).success).toBe(false); // overlaps
     expect(paint(76).success).toBe(true);  // touches edge only
@@ -70,7 +70,7 @@ describe('Central plaza as an immutable object', () => {
 
   it('blocks a gamma fillet (patchOnly TrimCorners that materialises terrain) over the plaza', () => {
     const s = stateWithPlaza();
-    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
     const trim = (x: number) => e.execute({
       type: CommandType.TrimCorners, timestamp: 0, x, y: 70, layer: 'terrain',
       beforeCorners: undefined, afterCorners: ['fan', 'square', 'square', 'square'],
@@ -96,7 +96,7 @@ describe('Central plaza as an immutable object', () => {
 
   it('V-LOCK-02 rejects RemoveObject of the locked plaza; clearAllObjects keeps it and the ban holds', () => {
     const s = stateWithPlaza();
-    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
     // direct RemoveObject of the plaza is rejected
     const rm: Command = { type: CommandType.RemoveObject, timestamp: 0, objectId: PLAZA_ID, removedObject: s.objects.get(PLAZA_ID)! };
     expect(e.execute(rm).success).toBe(false);

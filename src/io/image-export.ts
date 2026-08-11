@@ -2,7 +2,7 @@
  * Image export & download utilities for the editor.
  *
  * Provides helpers for downloading Blobs and JSON strings. Map captures go
- * through window.__petitCaptureFullMap (the tightly-framed, chrome-free path).
+ * through `host.capture2d` (the tightly-framed, chrome-free path).
  */
 
 /**

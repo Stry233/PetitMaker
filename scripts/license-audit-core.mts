@@ -284,7 +284,7 @@ export const VENDORED_ENTRIES: VendoredEntry[] = [
     source: '[https://github.com/lobehub/lobe-icons](https://github.com/lobehub/lobe-icons)',
     usedIn:
       'Single-colour provider silhouettes inlined as SVG path data in ' +
-      '`src/ui/menu/agent/logos.tsx`, shown beside the API-key field so a user can see which ' +
+      '`src/ui/agent/logos.tsx`, shown beside the API-key field so a user can see which ' +
       'platform a key belongs to.',
     rightsNotGranted:
       'The MIT grant covers the icon collection, NOT the brand marks it depicts. Every provider ' +

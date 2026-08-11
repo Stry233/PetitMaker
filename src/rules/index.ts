@@ -18,7 +18,7 @@ import { objectOnCoatingRule } from './object-on-coating';
 /**
  * Creates a RuleRegistry with all game rules in canonical order.
  *
- * Pre-command order: lock → zone → elevation → floating → placement → chunk
+ * Pre-command order: lock → elevation → floating → block → trait placement → zone → overlap → max-count → chunk
  * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity → object-on-coating
  *
  * Order matters for pre-command rules: lock check runs first so locked-layer

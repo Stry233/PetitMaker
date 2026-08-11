@@ -2,10 +2,10 @@
  * V-PLACE-COATED: nothing stands on a road (post-stroke).
  *
  * A surface coating is walked on, so an object sitting on top of one is not buildable in-game.
- * Every path that puts an object on coated cells is supposed to strip the coating first — the
- * placer does, the drag/group move does (`stripCoatingsFor`), the agent's place tool does, and
- * generation refuses those cells outright. This is the backstop for the one that forgets, and in
- * practice it should never fire.
+ * Most paths strip the coating first and never reach this rule: the placer does, the drag/group
+ * move does (`stripCoatingsFor`), the agent's place tool does, and generation refuses those cells
+ * outright. `EditorAPI.placeObject` deliberately does not, so a programmatic placement onto a road
+ * is reverted here rather than producing a map the game cannot build.
  *
  * POST-STROKE, not pre-command, and that is forced rather than chosen. V-PLACE-OVERLAP
  * deliberately exempts coatings so a coating never blocks a placement, because the same

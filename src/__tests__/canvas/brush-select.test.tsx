@@ -17,7 +17,7 @@ import { usePointerInteraction } from '../../canvas/interaction/usePointerIntera
 import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import { __resetCursorController, registerCursorSurface, setToolCursor } from '../../canvas/interaction/cursor-controller';
 import { isBrushTool } from '../../core/interaction/tool-modes';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
 import { ToolType, TerrainType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion, getCell } from '../../core/model/grid-model';
@@ -29,6 +29,7 @@ import { selectedObjectIds } from '../../state/selection';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 function makeView() {
   const overlay = {
@@ -86,7 +87,7 @@ function activate(tool: ToolType, ...objects: PlacedObject[]): void {
   gs = makeState(20, 20);
   for (const obj of objects) gs.objects.set(obj.id, obj);
   if (objects.length > 0) bumpObjectsVersion(gs, { added: objects });
-  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
   const tm = new ToolManager(makeStubRenderer(), executor, gs);
   const { view } = makeView();
   setActiveView(view);

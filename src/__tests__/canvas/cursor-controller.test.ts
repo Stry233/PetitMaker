@@ -4,7 +4,7 @@ import {
   resolveCursor, setCursorBusy, setCursorForbidden, setCursorOverSelected, setCursorCtrlHint,
   setCursorDrag, setCursorPressSelects, setToolCursor, type CursorState,
 } from '../../canvas/interaction/cursor-controller';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 
 const state = (over: Partial<CursorState> = {}): CursorState => ({
   tool: 'mountain', forbidden: false, overSelected: false, ctrlHint: null,

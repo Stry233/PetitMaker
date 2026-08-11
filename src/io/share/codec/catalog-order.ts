@@ -98,6 +98,9 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'flower-agapanthus-blue',
   'flower-rose-cyan',
   'flower-rose-blue',
+  // — road surfaces added after that release —
+  'road-brick',
+  'road-slate',
 ];
 
 /** How many entries the index can address. */

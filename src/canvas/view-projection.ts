@@ -20,6 +20,11 @@ export interface ViewProjection {
   screenToMacro(sx: number, sy: number): MacroCoord;
   /** Micro (half-cell) coordinate under a screen point. */
   screenToMicro(sx: number, sy: number): MacroCoord;
+  /** The half-cell grid point NEAREST a screen point (round(2·world)/2 per axis) — the sub-cell
+   *  precision `screenToMacro`'s floor discards, needed only by a `halfStep` item's ghost/click/
+   *  drag anchor (see `state/object-geometry:snapAnchor`). Optional: a view/mock without it leaves
+   *  half-grid placement at whatever `screenToMacro` already gives (the whole-cell grid). */
+  screenToHalf?(sx: number, sy: number): MacroCoord;
   /** Screen position of macro cell (x, y)'s corner + the projected cell size in px. `behind` marks a
    *  point at or behind the camera plane: a perspective divide by a negative w mirrors x/y, so the
    *  returned coords are finite but WRONG. Chrome that anchors to a point must hide on it (a flat 2D
@@ -44,9 +49,13 @@ export interface ViewProjection {
  *  (−HALF_TILE) that terrain renders on, vs the macro grid objects use. */
 export interface ToolOverlay {
   /** `trim` is what auto-trim will do to the shape — the ghost draws the corners it will actually
-   *  have, plus any Γ patch the trim fills a notch with. Views without trimmed shapes ignore it and
-   *  draw squares; the cell set still carries the footprint. */
-  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
+   *  have, plus any Γ patch the trim fills a notch with, or (for a road stroke) the cut end-caps
+   *  and bends the paving will leave, each entry naming the side it connects on. Views without
+   *  trimmed shapes ignore it and draw squares; the cell set still carries the footprint. */
+  /** `losses` is what the shape would COST: cells whose coating this lay would replace, and cells a
+   *  hand-placed planting holds that the run will refuse rather than take. Drawn in the warning
+   *  tint beside the gain wash, so a ghost shows both halves of the press. */
+  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void;
   showGhostSpans(spans: RowSpan[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
   clearGhost(): void;
   /** `append` draws this ring alongside whatever is already on screen instead of replacing it
@@ -58,6 +67,12 @@ export interface ToolOverlay {
   flashCommit(cells: MacroCoord[], opts?: { color?: number; terrainMode?: boolean }): void;
   showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void;
   clearBuildableRegion(): void;
+  /** The maze's answer, draped over the corridor floor: its own drape, so it can stand at the same
+   *  time as the buildable-region one. Drawn on the TERRAIN grid (−HALF_TILE): walls render
+   *  shifted up-left, so the visible corridor between two walls is the corridor cell's
+   *  terrain-shifted rect — a macro rect would slide half a tile under the walls. */
+  showRoute(cells: MacroCoord[]): void;
+  clearRoute(): void;
   /** The Ctrl+drag rubber band, in the same MACRO rect it selects with. Never terrain-shifted:
    *  a band only ever selects objects. */
   showBand(rect: MacroRect): void;
@@ -101,6 +116,10 @@ export interface EditorView {
    *  `onFrame` is the same per-tick progress hook as `animateRotation` above, fired once per tick
    *  (not once per member) since the whole body shares one clock. */
   animateGroupRotation?(turn: GroupRotation, onFrame?: (eased: number) => void): void;
+  /** Collapse animation for an object about to be removed (view-specific, optional). Runs BEFORE the
+   *  command: the removal emits `objects-changed` synchronously and the view destroys the body, so
+   *  there is nothing left to animate afterwards. */
+  animateRemove?(id: string): void;
   /** The map this view currently RENDERS. Not the same as the store's `gridState`: a freshly loaded
    *  map reaches each view on that view's own schedule (the 3D scene is rebuilt behind an async
    *  import, so for a while the registered view still shows the previous map). A caller that must

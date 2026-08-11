@@ -291,6 +291,35 @@ export function splineCells(anchors: readonly CurveAnchor[], width: number): Mac
   return expandLine(splinePath(anchors), width);
 }
 
+/** The drag shapes a tool can lay or take back by dragging a box out. */
+export type DragShape = 'line' | 'rect' | 'circle';
+
+/**
+ * The cells a drag shape covers — ONE builder, so a ghost and the commit behind it cannot draw
+ * different figures, and so the eraser takes back exactly the shape the brush lays.
+ *
+ * `brushSize` widens a LINE only: a rectangle and a circle are the size they were dragged out to.
+ */
+export function dragShapeCells(
+  shape: DragShape, origin: MacroCoord, end: MacroCoord, brushSize: number,
+): MacroCoord[] {
+  switch (shape) {
+    case 'line': return expandLine(line4(origin.x, origin.y, end.x, end.y), brushSize);
+    case 'rect': return rectCells(origin, end);
+    case 'circle': return circleCells(origin, Math.abs(end.x - origin.x), Math.abs(end.y - origin.y));
+  }
+}
+
+/** The same figure as row spans, for a preview that must not expand a map-size drag to a cell list.
+ *  A LINE has no span form (it is not row-convex), so it is built as cells and left to the caller. */
+export function dragShapeSpans(
+  shape: 'rect' | 'circle', origin: MacroCoord, end: MacroCoord,
+): RowSpan[] {
+  return shape === 'rect'
+    ? rectSpans(origin, end)
+    : circleSpans(origin, Math.abs(end.x - origin.x), Math.abs(end.y - origin.y));
+}
+
 /** Shift-constrained shape endpoint (relative to the drag origin):
  *  - 'line'  snaps to the nearest of horizontal, vertical, or 45-degree diagonal
  *  - 'rect' / 'circle' snap to a perfect square / round circle (equal extents)

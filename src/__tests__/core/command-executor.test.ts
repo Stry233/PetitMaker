@@ -12,12 +12,13 @@ import { getCatalogItem } from '../../state/catalog';
 import { planObjectRotation } from '../../tools/objects/object-placer';
 import { createDefaultTerrainCell } from '../../core/model/grid-model';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 function setup() {
   const state = makeState(10, 10);
   const eventBus = new EventBus<EditorEvents>();
   const registry = new RuleRegistry();
-  const executor = new CommandExecutor(state, eventBus, registry);
+  const executor = new CommandExecutor(state, eventBus, registry, roadLookup(state));
   return { state, eventBus, registry, executor };
 }
 
@@ -98,7 +99,7 @@ describe('commitStroke — cut reconciliation', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     state.cells[5]![5]!.terrain!.corners = ['square', 'square', 'square', 'fan'] as Corners; // BR cut
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 
     const start = executor.getUndoStackSize();
     executor.execute({
@@ -130,7 +131,7 @@ describe('commitStroke — cut reconciliation', () => {
     patch.patchOnly = true;
     patch.corners = ['fan', 'empty', 'empty', 'empty'];
     state.cells[6]![6]!.terrain = patch;
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 
     const start = executor.getUndoStackSize();
     // erase a wrapping mountain → the patch's concave context breaks → reconcile removes the fillet
@@ -163,7 +164,7 @@ describe('undo/redo — objects map', () => {
 
   it('undo removes a placed object; redo restores it', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const obj = placeRoad(executor, 3, 3);
     expect(state.objects.has(obj.id)).toBe(true);
     executor.undo();
@@ -174,7 +175,7 @@ describe('undo/redo — objects map', () => {
 
   it('undo restores a removed object; redo removes it again', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const obj = placeRoad(executor, 3, 3);
     executor.execute({
       type: CommandType.RemoveObject, timestamp: 0,
@@ -188,7 +189,7 @@ describe('undo/redo — objects map', () => {
 
   it('undo restores road corners and rotation carried on a TrimCorners command', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const obj = placeRoad(executor, 3, 3); // rotation 0, no corners
     executor.execute({
       type: CommandType.TrimCorners, timestamp: 0,
@@ -207,7 +208,7 @@ describe('undo/redo — objects map', () => {
 describe('commitStrokeGroup — batch undo', () => {
   it('collapses a multi-command batch into one undo entry that reverts everything', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const start = executor.getUndoStackSize();
     executor.execute(paintMountain(1, 1, 1));
     executor.execute(paintMountain(2, 2, 1));
@@ -229,7 +230,7 @@ describe('commitStrokeGroup — batch undo', () => {
 
   it('collapses an in-place rotate (remove + re-add same id) into one undo that restores the original', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const item = getCatalogItem('road-dirt');
     const obj: PlacedObject = {
       id: 'rot-1', catalogId: 'road-dirt',
@@ -256,7 +257,7 @@ describe('commitStrokeGroup — batch undo', () => {
 describe('planObjectRotation — validate before mutate', () => {
   it('reports errors for an invalid rotation WITHOUT removing the object', () => {
     const state = makeState(30, 30); // all grass, elevation 0
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // 7x4 house near the bottom edge: it fits as 7-wide, but rotating to 90 sweeps
     // a 4x7 (7-tall) footprint that runs off the map → the rotation is rejected.
     const houseItem = getCatalogItem('building-myhouse');
@@ -274,7 +275,7 @@ describe('planObjectRotation — validate before mutate', () => {
 
   it('reports no errors for a valid rotation and leaves state untouched', () => {
     const state = makeState(30, 30);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const house: PlacedObject = {
       id: 'house', catalogId: 'building-myhouse',
       position: { x: 4, y: 4 }, rotation: 0, elevation: 0,
@@ -294,7 +295,7 @@ describe('runSilently', () => {
     const eventBus = new EventBus<EditorEvents>();
     const failed = vi.fn();
     eventBus.on('validation-failed', failed);
-    const exec = new CommandExecutor(state, eventBus, createDefaultRegistry());
+    const exec = new CommandExecutor(state, eventBus, createDefaultRegistry(), roadLookup(state));
     const cmd: PaintTerrainCommand = { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 };
 
     expect(exec.execute(cmd).success).toBe(false);
@@ -323,7 +324,7 @@ describe('collapsed strokes and auto-revert', () => {
 
   it('undo of a collapsed stroke restores road corners and rotation', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const road = placeRoadAt(executor, 3, 3);
     // Give the road a user cut BEFORE the stroke, so we can see it come back.
     executor.execute({
@@ -359,7 +360,7 @@ describe('collapsed strokes and auto-revert', () => {
 
   it('an auto-reverted stroke is not redoable, and later strokes still commit', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     // Build one cell up to 4 with no 3x3 base: V-MTN-03 auto-reverts the elev-4 step.
     const start = executor.getUndoStackSize();
     for (let e = 1; e <= 4; e++) executor.execute(paintMountain(5, 5, e));
@@ -380,7 +381,7 @@ describe('collapsed strokes and auto-revert', () => {
 
   it('rollbackTo silently reverts to a watermark without touching the redo stack', () => {
     const state = makeState(10, 10);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     executor.execute(paintMountain(1, 1, 1));
     const mark = executor.getUndoStackSize();
     executor.execute(paintMountain(2, 2, 1));

@@ -3,7 +3,7 @@
  * (`src/legal/markdown.ts`) — the in-app modal counterpart to the static
  * HTML serializer (`markdown-html.ts`). Same source tree, same DOM shape
  * (structural parity is unit-tested), styled inline from the `PROSE` map
- * below (espresso-on-cream tokens from `src/ui/styles.ts`, no invented
+ * below (espresso-on-cream tokens from `src/ui/design/styles.ts`, no invented
  * colors). Renders NO wrapping element at the root (a `Fragment`) so its
  * DOM output matches `renderHtml`'s unwrapped block sequence exactly.
  *
@@ -12,9 +12,10 @@
  */
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { Fragment } from 'react';
+import { Fragment, useRef } from 'react';
 import { headingSlug, inlineText, type Inline, type MdNode } from './markdown';
-import { colors, font } from '../ui/styles';
+import { colors, font } from '../ui/design/styles';
+import { useScrollFade } from '../ui/primitives/scroll-fade';
 
 const PROSE = {
   body: {
@@ -116,6 +117,21 @@ const PROSE = {
  *  intercepted. `undefined` (the static-page/default case) leaves links as
  *  plain navigations. */
 type InternalLinkHandler = ((slugPath: string) => void) | undefined;
+
+/** A markdown table's scroll wrapper, as its own component rather than a call inline in
+ *  `renderBlock`: `renderBlock` is a plain function invoked once per node from a `.map()`, so a
+ *  hook call there would run a variable number of times per `LegalMarkdown` render (once per table
+ *  in the doc) and break the rules of hooks. A real component sidesteps that — React gives each
+ *  mounted `<TableWrap>` its own hook call, however many a doc holds. */
+function TableWrap({ children }: { children: ReactNode }): ReactNode {
+  const ref = useRef<HTMLDivElement>(null);
+  const fade = useScrollFade(ref, 'x');
+  return (
+    <div ref={ref} className="tbl" style={{ ...PROSE.tblWrap, ...fade }}>
+      {children}
+    </div>
+  );
+}
 
 function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLinkHandler): ReactNode {
   switch (node.t) {
@@ -219,7 +235,7 @@ function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHand
       return <hr key={key} style={PROSE.hr} />;
     case 'table':
       return (
-        <div key={key} className="tbl" style={PROSE.tblWrap}>
+        <TableWrap key={key}>
           <table style={PROSE.table}>
             <thead>
               <tr>
@@ -242,7 +258,7 @@ function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHand
               ))}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       );
   }
 }

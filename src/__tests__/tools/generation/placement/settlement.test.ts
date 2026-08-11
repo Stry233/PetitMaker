@@ -9,10 +9,11 @@ import { analyzeTerrain } from '../../../../tools/generation/placement/analysis'
 import { placeSettlement } from '../../../../tools/generation/placement/settlement';
 import { TUNING } from '../../../../tools/generation/tuning';
 import { type EditorEvents } from '../../../../core/model/types';
+import { roadLookup } from '../../../../state/object-index';
 
 function run(settlement: number, seed = 7) {
   const state = makeState(60, 60);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), seed);
   const { settled, nodes } = placeSettlement(ctx, analyzeTerrain(state), settlement, new Map());
   exec.commitStrokeGroup(0);

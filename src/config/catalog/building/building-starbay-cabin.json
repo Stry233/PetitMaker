@@ -10,6 +10,10 @@
     "id": "Rumah Harpeno",
     "fr": "Maison de Harpeno"
   },
+  "aliases": [
+    "橙",
+    "orange"
+  ],
   "icon": "building-starbay-cabin",
   "width": 5,
   "height": 4,

@@ -1,6 +1,6 @@
-import type { RefObject } from 'react';
 import type { MapRenderer } from '../map-renderer';
 import { isMotionReduced } from '../motion-state';
+import { getMapRenderer } from '../renderer-registry';
 
 type ViewState = { zoom: number; offsetX: number; offsetY: number };
 
@@ -37,27 +37,27 @@ export type CameraTweenHandle = { cancel: (() => void) | null };
 /**
  * Ease the camera toward a destination view. `toTarget` applies the change to
  * the renderer; we read the resulting view back, rewind to the start, then
- * tween zoom+offset together on an ease-out curve (revalidating rendererRef on
- * every frame). Reduced motion snaps. Stores the in-flight cancel fn on
- * `handle` so the next call (and unmount) can cancel it.
+ * tween zoom+offset together on an ease-out curve — re-reading the live renderer from the
+ * registry on every frame (rather than closing over the one passed in) so a renderer torn down
+ * mid-tween stops the tween instead of continuing to drive a destroyed object. Reduced motion
+ * snaps. Stores the in-flight cancel fn on `handle` so the next call (and a teardown) can cancel it.
  */
 export function animateCamera(
-  rendererRef: RefObject<MapRenderer | null>,
+  renderer: MapRenderer | null,
   handle: CameraTweenHandle,
   toTarget: (r: MapRenderer) => void,
 ): void {
-  const r = rendererRef.current;
-  if (!r) return;
-  const from = r.viewport.getView();
-  toTarget(r);
-  const target = r.viewport.getView();
-  if (isMotionReduced()) { r.applyViewportTransform(); return; }
-  r.viewport.setView(from);
+  if (!renderer) return;
+  const from = renderer.viewport.getView();
+  toTarget(renderer);
+  const target = renderer.viewport.getView();
+  if (isMotionReduced()) { renderer.applyViewportTransform(); return; }
+  renderer.viewport.setView(from);
   handle.cancel?.();
   handle.cancel = tweenEaseOut(220, (e) => {
-    const rr = rendererRef.current;
-    if (!rr) return;
-    rr.viewport.setView(lerpView(from, target, e));
-    rr.applyViewportTransform();
+    const r = getMapRenderer();
+    if (!r) return;
+    r.viewport.setView(lerpView(from, target, e));
+    r.applyViewportTransform();
   });
 }

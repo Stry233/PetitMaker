@@ -2,6 +2,7 @@ import {
   CellZone,
   CommandType,
   TerrainType,
+  type EditorEvents,
   type EraseTerrainCommand,
   type GridState,
   type MacroCoord,
@@ -11,6 +12,10 @@ import {
   type PlaceObjectCommand,
 } from '../../core/model/types';
 import { createGrid, createDefaultTerrainCell } from '../../core/model/grid-model';
+import { CommandExecutor } from '../../core/commands/command-executor';
+import { EventBus } from '../../core/commands/event-bus';
+import { createDefaultRegistry } from '../../rules/index';
+import { roadLookup } from '../../state/object-index';
 
 export function makeTemplate(width = 20, height = 20): MapTemplate {
   const zones: CellZone[][] = Array.from({ length: height }, () =>
@@ -79,4 +84,8 @@ export function makeObject(
   id: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0,
 ): PlacedObject {
   return { id, catalogId: id, position: { x, y }, rotation, elevation: 0 };
+}
+
+export function makeExecutor(state: GridState): CommandExecutor {
+  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 }

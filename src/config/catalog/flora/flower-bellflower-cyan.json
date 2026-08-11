@@ -10,6 +10,10 @@
     "id": "Bunga Lonceng Toska",
     "fr": "Campanule turquoise"
   },
+  "aliases": [
+    "blue",
+    "蓝"
+  ],
   "icon": "flower-bellflower-cyan",
   "width": 1,
   "height": 1,

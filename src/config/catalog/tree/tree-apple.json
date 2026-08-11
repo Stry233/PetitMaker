@@ -10,6 +10,10 @@
     "id": "Pohon Apel",
     "fr": "Pommier"
   },
+  "aliases": [
+    "红",
+    "red"
+  ],
   "icon": "tree-apple",
   "width": 1,
   "height": 1,

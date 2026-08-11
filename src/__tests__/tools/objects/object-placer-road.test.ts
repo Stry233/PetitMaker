@@ -10,9 +10,10 @@ import {
 } from '../../../core/model/types';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
+import { roadLookup } from '../../../state/object-index';
 
 const m = (x: number, y: number): MacroCoord => ({ x, y });
-const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
+const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
 const addRoad = (state: any, x: number, y: number, id = `road-${x}-${y}`) =>
   state.objects.set(id, { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 });
 const addStall = (state: any, x: number, y: number, id = `blocker-${x}-${y}`) =>
@@ -22,55 +23,39 @@ const addStall = (state: any, x: number, y: number, id = `blocker-${x}-${y}`) =>
 // ONLY if the placement is legal, and the two undo together as one step (never leave the road gone with
 // no building on top).
 describe('ObjectPlacerTool: placing over a road', () => {
-  async function selectStall() {
-    const { useEditorStore } = await import('../../../state/store');
-    useEditorStore.setState({ selectedItemId: 'building-stall' });
-    return useEditorStore;
-  }
+  it('legal placement strips the road and places the building as ONE undo step', () => {
+    const state = makeState(20, 20);
+    const ex = exec(state);
+    addRoad(state, 5, 5);
+    const tool = new ObjectPlacerTool();
+    const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: 'building-stall' });
+    const before = ex.getUndoStackSize();
 
-  it('legal placement strips the road and places the building as ONE undo step', async () => {
-    const store = await selectStall();
-    try {
-      const state = makeState(20, 20);
-      const ex = exec(state);
-      addRoad(state, 5, 5);
-      const tool = new ObjectPlacerTool();
-      const ctx = makeToolCtx(state, ex);
-      const before = ex.getUndoStackSize();
+    tool.onPointerDown(m(5, 5), m(5, 5), ctx);
 
-      tool.onPointerDown(m(5, 5), m(5, 5), ctx);
+    expect(objectsByCatalog(state, 'road-dirt'), 'road coated over').toHaveLength(0);
+    expect(objectsByCatalog(state, 'building-stall'), 'building placed').toHaveLength(1);
+    expect(ex.getUndoStackSize(), 'road removal + placement = ONE undo entry').toBe(before + 1);
 
-      expect(objectsByCatalog(state, 'road-dirt'), 'road coated over').toHaveLength(0);
-      expect(objectsByCatalog(state, 'building-stall'), 'building placed').toHaveLength(1);
-      expect(ex.getUndoStackSize(), 'road removal + placement = ONE undo entry').toBe(before + 1);
-
-      ex.undo();
-      expect(objectsByCatalog(state, 'road-dirt'), 'undo restores the road').toHaveLength(1);
-      expect(objectsByCatalog(state, 'building-stall'), 'undo removes the building').toHaveLength(0);
-    } finally {
-      store.setState({ selectedItemId: null });
-    }
+    ex.undo();
+    expect(objectsByCatalog(state, 'road-dirt'), 'undo restores the road').toHaveLength(1);
+    expect(objectsByCatalog(state, 'building-stall'), 'undo removes the building').toHaveLength(0);
   });
 
-  it('rejected placement leaves the road untouched (no orphaned removal)', async () => {
-    const store = await selectStall();
-    try {
-      const state = makeState(20, 20);
-      const ex = exec(state);
-      addRoad(state, 5, 5);
-      addStall(state, 5, 5); // a real building already here → V-PLACE-OVERLAP rejects the new one
-      const tool = new ObjectPlacerTool();
-      const ctx = makeToolCtx(state, ex);
-      const before = ex.getUndoStackSize();
+  it('rejected placement leaves the road untouched (no orphaned removal)', () => {
+    const state = makeState(20, 20);
+    const ex = exec(state);
+    addRoad(state, 5, 5);
+    addStall(state, 5, 5); // a real building already here → V-PLACE-OVERLAP rejects the new one
+    const tool = new ObjectPlacerTool();
+    const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: 'building-stall' });
+    const before = ex.getUndoStackSize();
 
-      tool.onPointerDown(m(5, 5), m(5, 5), ctx);
+    tool.onPointerDown(m(5, 5), m(5, 5), ctx);
 
-      expect(objectsByCatalog(state, 'road-dirt'), 'road survives a rejected placement').toHaveLength(1);
-      expect(objectsByCatalog(state, 'building-stall'), 'only the pre-existing blocker remains').toHaveLength(1);
-      expect(ex.getUndoStackSize(), 'nothing committed').toBe(before);
-    } finally {
-      store.setState({ selectedItemId: null });
-    }
+    expect(objectsByCatalog(state, 'road-dirt'), 'road survives a rejected placement').toHaveLength(1);
+    expect(objectsByCatalog(state, 'building-stall'), 'only the pre-existing blocker remains').toHaveLength(1);
+    expect(ex.getUndoStackSize(), 'nothing committed').toBe(before);
   });
 });
 

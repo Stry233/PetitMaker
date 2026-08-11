@@ -68,6 +68,38 @@ describe('Projection3D', () => {
     expect(proj.screenToMacro(sx, sy)).toEqual({ x: 10, y: 8 });
   });
 
+  it('screenToHalf lands on the half grid, within the same round-trip tolerance as screenToMacro', () => {
+    const state = makeState(20, 20) as GridState;
+    const { host } = makeHost(state);
+    const proj = new Projection3D(host);
+    for (const cell of [{ x: 10, y: 10 }, { x: 4, y: 13 }, { x: 15, y: 6 }]) {
+      const p = proj.cellToScreen(cell.x, cell.y);
+      const half = proj.screenToHalf(p.x + p.scale / 2, p.y + p.scale / 2);
+      expect(Number.isInteger(half.x * 2), `x on the half grid at ${cell.x},${cell.y}`).toBe(true);
+      expect(Number.isInteger(half.y * 2), `y on the half grid at ${cell.x},${cell.y}`).toBe(true);
+      expect(Math.abs(half.x - cell.x) + Math.abs(half.y - cell.y), `round-trip ${cell.x},${cell.y}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('a level ray (never meets the ground) leaves screenToHalf at the same off-map sentinel as screenToMacro', () => {
+    const state = makeState(20, 20) as GridState;
+    const camera = new THREE.PerspectiveCamera(55, 800 / 600, 0.5, 1500);
+    camera.position.set(0, 5, 20);
+    camera.lookAt(0, 5, 0); // dead level: the centre ray's dir.y is ~0, so it never meets the ground plane
+    camera.updateMatrixWorld(true);
+    const canvas = {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 }),
+    } as unknown as HTMLCanvasElement;
+    const host: CameraHost = {
+      camera, canvas, state: () => state,
+      panCamera: () => {}, pickObjectAt: () => null, objectBoundingBox: () => null,
+    };
+    const proj = new Projection3D(host);
+    const macro = proj.screenToMacro(400, 300);
+    expect(proj.screenToHalf(400, 300)).toEqual(macro);
+    expect(macro.x).toBeLessThan(-100); // the shared OFF_MAP sentinel, not a normal cell
+  });
+
   it('a sky ray parks far off-map; pan delegates to the camera host', () => {
     const state = makeState(20, 20) as GridState;
     const { host, pans } = makeHost(state);

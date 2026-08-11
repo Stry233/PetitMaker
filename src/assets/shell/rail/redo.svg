@@ -1,0 +1,10 @@
+<!-- Generated art. Do not edit: change the design source and re-run the extractor. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="118" height="119" viewBox="0 0 118 119">
+  <g id="ellipse" opacity="0.43">
+    <path d="M 59.5 1.73 C 91.26 1.73 117 27.57 117 59.45 C 117 91.34 91.26 117.18 59.5 117.18 C 27.74 117.18 2 91.34 2 59.45 C 2 27.57 27.74 1.73 59.5 1.73 Z" fill="#CBCBCB"/>
+  </g>
+  <g id="shape" opacity="0.73">
+    <path d="M 50.29 41.19 L 50.36 89.78 L 91.36 65.42 L 50.29 41.19 Z" fill="#B8B8B8"/>
+    <path d="M 61.5 29.96 C 61.5 29.96 46.76 34.22 44.7 41.17 C 42.64 48.13 54.03 52.39 54.03 52.39 L 54.03 74.82 C 54.03 74.82 34.37 72.22 29.78 59.87 C 25.19 47.52 32.06 34.03 61.5 29.96 Z" fill="#B8B8B8"/>
+  </g>
+</svg>

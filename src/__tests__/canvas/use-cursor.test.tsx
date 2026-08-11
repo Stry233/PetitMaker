@@ -3,7 +3,7 @@ import { render, cleanup, waitFor, act } from '@testing-library/react';
 import { useRef } from 'react';
 import { useCursor } from '../../canvas/interaction/use-cursor';
 import { __resetCursorController } from '../../canvas/interaction/cursor-controller';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import { registerToolManager } from '../../canvas/active-view';
 import { ToolType } from '../../core/model/types';
 import { useEditorStore } from '../../state/store';
@@ -63,16 +63,17 @@ describe('useCursor', () => {
 
   it('follows the build MATERIAL, which switches without ever touching activeTool', () => {
     // All five shape modes AND all three materials are the ONE ToolType.TerrainBrush, and the
-    // brush's cursor is a getter over the store's contentType. Picking River from the Build
-    // panel calls setContentType only, so a dep array missing contentType leaves the mountain
-    // peak on screen while the brush paints water. Drives the real store transition.
+    // brush's cursor is a getter over the store's contentType. Picking River from the Build panel
+    // calls setEditMode with just the surface, and the resolver keeps the same TerrainBrush tool
+    // across all three, so a dep array missing contentType leaves the mountain peak on screen
+    // while the brush paints water. Drives the real store transition.
     const tm = makeTestToolManager();
     const brush = tm.getToolById(ToolType.TerrainBrush) as DrawingTool;
     tm.setActiveTool(ToolType.TerrainBrush);
     registerToolManager(tm);
     act(() => {
       setStoreState({ activeTool: ToolType.TerrainBrush });
-      useEditorStore.getState().setContentType('mountain');
+      useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'brush' });
       brush.contentType = 'mountain';
     });
     const { getByTestId } = render(<Host />);
@@ -80,14 +81,14 @@ describe('useCursor', () => {
 
     // activeTool is not touched: picking River from the Build panel is the whole gesture.
     act(() => {
-      useEditorStore.getState().setContentType('water');
+      useEditorStore.getState().setEditMode({ mode: 'water' });
       brush.contentType = 'water'; // PixiCanvas's store -> tool sync effect
     });
     expect(useEditorStore.getState().activeTool).toBe(ToolType.TerrainBrush);
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('water'));
 
     act(() => {
-      useEditorStore.getState().setContentType('tile');
+      useEditorStore.getState().setEditMode({ mode: 'road' });
       brush.contentType = 'tile';
     });
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('road'));

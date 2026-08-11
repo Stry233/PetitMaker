@@ -18,6 +18,8 @@
  * (key-storage.ts) then stays on base64 obfuscation, exactly as before.
  */
 
+import { PREFS } from '../core/runtime/prefs';
+
 export interface SealedBlob {
   /** base64 12-byte AES-GCM IV */
   iv: string;
@@ -25,7 +27,9 @@ export interface SealedBlob {
   ct: string;
 }
 
-const DB_NAME = 'petit-agent-vault';
+/** IndexedDB, not localStorage, but the name is declared alongside every other persisted key so
+ *  the table enumerates everything this origin writes to disk. */
+const DB_NAME = PREFS.agentVault.key;
 const STORE = 'k';
 const KEY_ID = 'aes-v1';
 

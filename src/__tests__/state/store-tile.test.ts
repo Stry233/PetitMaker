@@ -3,21 +3,21 @@ import { useEditorStore } from '../../state/store';
 
 describe('store: tile surface', () => {
   beforeEach(() => {
-    useEditorStore.getState().setContentType('mountain');
-    useEditorStore.getState().setTileMaterial('dirt');
+    useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'brush' });
+    useEditorStore.getState().setTileMaterial('road-dirt');
   });
 
-  it('defaults tileMaterial to dirt', () => {
-    expect(useEditorStore.getState().tileMaterial).toBe('dirt');
+  it('defaults tileMaterial to the dirt road catalog id', () => {
+    expect(useEditorStore.getState().tileMaterial).toBe('road-dirt');
   });
 
   it('accepts tile as a content type', () => {
-    useEditorStore.getState().setContentType('tile');
+    useEditorStore.getState().setEditMode({ mode: 'road' });
     expect(useEditorStore.getState().contentType).toBe('tile');
   });
 
   it('switches tile material', () => {
-    useEditorStore.getState().setTileMaterial('stone');
-    expect(useEditorStore.getState().tileMaterial).toBe('stone');
+    useEditorStore.getState().setTileMaterial('road-stone');
+    expect(useEditorStore.getState().tileMaterial).toBe('road-stone');
   });
 });

@@ -19,7 +19,7 @@ import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import {
   __resetCursorController, registerCursorSurface, setToolCursor,
 } from '../../canvas/interaction/cursor-controller';
-import { cursorCss } from '../../ui/cursors/cursor-css';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
 import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
@@ -32,6 +32,7 @@ import { selectedObjectIds } from '../../state/selection';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
+import { roadLookup } from '../../state/object-index';
 
 const ARMED = 'tree-apple';
 
@@ -91,7 +92,7 @@ function arm(item: string | null, ...objects: PlacedObject[]): void {
   gs = makeState(20, 20);
   for (const obj of objects) gs.objects.set(obj.id, obj);
   if (objects.length > 0) bumpObjectsVersion(gs, { added: objects });
-  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry());
+  executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
   const tm = new ToolManager(makeStubRenderer(), executor, gs);
   const { view } = makeView();
   setActiveView(view); // re-points the manager's ctx at the test view's projection/overlay

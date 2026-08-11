@@ -1,7 +1,7 @@
 /**
  * Provider METADATA only — no SDK imports. Anything outside the lazy agent
- * chunk (key-storage defaults, the phone-menu busy badge reading the agent
- * store) must import from here, never from providers/index.ts, which pulls in
+ * chunk (key-storage defaults, the assistant's intro card listing the platforms,
+ * the published provider list) must import from here, never from providers/index.ts, which pulls in
  * @anthropic-ai/sdk + openai. `label` is the platform's company/brand name (the
  * UI localizes it via the agent2.prov_<id> i18n keys); `preferredModel` is which of a
  * platform's models to select when the user has not chosen one, and applies ONLY when the

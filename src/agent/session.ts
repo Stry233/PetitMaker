@@ -1,6 +1,5 @@
 /**
- * Site Log session store — the agent conversation as a log of paper cards
- * (spec: docs/internal/superpowers/specs/2026-07-16-agent-v2-sitelog-design.md §3).
+ * Site Log session store: the agent conversation as a log of paper cards.
  *
  * Structure is opt-in, never imposed: the store records whatever the turn
  * engine produces — order slips, notes, build tickets, sketches, blueprints —
@@ -14,6 +13,7 @@
  * was mid-run when the page closed hydrates as PAUSED, holding its place.
  */
 import { create } from 'zustand';
+import { PREFS } from '../core/runtime/prefs';
 
 export type VerbIcon = 'terrain' | 'water' | 'tree' | 'road' | 'build' | 'flower' | 'eval' | 'plan';
 export interface Tick { s: 'ok' | 'run' | 'revert'; i: VerbIcon; t: string }
@@ -62,13 +62,13 @@ export type LogEntry = OrderSlipEntry | NoteEntry | TicketEntry | SketchesEntry 
 /** Omit that distributes over the LogEntry union (plain Omit collapses it). */
 type NewEntry = LogEntry extends infer E ? (E extends LogEntry ? Omit<E, 'id'> : never) : never;
 
-export const SESSION_LS_KEY = 'petit-agent-session-v1';
+export const SESSION_LS_KEY = PREFS.agentSession.key;
 
 /** Forget the stored session entirely (the user chose to start fresh at the
  *  welcome-back bubble; the agent's history starts fresh with the map). */
 export function discardStoredSession(): void {
   if (typeof localStorage === 'undefined') return;
-  try { localStorage.removeItem(SESSION_LS_KEY); } catch { /* best-effort */ }
+  try { localStorage.removeItem(PREFS.agentSession.key); } catch { /* best-effort */ }
 }
 const PERSIST_DEBOUNCE_MS = 500;
 
@@ -125,7 +125,7 @@ function persist(s: Pick<AgentSession, 'log' | 'vitals' | 'resumeSummary'>): voi
   persistTimer = setTimeout(() => {
     try {
       localStorage.setItem(
-        SESSION_LS_KEY,
+        PREFS.agentSession.key,
         JSON.stringify({ v: 1, log: s.log.map(toStored), vitals: s.vitals, resumeSummary: s.resumeSummary }),
       );
     } catch {
@@ -197,7 +197,7 @@ export const useAgentSession = create<AgentSession>((set, get) => ({
   hydrateFromStorage: () => {
     if (typeof localStorage === 'undefined') return;
     try {
-      const raw = localStorage.getItem(SESSION_LS_KEY);
+      const raw = localStorage.getItem(PREFS.agentSession.key);
       if (!raw) return;
       const parsed = JSON.parse(raw) as { v?: number; log?: unknown; vitals?: Vitals; resumeSummary?: string };
       if (parsed.v !== 1 || !Array.isArray(parsed.log)) return;

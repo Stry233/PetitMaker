@@ -7,8 +7,9 @@ import { TerrainType, type EditorEvents, type MacroCoord } from '../../core/mode
 import { line4 } from '../../tools/paint/shapes';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
+import { roadLookup } from '../../state/object-index';
 
-const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+const exec = (state: any) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const elevAt = (state: any, x: number, y: number) => state.cells[y]?.[x]?.terrain?.elevation ?? 0;
 
@@ -157,7 +158,7 @@ describe('DrawingTool: fast-drag continuity', () => {
     tool.onPointerDown(m(2, 2), m(2, 2), ctx);  // start
     tool.onPointerMove(m(7, 5), m(7, 5), ctx);  // ONE fast jump (+5, +3) — no intermediate samples
     tool.onPointerUp(m(7, 5), m(7, 5), ctx);
-    // every cell along the interpolated 4-connected path is painted (before the fix only (7,5) would be)
+    // every cell along the interpolated 4-connected path is painted, not only the endpoints
     for (const p of line4(2, 2, 7, 5)) expect(elevAt(state, p.x, p.y), `(${p.x},${p.y}) painted`).toBe(1);
   });
 });
@@ -165,25 +166,19 @@ describe('DrawingTool: fast-drag continuity', () => {
 // ATOMIC UNDO: with auto-trim on, the trim/fill commands fold into the
 // last block entry of the stroke — undo steps are block creations only.
 describe('DrawingTool: auto-trim undo folding (ATOMIC UNDO)', () => {
-  it('a click with auto-trim on undoes in ONE step (block + its trims together)', async () => {
-    const { useEditorStore } = await import('../../state/store');
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    try {
-      const state = makeState(10, 10);
-      const ex = exec(state);
-      const tool = new DrawingTool();
-      tool.contentType = 'mountain';
-      tool.mode = 'brush';
-      const ctx = makeToolCtx(state, ex, 1, 1);
-      tool.onPointerDown(m(5, 5), m(5, 5), ctx);
-      tool.onPointerUp(m(5, 5), m(5, 5), ctx);
+  it('a click with auto-trim on undoes in ONE step (block + its trims together)', () => {
+    const state = makeState(10, 10);
+    const ex = exec(state);
+    const tool = new DrawingTool();
+    tool.contentType = 'mountain';
+    tool.mode = 'brush';
+    const ctx = makeToolCtx(state, ex, 1, 1, { autoEdgeCut: 'round' });
+    tool.onPointerDown(m(5, 5), m(5, 5), ctx);
+    tool.onPointerUp(m(5, 5), m(5, 5), ctx);
 
-      expect(state.cells[5]![5]!.terrain?.corners, 'isolated cell got rounded').toEqual(['fan', 'fan', 'fan', 'fan']);
-      expect(ex.getUndoStackSize(), 'paint + trims = one history entry').toBe(1);
-      ex.undo();
-      expect(state.cells[5]![5]!.terrain ?? null, 'one undo removes the block (and its trims)').toBeNull();
-    } finally {
-      useEditorStore.setState({ autoEdgeCut: 'off' });
-    }
+    expect(state.cells[5]![5]!.terrain?.corners, 'isolated cell got rounded').toEqual(['fan', 'fan', 'fan', 'fan']);
+    expect(ex.getUndoStackSize(), 'paint + trims = one history entry').toBe(1);
+    ex.undo();
+    expect(state.cells[5]![5]!.terrain ?? null, 'one undo removes the block (and its trims)').toBeNull();
   });
 });

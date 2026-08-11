@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { GROUND_SLAB_Y, LAYER_HEIGHT } from '../../canvas/map3d/core/coords';
 import { registerCatalogItem } from '../../state/catalog';
-import { ItemCategory, CellZone } from '../../core/model/types';
+import { ItemCategory, CellZone, TerrainType } from '../../core/model/types';
 import type { GridState, MapTemplate, PlacedObject } from '../../core/model/types';
 
 function emptyGrid(w: number, h: number, objects: PlacedObject[]): GridState {
@@ -85,7 +85,11 @@ describe('ground-level placement sits on the visible surface', () => {
       id: 'f', catalogId: 'flower-bellflower', position: { x: 3, y: 3 },
       rotation: 0, elevation: 2,
     };
-    const groups = buildObjectInstances(emptyGrid(10, 10, [flora]));
+    // The TERRAIN puts it up there. A body that sits on the ground is drawn at the ground, so a
+    // fixture that raised only the stored number would be asserting the stale-elevation bug.
+    const grid = emptyGrid(10, 10, [flora]);
+    grid.cells[3]![3]!.terrain = { type: TerrainType.Mountain, elevation: 2, corners: ['square', 'square', 'square', 'square'] };
+    const groups = buildObjectInstances(grid);
     const inst = [...groups.values()].flat()[0]!;
     expect(inst.y).toBeCloseTo(LAYER_HEIGHT * 2, 6);
   });

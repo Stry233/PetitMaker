@@ -5,9 +5,8 @@
  * import specifiers and fails on an edge that points up, which is what keeps the diagram describing
  * the code rather than an intention.
  *
- * `ALLOWED_UPWARD` names the edges that are accepted today. An entry is a promise to move the
- * imported module down, not a licence to add more: adding a line here needs the same argument that
- * moving the module would.
+ * `ALLOWED_UPWARD` is empty: every import in `src/` points down. Adding a line there needs the same
+ * argument that moving the module would.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
@@ -20,7 +19,9 @@ declare const __dirname: string;
 /** Bottom to top. A layer may import from itself and anything earlier.
  *
  *  `config` and `assets` are data typed by `core`, so they sit just above it. `i18n` reads the
- *  store, so it follows `state`. `agent`, `io` and `api` are feature surfaces: they compose the
+ *  store, so it follows `state`. `kit` is the editor's verbs: operations the UI, the agent and the
+ *  API all call, so it sits above `tools`+`canvas` (a verb needs generation and a view together)
+ *  and below its three callers. `agent`, `io` and `api` are feature surfaces: they compose the
  *  engine below them and the UI drives them. `legal` renders with the design tokens and the UI
  *  renders its documents, so the two share a rank. */
 const LAYERS = [
@@ -31,6 +32,7 @@ const LAYERS = [
   ['i18n'],
   ['tools'],
   ['canvas'],
+  ['kit'],
   ['agent', 'io', 'api'],
   ['ui', 'legal'],
 ] as const;
@@ -40,27 +42,10 @@ const RANK = new Map<Layer, number>(
   LAYERS.flatMap((group, i) => group.map((l): [Layer, number] => [l, i])),
 );
 
-/** Edges that point up and are accepted for now, as `importer layer -> imported path prefix`.
- *  Each names a module that belongs lower than where it sits; recording one is a note to move it,
- *  and a new entry needs the same argument that moving the module would. */
-const ALLOWED_UPWARD: ReadonlyArray<readonly [Layer, string]> = [
-  // The 2D/3D views reach into presentation for design tokens, the menu's scale context, icon
-  // components, the keymap, and the group-command helpers the pointer machine runs.
-  ['canvas', 'ui/styles'],
-  ['canvas', 'ui/useMotionEnabled'],
-  ['canvas', 'ui/menu/scale'],
-  ['canvas', 'ui/menu/icons'],
-  ['canvas', 'ui/cursors/cursor-css'],
-  ['canvas', 'ui/keybindings/commands'],
-  ['canvas', 'ui/keybindings/store'],
-  ['canvas', 'ui/chrome/group-actions'],
-  // The canvas drives two feature surfaces directly: the agent's map snapshotter, and the export
-  // painter behind the 3D shot editor.
-  ['canvas', 'agent/snapshot'],
-  ['canvas', 'io/'],
-  // The road silhouette asks the object index which cells are paved.
-  ['core', 'state/object-index'],
-];
+/** Edges that point up and are accepted, as `importer layer -> imported path prefix`. Empty: an entry
+ *  names a module that belongs lower than where it sits, and adding one needs the same argument that
+ *  moving the module would. */
+const ALLOWED_UPWARD: ReadonlyArray<readonly [Layer, string]> = [];
 
 const SRC = resolve(__dirname, '..');
 
@@ -85,8 +70,24 @@ function layerOf(srcRelative: string): Layer | null {
 // Type-only statements are erased at compile time: they express a contract, not runtime coupling
 // (`tools` naming the view-projection interfaces is the seam working as designed), so they are not
 // edges for this purpose.
-const IMPORT_RE = /(?:from|import)\s+'([^']+)'/g;
+//
+// A specifier reaches a module three ways and all three are runtime coupling: `from '…'`, a bare
+// side-effect `import '…'`, and a dynamic `import('…')`. The dynamic form is how the lazy chunks are
+// loaded, so leaving it out would let any module reach any layer by awaiting it.
+const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
 const TYPE_ONLY_RE = /^\s*(?:import|export)\s+type\s/;
+
+/** The `@/*` -> `src/*` alias, declared in both tsconfig.json and vite.config.ts. It addresses the
+ *  same files a relative specifier does, so it has to resolve through the same layer rules. */
+const SRC_ALIAS = '@/';
+
+/** A specifier's src-relative path, or null when it names something outside `src/` (a package). */
+function resolveSpec(fromFile: string, spec: string): string | null {
+  const abs = spec.startsWith('.') ? resolve(dirname(fromFile), spec)
+    : spec.startsWith(SRC_ALIAS) ? resolve(SRC, spec.slice(SRC_ALIAS.length))
+    : null;
+  return abs === null ? null : relative(SRC, abs).replace(/\\/g, '/');
+}
 
 interface Edge { file: string; layer: Layer; target: string; targetLayer: Layer }
 
@@ -96,15 +97,15 @@ function upwardEdges(): Edge[] {
     const srcRel = relative(SRC, file).replace(/\\/g, '/');
     const layer = layerOf(srcRel);
     if (!layer) continue;
-    const text = readFileSync(file, 'utf8');
-    for (const line of text.split('\n')) {
-      if (TYPE_ONLY_RE.test(line)) continue;
-      const m = IMPORT_RE.exec(line);
-      IMPORT_RE.lastIndex = 0;
-      if (!m) continue;
-      const spec = m[1]!;
-      if (!spec.startsWith('.')) continue; // a package, not one of ours
-      const resolved = relative(SRC, resolve(dirname(file), spec)).replace(/\\/g, '/');
+    // Dropping the type-only lines rather than scanning line by line, so a specifier split across
+    // lines (a wrapped dynamic import) is still one match.
+    const text = readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((line: string) => !TYPE_ONLY_RE.test(line))
+      .join('\n');
+    for (const m of text.matchAll(IMPORT_RE)) {
+      const resolved = resolveSpec(file, m[1]!);
+      if (resolved === null) continue;
       const targetLayer = layerOf(resolved);
       if (!targetLayer) continue;
       if (RANK.get(targetLayer)! > RANK.get(layer)!) {
@@ -132,5 +133,43 @@ describe('layer imports point downward', () => {
       ([layer, prefix]) => !edges.some((e) => e.layer === layer && e.target.startsWith(prefix)),
     );
     expect(unused.map(([l, p]) => `${l} -> ${p}`)).toEqual([]);
+  });
+});
+
+/**
+ * `ToolContext` IS THE SEAM, NOT A SUGGESTION.
+ *
+ * `state` sits below `tools`, so a tool importing the store points DOWN and the layer test above
+ * has nothing to say about it — which is how six files came to read `useEditorStore.getState()`
+ * mid-stroke for facts the pointer machine could have handed them: hidden arguments, invisible in
+ * the signature, and free to differ between the probe that draws the cursor and the click that acts.
+ *
+ * One file may know a store exists: the one that BUILDS the context. Everything else takes what it
+ * is given. `state/catalog`, `state/object-index` and `state/object-geometry` are not the store —
+ * they are pure functions over map data — and are deliberately not named here.
+ */
+const CONTEXT_WIRING: ReadonlyArray<string> = ['tools/tool-manager.ts'];
+const STORE = 'state/store';
+
+describe('tools reach the editor through ToolContext', () => {
+  it('no tool imports the store', () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(SRC, 'tools'))) {
+      const srcRel = relative(SRC, file).replace(/\\/g, '/');
+      if (CONTEXT_WIRING.includes(srcRel)) continue;
+      const text = readFileSync(file, 'utf8');
+      for (const m of text.matchAll(IMPORT_RE)) {
+        if (resolveSpec(file, m[1]!) === STORE) offenders.push(`${srcRel} -> ${STORE}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the one exemption is still the file that builds the context', () => {
+    // An exemption that stops being real is an exemption nobody is checking.
+    for (const wiring of CONTEXT_WIRING) {
+      const text = readFileSync(join(SRC, wiring), 'utf8');
+      expect([...text.matchAll(IMPORT_RE)].some((m) => resolveSpec(join(SRC, wiring), m[1]!) === STORE), wiring).toBe(true);
+    }
   });
 });

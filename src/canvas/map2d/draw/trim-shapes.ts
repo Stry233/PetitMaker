@@ -2,6 +2,8 @@ import * as PIXI from 'pixi.js-legacy';
 import { HALF_TILE } from '../../../core/model/grid-model';
 import type { CornerTrim } from '../../../core/model/types';
 import { CORNER_POS, type CornerPos } from '../../../core/edge-cut/corner-index';
+import { roadShapePoints } from '../../../core/edge-cut/road-shape';
+import type { RoadConnSide } from '../../../core/edge-cut/road-cut-states';
 
 /**
  * Canonical per-corner quadrant pixel offsets within a macro cell, in the corner
@@ -87,106 +89,32 @@ function drawFanCorner(
   g.closePath();
 }
 
-type ConnSide = 'left' | 'right' | 'top' | 'bottom';
-
-function txPt(
-  u: number, v: number, side: ConnSide,
-  x: number, y: number, hw: number, hh: number,
-): [number, number] {
-  switch (side) {
-    case 'left': return [x + u * hw, y + v * hh];
-    case 'right': return [x + (2 - u) * hw, y + v * hh];
-    case 'top': return [x + v * hw, y + u * hh];
-    case 'bottom': return [x + (2 - v) * hw, y + (2 - u) * hh];
-  }
-}
-
-function arcPts(
-  cx: number, cy: number, r: number,
-  startU: number, startV: number, endU: number, endV: number,
-  side: ConnSide, x: number, y: number, hw: number, hh: number,
-  steps: number,
-): [number, number][] {
-  const [pcx, pcy] = txPt(cx, cy, side, x, y, hw, hh);
-  const [psx, psy] = txPt(startU, startV, side, x, y, hw, hh);
-  const [pex, pey] = txPt(endU, endV, side, x, y, hw, hh);
-  const startA = Math.atan2(psy - pcy, psx - pcx);
-  const endA = Math.atan2(pey - pcy, pex - pcx);
-  const pr = r * hw;
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    let a = startA + t * ((endA - startA + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
-    if (Math.abs(endA - startA) > Math.PI) {
-      a = startA + t * (endA - startA > 0 ? endA - startA - 2 * Math.PI : endA - startA + 2 * Math.PI);
-    }
-    pts.push([pcx + Math.cos(a) * pr, pcy + Math.sin(a) * pr]);
-  }
-  return pts;
-}
-
+/**
+ * A road tile's top face. The five canonical cut states come from `core/edge-cut/road-shape` as a
+ * point list — the same one the 3D mesher and both ghost previews build from — so a cut road's
+ * silhouette is one derivation wherever it is drawn. A full square, and any corner set matching no
+ * canonical state, is the whole cell: no state may leave a hole in the paved path.
+ */
 export function drawRoadShape(
   g: PIXI.Graphics,
   corners: [CornerTrim, CornerTrim, CornerTrim, CornerTrim] | undefined,
-  connSide: ConnSide,
+  connSide: RoadConnSide,
   x: number, y: number,
   w: number, h: number,
   color: number, alpha: number,
 ): void {
-  const hw = w / 2, hh = h / 2;
-  const steps = 16;
-  const p = (u: number, v: number) => txPt(u, v, connSide, x, y, hw, hh);
-
-  if (!corners || corners.every(c => c === 'square')) {
-    // State 0: raw/uncut — a SQUARE full-cell tile (default look), so adjacent road
-    // cells read as one continuous surface (no rounded end-caps between blocks).
-    g.beginFill(color, alpha);
-    g.drawRect(x, y, w, h);
-    g.endFill();
-    return;
-  }
-
-  const [tl, tr, bl, br] = corners;
-  const filled = (s: CornerTrim) => s === 'square';
+  const pts = corners && !corners.every((c) => c === 'square')
+    ? roadShapePoints(corners, connSide, x, y, w, h)
+    : null;
 
   g.beginFill(color, alpha);
-
-  if (filled(tl) && filled(tr) && filled(bl) && !filled(br)) {
-    // BR fan: quarter-circle curve at lower-right
-    g.moveTo(...p(0, 0));
-    g.lineTo(...p(2, 0));
-    const arc1 = arcPts(0, 0, 2, 2, 0, 0, 2, connSide, x, y, hw, hh, steps);
-    for (const pt of arc1) g.lineTo(...pt);
-    g.closePath();
-  } else if (filled(tl) && !filled(tr) && filled(bl) && filled(br)) {
-    // TR fan: quarter-circle curve at upper-right
-    g.moveTo(...p(0, 2));
-    g.lineTo(...p(2, 2));
-    const arc2 = arcPts(0, 2, 2, 2, 2, 0, 0, connSide, x, y, hw, hh, steps);
-    for (const pt of arc2) g.lineTo(...pt);
-    g.closePath();
-  } else if (!filled(tl) && !filled(tr) && filled(bl) && filled(br)) {
-    // State 3: diagonal \ — triangle (0,0)-(0,2)-(2,2)
-    g.moveTo(...p(0, 0));
-    g.lineTo(...p(0, 2));
-    g.lineTo(...p(2, 2));
-    g.closePath();
-  } else if (filled(tl) && filled(tr) && !filled(bl) && !filled(br)) {
-    // State 4: diagonal / — triangle (0,0)-(2,0)-(0,2)
-    g.moveTo(...p(0, 0));
-    g.lineTo(...p(2, 0));
-    g.lineTo(...p(0, 2));
-    g.closePath();
-  } else if (filled(tl) && !filled(tr) && filled(bl) && !filled(br)) {
-    // State 5: wedge — triangle (0,0)-(1,1)-(0,2)
-    g.moveTo(...p(0, 0));
-    g.lineTo(...p(1, 1));
-    g.lineTo(...p(0, 2));
-    g.closePath();
-  } else {
+  if (!pts) {
     g.drawRect(x, y, w, h);
+  } else {
+    g.moveTo(pts[0]![0], pts[0]![1]);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i]![0], pts[i]![1]);
+    g.closePath();
   }
-
   g.endFill();
 }
 

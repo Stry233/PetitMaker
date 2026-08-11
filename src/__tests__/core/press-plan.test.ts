@@ -23,6 +23,7 @@ const facts = (over: Partial<PressFacts> = {}): PressFacts => ({
   macro: { x: 4, y: 5 },
   hit: null,
   placementAllowed: true,
+  pendingGesture: false,
   viewPansLeftDrag: true,
   ...over,
 });
@@ -200,6 +201,15 @@ describe('resolveNavTap', () => {
 
   it('offers nothing outside the selecting modes', () => {
     expect(resolveNavTap(facts({ button: 2, tool: ToolType.TerrainBrush }))).toEqual([]);
+  });
+
+  it('a nav tap ends a pending gesture and does nothing else', () => {
+    // Even in select mode, where a nav tap would otherwise open the context menu: the pending
+    // gesture wins outright, it does not merely go first.
+    const t = resolveNavTap(facts({
+      button: 2, pendingGesture: true, hit: { id: 'house', draggable: true, locked: false },
+    }));
+    expect(t).toEqual([{ kind: 'cancel-pending' }]);
   });
 });
 

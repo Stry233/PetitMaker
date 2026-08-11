@@ -7,6 +7,7 @@ import {
 } from '../../core/edge-cut/cut-validator';
 import { TerrainType, type Corners } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { roadLookup } from '../../state/object-index';
 
 describe('computeCellEdgeCoverage', () => {
   it('undefined (full square) covers entire edge', () => {
@@ -99,7 +100,7 @@ describe('validateCut', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     const corners: Corners = ['fan', 'square', 'square', 'square'];
-    expect(validateCut(state, 5, 5, 'terrain', corners)).toBe(true);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'terrain', corners)).toBe(true);
   });
 
   it('terrain with right neighbor: must preserve east', () => {
@@ -107,9 +108,9 @@ describe('validateCut', () => {
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     const cutTR: Corners = ['square', 'empty', 'square', 'square'];
-    expect(validateCut(state, 5, 5, 'terrain', cutTR)).toBe(true);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'terrain', cutTR)).toBe(true);
     const cutBothRight: Corners = ['square', 'empty', 'square', 'empty'];
-    expect(validateCut(state, 5, 5, 'terrain', cutBothRight)).toBe(false);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'terrain', cutBothRight)).toBe(false);
   });
 
   it('straight-line road: no valid cuts', () => {
@@ -122,7 +123,7 @@ describe('validateCut', () => {
     }
     addRoad(4, 5); addRoad(5, 5); addRoad(6, 5);
     const anycut: Corners = ['square', 'square', 'square', 'fan'];
-    expect(validateCut(state, 5, 5, 'road', anycut)).toBe(false);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'road', anycut)).toBe(false);
   });
 
   it('endpoint road: valid if connected side preserved', () => {
@@ -136,7 +137,7 @@ describe('validateCut', () => {
       position: { x: 4, y: 5 }, rotation: 0 as const, elevation: 0,
     });
     const cutRight: Corners = ['square', 'fan', 'square', 'fan'];
-    expect(validateCut(state, 5, 5, 'road', cutRight)).toBe(true);
+    expect(validateCut(state, roadLookup(state), 5, 5, 'road', cutRight)).toBe(true);
   });
 });
 

@@ -9,10 +9,11 @@ import { makeCtx } from '../../../../tools/generation/placement/object';
 import { analyzeTerrain } from '../../../../tools/generation/placement/analysis';
 import { placeNature } from '../../../../tools/generation/placement/nature';
 import { type EditorEvents } from '../../../../core/model/types';
+import { roadLookup } from '../../../../state/object-index';
 
 function run(nature: number, seed = 7) {
   const state = makeState(48, 48);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), seed);
   placeNature(ctx, analyzeTerrain(state), nature, new Set());
   exec.commitStrokeGroup(0);

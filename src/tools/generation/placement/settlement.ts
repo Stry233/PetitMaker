@@ -8,7 +8,7 @@ import { objectRect, getRotatedSize } from '../../../state/object-geometry';
 import { tryPlace, openAt, markCells as markFootprint, type PlaceCtx } from './object';
 import type { PlacementAnalysis } from './analysis';
 import { reachableRegions, type Portal } from './portals';
-import { centroid, bySizeDesc } from '../geometry';
+import { centroid, bySizeDesc, nearestRegionCell } from '../geometry';
 
 /** A point the network connects, tagged with its buildable region + district role. */
 export interface Node {
@@ -356,16 +356,6 @@ function plantOrchard(ctx: PlaceCtx, a: PlacementAnalysis, site: MacroCoord, set
     }
     if (planted >= 3) return;
   }
-}
-
-/** The region cell nearest to `p` (pulls a centroid that landed outside an irregular region in). */
-function nearestRegionCell(p: MacroCoord, cells: number[], width: number): MacroCoord {
-  let best = cells[0]!, bd = Infinity;
-  for (const i of cells) {
-    const x = i % width, y = (i / width) | 0, d = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
-    if (d < bd) { bd = d; best = i; }
-  }
-  return { x: best % width, y: (best / width) | 0 };
 }
 
 /** Whether any cell within 2 of `p` belongs to `regionId` (the plaza centre sits ON the occupied plaza). */

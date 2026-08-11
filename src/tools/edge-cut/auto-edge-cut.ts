@@ -26,12 +26,26 @@ import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { groundConvexCornerInWater, highestNeighborTerrain, surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { validateCut, isInnerCorner, OUTER_TRI, INNER_TRI } from '../../core/edge-cut/cut-validator';
 import {
-  CANONICAL_ROAD_STATES, canonicalToActual, detectRoadConn, findRoadAt,
+  CANONICAL_ROAD_STATES, canonicalToActual, detectRoadConn,
 } from '../../core/edge-cut/road-cut-states';
+import type { RoadLookup } from '../../core/model/road-lookup';
+import { roadLookup } from '../../state/object-index';
 
 /** The minimal slice of ToolContext the corner-cut helpers actually need — so the generator can drive
  *  them with just its grid + execute closure, without fabricating a full ToolContext. */
-export interface EdgeCutCtx { gridState: GridState; executeCommand: (cmd: Command) => ValidationResult; }
+export interface EdgeCutCtx {
+  gridState: GridState;
+  executeCommand: (cmd: Command) => ValidationResult;
+  /** How to ask "what coating is at this cell". Defaults to the live object index. The ghost
+   *  preview injects one that also answers for the tiles the stroke has not laid yet — a road is
+   *  an object, so a preview cannot put its own tiles on the grid without rebuilding that index. */
+  roads?: RoadLookup;
+}
+
+/** The coating lookup this pass reads through: injected where a caller has one, live otherwise. */
+function roadsOf(ctx: EdgeCutCtx): RoadLookup {
+  return ctx.roads ?? roadLookup(ctx.gridState);
+}
 
 // Canonical road states (indices into CANONICAL_ROAD_STATES) by kind, in
 // preference order. 'round' prefers the wedge (both far corners), then the
@@ -55,17 +69,33 @@ function dedupe(cells: MacroCoord[]): MacroCoord[] {
   return out;
 }
 
+/** The 8-neighbourhood of `cells`, deduplicated — the candidate ring both notch passes read. */
+function neighborhood(cells: readonly MacroCoord[]): MacroCoord[] {
+  const seen = new Set<string>();
+  const out: MacroCoord[] = [];
+  for (const p of cells) {
+    for (const [dx, dy] of NEIGHBORS_8) {
+      const x = p.x + dx, y = p.y + dy, k = `${x},${y}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ x, y });
+    }
+  }
+  return out;
+}
+
 /** Trim the convex outer corners of the painted cells themselves.
  *  Cuttability is ELEVATION-INDEPENDENT, identical to the manual tool: a corner is cut whenever it's an
  *  unlocked convex corner (no same-type edge neighbour pins it) that validates. There is no height gate —
  *  a corner is convex or it isn't, regardless of how tall the stack is, and the renderer draws whatever
  *  sits behind the cut (a lower step, or the ground/water around the mass). */
 function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
+  const roads = roadsOf(ctx);
   for (const { x, y } of cells) {
     const terrain = getCell(ctx.gridState.cells, x, y)?.terrain;
     if (!terrain || terrain.type === TerrainType.None || terrain.patchOnly) continue;
 
-    const locked = computeLockedCorners(ctx.gridState, x, y, 'terrain');
+    const locked = computeLockedCorners(ctx.gridState, roads, x, y, 'terrain');
     const before: Corners = terrain.corners
       ? [...terrain.corners]
       : ['square', 'square', 'square', 'square'];
@@ -78,7 +108,7 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): 
       changed = true;
     }
     if (!changed) continue;
-    if (!validateCut(ctx.gridState, x, y, 'terrain', after)) continue;
+    if (!validateCut(ctx.gridState, roads, x, y, 'terrain', after)) continue;
 
     ctx.executeCommand({
       type: CommandType.TrimCorners,
@@ -99,21 +129,12 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): 
  * click. (It would also risk rejected commands via the 3x3-base rule, and generation must stay
  * reject-free by construction.)
  */
-function cutTerrainInner(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean, allowLowerBlock = false): void {
-  // Candidate notch cells in the stroke's 8-neighbourhood. A Γ notch can be EMPTY ground, an existing
-  // cosmetic patch, OR (stroke path only) a real block LOWER than the same-type mass that wraps it — e.g.
-  // the layer-1 base platform under a raised disc, or a mountain peninsula a water hole left behind. The
+function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], round: boolean, allowLowerBlock = false): void {
+  // `candidates` is the stroke's 8-neighbourhood. A Γ notch can be EMPTY ground, an existing cosmetic
+  // patch, OR (stroke path only) a real block LOWER than the same-type mass that wraps it — e.g. the
+  // layer-1 base platform under a raised disc, or a mountain peninsula a water hole left behind. The
   // per-corner test below sorts them out.
-  const candidates = new Map<string, MacroCoord>();
-  for (const p of cells) {
-    for (const [dx, dy] of NEIGHBORS_8) {
-      const x = p.x + dx, y = p.y + dy;
-      const k = `${x},${y}`;
-      if (!candidates.has(k)) candidates.set(k, { x, y });
-    }
-  }
-
-  for (const { x, y } of candidates.values()) {
+  for (const { x, y } of candidates) {
     const cell = getCell(ctx.gridState.cells, x, y);
     const ref = highestNeighborTerrain(ctx.gridState, x, y);
     if (!ref) continue;
@@ -197,16 +218,8 @@ function cutTerrainInner(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean, a
  * is manual-reachable and manual-cyclable. It is the water counterpart of the mountain Γ fill: water never
  * fills a notch (see cutTerrainInner), the ground rounds instead.
  */
-function cutGroundIslands(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
-  const candidates = new Map<string, MacroCoord>();
-  for (const p of cells) {
-    for (const [dx, dy] of NEIGHBORS_8) {
-      const x = p.x + dx, y = p.y + dy;
-      const k = `${x},${y}`;
-      if (!candidates.has(k)) candidates.set(k, { x, y });
-    }
-  }
-  for (const { x, y } of candidates.values()) {
+function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], round: boolean): void {
+  for (const { x, y } of candidates) {
     const t = getCell(ctx.gridState.cells, x, y)?.terrain;
     if (t && t.type !== TerrainType.None) continue; // only plain ground / an existing island cut
     const before: Corners = t?.corners ? [...t.corners] : ['square', 'square', 'square', 'square'];
@@ -241,17 +254,22 @@ function nearElevatedWater(state: GridState, x: number, y: number): boolean {
 /** Trim road end-caps/bends to the requested kind via the canonical states. */
 function cutRoads(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
   const order = round ? ROUND_STATES : DIRECT_STATES;
-  for (const { x, y } of dedupe(cells)) {
-    const road = findRoadAt(ctx.gridState, x, y);
+  const roads = roadsOf(ctx);
+  const seen = new Set<string>();
+  for (const { x, y } of cells) {
+    const k = `${x},${y}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const road = roads(x, y);
     if (!road) continue;
     if (road.corners && !road.corners.every((s) => s === 'square')) continue; // already trimmed
 
-    const conn = detectRoadConn(ctx.gridState, road);
+    const conn = detectRoadConn(roads, road);
     for (const idx of order) {
       const canonical = CANONICAL_ROAD_STATES[idx];
       if (!canonical) continue;
       const actual = canonicalToActual([...canonical], conn);
-      if (!validateCut(ctx.gridState, x, y, 'road', actual)) continue;
+      if (!validateCut(ctx.gridState, roads, x, y, 'road', actual)) continue;
       ctx.executeCommand({
         type: CommandType.TrimCorners,
         timestamp: Date.now(),
@@ -278,15 +296,16 @@ export function applyAutoEdgeCut(
   const round = mode === 'round';
   if (terrainCells.length > 0) {
     const cells = dedupe(terrainCells);
+    const ring = neighborhood(cells);
     cutTerrainOuter(ctx, withBorder(cells), round);
-    cutTerrainInner(ctx, cells, round, true); // stroke path may fillet a lower same-type block (raised disc on a base)
-    cutGroundIslands(ctx, cells, round);      // river bends/tips: ground corners IN water round out (manual-reachable)
+    cutTerrainInner(ctx, ring, round, true); // stroke path may fillet a lower same-type block (raised disc on a base)
+    cutGroundIslands(ctx, ring, round);      // river bends/tips: ground corners IN water round out (manual-reachable)
   }
   // Roads get the same border sweep as terrain: painting a segment changes a NEIGHBOUR road's
   // connectivity, so a cell just outside the stroke can become a freshly-trimmable end-cap/bend.
   // cutRoads skips already-trimmed roads (manual cuts survive) and interior cells (validateCut
   // forces them square), so the sweep only touches genuinely new cut opportunities.
-  if (roadCells.length > 0) cutRoads(ctx, withBorder(dedupe(roadCells)), round);
+  if (roadCells.length > 0) cutRoads(ctx, withBorder(roadCells), round); // withBorder dedupes
 }
 
 /** A cell set plus its 8-neighbourhood. A stroke can make a NEIGHBOUR's corner newly convex (or a
@@ -294,8 +313,20 @@ export function applyAutoEdgeCut(
  *  water hole into a mountain leaves mountain peninsulas poking into the water, whose corners the
  *  manual tool rounds but a stroke-only pass never visits. The per-cell validators keep the sweep
  *  conservative: only genuinely unlocked, valid cuts land. */
-function withBorder(cells: MacroCoord[]): MacroCoord[] {
-  return dedupe(cells.flatMap(({ x, y }) => [{ x, y }, ...NEIGHBORS_8.map(([dx, dy]) => ({ x: x + dx, y: y + dy }))]));
+function withBorder(cells: readonly MacroCoord[]): MacroCoord[] {
+  const seen = new Set<string>();
+  const out: MacroCoord[] = [];
+  const add = (x: number, y: number): void => {
+    const k = `${x},${y}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ x, y });
+  };
+  for (const { x, y } of cells) {
+    add(x, y);
+    for (const [dx, dy] of NEIGHBORS_8) add(x + dx, y + dy);
+  }
+  return out;
 }
 
 /**
@@ -309,9 +340,10 @@ function withBorder(cells: MacroCoord[]): MacroCoord[] {
 export function edgeCutGeneratedTerrain(ctx: EdgeCutCtx, terrainCells: MacroCoord[], mode: AutoEdgeCut): void {
   if (mode === 'off' || terrainCells.length === 0) return;
   const cells = dedupe(terrainCells);
+  const ring = neighborhood(cells);
   cutTerrainOuter(ctx, cells, mode === 'round');   // round convex tips/steps (cut reveals the surface behind)
-  cutTerrainInner(ctx, cells, mode === 'round');   // the Γ case: fill EMPTY concave MOUNTAIN notches (water is skipped)
-  cutGroundIslands(ctx, cells, mode === 'round');  // river bends / lake inner corners: ground rounds into water, as the manual path does
+  cutTerrainInner(ctx, ring, mode === 'round');    // the Γ case: fill EMPTY concave MOUNTAIN notches (water is skipped)
+  cutGroundIslands(ctx, ring, mode === 'round');   // river bends / lake inner corners: ground rounds into water, as the manual path does
 }
 
 /** Edge-cut for GENERATED roads — the road mirror of edgeCutGeneratedTerrain, run by the populator

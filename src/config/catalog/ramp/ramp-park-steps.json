@@ -10,6 +10,10 @@
     "id": "Tangga Taman",
     "fr": "Marches de parc"
   },
+  "aliases": [
+    "white",
+    "白"
+  ],
   "width": 2,
   "height": 4,
   "loadValue": 100,
@@ -19,6 +23,9 @@
     {
       "type": "heightDrop",
       "layers": 1
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "icon": "ramp-park-steps",

@@ -8,6 +8,8 @@
 import type { HistoryEntry } from '../core/commands/command-apply';
 import { CommandType, type CellSnapshot, type PlacedObject } from '../core/model/types';
 import { getCatalogItem } from '../state/catalog';
+import { hasHalfStep } from '../state/object-geometry';
+import { onHalfGrid } from '../core/model/grid-model';
 import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
 
 export const HISTORY_SCHEMA_VERSION = 1;
@@ -22,21 +24,25 @@ export function encodeHistory(entries: HistoryEntry[], depth: 'all' | number): H
   return { v: HISTORY_SCHEMA_VERSION, totalSteps: entries.length, entries: kept };
 }
 
-function inBounds(x: unknown, y: unknown, b: HistoryBounds | undefined): boolean {
-  if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
-  if (!b) return (x as number) >= 0 && (y as number) >= 0;
-  return (x as number) >= 0 && (y as number) >= 0 && (x as number) < b.width && (y as number) < b.height;
+function inBounds(x: unknown, y: unknown, b: HistoryBounds | undefined, half = false): boolean {
+  const onGrid = half ? onHalfGrid : Number.isInteger;
+  if (typeof x !== 'number' || typeof y !== 'number' || !onGrid(x) || !onGrid(y)) return false;
+  if (!b) return x >= 0 && y >= 0;
+  return x >= 0 && y >= 0 && x < b.width && y < b.height;
 }
 
 /** An imported object is trusted only as far as the main map decoder would trust it:
- *  known catalogId, finite in-bounds integers, legal rotation/elevation. Undo replays
- *  these straight into GridState with no rule validation, so this filter is the gate. */
+ *  known catalogId, finite in-bounds coordinates on the item's OWN grid (a halfStep item —
+ *  ramps, bridges — anchors on the half grid, everything else on whole cells, exactly as
+ *  json-codec's loader gates it), legal rotation/elevation. Undo replays these straight into
+ *  GridState with no rule validation, so this filter is the gate. */
 function validObject(o: unknown, b: HistoryBounds | undefined): boolean {
   if (!o || typeof o !== 'object') return false;
   const obj = o as Partial<PlacedObject>;
   if (typeof obj.id !== 'string' || typeof obj.catalogId !== 'string') return false;
-  if (!getCatalogItem(obj.catalogId)) return false;
-  if (!obj.position || !inBounds(obj.position.x, obj.position.y, b)) return false;
+  const item = getCatalogItem(obj.catalogId);
+  if (!item) return false;
+  if (!obj.position || !inBounds(obj.position.x, obj.position.y, b, hasHalfStep(item))) return false;
   if (!isValidRotation(obj.rotation)) return false;
   if (!isValidElevation(obj.elevation)) return false;
   return true;

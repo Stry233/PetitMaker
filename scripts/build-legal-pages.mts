@@ -2,7 +2,6 @@
 // (both languages where a doc has one) into dist/<slug>/index.html +
 // dist/zh/<slug>/index.html, plus dist/sitemap.xml, dist/robots.txt,
 // dist/.well-known/security.txt, and copies licenses/ through.
-// See docs/internal/superpowers/specs/2026-07-14-legal-docs-design.md §14/§15.
 //
 // This file is CLI-ONLY (side-effecting: reads the LEGAL config, writes files
 // under dist/, may set process.exitCode) and unconditionally runs `main()` at

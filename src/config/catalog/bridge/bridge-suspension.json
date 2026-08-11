@@ -10,6 +10,10 @@
     "id": "Jembatan Gantung",
     "fr": "Pont suspendu"
   },
+  "aliases": [
+    "rope",
+    "绳桥"
+  ],
   "icon": "bridge-suspension",
   "width": 2,
   "height": 1,
@@ -21,6 +25,9 @@
       "type": "waterSpan",
       "min": 3,
       "max": 6
+    },
+    {
+      "type": "halfStep"
     }
   ],
   "model3d": {

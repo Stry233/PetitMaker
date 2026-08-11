@@ -10,6 +10,10 @@
     "id": "Pohon Alpukat",
     "fr": "Avocatier"
   },
+  "aliases": [
+    "紫",
+    "purple"
+  ],
   "icon": "tree-avocado",
   "width": 1,
   "height": 1,

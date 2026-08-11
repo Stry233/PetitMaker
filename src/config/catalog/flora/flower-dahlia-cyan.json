@@ -10,6 +10,11 @@
     "id": "Dahlia Toska",
     "fr": "Dahlia turquoise"
   },
+  "aliases": [
+    "blue",
+    "蓝",
+    "大丽花"
+  ],
   "icon": "flower-dahlia-cyan",
   "width": 1,
   "height": 1,

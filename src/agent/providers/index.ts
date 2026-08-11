@@ -1,7 +1,7 @@
 /**
  * Provider registry: metadata (defaults.ts) + adapter factories + key→provider
  * probing. This module pulls in the LLM SDKs — only the lazy agent chunk
- * (AgentSection and below) may import it; bundle-light consumers use
+ * (the Site Log and below) may import it; bundle-light consumers use
  * providers/defaults.ts.
  */
 import type { ProviderAdapter, ProviderId } from '../types';

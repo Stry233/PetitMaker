@@ -8,8 +8,10 @@ import { cornerWrappedAt, highestNeighborTerrain, groundConvexCornerInWater } fr
 import { validateCut, isInnerCorner, OUTER_TRI, INNER_TRI } from '../../core/edge-cut/cut-validator';
 import {
   CANONICAL_ROAD_STATES, CONN_SIDES, ROTATION_TO_CONN,
-  canonicalToActual, cornersMatch, findRoadAt, detectRoadConn, countRoadNeighbors,
+  canonicalToActual, cornersMatch, detectRoadConn, countRoadNeighbors,
 } from '../../core/edge-cut/road-cut-states';
+import type { RoadLookup } from '../../core/model/road-lookup';
+import { roadLookup } from '../../state/object-index';
 
 export interface TerrainSlot {
   kind: 'terrain';
@@ -49,9 +51,9 @@ interface RoadCutResult {
   rotation?: 0 | 90 | 180 | 270;
 }
 
-function nextValidRoadState(state: GridState, road: PlacedObject): RoadCutResult | null {
-  const isIsolated = countRoadNeighbors(state, road) === 0;
-  const conn = detectRoadConn(state, road);
+function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObject): RoadCutResult | null {
+  const isIsolated = countRoadNeighbors(roads, road) === 0;
+  const conn = detectRoadConn(roads, road);
 
   if (isIsolated) {
     // Isolated: cycle raw, then every cut state × every direction — as an explicit
@@ -85,7 +87,7 @@ function nextValidRoadState(state: GridState, road: PlacedObject): RoadCutResult
     const canonical = CANONICAL_ROAD_STATES[nextIdx];
     const corners: Corners = canonical ? [...canonical] : ['square', 'square', 'square', 'square'];
     const actual = canonicalToActual(corners, conn);
-    if (validateCut(state, road.position.x, road.position.y, 'road', actual)) {
+    if (validateCut(state, roads, road.position.x, road.position.y, 'road', actual)) {
       return { corners };
     }
   }
@@ -97,6 +99,7 @@ export class EdgeCutTool implements Tool {
   readonly cursor: CursorId = 'edge-cut';
 
   onPointerDown(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    const roads = roadLookup(ctx.gridState);
     const strokeStart = ctx.getUndoStackSize();
     let acted = false;
     const sites: CutSite[] = []; // every cut site meeting this click — gamma fillets AND outer/island corners
@@ -140,7 +143,7 @@ export class EdgeCutTool implements Tool {
       // cosmetic gamma (patchBase 0) has no base, so it offers no outer cut.
       const hasRealBase = cellTerr && (!cellTerr.patchOnly || (cellTerr.patchBase ?? 0) >= 1);
       if (hasRealBase) {
-        const locked = computeLockedCorners(ctx.gridState, slot.cellX, slot.cellY, 'terrain');
+        const locked = computeLockedCorners(ctx.gridState, roads, slot.cellX, slot.cellY, 'terrain');
         if (!locked[slot.cornerIdx]) sites.push({ slot });
       } else if (!cellTerr && groundConvexCornerInWater(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx)) {
         sites.push({ slot });
@@ -151,9 +154,9 @@ export class EdgeCutTool implements Tool {
     // (0=off, 1=fan, 2=tri), so N sites visit all 3^N combinations independently, never in lockstep.
     if (this.cycleSites(sites, ctx)) acted = true;
 
-    const road = findRoadAt(ctx.gridState, coord.x, coord.y);
+    const road = roads(coord.x, coord.y);
     if (road) {
-      const next = nextValidRoadState(ctx.gridState, road);
+      const next = nextValidRoadState(ctx.gridState, roads, road);
       if (next) {
         // Carry any rotation change on the command (rather than mutating road.rotation
         // directly) so undo/redo restores it; applyCommand applies afterRotation.
@@ -270,6 +273,7 @@ export class EdgeCutTool implements Tool {
   }
 
   onPointerMove(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    const roads = roadLookup(ctx.gridState);
     let hasAny = false;
     for (const slot of getTerrainSlots(coord.x, coord.y)) {
       const cell = getCell(ctx.gridState.cells, slot.cellX, slot.cellY);
@@ -285,12 +289,14 @@ export class EdgeCutTool implements Tool {
       }
     }
     if (!hasAny) {
-      hasAny = !!findRoadAt(ctx.gridState, coord.x, coord.y);
+      hasAny = roads(coord.x, coord.y) !== null;
     }
     ctx.overlay.showGhost([coord], hasAny ? 0x22c55e : 0xff6b6b, false);
   }
 
   onPointerUp(_coord: MacroCoord, _micro: MicroCoord, _ctx: ToolContext): void {}
   onActivate(_ctx: ToolContext): void {}
-  onDeactivate(_ctx: ToolContext): void {}
+  onDeactivate(ctx: ToolContext): void {
+    ctx.overlay.clearGhost();
+  }
 }

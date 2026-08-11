@@ -52,7 +52,8 @@ export function markLegacyUnknown(state: GridState): void {
   }
   const objects = [...state.objects.values()].filter((o) => !o.locked).map((o) => ({ id: o.id, kind: 'create' as const }));
   if (cells.length || objects.length) tracker.record('create', cells, objects, { layers: [], zones: [] });
-  // Defense-in-depth: ProvSource.Imported already sets UNKNOWN via policy; restate it (+ origin Unknown) so legacy content stays 'unknown' even if the Imported policy changes.
+  // Pin UNKNOWN + origin Unknown directly, independent of what the Imported policy derives:
+  // legacy content stays 'unknown' even if that policy changes.
   for (const c of cells) { const t = tracker.state.cellTaint[c.y]![c.x]!; t.flags = setFlag(t.flags, TaintFlag.UNKNOWN); t.origin = ProvSource.Unknown; }
   for (const o of objects) { const t = tracker.state.objectTaint.get(o.id)!; t.flags = setFlag(t.flags, TaintFlag.UNKNOWN); t.origin = ProvSource.Unknown; }
   tracker.popSource();

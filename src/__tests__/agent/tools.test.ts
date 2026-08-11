@@ -7,11 +7,12 @@ import { getCatalogByCategory } from '../../state/catalog';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { executeToolCall, TOOL_SCHEMAS, SUBAGENT_TOOL_SCHEMAS, type AgentToolDeps } from '../../agent/tools';
 import { SKILLS } from '../../agent/skills';
+import { roadLookup } from '../../state/object-index';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry());
+  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
   let toastFired = 0;
   bus.on('validation-failed', () => {
     toastFired++;
@@ -185,6 +186,21 @@ describe('agent tools', () => {
     const ground = await executeToolCall(call('find_flat_areas', { minWidth: 4, minHeight: 4, near: { x: 13, y: 13 } }), deps);
     expect(ground.isError).toBe(false);
     expect(ground.content).not.toContain('(12,12)');
+  });
+
+  it('find_flat_areas excludes the cells a half-anchored deck covers, not just an integer footprint', async () => {
+    // A halfStep object (ramp/bridge) anchored at a fractional x covers macro cells (4,4) and
+    // (5,4) (footprintCells' floor/ceil expansion). The occupancy set the search builds used to
+    // add a fractional string key ("4.5,4") that an integer probe ("4,4") never matches, so a
+    // flat-area anchor at (4,4) came back offered even though a deck already stands on it.
+    const { state, deps } = setup(12, 12);
+    state.objects.set('d', { id: 'd', catalogId: 'nope', position: { x: 4.5, y: 4 }, width: 1, height: 1, rotation: 0, elevation: 0 });
+    const found = await executeToolCall(
+      call('find_flat_areas', { minWidth: 1, minHeight: 1, elevation: 0, near: { x: 4, y: 4 }, limit: 1 }),
+      deps,
+    );
+    expect(found.isError).toBe(false);
+    expect(found.content).not.toContain('(4,4)');
   });
 
   it('scatter_objects fills a region with valid placements in one undo step', async () => {

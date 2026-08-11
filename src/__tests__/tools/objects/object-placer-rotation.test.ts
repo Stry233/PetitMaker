@@ -13,10 +13,11 @@ import { TerrainType, type EditorEvents, type MacroCoord } from '../../../core/m
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
 import { useEditorStore } from '../../../state/store';
-import { COMMAND_BY_ID } from '../../../ui/keybindings/commands';
+import { COMMAND_BY_ID } from '../../../kit/commands';
+import { roadLookup } from '../../../state/object-index';
 
 const m = (x: number, y: number): MacroCoord => ({ x, y });
-const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry());
+const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
 const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
 // 7x4, rotatable, plain 'flat' trait only — big enough that a 90/270 rotation visibly swaps
@@ -86,8 +87,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     try {
       const state = makeState(30, 30);
       const ex = exec(state);
-      useEditorStore.setState({ placementRotation: 90 });
-      const ctx = makeToolCtx(state, ex);
+      const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: HOUSE, placementRotation: 90 });
 
       new ObjectPlacerTool().onPointerDown(m(10, 10), m(10, 10), ctx);
 
@@ -108,7 +108,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       const state = makeState(40, 40);
       const ex = exec(state);
       useEditorStore.setState({ placementRotation: 90 });
-      const ctx = makeToolCtx(state, ex);
+      const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: STALL, placementRotation: 90 });
 
       new ObjectPlacerTool().onPointerDown(m(5, 5), m(5, 5), ctx);
       // Rotation must still read 90 for the SECOND placement — placing does not reset it.
@@ -119,8 +119,10 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       expect(placed).toHaveLength(2);
       expect(placed.every((o) => o.rotation === 90)).toBe(true);
 
-      // Arming a different item starts fresh at its natural orientation.
-      useEditorStore.getState().setSelectedItemId(HOUSE);
+      // Arming a different item starts fresh at its natural orientation. Through `setEditMode`
+      // itself, not the `arm()` fixture helper (which hardcodes 0 regardless) — this is the actual
+      // reset path a real re-pick exercises, keyed on the PREVIOUS armed item (STALL) changing.
+      useEditorStore.getState().setEditMode({ mode: 'object', itemId: HOUSE });
       expect(useEditorStore.getState().placementRotation).toBe(0);
     } finally {
       reset();

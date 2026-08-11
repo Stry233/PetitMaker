@@ -1,0 +1,10 @@
+<!-- Generated art. Do not edit: change the design source and re-run the extractor. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="157" height="157" viewBox="0 0 157 157">
+  <mask id="cut-ellipse-3" maskUnits="userSpaceOnUse" x="0" y="0" width="157" height="157">
+    <path d="M 79 2 C 121.53 2 156 36.47 156 79 C 156 121.53 121.53 156 79 156 C 36.47 156 2 121.53 2 79 C 2 36.47 36.47 2 79 2 Z" fill="#FFF"/>
+    <path d="M 80 23 C 110.93 23 136 48.07 136 79 C 136 109.93 110.93 135 80 135 C 49.07 135 24 109.93 24 79 C 24 48.07 49.07 23 80 23 Z" fill="#000"/>
+  </mask>
+  <g id="ellipse-3" mask="url(#cut-ellipse-3)" opacity="0">
+    <path d="M 79 2 C 121.53 2 156 36.47 156 79 C 156 121.53 121.53 156 79 156 C 36.47 156 2 121.53 2 79 C 2 36.47 36.47 2 79 2 Z" fill="#4C4C4C"/>
+  </g>
+</svg>

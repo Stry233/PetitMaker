@@ -28,18 +28,18 @@ import {
 } from '../../core/model/types';
 import { getCell, rectsOverlap } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
-import { getCatalogItem } from '../../state/catalog';
+import { getCatalogItem, getRoadMaterials } from '../../state/catalog';
 import { localizedName } from '../../i18n/context';
 import { edgeCutGeneratedTerrain, edgeCutGeneratedRoads } from '../../tools/edge-cut/auto-edge-cut';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { validateCut } from '../../core/edge-cut/cut-validator';
+import { roadLookup } from '../../state/object-index';
 import { CORNER_POS, CORNER_COMPASS, type CornerPos } from '../../core/edge-cut/corner-index';
-import { objectRect, buildObjectOccupancy, coatingsUnder } from '../../state/object-geometry';
+import { objectRect, coatingsUnder } from '../../state/object-geometry';
 import { isCoating, hasTrait } from '../../core/model/traits';
-import { generateTerrain, clearAllObjects, clearAllTerrain } from '../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../tools/generation';
-import { populate } from '../../tools/generation/placement';
 import type { GenerateConfig } from '../../core/model/types';
+import type { KitContext } from '../../kit/context';
+import { generateMap } from '../../kit/operations';
 import { mapOverview, mapSummary, objectLine, regionTokens, selectionContext, REGION_CAP } from '../serialize';
 import { decorateZoneHandler, plantForestHandler, buildRoadNetworkHandler, frameCrossingHandler, THEMES } from './tools-director';
 import { SKILLS, listSkills } from '../skills';
@@ -355,7 +355,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        catalogId: { type: 'string', enum: ['road-dirt', 'road-stone'] },
+        catalogId: { type: 'string', enum: getRoadMaterials().map((i) => i.id) },
         line: {
           type: 'object',
           properties: { x1: { type: 'integer' }, y1: { type: 'integer' }, x2: { type: 'integer' }, y2: { type: 'integer' }, width: { type: 'integer', minimum: 1 } },
@@ -383,6 +383,8 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         nature: { type: 'number', minimum: 0, maximum: 1, description: 'Vegetation density (default 0.5).' },
         seed: { type: 'integer', description: 'Recipe id for reproducibility (random if omitted).' },
         rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Target area; falls back to the user selection, then the WHOLE MAP.' },
+        mazeEntrance: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: where the maze opens to let a walker in. Snapped to the nearest cell on the maze border. Omit both gates for two default openings on opposite sides.' },
+        mazeExit: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: the second opening, snapped the same way.' },
       },
     },
   },
@@ -573,7 +575,7 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
   const failures: string[] = [];
   let ok = 0;
   const smooth = input.smooth === 'off' ? 'off' : input.smooth === 'rect' ? 'rect' as const : 'round' as const;
-  const { reverted, violations } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
     for (const cell of cells) {
       const cmd = buildPlaceCmd(deps, catalogId, cell.x, cell.y, 0);
       if (typeof cmd === 'string') continue;
@@ -587,6 +589,7 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
       edgeCutGeneratedRoads({ gridState: deps.getState(), executeCommand: (c: Command) => exec.execute(c) }, cells, smooth);
     }
   });
+  if (outOfRegion) return outOfRegion;
   if (reverted) return { isError: true, content: `REVERTED, nothing changed:\n${formatErrors(violations)}` };
   if (ok > 0) deps.onFlash?.(cells);
   let msg = `Laid ${ok}/${cells.length} road cell(s).`;
@@ -620,7 +623,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   const exec = deps.getExecutor();
   const placedAt: MacroCoord[] = [];
   const failures: string[] = [];
-  const { reverted, violations } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
     for (const cell of pool) {
       if (placedAt.length >= count) break;
       if (spacing > 0 && placedAt.some((p) => Math.abs(p.x - cell.x) <= spacing && Math.abs(p.y - cell.y) <= spacing)) continue;
@@ -632,6 +635,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
       else failures.push(formatErrors(r.errors));
     }
   });
+  if (outOfRegion) return outOfRegion;
   if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
   if (placedAt.length > 0) deps.onFlash?.(placedAt);
   let why = placedAt.length < count && failures.length > 0 ? ` Most common rejections:\n${dedupe(failures).slice(0, 3).join('\n')}` : '';
@@ -649,7 +653,6 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
 
 async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
   const state = deps.getState();
-  const exec = deps.getExecutor();
   const algorithm = input.algorithm === 'maze' ? 'maze' : 'random';
   const rect = input.rect as { x1: number; y1: number; x2: number; y2: number } | undefined;
   const region: MacroCoord[] | null = rect
@@ -657,10 +660,13 @@ async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>)
     : deps.getRegion().length > 0
       ? [...deps.getRegion()]
       : null;
+  const entrance = (input.mazeEntrance as MacroCoord | undefined) ?? null;
+  const exit = (input.mazeExit as MacroCoord | undefined) ?? null;
   const config: GenerateConfig = {
     algorithm,
     mode: input.mode === 'earth' || input.mode === 'water' ? input.mode : 'mixed',
     corridorWidth: 1,
+    ...(entrance || exit ? { mazeGates: { entrance, exit } } : {}),
     maxElevation: clamp(Number(input.maxElevation) || 3, 1, algorithm === 'maze' ? 3 : 6),
     seed: Number.isFinite(Number(input.seed)) && input.seed !== undefined ? Number(input.seed) : Math.floor(Math.random() * 99999),
     region,
@@ -669,38 +675,22 @@ async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>)
     settlement: clamp(input.settlement !== undefined ? Number(input.settlement) : 0.5, 0, 1),
     nature: clamp(input.nature !== undefined ? Number(input.nature) : 0.5, 0, 1),
   };
-  // Mirror the Generate button's flow (App.tsx): clear objects, then terrain
-  // (region-scoped), then generate + populate — all silenced, one stroke group.
-  const { reverted, violations, result } = await runStrokeBody(deps, async () => {
-    clearAllObjects(state, (cmd) => exec.execute(cmd), region ?? undefined);
-    if (region) {
-      const occ = buildObjectOccupancy(state);
-      const regionCells = region.filter((coord) => {
-        const cell = getCell(state.cells, coord.x, coord.y);
-        return cell?.terrain && cell.zone === CellZone.Grass && !occ.has(`${coord.x},${coord.y}`);
-      });
-      if (regionCells.length > 0) {
-        exec.execute({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells: regionCells });
-      }
-    } else {
-      clearAllTerrain(state, (cmd) => exec.execute(cmd));
-    }
-    const r = generateTerrain(config, state, (cmd) => exec.execute(cmd));
-    if (config.algorithm === 'random') {
-      await populate(toGenConfig(config), state, (cmd) => exec.execute(cmd), exec.getRegistry(), undefined, r.zonePlan);
-    }
-    return r;
-  });
-  if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
+  const kit: KitContext = {
+    state,
+    executor: deps.getExecutor(),
+    registry: deps.getExecutor().getRegistry(),
+  };
+  const outcome = await generateMap(kit, { config, region });
+  if (outcome.violations.length > 0) return { isError: true, content: `REVERTED:\n${formatErrors(outcome.violations)}` };
   const scope = region ? `${region.length}-cell region` : 'whole map';
-  const flash: MacroCoord[] = region ?? [];
-  if (!region) {
-    for (let y = 0; y < state.template.height; y++) for (let x = 0; x < state.template.width; x++) flash.push({ x, y });
-  }
-  deps.onFlash?.(flash);
+  const g = outcome.mazeGates;
+  const gateNote = g
+    ? ` Maze gates (snapped to the border): entrance ${g.entrance ? `(${g.entrance.x},${g.entrance.y})` : 'none'}, exit ${g.exit ? `(${g.exit.x},${g.exit.y})` : 'none'}.`
+    : '';
+  deps.onFlash?.(outcome.cells);
   return {
     isError: false,
-    content: `Generated (${config.algorithm}, seed ${config.seed}) over the ${scope}: ${result.placed} terrain cell(s); objects now on map: ${state.objects.size}. Refine with inspect_region + the editing tools.`,
+    content: `Generated (${config.algorithm}, seed ${config.seed}) over the ${scope}: ${outcome.placed} terrain cell(s); objects now on map: ${state.objects.size}.${gateNote} Refine with inspect_region + the editing tools.`,
   };
 }
 
@@ -810,7 +800,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
   if (!item?.rotatable) return { isError: true, content: `${obj.catalogId} is not rotatable.` };
   const exec = deps.getExecutor();
   let failure: string | null = null;
-  const { reverted, violations } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
     const rm = exec.execute({
       ...removeObjectCommand(obj) });
     if (!rm.success) {
@@ -825,6 +815,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
       exec.execute(objectPlacementCommand(obj));
     }
   });
+  if (outOfRegion) return outOfRegion;
   if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
   if (failure) return { isError: true, content: `Rotation failed (object restored unchanged):\n${failure}` };
   return { isError: false, content: `Rotated ${obj.catalogId} to ${rotation} degrees.` };
@@ -834,9 +825,10 @@ function trimCorner(deps: AgentToolDeps, input: Record<string, unknown>): ToolRe
   const x = Number(input.x);
   const y = Number(input.y);
   const layer = input.layer === 'road' ? 'road' as const : 'terrain' as const;
-  const cell = getCell(deps.getState().cells, x, y);
+  const state = deps.getState();
+  const cell = getCell(state.cells, x, y);
   const roadObj = layer === 'road'
-    ? [...deps.getState().objects.values()].find((o) => getCatalogItem(o.catalogId)?.category === 'road' && o.position.x === x && o.position.y === y)
+    ? [...state.objects.values()].find((o) => getCatalogItem(o.catalogId)?.category === 'road' && o.position.x === x && o.position.y === y)
     : undefined;
   if (layer === 'terrain' && !cell?.terrain) return { isError: true, content: `No terrain at (${x},${y}) to trim.` };
   if (layer === 'road' && !roadObj) return { isError: true, content: `No road at (${x},${y}) to trim.` };
@@ -851,11 +843,12 @@ function trimCorner(deps: AgentToolDeps, input: Record<string, unknown>): ToolRe
   // same gates as the manual edge-cut tool: structural locks (incl. the
   // waterfall-frame policy) and edge-contact validity
   if (value !== 'square') {
-    const locked = computeLockedCorners(deps.getState(), x, y, layer);
+    const roads = roadLookup(state);
+    const locked = computeLockedCorners(state, roads, x, y, layer);
     if (locked[idx]) {
       return { isError: true, content: `Corner ${String(input.corner)} of (${x},${y}) is structurally locked (interior corner, water boundary, or waterfall frame) — it must stay square.` };
     }
-    if (!validateCut(deps.getState(), x, y, layer, after)) {
+    if (!validateCut(state, roads, x, y, layer, after)) {
       return { isError: true, content: `Trimming ${String(input.corner)} of (${x},${y}) to ${style} would break edge contact with a neighboring block.` };
     }
   }

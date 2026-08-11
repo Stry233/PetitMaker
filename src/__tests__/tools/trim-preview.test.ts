@@ -14,11 +14,12 @@ import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type AutoEdgeCut, type EditorEvents, type GridState, type MacroCoord } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { circleCells, rectCells } from '../../tools/paint/shapes';
+import { roadLookup } from '../../state/object-index';
 
 function world() {
   const state = makeState(30, 30);
   const registry = createDefaultRegistry();
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), registry);
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), registry, roadLookup(state));
   return { state, executor, rules: registry };
 }
 

@@ -17,12 +17,13 @@ import { getCatalogItem } from '../../../state/catalog';
 import { CellZone, TerrainType, type Command, type EditorEvents, type GenerateConfig, type GridState } from '../../../core/model/types';
 import { ELEVATION_MAX } from '../../../core/model/constants';
 import { categoryOf, isDecoration } from '../../../state/catalog';
+import { roadLookup } from '../../../state/object-index';
 
 const SIZE = 64;
 
 function build(mode: 'earth' | 'mixed', seed: number, naturalness?: number): { state: GridState; planned: number; violations: number } {
   const state = makeState(SIZE, SIZE);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   // Navigability/quality probes run at SIZE 64 / maxElev 6 — a tall (elev-8) massif needs more width
   // than a 64-cell square to stay navigable; the REAL-SCALE probe covers the full cap at 120 cells.
   const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null, ...(naturalness !== undefined ? { naturalness } : {}) };
@@ -40,7 +41,7 @@ function build(mode: 'earth' | 'mixed', seed: number, naturalness?: number): { s
  *  relief-scaled target peak clears crownMinPeak, which maxElev 6 never reaches. */
 function buildTall(mode: 'earth' | 'mixed', seed: number, naturalness: number): { state: GridState; violations: number } {
   const state = makeState(SIZE, SIZE);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: ELEVATION_MAX, seed, region: null, naturalness };
   exec.runSilently(() => {
     const r = generateTerrain(config, state, (c: Command) => exec.execute(c));
@@ -285,7 +286,7 @@ describe('design quality', () => {
     const BIG = 120;
     for (const seed of [4, 42]) {
       const state = makeState(BIG, BIG);
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       const config: GenerateConfig = { algorithm: 'random', mode: 'earth', corridorWidth: 1, maxElevation: ELEVATION_MAX, seed, region: null, relief: 1 };
       exec.runSilently(() => {
         const r = generateTerrain(config, state, (c: Command) => exec.execute(c));

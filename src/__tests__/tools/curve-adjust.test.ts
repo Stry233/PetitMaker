@@ -14,17 +14,19 @@ import {
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { CellZone, CommandType, TerrainType, type EditorEvents, type MacroCoord } from '../../core/model/types';
+import {
+  CellZone, CommandType, TerrainType, type AutoEdgeCut, type EditorEvents, type MacroCoord,
+} from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { makeToolCtx } from './_tool-ctx';
-import { useEditorStore } from '../../state/store';
+import { roadLookup } from '../../state/object-index';
 
 const MICRO = { x: 0, y: 0 };
 
-function world() {
+function world(autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(40, 40);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
-  const ctx = makeToolCtx(state, executor);
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const ctx = makeToolCtx(state, executor, 1, 1, { autoEdgeCut });
   const tool = new DrawingTool();
   tool.mode = 'curve';
   tool.contentType = 'mountain';
@@ -50,7 +52,6 @@ const painted = (state: ReturnType<typeof makeState>) =>
 
 afterEach(() => {
   __resetCurveSession();
-  useEditorStore.setState({ autoEdgeCut: 'off' });
 });
 
 describe('the session opens', () => {
@@ -416,8 +417,7 @@ describe('with auto edge-trim on', () => {
   it('leaves nothing behind on the old path, however far the curve is dragged', () => {
     // The trim pass sweeps the stroke AND its 8-neighbour border, so a tweak that only restored the
     // path itself left the border patches standing. Dragged back and forth they piled into a ridge.
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const { state, ctx, tool } = world();
+    const { state, ctx, tool } = world('round');
     draw(tool, ctx, [{ x: 6, y: 6 }, { x: 14, y: 14 }, { x: 22, y: 6 }]);
     const first = terrainCells(state);
     for (const y of [20, 8, 24, 6, 18]) moveCurveAnchor(1, 14, y, true);
@@ -428,8 +428,7 @@ describe('with auto edge-trim on', () => {
   it('does not let a leftover patch refuse the curve its own ground', () => {
     // A Γ patch left standing reads through the surface as its base, which is what made the
     // 3x3-support rule turn down cells that were perfectly buildable.
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const { state, ctx, tool } = world();
+    const { state, ctx, tool } = world('round');
     draw(tool, ctx, [{ x: 6, y: 10 }, { x: 14, y: 16 }, { x: 22, y: 10 }]);
     const fresh = painted(state);
     for (const y of [22, 12, 26]) moveCurveAnchor(1, 14, y, true);
@@ -439,8 +438,7 @@ describe('with auto edge-trim on', () => {
   });
 
   it('keeps a corner the user cut by hand beside the curve', () => {
-    useEditorStore.setState({ autoEdgeCut: 'round' });
-    const { state, ctx, tool } = world();
+    const { state, ctx, tool } = world('round');
     // A block off the path, with a corner rounded manually.
     ctx.executeCommand({
       type: CommandType.PaintTerrain, timestamp: Date.now(),

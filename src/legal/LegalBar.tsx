@@ -6,11 +6,11 @@
 // renders no row rather than a broken one.
 import type { CSSProperties } from 'react';
 import { useT } from '../i18n/context';
-import { useChromeScale } from '../ui/menu/scale';
-import { colors, font, radii, shadows } from '../ui/styles';
+import { useChromeScale } from '../ui/design/scale';
+import { colors, font, radii, shadows } from '../ui/design/styles';
 import { LEGAL } from './config';
 
-// Below every modal overlay (cozyOverlay in ui/styles.ts is zIndex 200) and
+// Below every modal overlay (cozyOverlay in ui/design/styles.ts is zIndex 200) and
 // below the floating zoom/undo cluster (100) so it never competes with real
 // chrome, but still above the base canvas.
 const BAR_Z_INDEX = 90;

@@ -130,7 +130,7 @@ describe('public-repo-manifest.md — internal block carries the critical entrie
     expect(isInternalPath('scripts/internal/render-cuts.py', manifest)).toBe(true);
     expect(isInternalPath('scripts/internal/render-model.py', manifest)).toBe(true);
     expect(isInternalPath('scripts/internal/render-export.py', manifest)).toBe(true);
-    expect(isInternalPath('scripts/internal/mock_build.py', manifest)).toBe(true);
+    expect(isInternalPath('scripts/internal/mock_layer.py', manifest)).toBe(true);
     expect(isInternalPath('scripts/internal/squircle.py', manifest)).toBe(true);
     // ...and the PUBLIC scripts at the scripts/ root are NOT internal:
     expect(isInternalPath('scripts/export-public-repo.mts', manifest)).toBe(false);
@@ -176,6 +176,28 @@ describe('repo hygiene — every tracked file is classified', () => {
     expect(
       conflicting,
       `paths matching BOTH a public and an internal glob (manifest conflict):\n${conflicting.join('\n')}`
+    ).toEqual([]);
+  });
+});
+
+describe('repo hygiene — no source file hides from text search', () => {
+  // grep and ripgrep classify a file containing a NUL byte as binary and print no matching lines
+  // from it, so such a file answers no text search over the repo — including the searches the
+  // guards in this suite and every audit are run with. Binary assets carry NUL bytes legitimately
+  // and are the only exemption.
+  const BINARY_EXT = /\.(?:png|jpg|woff2)$/;
+
+  it('no tracked file under src/, scripts/ or security/ contains a NUL byte', () => {
+    const scanned = gitTrackedFiles().filter(
+      (p) => /^(?:src|scripts|security)\//.test(p) && !BINARY_EXT.test(p),
+    );
+    expect(scanned.length).toBeGreaterThan(100); // the scan is real, not an empty filter
+    const offenders = scanned.filter((p) => (readFileSync(p) as unknown as Uint8Array).includes(0));
+    expect(
+      offenders,
+      'a NUL byte makes grep and ripgrep read the file as binary, so it returns no matches and '
+      + 'goes missing from every text search over the repo. Write the byte as an escape — or, for '
+      + `a newly tracked binary asset format, add its extension to BINARY_EXT:\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
 });

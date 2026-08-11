@@ -13,34 +13,24 @@
  */
 import { showToast } from '../../core/runtime/toast-bus';
 import { translate } from '../../i18n/context';
-
-const SEEN_KEY = 'petit.navGestureHintSeen';
+import { readPref, writePref, PREFS } from '../../core/runtime/prefs';
 
 let shownThisSession = false;
 
 function alreadySeen(): boolean {
-  if (shownThisSession) return true;
-  try {
-    return localStorage.getItem(SEEN_KEY) === '1';
-  } catch {
-    return false; // private mode / storage denied: the session guard above still holds it to once
-  }
+  return shownThisSession || readPref('navGestureHint');
 }
 
 /** Report a nav drag that was taken by something outside the page. */
 export function noteNavGestureLost(): void {
   if (alreadySeen()) return;
   shownThisSession = true;
-  try {
-    localStorage.setItem(SEEN_KEY, '1');
-  } catch {
-    // Not being able to remember is not a reason to stay silent now.
-  }
+  writePref('navGestureHint', true);
   showToast(translate('nav.gesture_taken'), 'warning');
 }
 
 /** Test-only: forget that the hint was shown. */
 export function __resetNavGestureHint(): void {
   shownThisSession = false;
-  try { localStorage.removeItem(SEEN_KEY); } catch { /* nothing to forget */ }
+  try { localStorage.removeItem(PREFS.navGestureHint.key); } catch { /* nothing to forget */ }
 }

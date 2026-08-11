@@ -18,8 +18,8 @@ import {
   type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
-import { getCell, getFootprint, isBuildableZone } from '../core/model/grid-model';
-import { getPlacedObjectSize } from '../state/object-geometry';
+import { getCell, isBuildableZone } from '../core/model/grid-model';
+import { coveredCells, getPlacedObjectSize } from '../state/object-geometry';
 
 function extractCells(cmd: Command): MacroCoord[] {
   switch (cmd.type) {
@@ -44,13 +44,19 @@ export const zoneRestrictionRule: PreCommandRule = {
 
     // PlaceObject: EVERY cell the (rotated) footprint covers must be buildable,
     // not just the top-left anchor. Cells off the map (getCell null) are open
-    // sea — treated as illegal, so an object can't hang over the void.
+    // sea — treated as illegal, so an object can't hang over the void. The
+    // footprint is swept as COVERED cells: this rule runs after V-PLACE-TRAIT,
+    // which may have snapped a halfStep item onto a half cell, and `pos + integer
+    // offset` from a half origin names cells that do not exist — every lookup
+    // would come back null and reject the placement outright.
     if (cmd.type === CommandType.PlaceObject) {
       const { w, h } = getPlacedObjectSize(cmd.object);
-      for (const coord of getFootprint(cmd.object.position.x, cmd.object.position.y, w, h)) {
-        const cell = getCell(state.cells, coord.x, coord.y);
-        if (!cell || !isBuildableZone(cell.zone)) {
-          errors.push({ ruleId: 'V-ZONE-01', message: 'error.zone_restricted', cells: [coord], severity: 'error' });
+      for (const cy of coveredCells(cmd.object.position.y, h)) {
+        for (const cx of coveredCells(cmd.object.position.x, w)) {
+          const cell = getCell(state.cells, cx, cy);
+          if (!cell || !isBuildableZone(cell.zone)) {
+            errors.push({ ruleId: 'V-ZONE-01', message: 'error.zone_restricted', cells: [{ x: cx, y: cy }], severity: 'error' });
+          }
         }
       }
       return errors;

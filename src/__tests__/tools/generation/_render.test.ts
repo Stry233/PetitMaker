@@ -14,12 +14,13 @@ import { populate } from '../../../tools/generation/placement';
 import { objectRect } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
+import { roadLookup } from '../../../state/object-index';
 
 const SIZE = 80;
 
 function gen(mode: 'earth' | 'water' | 'mixed', seed: number, relief: number, label: string, row: number, col: number) {
   const state = makeState(SIZE, SIZE);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry());
+  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = {
     algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null,
     relief, waterAmount: 0.5, rivers: 0.4, flatness: 0.5, settlement: 0.7, nature: 0.7,

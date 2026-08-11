@@ -12,7 +12,7 @@ import { render, screen } from '@testing-library/react';
 import { LegalBar } from '../../legal/LegalBar';
 import { I18nProvider } from '../../i18n/context';
 import { LEGAL } from '../../legal/config';
-import { colors } from '../../ui/styles';
+import { colors } from '../../ui/design/styles';
 import { setStoreState } from '../_store';
 
 // WCAG 2.x relative-luminance contrast (same formula as a11y.test.tsx).
