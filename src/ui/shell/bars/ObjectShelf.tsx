@@ -32,12 +32,13 @@
  * is taken back off, so the name tracks the tile it belongs to while the row moves under it.
  */
 import {
-  useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties,
+  useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties,
 } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { ItemCategory } from '../../../core/model/types';
+import type { CatalogItem } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
-import { getCatalogItem } from '../../../state/catalog';
+import { getCatalogByCategory, getCatalogItem } from '../../../state/catalog';
 import { subscribeMapStats } from '../../../state/map-stats';
 import { getObjectIndex } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
@@ -115,15 +116,28 @@ function patchIdFor(category: ItemCategory): MacroId | null {
  * notch from the frame's. It has to be a WRAPPER rather than a provider inside the body, because
  * the body itself reads `usePx` for the row's own measurements.
  */
-export function ObjectShelf() {
+/**
+ * `only` narrows what the row offers, for a caller that can use some items and not others.
+ *
+ * `pick` turns the shelf into a CHOOSER rather than the placement shelf: a press reports the item and
+ * arms nothing. Without it a card writes `editMode`, which arms the placer and lights the object block
+ * in the mode row — right when the shelf IS the placement tool, wrong when it is standing in for
+ * another surface to answer one question, exactly as the scope screen is not really the terrain bar.
+ */
+export interface ObjectShelfProps {
+  only?: (item: CatalogItem) => boolean;
+  pick?: { current: string | null; onPick: (catalogId: string) => void };
+}
+
+export function ObjectShelf({ only, pick }: ObjectShelfProps = {}) {
   return (
     <ScaleProvider value={SHELF_SCALE}>
-      <ObjectShelfBody />
+      <ObjectShelfBody only={only} pick={pick} />
     </ScaleProvider>
   );
 }
 
-function ObjectShelfBody() {
+function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
   const { px, fw, scale } = usePx();
   const nameMotion = useMotion('item.name.reach');
   const swapMotion = useMotion('shelf.category.swap');
@@ -177,7 +191,13 @@ function ObjectShelfBody() {
   );
   const counts = gridState ? getObjectIndex(gridState).countByCatalog : null;
 
-  const items = shelfItems(query, category, locale);
+  const all = shelfItems(query, category, locale);
+  const items = only ? all.filter(only) : all;
+  /** The categories that still hold something under `only`. */
+  const shownTabs = useMemo(
+    () => (only ? TABS.filter((tab) => getCatalogByCategory(tab.category).some(only)) : TABS),
+    [only],
+  );
   const searching = query.trim().length > 0;
   const patchId = patchIdFor(category);
   const rowFade = useScrollFade(rowRef, 'x');
@@ -262,7 +282,10 @@ function ObjectShelfBody() {
       >
         <ShelfTabs
           label={t('mode.object')}
-          tabs={TABS.map((tab) => ({ id: tab.category, label: t(tab.labelKey) }))}
+          // A NARROWED shelf shows only the categories it still has something in: a name over an
+          // empty row is a promise of items that were filtered out, and the visitor cannot tell the
+          // difference between "nothing here" and "nothing loaded".
+          tabs={shownTabs.map((tab) => ({ id: tab.category, label: t(tab.labelKey) }))}
           active={searching ? null : category}
           // Switching category puts down whatever the shelf is carrying that does not belong to it
           // (an item card or a planting macro): the row that could put it away is the one about to
@@ -376,7 +399,10 @@ function ObjectShelfBody() {
                 in the two categories it plants — trees and flowers — since a patch of buildings or
                 bridges is not a thing the placement rules would ever accept; and not in a search,
                 since a query names items and this is not one. */}
-            {!searching && patchId ? (
+            {/* A NARROWED shelf offers no planting card either. `only` is a caller saying which
+                ITEMS it can use, and a patch is not an item at all: it is a press that designs its
+                own, which a letter cannot be tiled with. */}
+            {!searching && patchId && !only ? (
               <SmartCard
                 selected={armedMacro === patchId}
                 onToggle={() => setEditMode({
@@ -391,11 +417,13 @@ function ObjectShelfBody() {
                 key={item.id}
                 item={item}
                 placed={counts?.get(item.id) ?? 0}
-                selected={selectedItemId === item.id}
-                onToggle={() => setEditMode({
-                  mode: 'object',
-                  itemId: selectedItemId === item.id ? null : item.id,
-                })}
+                selected={pick ? pick.current === item.id : selectedItemId === item.id}
+                onToggle={() => {
+                  // A chooser REPORTS. Arming here would put the map under a placement cursor and
+                  // light the object block, for a press that was answering a generator's question.
+                  if (pick) { pick.onPick(item.id); return; }
+                  setEditMode({ mode: 'object', itemId: selectedItemId === item.id ? null : item.id });
+                }}
                 onReach={setReached}
               />
             ))}

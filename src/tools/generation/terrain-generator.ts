@@ -5,7 +5,9 @@ import type { ZonePlan } from './types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { buildObjectOccupancy, objectRect } from '../../state/object-geometry';
 import { generateMaze } from './maze-generator';
-import { edgeCutGeneratedTerrain } from '../edge-cut/auto-edge-cut';
+import { runStencilPlan } from './stencil-generator';
+import { edgeCutGeneratedTerrain, edgeCutTerrainWith } from '../edge-cut/auto-edge-cut';
+import { stencilChooser } from './stencil-trim';
 import { generationCutMode } from './style';
 import type { GenerateConfig } from '../../core/model/types';
 import { removeObjectCommand } from '../objects/object-placer';
@@ -37,6 +39,31 @@ export function generateTerrain(
     case 'maze': {
       const { placed, skipped, gates, walk } = generateMaze(state, config.seed, config.maxElevation, config.corridorWidth ?? 1, config.region, executeCommand, config.mazeGates);
       return { placed, skipped, overwritten: 0, mazeGates: gates, ...(walk ? { mazeWalk: walk } : {}) };
+    }
+    case 'stencil': {
+      // A picture the shell rasterized. Nothing here reaches for a canvas, which is what lets this
+      // run in the candidate worker alongside every other kind.
+      if (!config.stencilPlan) return { placed: 0, skipped: 0, overwritten: 0 };
+      const { placed, skipped } = runStencilPlan(state, config.stencilPlan, config.maxElevation, executeCommand);
+      // TRIM IS PART OF THE APPROXIMATION. A stencil is quantised to whole cells, so its outline is
+      // a staircase; the cut pass recovers the diagonal the letter's stroke or the picture's edge
+      // had. Each corner's shape comes from the source's sub-cell coverage (`stencil-trim.ts`); a
+      // stencil with no quadrant detail takes the whole-pass round mode.
+      const { origin, stencil } = config.stencilPlan;
+      const touched: MacroCoord[] = [];
+      for (let y = 0; y < stencil.height; y++) {
+        for (let x = 0; x < stencil.width; x++) {
+          const c = { x: origin.x + x, y: origin.y + y };
+          const t = getCell(state.cells, c.x, c.y)?.terrain;
+          if (t && (t.type === TerrainType.Mountain || t.type === TerrainType.Water)) touched.push(c);
+        }
+      }
+      if (touched.length) {
+        const pick = stencilChooser(origin, stencil);
+        if (pick) edgeCutTerrainWith({ gridState: state, executeCommand }, touched, pick);
+        else edgeCutGeneratedTerrain({ gridState: state, executeCommand }, touched, 'round');
+      }
+      return { placed, skipped, overwritten: 0 };
     }
     case 'random':
     default: {

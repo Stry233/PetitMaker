@@ -33,6 +33,27 @@ describe('waterfall-side corner locking', () => {
     expect(east[3]).toBe(true);
   });
 
+  it('locks the falling water itself whole: no corner of a face cell is cuttable', () => {
+    // Issue #8: the drop side was locked but the lip's corners AWAY from the flow — against its
+    // back wall and caps, which pin nothing (not same-type) and drop nothing — were offered, and
+    // cutting them rounded the back of the fall.
+    const state = waterfallSouth();
+    const lip = computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain');
+    expect(lip).toEqual([true, true, true, true]);
+  });
+
+  it('an elevated pool with no face still rounds against its rim', () => {
+    // A rimmed pool: water at 1 enclosed by mountain@1 on all sides. No drop → no face → the
+    // ordinary geometry stands, and the pool's corners against the rim stay free.
+    const state = makeState(12, 12);
+    setTerrain(state, 5, 5, TerrainType.Water, 1);
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 1);
+    }
+    const locked = computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain');
+    expect(locked).toEqual([false, false, false, false]);
+  });
+
   it('a plain mountain beside non-waterfall water keeps its ground-side corners free', () => {
     const state = makeState(12, 12);
     // ground-level lake: not a waterfall (no lower neighbor face)

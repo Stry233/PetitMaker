@@ -20,7 +20,8 @@
  *
  * IT ALSO SAYS WHEN IT DOES NOT APPLY. A rectangle and a circle are laid to the size they are
  * dragged out to and the trimmer takes one corner, so for those three there is no width for this to
- * set (`terrain-cells.ts:ToolCell.sized`). It stays on the row, dimmed and refusing, because a
+ * set (`terrain-cells.ts:ToolCell.sized`) — nor for the ERASER once its own shape is one of the
+ * same two figures. It stays on the row, dimmed and refusing, because a
  * control that vanished would reflow the row on every tool change and one that stayed live-looking
  * would be a lie.
  *
@@ -42,7 +43,7 @@ import { useEditorStore } from '../../../state/store';
 import { tourTargetAttr } from '../../chrome/tour/steps';
 import { UNAVAILABLE, z } from '../../design/styles';
 import { EDGE_RIGHT, QUAD, SCALE } from '../units';
-import { BarText } from './bar-atoms';
+
 import { BrushSizeSlider } from './BrushSizeSlider';
 import { RoadStyles } from './RoadStyles';
 import { SmartBuild } from './SmartBuild';
@@ -123,12 +124,16 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const brushSize = useEditorStore((s) => s.brushSize);
   const setBrushSize = useEditorStore((s) => s.setBrushSize);
+  const eraserShape = useEditorStore((s) => s.eraserShape);
   const active = activeCellId(editMode.tool, editMode.shape);
   // A rectangle, a circle and the trimmer lay a figure of their own size, so while one of them is
   // armed the slider has nothing to set. With NOTHING armed it stays live: the width is the store's
   // and it is what the next tool picked up will lay at.
   const armed = TOOL_CELLS.find((cell) => cell.id === active);
-  const sized = !armed || armed.sized === true;
+  // The eraser is `sized` for its DAB and not for its two drag shapes, which are taken at whatever
+  // size they were dragged out to — the same reason the rectangle and circle cells are not.
+  const dragShaped = armed?.eraserShape === true && eraserShape !== 'dot';
+  const sized = !armed || (armed.sized === true && !dragShaped);
 
   return (
     <div
@@ -194,9 +199,9 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
             opacity: sized ? 1 : UNAVAILABLE,
           }}
         >
-          <BarText size={READOUT_SIZE} onMap weight={900}>
-            {t(brushSize === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: brushSize })}
-          </BarText>
+          {/* The reading rides the KNOB now (`BarSlider`), so the row keeps only the control. A
+              number standing permanently beside a track is read once and never again, and it was the
+              widest thing on this end of the bar. */}
           <BrushSizeSlider value={brushSize} onChange={setBrushSize} disabled={!sized} />
         </div>
       </div>

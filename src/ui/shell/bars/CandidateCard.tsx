@@ -30,7 +30,7 @@ import { btnReset, buttonMotion, cursors } from '../../design/styles';
 import { ACTIVE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
-import { CARD, CHOSEN, SEED_DIGITS } from './generate-shelf';
+import { CARD, CHOSEN, SEED_DIGITS, TEXT_MAX_CHARS } from './generate-shelf';
 
 import cardPlate from '../../../assets/shell/shelf-generate/candidates/roundrect-1.svg';
 import picturePlate from '../../../assets/shell/shelf-generate/candidates/roundrect-2.svg';
@@ -244,6 +244,18 @@ export function CardFace({ shot, waited, placeholder }: {
 
 interface Props {
   seed: number;
+  /**
+   * Why this card has no picture, where there is a reason worth saying.
+   *
+   * The empty frame IS the place for it: a card that cannot be built shows an empty frame anyway, and
+   * a notice standing anywhere else is one more thing on a bar with no room, pushing everything below
+   * it off the screen. Shown only while there is no picture -- a card that built something has
+   * nothing to explain.
+   */
+  note?: string;
+  /** What this card is, where that is not a recipe number: the letter it builds, or the picture's
+   *  name. A picture kind is deterministic, so the card IS its own recipe. */
+  name?: string;
   /** The photograph; `undefined` while it is still being taken, `null` where there was no renderer
    *  to take one with. A card with no picture is still a card: it names its recipe and it builds
    *  it, so what it shows then is its own empty frame rather than dots that will never stop. */
@@ -256,10 +268,12 @@ interface Props {
   onSelect: () => void;
 }
 
-export function CandidateCard({ seed, shot, selected, failed, landing, onSelect }: Props) {
+export function CandidateCard({ seed, name, note, shot, selected, failed, landing, onSelect }: Props) {
   const waited = useRef(shot === undefined);
   const t = useT();
-  const label = t('gen.recipe', { n: seed });
+  // A picture kind's card IS what it shows -- the letter, or the picture's name -- so it names
+  // itself with that rather than with a recipe number it does not have.
+  const label = name ?? t('gen.recipe', { n: seed });
 
   return (
     <motion.button
@@ -267,7 +281,7 @@ export function CandidateCard({ seed, shot, selected, failed, landing, onSelect 
       {...buttonMotion}
       aria-label={label}
       aria-pressed={selected}
-      data-testid={`shell-candidate-${seed}`}
+      data-testid={`shell-candidate-${name ?? seed}`}
       onClick={onSelect}
       style={{
         ...btnReset, ...BOX, cursor: cursors.clickable, pointerEvents: 'auto',
@@ -275,7 +289,17 @@ export function CandidateCard({ seed, shot, selected, failed, landing, onSelect 
     >
       {/* Drawn first, so the card's own plate covers all of it but the margin. */}
       {selected ? <ChosenPlate /> : null}
-      <CardFace shot={shot} waited={waited.current} />
+      <CardFace
+        shot={shot}
+        waited={waited.current}
+        {...(note && !shot ? {
+          placeholder: (
+            <BarText size={TEXT.small} color={PLATE_INK} weight={700}>
+              <span style={{ display: 'block', padding: '0 8%', textAlign: 'center', whiteSpace: 'normal' }}>{note}</span>
+            </BarText>
+          ),
+        } : {})}
+      />
       {landing ? <Landing /> : null}
 
       {/* The card's own line: which recipe it is, or — briefly, after a click that did not reach
@@ -288,9 +312,85 @@ export function CandidateCard({ seed, shot, selected, failed, landing, onSelect 
   );
 }
 
+/**
+ * The picture kind's own card: the same card, with an IMPORT where the field would be.
+ *
+ * A picture has nothing to type, so what the empty slot offers is the way to fetch one. Once a file
+ * is in, the card is a candidate like any other — the picture, the click that lands it, and the
+ * file's own name on the line, which is both the reading of what was chosen and the way to choose
+ * again.
+ */
+export function ImportCard({ name, shot, selected, failed, landing, onPick, onSelect }: {
+  /** A name for the chosen picture, already made readable by the caller. Null while none is chosen. */
+  name: string | null;
+  shot: string | null | undefined;
+  selected: boolean;
+  failed?: boolean;
+  landing?: boolean;
+  onPick: () => void;
+  onSelect: () => void;
+}) {
+  const t = useT();
+  const waited = useRef(shot === undefined);
+  return (
+    <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-import">
+      {selected ? <ChosenPlate /> : null}
+      {/* THE SAME FACE EVERY CARD WEARS. It was drawn as a bare button first, which left it the one
+          card on the row with no plate and no picture frame — plainly a different kind of thing on a
+          row whose whole point is that it is not. The empty frame carries the mark instead. */}
+      <CardFace
+        shot={shot}
+        waited={waited.current}
+        placeholder={<BarText size={GIANT_SIZE} color={MUTED_INK} weight={900}>+</BarText>}
+      />
+      {/* The picture itself is the click that lands the run, once there is one; empty, the whole
+          frame is the way to fetch one. */}
+      <motion.button
+        type="button"
+        {...buttonMotion}
+        aria-label={name ? t('gen.import_change') : t('gen.import_pick')}
+        onClick={name && shot ? onSelect : onPick}
+        style={{ ...btnReset, ...PICTURE, borderRadius: PICTURE_CORNER, cursor: cursors.clickable, background: 'transparent' }}
+      />
+      {landing ? <Landing /> : null}
+      <span style={{ ...LINE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <motion.button
+          type="button"
+          {...buttonMotion}
+          aria-label={t('gen.import_change')}
+          onClick={onPick}
+          // Every box between the pill and the ellipsis span carries `minWidth: 0`: a flex item's
+          // min-width defaults to its content, so without it a long filename widens the chain right
+          // out of the card and the ellipsis never fires.
+          style={{
+            ...btnReset, height: '100%', maxWidth: '86%', minWidth: 0, padding: `0 ${FIELD_PAD}px`, borderRadius: 999,
+            background: PLATE, cursor: cursors.clickable, display: 'flex', alignItems: 'center', overflow: 'hidden',
+          }}
+        >
+          <BarText size={TEXT.small} color={PLATE_INK} style={{ minWidth: 0, maxWidth: '100%' }}>
+            <span style={{ display: 'block', minWidth: 0, maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {failed ? t('gen.failed') : name ?? t('gen.import_pick')}
+            </span>
+          </BarText>
+        </motion.button>
+      </span>
+    </div>
+  );
+}
+
 interface CustomProps {
+  /**
+   * What the field takes. `number` is the recipe number the island kinds are drawn from; `glyph` is
+   * a single character — a letter, a digit, an emoji — for the kinds that build the SHAPE of what is
+   * typed, where the input IS the recipe and there is nothing random left to name.
+   */
+  field?: 'number' | 'glyph';
   /** The number the visitor gave this card, or null while it has none. */
   seed: number | null;
+  /** `glyph` field only: the character they gave it, or null while it has none. */
+  glyph?: string | null;
+  /** What this card is called. A picture kind has no RECIPE to name, so the caller says. */
+  title?: string;
   /** What is being typed, or null when the field is showing whatever `seed` is. */
   draft: string | null;
   shot: string | null | undefined;
@@ -332,20 +432,23 @@ interface CustomProps {
  * alone is invisible.
  */
 export function CustomCard({
-  seed, draft, shot, selected, failed, landing, onDraft, onCommit, onEdit, onSelect,
+  field = 'number', seed, glyph = null, title, draft, shot, selected, failed, landing,
+  onDraft, onCommit, onEdit, onSelect,
 }: CustomProps) {
+  const isGlyph = field === 'glyph';
   const t = useT();
   const flip = useMotion('candidate.custom.flip');
-  const name = t('gen.custom');
+  const name = title ?? t('gen.custom');
   /** Whether the hidden input actually holds focus right now: the one fact that tells the empty
    *  slot whether to show the hint (nobody is here) or the caret alone (somebody just arrived and
    *  has not typed yet). */
   const [focused, setFocused] = useState(false);
   /** The field is showing whenever there is no number yet, or the number is being typed over. */
-  const typing = seed === null || draft !== null;
+  const value = isGlyph ? glyph : (seed === null ? null : String(seed));
+  const typing = value === null || draft !== null;
   /** What is standing in the frame right now — the confirm pill and the giant digits both read
    *  this, since there is nothing to confirm or to enlarge about an empty field. */
-  const typed = draft ?? (seed === null ? '' : String(seed));
+  const typed = draft ?? value ?? '';
 
   return (
     <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-custom">
@@ -367,13 +470,18 @@ export function CustomCard({
           >
             <input
               type="text"
-              inputMode="numeric"
+              inputMode={isGlyph ? 'text' : 'numeric'}
               autoFocus={seed !== null}
               value={typed}
               // As many digits as the GENERATOR takes, which is a uint32 and not the five the
               // drawing captions a card with. A field that silently refuses a sixth digit teaches
               // that the app is broken.
-              onChange={(e) => onDraft(e.target.value.replace(/\D/g, '').slice(0, SEED_DIGITS))}
+              // A glyph field is capped in CODE POINTS, not UTF-16 units: an emoji is two of the
+              // latter and several more once a skin tone or a zero-width joiner is in it, so a plain
+              // slice would cut a face in half. `[...text]` walks code points.
+              onChange={(e) => onDraft(isGlyph
+                ? [...e.target.value].slice(0, TEXT_MAX_CHARS).join('')
+                : e.target.value.replace(/\D/g, '').slice(0, SEED_DIGITS))}
               onKeyDown={(e) => { if (e.key === 'Enter') onCommit(); }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
@@ -480,7 +588,7 @@ export function CustomCard({
             }}
           >
             <BarText size={TEXT.small} color={PLATE_INK}>
-              {failed ? t('gen.failed') : `#${seed} ${EDIT_MARK}`}
+              {failed ? t('gen.failed') : `${isGlyph ? glyph : `#${seed}`} ${EDIT_MARK}`}
             </BarText>
           </motion.button>
         </span>

@@ -4,6 +4,18 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.28] - 2026-08-11
+
+### Added
+
+- **An island from a letter, or from a picture.** Letter and Picture join the Generate shelf: hand one a character or an image and it builds that shape as an island, down to reading each corner's trim off the source's own outline. The figure can be grabbed and moved inside its region before it builds, and a shape that cannot fit the region says so instead of spilling.
+- **The painted region can be picked up and carried whole**, and in 3D it drapes over the ground it is lying on.
+
+### Fixed
+
+- **Falling water refuses the corner trim.** A waterfall's face locks as one piece, so an edge cut can no longer nick the fall at any height.
+- **The placement ghost reads against a cliff.** The 3D view draws it yellow, so it no longer disappears into the green of a slope behind it.
+
 ## [0.5.550] - 2026-08-11
 
 ### Added

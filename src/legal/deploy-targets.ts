@@ -59,8 +59,8 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     psbUrl: null,
   },
   // Aliyun, for mainland users. Chinese leads, and the filing rows are the legal requirement for
-  // serving from there at all — they stay null until the filing is granted, and the release
-  // validator refuses a production build that still has a half-filled pair.
+  // serving from there at all. The PSB pair stays null until that filing is granted, and the
+  // release validator refuses a production build with a half-filled pair.
   cn: {
     id: 'cn',
     htmlLang: 'zh-CN',
@@ -68,7 +68,7 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     description: ZH_DESCRIPTION,
     canonicalOrigin: 'https://petitmaker.com.cn',
     legacyOrigins: [],
-    icpNumber: null,
+    icpNumber: '浙ICP备2026062928号-1',
     icpUrl: 'https://beian.miit.gov.cn/',
     psbNumber: null,
     psbUrl: null,

@@ -19,7 +19,7 @@
  * would keep showing eight after the grid learned a ninth layer.
  */
 import { ELEVATION_MAX } from '../../../core/model/constants';
-import type { GenerateAlgorithm, GenerateConfig, MazeGates } from '../../../core/model/types';
+import type { GenerateAlgorithm, GenerateConfig, MazeGates, StencilPlan } from '../../../core/model/types';
 import { EDGE, EDGE_RIGHT, RAIL, SHELF_SCALE, SHELF_TABS } from '../units';
 import type { SliderShape } from './BarSlider';
 import { DARK_PLATE } from '../../design/tokens';
@@ -32,28 +32,110 @@ import { DARK_PLATE } from '../../design/tokens';
  * generator gives it no water at all), `water` is flat islands in a wide sea, `mixed` is both, and
  * `maze` is walls and corridors.
  */
-export type GenerateKind = GenerateConfig['mode'] | 'maze';
+export type GenerateKind = GenerateConfig['mode'] | 'maze' | 'text' | 'image';
 
 export interface GenerateTab {
   id: GenerateKind;
   labelKey: string;
 }
 
+/**
+ * The order is the row of names, left to right, and it is a running order rather than a taxonomy:
+ * the kinds that make a WHOLE PLACE from one press lead, and the three terrain flavours (which
+ * differ from each other only in how much of the island is water) sit together at the end.
+ */
 export const TABS: readonly GenerateTab[] = [
+  { id: 'maze', labelKey: 'generate.algo_maze' },
+  { id: 'text', labelKey: 'gen.kind_text' },
+  { id: 'image', labelKey: 'gen.kind_image' },
   { id: 'earth', labelKey: 'gen.terrain_earth' },
   { id: 'water', labelKey: 'gen.terrain_water' },
   { id: 'mixed', labelKey: 'gen.terrain_mixed' },
-  { id: 'maze', labelKey: 'generate.algo_maze' },
 ];
 
 /** Which generator a kind runs, and which of its own modes. The engine keeps the two apart — a maze
  *  has no terrain mode of its own — so the split happens here, at the one place a kind is read. */
 export function algorithmFor(kind: GenerateKind): GenerateAlgorithm {
-  return kind === 'maze' ? 'maze' : 'random';
+  if (kind === 'maze') return 'maze';
+  if (kind === 'text' || kind === 'image') return 'stencil';
+  return 'random';
+}
+
+/** The kinds that build from a PICTURE the shell rasterizes, rather than from a seed alone. */
+export function isStencilKind(kind: GenerateKind): boolean {
+  return kind === 'text' || kind === 'image';
+}
+
+/**
+ * The smallest painted region each picture kind will work in, as cells on the shorter side.
+ *
+ * A stencil is exactly as many cells as the region it fills, so the region IS the resolution: below
+ * some size a letter stops being the letter and a photograph stops being the photograph. The two
+ * numbers differ because the two modes need different amounts of it — a glyph is one bold shape and
+ * survives coarse treatment, a picture is detail everywhere and does not.
+ *
+ * Provisional, and meant to be moved once there is a feel for the results.
+ */
+export const STENCIL_MIN_SIDE: Record<'text' | 'image', number> = { text: 16, image: 32 };
+
+/** What a letter is built OUT of. Three materials rather than a shape setting: the choice is what
+ *  the island is made of, and only the mountain has a height to argue about. */
+export type StencilFillKind = 'mountain' | 'water' | 'object';
+/**
+ * What each kind may be built OUT of — the same three choices, meaning what each kind can mean by
+ * them. A LETTER is a shape: raised as mountain, sunk as water, or tiled with a PICKED item. A
+ * PICTURE is colour: `mountain` is the green ramp alone, `water` lets the blue join the palette so a
+ * blue-ish area becomes a real pond, and `object` matches every cell against the catalogue's own
+ * colours — automatically, since the picture picks its items itself.
+ */
+export const FILL_KINDS: readonly StencilFillKind[] = ['mountain', 'water', 'object'];
+
+/** What each material is called. A table, not a key assembled at runtime: an assembled key is one no
+ *  search finds and no missing-string check can enumerate. */
+export const FILL_KEY: Record<StencilFillKind, string> = {
+  mountain: 'gen.fill_mountain',
+  water: 'gen.fill_water',
+  object: 'gen.fill_object',
+};
+
+
+
+/** Only a mountain letter has a height, so only it lets the layer knob do anything. A picture's
+ *  lower slot carries its contrast instead, so the question does not arise there. */
+export function fillTakesElevation(kind: GenerateKind, fill: StencilFillKind): boolean {
+  return kind !== 'text' || fill === 'mountain';
+}
+
+/** The picture's contrast knob, as the slider reads it: percent, 100 leaving the image alone. */
+export const CONTRAST = { min: 50, max: 250, def: 130 } as const;
+
+/**
+ * The most characters a letter island is built from.
+ *
+ * Counted in CODE POINTS, so one emoji is one of them. The cap is about the EXTREME case rather than
+ * about taste: a stencil is fitted to the region's shorter side, so every character added makes each
+ * one narrower, and a long word in a modest region arrives as a row of unreadable smudges that still
+ * costs a full generation to find out about. Six is enough for a name and short enough that the
+ * thinnest stroke is still a cell or two wide at the region floor.
+ */
+export const TEXT_MAX_CHARS = 6;
+
+/**
+ * Whether the space a kind was given is big enough to approximate in.
+ *
+ * A picture kind needs no REGION: with none painted the whole island is the space, exactly as it is
+ * for every other kind, and a visitor who wants a letter across the middle of their map should not
+ * have to draw a box around it first. A region is how you say "smaller than that", and the only thing
+ * checked is whether what it names has the room.
+ */
+export function regionFitsStencil(kind: GenerateKind, box: { width: number; height: number } | null): boolean {
+  if (!isStencilKind(kind)) return true;
+  if (!box) return true;    // no region painted: the whole island, which is always big enough
+  return Math.min(box.width, box.height) >= STENCIL_MIN_SIDE[kind as 'text' | 'image'];
 }
 
 export function modeFor(kind: GenerateKind): GenerateConfig['mode'] {
-  return kind === 'maze' ? 'earth' : kind;
+  return kind === 'maze' || kind === 'text' || kind === 'image' ? 'earth' : kind;
 }
 
 /**
@@ -144,7 +226,10 @@ export const BATCH = { wide: 0.62, glyph: 30, radius: CARD.radius } as const;
  * `units.ts:RAIL_FLOOR`, well above the band, so nothing down here has to step aside for them. The
  * CARDS still do, which is why this is the strip's own number rather than the shelf's.
  */
-export const STRIP = { h: 26, gap: 6, padX: 15, right: EDGE_RIGHT } as const;
+/** The strip's one control height, the air between it and the cards, and its word padding. `h` is
+ *  every control's box — the scope chip, the fill segments, each slider's slot — so the row reads as
+ *  one line of same-sized things; the card row above pays for `gap` (`CARD_H` derives from both). */
+export const STRIP = { h: 26, gap: 10, padX: 15, right: EDGE_RIGHT } as const;
 
 /**
  * The shelf's plate: its fill. Where it sits and how its corner is turned is `units.ts:PLATE_BAND`,
@@ -276,7 +361,8 @@ export function maxElevationFor(kind: GenerateKind): number {
  * floor of 1.
  */
 export function minElevationFor(kind: GenerateKind): number {
-  return kind === 'maze' ? 1 : 0;
+  // A picture kind lays its shape AT this height, so zero would clear the cells it just claimed.
+  return kind === 'maze' || isStencilKind(kind) ? 1 : 0;
 }
 
 /**
@@ -320,6 +406,9 @@ export interface ShelfSettings {
   maxElevation: number;
   corridorWidth: number;
   gates: MazeGates | null;
+  /** text/image only: the rasterized picture and how to read it. Absent until there is one, which
+   *  is what the shelf shows an empty field for. */
+  stencilPlan?: StencilPlan | null;
 }
 
 /**
@@ -338,5 +427,6 @@ export function shelfConfig(s: ShelfSettings): GenerateConfig {
     region: null,
     naturalness: s.naturalness / NATURALNESS.max,
     ...(s.kind === 'maze' && s.gates ? { mazeGates: s.gates } : {}),
+    ...(isStencilKind(s.kind) && s.stencilPlan ? { stencilPlan: s.stencilPlan } : {}),
   };
 }

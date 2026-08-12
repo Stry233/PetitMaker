@@ -536,13 +536,13 @@ describe('the three bands', () => {
 describe('the row of names', () => {
   /** The kinds ARE the names. A three-way toggle for the same question stood in the block below and
    *  the row named "Island" over it, which is a heading that says nothing. */
-  it('offers the four kinds of island and nothing else', async () => {
+  it('offers every kind of island and nothing else', async () => {
     installKit();
     mount();
     await settle();
     expect(screen.getAllByRole('tab').map((el) => el.textContent))
-      .toEqual(['Land', 'Isles', 'Lakes', 'Maze']);
-    expect(TABS.map((tab) => tab.id)).toEqual(['earth', 'water', 'mixed', 'maze']);
+      .toEqual(['Maze', 'Letter', 'Picture', 'Land', 'Isles', 'Lakes']);
+    expect(TABS.map((tab) => tab.id)).toEqual(['maze', 'text', 'image', 'earth', 'water', 'mixed']);
     // Nothing stands beside them: no recipe field, and no actions.
     expect(screen.queryByLabelText('Seed')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
@@ -906,6 +906,8 @@ describe('the sliders', () => {
   it('takes the tallest layer from the grid, not from the drawing', async () => {
     installKit();
     mount();
+    // Named rather than assumed: the row's first tab is the default, and it is not this one.
+    fireEvent.click(screen.getByRole('tab', { name: 'Land' }));
     await settle();
 
     const slider = screen.getByRole('slider', { name: 'Tallest layer' });
@@ -927,6 +929,7 @@ describe('the sliders', () => {
   it('swaps naturalness for corridor width, since one of the two is meaningless per kind', async () => {
     installKit();
     mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Land' }));
     await settle();
     expect(screen.queryByRole('slider', { name: 'Naturalness' })).not.toBeNull();
 

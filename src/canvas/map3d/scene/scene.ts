@@ -503,6 +503,10 @@ export class ThreeScene {
         this.viewCache = null;
         const { width, height } = this.liveState.template;
         for (const k of dirtyChunksFor(data.cells, width, height)) this.dirtyTerrain.add(k);
+        // The buildable drape is baked at each cell's SURFACE HEIGHT, so terrain moving under a
+        // painted region leaves it describing ground that is gone — a generation's old elevations,
+        // standing until the region happened to be shown again.
+        this.buildableDirty = true;
         this.requestRender();
       };
       const onObjects = (data: EditorEvents['objects-changed']) => {
@@ -1220,8 +1224,14 @@ export class ThreeScene {
     }
     this.dirtyTerrain.clear();
     this.rebuildWaterfallArrows();
+    // Re-baked HERE, with the terrain flush, so the drape and the ground under it are one frame's
+    // worth of the same map. Coalesced with it too: a generation fires thousands of cells-changed.
+    if (this.buildableDirty) { this.buildableDirty = false; this.overlay3d?.refreshBuildable(); }
     this.renderer.shadowMap.needsUpdate = true;
   }
+
+  /** Whether the buildable drape needs re-baking against the terrain as it now stands. */
+  private buildableDirty = false;
 
   /** Runs the road-trim/icon-colour rebuilds onObjects flagged as dirty, and nudges the chrome —
    *  once per rendered frame, so however many objects-changed events one dab's remove+add churn

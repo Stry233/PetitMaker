@@ -404,7 +404,66 @@ export type EditorEvents = {
 
 /* ── Terrain generation config (used by the generator + the Generate panel) ── */
 
-export type GenerateAlgorithm = 'random' | 'maze';
+export type GenerateAlgorithm = 'random' | 'maze' | 'stencil';
+
+/**
+ * A picture to build from: how much of each cell it covers, and what colour it is there.
+ *
+ * It is DATA rather than a source, because turning a letter or a photograph into pixels needs a
+ * canvas and the candidate pipeline runs in a browser-API-free worker. The shell rasterizes once and
+ * passes this down; `tools/generation/stencil.ts` is everything that reads one.
+ */
+export interface Stencil {
+  width: number;
+  height: number;
+  /** Coverage 0..255 per cell, row-major. */
+  coverage: Uint8Array;
+  /** Packed 0xRRGGBB per cell, row-major; meaningful where coverage is non-zero. */
+  color: Uint32Array;
+  /**
+   * Coverage 0..255 per QUADRANT of each cell, 4 per cell in corner order [TL, TR, BL, BR]
+   * (`core/edge-cut/corner-index`), row-major by cell. The rasterizer draws at twice the cell
+   * resolution, so this is the sub-cell detail the whole-cell threshold throws away — and it is what
+   * lets the trim pass choose each corner's shape from the SOURCE rather than applying one mode
+   * everywhere. Absent on a stencil built without it (a test's hand-drawn one); the trim then falls
+   * back to the blanket mode.
+   */
+  quad?: Uint8Array;
+}
+
+/** How a stencil is read onto the map. `shape` builds the covered cells (the text mode); `color`
+ *  ignores the outline and matches each cell's colour to the terrain that draws in it (the image
+ *  mode). `fill` names what `shape` builds WITH. */
+export interface StencilPlan {
+  read: 'shape' | 'color';
+  /** shape only: terrain, or one catalog item tiled across the figure. */
+  fill?: { kind: 'terrain'; terrain: TerrainType } | { kind: 'object'; catalogId: string };
+  stencil: Stencil;
+  /** Where the stencil's top-left cell lands on the map. */
+  origin: MacroCoord;
+  /**
+   * The cells the run may write to, as flat `y * mapWidth + x` indices, or absent for "anywhere
+   * buildable". A stencil is fitted to the region's BOUNDING BOX, which is not the region: a
+   * free-painted blob has a rectangular box, and without this the picture filled the box and spilled
+   * over everything the visitor did not paint.
+   */
+  allow?: ReadonlySet<number>;
+  /** color only: how hard the picture is pushed away from mid-grey before it is matched, 0..2 with
+   *  1 leaving it alone. A narrow palette collapses a flat photograph onto two or three entries;
+   *  this is the knob that spreads it back out. */
+  contrast?: number;
+  /** color only: whether water may join the terrain palette, so a blue-ish area becomes a real pond
+   *  rather than the darkest green. Absent reads as true, the palette as it always was. */
+  water?: boolean;
+  /**
+   * color only: the OBJECTS a picture may be built from, each with the colour it reads as. Present,
+   * the picture is tiled with objects rather than coloured in terrain — which is what gives it a
+   * real palette, since the catalogue carries dozens of hues where the terrain ramp is eight greens
+   * and a blue. Sampled from the item icons on the main thread, because reading a picture's colours
+   * needs a canvas and this plan crosses into a worker.
+   */
+  objectPalette?: readonly { catalogId: string; rgb: number }[];
+}
 
 /** Requested maze gates, in map coordinates. Each is snapped to the nearest cell on the maze's
  *  border ring, so a coordinate may sit anywhere, including deep inside the maze. Either may be
@@ -423,6 +482,8 @@ export interface GenerateConfig {
   seed: number;
   region: MacroCoord[] | null;
   mazeGates?: MazeGates;
+  /** 'stencil' algorithm only: the picture, and how to read it. */
+  stencilPlan?: StencilPlan;
   // Advanced 'random'-algorithm controls (optional; defaulted by toGenConfig — seed-first).
   relief?: number;
   naturalness?: number;  // 0..1 geometry style: 1 organic (default), 0 rectilinear "lego" terrain + roads

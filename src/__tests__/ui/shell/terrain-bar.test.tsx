@@ -259,6 +259,21 @@ describe('the brush slider', () => {
     expect(useEditorStore.getState().brushSize).toBe(1);
   });
 
+  /** The eraser is the one cell that is sized in one of its states and not in the others: its DAB
+   *  takes the width, its two drag shapes are taken at whatever size they were dragged out to. */
+  it.each(['rect', 'circle'] as const)('refuses while the eraser is set to %s', (shape) => {
+    mount('mountain');
+    fireEvent.click(screen.getByLabelText(translations.en[TOOL_CELLS.find((c) => c.id === 'erase')!.labelKey]!));
+    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull(); // the dab takes a width
+
+    act(() => { useEditorStore.getState().setEraserShape(shape); });
+    const slider = screen.getByRole('slider');
+    expect(slider.getAttribute('aria-disabled')).toBe('true');
+
+    act(() => { useEditorStore.getState().setEraserShape('dot'); });
+    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('is live for the tools that lay to a width, and at rest', () => {
     mount('mountain');
     expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull();
@@ -290,12 +305,14 @@ describe('the brush slider', () => {
    *  the FIRST thing anybody reads here. The count carries its own word in every locale, and only
    *  the two that inflect have a second form of it: the others repeat the one line deliberately,
    *  since a language with no plural must not be given a fake one. */
+  /** The reading rides the slider's own KNOB now, shown while a hand is on it, so what is asserted is
+   *  the value the slider REPORTS rather than a number standing permanently beside the track. */
   it('reads a single cell in the singular, and takes the plural from there', () => {
     mount('mountain');
-    expect(screen.getByText('1 cell')).toBeTruthy();
+    expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('1 cell');
 
     fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' });
-    expect(screen.getByText('5 cells')).toBeTruthy();
+    expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('5 cells');
 
     for (const locale of ['zh', 'ja', 'th', 'id', 'ru'] as const) {
       expect(translations[locale]['agent2.n_cells_one']).toBe(translations[locale]['agent2.n_cells']);

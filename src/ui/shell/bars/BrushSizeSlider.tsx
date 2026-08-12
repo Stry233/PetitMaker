@@ -32,6 +32,7 @@ export function BrushSizeSlider({ value, onChange, disabled }: {
       value={value}
       onChange={onChange}
       label={t('design.brush_size')}
+      valueText={t(value === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: value })}
       disabled={disabled}
     />
   );

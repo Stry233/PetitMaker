@@ -26,7 +26,7 @@ import { type GridState, type MacroCoord } from '../../core/model/types';
 import { rectCells, circleCells, lineCells, curveCells, snapShapeEnd } from '../../tools/paint/shapes';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { host } from '../../kit/host';
-import { setRegionBrushHandler } from '../../core/runtime/region-brush';
+import { isRegionSingle, regionMinSide, setRegionBrushHandler } from '../../core/runtime/region-brush';
 
 /** Whether a cell may be part of a region: buildable ground, placements included — a scoped
  *  generation replaces what stands in its region, so a cell under an object is as scopeable as a
@@ -48,6 +48,10 @@ export function useRegionBrush(selectingRegion: boolean) {
   const regionAnchorRef = useRef<MacroCoord | null>(null);
   const regionShapeCellsRef = useRef<MacroCoord[]>([]);
   const regionCurvePointsRef = useRef<MacroCoord[]>([]);
+  /** A grab of ONE FIGURE of the standing region: where it was picked up, the cells of the piece
+   *  under the press, and the rest of the region, which stands still. The drag translates `base`;
+   *  the release commits the remainder plus wherever the piece was carried. */
+  const regionMoveRef = useRef<{ from: MacroCoord; base: MacroCoord[]; rest: MacroCoord[] } | null>(null);
 
   // The region's own undo/redo — see the file banner. `strokeActiveRef` marks a stroke
   // in progress so a drag's many move callbacks snapshot only once, at the start.
@@ -63,6 +67,13 @@ export function useRegionBrush(selectingRegion: boolean) {
     strokeActiveRef.current = true;
     regionUndoStackRef.current.push([...region]);
     regionRedoStackRef.current = [];
+    // ONE FIGURE, where the generator fills the region rather than reading it as an area: this stroke
+    // replaces what was there instead of adding a second patch to it. Undo still has the old one,
+    // pushed just above, so replacing is not losing.
+    if (isRegionSingle()) {
+      brushCoordsRef.current = [];
+      brushSeenRef.current = new Set();
+    }
   }, [region]);
 
   // Reset both the mid-shape/curve refs and the stroke-in-progress flag, so whatever
@@ -71,6 +82,7 @@ export function useRegionBrush(selectingRegion: boolean) {
     regionAnchorRef.current = null;
     regionShapeCellsRef.current = [];
     regionCurvePointsRef.current = [];
+    regionMoveRef.current = null;
     strokeActiveRef.current = false;
   }, []);
 
@@ -123,13 +135,70 @@ export function useRegionBrush(selectingRegion: boolean) {
     brushSeenRef.current = new Set(region.map(c => `${c.x},${c.y}`));
 
     const paint = (coord: MacroCoord) => {
+      const store = useEditorStore.getState();
+      const tool = store.regionTool;
+      const size = store.regionBrushSize;
+
+      /*
+       * A SHAPE-TOOL PRESS INSIDE THE STANDING REGION GRABS THE FIGURE UNDER IT — the connected
+       * piece the press landed on, not the whole selection: a region drawn as two rectangles is two
+       * objects, and a grab moves the one being held while the other stands. The drag translates
+       * the piece and the release commits where it was carried. Judged on the stroke's FIRST cell,
+       * before the single-figure reset below can empty the very region being grabbed; the brush and
+       * eraser keep their own meaning, since a dab inside the region is how a blob is grown and
+       * trimmed. Pieces are joined through their 8-neighbourhood, so a one-cell diagonal stroke is
+       * still one piece.
+       */
+      const firstOfStroke = !strokeActiveRef.current;
+      if (
+        firstOfStroke && (tool === 'rect' || tool === 'circle')
+        && brushSeenRef.current.has(`${coord.x},${coord.y}`) && brushCoordsRef.current.length > 0
+      ) {
+        const all = brushCoordsRef.current;
+        const inPiece = new Set<string>([`${coord.x},${coord.y}`]);
+        const queue: MacroCoord[] = [coord];
+        for (let q = 0; q < queue.length; q++) {
+          const c = queue[q]!;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (!dx && !dy) continue;
+              const k = `${c.x + dx},${c.y + dy}`;
+              if (inPiece.has(k) || !brushSeenRef.current.has(k)) continue;
+              inPiece.add(k);
+              queue.push({ x: c.x + dx, y: c.y + dy });
+            }
+          }
+        }
+        regionMoveRef.current = {
+          from: coord,
+          base: all.filter((c) => inPiece.has(`${c.x},${c.y}`)),
+          rest: all.filter((c) => !inPiece.has(`${c.x},${c.y}`)),
+        };
+      }
+
       // One snapshot per stroke, taken before this move's mutation below — a drag
       // fires this many times, but beginRegionStroke is a no-op after the first.
       beginRegionStroke();
 
-      const store = useEditorStore.getState();
-      const tool = store.regionTool;
-      const size = store.regionBrushSize;
+      if (regionMoveRef.current) {
+        const { from, base, rest } = regionMoveRef.current;
+        const dx = coord.x - from.x, dy = coord.y - from.y;
+        const gsm = useEditorStore.getState().gridState;
+        const seen = new Set(rest.map((c) => `${c.x},${c.y}`));
+        const next = [...rest];
+        for (const c of base) {
+          const m = { x: c.x + dx, y: c.y + dy };
+          const k = `${m.x},${m.y}`;
+          if (seen.has(k)) continue;   // carried onto another piece: the cells merge, never double
+          if (gsm && !holdsRegion(gsm, m.x, m.y)) continue;
+          seen.add(k);
+          next.push(m);
+        }
+        brushCoordsRef.current = next;
+        brushSeenRef.current = seen;
+        host.buildableRegion.show(next);
+        return;
+      }
 
       const gs = useEditorStore.getState().gridState;
       const buildable = (cx: number, cy: number): boolean => (
@@ -190,9 +259,25 @@ export function useRegionBrush(selectingRegion: boolean) {
         }
         let shapeCells: MacroCoord[] = [];
         const anchor = regionAnchorRef.current;
-        const end = isConstrainHeld() && (tool === 'rect' || tool === 'circle' || tool === 'line')
+        let end = isConstrainHeld() && (tool === 'rect' || tool === 'circle' || tool === 'line')
           ? snapShapeEnd(anchor, coord, tool)
           : coord;
+        /*
+         * THE FLOOR IS HARD AT THE DRAG. With a minimum side declared (`setRegionMinSide`, the
+         * picture generators), the extent clamps to it in the drag's own direction, so a figure
+         * below the floor cannot be drawn at all — the preview never shrinks past it, which says
+         * the limit without a refusal to read.
+         */
+        const floor = regionMinSide();
+        if (floor !== null && (tool === 'rect' || tool === 'circle')) {
+          const least = tool === 'rect' ? floor - 1 : Math.ceil((floor - 1) / 2);
+          const grow = (from: number, to: number): number => {
+            const d = to - from;
+            if (Math.abs(d) >= least) return to;
+            return from + (d < 0 ? -least : least);
+          };
+          end = { x: grow(anchor.x, end.x), y: grow(anchor.y, end.y) };
+        }
         switch (tool) {
           case 'rect':
             shapeCells = rectCells(anchor, end);
@@ -217,6 +302,14 @@ export function useRegionBrush(selectingRegion: boolean) {
     const done = () => {
       const store = useEditorStore.getState();
       const tool = store.regionTool;
+
+      // A carried region lands where the drag left it. One undo entry, pushed when it was grabbed.
+      if (regionMoveRef.current) {
+        regionMoveRef.current = null;
+        setRegion([...brushCoordsRef.current]);
+        strokeActiveRef.current = false;
+        return;
+      }
 
       if (tool === 'brush' || tool === 'eraser') {
         setRegion([...brushCoordsRef.current]);

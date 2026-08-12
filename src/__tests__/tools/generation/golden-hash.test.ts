@@ -86,8 +86,8 @@ describe('golden hash: what a seed produces is pinned across commits', () => {
   // Default recipe (naturalness 1, the organic style) across a few seeds — the matrix a saved
   // "recipe number" most commonly is.
   it.each([
-    ['mixed seed 4', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null } as GenerateConfig, '084daa06c829e88343d176bdd3c42c8fa257a89c6003f093648fa0721faddebe'],
-    ['mixed seed 11', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null } as GenerateConfig, '9ea1221ac73664ce454cec6d12c62f4c9ac1fdaf2ee385fae767f25413d2b867'],
+    ['mixed seed 4', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null } as GenerateConfig, '78eef0297d334b7efa1d59cdd322c969d3acd1ab84d76f0267e47e39c5e052aa'],
+    ['mixed seed 11', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null } as GenerateConfig, 'c3be76a2058c8572d7ff82a07c1fd79ab7c74eab6b0dc7f769f1facb31d1442f'],
     ['earth seed 42', { algorithm: 'random', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null } as GenerateConfig, 'c4e4020f53a29c7e7a5809283ee5fbd0e39c6dcad6166f9e2c2e39b5d69ba569'],
   ] as const)('%s', (_label, config, expected) => {
     expect(goldenHash(run(config))).toBe(expected);

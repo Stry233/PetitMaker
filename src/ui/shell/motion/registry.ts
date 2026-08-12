@@ -317,6 +317,17 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 14,
     says: 'these are the pieces in the category you just chose',
   },
+  /**
+   * The reading that appears over a slider's knob while a hand is on it.
+   *
+   * INFORM, because it IS the reading: the value and the setting's name live nowhere else on the
+   * strip now, so under reduced motion it must still arrive, instantly and without travel. The rise
+   * is small on purpose -- it is a label catching up to a pointer, not an object entering.
+   */
+  'slider.reading': {
+    tier: 'inform', curve: 'stiff', amplitude: 4,
+    says: 'this is the setting you are holding, and where it stands',
+  },
   /** A setting chip inside a tool cell folding between its word and its circle: auto trim, and the
    *  eraser's shape. */
   'chip.fold': {

@@ -16,10 +16,19 @@
  * reflow the row every time the context changed, and a knob you can see not applying is information.
  * A single-stop range (`min === max`) is that state by construction and needs no caller to say so.
  */
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { usePx } from '../../design/scale';
 import { cursors, UNAVAILABLE } from '../../design/styles';
-import { Plate } from './bar-atoms';
+import { BarText, Plate } from './bar-atoms';
+import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
+import { TEXT } from '../units';
+import { MOTIONS } from '../motion/registry';
+import { useMotion } from '../motion/use-motion';
+
+/** How far the bubble rises into place, in css px: the registry's own amplitude, since a distance
+ *  typed at an element is the same unfindable decision a duration typed there is. */
+const RISE = MOTIONS['slider.reading'].amplitude ?? 0;
 
 /** Where the parts of a slider are drawn, in design px. */
 export interface SliderShape {
@@ -52,7 +61,8 @@ interface Props {
   value: number;
   onChange: (v: number) => void;
   label: string;
-  /** Value announced to a screen reader when the number alone would not say what it means. */
+  /** Value announced to a screen reader when the number alone would not say what it means, and the
+   *  reading the hover bubble shows. */
   valueText?: string;
   /** The context this slider is standing in has nothing for it to set. A range with one stop is
    *  already unavailable without being told. */
@@ -64,7 +74,26 @@ export function BarSlider({
 }: Props) {
   const { px } = usePx();
   const ref = useRef<HTMLDivElement>(null);
+  /*
+   * THE READING LIVES ON THE KNOB, and only while a hand is on the slider.
+   *
+   * It stood permanently to the LEFT of every track, with the setting's name beside it. Two problems:
+   * a row of names and numbers is most of the strip's width spent on labels for controls whose own
+   * drawing already says what they are, and a reading that is always there is read once and then
+   * never again. On the knob it answers the question at the moment it is asked -- which value am I
+   * on -- and it costs the row nothing the rest of the time.
+   *
+   * Shown while HOVERED or while DRAGGING, since a drag takes the pointer off the knob and a bubble
+   * that vanished mid-drag would hide exactly the number being chosen.
+   */
+  const [hovered, setHovered] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const readingMotion = useMotion('slider.reading');
   const off = disabled || max <= min;
+  // Shown even while the slider REFUSES: a control that has nothing to set is the one most in need of
+  // saying so, and its reading is where the reason goes ("n/a" beside the setting's own name). It is
+  // the only thing a refusing slider still does.
+  const showReading = hovered || dragging;
   const steps = Math.max(1, max - min);
   const clamp = (v: number): number => Math.min(max, Math.max(min, v));
   const current = clamp(value);
@@ -97,8 +126,18 @@ export function BarSlider({
       aria-valuemax={max}
       aria-valuenow={current}
       {...(valueText ? { 'aria-valuetext': valueText } : {})}
-      onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); pick(e.clientX); }}
+      onPointerDown={(e) => {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        setDragging(true);
+        pick(e.clientX);
+      }}
       onPointerMove={(e) => { if (e.buttons) pick(e.clientX); }}
+      onPointerUp={() => setDragging(false)}
+      onPointerCancel={() => setDragging(false)}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
       onKeyDown={(e) => {
         if (off) return;
         if (e.key === 'ArrowRight' || e.key === 'ArrowUp') onChange(clamp(current + nudge));
@@ -146,6 +185,39 @@ export function BarSlider({
           width: px(shape.pip), height: px(shape.pip),
         }}
       />
+      {/* The bubble carries the READING; the setting's name stands beside the track (the strip's
+          `Knob`), so here it would repeat itself. Centred on the knob and standing ABOVE the track,
+          where the strip has air and what it covers is the map rather than another control.
+          `pointerEvents: none` so it can never take the press meant for the slider under it, and no
+          transition on `left`: it has to be exactly on the knob at every step of a drag, and a lag
+          reads as the number belonging to the previous value. */}
+      <AnimatePresence initial={false}>
+        {showReading ? (
+        <motion.span
+          key="reading"
+          aria-hidden
+          initial={{ opacity: 0, y: RISE }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: RISE }}
+          transition={readingMotion}
+          style={{
+            position: 'absolute', left: px(centre), bottom: '100%',
+            // `translateX` here and `y` on the motion props: Framer animates `y`, so the centring
+            // has to live on a different axis or the two fight over one transform.
+            translateX: '-50%', marginBottom: 6,
+            padding: '2px 8px', borderRadius: 999, background: PLATE,
+            pointerEvents: 'none', whiteSpace: 'nowrap',
+            display: 'flex', alignItems: 'center',
+            // NOT A SHADOW. Nothing in this frame casts one (`frame-margins.test.ts` holds it), and
+            // this bubble stands over the map: it takes the same 1px ink edge every panel out there
+            // wears, which is what stands in a shadow's place here.
+            border: PANEL_EDGE,
+          }}
+        >
+          <BarText size={TEXT.label} color={PLATE_INK} weight={800}>{valueText ?? String(current)}</BarText>
+        </motion.span>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

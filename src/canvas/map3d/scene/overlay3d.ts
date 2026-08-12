@@ -76,6 +76,9 @@ export class Overlay3D implements ToolOverlay {
   private hover: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
   private band: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
   private buildable: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
+  /** What the buildable drape was last asked to show. Kept because the decal is baked at each cell's
+   *  SURFACE HEIGHT, so a generation under it leaves the mesh describing terrain that is gone. */
+  private buildableAsk: { cells: MacroCoord[]; terrainMode: boolean } | null = null;
   private flashes: Flash[] = [];
   private errorGate: ErrorFlashGate | null = null;
 
@@ -123,7 +126,10 @@ export class Overlay3D implements ToolOverlay {
 
   private ghostMaterial(valid: boolean): THREE.MeshBasicMaterial {
     if (!this.ghostMat.valid) {
-      this.ghostMat.valid = makeMat(0x59c85f, 0.55);
+      // Warm yellow, not green: the ghost is a flat-colour mesh, and a green one disappears
+      // against the mountain strata it most often previews over (a ramp against a high cliff).
+      // Same family as the route drape, warmer than the 0xffb347 selection amber.
+      this.ghostMat.valid = makeMat(0xffd75e, 0.55);
       this.ghostMat.invalid = makeMat(0xe2574c, 0.55);
     }
     return valid ? this.ghostMat.valid! : this.ghostMat.invalid!;
@@ -455,6 +461,7 @@ export class Overlay3D implements ToolOverlay {
 
   showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void {
     this.clearBuildableRegion();
+    this.buildableAsk = { cells: [...cells], terrainMode };
     const data = cellDecals(this.state(), cells, terrainMode);
     if (!data.positions.length) return;
     const geo = toGeo(data);
@@ -469,7 +476,21 @@ export class Overlay3D implements ToolOverlay {
     this.requestRender();
   }
 
+  /**
+   * Re-bake the buildable drape over the terrain as it stands NOW.
+   *
+   * The decal carries a height per cell, read when it was built, so anything that changes the
+   * surface under a painted region — a generation above all — leaves it floating at the old
+   * elevation until the region is shown again. The scene calls this whenever cells change.
+   */
+  refreshBuildable(): void {
+    const ask = this.buildableAsk;
+    if (!ask) return;
+    this.showBuildableRegion(ask.cells, ask.terrainMode);
+  }
+
   clearBuildableRegion(): void {
+    this.buildableAsk = null;
     if (!this.buildable) return;
     this.group.remove(this.buildable.mesh);
     this.buildable.geo.dispose();

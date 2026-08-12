@@ -27,6 +27,15 @@ export function computeLockedCorners(
     // that's `patchBase` (structuralTop), not the higher fillet tier.
     const elevation = structuralTop(cell.terrain);
 
+    // WATERFALL-CELL — a water cell carrying a waterfall face IS the fall, and locks whole. The
+    // drop side is already locked below, but the corners away from the flow — against the back
+    // wall and the flanking caps, which pin nothing (not same-type) and drop nothing — read as
+    // free, and cutting one rounds the falling water itself. (A rimmed pool has no face and still
+    // rounds by the ordinary geometry.)
+    if (type === TerrainType.Water && !cell.terrain.patchOnly && waterfallFacesAt(state, x, y).length > 0) {
+      return [true, true, true, true];
+    }
+
     // GEOMETRY (one generic rule): a corner is a FREE (convex) corner — cuttable — only if it is a real
     // convex corner of the SILHOUETTE AT THIS CELL'S LAYER. An EDGE neighbour covers (pins) the corner when
     // it holds solid SAME-TYPE mass AT this layer — i.e. a SAME-height OR a TALLER same-type neighbour, whose

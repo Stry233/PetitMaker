@@ -12,13 +12,17 @@ import { APP_NAME, APP_VERSION } from './version';
 export function printConsoleBanner(): void {
   if (typeof window === 'undefined') return;
   const out = globalThis.console;
-  // One ink, white: the shade characters carry the depth on the dark console theme most devtools
-  // open in. Sized so the 256-column drawing fits an ordinary pane: past its width a console line
-  // soft-wraps, and a wrapped drawing is noise. EVERY OTHER ROW IS DROPPED, because a monospace
-  // cell is about twice as tall as it is wide and the console's line box never squeezes below its
-  // glyphs — line-height cannot pull the rows together, halving them can (owner-tuned height).
-  const squashed = art.split('\n').filter((_, i) => i % 2 === 0).join('\n');
-  out.log(`%c${squashed}`, 'font-size:6px; line-height:6px; color:#fff;');
+  // White ink on the drawing's OWN dark plate, so the art reads the same whatever theme the
+  // devtools are in — bare white ink vanished on a light console. The plate is painted per line
+  // box, so every row is padded to one width or the slab comes out ragged on the right. Sized so
+  // the 256-column drawing fits an ordinary pane: past its width a console line soft-wraps, and a
+  // wrapped drawing is noise. EVERY OTHER ROW IS DROPPED, because a monospace cell is about twice
+  // as tall as it is wide and the console's line box never squeezes below its glyphs — line-height
+  // cannot pull the rows together, halving them can (owner-tuned height).
+  const rows = art.split('\n').filter((_, i) => i % 2 === 0);
+  const width = Math.max(...rows.map((r) => r.length));
+  const squashed = rows.map((r) => r.padEnd(width)).join('\n');
+  out.log(`%c${squashed}`, 'font-size:6px; line-height:6px; color:#fff; background:#33322f;');
   out.log(
     `%c ${APP_NAME} %c v${APP_VERSION} %c  Like poking at how things work? The whole editor is open source. Come build with us: ${LEGAL.repoUrl}`,
     'background:#FFDA7E; color:#574935; font-weight:bold; padding:2px 6px; border-radius:3px 0 0 3px;',

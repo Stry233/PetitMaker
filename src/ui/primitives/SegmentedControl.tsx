@@ -63,7 +63,7 @@ type PillBox = { x: number; w: number };
 const PILL_SPRING = springs.stiff;
 
 export function SegmentedControl<T extends string>({
-  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = 12.5,
+  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = 12.5, height,
 }: {
   value: T;
   options: readonly T[];
@@ -74,6 +74,10 @@ export function SegmentedControl<T extends string>({
   /** Buttons fill the row (export) vs size to their content (inline settings toggle). */
   stretch?: boolean;
   fontSize?: number;
+  /** The control's whole height in css px, for a caller whose row holds controls to one line (the
+   *  generate strip). The buttons fill it; their vertical padding goes. Unset, the buttons size from
+   *  their own padding as they always have. */
+  height?: number;
 }) {
   const reduced = useReducedMotionConfig();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -111,7 +115,7 @@ export function SegmentedControl<T extends string>({
   const optionCount = options.length;
 
   return (
-    <div ref={wrapRef} style={{ ...wrap, ...(stretch ? null : { alignSelf: 'flex-start' }) }}>
+    <div ref={wrapRef} style={{ ...wrap, ...(stretch ? null : { alignSelf: 'flex-start' }), ...(height !== undefined ? { height, boxSizing: 'border-box' } : null) }}>
       {/* The single persistent sliding pill — animates its box to the active option. It is an
           ordinary child of the wrap (no `layoutId`), so it slides cleanly AND fades in lockstep
           with an enclosing modal card's exit opacity. */}
@@ -160,7 +164,10 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(o)}
             whileTap={{ scale: 0.95 }}
             aria-pressed={active}
-            style={{ ...btn, flex: stretch ? 1 : 'none', padding: stretch ? `8px ${PAD_X}px` : '6px 14px', fontSize, minWidth: 0 }}
+            style={{
+              ...btn, flex: stretch ? 1 : 'none', fontSize, minWidth: 0,
+              padding: height !== undefined ? `0 ${stretch ? PAD_X : 14}px` : stretch ? `8px ${PAD_X}px` : '6px 14px',
+            }}
           >
             <span style={{ position: 'relative', zIndex: 1, display: 'inline-block', whiteSpace: 'nowrap' }}>
               {render(o)}

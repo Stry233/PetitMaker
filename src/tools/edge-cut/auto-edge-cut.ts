@@ -53,6 +53,18 @@ function roadsOf(ctx: EdgeCutCtx): RoadLookup {
 const ROUND_STATES = [5, 1, 2];
 const DIRECT_STATES = [3, 4];
 
+/**
+ * Which shape a corner should take, asked per corner.
+ *
+ * The mode passes ('rect'/'round') answer the same thing for every corner; the stencil generators
+ * answer from the source picture's sub-cell coverage (`stencil-trim.ts`). `null` leaves the corner
+ * alone. Every legality guard lives in the cutters below; a chooser expresses preference.
+ */
+export type CornerChooser = (x: number, y: number, corner: number, kind: 'outer' | 'inner' | 'island') => 'fan' | 'tri' | null;
+
+/** The classic whole-pass answer: every corner takes the mode's one shape. */
+const modeChooser = (round: boolean): CornerChooser => () => (round ? 'fan' : 'tri');
+
 const NEIGHBORS_8: [number, number][] = [
   [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
 ];
@@ -89,7 +101,7 @@ function neighborhood(cells: readonly MacroCoord[]): MacroCoord[] {
  *  unlocked convex corner (no same-type edge neighbour pins it) that validates. There is no height gate —
  *  a corner is convex or it isn't, regardless of how tall the stack is, and the renderer draws whatever
  *  sits behind the cut (a lower step, or the ground/water around the mass). */
-function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
+function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], pick: CornerChooser): void {
   const roads = roadsOf(ctx);
   for (const { x, y } of cells) {
     const terrain = getCell(ctx.gridState.cells, x, y)?.terrain;
@@ -104,7 +116,9 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): 
     for (let i = 0; i < 4; i++) {
       if (locked[i]) continue;             // pinned by a same-terrain neighbour (not convex)
       if (before[i] !== 'square') continue;  // keep any existing/manual cut
-      after[i] = round ? 'fan' : OUTER_TRI[i]!;
+      const shape = pick(x, y, i, 'outer');
+      if (!shape) continue;                  // the chooser keeps this corner square
+      after[i] = shape === 'fan' ? 'fan' : OUTER_TRI[i]!;
       changed = true;
     }
     if (!changed) continue;
@@ -129,7 +143,7 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): 
  * click. (It would also risk rejected commands via the 3x3-base rule, and generation must stay
  * reject-free by construction.)
  */
-function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], round: boolean, allowLowerBlock = false): void {
+function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pick: CornerChooser, allowLowerBlock = false): void {
   // `candidates` is the stroke's 8-neighbourhood. A Γ notch can be EMPTY ground, an existing cosmetic
   // patch, OR (stroke path only) a real block LOWER than the same-type mass that wraps it — e.g. the
   // layer-1 base platform under a raised disc, or a mountain peninsula a water hole left behind. The
@@ -178,7 +192,9 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], rou
     let changed = false;
     for (let i = 0; i < 4; i++) {
       if (!isInnerCorner(ctx.gridState, x, y, i, ref.type, ref.elevation)) continue;
-      const fill = round ? 'fan' : INNER_TRI[i]!;
+      const shape = pick(x, y, i, 'inner');
+      if (!shape) continue;                  // the chooser leaves this notch open
+      const fill = shape === 'fan' ? 'fan' : INNER_TRI[i]!;
       if (after[i] !== fill && (after[i] === 'empty' || after[i] === 'square')) { after[i] = fill; changed = true; }
     }
     if (!changed && !underTall) continue;
@@ -218,7 +234,7 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], rou
  * is manual-reachable and manual-cyclable. It is the water counterpart of the mountain Γ fill: water never
  * fills a notch (see cutTerrainInner), the ground rounds instead.
  */
-function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], round: boolean): void {
+function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pick: CornerChooser): void {
   for (const { x, y } of candidates) {
     const t = getCell(ctx.gridState.cells, x, y)?.terrain;
     if (t && t.type !== TerrainType.None) continue; // only plain ground / an existing island cut
@@ -228,7 +244,9 @@ function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], ro
     for (let i = 0; i < 4; i++) {
       if (before[i] !== 'square') continue; // keep any existing/manual cut
       if (!groundConvexCornerInWater(ctx.gridState, x, y, i)) continue;
-      after[i] = round ? 'fan' : OUTER_TRI[i]!;
+      const shape = pick(x, y, i, 'island');
+      if (!shape) continue;
+      after[i] = shape === 'fan' ? 'fan' : OUTER_TRI[i]!;
       changed = true;
     }
     if (!changed) continue;
@@ -297,9 +315,10 @@ export function applyAutoEdgeCut(
   if (terrainCells.length > 0) {
     const cells = dedupe(terrainCells);
     const ring = neighborhood(cells);
-    cutTerrainOuter(ctx, withBorder(cells), round);
-    cutTerrainInner(ctx, ring, round, true); // stroke path may fillet a lower same-type block (raised disc on a base)
-    cutGroundIslands(ctx, ring, round);      // river bends/tips: ground corners IN water round out (manual-reachable)
+    const pick = modeChooser(round);
+    cutTerrainOuter(ctx, withBorder(cells), pick);
+    cutTerrainInner(ctx, ring, pick, true); // stroke path may fillet a lower same-type block (raised disc on a base)
+    cutGroundIslands(ctx, ring, pick);      // river bends/tips: ground corners IN water round out (manual-reachable)
   }
   // Roads get the same border sweep as terrain: painting a segment changes a NEIGHBOUR road's
   // connectivity, so a cell just outside the stroke can become a freshly-trimmable end-cap/bend.
@@ -339,11 +358,18 @@ function withBorder(cells: readonly MacroCoord[]): MacroCoord[] {
  */
 export function edgeCutGeneratedTerrain(ctx: EdgeCutCtx, terrainCells: MacroCoord[], mode: AutoEdgeCut): void {
   if (mode === 'off' || terrainCells.length === 0) return;
+  edgeCutTerrainWith(ctx, terrainCells, modeChooser(mode === 'round'));
+}
+
+/** The generation pass with the corner choice handed in — what the stencil generators run. The
+ *  chooser is consulted only at corners the validators have already offered. */
+export function edgeCutTerrainWith(ctx: EdgeCutCtx, terrainCells: MacroCoord[], pick: CornerChooser): void {
+  if (terrainCells.length === 0) return;
   const cells = dedupe(terrainCells);
   const ring = neighborhood(cells);
-  cutTerrainOuter(ctx, cells, mode === 'round');   // round convex tips/steps (cut reveals the surface behind)
-  cutTerrainInner(ctx, ring, mode === 'round');    // the Γ case: fill EMPTY concave MOUNTAIN notches (water is skipped)
-  cutGroundIslands(ctx, ring, mode === 'round');   // river bends / lake inner corners: ground rounds into water, as the manual path does
+  cutTerrainOuter(ctx, cells, pick);   // convex tips/steps (cut reveals the surface behind)
+  cutTerrainInner(ctx, ring, pick);    // the Γ case: fill EMPTY concave MOUNTAIN notches (water is skipped)
+  cutGroundIslands(ctx, ring, pick);   // river bends / lake inner corners: ground rounds into water, as the manual path does
 }
 
 /** Edge-cut for GENERATED roads — the road mirror of edgeCutGeneratedTerrain, run by the populator

@@ -31,6 +31,23 @@ function from(id: string): { labelKey: string; commandId: string; glyph: Glyph }
   return { labelKey: cell.labelKey, commandId: cell.commandId, glyph: cell.glyph.road };
 }
 
+/**
+ * Which region figures a generate kind can actually work in.
+ *
+ * A PICTURE is fitted to the region's bounding box and read cell for cell, so anything but a
+ * rectangle leaves it part-drawn: the box is bigger than the region, and every cell of the picture
+ * outside the painted shape is simply dropped. A LETTER survives a rounded region -- its own shape is
+ * bold and mostly central -- so a circle is offered there too. Everything else takes any figure,
+ * because a landform is designed for whatever it is given.
+ *
+ * Offered rather than validated: a brush that cannot produce a usable region should not be on the
+ * row, since the alternative is a stroke that is accepted and then quietly ignored.
+ */
+export const SCOPE_TOOLS_FOR: Readonly<Record<string, readonly RegionTool[] | undefined>> = {
+  image: ['rect'],
+  text: ['rect', 'circle'],
+};
+
 export const SCOPE_CELLS: readonly ScopeCell[] = [
   { tool: 'brush', ...from('draw'), sized: true },
   { tool: 'eraser', ...from('erase'), sized: true },

@@ -141,8 +141,9 @@ describe('computeLockedCorners — terrain', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2); // east rim (same level)
     setTerrain(state, 5, 4, TerrainType.Mountain, 2); // north rim (same level)
     setTerrain(state, 5, 6, TerrainType.Mountain, 1); // SOUTH bank lowered → a real drop (cascade / peeled bank)
-    // only the south (drop) corners pin; the same-level rim leaves the others free to round
-    expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([false, false, true, true]);
+    // The drop makes this cell a capped waterfall face — falling water, so the WHOLE cell locks
+    // (issue #8), not only the drop side.
+    expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([true, true, true, true]);
   });
 
   it('water around a ground island stays interior — the island cut lives on the GROUND cell, not the water (Bug 1)', () => {

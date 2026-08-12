@@ -21,7 +21,7 @@
  * paints nothing itself. It asks that buffer for the two whole-region edits through the same
  * channel, so a Clear here is one entry on the region's own undo stack rather than a silent write.
  */
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { clearRegionSelection, selectWholeRegion } from '../../../core/runtime/region-brush';
 import { useT } from '../../../i18n/context';
@@ -33,6 +33,8 @@ import { EDGE_RIGHT, QUAD, TEXT } from '../units';
 import { BarText } from './bar-atoms';
 import { BrushSizeSlider } from './BrushSizeSlider';
 import { SCOPE_CELLS } from './scope-cells';
+import { setRegionMinSide, setRegionSingle } from '../../../core/runtime/region-brush';
+import type { RegionTool } from '../../../core/model/types';
 import { READOUT_SIZE, SLIDER_LIFT } from './TerrainBar';
 import { CELL_BOX, ToolCell } from './ToolCell';
 
@@ -42,14 +44,19 @@ const ACTION_GAP = 22;
 
 /** One of the three actions: a pill as tall as a cell, so it stands IN the row rather than beside
  *  it. `primary` is the one that ends the screen, in the yellow this frame marks a choice with. */
-function Action({ label, primary, onPress }: { label: string; primary?: boolean; onPress: () => void }) {
+function Action({ label, primary, disabled, onPress }: {
+  label: string; primary?: boolean; disabled?: boolean; onPress: () => void;
+}) {
   return (
     <motion.button
       type="button"
-      {...buttonMotion}
-      onClick={onPress}
+      {...(disabled ? {} : buttonMotion)}
+      aria-disabled={disabled}
+      onClick={() => { if (!disabled) onPress(); }}
       style={{
-        ...btnReset, flex: 'none', pointerEvents: 'auto', cursor: cursors.clickable,
+        ...btnReset, flex: 'none', pointerEvents: 'auto',
+        cursor: disabled ? cursors.blocked : cursors.clickable,
+        opacity: disabled ? UNAVAILABLE : 1,
         height: CELL_BOX.h, padding: '0 18px', borderRadius: 999,
         background: primary ? ACTIVE : PLATE,
         display: 'flex', alignItems: 'center',
@@ -60,7 +67,16 @@ function Action({ label, primary, onPress }: { label: string; primary?: boolean;
   );
 }
 
-export function ScopeScreen({ onDone }: { onDone: () => void }) {
+export function ScopeScreen({ onDone, tools, minSide }: {
+  onDone: () => void;
+  /** The figures this screen may offer, or all of them when the caller has no preference
+   *  (`scope-cells.ts:SCOPE_TOOLS_FOR`). */
+  tools?: readonly RegionTool[];
+  /** The shortest side the caller can work in, where it has one. Present, the region is ONE figure
+   *  (a caller that fills a region cannot use two), and this screen says so while it is too small
+   *  rather than letting Done be pressed on a selection the generator will refuse. */
+  minSide?: number;
+}) {
   const t = useT();
   const region = useEditorStore((s) => s.region);
   const tool = useEditorStore((s) => s.regionTool);
@@ -90,7 +106,37 @@ export function ScopeScreen({ onDone }: { onDone: () => void }) {
     else host.buildableRegion.clear();
   }, [region]);
 
-  const sized = SCOPE_CELLS.find((cell) => cell.tool === tool)?.sized === true;
+  const cells = tools ? SCOPE_CELLS.filter((cell) => tools.includes(cell.tool)) : SCOPE_CELLS;
+  const sized = cells.find((cell) => cell.tool === tool)?.sized === true;
+
+  // The armed figure survives between visits, so a kind that offers fewer of them can be entered
+  // with one it does not offer: the row would show nothing chosen while the pointer still painted
+  // with it. Snap to the first one offered instead.
+  useEffect(() => {
+    if (cells.length > 0 && !cells.some((cell) => cell.tool === tool)) setTool(cells[0]!.tool);
+  }, [cells, tool, setTool]);
+
+  // A caller with a floor fills its region, so the region is one figure while this screen is up —
+  // and the floor is HARD: the drags clamp to it, so a figure below it cannot be drawn.
+  useEffect(() => {
+    setRegionSingle(minSide !== undefined);
+    setRegionMinSide(minSide ?? null);
+    return () => { setRegionSingle(false); setRegionMinSide(null); };
+  }, [minSide]);
+
+  /** The selection's own extent, so the screen can say when it is short before Done is pressed. */
+  const extent = useMemo(() => {
+    if (region.length === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of region) {
+      if (c.x < minX) minX = c.x;
+      if (c.x > maxX) maxX = c.x;
+      if (c.y < minY) minY = c.y;
+      if (c.y > maxY) maxY = c.y;
+    }
+    return Math.min(maxX - minX + 1, maxY - minY + 1);
+  }, [region]);
+  const tooSmall = minSide !== undefined && extent !== null && extent < minSide;
   return (
     <div
       data-testid="shell-scope-screen"
@@ -111,7 +157,7 @@ export function ScopeScreen({ onDone }: { onDone: () => void }) {
             flex: '0 1 auto', minWidth: 0,
           }}
         >
-          {SCOPE_CELLS.map((cell, i) => (
+          {cells.map((cell, i) => (
             <ToolCell
               key={cell.tool}
               glyph={cell.glyph}
@@ -130,7 +176,15 @@ export function ScopeScreen({ onDone }: { onDone: () => void }) {
                 scope chip in the strip, which keeps saying it once the cards are back. That is what
                 makes it a chip rather than a tab, and it is why saying it here too would be saying
                 it twice, once on a control that disappears. */}
-            <Action label={t('gen.scope_done')} primary onPress={onDone} />
+            {/* SHORT SELECTIONS ARE REFUSED HERE, not after the screen closes onto blank cards: the
+                region is the thing to change and this is where it is being changed. The word says
+                what is wrong rather than only going pale. */}
+            <Action
+              label={tooSmall ? t('gen.scope_min', { n: minSide ?? 0 }) : t('gen.scope_done')}
+              primary
+              disabled={tooSmall}
+              onPress={onDone}
+            />
           </span>
         </div>
 
