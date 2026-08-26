@@ -33,15 +33,15 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { cellOverlapsRect, cloneGridState } from '../../core/model/grid-model';
 import { ItemCategory, type EditorEvents, type GridState, type MacroCoord } from '../../core/model/types';
-import { getCatalogItem } from '../../state/catalog';
+import { catalogLoadValue, getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import { roadLookup } from '../../state/object-index';
-import { analyzeTerrain } from '../generation/placement/analysis';
-import { crossingExitCells } from '../generation/placement/network';
-import { makeCtx } from '../generation/placement/object';
-import { scanPortals } from '../generation/placement/portals';
-import { readRoadStyle } from '../generation/placement/road-style';
-import type { RouteWorld } from '../generation/placement/route';
+import { analyzeTerrain } from '../placement/analysis';
+import { crossingExitCells } from '../placement/network';
+import { makeCtx } from '../placement/object';
+import { scanPortals } from '../placement/portals';
+import { readRoadStyle } from '../placement/road-style';
+import type { RouteWorld } from '../placement/route';
 import type { MacroContext } from './context';
 
 /** An AIMED route CHOOSES a crossing by where its two taps are, so it needs candidates ALONG the
@@ -77,7 +77,7 @@ export function routeWorld(
   if (hit && hit.key === key) return { ...hit.world, style };
 
   const clone = cloneGridState(state);
-  const executor = new CommandExecutor(clone, new EventBus<EditorEvents>(), ctx.registry, roadLookup(clone));
+  const executor = new CommandExecutor(clone, new EventBus<EditorEvents>(), ctx.registry, roadLookup(clone), catalogLoadValue);
   const place = makeCtx(clone, (c) => executor.execute(c), ctx.registry, opts.seed);
   const analysis = analyzeTerrain(clone, opts.region ? [...opts.region] : null);
   const { portals, regionAdj } = scanPortals(place, analysis, ROUTE_PORTALS_PER_PAIR);

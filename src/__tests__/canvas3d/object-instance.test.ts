@@ -23,8 +23,8 @@ describe('objectInstance', () => {
     expect(getCatalogItem('building-myhouse')).toBeTruthy();
     const objs = [
       place('house', 'building-myhouse', 4, 4),
-      place('road', 'road-dirt', 10, 10),
-      place('trimmed', 'road-dirt', 12, 10, { corners: ['square', 'fan', 'square', 'square'] }),
+      place('road', 'path-overgrown-dirt', 10, 10),
+      place('trimmed', 'path-overgrown-dirt', 12, 10, { corners: ['square', 'fan', 'square', 'square'] }),
       place('ramp', 'ramp-green-steps', 8, 14, { elevation: 1, rotation: 90 }),
     ];
     const state = withObjects(...objs);
@@ -33,15 +33,15 @@ describe('objectInstance', () => {
 
     for (const obj of objs) {
       const single = objectInstance(state, obj);
-      if (obj.id === 'trimmed') {
-        expect(single, 'trimmed roads are meshed, not instanced').toBeNull();
+      if (obj.id === 'trimmed' || obj.id === 'road') {
+        expect(single, 'every road is meshed, not instanced').toBeNull();
         continue;
       }
       expect(single).not.toBeNull();
       const match = bulkFlat.find((e) => e.k === single!.groupKey && JSON.stringify(e.inst) === JSON.stringify(single!.inst));
       expect(match, `bulk builder contains ${obj.id}'s instance`).toBeTruthy();
     }
-    // bulk emits exactly the three instanced objects
-    expect(bulkFlat).toHaveLength(3);
+    // bulk emits exactly the two instanced objects — both roads live in the road mesh
+    expect(bulkFlat).toHaveLength(2);
   });
 });

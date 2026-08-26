@@ -10,15 +10,14 @@ import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { categoryOf, getCatalogItem, isDecoration } from '../../state/catalog';
 import { getObjectIndex, objectAt } from '../../state/object-index';
 import { objectPlacementCommand, stripCoatingsFor } from '../objects/object-placer';
-import { generateObjectId } from '../utils';
+import { generateObjectId } from '../../core/model/object-id';
 import { edgeCutGeneratedRoads, type EdgeCutCtx } from '../edge-cut/auto-edge-cut';
-import { centroid, nearestRegionCell } from '../generation/geometry';
-import { TUNING } from '../generation/tuning';
-import type { PlacementAnalysis } from '../generation/placement/analysis';
-import { approachCells, astar, crossingExitCells } from '../generation/placement/network';
-import { buildingGate, hasGate, openAt, tryPlace, type PlaceCtx } from '../generation/placement/object';
-import { gateTerminalCells } from '../generation/placement/route';
-import type { Node } from '../generation/placement/settlement';
+import { centroid, nearestRegionCell } from '../../core/model/geometry';
+import { TUNING } from '../placement/tuning';
+import type { PlacementAnalysis } from '../placement/analysis';
+import { approachCells, astar, crossingExitCells, type Node } from '../placement/network';
+import { buildingGate, hasGate, openAt, tryPlace, type PlaceCtx } from '../placement/object';
+import { gateTerminalCells } from '../placement/route';
 import { objectRect } from '../../state/object-geometry';
 import type { MacroContext } from './context';
 import { components, networkCells } from './walkable';
@@ -256,9 +255,9 @@ interface DoorSpur {
  * Two separate things left a doorstep bare, and this answers both. The router plans over
  * `analysis.open`, which excludes every object's dual-grid margin: a gate approach is IN that margin,
  * so the cells between the street and the door read as closed even where the rules would take a tile,
- * and the spur stops wherever the mask ran out. And where the door genuinely opens onto water or over
- * a terrace step, the `flat` trait refuses the whole gate strip and the street used to stop wherever
- * the router last looked rather than beside the house.
+ * and the spur stops wherever the mask runs out. And where the door genuinely opens onto water or over a
+ * terrace step, the `flat` trait refuses the whole gate strip, which stops the street wherever the router
+ * last looked rather than beside the house.
  *
  * So the walk is done here, over what the RULES allow rather than over the mask: a breadth-first
  * search out of the standing pavement, bounded to `SPUR_REACH` cells around the gate, ending at the

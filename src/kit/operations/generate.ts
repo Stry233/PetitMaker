@@ -2,9 +2,9 @@
  * Running the procedural generator, and taking a run back.
  *
  * Generate REPLACES its scope: objects first, because a placement blocks erasing the terrain under
- * it, then terrain, then the landform and the populator, all inside one silenced stroke group. The
- * generator rejects candidate commands by design, so a validation toast per rejection would be
- * noise rather than information.
+ * it, then terrain, then the run itself, all inside one silenced stroke group. The generator seats
+ * its objects by probing and so rejects candidate commands by design, which is why a validation
+ * toast per rejection would be noise rather than information.
  *
  * Clear is not an erase-everything. It is bounded by what the last run actually did: that run's
  * region, and the map's own authorship. A cell or object a person made inside the scope stays. A
@@ -47,13 +47,21 @@ import type {
 } from '../../core/model/types';
 import { createDefaultRegistry } from '../../rules';
 import { roadLookup } from '../../state/object-index';
+import { catalogLoadValue } from '../../state/catalog';
 import { poolAvailable, runCandidateInPool } from './candidate-pool';
-import { toGenConfig } from '../../tools/generation';
-import { populate, yieldFrame, type GenSignal } from '../../tools/generation/placement';
 import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation/terrain-generator';
+import { readRegionBase, regionUnbuilt, repairRegionSeam } from '../../tools/generation/core';
 import type { KitContext } from '../context';
-import { detachCommand as detach, mapFingerprint } from '../../tools/macros/scratch';
+import { detachCommand as detach, mapFingerprint } from '../../tools/macros';
 import type { Outcome } from './outcome';
+
+/** A cooperative cancel flag: the caller flips `cancelled` (e.g. when the user closes the shelf) and
+ *  a run bails at its next yield point, leaving the partial work for the caller to roll back. */
+export interface GenSignal { cancelled: boolean }
+
+/** Yield to the event loop so the browser can paint (the busy state) and process input (a cancel)
+ *  between a run's heavy stages — a macrotask, not a microtask, so rendering actually happens. */
+export const yieldFrame = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** The scope of the last generation. A finished run drops the painted region, so without this
  *  Clear straight after a scoped generate would wipe the rest of the map. */
@@ -98,9 +106,8 @@ interface Run {
   bare: string;
 }
 
-/** The clearing every run opens with: objects first, because a placement blocks erasing the terrain
- *  under it. Its own commands are never part of a run's record — they name the objects standing on
- *  THAT map, and the map a replay lands on has its own. */
+/** The clearing every run opens with. Its own commands are never part of a run's record — they name
+ *  the objects standing on THAT map, and the map a replay lands on has its own. */
 function clearScope(
   state: GridState,
   execute: (cmd: Command) => ValidationResult,
@@ -166,18 +173,17 @@ async function runGeneration(
 
   try {
     await yieldFrame();   // let a caller's spinner paint before the first synchronous chunk
+    // The ground the region is about to lose, read BEFORE the clearing: the map as it stands is
+    // legal, so what a cell holds now is what the ground outside the region can be given back if it
+    // turns out to have been leaning on it.
+    const seamBase = region ? readRegionBase(state, region) : null;
     // Cleared through the executor, so a locked layer refuses the erase here exactly as it would on
     // the live map — and not through `apply`, since the clearing is not part of what a replay lands.
     clearScope(state, (cmd) => executor.execute(cmd), region);
     const bare = mapFingerprint(state);
 
-    const result = await executor.runSilentlyAsync(async () => {
-      const r = generateTerrain(config, state, apply);
-      if (!signal.cancelled && config.algorithm === 'random') {
-        await populate(toGenConfig(config), state, apply, executor.getRegistry(), signal, r.zonePlan);
-      }
-      return r;
-    });
+    const result = await executor.runSilentlyAsync(async () =>
+      generateTerrain(config, state, apply, executor.getRegistry()));
 
     if (signal.cancelled) {
       executor.commitStrokeGroup(watermark);
@@ -188,6 +194,16 @@ async function runGeneration(
         bare,
       };
     }
+
+    // A SCOPED RUN SETTLES ITS SEAM BEFORE THE COMMIT. The island is planned whole and cropped to the
+    // region, and neither the plan nor the crop knows what the terrain OUTSIDE the region needs from
+    // the cells inside it — a 3x3 base, a pond's cap. Left to the commit, one such cell reverts the
+    // whole run, the clearing included, and the visitor sees nothing happen at all. Recorded through
+    // `apply`, so a candidate replays the settled seam rather than re-deriving it.
+    const seam = seamBase
+      ? executor.runSilently(() =>
+        repairRegionSeam({ state, execute: apply, reg: executor.getRegistry() }, seamBase))
+      : null;
 
     // The commit's own auto-reverts and edge-cut repairs are not in `commands` and do not need to
     // be: replaying it and committing again puts the same state in front of the same post-stroke
@@ -202,11 +218,23 @@ async function runGeneration(
         for (let x = 0; x < state.template.width; x++) cells.push({ x, y });
       }
     }
+    // WHY A SCOPED RUN CAN BUILD NOTHING, read off the settled map rather than guessed at. Nothing of
+    // the run left standing in its region has two readings, and the seam's own ledger separates them:
+    // ground the outside was leaning on was CLAIMED and handed back, and where the outside wanted all
+    // of it (a region painted inside a tall massif) the run had nowhere to build at all; a region the
+    // seam never claimed was the run's to build on, and the design put nothing in it. Reported either
+    // way, since a press that appears to do nothing and says nothing reads as a broken button.
+    const scopeEmpty = seamBase && regionUnbuilt(state, seamBase)
+      ? (seam && seam.claimed > 0 ? 'reclaimed' as const : 'empty' as const)
+      : undefined;
+
     return {
       outcome: {
         cells, placed: result.placed, removedCells: 0, removedObjects: 0, violations, cancelled: false,
         ...(result.mazeGates ? { mazeGates: result.mazeGates } : {}),
         ...(result.mazeWalk ? { mazeWalk: result.mazeWalk } : {}),
+        ...(result.stencil ? { stencil: result.stencil } : {}),
+        ...(scopeEmpty ? { scopeEmpty } : {}),
       },
       commands,
       bare,
@@ -219,9 +247,8 @@ async function runGeneration(
   }
 }
 
-/** Commands replayed between yields. A candidate's list is thousands of placements long, and
- *  replaying them in one breath is the freeze the chunking exists to end — the card's own landing
- *  overlay stays animated. */
+/** Commands replayed between yields. A candidate's list is thousands of placements long, so
+ *  replaying it in one breath freezes the page and stops the card's own landing overlay. */
 const REPLAY_CHUNK = 250;
 
 const CANCELLED: Outcome = {
@@ -232,10 +259,8 @@ const CANCELLED: Outcome = {
  * Run the recipe onto the live map, as one stroke group and one undo entry.
  *
  * The order is: read what the map WILL be once cleared, find or build the run for that ground, then
- * clear and replay. Reading first is what keeps the map standing while a run is built — a map
- * emptied for the length of a generation is a map that looks broken — and the comparison is what
- * makes the common answers free: one card after another, a card after Clear and a card over a map
- * someone has painted all clear to the same ground, so the run built for one is the run for all.
+ * clear and replay. Reading first keeps the map standing while a run is built, and a map emptied for
+ * the length of a generation is a map that looks broken.
  *
  * Every replayed command is validated again. Nothing is trusted about them beyond the map they were
  * built on being the map they are landing on, and the fingerprint taken after the real clearing is
@@ -245,7 +270,7 @@ const CANCELLED: Outcome = {
  * `obj.id`): a replay lands ids minted on the copy, and a matching fingerprint proves the SURVIVOR
  * SET — a clear-refused generated object included — is byte-identical to what the run was built
  * over, so a replayed id can only ever land on the cell that already carries it. Dropping ids from
- * the fingerprint would reopen the collision this comment exists to guard.
+ * the fingerprint reopens that collision.
  */
 export async function generateMap(
   ctx: KitContext,
@@ -290,8 +315,8 @@ export async function generateMap(
     // list, but a replay that hit one would be reporting the same non-event to the user.
     executor.runSilently(() => clearScope(state, (cmd) => executor.execute(cmd), region));
     // The prediction applies the clearing without the rules; a locked layer refuses an erase on the
-    // real map and leaves ground the build was never validated against. Cheap insurance, and the
-    // build it falls back to is cached under the true ground for the next press.
+    // real map and leaves ground the build was never validated against. The build this falls back
+    // to is cached under the true ground for the next press.
     if (mapFingerprint(state) !== candidate.base) {
       const real = await buildCandidate(ctx, build);
       if (!real) { executor.rollbackTo(watermark); return CANCELLED; }
@@ -325,18 +350,17 @@ export async function runCandidateOn(
   state: GridState,
   opts: { config: GenerateConfig; region: MacroCoord[] | null; signal?: GenSignal },
 ): Promise<Run> {
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue);
   return runGeneration({ state, executor, registry: executor.getRegistry() }, opts);
 }
 
 /**
  * Candidates already built, keyed by the GROUND they were built on plus the recipe and scope they
- * were built FOR. Daily use walks the same ground repeatedly — a slider nudged and nudged back, a
- * tab left and returned to, the same seed typed twice, a card landed and another card pressed — and
- * every one of those is a full generation this cache answers instead. The ground is the map after a
- * run's own clearing, so a whole island's worth of difference between two maps is no difference at
- * all to a full run: what changes the key is what SURVIVES clearing. The cap bounds what a session
- * holds (each entry carries a whole grid).
+ * were built FOR. Daily use walks the same ground repeatedly — a slider nudged and nudged back, the
+ * same seed typed twice, a card landed and another card pressed — and every one of those is a full
+ * generation this cache answers instead. The ground is the map after a run's own clearing, so what
+ * changes the key is what SURVIVES clearing. The cap bounds what a session holds (each entry carries
+ * a whole grid).
  *
  * A candidate is filed under two keys: the ground it landed on (what `generateMap` asks for) and,
  * where they differ, the map it was ASKED about (what the shelf asks for while it photographs a
@@ -388,11 +412,10 @@ function fingerprintOf(state: GridState): string {
  * A candidate picture is a picture of a real generation, because the generator is the only thing
  * that knows what a recipe produces. It is not a picture of the LIVE map: the run happens on a
  * detached grid with its own executor, its own event bus and no provenance ledger, so the live
- * cells, objects, undo stack and Clear scope are not reachable from here at all. That is the whole
- * point of the arrangement. Generating into the real map and undoing afterwards also restores it,
- * right up until something interrupts the sequence (a crash, a reload, a post-stroke revert that
- * stops early, a user reaching for Ctrl+Z mid-run), and what is left then is the user's map
- * replaced by a generated island.
+ * cells, objects, undo stack and Clear scope are not reachable from here at all. Generating into the
+ * real map and undoing afterwards also restores it, right up until something interrupts the sequence
+ * (a crash, a reload, a post-stroke revert that stops early, a user reaching for Ctrl+Z mid-run),
+ * and what is left then is the user's map replaced by a generated island.
  *
  * The copy starts as the live map rather than as a blank template, so a region-scoped candidate
  * shows the map the click would leave, not a patch of island floating on empty ground.
@@ -444,7 +467,7 @@ async function buildCandidate(
   }
   if (!built) {
     const state = cloneGridState(ctx.state);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state));
+    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state), catalogLoadValue);
     const run = await runGeneration({ state, executor, registry: ctx.registry }, opts);
     built = { state, outcome: run.outcome, commands: run.commands, bare: run.bare };
   }
@@ -472,9 +495,22 @@ export function clearGenerated(ctx: KitContext, opts: { region: MacroCoord[] | n
   const prov = executor.getProvenanceTracker();
 
   try {
+    // A BOUNDED CLEAR OWES THE SAME SEAM A GENERATION DOES: erasing terrain inside the scope can take
+    // the 3x3 base or the cap that ground outside it stands on, and that violation reverts the whole
+    // Clear at commit time. Read before anything is taken, so the repair has ground to give back.
+    const seamBase = region ? readRegionBase(state, [...region]) : null;
     // Objects first: a placement blocks erasing the terrain beneath it.
     const removedObjects = clearAllObjects(state, (cmd) => executor.execute(cmd), region, (o) => prov.objectAuthor(o.id) === 'human');
     const removedCells = clearAllTerrain(state, (cmd) => executor.execute(cmd), region, (x, y) => prov.cellAuthor(x, y) === 'human');
+    if (seamBase) {
+      executor.runSilently(() => repairRegionSeam(
+        { state, execute: (cmd) => executor.execute(cmd), reg: executor.getRegistry() },
+        seamBase,
+        // The person's own work is spared here for the same reason the erase spared it, and the cell
+        // under it was never erased, so the seam has no call on it.
+        { spare: (obj) => prov.objectAuthor(obj.id) === 'human' },
+      ));
+    }
     state.generation = undefined;
     const violations = executor.commitStrokeGroup(watermark);
     return { cells: region ? [...region] : [], placed: 0, removedCells, removedObjects, violations, cancelled: false };

@@ -1,10 +1,10 @@
 /**
  * `ObjectLayer.sync` is the reconcile every bulk caller runs after committing (Generate, Clear, a
- * macro press, via MapRenderer.resyncObjects). It used to compare only WHICH IDS EXIST, which made
- * it blind to the one drift most likely to happen: a road's corner cut edits its object IN PLACE —
- * same id, new corners/rotation/patchOnly (see core/commands/command-apply.ts, the `layer === 'road'`
- * branch) — so the id set matched state and the stale sprite stayed on the map. It was therefore
- * weaker than the per-object events it exists to back up.
+ * macro press, via MapRenderer.resyncObjects). Comparing only WHICH IDS EXIST leaves it blind to the
+ * one drift most likely to happen: a road's corner cut edits its object IN PLACE — same id, new
+ * corners/rotation/patchOnly (see core/commands/command-apply.ts, the `layer === 'road'` branch) — so
+ * the id set matches state while the stale sprite stays on the map, making the reconcile weaker than
+ * the per-object events it exists to back up.
  */
 import './_pixi-env';
 import { describe, it, expect } from 'vitest';

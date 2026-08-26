@@ -16,7 +16,7 @@ export interface EditorAction {
 
 /* File row — 4 actions. */
 export const FILE_ACTIONS: readonly EditorAction[] = [
-  { id: 'new',    action: 'file', payload: 'new',    labelKey: 'menu.new',    icon: 'new' },
+  { id: 'new',    action: 'file', payload: 'new',    labelKey: 'modal.new_title', icon: 'new' },
   { id: 'image',  action: 'file', payload: 'image',  labelKey: 'menu.image',  icon: 'export-image' },
   { id: 'export', action: 'file', payload: 'export', labelKey: 'menu.export', icon: 'export' },
   { id: 'import', action: 'file', payload: 'import', labelKey: 'menu.import', icon: 'import' },

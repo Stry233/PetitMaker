@@ -26,6 +26,7 @@ import type { RoadLookup } from '../../core/model/road-lookup';
 import { detectRoadConn } from '../../core/edge-cut/road-cut-states';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { roadLookup } from '../../state/object-index';
+import { strippableRefusal } from '../paint/tile-coating';
 import { applyAutoEdgeCut } from './auto-edge-cut';
 import { region, TRIM_PREVIEW_MAX_RIM, type GhostShape, type TrimmedCell } from './trim-preview';
 
@@ -73,7 +74,10 @@ export function previewRoadTrim(
   const planned = new Map<string, PlacedObject>();
   for (const cmd of plan(candidates)) {
     if (cmd.type !== CommandType.PlaceObject) continue;
-    if (rules.validatePreCommand(cmd, state).length > 0) continue;
+    const errors = rules.validatePreCommand(cmd, state);
+    // The click strips the coating it covers before placing, so a refusal that is only that
+    // coating's overlap is a cell the click WILL pave — the same answer the cursor probe gives.
+    if (errors.length > 0 && !strippableRefusal(state, cmd.object.position, errors)) continue;
     planned.set(cellKey(cmd.object.position.x, cmd.object.position.y), cmd.object);
   }
   // What was ASKED about and refused is not the same as what was never asked: a cell inside the
@@ -93,8 +97,8 @@ export function previewRoadTrim(
   // what it has laid, so by the time this dab is previewed its neighbour may be carrying the
   // end-cap it was given while it still WAS the end — and the click will take that back
   // (`liveTrim` squares the stroke's cells in the dab's window before re-deriving, because the trim
-  // keeps the cuts it finds). Reading the stale cut instead made every candidate state fail the
-  // neighbour's kept-edge check, and the ghost promised nothing where the click cuts a wedge.
+  // keeps the cuts it finds). Reading the stale cut instead fails every candidate state against the
+  // neighbour's kept-edge check, so the ghost promises nothing where the click cuts a wedge.
   // Squaring them here is that same step, and putting them in the pass is what re-derives them.
   const priorWindow = reach
     .filter((c) => laidThisStroke.has(cellKey(c.x, c.y)) && !asked.has(cellKey(c.x, c.y)));

@@ -36,7 +36,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const t: TFunction = useCallback((key, params) => translateFor(locale, key, params), [locale]);
   // Keep the browser-tab title in sync with the (single-sourced) brand + tagline.
   useEffect(() => {
-    document.title = `${translateFor(locale, 'app.name')} · ${translateFor(locale, 'app.tagline')}`;
+    document.title = `${translateFor(locale, 'app.name')} - ${translateFor(locale, 'app.tagline')}`;
   }, [locale]);
   return <I18nContext.Provider value={t}>{children}</I18nContext.Provider>;
 }

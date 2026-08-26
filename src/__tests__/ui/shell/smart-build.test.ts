@@ -17,10 +17,10 @@ import { getMapTemplate } from '../../../config/maps';
 import { createDefaultRegistry } from '../../../rules';
 import { categoryOf } from '../../../state/catalog';
 import { getObjectIndex, roadLookup } from '../../../state/object-index';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { analyzeTerrain } from '../../../tools/generation/placement/analysis';
+import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
+import { analyzeTerrain } from '../../../tools/placement/analysis';
 import { applyMacro, MACRO_IDS, type MacroId } from '../../../tools/macros';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { SMART_MENU } from '../../../ui/shell/bars/smart-menu';
 import objectShelfSource from '../../../ui/shell/bars/ObjectShelf.tsx?raw';
 import terrainBarSource from '../../../ui/shell/bars/TerrainBar.tsx?raw';
@@ -61,12 +61,12 @@ describe('smart construction', () => {
   });
 
   /**
-   * THE NEGOTIATION IS GONE, and its strings are the evidence that cannot drift.
+   * THERE IS NO NEGOTIATION, and these strings are the evidence that cannot drift.
    *
-   * Arming a macro used to lay it and then open a row of three plates — keep, another, cancel —
-   * which turned one cell in a row of eight into a dialogue. Closing keeps, pressing again rerolls,
-   * and undo is how you decline, the same as after any other stroke. If those keys ever come back,
-   * the row has come back with them.
+   * Laying a macro and then opening a row of three plates — keep, another, cancel — turns one cell in
+   * a row of eight into a dialogue. Closing keeps, pressing again rerolls, and undo is how you
+   * decline, the same as after any other stroke. If those keys ever come back, the row has come back
+   * with them.
    */
   it('has no keep, cancel, or plan-heading strings left to draw', () => {
     const gone = ['smart.keep', 'smart.cancel', 'smart.plan_hill', 'smart.plan_field',
@@ -111,12 +111,12 @@ describe('smart construction', () => {
    * ids it laid and hands back another candidate instead (`kit/operations/road-press.ts`,
    * `roads-candidates.test.ts`) — it takes its network back, so it never meets this report.
    *
-   * ON GENERATED TERRAIN, not on the bare template, because a flat map cannot see the way this used
-   * to fail: a road tile is not a decoration, so the press read the few hundred tiles it had just
-   * laid as fresh doorsteps, planned crossings between the regions they implied, and spent its
-   * scenic-crossing budget again — five ramps grew to thirty-six over four presses, most standing in
-   * bare grass, and `changes` never fell to zero so this report could never fire. Flat ground has no
-   * crossing sites to realize, so the old fixture passed throughout.
+   * ON GENERATED TERRAIN, not on the bare template, because a flat map cannot see the way this
+   * fails: a road tile is not a decoration, so a press can read the few hundred tiles it has just
+   * laid as fresh doorsteps, plan crossings between the regions they imply, and spend its
+   * scenic-crossing budget again — five ramps grow to thirty-six over four presses, most standing in
+   * bare grass, and `changes` never falls to zero so this report never fires. Flat ground has no
+   * crossing sites to realize, so a flat fixture passes throughout.
    */
   it('a re-press with nothing changed says so, on terrain that could grow crossings', () => {
     const template = getMapTemplate('hexia');
@@ -130,10 +130,13 @@ describe('smart construction', () => {
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const ctx = { state, executor: exec, registry: exec.getRegistry() };
     const config: GenerateConfig = {
-      algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 7,
-      region: null, relief: 0.7, settlement: 0, nature: 0,
+      algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 7,
+      region: null,
     };
-    generateTerrain(config, state, (c: Command) => exec.execute(c));
+    generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
+    // TERRAIN ONLY: the island generator furnishes what it builds, and this case plants its own two
+    // houses below to say what "already connected" means. The plaza is locked and stays.
+    clearAllObjects(state, (c: Command) => exec.execute(c));
     const raised = state.cells.flat().filter((c) => (c.terrain?.elevation ?? 0) > 0).length;
     expect(raised, 'the fixture has to have relief for this test to mean anything').toBeGreaterThan(1000);
 

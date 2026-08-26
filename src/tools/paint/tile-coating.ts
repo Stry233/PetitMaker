@@ -1,9 +1,10 @@
-import type { MacroCoord } from '../../core/model/types';
-import { cellKey } from '../../core/model/grid-model';
+import type { GridState, MacroCoord, ValidationError } from '../../core/model/types';
+import { cellKey, cellOverlapsRect } from '../../core/model/grid-model';
 import { getCatalogItem } from '../../state/catalog';
-import { removeOverlappingCoatings } from '../objects/object-placer';
+import { entriesNear, getObjectIndex } from '../../state/object-index';
+import { overlappingCoatings, removeOverlappingCoatings } from '../objects/object-placer';
 import { planPaint } from './paint-plan';
-import type { ToolContext } from '../types';
+import type { ToolContext } from '../runtime/types';
 
 /** Ghost/preview color (0xRRGGBB) for the given tile material. */
 export function tileGhostColor(material: string): number {
@@ -22,13 +23,16 @@ export function placeTileCell(coord: MacroCoord, ctx: ToolContext, painted: Set<
   const cmd = planPaint([coord], ctx, 'tile', painted).commands[0];
   if (!cmd) return false;
 
-  // Check BEFORE stripping. The strip is how a tile replaces the one under it, but if the placement
-  // is then refused — the cell is sea, plaza, or off the map — the strip has already deleted a road
-  // that nothing is going to replace. Validating first makes the pair all-or-nothing.
-  if (ctx.validateCommand(cmd).length > 0) return false;
+  // Strip FIRST: a coating over a coating is refused outright (V-PLACE-OVERLAP), so the
+  // replacement must clear the cell before it can validate. A refusal after the strip — the cell
+  // is sea, plaza, or off the map — rolls the strip back, so the pair stays all-or-nothing and a
+  // road is never deleted for a tile that nothing placed.
+  const start = ctx.getUndoStackSize();
   removeOverlappingCoatings([coord], ctx);
-
-  if (!ctx.executeCommand(cmd).success) return false;
+  if (!ctx.executeCommand(cmd).success) {
+    ctx.rollbackTo(start);
+    return false;
+  }
   painted.add(cellKey(coord.x, coord.y));
   return true;
 }
@@ -36,4 +40,19 @@ export function placeTileCell(coord: MacroCoord, ctx: ToolContext, painted: Set<
 /** Remove any tile/coating object covering the given cells. */
 export function eraseTileCells(cells: MacroCoord[], ctx: ToolContext): void {
   removeOverlappingCoatings(cells, ctx);
+}
+
+/**
+ * Whether a placement refusal is ONLY the coating the tile click strips first — the one refusal
+ * the click makes legal. Shared by the cursor probe and the road-trim ghost, so every promise
+ * matches what the click commits: a coating over a coating is refused outright by
+ * V-PLACE-OVERLAP, and only the strip-then-place pair gets past it.
+ */
+export function strippableRefusal(gs: GridState, coord: MacroCoord, errors: readonly ValidationError[]): boolean {
+  if (errors.length === 0 || !errors.every((e) => e.ruleId === 'V-PLACE-OVERLAP')) return false;
+  if (overlappingCoatings(gs, [coord]).length === 0) return false;
+  for (const e of entriesNear(getObjectIndex(gs), { x: coord.x, y: coord.y, w: 1, h: 1 })) {
+    if (!e.coating && cellOverlapsRect(e.rect, coord.x, coord.y, 0)) return false; // a solid no strip removes
+  }
+  return true;
 }

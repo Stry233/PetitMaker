@@ -34,6 +34,7 @@ const PROVIDER_ORIGINS = [
   'https://dashscope.aliyuncs.com',
   'https://api.moonshot.cn',
   'https://api.moonshot.ai',
+  'https://api.perplexity.ai',
 ];
 
 describe('HEADERS_POLICY — shape', () => {
@@ -61,8 +62,7 @@ describe('HEADERS_POLICY — shape', () => {
   it('names every host the provider adapters actually call', async () => {
     // These origins are documentation: connect-src's broad `https:` is what actually admits them.
     // The list is worth reading only while it equals what the adapters call, which this holds.
-    const { PROVIDER_IDS } = await import('../../agent/providers/defaults');
-    const { providerBaseUrls } = await import('../../agent/providers');
+    const { PROVIDER_IDS, providerBaseUrls } = await import('../../agent/providers/defaults');
     for (const id of PROVIDER_IDS) {
       for (const url of providerBaseUrls(id)) {
         expect(PROVIDER_ORIGINS, `${id} calls ${url}`).toContain(new URL(url).origin);

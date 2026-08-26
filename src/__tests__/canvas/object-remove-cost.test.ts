@@ -1,10 +1,10 @@
 /**
  * `ObjectLayer.removeObjects` must cost the removal, not the map. A road corner-trim's remove+add
- * pairs drive it several times per brush dab, and the old implementation ended in
- * `this.lodSprites.filter(...)` — a full pass over every sprite-bearing decoration on the map, every
- * call, whatever the ids being removed actually were. On a session that has accumulated thousands of
- * decorations, that made every dab of a road stroke get heavier as the map filled up. `lodSprites` is
- * now keyed by object id, so a removal drops its own entry directly.
+ * pairs drive it several times per brush dab, so a `this.lodSprites.filter(...)` tail — a full pass
+ * over every sprite-bearing decoration on the map, every call, whatever the ids being removed
+ * actually are — makes every dab of a road stroke heavier as the map fills up, on a session that has
+ * accumulated thousands of decorations. `lodSprites` is keyed by object id, so a removal drops its
+ * own entry directly.
  *
  * Pinned by counting (never timing, per this repo's convention for growth bugs): the number of times
  * the WHOLE lodSprites collection is walked while removing objects one (or a few) at a time must stay
@@ -60,7 +60,7 @@ describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
     const { walks } = instrumentLodMap(layer);
 
     // A road auto-trim's remove+add churn: many small removeObjects calls in a row,
-    // mirroring the ~4-per-dab pattern the report measured.
+    // mirroring the ~4-per-dab pattern a road stroke drives.
     for (let i = 0; i < 200; i++) layer.removeObjects([`e${i}`]);
 
     expect(walks()).toBe(0); // O(removed): no full pass over the other ~3800 survivors

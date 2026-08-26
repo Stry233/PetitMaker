@@ -1,4 +1,4 @@
-// Thin release-mode gate for the LEGAL config (Task 17 / spec §5): fails
+// Thin release-mode gate for the LEGAL config: fails
 // `npm run build:release` BEFORE the (slow) tsc+vite build even starts if any
 // launch-blocker field is still empty/placeholder/denylisted. All the actual
 // validation logic lives in src/legal/validate-config.ts (already unit-tested

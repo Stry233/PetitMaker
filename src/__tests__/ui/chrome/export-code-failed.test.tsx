@@ -1,7 +1,7 @@
 /**
- * When no share code is coming, the export panel says so. It used to swallow the encoder's refusal
- * into the console and paint an empty band, which reads as a rendering fault: the map that started
- * this carried ten road tiles on one cell and the person saw a blank strip and no explanation.
+ * When no share code is coming, the export panel says so. Swallowing the encoder's refusal into the
+ * console and painting an empty band reads as a rendering fault: a map carrying ten road tiles on one
+ * cell shows a blank strip and no explanation.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -22,7 +22,7 @@ const opts: ExportOptions = {
 function stacked(n: number): GridState {
   const s = createBlankGridState('hexia');
   for (let i = 0; i < n; i++) {
-    s.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'road-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
+    s.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'path-overgrown-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
   }
   return s;
 }

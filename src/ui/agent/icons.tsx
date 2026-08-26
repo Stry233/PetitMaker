@@ -1,0 +1,198 @@
+/*
+ * icons.tsx — the agent panel's icon sprite, the design artifact's own r8 drawing set.
+ *
+ * The <symbol> markup below is lifted from the artifact's inline sprite block with a script rather
+ * than hand-retyped, so a drawing here is the one the artifact ships. Re-copy the same block and
+ * paste the result back in if the set changes; do not hand-edit a path.
+ *
+ * IT PAINTS IN INK ALONE: every fill and stroke is `currentColor` or
+ * `none`, so a glyph takes the colour of whatever it stands in and a single drawing serves the
+ * dock, a card and a disabled row. Where a mark needs a second value inside a shape, the r8 pass cuts
+ * it as a KNOCKOUT rather than painting it: an even-odd subpath (the note's folded corner, the
+ * warning's bar and dot) or a `<mask>` whose black/white says which pixels survive (the four
+ * `pw-m-*` masks, which are plumbing for their one symbol and not icons of their own).
+ * `__tests__/ui/agent/icons.test.tsx` holds the set equal to the artifact's and fails on a colour.
+ *
+ * THREE DRAWINGS CARRY A NOTE THE ART CANNOT:
+ *   pw-flag — one confident parallel S-wave with the fly edge riding it, the banner solid ink. Worn by
+ *     the blueprint step markers and the capped stamp as well as by a flag.
+ *   pw-disconnected — the plug a breath from its socket: not connected yet, connect me. NOT
+ *     sleep-themed, not the credential key (pw-key), and nothing is severed (pw-cloud-off is the
+ *     network lost mid-run); it must stay distinct from pw-plug, the object itself, at every size.
+ *   pw-badge-spark / pw-badge-note — the only two symbols the artifact's r8 monochrome pass left with
+ *     a painted accent, because nothing references them there: the character's badges are DRAWN, in
+ *     `character/badges.tsx`, and these sprite copies are unused in the artifact and here alike. They
+ *     are carried at the pass's own idiom rather than as an exception, the spark's small star in plain
+ *     ink and the note's folded corner as the even-odd knockout `pw-note` already uses (the same fold
+ *     shape, translated), so no symbol in the sheet paints a colour.
+ */
+
+const SYMBOLS = `
+  <symbol id="pw-terrain-raise" viewBox="0 0 24 24"><g transform="translate(1.162 1.093) scale(0.907)"><path d="M 4 19.6 L 9.4 10.6 L 14.8 19.6 Z" fill="currentColor" stroke="currentColor" stroke-width="4.6" stroke-linejoin="round"/><path d="M 15.2 9 L 22 9 L 18.6 2.9 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 18.6 8.4 L 18.6 8.4 Q 20.4 8.4 20.4 10.2 L 20.4 13.4 Q 20.4 15.2 18.6 15.2 L 18.6 15.2 Q 16.8 15.2 16.8 13.4 L 16.8 10.2 Q 16.8 8.4 18.6 8.4 Z" fill="currentColor"/></g></symbol>
+  <symbol id="pw-terrain-lower" viewBox="0 0 24 24"><g transform="translate(1.162 1.144) scale(0.907)"><path d="M 4 19.6 L 9.4 10.6 L 14.8 19.6 Z" fill="currentColor" stroke="currentColor" stroke-width="4.6" stroke-linejoin="round"/><path d="M 15.2 8.9 L 22 8.9 L 18.6 15 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 18.6 2.7 L 18.6 2.7 Q 20.4 2.7 20.4 4.5 L 20.4 7.7 Q 20.4 9.5 18.6 9.5 L 18.6 9.5 Q 16.8 9.5 16.8 7.7 L 16.8 4.5 Q 16.8 2.7 18.6 2.7 Z" fill="currentColor"/></g></symbol>
+  <symbol id="pw-water" viewBox="0 0 24 24"><path d="M 12 2.6 C 14.4 6.4 19 10.3 19 14.6 A 7 7 0 0 1 5 14.6 C 5 10.3 9.6 6.4 12 2.6 Z M 7.4 15.3 A 1.7 1.7 0 1 0 10.8 15.3 A 1.7 1.7 0 1 0 7.4 15.3 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-river" viewBox="0 0 24 24"><path d="M 3 5.7 Q 7.5 3.7 12 5.7 Q 16.5 7.7 21 5.7 L 21 9.5 Q 16.5 11.5 12 9.5 Q 7.5 7.5 3 9.5 Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M 3 13.9 Q 7.5 11.9 12 13.9 Q 16.5 15.9 21 13.9 L 21 17.7 Q 16.5 19.7 12 17.7 Q 7.5 15.7 3 17.7 Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-road" viewBox="0 0 24 24"><path d="M 8.05 5.16 Q 8.9 2.7 11.50 2.70 L 12.50 2.70 Q 15.1 2.7 15.95 5.16 L 20.65 18.84 Q 21.5 21.3 18.90 21.30 L 5.10 21.30 Q 2.5 21.3 3.35 18.84 Z M 12 7.3 Q 10.35 7.3 10.35 8.95 L 10.35 10.25 Q 10.35 11.9 12 11.9 Q 13.65 11.9 13.65 10.25 L 13.65 8.95 Q 13.65 7.3 12 7.3 Z M 12 14.3 Q 10.1 14.3 10.1 16.2 L 10.1 16.35 Q 10.1 18.25 12 18.25 Q 13.9 18.25 13.9 16.35 L 13.9 16.2 Q 13.9 14.3 12 14.3 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-bridge" viewBox="0 0 24 24"><path d="M 4.1 6.4 L 19.9 6.4 Q 22 6.4 22 8.5 L 22 8.5 Q 22 10.6 19.9 10.6 L 4.1 10.6 Q 2 10.6 2 8.5 L 2 8.5 Q 2 6.4 4.1 6.4 Z" fill="currentColor"/><path d="M 5.6 11.6 L 18.4 11.6 Q 20.2 11.6 20.2 13.4 L 20.2 20.8 L 16 20.8 L 16 17.6 A 4 4 0 0 0 8 17.6 L 8 20.8 L 3.8 20.8 L 3.8 13.4 Q 3.8 11.6 5.6 11.6 Z" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-ramp" viewBox="0 0 24 24"><g transform="translate(0.912 0.969) scale(0.924)"><path d="M 4 19.5 L 20 19.5 L 20 6 Z" fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-object-place" viewBox="0 0 24 24"><path d="M 4.4 10.5 L 19.6 10.5 L 12 3.7 Z" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M 7 10.5 L 17 10.5 Q 19.5 10.5 19.5 13 L 19.5 18 Q 19.5 20.5 17 20.5 L 7 20.5 Q 4.5 20.5 4.5 18 L 4.5 13 Q 4.5 10.5 7 10.5 Z M 11.8 15.2 L 12.2 15.2 Q 14 15.2 14 17 L 14 18.7 Q 14 20.5 12.2 20.5 L 11.8 20.5 Q 10 20.5 10 18.7 L 10 17 Q 10 15.2 11.8 15.2 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-object-remove" viewBox="0 0 24 24"><g transform="translate(1.104 1.096) scale(0.912)"><mask id="pw-m-remove-r8"><rect width="24" height="24" fill="#fff"/><circle cx="17.6" cy="16.6" r="7.2" fill="#000"/></mask><g mask="url(#pw-m-remove-r8)"><path d="M 3.2 10.6 L 16.8 10.6 L 10 4 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/><path d="M 6.2 10.2 L 13.8 10.2 Q 16 10.2 16 12.4 L 16 16.6 Q 16 18.8 13.8 18.8 L 6.2 18.8 Q 4 18.8 4 16.6 L 4 12.4 Q 4 10.2 6.2 10.2 Z" fill="currentColor"/></g><path d="M 11.9 16.6 A 5.7 5.7 0 1 1 23.3 16.6 A 5.7 5.7 0 1 1 11.9 16.6 Z M 15.8 15.3 Q 14.5 15.3 14.5 16.6 Q 14.5 17.9 15.8 17.9 L 19.4 17.9 Q 20.7 17.9 20.7 16.6 Q 20.7 15.3 19.4 15.3 Z" fill="currentColor" fill-rule="evenodd"/></g></symbol>
+  <symbol id="pw-rotate" viewBox="0 0 24 24"><path d="M 20.27 11.14 A 8.4 8.4 0 1 1 14.32 4.53 L 13.21 8.37 A 4.4 4.4 0 1 0 16.33 11.84 Z" fill="currentColor"/><path d="M 12.22 9.65 L 14.15 2.92 L 18.19 7.72 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-trim-corner" viewBox="0 0 24 24"><path d="M 4 7 L 11 7 L 18.5 14.5 L 18.5 19.5 L 4 19.5 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/><path d="M 13.6 3.2 L 20.8 3.2 L 20.8 10.4 Z" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-clear" viewBox="0 0 24 24"><path d="M 11.3 2.6 L 12.7 2.6 Q 14.3 2.6 14.3 4.2 L 14.3 4.2 Q 14.3 5.8 12.7 5.8 L 11.3 5.8 Q 9.7 5.8 9.7 4.2 L 9.7 4.2 Q 9.7 2.6 11.3 2.6 Z" fill="currentColor"/><path d="M 5.8 4.8 L 18.2 4.8 Q 19.8 4.8 19.8 6.4 L 19.8 6.4 Q 19.8 8 18.2 8 L 5.8 8 Q 4.2 8 4.2 6.4 L 4.2 6.4 Q 4.2 4.8 5.8 4.8 Z" fill="currentColor"/><path d="M 6.2 9.8 L 17.8 9.8 L 17 19 Q 16.8 21.2 14.6 21.2 L 9.4 21.2 Q 7.2 21.2 7 19 Z M 10.35 12 L 10.35 12 Q 11.3 12 11.3 12.95 L 11.3 17.25 Q 11.3 18.2 10.35 18.2 L 10.35 18.2 Q 9.4 18.2 9.4 17.25 L 9.4 12.95 Q 9.4 12 10.35 12 Z M 13.65 12 L 13.65 12 Q 14.6 12 14.6 12.95 L 14.6 17.25 Q 14.6 18.2 13.65 18.2 L 13.65 18.2 Q 12.7 18.2 12.7 17.25 L 12.7 12.95 Q 12.7 12 13.65 12 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-scatter" viewBox="0 0 24 24"><path d="M 2.8 6.8 A 3.2 3.2 0 1 1 9.2 6.8 A 3.2 3.2 0 1 1 2.8 6.8 Z" fill="currentColor"/><path d="M 13.9 5.6 A 2.1 2.1 0 1 1 18.1 5.6 A 2.1 2.1 0 1 1 13.9 5.6 Z" fill="currentColor"/><path d="M 15.7 13.2 A 2.9 2.9 0 1 1 21.5 13.2 A 2.9 2.9 0 1 1 15.7 13.2 Z" fill="currentColor"/><path d="M 5.1 16.4 A 2.3 2.3 0 1 1 9.7 16.4 A 2.3 2.3 0 1 1 5.1 16.4 Z" fill="currentColor"/><path d="M 9.8 19 A 3 3 0 1 1 15.8 19 A 3 3 0 1 1 9.8 19 Z" fill="currentColor"/><path d="M 10.8 11.4 A 1.6 1.6 0 1 1 14 11.4 A 1.6 1.6 0 1 1 10.8 11.4 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-forest" viewBox="0 0 24 24"><path d="M 2.4 8.6 A 5.6 5.6 0 1 1 13.6 8.6 A 5.6 5.6 0 1 1 2.4 8.6 Z" fill="currentColor"/><path d="M 8 13.2 L 8 13.2 Q 9.6 13.2 9.6 14.8 L 9.6 19.6 Q 9.6 21.2 8 21.2 L 8 21.2 Q 6.4 21.2 6.4 19.6 L 6.4 14.8 Q 6.4 13.2 8 13.2 Z" fill="currentColor"/><path d="M 14.4 13.4 A 3.6 3.6 0 1 1 21.6 13.4 A 3.6 3.6 0 1 1 14.4 13.4 Z" fill="currentColor"/><path d="M 18 16.4 L 18 16.4 Q 19.3 16.4 19.3 17.7 L 19.3 19.9 Q 19.3 21.2 18 21.2 L 18 21.2 Q 16.7 21.2 16.7 19.9 L 16.7 17.7 Q 16.7 16.4 18 16.4 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-decorate" viewBox="0 0 24 24"><circle cx="12.00" cy="6.00" r="3.55" fill="currentColor"/><circle cx="6.39" cy="10.08" r="3.55" fill="currentColor"/><circle cx="8.53" cy="16.67" r="3.55" fill="currentColor"/><circle cx="15.47" cy="16.67" r="3.55" fill="currentColor"/><circle cx="17.61" cy="10.08" r="3.55" fill="currentColor"/><circle cx="12" cy="11.9" r="1.55" fill="currentColor"/></symbol>
+  <symbol id="pw-generator" viewBox="0 0 24 24"><g transform="rotate(-45 4.6 19.4)"><path d="M 6.6 17.4 L 11.8 17.4 Q 13.8 17.4 13.8 19.4 L 13.8 19.4 Q 13.8 21.4 11.8 21.4 L 6.6 21.4 Q 4.6 21.4 4.6 19.4 L 4.6 19.4 Q 4.6 17.4 6.6 17.4 Z" fill="currentColor"/><path d="M 15.3 17.4 L 15.5 17.4 Q 17.5 17.4 17.5 19.4 Q 17.5 21.4 15.5 21.4 L 15.3 21.4 Q 14.9 21.4 14.9 21 L 14.9 17.8 Q 14.9 17.4 15.3 17.4 Z" fill="currentColor"/></g><path d="M 16.8 1.9 L 18.14 5.46 L 21.7 6.8 L 18.14 8.14 L 16.8 11.7 L 15.46 8.14 L 11.9 6.8 L 15.46 5.46 Z" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M 20.6 10.4 L 21.2 12 L 22.8 12.6 L 21.2 13.2 L 20.6 14.8 L 20 13.2 L 18.4 12.6 L 20 12 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-inspect" viewBox="0 0 24 24"><path d="M 3.9 10.5 A 6.6 6.6 0 1 1 17.1 10.5 A 6.6 6.6 0 1 1 3.9 10.5 Z M 7.3 10.5 A 3.2 3.2 0 1 0 13.7 10.5 A 3.2 3.2 0 1 0 7.3 10.5 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 14.26 16.94 L 18.86 21.54 L 21.54 18.86 L 16.94 14.26 Z" fill="currentColor" stroke="currentColor" stroke-width="3.6" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-evaluate" viewBox="0 0 24 24"><path d="M 7.6 3.2 L 16.4 3.2 Q 20.8 3.2 20.8 7.6 L 20.8 16.4 Q 20.8 20.8 16.4 20.8 L 7.6 20.8 Q 3.2 20.8 3.2 16.4 L 3.2 7.6 Q 3.2 3.2 7.6 3.2 Z M 12.0 5.63 L 13.76 10.29 L 18.73 10.53 L 14.86 13.64 L 16.16 18.44 L 12.0 15.71 L 7.84 18.44 L 9.14 13.64 L 5.27 10.53 L 10.24 10.29 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-search-sites" viewBox="0 0 24 24"><path d="M 12 21.8 C 9.2 17.8 5.2 14.7 5.2 10.4 A 6.8 6.8 0 1 1 18.8 10.4 C 18.8 14.7 14.8 17.8 12 21.8 Z M 9.1 10.3 A 2.9 2.9 0 1 0 14.9 10.3 A 2.9 2.9 0 1 0 9.1 10.3 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-skill" viewBox="0 0 24 24"><g transform="translate(0.72 0.726) scale(0.94)"><circle cx="12" cy="10.8" r="4.9" fill="currentColor"/><path d="M 12.0 4.2 L 12.0 2.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M 17.05 6.25 L 18.24 5.18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M 6.95 6.25 L 5.76 5.18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M 10.6 16.6 L 13.4 16.6 Q 14.8 16.6 14.8 18 L 14.8 18.3 Q 14.8 19.7 13.4 19.7 L 10.6 19.7 Q 9.2 19.7 9.2 18.3 L 9.2 18 Q 9.2 16.6 10.6 16.6 Z" fill="currentColor"/><path d="M 11.15 20 L 12.85 20 Q 14.1 20 14.1 21.25 L 14.1 21.25 Q 14.1 22.5 12.85 22.5 L 11.15 22.5 Q 9.9 22.5 9.9 21.25 L 9.9 21.25 Q 9.9 20 11.15 20 Z" fill="currentColor"/></g></symbol>
+  <symbol id="pw-plan" viewBox="0 0 24 24"><path d="M 7 2.8 L 17 2.8 Q 20.6 2.8 20.6 6.4 L 20.6 17.6 Q 20.6 21.2 17 21.2 L 7 21.2 Q 3.4 21.2 3.4 17.6 L 3.4 6.4 Q 3.4 2.8 7 2.8 Z M 6.35 8.2 A 1.55 1.55 0 1 0 9.45 8.2 A 1.55 1.55 0 1 0 6.35 8.2 Z M 11.9 7.1 L 16.7 7.1 Q 17.8 7.1 17.8 8.2 L 17.8 8.2 Q 17.8 9.3 16.7 9.3 L 11.9 9.3 Q 10.8 9.3 10.8 8.2 L 10.8 8.2 Q 10.8 7.1 11.9 7.1 Z M 6.35 13 A 1.55 1.55 0 1 0 9.45 13 A 1.55 1.55 0 1 0 6.35 13 Z M 11.9 11.9 L 16.7 11.9 Q 17.8 11.9 17.8 13 L 17.8 13 Q 17.8 14.1 16.7 14.1 L 11.9 14.1 Q 10.8 14.1 10.8 13 L 10.8 13 Q 10.8 11.9 11.9 11.9 Z M 6.35 17.8 A 1.55 1.55 0 1 0 9.45 17.8 A 1.55 1.55 0 1 0 6.35 17.8 Z M 11.9 16.7 L 14.5 16.7 Q 15.6 16.7 15.6 17.8 L 15.6 17.8 Q 15.6 18.9 14.5 18.9 L 11.9 18.9 Q 10.8 18.9 10.8 17.8 L 10.8 17.8 Q 10.8 16.7 11.9 16.7 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-subagent" viewBox="0 0 24 24"><path d="M 3.9 7.6 A 4.7 4.7 0 1 1 13.3 7.6 A 4.7 4.7 0 1 1 3.9 7.6 Z" fill="currentColor"/><path d="M 7.5 13 L 9.7 13 Q 13.6 13 13.6 16.9 L 13.6 16.9 Q 13.6 20.8 9.7 20.8 L 7.5 20.8 Q 3.6 20.8 3.6 16.9 L 3.6 16.9 Q 3.6 13 7.5 13 Z" fill="currentColor"/><circle cx="18.1" cy="10.8" r="2.9" fill="currentColor"/><path d="M 17.7 14.9 L 18.5 14.9 Q 21.4 14.9 21.4 17.85 Q 21.4 20.8 18.5 20.8 L 17.7 20.8 Q 14.8 20.8 14.8 17.85 Q 14.8 14.9 17.7 14.9 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-export" viewBox="0 0 24 24"><path d="M 21.2 12.6 A 9.2 9.2 0 0 1 2.8 12.6 L 6.6 12.6 A 5.4 5.4 0 0 0 17.4 12.6 Z" fill="currentColor"/><path d="M 7.2 7.6 L 16.8 7.6 L 12 2.6 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 12 7 L 12 7 Q 13.8 7 13.8 8.8 L 13.8 13.6 Q 13.8 15.4 12 15.4 L 12 15.4 Q 10.2 15.4 10.2 13.6 L 10.2 8.8 Q 10.2 7 12 7 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-snapshot" viewBox="0 0 24 24"><path d="M 10.4 4.2 L 13.6 4.2 Q 15.6 4.2 15.6 6.2 L 15.6 6.6 Q 15.6 8.6 13.6 8.6 L 10.4 8.6 Q 8.4 8.6 8.4 6.6 L 8.4 6.2 Q 8.4 4.2 10.4 4.2 Z" fill="currentColor"/><path d="M 6.6 7.2 L 17.4 7.2 Q 21 7.2 21 10.8 L 21 16.8 Q 21 20.4 17.4 20.4 L 6.6 20.4 Q 3 20.4 3 16.8 L 3 10.8 Q 3 7.2 6.6 7.2 Z M 7.5 13.6 A 4.5 4.5 0 1 0 16.5 13.6 A 4.5 4.5 0 1 0 7.5 13.6 Z M 16.4 10.2 A 1.9 1.9 0 1 0 20.2 10.2 A 1.9 1.9 0 1 0 16.4 10.2 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 9.8 13.6 A 2.2 2.2 0 1 1 14.2 13.6 A 2.2 2.2 0 1 1 9.8 13.6 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-settings" viewBox="0 0 24 24"><g transform="rotate(0 12.0 4.4)"><path d="M 11.4 2.4 L 12.6 2.4 Q 14.4 2.4 14.4 4.2 L 14.4 4.6 Q 14.4 6.4 12.6 6.4 L 11.4 6.4 Q 9.6 6.4 9.6 4.6 L 9.6 4.2 Q 9.6 2.4 11.4 2.4 Z" fill="currentColor"/></g><g transform="rotate(60 18.581793068761733 8.2)"><path d="M 17.98 6.2 L 19.18 6.2 Q 20.98 6.2 20.98 8 L 20.98 8.4 Q 20.98 10.2 19.18 10.2 L 17.98 10.2 Q 16.18 10.2 16.18 8.4 L 16.18 8 Q 16.18 6.2 17.98 6.2 Z" fill="currentColor"/></g><g transform="rotate(120 18.581793068761733 15.799999999999997)"><path d="M 17.98 13.8 L 19.18 13.8 Q 20.98 13.8 20.98 15.6 L 20.98 16 Q 20.98 17.8 19.18 17.8 L 17.98 17.8 Q 16.18 17.8 16.18 16 L 16.18 15.6 Q 16.18 13.8 17.98 13.8 Z" fill="currentColor"/></g><g transform="rotate(180 12.000000000000002 19.6)"><path d="M 11.4 17.6 L 12.6 17.6 Q 14.4 17.6 14.4 19.4 L 14.4 19.8 Q 14.4 21.6 12.6 21.6 L 11.4 21.6 Q 9.6 21.6 9.6 19.8 L 9.6 19.4 Q 9.6 17.6 11.4 17.6 Z" fill="currentColor"/></g><g transform="rotate(240 5.418206931238268 15.800000000000004)"><path d="M 4.82 13.8 L 6.02 13.8 Q 7.82 13.8 7.82 15.6 L 7.82 16 Q 7.82 17.8 6.02 17.8 L 4.82 17.8 Q 3.02 17.8 3.02 16 L 3.02 15.6 Q 3.02 13.8 4.82 13.8 Z" fill="currentColor"/></g><g transform="rotate(300 5.418206931238267 8.2)"><path d="M 4.82 6.2 L 6.02 6.2 Q 7.82 6.2 7.82 8 L 7.82 8.4 Q 7.82 10.2 6.02 10.2 L 4.82 10.2 Q 3.02 10.2 3.02 8.4 L 3.02 8 Q 3.02 6.2 4.82 6.2 Z" fill="currentColor"/></g><path d="M 4.8 12 A 7.2 7.2 0 1 1 19.2 12 A 7.2 7.2 0 1 1 4.8 12 Z M 8.9 12 A 3.1 3.1 0 1 0 15.1 12 A 3.1 3.1 0 1 0 8.9 12 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-history" viewBox="0 0 24 24"><path d="M 2.6 12 A 9.4 9.4 0 1 1 21.4 12 A 9.4 9.4 0 1 1 2.6 12 Z M 5.7 12 A 6.3 6.3 0 1 0 18.3 12 A 6.3 6.3 0 1 0 5.7 12 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 12 8.3 L 12 12.5 L 15.2 14.3" fill="none" stroke="currentColor" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-region-frame" viewBox="0 0 24 24"><path d="M 3.4 9.2 L 3.4 6.4 Q 3.4 3.4 6.4 3.4 L 9.2 3.4" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 14.8 3.4 L 17.6 3.4 Q 20.6 3.4 20.6 6.4 L 20.6 9.2" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 20.6 14.8 L 20.6 17.6 Q 20.6 20.6 17.6 20.6 L 14.8 20.6" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 9.2 20.6 L 6.4 20.6 Q 3.4 20.6 3.4 17.6 L 3.4 14.8" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-key" viewBox="0 0 24 24"><g transform="rotate(-38 12 12)"><path d="M 1.6 12 A 5 5 0 1 1 11.6 12 A 5 5 0 1 1 1.6 12 Z M 4.3 12 A 2.3 2.3 0 1 0 8.9 12 A 2.3 2.3 0 1 0 4.3 12 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 11.9 10.6 L 19.7 10.6 Q 21.2 10.6 21.2 12.1 L 21.2 12.1 Q 21.2 13.6 19.7 13.6 L 11.9 13.6 Q 10.4 13.6 10.4 12.1 L 10.4 12.1 Q 10.4 10.6 11.9 10.6 Z" fill="currentColor"/><path d="M 15 12.6 L 15 12.6 Q 16.4 12.6 16.4 14 L 16.4 16 Q 16.4 17.4 15 17.4 L 15 17.4 Q 13.6 17.4 13.6 16 L 13.6 14 Q 13.6 12.6 15 12.6 Z" fill="currentColor"/><path d="M 19.6 12.6 L 19.8 12.6 Q 21.2 12.6 21.2 14 L 21.2 16.8 Q 21.2 18.2 19.8 18.2 L 19.6 18.2 Q 18.2 18.2 18.2 16.8 L 18.2 14 Q 18.2 12.6 19.6 12.6 Z" fill="currentColor"/></g></symbol>
+  <symbol id="pw-link-out" viewBox="0 0 24 24"><path d="M 6.4 6.2 L 14.4 6.2 Q 17.8 6.2 17.8 9.6 L 17.8 17.6 Q 17.8 21 14.4 21 L 6.4 21 Q 3 21 3 17.6 L 3 9.6 Q 3 6.2 6.4 6.2 Z M 13.3 3.4 L 18.6 3.4 Q 21 3.4 21 5.8 L 21 10.7 Q 21 13.1 18.6 13.1 L 13.3 13.1 Q 10.9 13.1 10.9 10.7 L 10.9 5.8 Q 10.9 3.4 13.3 3.4 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 13.3 10.7 L 16.8 7.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M 14.4 3.2 L 20.9 3.2 L 20.9 9.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-send" viewBox="0 0 24 24"><g transform="translate(0.804 0.811) scale(0.933)"><path d="M 2.8 11.4 L 21.2 3 L 15.6 21.2 L 11 14.4 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-stop" viewBox="0 0 24 24"><path d="M 9.2 4.6 L 14.8 4.6 Q 19.4 4.6 19.4 9.2 L 19.4 14.8 Q 19.4 19.4 14.8 19.4 L 9.2 19.4 Q 4.6 19.4 4.6 14.8 L 4.6 9.2 Q 4.6 4.6 9.2 4.6 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-pause" viewBox="0 0 24 24"><path d="M 8.1 4.4 L 8.1 4.4 Q 10.4 4.4 10.4 6.7 L 10.4 17.3 Q 10.4 19.6 8.1 19.6 L 8.1 19.6 Q 5.8 19.6 5.8 17.3 L 5.8 6.7 Q 5.8 4.4 8.1 4.4 Z" fill="currentColor"/><path d="M 15.9 4.4 L 15.9 4.4 Q 18.2 4.4 18.2 6.7 L 18.2 17.3 Q 18.2 19.6 15.9 19.6 L 15.9 19.6 Q 13.6 19.6 13.6 17.3 L 13.6 6.7 Q 13.6 4.4 15.9 4.4 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-resume" viewBox="0 0 24 24"><path d="M 7.2 5 L 19.6 12 L 7.2 19 Z" fill="currentColor" stroke="currentColor" stroke-width="3.6" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-check" viewBox="0 0 24 24"><path d="M 5 12.6 L 10 17.6 L 19 7" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-cross" viewBox="0 0 24 24"><path d="M 6.6 6.6 L 17.4 17.4" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M 17.4 6.6 L 6.6 17.4" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-skip-forward" viewBox="0 0 24 24"><path d="M 5 5.8 L 15.4 12 L 5 18.2 Z" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M 18.7 4.8 L 18.7 4.8 Q 20.6 4.8 20.6 6.7 L 20.6 17.3 Q 20.6 19.2 18.7 19.2 L 18.7 19.2 Q 16.8 19.2 16.8 17.3 L 16.8 6.7 Q 16.8 4.8 18.7 4.8 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-undo-arrow" viewBox="0 0 24 24"><path d="M 3.59 10.61 A 8.6 8.6 0 1 1 18.78 17.69 L 15.47 15.11 A 4.4 4.4 0 1 0 7.7 11.49 Z" fill="currentColor"/><path d="M 1.76 10.59 L 4.97 17.09 L 9.44 11.95 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-rewind" viewBox="0 0 24 24"><path d="M 12.4 6.2 L 3.6 12 L 12.4 17.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/><path d="M 21.2 6.2 L 12.4 12 L 21.2 17.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-take-back" viewBox="0 0 24 24"><path d="M 4.2 13.6 L 4.2 17.6 Q 4.2 20.4 7 20.4 L 17 20.4 Q 19.8 20.4 19.8 17.6 L 19.8 13.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M 7.4 9.4 L 16.6 9.4 L 12 15.2 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 12 2.8 L 12 2.8 Q 13.8 2.8 13.8 4.6 L 13.8 8.4 Q 13.8 10.2 12 10.2 L 12 10.2 Q 10.2 10.2 10.2 8.4 L 10.2 4.6 Q 10.2 2.8 12 2.8 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-chevron" viewBox="0 0 24 24"><path d="M 6 9 L 12 15.4 L 18 9" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-drag-handle" viewBox="0 0 24 24"><path d="M 6.6 5.6 A 2 2 0 1 1 10.6 5.6 A 2 2 0 1 1 6.6 5.6 Z" fill="currentColor"/><path d="M 13.4 5.6 A 2 2 0 1 1 17.4 5.6 A 2 2 0 1 1 13.4 5.6 Z" fill="currentColor"/><path d="M 6.6 12 A 2 2 0 1 1 10.6 12 A 2 2 0 1 1 6.6 12 Z" fill="currentColor"/><path d="M 13.4 12 A 2 2 0 1 1 17.4 12 A 2 2 0 1 1 13.4 12 Z" fill="currentColor"/><path d="M 6.6 18.4 A 2 2 0 1 1 10.6 18.4 A 2 2 0 1 1 6.6 18.4 Z" fill="currentColor"/><path d="M 13.4 18.4 A 2 2 0 1 1 17.4 18.4 A 2 2 0 1 1 13.4 18.4 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-warning" viewBox="0 0 24 24"><g transform="translate(-1.56 -1.56) scale(1.13)"><path d="M 10.72 5.26 Q 12 3.0 13.28 5.26 L 20.32 17.64 Q 21.6 19.9 19.0 19.9 L 5.0 19.9 Q 2.4 19.9 3.68 17.64 Z M 12 7.6 Q 10.3 7.6 10.3 9.3 L 10.3 11.2 Q 10.3 12.9 12 12.9 Q 13.7 12.9 13.7 11.2 L 13.7 9.3 Q 13.7 7.6 12 7.6 Z M 10.05 16.15 A 1.95 1.95 0 1 0 13.95 16.15 A 1.95 1.95 0 1 0 10.05 16.15 Z" fill="currentColor" fill-rule="evenodd"/></g></symbol>
+  <symbol id="pw-retry-clock" viewBox="0 0 24 24"><g transform="translate(0.82 0.767) scale(0.929)"><path d="M 5.6 13.2 A 6.4 6.4 0 1 1 18.4 13.2 A 6.4 6.4 0 1 1 5.6 13.2 Z M 12 9 L 12 9 Q 12.95 9 12.95 9.95 L 12.95 13.25 Q 12.95 14.2 12 14.2 L 12 14.2 Q 11.05 14.2 11.05 13.25 L 11.05 9.95 Q 11.05 9 12 9 Z M 12 12.35 L 14.5 12.35 Q 15.45 12.35 15.45 13.3 L 15.45 13.3 Q 15.45 14.25 14.5 14.25 L 12 14.25 Q 11.05 14.25 11.05 13.3 L 11.05 13.3 Q 11.05 12.35 12 12.35 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 1.17 15.11 A 11 11 0 0 1 17.5 3.67 L 16.3 5.75 A 8.6 8.6 0 0 0 3.53 14.69 Z" fill="currentColor"/><path d="M 19.41 3.01 L 21.07 7.62 L 16 7.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-plug" viewBox="0 0 24 24"><path d="M 9.65 3.2 L 9.65 3.2 Q 11.1 3.2 11.1 4.65 L 11.1 8.15 Q 11.1 9.6 9.65 9.6 L 9.65 9.6 Q 8.2 9.6 8.2 8.15 L 8.2 4.65 Q 8.2 3.2 9.65 3.2 Z" fill="currentColor"/><path d="M 14.35 3.2 L 14.35 3.2 Q 15.8 3.2 15.8 4.65 L 15.8 8.15 Q 15.8 9.6 14.35 9.6 L 14.35 9.6 Q 12.9 9.6 12.9 8.15 L 12.9 4.65 Q 12.9 3.2 14.35 3.2 Z" fill="currentColor"/><path d="M 9.6 9 L 14.4 9 Q 17.6 9 17.6 12.2 L 17.6 13.4 Q 17.6 16.6 14.4 16.6 L 9.6 16.6 Q 6.4 16.6 6.4 13.4 L 6.4 12.2 Q 6.4 9 9.6 9 Z" fill="currentColor"/><path d="M 12 16 L 12 16 Q 13.4 16 13.4 17.4 L 13.4 19.4 Q 13.4 20.8 12 20.8 L 12 20.8 Q 10.6 20.8 10.6 19.4 L 10.6 17.4 Q 10.6 16 12 16 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-question" viewBox="0 0 24 24"><path d="M 7.8 8.4 C 7.8 5.4 9.8 3.9 12.2 3.9 C 14.9 3.9 16.6 5.7 16.6 8 C 16.6 10.6 13.9 11 12.3 12.6 C 12.3 12.6 12.2 13.2 12.2 14.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 10.2 19.4 A 2 2 0 1 1 14.2 19.4 A 2 2 0 1 1 10.2 19.4 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-tick-ok" viewBox="0 0 24 24"><path d="M 4.6 12.8 L 10 18.2 L 19.4 6.6" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-tick-run" viewBox="0 0 24 24"><path d="M 5.1 9.7 L 10.5 9.7 Q 12.8 9.7 12.8 12 L 12.8 12 Q 12.8 14.3 10.5 14.3 L 5.1 14.3 Q 2.8 14.3 2.8 12 L 2.8 12 Q 2.8 9.7 5.1 9.7 Z" fill="currentColor"/><path d="M 12 5.4 L 12 18.6 L 21.2 12 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-tick-revert" viewBox="0 0 24 24"><g transform="translate(0.901 0.939) scale(0.915)"><path d="M 3 10.49 A 9.2 9.2 0 1 1 19.25 18.06 L 15.15 14.86 A 4 4 0 1 0 8.09 11.57 Z" fill="currentColor"/><path d="M 1.17 10.49 L 4.81 17.68 L 9.83 12.02 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-tick-error" viewBox="0 0 24 24"><path d="M 5.8 5.8 L 18.2 18.2" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M 18.2 5.8 L 5.8 18.2" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-shield" viewBox="0 0 24 24"><g transform="translate(1.536 1.574) scale(0.872)"><mask id="pw-m-shield-r8"><rect width="24" height="24" fill="#fff"/><path d="M 8.2 11.8 L 11.1 14.7 L 15.9 8.7" fill="none" stroke="#000" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></mask><g mask="url(#pw-m-shield-r8)"><path d="M 12 2.6 L 20.6 5.8 L 20.6 12 C 20.6 17.8 16.8 20.5 12 22 C 7.2 20.5 3.4 17.8 3.4 12 L 3.4 5.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></g></g></symbol>
+  <symbol id="pw-shield-hold" viewBox="0 0 24 24"><g transform="translate(1.536 1.574) scale(0.872)"><path d="M 12 2.6 L 20.6 5.8 L 20.6 12 C 20.6 17.8 16.8 20.5 12 22 C 7.2 20.5 3.4 17.8 3.4 12 L 3.4 5.8 Z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-flag" viewBox="0 0 24 24"><path d="M 5.9 2.4 L 5.9 2.4 Q 7.4 2.4 7.4 3.9 L 7.4 20.1 Q 7.4 21.6 5.9 21.6 L 5.9 21.6 Q 4.4 21.6 4.4 20.1 L 4.4 3.9 Q 4.4 2.4 5.9 2.4 Z" fill="currentColor"/><path d="M 7.4 5.7 C 10.6 2.7 14.8 8.5 21.2 4.6 L 21.2 13.6 C 14.8 17.5 10.6 11.7 7.4 14.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-disconnected" viewBox="0 0 24 24"><path d="M 5.6 7.6 L 8.0 7.6 Q 11.0 7.6 11.0 10.6 L 11.0 13.4 Q 11.0 16.4 8.0 16.4 L 5.6 16.4 Q 2.6 16.4 2.6 13.4 L 2.6 10.6 Q 2.6 7.6 5.6 7.6 Z" fill="currentColor"/><path d="M 10.4 8.5 L 13.0 8.5 Q 14.2 8.5 14.2 9.7 Q 14.2 10.9 13.0 10.9 L 10.4 10.9 Z" fill="currentColor"/><path d="M 10.4 13.1 L 13.0 13.1 Q 14.2 13.1 14.2 14.3 Q 14.2 15.5 13.0 15.5 L 10.4 15.5 Z" fill="currentColor"/><path d="M 17.6 5.2 L 18.2 5.2 Q 21.6 5.2 21.6 8.6 L 21.6 15.4 Q 21.6 18.8 18.2 18.8 L 17.6 18.8 Q 16.3 18.8 16.3 17.5 Q 16.3 16.3 17.6 16.3 L 18.0 16.3 Q 19.2 16.3 19.2 15.1 L 19.2 8.9 Q 19.2 7.7 18.0 7.7 L 17.6 7.7 Q 16.3 7.7 16.3 6.45 Q 16.3 5.2 17.6 5.2 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-compress" viewBox="0 0 24 24"><path d="M 7.8 5.2 L 16.2 5.2 L 12 9 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M 12 2.2 L 12 2.2 Q 13.7 2.2 13.7 3.9 L 13.7 4.1 Q 13.7 5.8 12 5.8 L 12 5.8 Q 10.3 5.8 10.3 4.1 L 10.3 3.9 Q 10.3 2.2 12 2.2 Z" fill="currentColor"/><path d="M 7.8 18.8 L 16.2 18.8 L 12 15 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M 12 18.2 L 12 18.2 Q 13.7 18.2 13.7 19.9 L 13.7 20.1 Q 13.7 21.8 12 21.8 L 12 21.8 Q 10.3 21.8 10.3 20.1 L 10.3 19.9 Q 10.3 18.2 12 18.2 Z" fill="currentColor"/><path d="M 5.5 10.9 L 18.5 10.9 Q 19.6 10.9 19.6 12 L 19.6 12 Q 19.6 13.1 18.5 13.1 L 5.5 13.1 Q 4.4 13.1 4.4 12 L 4.4 12 Q 4.4 10.9 5.5 10.9 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-wallet" viewBox="0 0 24 24"><path d="M 6.6 5.8 L 17.4 5.8 Q 21 5.8 21 9.4 L 21 16 Q 21 19.6 17.4 19.6 L 6.6 19.6 Q 3 19.6 3 16 L 3 9.4 Q 3 5.8 6.6 5.8 Z M 17.1 10.3 Q 14.7 10.3 14.7 12.7 Q 14.7 15.1 17.1 15.1 L 18.4 15.1 Q 20.8 15.1 20.8 12.7 Q 20.8 10.3 18.4 10.3 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 16.35 12.7 A 1.4 1.4 0 1 1 19.15 12.7 A 1.4 1.4 0 1 1 16.35 12.7 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-cloud-off" viewBox="0 0 24 24"><mask id="pw-m-cloudoff-r3"><rect width="24" height="24" fill="#fff"/><path d="M 3.2 20.8 L 20.8 3.2" stroke="#000" stroke-width="5.4" stroke-linecap="round"/></mask><g mask="url(#pw-m-cloudoff-r3)"><path d="M 3.9 12.4 A 4.5 4.5 0 1 1 12.9 12.4 A 4.5 4.5 0 1 1 3.9 12.4 Z" fill="currentColor"/><path d="M 8.5 9.9 A 4.9 4.9 0 1 1 18.3 9.9 A 4.9 4.9 0 1 1 8.5 9.9 Z" fill="currentColor"/><path d="M 13.8 13.2 A 3.6 3.6 0 1 1 21 13.2 A 3.6 3.6 0 1 1 13.8 13.2 Z" fill="currentColor"/><path d="M 7.2 12.6 L 17.8 12.6 Q 20.6 12.6 20.6 15.4 L 20.6 15.4 Q 20.6 18.2 17.8 18.2 L 7.2 18.2 Q 4.4 18.2 4.4 15.4 L 4.4 15.4 Q 4.4 12.6 7.2 12.6 Z" fill="currentColor"/></g><path d="M 3.2 20.8 L 20.8 3.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></symbol>
+  <symbol id="pw-lock" viewBox="0 0 24 24"><path d="M 6.4 10 A 5.6 5.6 0 1 1 17.6 10 A 5.6 5.6 0 1 1 6.4 10 Z M 9.4 10 A 2.6 2.6 0 1 0 14.6 10 A 2.6 2.6 0 1 0 9.4 10 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 7.6 10.2 L 16.4 10.2 Q 19.6 10.2 19.6 13.4 L 19.6 18.2 Q 19.6 21.4 16.4 21.4 L 7.6 21.4 Q 4.4 21.4 4.4 18.2 L 4.4 13.4 Q 4.4 10.2 7.6 10.2 Z M 9.9 14.7 A 2.1 2.1 0 1 0 14.1 14.7 A 2.1 2.1 0 1 0 9.9 14.7 Z M 12 15.6 L 12 15.6 Q 13.1 15.6 13.1 16.7 L 13.1 17.8 Q 13.1 18.9 12 18.9 L 12 18.9 Q 10.9 18.9 10.9 17.8 L 10.9 16.7 Q 10.9 15.6 12 15.6 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-lightning" viewBox="0 0 24 24"><g transform="translate(1.008 1.008) scale(0.916)"><path d="M 13.6 2.4 L 5.2 13.4 L 10.8 13.4 L 9.6 21.6 L 18.8 9.8 L 12.9 9.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></g></symbol>
+  <symbol id="pw-dock-left" viewBox="0 0 24 24"><path d="M 6 4 L 18 4 Q 21 4 21 7 L 21 17 Q 21 20 18 20 L 6 20 Q 3 20 3 17 L 3 7 Q 3 4 6 4 Z M 11 6.4 L 11 17.6 L 17.7 17.6 Q 18.6 17.6 18.6 16.7 L 18.6 7.3 Q 18.6 6.4 17.7 6.4 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  {/* The same drawing with the solid half at the other end: one glyph per side, so a control can show
+      either the end the dock is at or the end a press would put it at. */}
+  <symbol id="pw-dock-right" viewBox="0 0 24 24"><path d="M 6 4 L 18 4 Q 21 4 21 7 L 21 17 Q 21 20 18 20 L 6 20 Q 3 20 3 17 L 3 7 Q 3 4 6 4 Z M 13 6.4 L 13 17.6 L 6.3 17.6 Q 5.4 17.6 5.4 16.7 L 5.4 7.3 Q 5.4 6.4 6.3 6.4 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-eraser" viewBox="0 0 24 24"><g transform="rotate(-22 12 10.4)"><path d="M 9.8 6.1 L 9.8 14.7 L 6.8 14.7 Q 4.6 14.7 4.6 12.5 L 4.6 8.3 Q 4.6 6.1 6.8 6.1 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M 9.8 6.1 L 17.2 6.1 Q 19.4 6.1 19.4 8.3 L 19.4 12.5 Q 19.4 14.7 17.2 14.7 L 9.8 14.7 Z" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></g><path d="M 7 19.2 L 14 19.2 Q 15.2 19.2 15.2 20.4 L 15.2 20.4 Q 15.2 21.6 14 21.6 L 7 21.6 Q 5.8 21.6 5.8 20.4 L 5.8 20.4 Q 5.8 19.2 7 19.2 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-terrace-steps" viewBox="0 0 24 24"><path d="M 3 21 L 3 17.4 Q 3 15.4 5 15.4 L 8.6 15.4 L 8.6 11.6 Q 8.6 9.6 10.6 9.6 L 14.2 9.6 L 14.2 6.4 Q 14.2 4.4 16.2 4.4 L 19 4.4 Q 21 4.4 21 6.4 L 21 21 Z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-reply-bubble" viewBox="0 0 24 24"><mask id="pw-m-reply-r8"><rect width="24" height="24" fill="#fff"/><path d="M 6.6 9.7 L 11.4 6.1 L 11.4 13.3 Z" fill="#000" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/><path d="M 10.8 9.7 C 14.8 9.7 16.7 11 16.7 14.1" fill="none" stroke="#000" stroke-width="3.1" stroke-linecap="round"/></mask><g mask="url(#pw-m-reply-r8)"><path d="M 8 3.2 L 16 3.2 Q 21 3.2 21 8.2 L 21 12.2 Q 21 17.2 16 17.2 L 8 17.2 Q 3 17.2 3 12.2 L 3 8.2 Q 3 3.2 8 3.2 Z" fill="currentColor"/><path d="M 7 16.8 L 7 21.6 L 12.8 16.8 Z" fill="currentColor"/></g></symbol>
+  <symbol id="pw-note" viewBox="0 0 24 24"><path d="M 6 3.4 L 14.4 3.4 L 20.6 9.6 L 20.6 18 Q 20.6 20.6 18 20.6 L 6 20.6 Q 3.4 20.6 3.4 18 Q 3.4 20.6 3.4 18 L 3.4 6 Q 3.4 3.4 6 3.4 Z M 14.4 3.4 L 14.4 8.5 Q 14.4 9.6 15.5 9.6 L 20.6 9.6 Z M 8.5 12.2 L 13.9 12.2 Q 15 12.2 15 13.3 L 15 13.3 Q 15 14.4 13.9 14.4 L 8.5 14.4 Q 7.4 14.4 7.4 13.3 L 7.4 13.3 Q 7.4 12.2 8.5 12.2 Z M 8.5 15.9 L 11.9 15.9 Q 13 15.9 13 17 L 13 17 Q 13 18.1 11.9 18.1 L 8.5 18.1 Q 7.4 18.1 7.4 17 L 7.4 17 Q 7.4 15.9 8.5 15.9 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-badge-zzz" viewBox="0 0 24 24"><path d="M 4.6 6.4 L 12.8 6.4 L 4.6 15.2 L 12.8 15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 15.4 12.4 L 20.6 12.4 L 15.4 18.2 L 20.6 18.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-badge-pause" viewBox="0 0 24 24"><path d="M 2.4 12 A 9.6 9.6 0 1 1 21.6 12 A 9.6 9.6 0 1 1 2.4 12 Z M 9.55 7 L 9.55 7 Q 11 7 11 8.45 L 11 15.55 Q 11 17 9.55 17 L 9.55 17 Q 8.1 17 8.1 15.55 L 8.1 8.45 Q 8.1 7 9.55 7 Z M 14.45 7 L 14.45 7 Q 15.9 7 15.9 8.45 L 15.9 15.55 Q 15.9 17 14.45 17 L 14.45 17 Q 13 17 13 15.55 L 13 8.45 Q 13 7 14.45 7 Z" fill="currentColor" fill-rule="evenodd"/></symbol>
+  <symbol id="pw-badge-exclaim" viewBox="0 0 24 24"><path d="M 12 2.4 L 12 2.4 Q 14.5 2.4 14.5 4.9 L 14.5 12.1 Q 14.5 14.6 12 14.6 L 12 14.6 Q 9.5 14.6 9.5 12.1 L 9.5 4.9 Q 9.5 2.4 12 2.4 Z" fill="currentColor"/><path d="M 9.4 19.2 A 2.6 2.6 0 1 1 14.6 19.2 A 2.6 2.6 0 1 1 9.4 19.2 Z" fill="currentColor"/></symbol>
+  <symbol id="pw-badge-spark" viewBox="0 0 24 24"><path d="M 11 3.6 L 12.98 10.42 L 19.8 12.4 L 12.98 14.38 L 11 21.2 L 9.02 14.38 L 2.2 12.4 L 9.02 10.42 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M 19.2 1.5 L 20.05 3.95 L 22.5 4.8 L 20.05 5.65 L 19.2 8.1 L 18.35 5.65 L 15.9 4.8 L 18.35 3.95 Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="pw-badge-note" viewBox="0 0 24 24"><path d="M 6.6 3 L 13.8 3 L 20 9.2 L 20 18.4 Q 20 21 17.4 21 L 6.6 21 Q 4 21 4 18.4 L 4 5.6 Q 4 3 6.6 3 Z M 13.8 3 L 13.8 8.1 Q 13.8 9.2 14.9 9.2 L 20 9.2 Z M 8.9 13 L 14.3 13 Q 15.6 13 15.6 14.3 L 15.6 14.3 Q 15.6 15.6 14.3 15.6 L 8.9 15.6 Q 7.6 15.6 7.6 14.3 L 7.6 14.3 Q 7.6 13 8.9 13 Z" fill="currentColor" fill-rule="evenodd"/></symbol>`;
+
+/** Every icon id the sprite defines, in the artifact's own declaration order. */
+export type IconId =
+  | 'pw-terrain-raise'
+  | 'pw-terrain-lower'
+  | 'pw-water'
+  | 'pw-river'
+  | 'pw-road'
+  | 'pw-bridge'
+  | 'pw-ramp'
+  | 'pw-object-place'
+  | 'pw-object-remove'
+  | 'pw-rotate'
+  | 'pw-trim-corner'
+  | 'pw-clear'
+  | 'pw-scatter'
+  | 'pw-forest'
+  | 'pw-decorate'
+  | 'pw-generator'
+  | 'pw-inspect'
+  | 'pw-evaluate'
+  | 'pw-search-sites'
+  | 'pw-skill'
+  | 'pw-plan'
+  | 'pw-subagent'
+  | 'pw-export'
+  | 'pw-snapshot'
+  | 'pw-settings'
+  | 'pw-history'
+  | 'pw-region-frame'
+  | 'pw-key'
+  | 'pw-link-out'
+  | 'pw-send'
+  | 'pw-stop'
+  | 'pw-pause'
+  | 'pw-resume'
+  | 'pw-check'
+  | 'pw-cross'
+  | 'pw-skip-forward'
+  | 'pw-undo-arrow'
+  | 'pw-rewind'
+  | 'pw-take-back'
+  | 'pw-chevron'
+  | 'pw-drag-handle'
+  | 'pw-warning'
+  | 'pw-retry-clock'
+  | 'pw-plug'
+  | 'pw-question'
+  | 'pw-tick-ok'
+  | 'pw-tick-run'
+  | 'pw-tick-revert'
+  | 'pw-tick-error'
+  | 'pw-shield'
+  | 'pw-shield-hold'
+  | 'pw-flag'
+  | 'pw-disconnected'
+  | 'pw-compress'
+  | 'pw-wallet'
+  | 'pw-cloud-off'
+  | 'pw-lock'
+  | 'pw-lightning'
+  | 'pw-dock-left'
+  | 'pw-dock-right'
+  | 'pw-eraser'
+  | 'pw-terrace-steps'
+  | 'pw-reply-bubble'
+  | 'pw-note'
+  | 'pw-badge-zzz'
+  | 'pw-badge-pause'
+  | 'pw-badge-exclaim'
+  | 'pw-badge-spark'
+  | 'pw-badge-note';
+
+/**
+ * Mounts the sprite sheet once. `display:none` per the artifact — a `<use>` elsewhere in the document
+ * still resolves a hidden symbol's contents.
+ */
+export function IconSprite() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'none' }}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: SYMBOLS }}
+    />
+  );
+}
+
+/** One glyph, referencing the mounted sprite by id. Colour comes from the caller's `color`, never a
+ *  prop here. */
+export function Icon({ id, size = 15 }: { id: IconId; size?: number }) {
+  return (
+    <svg className="i" width={size} height={size} aria-hidden="true">
+      <use href={`#${id}`} />
+    </svg>
+  );
+}

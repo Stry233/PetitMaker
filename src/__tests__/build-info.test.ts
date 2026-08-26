@@ -2,10 +2,10 @@
  * The build number has ONE source: the committed `build-info.json`, stamped from the
  * repository that owns it. A build reads that file and nothing else.
  *
- * It used to be `git rev-list --count HEAD` read at build time, which is right only
- * inside the full-history private repo. Everywhere else it was wrong without saying
- * so: a shallow clone (CI's default checkout) counts the fetch depth, a tarball or
- * Docker COPY without `.git` fell back to 0, and the public-repo export carries a
+ * Deriving it per build (`git rev-list --count HEAD` at build time) is right only
+ * inside the full-history private repo and wrong everywhere else without saying so:
+ * a shallow clone (CI's default checkout) counts the fetch depth, a tarball or
+ * Docker COPY without `.git` falls back to 0, and the public-repo export carries a
  * fresh history that starts over at 1. These tests pin the properties that make the
  * number survive being copied, exported, shallow-cloned, and re-hosted.
  */
@@ -103,9 +103,9 @@ describe('stamping is the only writer, and only in the owning repository', () =>
     // migration) would otherwise replace 1479 with 1.
     expect(() => stampFromGit(FRESH_HISTORY, parseStamp(STAMP)))
       .toThrow(/refusing to lower the build number \(committed 1479, this history gives 1\)/);
-    // Moving forward in the owning repository is fine.
+    // Moving forward in the owning repository is accepted.
     expect(stampFromGit(FULL_HISTORY, parseStamp(STAMP)).info.buildNumber).toBe('1500');
-    // Equal is fine (re-stamping the same commit).
+    // So is an equal number (re-stamping the same commit).
     expect(stampFromGit(FULL_HISTORY, { buildNumber: '1500' }).info.buildNumber).toBe('1500');
   });
 

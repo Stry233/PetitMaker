@@ -5,6 +5,7 @@ import { useState, useRef, useLayoutEffect, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { font, springs, inkTint, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { useChromeScale } from '../../../design/scale';
 import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
 
@@ -41,5 +42,5 @@ export function HelpBubble({ text }: { text: string }) {
   );
 }
 
-const dot: CSSProperties = { width: 17, height: 17, borderRadius: '50%', border: 'none', cursor: cursors.clickable, fontFamily: font.family, fontWeight: 800, fontSize: 11, lineHeight: '17px', padding: 0, flex: 'none' };
-const bubble: CSSProperties = { position: 'fixed', zIndex: 301, width: WIDTH, background: skin.ink, color: skin.onDark, borderRadius: 12, padding: '9px 12px', fontFamily: font.family, fontWeight: 600, fontSize: 12, lineHeight: 1.45, boxShadow: `0 6px 18px ${inkTint(0.32)}`, cursor: cursors.clickable };
+const dot: CSSProperties = { width: 17, height: 17, borderRadius: '50%', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('small'), lineHeight: '17px', padding: 0, flex: 'none' };
+const bubble: CSSProperties = { position: 'fixed', zIndex: 301, width: WIDTH, background: skin.ink, color: skin.onDark, borderRadius: 12, padding: '9px 12px', fontFamily: font.family, ...roleFont('caption'), lineHeight: 1.45, boxShadow: `0 6px 18px ${inkTint(0.32)}`, cursor: cursors.clickable };

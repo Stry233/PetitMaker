@@ -335,22 +335,3 @@ export function renderScorecard(r: QualityReport, prev?: QualityReport): string 
   const overallLine = `OVERALL: ${overall}/10${prevOverall !== undefined && prevOverall !== overall ? ` (was ${prevOverall})` : ''}`;
   return `MAP QUALITY SCORECARD\n${overallLine}\n${lines.join('\n')}\nAddress the lowest-scoring dimension first.`;
 }
-
-/**
- * One-line trend summary — appended automatically to update_plan results when
- * a stage completes, so the model gets measurement exactly at its decision
- * points without spending a tool call.
- */
-export function renderScoreDelta(prev: QualityReport | undefined, cur: QualityReport): string {
-  const overall = overallScore(cur);
-  const changed = prev
-    ? DIMENSIONS.filter((k) => cur[k].score !== prev[k].score)
-        .map((k) => `${k} ${prev[k].score}->${cur[k].score}`)
-        .join(', ')
-    : '';
-  let weakest: (typeof DIMENSIONS)[number] = DIMENSIONS[0];
-  for (const k of DIMENSIONS) if (cur[k].score < cur[weakest].score) weakest = k;
-  const weakHint = cur[weakest].hints[0] ? ` -- ${cur[weakest].hints[0]}` : '';
-  const trend = prev ? ` (was ${overallScore(prev)}${changed ? `; ${changed}` : '; no dimension moved'})` : '';
-  return `Scorecard: overall ${overall}/10${trend}. Weakest: ${weakest} ${cur[weakest].score}/10${weakHint}`;
-}

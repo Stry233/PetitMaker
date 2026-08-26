@@ -15,7 +15,7 @@ import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { ItemCategory, TerrainType, type EditorEvents, type GridState } from '../../../core/model/types';
-import { analyzeTerrain } from '../../../tools/generation/placement/analysis';
+import { analyzeTerrain } from '../../../tools/placement/analysis';
 import { getPlaceableByCategory } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { applyMacro } from '../../../tools/macros';

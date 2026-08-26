@@ -5,7 +5,7 @@ import { useReducedMotionConfig } from 'framer-motion';
  * Expand — smoothly expands/collapses its children by animating a CSS grid row
  * from 0fr to 1fr. The row resolves to the EXACT content height every frame, so
  * there is no measure-then-snap on the final frame the way a framer
- * `height: 'auto'` tween has (that snap was the visible last-frame space jump).
+ * `height: 'auto'` tween has, which shows as a space jump on the last frame.
  * A gentle, slightly longer easeInOutCubic reads as a glide rather than a snap.
  *
  * Children stay mounted (so typed field values persist across a collapse); when

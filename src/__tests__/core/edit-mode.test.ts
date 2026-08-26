@@ -66,10 +66,9 @@ describe('resolveEditMode', () => {
 });
 
 /**
- * `designModeToToolType` and `resolveEditMode`'s own toolType output must never disagree — the two
- * once had SEPARATE mode→tool tables (one in the UI, one inlined in resolveEditMode), so changing a
- * mode's tool in one left the other on the old answer with nothing to catch it. Both read
- * `DESIGN_MODE_TOOL`.
+ * `designModeToToolType` and `resolveEditMode`'s own toolType output must never disagree. SEPARATE
+ * mode→tool tables (one in the UI, one inlined in resolveEditMode) let a change to a mode's tool in
+ * one leave the other on a stale answer with nothing to catch it, so both read `DESIGN_MODE_TOOL`.
  */
 describe('the mode→tool mapping has one source', () => {
   const modes = Object.keys(DESIGN_MODE_TOOL) as DesignMode[];

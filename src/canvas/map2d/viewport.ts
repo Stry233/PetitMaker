@@ -1,12 +1,26 @@
 import { TILE_SIZE, ZOOM_MIN, ZOOM_MAX, PAN_KEEP_PX } from '../../core/model/constants';
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 
+/**
+ * The 2D camera, and the conversion between the WINDOW's coordinates and the map's.
+ *
+ * SCREEN MEANS CLIENT PX, which is `ViewProjection`'s contract on both live views: the pointer
+ * machine hands `clientX`/`clientY` in unconverted and the React chrome anchors to what comes back.
+ * The canvas is not always at the window's corner — the assistant's docked panel takes a strip of
+ * the window and the map occupies what is left of it — so every conversion asks WHERE THE CANVAS
+ * STANDS NOW (`setOriginSource`, the 3D projection's own per-ray rect read). Read at use, never
+ * recorded: the box also MOVES without resizing (the dock slide settles a transform away, a banner
+ * above the plane departs), and no resize event marks those moments, so an origin captured at the
+ * last resize answers for where the canvas used to be.
+ */
 export class Viewport {
   private zoom = 1;
   private offsetX = 0;
   private offsetY = 0;
   private canvasWidth: number;
   private canvasHeight: number;
+  /** Where the canvas's own top-left corner stands in the window, in css px. */
+  private originSource: () => { x: number; y: number } = () => ({ x: 0, y: 0 });
   /** Map world size in unscaled px (0 until fitToMap runs) — the pan bounds. */
   private worldWidth = 0;
   private worldHeight = 0;
@@ -36,10 +50,48 @@ export class Viewport {
     this.clampOffset();
   }
 
+  /**
+   * A BOX CHANGE KEEPS THE WORLD POINT AT THE BOX'S CENTRE, at the zoom the camera holds — the 3D
+   * camera's own behaviour, whose projection is about its box centre and takes only the aspect from
+   * a resize. A page-zoom step needs the anchor read BEFORE its rebase redefines the css px, which
+   * is `MapRenderer.resize`'s pin; this one serves every caller that has no rebase in between.
+   */
   resize(width: number, height: number): void {
+    const centre = this.worldAtCentre();
     this.canvasWidth = width;
     this.canvasHeight = height;
+    this.centreOn(centre);
+  }
+
+  /** The world point standing at the canvas's own centre: the anchor a box change preserves. */
+  worldAtCentre(): { x: number; y: number } {
+    return {
+      x: (this.canvasWidth / 2 + this.offsetX) / this.zoom,
+      y: (this.canvasHeight / 2 + this.offsetY) / this.zoom,
+    };
+  }
+
+  /** Put a world point at the canvas's centre, at the zoom the camera already holds. */
+  centreOn(world: { x: number; y: number }): void {
+    this.offsetX = world.x * this.zoom - this.canvasWidth / 2;
+    this.offsetY = world.y * this.zoom - this.canvasHeight / 2;
     this.clampOffset();
+  }
+
+  /**
+   * Where the canvas stands in the window, in css px. Moves the CANVAS and not the camera: the same
+   * world point is drawn at a client point this much further along, and a client point picks the
+   * world point that is now under it. A constant place, for a surface no layout ever moves.
+   */
+  setOrigin(left: number, top: number): void {
+    this.originSource = () => ({ x: left, y: top });
+  }
+
+  /** A live reading of where the canvas stands, consulted by every conversion at the moment it
+   *  runs. The renderer hands in its own container's rect, so the answer follows the box through
+   *  moves nothing resizes. */
+  setOriginSource(source: () => { x: number; y: number }): void {
+    this.originSource = source;
   }
 
   /**
@@ -81,16 +133,19 @@ export class Viewport {
    */
   setZoom(newZoom: number, anchorScreenX: number, anchorScreenY: number): void {
     const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom));
+    const origin = this.originSource();
+    const ax = anchorScreenX - origin.x;
+    const ay = anchorScreenY - origin.y;
 
     // World coordinate under the anchor before zoom change
-    const worldX = (anchorScreenX + this.offsetX) / this.zoom;
-    const worldY = (anchorScreenY + this.offsetY) / this.zoom;
+    const worldX = (ax + this.offsetX) / this.zoom;
+    const worldY = (ay + this.offsetY) / this.zoom;
 
     this.zoom = clamped;
 
     // Adjust offset so the same world point stays under the anchor
-    this.offsetX = worldX * this.zoom - anchorScreenX;
-    this.offsetY = worldY * this.zoom - anchorScreenY;
+    this.offsetX = worldX * this.zoom - ax;
+    this.offsetY = worldY * this.zoom - ay;
     this.clampOffset();
   }
 
@@ -122,9 +177,10 @@ export class Viewport {
   }
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    const origin = this.originSource();
     return {
-      x: (sx + this.offsetX) / this.zoom,
-      y: (sy + this.offsetY) / this.zoom,
+      x: (sx - origin.x + this.offsetX) / this.zoom,
+      y: (sy - origin.y + this.offsetY) / this.zoom,
     };
   }
 
@@ -154,9 +210,10 @@ export class Viewport {
   }
 
   macroToScreen(coord: MacroCoord): { x: number; y: number } {
+    const origin = this.originSource();
     return {
-      x: coord.x * TILE_SIZE * this.zoom - this.offsetX,
-      y: coord.y * TILE_SIZE * this.zoom - this.offsetY,
+      x: coord.x * TILE_SIZE * this.zoom - this.offsetX + origin.x,
+      y: coord.y * TILE_SIZE * this.zoom - this.offsetY + origin.y,
     };
   }
 

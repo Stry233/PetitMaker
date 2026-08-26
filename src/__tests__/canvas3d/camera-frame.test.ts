@@ -8,9 +8,9 @@ import { frameBounds, makeCamera } from '../../canvas/map3d/scene/camera-control
 // out the intro fly-in starts, and which pose a camera read reports while it is in flight.
 //
 // The resting pose is frameBounds' hero framing: camera at (0, 0.46d + centerY, 0.72√2 d) looking
-// at (0, centerY, 0), for a frame distance d. Square on, the way the 2D view opens; the horizontal
-// reach is the one the old 45° corner pose had, spent on one axis instead of split across two, so
-// the radius and the tilt these numbers exercise are unchanged.
+// at (0, centerY, 0), for a frame distance d. Square on, the way the 2D view opens: the horizontal
+// reach is spent on one axis instead of split across two, which leaves the radius and the tilt these
+// numbers exercise equal to a 45° corner pose at the same frame distance.
 const D = 163;              // ~a real map's frame distance
 const CENTER_Y = 2;
 const restTarget = { x: 0, y: CENTER_Y, z: 0 };
@@ -54,12 +54,12 @@ describe('introStartOffset', () => {
  * is two facts about where those axes land on the screen, and they are asserted as such rather than
  * as a position, since a position says nothing about which way a person sees it.
  *
- * The frame was a 45° corner view, which arrives at neither: switching views turned the island a
- * quarter of the way round and a person had to find their place again.
+ * A 45° corner frame arrives at neither: it turns the island a quarter of the way round as the views
+ * swap, and a person has to find their place again.
  *
- * The framing distance and the tilt are NOT part of the change and are pinned here too. The fly-in
- * starts at a multiple of the resting offset and every export shot's `dist` is a multiple of the
- * resting radius, so a yaw that quietly moved the camera closer would move the shipped pictures.
+ * The framing distance and the tilt are pinned here too, since the fly-in starts at a multiple of
+ * the resting offset and every export shot's `dist` is a multiple of the resting radius: a yaw that
+ * quietly moved the camera closer would move the shipped pictures.
  */
 describe('the 3D view opens where the 2D view does', () => {
   /** `frameBounds` reads the orbit target and writes the two dolly clamps; nothing else here needs

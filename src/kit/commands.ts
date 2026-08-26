@@ -52,8 +52,8 @@ const doTile = (c: CommandContext, id: string): void => { const a = ACTION_BY_ID
 
 /*
  * A KEY THAT CHOOSES SOMETHING PUTS IT AWAY AGAIN, because the control it stands for does. Pressing
- * a chosen mode leaves the mode; pressing an armed tool leaves the tool. A key that only ever set
- * was the odd one out, and a visitor who reached for it to undo a choice found it did nothing.
+ * a chosen mode leaves the mode; pressing an armed tool leaves the tool. A key that only ever sets
+ * is the odd one out: a visitor reaching for it to undo a choice finds it does nothing.
  *
  * THE TWO RETREATS ARE NOT THE SAME, and `core/model/edit-mode.ts:resolveEditMode` is where both
  * live. Leaving a MODE is `mode: null` — rest, with the mode's bar gone. Leaving a TOOL is

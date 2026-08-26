@@ -5,8 +5,8 @@ import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { ELEVATION_MAX } from '../../core/model/constants';
 import type { ContentType } from '../../core/model/edit-mode';
 import { getCatalogItem } from '../../state/catalog';
-import { generateObjectId } from '../utils';
-import type { ToolContext } from '../types';
+import { generateObjectId } from '../../core/model/object-id';
+import type { ToolContext } from '../runtime/types';
 
 export type { ContentType };
 

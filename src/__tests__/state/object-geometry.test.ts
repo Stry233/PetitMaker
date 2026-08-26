@@ -60,7 +60,7 @@ describe('buildObjectOccupancy: a half anchor aligns exactly with the terrain gr
     const state = makeState();
     state.objects.set('slab', {
       // Self-described footprint (width/height) — occupancy reads the rect, not any trait.
-      id: 'slab', catalogId: 'road-dirt',
+      id: 'slab', catalogId: 'path-overgrown-dirt',
       position: { x: 7.5, y: 5 }, width: 2, height: 1, rotation: 0, elevation: 0,
     });
     const occ = buildObjectOccupancy(state);

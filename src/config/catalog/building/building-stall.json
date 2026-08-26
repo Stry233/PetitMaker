@@ -24,6 +24,7 @@
     }
   ],
   "icon": "building-stall",
+  "iconColor": "#a57f5a",
   "model3d": {
     "parts": [
       {

@@ -14,7 +14,7 @@ import { roadLookup } from '../../../state/object-index';
 import { CellZone, type EditorEvents, type GridState } from '../../../core/model/types';
 import { applyMacro } from '../../../tools/macros';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { previewMacro } from '../../../tools/macros/preview';
 import type { KitContext } from '../../../kit/context';
 
@@ -97,11 +97,11 @@ describe('a macro preview', () => {
     const road = (state: GridState): void => {
       const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       for (let x = 15; x <= 25; x++) {
-        const obj = { id: generateObjectId(), catalogId: 'road-stone', position: { x, y: 15 }, rotation: 0 as const, elevation: 0 };
+        const obj = { id: generateObjectId(), catalogId: 'path-cobblestone', position: { x, y: 15 }, rotation: 0 as const, elevation: 0 };
         expect(executor.execute(objectPlacementCommand(obj)).success, `road tile @${x},15`).toBe(true);
       }
     };
-    const opts = { seed: 1, from: { x: 20, y: 6 }, at: { x: 20, y: 32 }, width: 3, material: 'road-stone' };
+    const opts = { seed: 1, from: { x: 20, y: 6 }, at: { x: 20, y: 32 }, width: 3, material: 'path-cobblestone' };
     const sortKey = (c: { x: number; y: number }): string => `${c.x},${c.y}`;
 
     const previewed = kit();

@@ -15,6 +15,7 @@
     "orange"
   ],
   "icon": "flower-sunflower-red",
+  "iconColor": "#b35d41",
   "width": 1,
   "height": 1,
   "loadValue": 10,

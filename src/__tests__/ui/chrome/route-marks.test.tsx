@@ -26,7 +26,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { useEditorStore } from '../../../state/store';
 import { roadLookup } from '../../../state/object-index';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { MacroTool } from '../../../tools/macros/macro-tool';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../../tools/_tool-ctx';
@@ -252,7 +252,7 @@ describe('the nudge, through the tool that owns the route', () => {
   it('a nudge does not re-lay what stood', () => {
     paint();
     let byHand: PlacedObject | null = null;
-    const { state } = laidRoute((executor) => { byHand = place(executor, 'road-dirt', 8, 36); });
+    const { state } = laidRoute((executor) => { byHand = place(executor, 'path-overgrown-dirt', 8, 36); });
 
     act(() => { moveRouteMark('to', 30, 16, true); });
 
@@ -266,7 +266,7 @@ describe('the nudge, through the tool that owns the route', () => {
     // deleted by a gesture" reaching the one line that enforces it.
     paint();
     const { state, executor } = laidRoute();
-    const byHand = place(executor, 'road-dirt', 8, 36);
+    const byHand = place(executor, 'path-overgrown-dirt', 8, 36);
     const before = fingerprint(state);
 
     act(() => { moveRouteMark('to', 30, 16, true); });

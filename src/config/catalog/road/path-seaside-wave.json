@@ -1,0 +1,28 @@
+{
+  "id": "path-seaside-wave",
+  "category": "road",
+  "icon": "path-seaside-wave",
+  "name": {
+    "en": "Seaside Wave Path",
+    "zh": "海浪路",
+    "ja": "海辺の波の道",
+    "ru": "Дорожка «морская волна»",
+    "th": "ทางลายคลื่นทะเล",
+    "id": "Jalan Ombak Laut",
+    "fr": "Chemin de vagues marines"
+  },
+  "color": "#3bb5b9",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

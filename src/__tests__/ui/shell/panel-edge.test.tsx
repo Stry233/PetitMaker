@@ -66,8 +66,8 @@ describe('the edge a panel wears', () => {
    * A dilation grows an alpha, so its boundary lands wherever the ramp crosses its threshold and
    * the ink there is the full 62%. A border is a drawn line: at half a pixel it rasterizes to one
    * row of half coverage, so the panel would read at 31% beside every word and drawing at 62%.
-   * 1 px is the thinnest a border carries the family's ink at the family's strength, and the ceiling
-   * is what the owner rejected — the prototype's 3 px is a keyline, not a shading.
+   * 1 px is the thinnest a border carries the family's ink at the family's strength, and 3 px reads
+   * as a keyline rather than a shading.
    */
   it('is thin: one drawn pixel, where the dilation reaches half of one', () => {
     expect(PANEL_EDGE_WIDTH).toBe(1);
@@ -79,7 +79,7 @@ describe('the edge a panel wears', () => {
     // 3:1, the ratio a graphical indicator is read at, same as the focus ring's.
     expect(contrast(composite(INK, MAP_EDGE_ALPHA, PLATE), rgb(PLATE))).toBeGreaterThanOrEqual(3);
     // And it is a boundary against the background that gave the plate none: an empty sea, where
-    // cream on pale blue is the case a shadow used to answer.
+    // cream on pale blue is the case a shadow would otherwise answer.
     expect(contrast(composite(INK, MAP_EDGE_ALPHA, PLATE), rgb(ZONE_COLORS[0]!)))
       .toBeGreaterThan(contrast(rgb(PLATE), rgb(ZONE_COLORS[0]!)));
   });

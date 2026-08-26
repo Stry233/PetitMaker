@@ -176,9 +176,9 @@ describe('SelectionHandles: the group row is anchored to a POINT, not a projecte
   ];
 
   it('button size and spacing are IDENTICAL across camera framings; only the position moves', () => {
-    // Each framing stands for a camera the old projected box mis-served: pushed to a corner, dollied
-    // in (scale 40), orbited until the group projected almost end-on (scale 2 — the box that used to
-    // collapse to a sliver and pull the two buttons together, then vanish).
+    // Each framing stands for a camera a projected box mis-serves: pushed to a corner, dollied in
+    // (scale 40), orbited until the group projects almost end-on (scale 2, where such a box collapses
+    // to a sliver, pulls the two buttons together and then vanishes).
     const framings = [makeView(300, 300, 10), makeView(80, 500, 40), makeView(600, 200, 2)];
     const seen: Array<{ left: string; width: string; height: string; gap: string; rotate: string; del: string }> = [];
     for (const view of framings) {
@@ -347,14 +347,14 @@ describe('SelectionHandles: what triggers a re-track', () => {
 
 describe('the rotate handle is a button, not a camera control', () => {
   it('sets no cursor of its own, so the global clickable rule applies', () => {
-    // `orbit` means the 3D CAMERA turning. Turning an OBJECT is a press on a button, and the
-    // handle used to override its cursor to `orbit`, which promised a drag gesture it never had.
+    // `orbit` means the 3D CAMERA turning. Turning an OBJECT is a press on a button, so overriding
+    // this handle's cursor to `orbit` promises a drag gesture it never has.
     renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
     const rotate = screen.getByTestId('handle-rotate');
     const del = screen.getByTestId('handle-delete');
     expect(rotate.tagName).toBe('BUTTON');
-    // The clickable pointer, exactly like its delete sibling — the handle used to override this
-    // to `orbit`, promising a drag gesture it never had.
+    // The clickable pointer, exactly like its delete sibling: an override to `orbit` here would
+    // promise a drag gesture the handle never has.
     expect(rotate.style.cursor).toContain('--pw-cursor-clickable');
     expect(rotate.style.cursor).toBe(del.style.cursor);
   });

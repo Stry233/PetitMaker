@@ -55,6 +55,16 @@ body:
         - Somewhere else / not sure
     validations:
       required: true
+  - type: dropdown
+    id: site
+    attributes:
+      label: Which site
+      options:
+        - petit-maker.com (global)
+        - petitmaker.com.cn (mainland China)
+        - A local or dev build
+    validations:
+      required: true
   - type: input
     id: environment
     attributes:

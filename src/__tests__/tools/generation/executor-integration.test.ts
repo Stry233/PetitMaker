@@ -1,89 +1,90 @@
-// Integration test through the REAL CommandExecutor — the path App uses. This is the
-// invariant the unit-level matrix could not see: generated terrain must actually COMMIT
-// (every PaintTerrain passes the pre-command rules, incl. no-floating V-MTN-02/V-WTR-01)
-// and the post-stroke pass must be clean. It also pins per-mode semantics.
+// Integration test through the REAL CommandExecutor — the path the shelf uses. This is the
+// invariant a unit-level plan check cannot see: generated TERRAIN must actually COMMIT (every
+// PaintTerrain passes the pre-command rules, no-floating V-MTN-02/V-WTR-01 included) and the
+// post-stroke pass must be clean, on a synthetic grid as well as on the shipped maps
+// (`real-map-generate.test.ts` is the same question asked of those).
+//
+// OBJECT placements are a different matter and are counted, not required: the pipeline seats every
+// object by PROBING through `tryPlace`, so a refusal is how it finds out that a spot will not do.
+// The refusals a run collected come back as `GenerateResult.skipped`, and the designer's own probes
+// are where a run is held to zero of them on ground where every placement should be legal.
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
+import { CommandType, TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
 
-interface Outcome { placedLayers: number; rejects: number; postViol: number; mtn: number; water: number; ground: number; grass: number; waterfalls: number; }
+interface Outcome { placedLayers: number; terrainRejects: number; postViol: number; mtn: number; water: number; ground: number; }
 
 function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Outcome {
   const state = makeState(size, size);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  // No relief override — exercise the DEFAULT (toGenConfig defaults relief to 0.8), i.e. the
-  // out-of-box experience. 48² is closer to the real map; smaller grids can flatten a few seeds.
-  const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null };
-  let rejects = 0;
+  // No richness override — exercise the shelf's own default. 48² is small for a designed island
+  // (its places are 9 to 21 cells across), which is the point: the terrain must commit even where
+  // the composition is cramped.
+  const config: GenerateConfig = { algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 6, seed, region: null };
+  let terrainRejects = 0;
   const start = exec.getUndoStackSize();
-  const res = generateTerrain(config, state, (cmd) => { const r = exec.execute(cmd); if (!r.success) rejects++; return r; });
+  const res = generateTerrain(config, state, (cmd) => {
+    const r = exec.execute(cmd);
+    if (!r.success && (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.TrimCorners)) terrainRejects++;
+    return r;
+  }, exec.getRegistry());
   const postViol = exec.commitStrokeGroup(start).length;
-  let mtn = 0, water = 0, ground = 0, grass = 0, waterfalls = 0;
+  let mtn = 0, water = 0, ground = 0;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const c = state.cells[y]![x]!; if (c.zone !== 2 /* Grass */) continue; grass++;
+    const c = state.cells[y]![x]!; if (c.zone !== 2 /* Grass */) continue;
     const t = c.terrain;
     if (!t) ground++;
     else if (t.type === TerrainType.Mountain) mtn++;
-    else if (t.type === TerrainType.Water) { water++; if (t.elevation > 0) waterfalls++; }
-    // A ground-island edge-cut (None + corners) is the lake's rounded SHORELINE — it exists only where
-    // ground pokes into water (cutGroundIslands). It counts toward the water feature's footprint here:
-    // Counting it keeps the water-dominance metric measuring the whole lake extent, whichever way the
-    // shoreline notch is cut (a patchOnly-water fillet there would be illegal, see auto-edge-cut).
+    else if (t.type === TerrainType.Water) water++;
+    // A ground-island edge-cut (None + corners) is a rounded SHORELINE: it exists only where ground
+    // pokes into water. It counts as water here, so a body reads at its whole extent whichever way
+    // its notches were cut.
     else if (t.type === TerrainType.None && t.corners?.some((k) => k !== 'square')) water++;
   }
-  return { placedLayers: res.placed, rejects, postViol, mtn, water, ground, grass, waterfalls };
+  return { placedLayers: res.placed, terrainRejects, postViol, mtn, water, ground };
 }
 
 const SEEDS = [66, 1, 2, 7, 13, 42, 99, 100];
 
 describe('generation through the real CommandExecutor', () => {
-  it('commits cleanly for every mode × seed — no rejected commands, no post-stroke violations', () => {
+  it('commits cleanly for every island kind × seed — no refused terrain, no post-stroke violations', () => {
     for (const mode of ['earth', 'water', 'mixed'] as const) {
       for (const seed of SEEDS) {
         const o = commit(mode, seed);
-        expect(o.rejects, `${mode} seed ${seed} rejected commands`).toBe(0);
+        expect(o.terrainRejects, `${mode} seed ${seed} refused terrain`).toBe(0);
         expect(o.postViol, `${mode} seed ${seed} post-stroke violations`).toBe(0);
         expect(o.placedLayers, `${mode} seed ${seed} produced no terrain`).toBeGreaterThan(0);
+        expect(o.ground, `${mode} seed ${seed} left no buildable land`).toBeGreaterThan(0);
+        expect(o.mtn, `${mode} seed ${seed} has no relief`).toBeGreaterThan(0);
       }
     }
   });
 
-  it('earth mode: mountains, never water', () => {
+  /**
+   * THE THREE KINDS ARE A WATER SCALE and nothing else (`pipeline.ts:WATER_SCALE`: earth 0, mixed 1,
+   * water 1.5), so that ordering is the whole of what they promise. It is claimed per seed rather
+   * than as a batch mean, and as `<=` on the wet end because the budget saturates: on a grid this
+   * small there is often no more room for water, so water and mixed come out equal.
+   *
+   * EARTH IS DRY, and this is the surface that can still ask for it: the shelf offers ONE island kind
+   * and `generate-shelf.ts:modeFor` answers `mixed` for every one, so a kind other than mixed reaches
+   * the engine only from a recipe saved before the kinds collapsed or from the agent's
+   * `run_generator`, whose schema still names all three. It is dry BY GATE and not by luck — every
+   * water pass, the landmark figure included, sits behind `waterScale > 0` in `terrain-sculpt.ts`.
+   */
+  it('the island kinds order by how much water they hold, and earth holds none', () => {
     for (const seed of SEEDS) {
-      const o = commit('earth', seed);
-      expect(o.water, `earth seed ${seed} has water`).toBe(0);
-      expect(o.mtn, `earth seed ${seed} has no mountains`).toBeGreaterThan(0);
+      const earth = commit('earth', seed).water;
+      const mixed = commit('mixed', seed).water;
+      const water = commit('water', seed).water;
+      expect(earth, `seed ${seed}: earth is not dry`).toBe(0);
+      expect(mixed, `seed ${seed}: mixed holds no water`).toBeGreaterThan(0);
+      expect(water, `seed ${seed}: the water kind holds less than mixed`).toBeGreaterThanOrEqual(mixed);
     }
-  });
-
-  it('water mode: water-dominant (lots of water) with buildable land', () => {
-    for (const seed of SEEDS) {
-      const o = commit('water', seed);
-      expect(o.water, `water seed ${seed} not watery enough`).toBeGreaterThan(o.grass * 0.2);
-      expect(o.ground, `water seed ${seed} has no buildable land`).toBeGreaterThan(0);
-    }
-  });
-
-  it('mixed mode: has water AND buildable land, less water than water mode', () => {
-    for (const seed of SEEDS) {
-      const mixed = commit('mixed', seed);
-      const water = commit('water', seed);
-      expect(mixed.water, `mixed seed ${seed} has no water`).toBeGreaterThan(0);
-      expect(mixed.ground, `mixed seed ${seed} has no land`).toBeGreaterThan(0);
-      expect(mixed.water, `mixed seed ${seed} not less watery than water mode`).toBeLessThan(water.water);
-    }
-  });
-
-  it('mixed mode produces legal waterfalls; water mode (no mountains) produces none', () => {
-    // Waterfalls need mountains for caps — only mixed has them. Assert the SUM across seeds.
-    const mixedFalls = SEEDS.reduce((s, seed) => s + commit('mixed', seed).waterfalls, 0);
-    expect(mixedFalls, 'mixed produced no waterfalls across all seeds').toBeGreaterThan(0);
-    const waterFalls = SEEDS.reduce((s, seed) => s + commit('water', seed).waterfalls, 0);
-    expect(waterFalls, 'water mode should have no waterfalls (flat islands, no mountains)').toBe(0);
   });
 });

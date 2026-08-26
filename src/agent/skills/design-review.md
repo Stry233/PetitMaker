@@ -1,40 +1,28 @@
-DESIGN REVIEW — the expert's finishing crit; run it before declaring any large build done.
+DESIGN REVIEW — the finishing crit before calling a build done, judged the way the expert maps are judged.
 
-WHEN TO USE: at the end of every multi-stage build, after the last plan stage completes;
-or when the user says the map "looks off" / "make it better" without a specific ask.
+WHEN TO USE: at the end of every multi-stage build; or when the user says "make it better" / "it looks off" with no specific ask.
 
-THE PASS (in this order — cheap signals first)
-1. evaluate_map. Note the overall trend and the TWO weakest dimensions. Anything
-   regressed since your last evaluation gets fixed first — a regression you caused is
-   the highest-priority defect on the map.
-2. view_map. Judge what metrics cannot:
-   - SILHOUETTE: do cliffs and shores curve, or are they raw rectangles? Straight walls
-     longer than ~10 cells need insets, curves, or a terrace step.
-   - FOCAL HIERARCHY: is there ONE place the eye lands (tallest hill, the waterfall,
-     the village heart)? Two equal masses = split attention; demote one.
-   - BALANCE: is all the content crowded in one half? A big empty quadrant needs either
-     a modest feature or a deliberate meadow (open space is fine; dead space is not).
-   - STORY MOMENTS: a map is remembered by 2-3 scenes — a bridge over a falls, a lookout
-     over the village, a lane between hedges. If you cannot name the scenes, create one.
-3. Walk the approach: pick the map entrance or plaza, follow the road network in your
-   head to each feature. Every destination needs a path; every path needs a destination.
+PASS 1 — MEASURE (cheap, first)
+- evaluate_map. Fix anything marked REGRESSED before anything else — a regression you caused is the map's highest-priority defect. Then note the two weakest dimensions.
 
-FIX PLAYBOOK (symptom → tool)
-- Raw/straight cliff edges → paint_terrain smooth:'round' over the same cells, or
-  trim_corner the specific corners the silhouette hints name.
-- No focal point → raise the main hill one tier (sculpt_terrace on top of it) or crown
-  it (peak theme decorate_zone / a lookout ring of trees).
-- Unbalanced mass → add a counterweight feature at 1/3 of the empty side, smaller than
-  the focal one; connect it with a road so it belongs.
-- Orphan features → build_road from the nearest network point; frame_crossing where the
-  route crosses water or a cliff.
-- Confetti decoration → clear_area the worst patch, replant as drifts (scatter_objects
-  with 2-3 species over a SMALL rect, repeated in clusters).
-- Bare shores → a flora line 1-2 cells off the waterline on the outer bank.
+PASS 2 — LOOK (view_map), against the expert tells, in this order:
+1. THE SUBJECT: can you name what the island is about — one primary set piece, clearly bigger than everything else, with clear ground around it? Two rivals = demote one; no answer = crown something (raise the main mass, give it a fall or a court).
+2. THE CLIMB: on a map with terrain, does the walk change level, or does all pavement sit on one floor with the mass beside it? Pavement belongs ON the benches; ramps are route events, not fire escapes.
+3. ARRIVAL: do any streets END at something (a door, a lookout, a jetty), or does every route only pass through? A network of through-streets arrives nowhere.
+4. FRONT AND BACK: pick 2-3 buildings — open low scenery out the door, mass behind? A building composed backwards (wall in front, void behind) is a two-call fix: rotate it or move the planting.
+5. STAMPS: is any shape repeated congruently — identical ponds, twin hills, the same bed along every edge? Delete or vary the copies; one thing happens once.
+6. GRAIN: does planting read as beds + specimens, or as uniform speckle outlining every block? Speckle: clear_area the worst patch, replant as one solid one-species bed and one specimen.
+7. SILHOUETTE: raw straight cliff walls and dead-straight coasts longer than ~10 cells need a bend, an inset, or smooth:'round' repainting.
 
-DONE CHECK
-- evaluate_map: no dimension below 5, nothing regressed, overall at least as high as
-  before your changes.
-- view_map: you can name the focal point and 2-3 story moments out loud.
-- One final short report to the user: what you built, the scenes worth visiting, and
-  one thing they might want to tweak by hand.
+PASS 3 — WALK IT: follow the trunk from the plaza in your head. Every destination needs a route, every route a destination; name the 2-3 scenes a visitor would remember (the bridge over the fall, the lane between hedges, the lookout over the roofs). If you cannot name them, make one.
+
+FIX PLAYBOOK (symptom -> tool)
+- No focal point -> raise the main hill (paint_terrain a higher inset band or sculpt_terrace on top) or give it the one elaborate treatment (a fall, a paved court).
+- Single-storey walk -> pave the benches (build_road on the high floors), then find_ramp_sites + place_object to stitch levels.
+- No arrivals -> 2-wide build_road spurs from the network to 3-4 doors and vantages; frame_crossing to turn a crossing into an event.
+- Raw edges -> paint_terrain smooth:'round' over the same cells, or trim_corner the named corners.
+- Confetti -> clear_area the patch, one species scatter_objects bed + one specimen.
+- Bare water -> a bed on ONE bank at the viewing side, a specimen on the outer bend; never a full flower ring.
+- Empty quadrant -> a modest secondary feature at its third-point, connected by a lane — or declare it the map's deliberate meadow and leave it.
+
+REPORT: evaluate_map once more (nothing below 5, nothing regressed, overall not lower than the baseline), then 2-4 sentences to the user: what got built, the scenes worth visiting, one thing they might tweak by hand.

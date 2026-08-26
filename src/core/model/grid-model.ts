@@ -9,7 +9,7 @@
  */
 
 import { CellZone, TerrainType } from './types';
-import type { ChunkCoord, Corners, GridState, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, TerrainCell } from './types';
+import type { ChunkCoord, Corners, GridState, MacroCell, MacroCoord, MicroCoord, MapTemplate, ObjectsDelta, PlacedObject, Rect, TerrainCell } from './types';
 import { CHUNK_SIZE, TILE_SIZE, PLAZA_ID } from './constants';
 
 export const HALF_TILE = TILE_SIZE / 2;
@@ -35,7 +35,7 @@ export function createGrid(template: MapTemplate): MacroCell[][] {
     const row: MacroCell[] = [];
     for (let x = 0; x < width; x++) {
       let zone = zones[y]?.[x] ?? CellZone.Void;
-      if (zone === CellZone.Plaza) zone = CellZone.Grass; // plaza is an object now
+      if (zone === CellZone.Plaza) zone = CellZone.Grass; // the plaza is a locked object, not a zone
       row.push({ zone, terrain: null });
     }
     cells.push(row);
@@ -43,7 +43,38 @@ export function createGrid(template: MapTemplate): MacroCell[][] {
   return cells;
 }
 
-export interface Rect { x: number; y: number; w: number; h: number; }
+export type { Rect } from './types';
+
+/**
+ * A validation error's evidence when its cause is a BODY (an object's footprint, or the overlap of
+ * two of them) rather than a grid cell: the exact `rects` the flash paints, plus the whole-cell
+ * `cells` every non-drawing consumer reads (the agent's echo, tests), derived from those same rects
+ * by floor/ceil expansion. ONE call states the body once, so the drawn shade and the reported cells
+ * cannot drift apart.
+ *
+ * The distinction is not cosmetic: a body on the half grid (the plaza at x.5, a ramp/bridge anchor)
+ * covers cells only partially, so its whole-cell list names a region up to half a cell larger on
+ * every side — a refusal shade visibly bigger than the thing that refused.
+ *
+ * An EMPTY rect is dropped from both halves rather than from one: a body with no extent cannot be
+ * drawn, and keeping its cells would report evidence the flash then has nothing to show for.
+ */
+export function bodyEvidence(rects: readonly Rect[]): { cells: MacroCoord[]; rects: Rect[] } {
+  const drawable = rects.filter((r) => r.w > 0 && r.h > 0);
+  const cells: MacroCoord[] = [];
+  const seen = new Set<string>();
+  for (const r of drawable) {
+    for (let y = Math.floor(r.y); y < Math.ceil(r.y + r.h); y++) {
+      for (let x = Math.floor(r.x); x < Math.ceil(r.x + r.w); x++) {
+        const k = cellKey(x, y);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        cells.push({ x, y });
+      }
+    }
+  }
+  return { cells, rects: drawable };
+}
 
 /** Whether the unit cell at macro (x, y) overlaps `rect`. `cellShift` is the
  *  cell's lower-bound offset: terrain renders on the micro-grid (−HALF_TILE), so
@@ -156,6 +187,39 @@ export function cloneGridState(state: GridState): GridState {
     objects,
     lockedLayers: new Set(state.lockedLayers),
   };
+}
+
+/**
+ * A grid whose cells at `cells` are private copies, sharing every other row and cell with `state` —
+ * the map to ask a HYPOTHETICAL question of when the answer depends on the whole grid but the
+ * hypothesis touches a handful of cells (the auto-trim ghost, the layer a refused water stroke
+ * could stand at).
+ *
+ * The objects map and the version counters are the live ones: a caller here writes terrain through
+ * `applyCommand` and reads rules, so nothing it does reaches them. Writing OUTSIDE `cells` would
+ * edit the real map behind the executor's back, with no history and no redraw — clip a hypothesis
+ * to the cells the scratch owns.
+ */
+export function scratchGrid(state: GridState, cells: readonly MacroCoord[]): GridState {
+  const rows = new Map<number, MacroCell[]>();
+  const scratch: GridState = { ...state, cells: state.cells.slice() };
+  for (const { x, y } of cells) {
+    const src = getCell(state.cells, x, y);
+    if (!src) continue;
+    let row = rows.get(y);
+    if (!row) {
+      row = scratch.cells[y]!.slice();
+      scratch.cells[y] = row;
+      rows.set(y, row);
+    }
+    row[x] = {
+      ...src,
+      terrain: src.terrain
+        ? { ...src.terrain, corners: src.terrain.corners ? ([...src.terrain.corners] as Corners) : undefined }
+        : null,
+    };
+  }
+  return scratch;
 }
 
 export function chunkKey(cx: number, cy: number): string {

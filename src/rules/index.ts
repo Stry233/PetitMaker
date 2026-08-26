@@ -27,12 +27,10 @@ import { objectOnCoatingRule } from './object-on-coating';
  * traitPlacementRule runs before zoneRestrictionRule AND placementOverlapRule because the
  * waterSpan/heightDrop traits intentionally SNAP the object's position/rotation/spanLength
  * during validation (auto-orienting bridges and ramps). Both zone and overlap must check the
- * SNAPPED footprint, not the raw click position — else a ramp/bridge can snap onto a non-grass
- * zone (beach/boundary) and be accepted (the generator once placed an illegal ramp on the beach).
+ * SNAPPED footprint, not the raw click position — else a ramp/bridge snaps onto a non-grass zone
+ * (beach/boundary) and is accepted there.
  */
-/** Every rule in canonical registration order (see the order note above).
- *  zoneRestrictionRule sits AFTER traitPlacementRule so it validates the snapped
- *  heightDrop/waterSpan footprint. */
+/** Every rule in canonical registration order (see the order note above). */
 const ALL_RULES: AnyRule[] = [
   layerLockRule,
   lockedObjectRule,

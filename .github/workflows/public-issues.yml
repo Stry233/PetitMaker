@@ -1,0 +1,93 @@
+# Issue-desk automation for the PUBLIC repository. Authored here and shipped by the export like
+# the issue templates, because it faces the public repository's users and leaks nothing; every job
+# is gated on the public repository's own name, so it never runs where it is authored.
+name: Issue desk
+
+on:
+  issues:
+    types: [opened]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    if: github.repository == 'Stry233/PetitMaker' && github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label from the form's own answers, and greet a first-time reporter
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body ?? '';
+            const labels = [];
+
+            // The bug form's dropdowns arrive as "### <label>\n\n<answer>" sections; the labels
+            // below are the repository's own triage taxonomy, mapped from the answer text.
+            const answer = (heading) => {
+              const m = new RegExp(`### ${heading}\\s*\\n+([^\\n]*)`).exec(body);
+              return m ? m[1].trim() : '';
+            };
+            const site = answer('Which site');
+            if (site.includes('.com.cn')) labels.push('site:cn');
+            else if (site.includes('petit-maker.com')) labels.push('site:global');
+            const area = answer('Where it happened');
+            if (/3D/.test(area)) labels.push('area:3d');
+            else if (/agent/i.test(area)) labels.push('area:agent');
+            else if (/Generation/i.test(area)) labels.push('area:generator');
+            else if (/Import or export/i.test(area)) labels.push('area:import-export');
+
+            // A report written in Chinese gets the zh triage view whatever form it came through.
+            if (/[一-鿿]/.test(`${issue.title}\n${body}`)) labels.push('lang:zh');
+
+            if (labels.length) {
+              await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels });
+            }
+
+            // One greeting, for a reporter's first issue only: the two details that make a map
+            // problem reproducible, in both of the project's languages.
+            const { data: authored } = await github.rest.issues.listForRepo({
+              ...context.repo, creator: issue.user.login, state: 'all', per_page: 2,
+            });
+            if (authored.filter((i) => !i.pull_request).length <= 1) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: [
+                  'Thanks for the report! Two details make a map problem much easier to reproduce:',
+                  '',
+                  '- attach the **share image** of the map (Save and share, then export the picture: it carries the whole map inside it), and',
+                  '- say **which site** you were on, petit-maker.com or petitmaker.com.cn, if the form did not already ask.',
+                  '',
+                  '感谢反馈！两条信息能让地图问题更容易复现：附上地图的**分享图**（「保存与分享」导出的图片，其中包含整张地图），并说明你使用的站点是 petit-maker.com 还是 petitmaker.com.cn（如果表单尚未询问）。',
+                ].join('\n'),
+              });
+            }
+
+  stale:
+    if: github.repository == 'Stry233/PetitMaker' && github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      # Only issues the maintainers have explicitly marked as waiting on the reporter are ever
+      # nudged or closed; everything else stands indefinitely.
+      - uses: actions/stale@v9
+        with:
+          only-labels: needs-info
+          days-before-stale: 14
+          days-before-close: 7
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          remove-stale-when-updated: true
+          stale-issue-message: |
+            Still waiting on the details asked for above; this issue will close in a week if there is no reply, and any reply resets the clock.
+
+            仍在等待上面询问的信息；一周内没有回复，此问题将自动关闭，回复即可重新计时。
+          close-issue-message: |
+            Closed for lack of the information needed to act on it. Add the details in a comment and it can be reopened.
+
+            因缺少处理所需的信息而关闭。补充信息后可以重新打开。

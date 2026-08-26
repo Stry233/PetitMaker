@@ -9,10 +9,13 @@
  *   getUndoStackSize() → runSilently(execute each command) → commitStrokeGroup()
  * - runSilently suppresses `validation-failed` events, so the error Toast never
  *   fires for agent edits — rejections are fed back to the LLM instead.
- * - Pre-command rejections are reported per command (reject-and-skip); post-stroke
- *   violations mean the stroke already rolled back, reported as "REVERTED: …".
+ * - Pre-command rejections are reported per command (reject-and-skip, the same
+ *   semantics generation runs under); post-stroke violations mean the stroke already
+ *   rolled back, reported as "REVERTED: …" so the model re-plans.
+ * - One stroke group is one undo step, so a user undoes agent work like their own.
  * - Error strings are always English (translateFor('en', …)), augmented with the
- *   rule's agentHint (see rules/index.ts RULE_HINTS) for the violated rule.
+ *   rule's agentHint (see rules/index.ts RULE_HINTS) for the violated rule: the model
+ *   converses in any language but reasons over stable rule feedback.
  */
 import {
   CommandType,
@@ -26,11 +29,13 @@ import {
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { translateFor } from '../../i18n/context';
 import { footprintCells, getPlacedObjectSize } from '../../state/object-geometry';
-import { circleCells, lineCells } from '../../tools/paint/shapes';
+import { regionBounds } from '../../state/region-bounds';
+import { circleCells, lineCells } from '../../tools/paint';
+import { normalizeGeometry, missingScalars, type FlatDefault } from './geometry';
 import { regionTokens } from '../serialize';
 import { RULE_HINTS } from '../../rules';
-import type { PlanStage } from '../types';
 import { ProvSource } from '../../core/provenance/types';
+import type { ToolResultDetail } from '../core/types';
 
 /** The user's single-block selection (mirrors state/store BlockRef). The editor's selection is a
  *  set; this surface has no vocabulary for a group, so a PLURAL selection arrives here as null. */
@@ -48,27 +53,92 @@ export interface AgentToolDeps {
   /** Rendered-map snapshotter; wire ONLY when the active model supports vision
    *  (supportsVision) — absence makes view_map degrade to the token grid. */
   snapshot?(): Promise<string | null>;
-  /** Receives the agent's staged plan (rendered by the pinned header). */
-  setPlan?(stages: PlanStage[]): void;
-  /** The current plan — lets update_plan detect stage completions and inject
-   *  a scorecard delta at exactly that decision point. */
-  getPlan?(): PlanStage[];
-  /** AI provenance descriptor (provider/model + per-edit approval). Absent in headless tests
-   *  defaults to AI-write with no provider details. */
-  getProvenanceSource?(): { provider?: string; model?: string; toolCallId?: string; userApproved?: boolean };
+  /** Rendered crop of one rect (absolute map coordinates, corners inclusive); wire only on a
+   *  vision seat whose renderer can crop — absence makes a region'd view_map degrade to the
+   *  token grid, whether or not the full-map snapshotter is wired. */
+  snapshotRegion?(rect: { x1: number; y1: number; x2: number; y2: number }): Promise<string | null>;
+  /**
+   * AI provenance descriptor (provider/model + per-edit approval). Absent in headless tests
+   * defaults to AI-write with no provider details.
+   *
+   * `toolCallId` is the call the stroke belongs to, handed in by `executeToolCall` — the stroke
+   * runner is given `deps` and never the call, and the export disclosure has to name WHICH call a
+   * human approved (`AiAccepted`) as against one that ran under a standing allow-always.
+   */
+  getProvenanceSource?(toolCallId?: string): {
+    provider?: string; model?: string; toolCallId?: string; userApproved?: boolean;
+  };
   /** Non-map UI action: open the share-image or JSON export flow for the user
    *  to complete (a file download is outward-facing, so the human confirms it).
    *  Browser-only; absent in headless/tests, where the tool reports so. */
   requestExport?(kind: 'image' | 'json'): void;
 }
 
-export type ToolResultBody = { content: string; isError: boolean; image?: { dataUrl: string } };
+export type ToolResultBody = { content: string; isError: boolean; image?: { dataUrl: string }; detail?: ToolResultDetail };
 
 import { clamp } from '../../core/model/math';
 export { clamp };
 export const dedupe = (xs: string[]): string[] => [...new Set(xs)];
 
 /* ── error formatting (the LLM feedback) ─────────────────────────────── */
+
+/**
+ * AN ARGUMENT REFUSAL TEACHES. Every argument-shape error goes through here: it names the missing
+ * or invalid parameter and, where one helps, shows a minimal valid example in the tool's own
+ * schema shape, so the retry the error earns can differ from the call that earned it. Model-facing
+ * English in the "Arguments: reason" register; `reason` ends in its own punctuation.
+ */
+export function argError(reason: string, example?: string): ToolResultBody {
+  return { isError: true, content: `Arguments: ${reason}${example ? ` Example: ${example}` : ''}` };
+}
+
+/** The minimal valid flat call per shape family — what every geometry refusal shows. */
+const RECT_EXAMPLE = 'shape: "rect", x1: 10, y1: 10, x2: 20, y2: 18';
+const LINE_EXAMPLE = 'shape: "line", x1: 10, y1: 10, x2: 20, y2: 10';
+
+/** The shared refusal for a shape-taking tool called with no geometry at all. `'area'` is the
+ *  rect/circle/line/cells family (paint_terrain, erase_terrain, clear_area); `'path'` is the
+ *  line/cells pair (build_road). */
+export function noCellsError(shapes: 'area' | 'path'): ToolResultBody {
+  return shapes === 'path'
+    ? argError('no cells given, pass shape "line" with flat endpoint coordinates, or cells.', LINE_EXAMPLE)
+    : argError('no cells given, pass shape ("rect", "circle", or "line") with its flat coordinates, or cells.', RECT_EXAMPLE);
+}
+
+/**
+ * The argument refusal for a shape-taking call that resolved to no cells: names exactly what the
+ * given shape still lacks, so the retry the error earns can differ from the call that earned it.
+ * Teaches the FLAT form first — the nested forms stay accepted, but a guided decoder that cannot
+ * emit them needs the example it can.
+ */
+export function geometryError(input: Record<string, unknown>, shapes: 'area' | 'path'): ToolResultBody {
+  const shape = typeof input.shape === 'string' ? input.shape : undefined;
+  if (shape === 'rect' || shape === 'line') {
+    const missing = missingScalars(input, ['x1', 'y1', 'x2', 'y2']);
+    if (missing.length > 0) {
+      return argError(
+        `shape "${shape}" needs the ${shape === 'rect' ? 'corner' : 'endpoint'} coordinates, missing ${missing.join(', ')}.`,
+        shape === 'rect' ? RECT_EXAMPLE : LINE_EXAMPLE,
+      );
+    }
+  } else if (shape === 'circle') {
+    const missing = missingScalars(input, ['cx', 'cy', 'r']);
+    if (missing.length > 0) {
+      return argError(`shape "circle" needs the center and radius, missing ${missing.join(', ')}.`, 'shape: "circle", cx: 15, cy: 12, r: 5');
+    }
+  } else if (shape === 'cells') {
+    if (!Array.isArray(input.cells) || input.cells.length === 0) {
+      return argError('shape "cells" needs the cells array.', 'cells: [{"x":10,"y":10},{"x":11,"y":10}]');
+    }
+  } else if (shape !== undefined) {
+    return argError(`unknown shape "${shape}", use rect, circle, line, or cells.`, RECT_EXAMPLE);
+  }
+  const norm = normalizeGeometry(input, shapes === 'path' ? 'line' : 'rect');
+  if (norm.rect || norm.circle || norm.line || (Array.isArray(norm.cells) && norm.cells.length > 0)) {
+    return argError('the given shape covers no cell on the map, use coordinates inside it.');
+  }
+  return noCellsError(shapes);
+}
 
 export function formatErrors(errors: ValidationError[]): string {
   return errors
@@ -79,6 +149,41 @@ export function formatErrors(errors: ValidationError[]): string {
       return `[${e.ruleId}] ${text}${at ? ` at ${at}` : ''}.${hint}`;
     })
     .join('\n');
+}
+
+/**
+ * THE SAME REFUSAL, KEYED RATHER THAN WRITTEN, for the panel's own detail well.
+ *
+ * `formatErrors` above is the MODEL's copy and stays English. This is the reader's: the rule's own
+ * i18n key and params, so the panel says it in the user's language (`ToolResultDetail.violations`).
+ * Deduped by key+params, since a stroke refused over forty cells reports one rule forty times and a
+ * well shows one sentence. Capped, because a detail rides into storage with the log.
+ */
+const VIOLATION_MAX = 4;
+
+/** The carrier as a spreadable, so a caller never writes `violations: undefined` into a detail that
+ *  travels into storage. */
+function withViolations(
+  list: NonNullable<ToolResultDetail['violations']> | undefined,
+): { violations?: NonNullable<ToolResultDetail['violations']> } {
+  return list ? { violations: list } : {};
+}
+
+export function detailViolations(errors: ValidationError[]): NonNullable<ToolResultDetail['violations']> | undefined {
+  const out: NonNullable<ToolResultDetail['violations']> = [];
+  const seen = new Set<string>();
+  for (const e of errors) {
+    const key = `${e.message}|${JSON.stringify(e.messageParams ?? {})}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ruleId: e.ruleId,
+      message: e.message,
+      ...(e.messageParams ? { params: e.messageParams } : {}),
+    });
+    if (out.length === VIOLATION_MAX) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /* ── stroke runner: ONE stroke group per write tool call ─────────────── */
@@ -127,6 +232,17 @@ export function commandCells(cmd: Command): MacroCoord[] {
   }
 }
 
+/**
+ * The ONE count + min/max-bounds derivation, re-exported from where it now lives.
+ *
+ * IT MOVED DOWN TO `state/` because a THIRD surface needs it: the composer's region chip says what
+ * the user has marked, and a chip that recomputed the box would be free to disagree with the
+ * refusal this file quotes back to the model. UI cannot import the agent layer (imports point
+ * down), so the shared floor is `state/`. Kept exported here because this module is where the two
+ * agent-side readers — the guard below and the order event's filed `OrderRegion` — already look.
+ */
+export { regionBounds };
+
 type RegionGuard = { has(c: MacroCoord): boolean; bounds: string };
 
 /**
@@ -134,18 +250,12 @@ type RegionGuard = { has(c: MacroCoord): boolean; bounds: string };
  * when the user has painted nothing and the whole map is fair game.
  */
 function regionGuard(region: MacroCoord[]): RegionGuard | null {
-  if (region.length === 0) return null;
+  const b = regionBounds(region);
+  if (!b) return null;
   const inside = new Set(region.map((c) => `${c.x},${c.y}`));
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const c of region) {
-    if (c.x < x1) x1 = c.x;
-    if (c.y < y1) y1 = c.y;
-    if (c.x > x2) x2 = c.x;
-    if (c.y > y2) y2 = c.y;
-  }
   return {
     has: (c) => inside.has(`${c.x},${c.y}`),
-    bounds: `${region.length} cells within (${x1},${y1})-(${x2},${y2})`,
+    bounds: `${b.count} cells within (${b.x1},${b.y1})-(${b.x2},${b.y2})`,
   };
 }
 
@@ -162,10 +272,29 @@ function firstStray(guard: RegionGuard, commands: Command[]): MacroCoord | null 
   return null;
 }
 
+/** Tallies applied commands into the same shape `runStroke` reports: painted/erased cells deduped
+ *  (a multi-tier mountain stroke issues one PaintTerrain per tier over the SAME cell list, so the
+ *  count is cells touched, not commands issued) and objects placed/removed. `undefined` when
+ *  neither landed, matching how an ordinary tool call omits `detail` entirely. */
+function tallyDetail(commands: readonly Command[]): ToolResultDetail | undefined {
+  const cellSet = new Set<string>();
+  let objects = 0;
+  for (const cmd of commands) {
+    if (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain) {
+      for (const c of cmd.cells) cellSet.add(`${c.x},${c.y}`);
+    } else if (cmd.type === CommandType.PlaceObject || cmd.type === CommandType.RemoveObject) {
+      objects++;
+    }
+  }
+  if (cellSet.size === 0 && objects === 0) return undefined;
+  return { ...(cellSet.size > 0 ? { cells: cellSet.size } : {}), ...(objects > 0 ? { objects } : {}) };
+}
+
 /** What a stray earns. One rule, so one wording, whichever runner caught it. */
 function outOfRegionResult(at: MacroCoord, guard: RegionGuard): ToolResultBody {
   return {
     isError: true,
+    detail: { regionBlocked: true },
     content: `OUT OF REGION: this edit reached (${at.x},${at.y}), outside the region the user selected `
       + `(${guard.bounds}). Nothing was applied. Every cell you write, and every object you place or `
       + `remove, must lie inside that region — an object counts by its whole footprint, not its corner. `
@@ -191,6 +320,13 @@ export function runStroke(
   const src = deps.getProvenanceSource?.() ?? {};
   exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
   let ok = 0; const failures: string[] = [];
+  // The refusals as RULES beside the same refusals as the model's English (see `detailViolations`).
+  const rejected: ValidationError[] = [];
+  // Tallied alongside `ok` for the view's detail — a Set for cells since a multi-tier
+  // mountain stroke (paintTerrain) issues one PaintTerrain command per tier over the
+  // SAME cell list, and the painted count is the cells, not the tier count.
+  const cellSet = new Set<string>();
+  let objectsCount = 0;
   let violations: ReturnType<typeof exec.commitStrokeGroup>;
   // A painted region is a boundary, not a suggestion. Checked as each command applies, so a stray
   // stops the loop before the rest of the batch runs.
@@ -200,8 +336,13 @@ export function runStroke(
     exec.runSilently(() => {
       for (const cmd of commands) {
         const r = exec.execute(cmd);
-        if (!r.success) { failures.push(formatErrors(r.errors)); continue; }
+        if (!r.success) { failures.push(formatErrors(r.errors)); rejected.push(...r.errors); continue; }
         ok++;
+        if (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain) {
+          for (const c of cmd.cells) cellSet.add(`${c.x},${c.y}`);
+        } else if (cmd.type === CommandType.PlaceObject || cmd.type === CommandType.RemoveObject) {
+          objectsCount++;
+        }
         if (guard) {
           const out = firstStray(guard, [cmd]);
           if (out) { strayed = out; return; }
@@ -227,11 +368,16 @@ export function runStroke(
   if (violations.length > 0) {
     return {
       isError: true,
+      detail: { reverted: true, ...withViolations(detailViolations(violations)) },
       content: `REVERTED: the edit violated post-stroke rules and was rolled back. The map is unchanged.\n${formatErrors(violations)}`,
     };
   }
   if (ok === 0 && failures.length > 0) {
-    return { isError: true, content: `All commands rejected:\n${dedupe(failures).join('\n')}` };
+    return {
+      isError: true,
+      ...(rejected.length > 0 ? { detail: { ...withViolations(detailViolations(rejected)) } } : {}),
+      content: `All commands rejected:\n${dedupe(failures).join('\n')}`,
+    };
   }
   let msg = okMessage(ok);
   if (failures.length > 0) {
@@ -241,7 +387,14 @@ export function runStroke(
     msg += bboxSnapshot(deps, snapshotCells);
     deps.onFlash?.(snapshotCells);
   }
-  return { isError: failures.length > 0, content: msg };
+  const partial = withViolations(detailViolations(rejected));
+  const tally = {
+    ...(cellSet.size > 0 ? { cells: cellSet.size } : {}),
+    ...(objectsCount > 0 ? { objects: objectsCount } : {}),
+    ...partial,
+  };
+  const detail: ToolResultDetail | undefined = Object.keys(tally).length > 0 ? tally : undefined;
+  return { isError: failures.length > 0, content: msg, detail };
 }
 
 /**
@@ -267,7 +420,7 @@ export function runStroke(
 export async function runStrokeBody<T>(
   deps: AgentToolDeps,
   body: () => T | Promise<T>,
-): Promise<{ reverted: boolean; violations: ValidationError[]; result: T; outOfRegion: ToolResultBody | null }> {
+): Promise<{ reverted: boolean; violations: ValidationError[]; result: T; outOfRegion: ToolResultBody | null; detail?: ToolResultDetail }> {
   const exec = deps.getExecutor();
   const start = exec.getUndoStackSize();
   const src = deps.getProvenanceSource?.() ?? {};
@@ -275,15 +428,25 @@ export async function runStrokeBody<T>(
   const guard = regionGuard(deps.getRegion());
   try {
     const result = await exec.runSilentlyAsync(async () => body());
+    const applied = exec.commandsSince(start); // read BEFORE commitStrokeGroup collapses the group
     if (guard) {
-      const stray = firstStray(guard, exec.commandsSince(start));
+      const stray = firstStray(guard, applied);
       if (stray) {
         exec.rollbackTo(start);
         return { reverted: false, violations: [], result, outOfRegion: outOfRegionResult(stray, guard) };
       }
     }
     const violations = exec.commitStrokeGroup(start);
-    return { reverted: violations.length > 0, violations, result, outOfRegion: null };
+    const reverted = violations.length > 0;
+    return {
+      reverted,
+      violations,
+      result,
+      outOfRegion: null,
+      detail: reverted
+        ? { reverted: true, ...withViolations(detailViolations(violations)) }
+        : tallyDetail(applied),
+    };
   } catch (err) {
     // Same guarantee as runStroke: a crash never leaves half-applied, unvalidated edits.
     exec.rollbackTo(start);
@@ -314,9 +477,11 @@ export function waterSpanTrait(item: CatalogItem | undefined): WaterSpanTrait | 
 
 /* ── input helpers ───────────────────────────────────────────────────── */
 
-/** Resolve a shape input (rect / circle / line / cells, optional outline) into a
- *  deduped, in-bounds cell list. */
-export function resolveCells(input: Record<string, unknown>, state: GridState): MacroCoord[] {
+/** Resolve a shape input — nested (rect / circle / line / cells) or flat (shape + top-level
+ *  scalars), optional outline — into a deduped, in-bounds cell list. `flatDefault` is what bare
+ *  corners with no `shape` mean: a rect for the area tools, the line for build_road. */
+export function resolveCells(input: Record<string, unknown>, state: GridState, flatDefault: FlatDefault = 'rect'): MacroCoord[] {
+  input = normalizeGeometry(input, flatDefault);
   const outline = Boolean(input.outline);
   const { width, height } = state.template;
   let cells: MacroCoord[] = [];

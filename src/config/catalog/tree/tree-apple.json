@@ -15,6 +15,7 @@
     "red"
   ],
   "icon": "tree-apple",
+  "iconColor": "#9c9b53",
   "width": 1,
   "height": 1,
   "loadValue": 50,

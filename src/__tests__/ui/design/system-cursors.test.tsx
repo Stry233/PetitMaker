@@ -80,8 +80,8 @@ describe('system cursors: the DOM', () => {
   });
 
   it('re-publishes when the store flips, without the component being told', () => {
-    // The gate: the effect used to have `[]` deps, so nothing after the first mount could change
-    // what <html> carried.
+    // The gate: with `[]` deps on the effect, nothing after the first mount can change what
+    // <html> carries.
     function Host() { useCursorVars(); return null; }
     render(<Host />);
     expect(domProp('clickable')).toContain('url(');

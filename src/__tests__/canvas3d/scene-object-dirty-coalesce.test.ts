@@ -1,21 +1,21 @@
 /**
  * The 3D scene's road-trim mesh and icon-colour refinement each scan every object on the map
- * (`buildRoadTrimMesh` walks `state.objects.values()`; `refineIconColors` walks every instanced
- * group). A road brush's own remove+add churn fires several `objects-changed` events per dab —
- * rebuilding either whole-map artifact straight from the event handler paid for that scan once per
- * EVENT rather than once per rendered FRAME. `onObjects` now marks a dirty flag and
- * `flushObjectDirty` (called from `renderFrame`, mirroring the terrain chunk dirty pass already
- * there) does the rebuild at most once per frame, however many events landed in it.
+ * (`buildRoadTrimMeshes` walks `state.objects.values()`; `refineIconColors` walks every instanced
+ * group). A road brush's own remove+add churn fires several `objects-changed` events per dab, so
+ * rebuilding either whole-map artifact straight from the event handler pays for that scan once per
+ * EVENT rather than once per rendered FRAME. `onObjects` therefore marks a dirty flag and
+ * `flushObjectDirty` (called from `renderFrame`, mirroring the terrain chunk dirty pass beside it)
+ * does the rebuild at most once per frame, however many events landed in it.
  *
  * `ThreeScene` needs a real WebGL context to construct (unlike the 2D Pixi layers, which run against
  * a jsdom canvas stub) — there is no headless harness for it anywhere in this repo, terrain's own
- * dirty-chunk coalescing included. This pins the SHAPE of the fix by reading the source, which is
+ * dirty-chunk coalescing included. This pins the SHAPE of the code by reading the source, which is
  * what the coalescing invariant actually is: onObjects never calls the rebuilds directly, and every
  * rendered frame flushes them if and only if something was marked dirty.
  *
- * The chrome nudge rides the same flush, and its cost was the larger of the two. `viewport-changed`
+ * The chrome nudge rides the same flush, and its cost is the larger of the two. `viewport-changed`
  * is the one map signal `usePointerInteraction` answers IMMEDIATELY rather than per frame — a
- * camera move must not lag the pointer by a frame — so emitting it per objects-changed turned every
+ * camera move must not lag the pointer by a frame — so emitting it per objects-changed turns every
  * command into a full pointer re-sample, and in 3D a re-sample is a heightfield ray-march. Measured
  * in a real browser on a generated island, one fast road stroke with auto-trim on fired 471 of them
  * for 305 commands and spent 139 ms inside `handlePointerMove` (31 ms in a single move); coalesced

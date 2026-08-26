@@ -1,11 +1,15 @@
 /*
- * logos.tsx — platform brand marks, the SAME mono silhouettes as the approved
- * Site Log prototype (lobe-icons, github.com/lobehub/lobe-icons, used
- * verbatim/nominatively to identify which platform a key belongs to). All
- * 24x24 viewBox, single-color via `fill` — including real marks for Zhipu
- * (Z.ai) and Moonshot (Kimi), and a neutral gear for the custom endpoint.
+ * logos.tsx — platform brand marks, one mono silhouette per provider (lobe-icons,
+ * github.com/lobehub/lobe-icons, used verbatim and nominatively to identify which platform a key
+ * belongs to). All 24x24 viewBox, single-colour via `fill` — including real marks for Zhipu (Z.ai)
+ * and Moonshot (Kimi), and a neutral gear for the custom endpoint.
+ *
+ * THE PANEL DOES NOT DRAW THESE TODAY: its setup screen names the providers in words. They are kept
+ * because they are the marks the project HOLDS for the ten platforms — the README's providers band
+ * is built by calling this component rather than redrawing the silhouettes, so the figure and the
+ * app cannot disagree, and a chooser that wants a mark beside a name has one to reach for.
  */
-import type { ProviderId } from '../../agent/types';
+import type { ProviderId } from '../../agent/providers/defaults';
 
 /** Per-mark optical scale (the prototype's lg() compensation table) so every
  *  silhouette reads the same visual size inside its badge. */
@@ -38,6 +42,9 @@ const MARKS: Record<ProviderId, string[]> = {
   moonshot: [
       'M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z',
       'M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z',
+  ],
+  perplexity: [
+      'M19.785 0v7.272H22.5V17.62h-2.935V24l-7.037-6.194v6.145h-1.091v-6.152L4.392 24v-6.465H1.5V7.188h2.884V0l7.053 6.494V.19h1.09v6.49L19.786 0zm-7.257 9.044v7.319l5.946 5.234V14.44l-5.946-5.397zm-1.099-.08l-5.946 5.398v7.235l5.946-5.234V8.965zm8.136 7.58h1.844V8.349H13.46l6.105 5.54v2.655zm-8.982-8.28H2.59v8.195h1.8v-2.576l6.192-5.62zM5.475 2.476v4.71h5.115l-5.115-4.71zm13.219 0l-5.115 4.71h5.115v-4.71z',
   ],
   custom: [
       'M19.14 12.94c.04-.31.06-.62.06-.94 0-.32-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.49.49 0 0 0 13.9 2h-3.8a.49.49 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.05.31-.07.62-.07.94 0 .32.02.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.34.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.19.12.47.02.61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',

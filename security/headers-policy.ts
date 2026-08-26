@@ -2,39 +2,32 @@
  * Canonical security-headers / CSP policy — ONE typed source of truth for every
  * surface that needs to express it: Netlify (`public/_headers`, preview host),
  * Vercel (`vercel.json`, preview host), Alibaba ESA (the production edge — no
- * repo-file format, so the generator instead emits a documented rule set at
- * `docs/internal/deployment/esa-headers.md`), and the CSP `<meta>` fallback in
- * `index.html` (a portable subset for hosts/contexts without header support).
+ * repo-file format, so the generator emits a documented rule set instead), and
+ * the CSP `<meta>` fallback in `index.html` (a portable subset for
+ * hosts/contexts without header support).
  *
  * Regenerate every derived output with `npx vite-node scripts/generate-headers.mts`
  * (drift-guarded by `src/__tests__/legal/headers-policy.test.ts`, the same pattern
  * as `npm run legal:licenses:check`). To add a new agent-provider origin: edit
  * `cspDirectives['connect-src']` HERE ONLY, then regenerate — never hand-edit
- * `public/_headers`, `vercel.json`, `docs/internal/deployment/esa-headers.md`, or the
+ * `public/_headers`, `vercel.json`, the ESA rule-set document, or the
  * `index.html` CSP `<meta>` line; the drift guard will catch it if you do.
  *
  * See docs/THREAT_MODEL.md's "Headers / CSP" + "Maintenance" sections.
- *
- * PROVENANCE: this policy reproduces the protections that were live in
- * `index.html` + `public/_headers` + `vercel.json` as of 2026-07-14, MINUS the
- * two Google Fonts hosts (`fonts.googleapis.com` in `style-src`,
- * `fonts.gstatic.com` in `font-src`) — Quicksand is now self-hosted (see
- * `src/assets/fonts/fonts.css`). Nothing else was weakened or removed.
  */
 
 /** Origins the app may fetch: the named BYOK providers are listed for
  *  documentation, and `connect-src` ALSO carries the broad `https:` scheme
  *  source (plus loopback http for local gateways like Ollama) so a user's
- *  Custom BYO endpoint works on the DEPLOYED site, not only in dev.
+ *  Custom BYO endpoint works on the DEPLOYED site, not only in dev — a fixed
+ *  origin allowlist would block every user gateway in production.
  *
- *  Rationale: the Custom provider is a shipped feature, and a fixed origin
- *  allowlist would block every user gateway in production. The residual risk
- *  is bounded — `script-src 'self'` still forbids foreign code, and the agent
- *  tool sandbox never touches the network; `connect-src https:` only widens
- *  where in-page code could POST, which the key vault + redaction already
- *  treat as hostile surface. See docs/THREAT_MODEL.md "Custom (BYO-endpoint)
- *  provider". The dev-only `VITE_EXTRA_CONNECT_SRC` hook (vite.config.ts)
- *  covers non-https experiments. */
+ *  The residual risk is bounded: `script-src 'self'` still forbids foreign
+ *  code, the agent tool sandbox never touches the network, and `connect-src
+ *  https:` only widens where in-page code could POST, which the key vault +
+ *  redaction already treat as hostile surface. See docs/THREAT_MODEL.md
+ *  "Custom (BYO-endpoint) provider". The dev-only `VITE_EXTRA_CONNECT_SRC`
+ *  hook (vite.config.ts) covers non-https experiments. */
 const PROVIDER_ORIGINS: readonly string[] = [
   'https://api.anthropic.com',
   'https://api.openai.com',
@@ -49,6 +42,7 @@ const PROVIDER_ORIGINS: readonly string[] = [
   'https://dashscope.aliyuncs.com',
   'https://api.moonshot.cn',
   'https://api.moonshot.ai',
+  'https://api.perplexity.ai',
 ];
 
 /** Broad sources that make the Custom endpoint reachable everywhere:
@@ -87,8 +81,8 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'base-uri': ["'self'"],
     'object-src': ["'none'"],
     'script-src': ["'self'"],
-    // 'unsafe-inline' is required for React inline styles; no Google Fonts host
-    // anymore now that Quicksand is self-hosted (src/assets/fonts/fonts.css).
+    // 'unsafe-inline' is required for React inline styles. The fonts are self-hosted
+    // (src/assets/fonts/fonts.css), so no font-CDN origin appears here or in `font-src`.
     'style-src': ["'self'", "'unsafe-inline'"],
     'font-src': ["'self'"],
     'img-src': ["'self'", 'data:', 'blob:'],
@@ -107,8 +101,8 @@ export const HEADERS_POLICY: HeadersPolicy = {
   },
 };
 
-/** Fixed directive order — matches the CSP string historically shipped in
- *  `public/_headers` / `vercel.json` so regeneration diffs stay clean/minimal. */
+/** Fixed directive order, so a regeneration diff shows the directive that changed
+ *  rather than a reshuffled one-line CSP. */
 const CSP_ORDER = [
   'default-src',
   'base-uri',
@@ -150,9 +144,8 @@ export const CSP_META_MARKER =
  * (`frame-ancestors`, and `Strict-Transport-Security` — which was never a CSP
  * directive to begin with, so it never appears in `cspDirectives`).
  *
- * Throws if `opts.forceInclude` names a header-only directive — a defensive
- * guard so nobody can silently ship a meta tag that LOOKS like it enforces
- * frame-ancestors/HSTS when a `<meta>` tag structurally cannot.
+ * Throws if `opts.forceInclude` names a header-only directive: such a meta tag
+ * would LOOK like it enforces frame-ancestors/HSTS while structurally it cannot.
  */
 export function toCspMeta(
   policy: HeadersPolicy = HEADERS_POLICY,
@@ -218,8 +211,8 @@ export function withExtraConnectSrc(
 /**
  * Renders the full `public/_headers` file (Netlify-compatible; Vite copies
  * `public/` to the build root, so this lands at `dist/_headers`). Includes the
- * caching rules for `/assets/*` and `/index.html`, which aren't part of the
- * security policy proper but have always shipped alongside it in this file.
+ * caching rules for `/assets/*` and `/index.html`: not security policy proper,
+ * but that file carries them too.
  */
 export function toNetlifyHeaders(policy: HeadersPolicy = HEADERS_POLICY): string {
   const lines = [
@@ -285,12 +278,11 @@ export function toVercelJson(existing: VercelJsonLike, policy: HeadersPolicy = H
 // ---------------------------------------------------------------------------
 
 /**
- * Renders `docs/internal/deployment/esa-headers.md`: the exact header names/values a
- * maintainer applies in the Alibaba ESA console/API (edge rule / response
- * header actions), since ESA has no in-repo config format the way Netlify/
- * Vercel do. Includes a "verify live post-deploy" reminder — the release
- * checklist gates on actually checking the deployed response headers, not just
- * on this document existing (see spec §13, §17).
+ * Renders the ESA rule-set document: the exact header names/values a maintainer
+ * applies in the Alibaba ESA console/API (edge rule / response header actions),
+ * since ESA has no in-repo config format the way Netlify/Vercel do. Includes a
+ * "verify live post-deploy" reminder, because what gates a launch is a checked
+ * response header on the deployed site, not the existence of this document.
  */
 export function toEsaDoc(
   policy: HeadersPolicy = HEADERS_POLICY,
@@ -307,7 +299,7 @@ export function toEsaDoc(
     '',
     // One line per paragraph / list item / table row: markdown joins a hard-wrapped
     // paragraph back together anyway, and wrapping makes every later edit rewrap.
-    'Production deploys to **Alibaba OSS (static hosting) + ESA (edge acceleration/security)**. Unlike Netlify/Vercel, ESA has no repo-committed header config — these response-header rules must be applied directly in the ESA console (or via its API) as an edge rule / response-header action attached to the production domain.',
+    'The mainland site deploys to **Aliyun ESA Pages**, which reads no header file from the repository — these response-header rules must be applied directly in the ESA console (or via its API) as an edge rule / response-header action attached to the production domain. (The global site runs on Cloudflare Workers and takes its headers from the generated `public/_headers`.)',
     '',
     "Apply exactly these header names and values (matching `security/headers-policy.ts`, the same policy that generates `public/_headers` / `vercel.json` / index.html's CSP <meta>):",
     '',

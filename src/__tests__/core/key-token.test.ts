@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { eventKeyToken } from '../../core/runtime/key-token';
-import { ShortcutManager } from '../../tools/shortcut-manager';
+import { ShortcutManager } from '../../core/runtime/shortcut-manager';
 
 const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent;
 

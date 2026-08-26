@@ -1,9 +1,9 @@
 /**
  * The evidence contract on ValidationError: `cells` = the cells that CAUSE the
- * violation (complete, never a bare click anchor), and `grid` tells the renderer
- * which grid they render on ('micro' = terrain micro-grid, 'macro' = object/zone
- * grid; absent → the command-type default). Pinned per rule here; the renderer
- * half lives in __tests__/renderer/overlay-flash.test.ts.
+ * violation (complete, never a bare click anchor), `rects` = the exact drawn BODY where the cause
+ * is an object rather than a cell, and `grid` tells the renderer which grid either renders on
+ * ('micro' = terrain micro-grid, 'macro' = object/zone grid; absent → the command-type default).
+ * Pinned per rule here; the renderer half lives in __tests__/canvas/overlay-flash.test.ts.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -125,7 +125,25 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
     const errors = placementOverlapRule.validate(place('ev-house', 6, 6), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 6, y: 6 }]);
+    expect(errors[0]!.rects).toEqual([{ x: 6, y: 6, w: 1, h: 1 }]);
     expect(errors[0]!.grid).toBe('macro');
+  });
+
+  it('a half-grid blocker reports the true overlap, which no whole cell can name', () => {
+    // A halfStep body anchored at (5.5, 5.5) covers [5.5, 7.5); the new 2x2 at (5,5) covers
+    // [5, 7). Their overlap is [5.5, 7) — one and a half cells, on the half grid.
+    const state = makeState();
+    const halfBody: PlacedObject = {
+      id: 'h', catalogId: 'ev-house', position: { x: 5.5, y: 5.5 }, rotation: 0, elevation: 0,
+    };
+    state.objects.set('h', halfBody);
+    const errors = placementOverlapRule.validate(place('ev-house', 5, 5), state);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.rects).toEqual([{ x: 5.5, y: 5.5, w: 1.5, h: 1.5 }]);
+    // The whole-cell evidence rounds OUT of that body — which is why the flash draws the rect.
+    expect(errors[0]!.cells).toEqual([
+      { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 },
+    ]);
   });
 
   it('accumulates intersection cells across multiple blockers', () => {
@@ -155,6 +173,28 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 5, y: 5 }, { x: 6, y: 5 }]);
     expect(errors[0]!.grid).toBe('macro');
+  });
+
+  it('the flashed body is the blocker\'s OWN rect, never larger (issue #14: the plaza)', () => {
+    // The real plaza: a 20x27 body anchored on the half grid. Its whole-cell footprint is
+    // 21x28 — half a cell of slack on every side — and flashing THAT drew a red ring around
+    // the plaza that the plaza itself does not occupy.
+    const state = makeState(120, 120);
+    const plaza: PlacedObject = {
+      id: '__plaza__', catalogId: '__plaza__', position: { x: 76.5, y: 58.5 },
+      width: 20, height: 27, rotation: 0, elevation: 1, locked: true,
+    };
+    state.objects.set(plaza.id, plaza);
+    const errors = objectBlocksTerrainRule.validate(paintAt([{ x: 80, y: 60 }]), state);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.rects).toEqual([{ x: 76.5, y: 58.5, w: 20, h: 27 }]);
+    expect(errors[0]!.grid).toBe('macro');
+    // and the whole-cell evidence still names every cell the plaza touches, for the readers
+    // that cannot draw a fractional body (the agent's echo).
+    const cells = errors[0]!.cells;
+    expect(Math.min(...cells.map((c) => c.x))).toBe(76);
+    expect(Math.max(...cells.map((c) => c.x))).toBe(96);
+    expect(cells).toHaveLength(21 * 28);
   });
 
   it('a multi-cell command collects every distinct blocker once', () => {

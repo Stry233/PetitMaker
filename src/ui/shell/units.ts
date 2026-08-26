@@ -17,21 +17,11 @@
  */
 
 /** The frame's own page zoom: part of the authored size, not a user preference. `uiZoom` (Ctrl +/-)
- *  multiplies it. */
+ *  multiplies it, and so does `design/scale.tsx:frameFit` below the window the layout was judged in.
+ *  That fit lives with the scaling logic rather than here because the CHROME rides it too: the
+ *  modals and corner controls are the same interface as the frame and may not size themselves by a
+ *  different rule. */
 export const ZOOM = 1.25;
-
-/**
- * The window the fixed layout was judged in, and below which the whole frame scales DOWN
- * proportionally to the tighter axis. `FIT_FLOOR` keeps a control tappable where that factor would
- * take it under a fingertip.
- */
-export const FIT_REF = { w: 1280, h: 800 } as const;
-export const FIT_FLOOR = 0.6;
-
-/** 1 at or above `FIT_REF`, the tighter axis's share below it, never under `FIT_FLOOR`. */
-export function frameFit(vw: number, vh: number): number {
-  return Math.max(FIT_FLOOR, Math.min(1, vw / FIT_REF.w, vh / FIT_REF.h));
-}
 
 /** A mode block's drawing width in design px, resting and selected. All five share one width
  *  (`frame.ts:MODES` brings them to it) because each is one grass cube with a different thing on it,
@@ -146,6 +136,13 @@ export const MODE = {
  *  at `MODE.label.size` in both scripts: a cap-height plus the descender of a Latin 'j'. The box holds
  *  slack under that, so a row spaced by the box sits further from what follows than it looks. */
 export const LABEL_INK_DEPTH = 0.758;
+
+/** How deep a caption's LINE BOX is, as a share of type size: the house face's own `normal` line
+ *  height at `MODE.label.size` (measured live at 22.4 frame px for a 19px caption). `LABEL_INK_DEPTH`
+ *  is the ink INSIDE it, and the difference is the slack the box holds under the glyphs. A surface
+ *  that must not TOUCH a caption spaces itself from the box; the row spacing that only has to look
+ *  even reads the ink. */
+export const LABEL_BOX_DEPTH = 1.179;
 
 const RAIL_BUTTON = 44;
 

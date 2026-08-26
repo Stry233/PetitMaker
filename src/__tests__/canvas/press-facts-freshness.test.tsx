@@ -23,7 +23,7 @@ import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { selectedObjectIds } from '../../state/selection';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
@@ -70,7 +70,7 @@ function pointer(type: string, init: MouseEventInit & { pointerType?: string; po
 }
 
 function road(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 };
+  return { id, catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 let el: HTMLElement;

@@ -7,12 +7,12 @@
  *
  * `hand-terraced-hexia.json` is a real such map, in the app's own save format (its provenance ledger
  * stripped, its object ids renamed), loaded through the ordinary `deserialize`. It decomposes into
- * 38 open regions, and the ONE fact that broke the press is asserted below before any press is made:
- * the plaza's own court is not the map's largest region. `hubNode` used to answer that question with
- * `rankedRegions[0]`, so the router planned every portal chain out of a region the plaza cannot
- * reach; each realized ramp then A*-ed toward a network on the far side of a cliff. The press laid
- * 55 tiles in one box around the plaza, scattered 12 crossings across the island joined to nothing,
- * served none of the 8 houses, and the press after it reported that it could find no open ground.
+ * 38 open regions, and the ONE fact the press turns on is asserted below before any press is made: the
+ * plaza's own court is not the map's largest region. A `hubNode` that answers that question with
+ * `rankedRegions[0]` plans every portal chain out of a region the plaza cannot reach, and each realized
+ * ramp then A*-es toward a network on the far side of a cliff — which on this map lays 55 tiles in one
+ * box around the plaza, scatters 12 crossings joined to nothing, serves none of the 8 houses, and leaves
+ * the next press reporting that it can find no open ground.
  */
 import { describe, expect, it } from 'vitest';
 // @ts-ignore - node:fs is untyped in this project (no @types/node)
@@ -29,7 +29,7 @@ import { getObjectIndex, roadLookup } from '../../../state/object-index';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { applyMacro } from '../../../tools/macros';
-import { analyzeTerrain } from '../../../tools/generation/placement/analysis';
+import { analyzeTerrain } from '../../../tools/placement/analysis';
 import { hubNode } from '../../../tools/macros/road-paving';
 import { makeState } from '../../rules/_helpers';
 import type { KitContext } from '../../../kit/context';
@@ -119,8 +119,8 @@ describe('the fixture is the map that broke: a hand-terraced island', () => {
     expect(houses(kit.state).every((h) => h.elevation > 0), 'every house stands on raised ground').toBe(true);
     expect([...kit.state.objects.values()].some((o) => o.locked), 'the plaza stands').toBe(true);
 
-    // THE STRUCTURAL FACT the press used to get wrong: the plaza's court is not the map's largest
-    // region, so a hub whose region is `rankedRegions[0]` names ground the plaza cannot reach.
+    // THE STRUCTURAL FACT the press turns on: the plaza's court is not the map's largest region, so a
+    // hub whose region is `rankedRegions[0]` names ground the plaza cannot reach.
     const hub = hubNode(kit.state, a)!;
     expect(hub.region).not.toBe(a.rankedRegions[0]);
   });

@@ -16,6 +16,7 @@
     "pink"
   ],
   "icon": "plant-azalea",
+  "iconColor": "#aca675",
   "width": 1,
   "height": 1,
   "loadValue": 15,

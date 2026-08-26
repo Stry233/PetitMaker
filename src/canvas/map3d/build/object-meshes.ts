@@ -11,8 +11,7 @@
 import { ItemCategory, type GridState, type PlacedObject, type CatalogItem } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize, objectElevation } from '../../../state/object-geometry';
-import { hasRoadTrimShape } from '../../../core/edge-cut/road-shape';
-import { surfaceY, cellCornerWorld, layerToY, LAYER_HEIGHT } from '../core/coords';
+import { surfaceY, cellCornerWorld, layerToY, platformTopY, LAYER_HEIGHT, PLATFORM_UNIT_H } from '../core/coords';
 import { objectColor } from '../core/palette';
 import { hasModel } from '../models/registry';
 import type { ArchetypeKey, ObjectInstance } from '../core/types';
@@ -24,7 +23,6 @@ import type { ArchetypeKey, ObjectInstance } from '../core/types';
 // items (trees, roads, bridges…) are unaffected by the 180°.
 const ROT: Record<0 | 90 | 180 | 270, number> = { 0: Math.PI, 90: Math.PI / 2, 180: 0, 270: -Math.PI / 2 };
 
-const ROAD_LIFT = 0.05; // road decal lift above its terrain (enough to clear z-fighting, low enough not to poke over an adjoining ramp)
 const RAMP_SINK = 0.07;  // sink the ramp's LOW tip below grade (and grow its height to compensate) so a road meeting it tucks under, never overlaps
 
 /** Y-rotation that points the unit ramp's high end (local +Z) at the world side
@@ -68,14 +66,15 @@ function logicalDims(obj: PlacedObject, item: CatalogItem | undefined): { sx: nu
 }
 
 /**
- * Whether this object's body is meshed by buildRoadTrimMesh instead of riding an instance: a road
- * whose corners hold a recognised edge-cut shape can't use the shared full-square instance geometry.
- * `objectInstance` skips exactly this set, so anything that ANIMATES a body (the 3D group-rotation
- * tween) must offset the trim mesh for these and an instance matrix for everything else — asking the
- * same question here is what keeps the two from disagreeing about who draws a road.
+ * Whether this object's body is meshed by buildRoadTrimMeshes instead of riding an instance: every
+ * road is, since a road surface FEATHERS at its boundary (vertex-colour rings no instanced unit
+ * box can carry). `objectInstance` skips exactly this set, so anything that ANIMATES a body (the
+ * 3D group-rotation tween) must offset the road mesh for these and an instance matrix for
+ * everything else — asking the same question here is what keeps the two from disagreeing about
+ * who draws a road.
  */
 export function isTrimMeshedRoad(obj: PlacedObject): boolean {
-  return getCatalogItem(obj.catalogId)?.category === ItemCategory.Road && hasRoadTrimShape(obj.corners);
+  return getCatalogItem(obj.catalogId)?.category === ItemCategory.Road;
 }
 
 /** Which 3D representation carries an object's body. 'none' means the map holds the object and
@@ -109,13 +108,12 @@ export function buildObjectInstances(state: GridState): Map<string, ObjectInstan
  * item's footprint); 'a:<archetypeKey>' = a category archetype (scaled to the
  * footprint). Variable-footprint kinds (bridge/ramp/road) always use the
  * scaled archetype, so they never take a fixed-size model. Null = not
- * instanced (a trimmed road is meshed by buildRoadTrimMesh instead).
+ * instanced (a trimmed road is meshed by buildRoadTrimMeshes instead).
  */
 export function objectInstance(state: GridState, obj: PlacedObject): { groupKey: string; inst: ObjectInstance } | null {
   const { width, height } = state.template;
   const item = getCatalogItem(obj.catalogId);
-  // Skip a trim-meshed road so it doesn't ALSO draw as a full square. An UNRECOGNISED corner set
-  // stays instanced: better a square tile than a hole in the paved path.
+  // Roads are meshed by buildRoadTrimMeshes, feather and all — never instanced.
   if (isTrimMeshedRoad(obj)) return null;
   const key = archetypeFor(obj, item);
   // Ramps + bridges CAN be modeled (authored in UNIT span/wedge space): a ramp
@@ -159,22 +157,21 @@ export function objectInstance(state: GridState, obj: PlacedObject): { groupKey:
       icon,
     };
   } else {
-    // Flat platforms (the central plaza) rest ON the ground regardless of their
-    // stored elevation. Roads are decals laid just above the surface (so they
-    // don't sink under it). Everything else stands on the VISIBLE surface —
-    // surfaceY, which is the slab top at layer 0 and the terrain top above.
-    const isRoad = item?.category === ItemCategory.Road;
-    const baseY = key === 'platform' ? 0 : surfaceY(objectElevation(state, obj)) + (isRoad ? ROAD_LIFT : 0);
+    // A platform (the central plaza) is its own plinth: it FILLS from the ground up to
+    // the deck at its elevation, where everything else stands ON a surface the terrain
+    // provides — surfaceY, the slab top at layer 0 and the terrain top above.
+    const platform = key === 'platform';
+    const elev = objectElevation(state, obj);
     inst = {
       x: center.x,
-      y: baseY,
+      y: platform ? 0 : surfaceY(elev),
       z: center.z,
       rotationY: ROT[obj.rotation],
       // A footprint-authored model → no scaling; a bridge model is authored in
       // UNIT span-space → stretch by (span × deck width); an archetype is a unit
       // shape → scale to the footprint.
       scaleX: bridgeModel ? dims.sx : modeled ? 1 : dims.sx,
-      scaleY: 1,
+      scaleY: platform ? platformTopY(elev) / PLATFORM_UNIT_H : 1,
       scaleZ: bridgeModel ? dims.sz : modeled ? 1 : dims.sz,
       color,
       icon,

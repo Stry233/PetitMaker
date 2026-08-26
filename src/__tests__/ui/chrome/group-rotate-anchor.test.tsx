@@ -23,7 +23,7 @@ import { moveGroup } from '../../../tools/objects/group-actions';
 import { roadLookup } from '../../../state/object-index';
 
 // A fixed chrome scale (like `selection-handles.test.tsx`) so the pixel arithmetic below is exact
-// instead of whatever `useMenuScale` derives from jsdom's default viewport.
+// instead of whatever the window fit derives from jsdom's default viewport.
 vi.mock('../../../ui/design/scale', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../ui/design/scale')>();
   return { ...actual, useChromeScale: () => 1 };
@@ -88,7 +88,7 @@ describe('the group row anchor across a rotation burst', () => {
   it('does not move across four rotate-button clicks, even though the raw bounds centre alternates', () => {
     // A 2x1 bounding box (two 1x1 members side by side): its true centre sits on a cell-edge
     // midpoint, so `rotationPivot`'s half-cell nudge direction flips every turn (the exact case
-    // group-rotate.test.ts's "off the lattice" identity test exercises) — this is what used to creep.
+    // group-rotate.test.ts's "off the lattice" identity test exercises) — the case that creeps.
     setActiveView(makeView(0, 0, 10));
     renderWithGroup([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }]);
     const before = { left: box().style.left, top: box().style.top };

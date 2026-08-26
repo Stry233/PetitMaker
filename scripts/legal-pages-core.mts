@@ -1,19 +1,15 @@
-// Pure(ish) core of the static legal-page generator (Task 17): renders every
-// registry doc (src/legal/registry.ts) through the shared markdown emitter
+// Pure(ish) core of the static legal-page generator: renders every registry doc
+// (src/legal/registry.ts) through the shared markdown emitter
 // (src/legal/markdown-html.ts) into a full zero-JS HTML document, plus the
 // sitemap/robots/security.txt/license-tree copy that make the site crawlable.
 //
-// Split from scripts/build-legal-pages.mts (the CLI entry) for EXACTLY the
-// reason scripts/license-audit-core.mts is split from scripts/license-audit.mts
-// (see that file's doc comment): a `main-module` guard
-// (`import.meta.url === file://${process.argv[1]}`) does NOT work under
-// `vite-node` — it invokes the target script without rewriting
-// `process.argv[1]` to the script's own path, so the guard never matches. This
-// file therefore has NO CLI logic and NO top-level side effects at import time
-// — every export is a function that only touches the filesystem when CALLED
-// (writeAll), never on import — so src/__tests__/legal/build-pages.test.ts can
-// import it directly with zero risk of accidentally running the real build
-// against the real (still-draft) LEGAL config.
+// Split from scripts/build-legal-pages.mts (the CLI entry) for the reason
+// scripts/license-audit.mts's doc comment gives: a main-module guard does not
+// work under `vite-node`. So there is NO CLI logic and NO top-level side effect
+// at import time — every export only touches the filesystem when CALLED
+// (writeAll) — and src/__tests__/legal/build-pages.test.ts can import it
+// directly without risk of running the real build against the real
+// (still-draft) LEGAL config.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -27,9 +23,9 @@ import { renderHtml } from '../src/legal/markdown-html';
 import { inlineText, type MdNode } from '../src/legal/markdown';
 import { brandName } from '../src/version';
 
-// Minimal ambient shape for the pieces of `process` this module uses — matches
-// this repo's existing convention (see src/__tests__/agent/bench.live.test.ts)
-// of a local declaration instead of an @types/node dependency.
+// Minimal ambient shape for the pieces of `process` this module uses — this repo
+// declares the node globals it uses locally, per file, rather than carrying an
+// @types/node dependency.
 declare const process: { cwd(): string };
 
 export type Lang = 'en' | 'zh';
@@ -43,10 +39,9 @@ export function resolveMode(env: Record<string, string | undefined>): 'release' 
   return env.PETIT_RELEASE === '1' ? 'release' : 'dev';
 }
 
-// Stable, spec-§6 authored order — every doc-listing surface (footer nav,
-// sitemap, writeAll) iterates this instead of `Object.keys(DOCS)` so the order
-// is an explicit, documented contract rather than an incidental object-literal
-// detail.
+// The authored doc order — every doc-listing surface (footer nav, sitemap,
+// writeAll) iterates this instead of `Object.keys(DOCS)`, so the order is a
+// contract rather than an incidental object-literal detail.
 export const ALL_DOC_IDS: DocId[] = [
   'privacy',
   'terms',
@@ -60,10 +55,9 @@ export const ALL_DOC_IDS: DocId[] = [
 ];
 
 // Plain-language page titles, EN/ZH literal (static pages render no i18n).
-// Deliberately duplicated from src/i18n/locales/{en,zh}.ts's `legal.doc_*` keys rather than
-// importing the i18n system into a Node/vite-node script; the drift risk is
-// small (nine short labels) and importing the full i18n module graph into a
-// build script would be a much larger footgun than a documented duplication.
+// Duplicated from src/i18n/locales/{en,zh}.ts's `legal.doc_*` keys: importing the
+// i18n system would pull its whole module graph into a vite-node build script,
+// for nine short labels.
 const DOC_TITLES: Record<DocId, { en: string; zh: string }> = {
   privacy: { en: 'Privacy Policy', zh: '隐私政策' },
   terms: { en: 'Terms of Use', zh: '使用条款' },
@@ -85,10 +79,10 @@ const DISCLAIMER: Record<Lang, string> = {
 };
 
 // One escaper for text content AND attribute values, mirroring
-// src/legal/markdown-html.ts's `esc()` (that file's escaper is not exported —
-// deliberately kept as the single security-reviewed path for MARKDOWN-sourced
-// content; this is the equivalent for the page-SHELL strings this script
-// builds itself, e.g. titles/nav labels/disclaimers/config values).
+// src/legal/markdown-html.ts's `esc()`. That file's escaper is not exported: it is
+// the single path for MARKDOWN-sourced content, and this is the equivalent for the
+// page-SHELL strings this script builds itself (titles, nav labels, disclaimers,
+// config values).
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -121,7 +115,7 @@ body {
   margin: 0;
   background: #FFFBE1; /* src/ui/design/styles.ts colors.panelCream */
   color: #4A3B32; /* src/ui/design/styles.ts colors.textPrimary */
-  /* system CJK stack — no webfont download on policy pages (spec §14) */
+  /* system CJK stack — no webfont download on policy pages */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans", sans-serif;
   line-height: 1.7;
@@ -163,7 +157,7 @@ footer.legal {
   font-size: 12px; color: #826042;
 }
 footer.legal nav { margin-bottom: 12px; line-height: 2; }
-footer.legal nav a { color: #826042; text-decoration: none; }
+footer.legal nav a { color: #826042; text-decoration: none; margin: 0 10px; }
 footer.legal nav a:hover { text-decoration: underline; }
 footer.legal p { margin: 0 0 6px; }
 @media (max-width: 480px) {
@@ -179,7 +173,7 @@ function footerNavHtml(effLang: Lang): string {
     const path = linkLang === 'zh' ? `/zh/${meta.slug}` : `/${meta.slug}`;
     return `<a href="${esc(path)}">${esc(DOC_TITLES[id][linkLang])}</a>`;
   });
-  return items.join(' · ');
+  return items.join('');
 }
 
 function filingRowsHtml(cfg: LegalConfig): string {
@@ -187,9 +181,11 @@ function filingRowsHtml(cfg: LegalConfig): string {
   const hasPsb = !!(cfg.psbNumber && cfg.psbUrl);
   if (!hasIcp && !hasPsb) return '';
   const parts: string[] = [];
-  if (hasIcp) parts.push(`<a href="${esc(cfg.icpUrl!)}">${esc(cfg.icpNumber!)}</a>`);
+  // The two filings stand apart on space, not on a mark between them (same as the in-app bar).
+  const gap = hasIcp && hasPsb ? ' style="margin-right:12px"' : '';
+  if (hasIcp) parts.push(`<a href="${esc(cfg.icpUrl!)}"${gap}>${esc(cfg.icpNumber!)}</a>`);
   if (hasPsb) parts.push(`<a href="${esc(cfg.psbUrl!)}">${esc(cfg.psbNumber!)}</a>`);
-  return `<p class="filing">${parts.join(' · ')}</p>\n`;
+  return `<p class="filing">${parts.join('')}</p>\n`;
 }
 
 function updatedLineHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
@@ -197,7 +193,7 @@ function updatedLineHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   if (!meta.schema.requiresEffectiveDate) return '';
   const date = (cfg.effectiveDates as Record<string, string>)[id] ?? '';
   const version = (cfg.policyVersions as Record<string, string>)[id] ?? '';
-  const text = lang === 'zh' ? `生效日期 ${date} · ${version}` : `Effective ${date} · ${version}`;
+  const text = lang === 'zh' ? `生效日期 ${date}，版本 ${version}` : `Effective ${date}, version ${version}`;
   return `<p class="updated">${esc(text)}</p>\n`;
 }
 
@@ -243,15 +239,13 @@ export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   if (zhPath) {
     alternates.push(`<link rel="alternate" hreflang="zh" href="${esc(cfg.canonicalOrigin + zhPath)}" />`);
   }
-  // x-default always resolves to the English page — the design's documented
-  // default when a user's locale doesn't otherwise match (spec §14/§15).
+  // x-default always resolves to the English page: it is what a locale that
+  // matches nothing else gets.
   alternates.push(`<link rel="alternate" hreflang="x-default" href="${esc(cfg.canonicalOrigin + enPath)}" />`);
 
-  // EN | 中文 switcher. Design judgment (documented per the brief): an en-only
-  // doc has no zh counterpart to switch TO, so its switcher collapses to a
-  // plain "EN" label rather than a dead/misleading "中文" link — it is NOT
-  // rendered as a link to the English page with a note, since that reads as
-  // an actual language choice where none exists.
+  // EN | 中文 switcher. An en-only doc has no zh counterpart to switch TO, so its
+  // switcher collapses to a plain "EN" label: a "中文" link to the English page
+  // would read as a language choice where none exists.
   const langSwitcher = hasZh
     ? effLang === 'en'
       ? `<strong>EN</strong> | <a href="${esc(zhPath!)}">中文</a>`
@@ -337,7 +331,7 @@ function robotsTxt(cfg: LegalConfig): string {
   return `User-agent: *\nAllow: /\n\nSitemap: ${cfg.canonicalOrigin}/sitemap.xml\n`;
 }
 
-/** `/.well-known/security.txt` (spec §13); `expires` is injected (build date + 1 year, ISO) so the output is deterministic/testable. */
+/** `/.well-known/security.txt`; `expires` is injected (build date + 1 year, ISO) so the output is deterministic/testable. */
 export function securityTxt(cfg: LegalConfig, expires: string): string {
   return (
     `Contact: mailto:${cfg.securityContactEmail}\n` +
@@ -357,10 +351,9 @@ export function computeExpires(now: Date): string {
 
 const UNRESOLVED_TOKEN_RE = /\{[a-zA-Z-]+\}/g;
 
-// Every authored token is resolvable (round 3 retired the last deferral,
-// `{deployment-facts}`), so ANY surviving `{...}` is a bug in BOTH modes — a
-// content author left a token the registry does not substitute. Always a build
-// error, never a mode-gated warning.
+// Every authored token is resolvable, so ANY surviving `{...}` means a content
+// author left a token the registry does not substitute. Always a build error,
+// never a mode-gated warning.
 function assertNoUnresolvedTokens(html: string, context: string): void {
   const matches = html.match(UNRESOLVED_TOKEN_RE) ?? [];
   if (matches.length > 0) {
@@ -378,10 +371,9 @@ function writeTextFile(distDir: string, relPath: string, contents: string): void
  * Renders + writes every static legal page, sitemap.xml, robots.txt,
  * /.well-known/security.txt, and copies licenses/ through, into
  * `distDir`. `mode` mirrors `validateLegalConfig`'s: 'release' throws on any
- * config problem, 'dev' only warns. An unresolved `{...}` token is ALWAYS a bug
- * and always throws regardless of mode (see `assertNoUnresolvedTokens`) — there
- * are no deferred tokens anymore. `now` is injected (defaults to the real clock)
- * so the security.txt `Expires` stamp is deterministic under test.
+ * config problem, 'dev' only warns. An unresolved `{...}` token throws in either
+ * mode (see `assertNoUnresolvedTokens`). `now` is injected (defaults to the real
+ * clock) so the security.txt `Expires` stamp is deterministic under test.
  */
 export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'dev', now: Date = new Date()): void {
   const problems = validateLegalConfig(cfg, mode);

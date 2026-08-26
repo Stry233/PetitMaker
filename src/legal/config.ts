@@ -29,9 +29,8 @@ export type LegalConfig = {
   canonicalOrigin: string;            // canonical URLs, sitemap, security.txt.
                                       // Production validation: HTTPS scheme, no trailing
                                       // path/slash, non-placeholder host.
-  // Domains the site used to be served from. Not read by the app: the deploy
-  // runbook lists the 301s that must be configured at the host, since the
-  // production edge has no repo-committed config (see esa-headers.md).
+  // Former domains of the site. Not read by the app: their 301s are configured at
+  // the host, since the production edge takes no repo-committed config.
   legacyOrigins: readonly string[];
   productName: string;                // from APP_NAME (never hardcoded here)
 
@@ -97,11 +96,11 @@ export const LEGAL: LegalConfig = {
   psbUrl: TARGET.psbUrl,
 
   effectiveDates: {
-    privacy: '2026-07-30',
+    privacy: '2026-08-25',
     terms: '2026-07-15',
   },
   policyVersions: {
-    privacy: '1.1',
+    privacy: '1.2',
     terms: '1.0',
   },
 

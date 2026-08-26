@@ -21,6 +21,8 @@ function renderModal(overrides: Partial<SettingsModalProps> = {}) {
     showChunks: false,
     motionPref: 'system',
     systemCursors: false,
+    quality3d: 'auto' as const,
+    onQuality3dChange: () => {},
     onLocaleChange: noop,
     onShowGridChange: noop,
     onShowChunksChange: noop,

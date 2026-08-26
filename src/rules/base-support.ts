@@ -6,12 +6,13 @@
  * reaches elevation >= E, OR it is covered by a `terrainBase` object (the central
  * plaza, or any future base-providing building) whose elevation >= E.
  *
- * WATER IS ONE LAYER DEEP. A water cell at elevation N is a single water block at N
- * resting on riverbed mass at N-1 (RULES.md §7: "all water blocks have a depth of 1",
- * and "a river does not float"). So it supports a base BELOW its surface, up to N-1,
- * and never at its own level — the water block itself is not a base (RULES.md §4
- * case 7, §7 regulation 2: a river at layer 1 has no mass under it and therefore
- * breaks the 3x3 base of a layer-4 neighbour, exactly as before).
+ * A WATER CELL FILLS ITS CELL TO ITS SURFACE. In a neighbour's 3x3 window, water at
+ * elevation N counts as support up to N — the same as the mountain it replaced —
+ * because the game forms waterfalls by CONVERTING a mountain block to water among its
+ * standing neighbours (游戏内建造规则 rule 8), and a conversion that lowered the
+ * neighbourhood's support would demolish the structure it was carving. Support in the
+ * WINDOW is all this grants: nothing may be built ON water (placement rules), and the
+ * water's own footing is V-WTR-01's question, not this rule's.
  *
  * The base must be BELOW the cell — a 3x3 group at the same elevation N cannot
  * serve as its own base. The check scans centered 3x3 at each
@@ -35,7 +36,7 @@ interface TerrainBase { rect: Rect; elevation: number; }
 
 export const baseSupportRule: PostStrokeRule = {
   id: 'V-MTN-03',
-  agentHint: 'POST-CHECK — a mountain cell at elevation >=4 needs a full 3x3 base at some elevation >= N-3 below it. Build pyramids, not 1-wide towers. Water is NOT structural.',
+  agentHint: 'POST-CHECK — a mountain cell at elevation >=4 needs a full 3x3 base at some elevation >= N-3 below it. Build pyramids, not 1-wide towers. A water cell counts as support up to its own surface, but nothing can be built ON water.',
   phase: 'post-stroke',
 
   validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
@@ -51,9 +52,9 @@ export const baseSupportRule: PostStrokeRule = {
       }
     }
 
-    // Solid mass per cell, derived ONCE. Every cell is read by up to nine 3x3 tests (its own and
-    // each neighbour's), so deriving it per test made this rule ~73% of the whole post-stroke sweep
-    // — and the sweep runs once per commit AND once per undo inside the auto-revert loop.
+    // Solid mass per cell, derived ONCE. Every cell is read by up to nine 3x3 tests (its own and each
+    // neighbour's), and derived per test instead this rule is ~73% of the whole post-stroke sweep —
+    // a sweep that runs once per commit AND once per undo inside the auto-revert loop.
     const mass = massField(state, width, height);
 
     for (let y = 0; y < height; y++) {
@@ -86,9 +87,9 @@ export const baseSupportRule: PostStrokeRule = {
 /**
  * The layer each cell's SOLID MASS reaches, indexed y*width+x; −1 where a cell holds none.
  *
- * Mountain mass reaches its standable surface (a Γ patch counts via its patchBase —
- * surfaceElevation, not the cosmetic tier). Water mass stops one layer under the surface: the top
- * block is water, the riverbed below it is not.
+ * Mountain and water alike reach their standable surface (a Γ patch counts via its patchBase —
+ * surfaceElevation, not the cosmetic tier): converting a block to water keeps the window's
+ * support where it was.
  *
  * Int8Array: the range is −1..ELEVATION_MAX, and a typed array keeps the 3x3 test to an indexed
  * read with no per-neighbour bounds object or terrain re-derivation.
@@ -99,10 +100,7 @@ function massField(state: GridState, width: number, height: number): Int8Array {
     const row = state.cells[y];
     for (let x = 0; x < width; x++) {
       const t = row?.[x]?.terrain;
-      out[y * width + x] = !t ? -1
-        : t.type === TerrainType.Mountain ? surfaceElevation(t)
-        : t.type === TerrainType.Water ? surfaceElevation(t) - 1
-        : -1;
+      out[y * width + x] = !t || t.type === TerrainType.None ? -1 : surfaceElevation(t);
     }
   }
   return out;

@@ -84,7 +84,7 @@ const SCRIPT_TEXT = scriptFiles(SCRIPTS).map((f) => readFileSync(f, 'utf8'));
 
 /** Key-shaped strings from scripts/, narrowed to the namespaces en.ts actually declares (first dot
  *  segment) — scripts/ is full of unrelated dotted literals that happen to fit KEY_SHAPE (CDP method
- *  names like `Page.navigate`, filenames like `CLAUDE.md`), and none of those share a namespace with
+ *  names like `Page.navigate`, filenames like `README.md`), and none of those share a namespace with
  *  a real i18n key. A DYNAMIC_PREFIXES entry (e.g. `agent2.prov_` before a script concatenates an id
  *  onto it) is a deliberately incomplete key, not a reference to a missing one. */
 function keysReferencedFromScripts(enKeySet: Set<string>): string[] {
@@ -98,13 +98,12 @@ function keysReferencedFromScripts(enKeySet: Set<string>): string[] {
  *  "still composed" check below: an unbacked prefix protects every key under it from detection. */
 const DYNAMIC_PREFIXES: readonly string[] = [
   'modal.settings_motion_', // ui/chrome/modals/SettingsModal.tsx: t(`modal.settings_motion_${pref}`) per motion-pref row
+  'modal.settings_quality3d_', // ui/chrome/modals/SettingsModal.tsx: t(`modal.settings_quality3d_${q}`) per 3D-quality row
   'export.preset_', // ui/chrome/modals/export/ExportControls.tsx: t(`export.preset_${preset}`) and `${preset}_desc`
   'export.res_', // ui/chrome/modals/export/ExportControls.tsx: t(`export.res_${resolutionKey}`) per resolution option
   'kbd.cat.', // ui/chrome/modals/keyboard/KeyboardModal.tsx: t(`kbd.cat.${category}`) per keybind category heading
   'hint.sep.', // ui/hints/tokens.tsx: t(`hint.sep.${separator}`) for the combo-token separator glyph
   'context.rotate_', // ui/chrome/floating/ContextMenu.tsx: t(`context.rotate_${axis}`) for the rotate-object menu row
-  'agent2.prov_', // ui/agent/SetupScreen.tsx: t(`agent2.prov_${providerId}`) per BYOK provider name
-  'agent2.insp_', // ui/agent/inspirations.ts: builds `agent2.insp_${index}` for the 96-entry idea pool
 ];
 
 const isDynamic = (key: string): boolean => DYNAMIC_PREFIXES.some((p) => key.startsWith(p));
@@ -141,5 +140,43 @@ describe('i18n drift: an orphaned key fails the suite', () => {
       const extra = Object.keys(localeMap).filter((k) => !enSet.has(k));
       expect({ locale, missing, extra }).toEqual({ locale, missing: [], extra: [] });
     }
+  });
+});
+
+/**
+ * THE OTHER DIRECTION, and the one that was missing.
+ *
+ * Everything above asks whether a declared key is used. Nothing asked whether a key asked FOR is
+ * declared — so `t('gen.scope_min')`, called from the scope screen and defined in no locale at all,
+ * shipped a button whose label read as its own key. A missing string is the more visible of the two
+ * failures and had no detector.
+ *
+ * Only the LITERAL argument of a translate call is checked. A key held as data, composed from a
+ * table or chosen behind a ternary is invisible to this and is the drift test's business above; a
+ * literal at the call site is the common case and is free to check.
+ */
+describe('i18n gaps: a key asked for and never declared fails the suite', () => {
+  /** `t('some.key'` and `translate(locale, 'some.key'` — the two call shapes this app translates
+   *  through. The key is the first literal for one and the second for the other. */
+  const CALLS: readonly RegExp[] = [
+    /\bt\(\s*'([a-zA-Z][a-zA-Z0-9_.]*)'/g,
+    /\btranslate\(\s*[^,()]+,\s*'([a-zA-Z][a-zA-Z0-9_.]*)'/g,
+  ];
+
+  it('every literal key at a translate call site resolves in en', () => {
+    const enSet = new Set(Object.keys(translations.en));
+    const missing = new Set<string>();
+    for (const [i, text] of SOURCE_TEXT.entries()) {
+      for (const call of CALLS) {
+        call.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = call.exec(text))) {
+          const key = m[1]!;
+          if (!KEY_SHAPE.test(key) || isDynamic(key) || enSet.has(key)) continue;
+          missing.add(`${key} (${FILES[i]})`);
+        }
+      }
+    }
+    expect([...missing]).toEqual([]);
   });
 });

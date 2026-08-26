@@ -57,16 +57,20 @@ function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: stri
     name: 'petit-index-head',
     apply: 'build' as const,
     transformIndexHtml(html: string) {
-      // The title, the description and the document language belong to the DEPLOYMENT (see
-      // src/legal/deploy-targets): the two sites want different ones, and a crawler reads them
-      // out of the static file, so they are written in here rather than chosen at runtime.
+      // The title, the description, the document language and the boot loader's masthead belong
+      // to the DEPLOYMENT (see src/legal/deploy-targets): the two sites want different ones, and a
+      // crawler reads them out of the static file, so they are written in here rather than chosen
+      // at runtime. The masthead swap covers the pre-React loading screen; the splash reads the
+      // same target row at runtime.
       html = html
         .replace(/<html lang="[^"]*"/, `<html lang="${target.htmlLang}"`)
-        .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`);
+        .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
+        .replace('src="/banner.svg"', `src="/${target.bootBanner}"`);
       const title = target.title;
       const tags = basePath === '/'
         ? [
             `<meta name="description" content="${target.description}" />`,
+            `<meta name="keywords" content="${target.keywords}" />`,
             `<link rel="canonical" href="${origin}/" />`,
             `<meta property="og:type" content="website" />`,
             `<meta property="og:url" content="${origin}/" />`,
@@ -164,6 +168,22 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': '/src',
       },
+    },
+    server: {
+      /**
+       * DIRECTORIES INSIDE THE ROOT THAT ARE NOT THE APP.
+       *
+       * An agent working in a git worktree under `.claude/worktrees/` writes a whole second copy of
+       * this tree inside the dev server's root, and one of the files in it is a `tsconfig.json`: the
+       * watcher answers that with "changed tsconfig file detected, forcing full-reload", which
+       * reloads whatever page is open. A live session in the assistant panel does not survive a
+       * reload it did not ask for (a session belongs to a map, and an unsaved map has none to come
+       * back to), so a run in a shared checkout lost a job to a sibling's commit. Scratch notes
+       * under `.superpowers/` are the same class of write and never source the bundle reads.
+       *
+       * Vite merges these with its own defaults (`.git`, `node_modules`, the cache dir).
+       */
+      watch: { ignored: ['**/.claude/**', '**/.superpowers/**'] },
     },
     define: {
       __PETIT_TARGET__: JSON.stringify(TARGET.id),

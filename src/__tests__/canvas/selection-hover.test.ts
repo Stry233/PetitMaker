@@ -66,6 +66,17 @@ describe('selectionHoverBox', () => {
       .toEqual({ x: 12, y: 3, w: 1, h: 1, terrainMode: true });
   });
 
+  it('previews a half-grid body at ITS anchor, so the box never straddles what it points at', () => {
+    // The plaza is anchored at x.5/y.5 and the hover box is drawn from this rect verbatim
+    // (`OverlayLayer.showHover`), so the fractional origin has to survive the decision.
+    const s = makeState(120, 120) as GridState;
+    s.template.plaza = { x: 40.5, y: 40.5, width: 20, height: 27, elevation: 1 };
+    const plaza = createPlazaObject(s.template)!;
+    s.objects.set(plaza.id, plaza);
+    expect(selectionHoverBox(s, { x: 45, y: 45 }, ToolType.Hand, null, false, []))
+      .toEqual({ x: 40.5, y: 40.5, w: 20, h: 27, terrainMode: false });
+  });
+
   it('a ramp is draggable: its drop re-validates through the snapping trait, so a bad drop refuses', () => {
     const ramp: PlacedObject = {
       id: 'r1', catalogId: 'ramp-green-steps', position: { x: 5, y: 5 }, rotation: 0, elevation: 0,

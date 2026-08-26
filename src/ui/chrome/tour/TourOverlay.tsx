@@ -2,9 +2,10 @@
  * The first-launch tour's one visible surface: a dim over the app, a spotlight on the thing being
  * explained, and a bubble that names it.
  *
- * The machinery only; the CONTENT is the mounted interface's. It hands in its own step list and
- * prepares each step from `onStepEnter`, because a step can point at nothing the interface does not
- * draw, and some targets are not in the DOM until the host has revealed them.
+ * The machinery only; the CONTENT is the mounted interface's. It hands in its own step list, the
+ * drawing that goes above a step's title (`diagram`), and prepares each step from `onStepEnter`,
+ * because a step can point at nothing the interface does not draw, and some targets are not in the
+ * DOM until the host has revealed them.
  *
  * The dim is ONE element (`TourDim`, an SVG whose hole is masked out) doing both jobs: a plain
  * full-viewport dim until the current step's target has been measured, then that same dim with the
@@ -60,11 +61,14 @@
  * (ContextMenu, DeletePopover, Toast). The spotlight does NOT: it is positioned from the
  * live rect and has to sit exactly on the real element, in visual px.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode,
+} from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { useChromeScale } from '../../design/scale';
 import { Wavy } from '../../primitives/Wavy';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
@@ -167,7 +171,11 @@ export function spotlightRx(w: number, h: number, chrome: number): number {
 }
 
 function TourDim({ lit, reduced, chrome }: { lit: Box | null; reduced: boolean; chrome: number }) {
-  const style: CSSProperties = { position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: z.tour };
+  // The dim TAKES the pointer: while the tour runs, the app under it is not operable (a
+  // first-launch visitor could otherwise edit the map and press controls through it, and the tour
+  // drives every step itself through onStepEnter, so nothing legitimate needs to click through). An SVG
+  // mask never affects hit testing, so the lit hole blocks like the rest.
+  const style: CSSProperties = { position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: z.tour };
   // The ring sits just OUTSIDE the hole, over the dim, so it does not eat into the lit area.
   const ring = lit && { left: lit.left - 1.5, top: lit.top - 1.5, width: lit.width + 3, height: lit.height + 3 };
   // The box this one is arriving from, which is what says whether the move is worth animating. The
@@ -241,6 +249,16 @@ export interface TourOverlayProps {
   /** The mounted shell's own step list, since a step can only point at what that interface draws.
    *  A module singleton: an inline array would be a new list on every render. */
   steps: readonly TourStep[];
+  /**
+   * The drawing that goes above a step's title: the gesture the step teaches, performed. The host
+   * supplies it for the same reason it supplies the steps — a diagram of a gesture is a fact about
+   * that interface, not about tours.
+   *
+   * It answers with its own HEIGHT because the placement runs before anything has been measured: the
+   * bubble is fitted against the spotlight by an estimate, and a card that grew by a drawing the
+   * estimate did not know about would creep back over the control the step is describing.
+   */
+  diagram?: (step: TourStep) => { node: ReactNode; height: number } | null;
 }
 
 /** A measurement result, tied to the step it was taken for. */
@@ -249,7 +267,7 @@ interface Measurement {
   rect: DOMRect | null;
 }
 
-export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
+export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   const t = useT();
   const { running, step, total, indexOf, next, advanceFrom, skip } = useTour(steps);
   const reduced = useReducedMotionConfig();
@@ -262,8 +280,8 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
   const [seen, setSeen] = useState<Measurement | null>(null);
   /** The step the bubble is SHOWING, and the box it is placed against. It lags `step` by the one
    *  frame a newly-current step's target takes to be measured, and that lag is what keeps the card
-   *  mounted across a step change: gating the render on the CURRENT step's measurement unmounted
-   *  the bubble for that frame, so its entrance replayed and focus fell to <body>. A step that is
+   *  mounted across a step change: gating the render on the CURRENT step's measurement would
+   *  unmount the bubble for that frame, replaying its entrance and dropping focus to <body>. A step that is
    *  passed over never becomes shown at all. */
   const [shown, setShown] = useState<Measurement | null>(null);
   const announced = useRef<TourStep | null>(null);
@@ -412,10 +430,12 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
   // screen), then divide the zoom back out. A targetless step has nothing to anchor to and centres
   // instead.
   const lit = shown?.rect ? litBox(shown.rect) : null;
+  // The drawing above the title, and what it adds to the height the placement fits against.
+  const drawn = shown ? diagram?.(shown.step) ?? null : null;
   const placed = lit && shown
     ? placeBubble(
         lit,
-        { width: BUBBLE_W * chrome, height: BUBBLE_H * chrome },
+        { width: BUBBLE_W * chrome, height: (BUBBLE_H + (drawn?.height ?? 0)) * chrome },
         shown.step.side,
         GAP,
         { width: window.innerWidth, height: window.innerHeight },
@@ -502,10 +522,10 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
           key={cardTag.id}
           ref={focusCard}
           role="dialog"
-          // No aria-modal: the dim is `pointerEvents: 'none'`, so the app under it still takes the
-          // pointer — panning the map during a step is expected enough that `viewport-changed`
-          // re-tracks the spotlight — and there is no focus trap. Claiming modality would tell a
-          // screen reader to hide an app its user can still drive.
+          // No aria-modal: there is no focus trap, so Tab can still walk out of the card, and
+          // claiming modality a keyboard can escape misleads a screen reader. The POINTER is
+          // blocked by the dim; `viewport-changed` re-tracking survives for the moves that need
+          // no pointer (a resize, Ctrl +/-).
           aria-label={t(shown.step.titleKey)}
           tabIndex={-1}
           style={{ ...bubble, ...position, zoom: chrome, outline: 'none' }}
@@ -527,22 +547,25 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
         >
           {/* A step change that KEEPS the card crosses its copy over in place, and the card GROWS or
               SHRINKS to the incoming copy while it does. The height is animated to a measured value
-              rather than left to the flow: `popLayout` puts the outgoing copy out of the flow at
-              once, so the flow height is the incoming copy's from the first frame and would
-              otherwise change in one step, under a copy that is still fading.
+              rather than left to the flow. Both copies stand in the SAME grid cell, which is what
+              takes the outgoing one out of the height story (a stack overlaps; a flow sums) — the
+              job `mode="popLayout"` would do, but framer 12's PopChild reads the child's
+              `props.ref` for React 19 and React 18 answers that read with a dev warning
+              on every render.
               The clip holds a taller outgoing copy inside the shrinking card. It is also why the
               copy only FADES: anything that offsets it would be cut off by that same clip.
               `initial={false}` on both: a card that has just MOUNTED is already its own entrance,
               so neither its copy nor its height may play a second one. */}
           <motion.div
-            style={{ position: 'relative', overflow: 'hidden' }}
+            style={{ position: 'relative', overflow: 'hidden', display: 'grid' }}
             initial={false}
             animate={contentH?.card === cardTag.id ? { height: contentH.h } : {}}
             transition={reduced ? { duration: 0 } : springs.stiff}
           >
-            <AnimatePresence initial={false} mode="popLayout">
+            <AnimatePresence initial={false}>
               <motion.div
                 key={shown.step.id}
+                style={{ gridArea: '1 / 1' }}
                 initial={reduced ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, transition: exitTransition }}
@@ -551,6 +574,12 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
                 {/* The measured element is this plain box rather than the motion element around it:
                     AnimatePresence reads its children's `ref` prop, which React 18 does not carry. */}
                 <div ref={setContentNode}>
+                  {/* The gesture, performed, above the words that name it. Centred like the title:
+                      a drawing standing off to one side of a card this narrow reads as an
+                      illustration that missed its place. */}
+                  {drawn && (
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>{drawn.node}</div>
+                  )}
                   {shown.step.brand && (
                     <div style={{ marginBottom: 12, display: 'flex', justifyContent: centred ? 'center' : 'flex-start' }}>
                       <BrandLockup size={54} logoOnly />
@@ -570,16 +599,16 @@ export function TourOverlay({ onStepEnter, steps }: TourOverlayProps) {
             <button
               type="button"
               onClick={skip}
-              style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, fontWeight: 800, fontSize: 13, color: colors.brownText, padding: 0 }}
+              style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: colors.brownText, padding: 0 }}
             >{t('tour.skip')}</button>
-            <span style={{ fontFamily: font.family, fontWeight: 700, fontSize: 13, color: colors.brownText }}>
+            <span style={{ fontFamily: font.family, ...roleFont('chip'), color: colors.brownText }}>
               {t('tour.progress', { n: shownIndex + 1, total })}
             </span>
             <motion.button
               type="button"
               onClick={() => advanceFrom(shown.step)}
               {...pressable}
-              style={{ border: 'none', background: colors.tileYellow, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, fontWeight: 800, fontSize: 13, padding: '6px 16px', borderRadius: radii.pill }}
+              style={{ border: 'none', background: colors.tileYellow, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
             >{shownIsLast ? t('tour.start') : t('tour.next')}</motion.button>
           </div>
         </motion.div>

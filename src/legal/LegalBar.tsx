@@ -55,11 +55,12 @@ export function LegalBar() {
   return (
     <nav style={{ ...barStyle, zoom: chrome }} aria-label={t('legal.section_title')}>
       {hasIcp && (
-        <a href={LEGAL.icpUrl!} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+        // The two filings stand apart on space, not on a mark between them: the row is running
+        // text so it can wrap a long number, and the margin travels with the first link.
+        <a href={LEGAL.icpUrl!} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, marginRight: hasPsb ? 12 : 0 }}>
           {LEGAL.icpNumber}
         </a>
       )}
-      {hasIcp && hasPsb && ' · '}
       {hasPsb && (
         <a href={LEGAL.psbUrl!} target="_blank" rel="noopener noreferrer" style={linkStyle}>
           {LEGAL.psbNumber}

@@ -44,6 +44,10 @@ export type EraserShape = 'dot' | 'rect' | 'circle';
 export type MacroCoord = { x: number; y: number };
 export type MicroCoord = { x: number; y: number };
 export type ChunkCoord = { cx: number; cy: number };
+/** A macro-unit box [x, x+w) × [y, y+h). Origin and size may be fractional: an object's footprint
+ *  sits on the half grid wherever its anchor does (the plaza, a ramp/bridge). Re-exported by
+ *  `grid-model`, which owns the geometry that operates on it. */
+export interface Rect { x: number; y: number; w: number; h: number; }
 
 // --- Zone & Terrain Enums ---
 export enum CellZone { Void = 0, Beach = 1, Grass = 2, Plaza = 3, Boundary = 4 }
@@ -126,6 +130,10 @@ export type PlacementTrait =
   | { type: 'waterSpan'; min: number; max: number }
   | { type: 'heightDrop'; layers: number }
   | { type: 'surfaceCoating' }
+  // A coating flora may stand ON (the game plants flowers and crops on some road
+  // surfaces — the dirt path here): placing flora keeps this coating instead of
+  // stripping it, and the pair passes the standing-on-a-road rule.
+  | { type: 'plantable' }
   | { type: 'exclusionRadius'; radius: number }
   // Footprint that other terrain may use as a structural base (3x3 support), at
   // the object's elevation — the central plaza today, any such building later.
@@ -142,6 +150,17 @@ export interface CatalogItem {
   /** Icon PNG basename under src/assets/icons/ (catalog/ or ui/), resolved by iconUrl(). */
   icon?: string;
   color?: string;
+  /**
+   * The colour this item's SPRITE reads as, derived from the shipped PNG rather than authored: the mean
+   * of its mid-luminance opaque pixels, which is what `canvas/icon-sampling.ts` samples at runtime.
+   *
+   * DERIVED DATA, and the project's colour-extraction tooling is its one writer (its own drift check fails on
+   * drift). It is committed because a colour that needs a canvas to read cannot be answered where there
+   * is no canvas: the picture generator matches a picture's colours against a palette of items, and it
+   * runs in a worker and in the offline benchmark as well as on a page. Unlike `color` it does not mean
+   * "draw this item as a flat colour" — an item with a sprite is drawn as its sprite.
+   */
+  iconColor?: string;
   width: number;
   height: number;
   loadValue: number;
@@ -314,6 +333,14 @@ export interface ValidationError {
    *  never a bare click anchor; non-spatial rules (max-count, chunk load, locked
    *  object) report the whole footprint involved. */
   cells: MacroCoord[];
+  /** The evidence's exact drawn BODY, where the cause is an OBJECT (or two objects' overlap)
+   *  rather than a grid cell. An object's footprint can sit on the half grid — the plaza at
+   *  x.5/y.5, a ramp/bridge anchor — and a whole-cell list can then only name every cell the body
+   *  PARTIALLY covers, which draws half a cell larger than the thing it accuses. When present, the
+   *  error flash paints THESE rects and ignores `cells` for that error; `cells` stays the whole-cell
+   *  evidence every non-drawing consumer reads. Both come out of `grid-model:bodyEvidence`, so the
+   *  two can never disagree. */
+  rects?: Rect[];
   /** Which grid the evidence cells render on: 'micro' = the terrain micro-grid
    *  (−HALF_TILE), 'macro' = the object/zone grid. Absent → the renderer falls back
    *  to the command-type default (Paint/Erase → micro, otherwise macro). */
@@ -404,15 +431,31 @@ export type EditorEvents = {
 
 /* ── Terrain generation config (used by the generator + the Generate panel) ── */
 
-export type GenerateAlgorithm = 'random' | 'maze' | 'stencil';
+/** `designed` is the island generator (`tools/generation/designer/`): the methodology pipeline the
+ *  shelf's island kinds run, and the default for a recipe that names no algorithm. */
+export type GenerateAlgorithm = 'maze' | 'stencil' | 'designed';
 
 /**
  * A picture to build from: how much of each cell it covers, and what colour it is there.
  *
  * It is DATA rather than a source, because turning a letter or a photograph into pixels needs a
  * canvas and the candidate pipeline runs in a browser-API-free worker. The shell rasterizes once and
- * passes this down; `tools/generation/stencil.ts` is everything that reads one.
+ * passes this down; `tools/generation/stencil/stencil.ts` is everything that reads one.
  */
+/**
+ * What KIND of picture a stencil was read from, which decides how it is read and how it is matched.
+ *
+ * `flat` is art drawn in a few solid colours — pixel art, an emoji, a sticker, a logo, a line
+ * drawing. Its colours are already a palette, so a cell wants the colour MOST of it is rather than
+ * the average of what it covers (averaging an outline with the ground behind it invents a colour the
+ * picture never had), and spreading a quantisation error over its neighbours only lays noise across
+ * an edge that was already exact.
+ *
+ * `photographic` is everything else: continuous tone, where averaging is the truth and error
+ * diffusion is what lets a small palette say a gradient.
+ */
+export type StencilSourceNature = 'flat' | 'photographic';
+
 export interface Stencil {
   width: number;
   height: number;
@@ -429,6 +472,9 @@ export interface Stencil {
    * back to the blanket mode.
    */
   quad?: Uint8Array;
+  /** What the source was read as. Absent on a stencil built by hand or from a glyph, where there is
+   *  no source picture to have a nature; the readers then take the photographic path. */
+  nature?: StencilSourceNature;
 }
 
 /** How a stencil is read onto the map. `shape` builds the covered cells (the text mode); `color`
@@ -448,22 +494,47 @@ export interface StencilPlan {
    * over everything the visitor did not paint.
    */
   allow?: ReadonlySet<number>;
-  /** color only: how hard the picture is pushed away from mid-grey before it is matched, 0..2 with
-   *  1 leaving it alone. A narrow palette collapses a flat photograph onto two or three entries;
-   *  this is the knob that spreads it back out. */
+  /**
+   * color only: how much of the picture's own tonal range is spread across the palette, 0..2 with 1
+   * leaving it alone. Above 1 the window narrows and the extremes clip; below 1 it widens and the
+   * result is gentler (`tools/generation/stencil/stencil.ts:narrowRange`).
+   */
   contrast?: number;
-  /** color only: whether water may join the terrain palette, so a blue-ish area becomes a real pond
-   *  rather than the darkest green. Absent reads as true, the palette as it always was. */
-  water?: boolean;
+  /** color only: what part water plays in the terrain reading. Absent is `none`. */
+  water?: StencilWaterRole;
   /**
    * color only: the OBJECTS a picture may be built from, each with the colour it reads as. Present,
    * the picture is tiled with objects rather than coloured in terrain — which is what gives it a
    * real palette, since the catalogue carries dozens of hues where the terrain ramp is eight greens
    * and a blue. Sampled from the item icons on the main thread, because reading a picture's colours
-   * needs a canvas and this plan crosses into a worker.
+   * needs a canvas and this plan crosses into a worker. The palette is the MATERIAL — every flower,
+   * the flowers alone, the trees alone, or the road surfaces (`tools/generation/stencil/stencil-palette.ts`).
    */
   objectPalette?: readonly { catalogId: string; rgb: number }[];
+  /**
+   * The DECORATION: objects placed at the picture's anchor points, over whatever the primary
+   * material left standing — what says a bow, an eye or a red trim that one palette could not.
+   *
+   * Absent is none. `density` is a share of the picture's cells and is capped by the generator
+   * whatever it asks for; the placements go through the rules like any other and a refusal simply
+   * skips.
+   */
+  decor?: {
+    palette: readonly { catalogId: string; rgb: number }[];
+    density?: number;
+  };
 }
+
+/**
+ * What part water plays when a picture is coloured in TERRAIN.
+ *
+ * `none` is the green ramp alone. `palette` adds the one blue as a ninth entry, so an area of the
+ * picture that is genuinely blue becomes a real pond. `primary` is the water MATERIAL: the picture
+ * is built as a body of water with its darkest cells raised as the mountain that draws its outline —
+ * because a palette that holds one blue among eight greens only ever spends it on a blue picture,
+ * and a visitor who asked for water is asking for water.
+ */
+export type StencilWaterRole = 'none' | 'palette' | 'primary';
 
 /** Requested maze gates, in map coordinates. Each is snapped to the nearest cell on the maze's
  *  border ring, so a coordinate may sit anywhere, including deep inside the maze. Either may be
@@ -484,12 +555,14 @@ export interface GenerateConfig {
   mazeGates?: MazeGates;
   /** 'stencil' algorithm only: the picture, and how to read it. */
   stencilPlan?: StencilPlan;
-  // Advanced 'random'-algorithm controls (optional; defaulted by toGenConfig — seed-first).
-  relief?: number;
-  naturalness?: number;  // 0..1 geometry style: 1 organic (default), 0 rectilinear "lego" terrain + roads
-  waterAmount?: number;
-  rivers?: number;
-  flatness?: number;
-  settlement?: number;   // 0..1 building/road density (placement populator)
-  nature?: number;       // 0..1 vegetation density
+  /**
+   * THE ONE 0..1 STYLE KNOB: SCENERY RICHNESS, 0 a flat garden town and 1 a terraced island with
+   * water on every layer. It scales the island generator's terrain drama, its water, its theme
+   * count and its decoration together.
+   *
+   * An older recipe spells this field `naturalness`, and nothing reads that: a recipe rides a save
+   * file and a share code as a NOTE, and a map is reconstructed from its own cells and objects,
+   * never regenerated from its recipe.
+   */
+  richness?: number;
 }

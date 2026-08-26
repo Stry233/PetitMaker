@@ -8,8 +8,6 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { createGrid, createPlazaObject } from '../../../core/model/grid-model';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { objectRect } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { TerrainType, type EditorEvents, type GenerateConfig, type GridState, type MapTemplate, type PlacedObject } from '../../../core/model/types';
@@ -37,11 +35,8 @@ describe.runIf(DUMP)('RENDER real map', () => {
       const state = loadHexia();
       W = state.template.width; H = state.template.height;
       const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-      const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null, settlement: 0.6, nature: 0.6 };
-      exec.runSilently(() => {
-        const r = generateTerrain(config, state, (c) => exec.execute(c));
-        void populate(toGenConfig(config), state, (c) => exec.execute(c), exec.getRegistry(), undefined, r.zonePlan);
-      });
+      const config: GenerateConfig = { algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 6, seed, region: null, richness: 0.7 };
+      exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry()));
       exec.commitStrokeGroup(exec.getUndoStackSize());
       const tier: number[] = [], water: number[] = [];
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {

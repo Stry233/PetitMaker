@@ -29,15 +29,15 @@
  * instead of a hidden button leaving the user to guess. Terrain never joins a plural selection, so
  * `selection.length > 1` is all objects by construction.
  *
- * THE INVARIANT the group mode exists to keep (it was once a projected bounding box, and that is the
- * bug): fixed-size UI must never be positioned from a projected BOX. A box's screen extents are a
- * function of the camera — orbit until the group's long axis points away and it collapses to a
- * sliver, dolly in and it outgrows the viewport — so buttons pinned to its corners converge, then
- * vanish, then wander off the top of the screen, none of which the user asked for. A POINT projects
- * predictably under any camera. Size, spacing and lift are therefore CONSTANTS
- * (`selection-handles-layout.ts`); the camera decides only where the row sits, and the row is
- * clamped into the viewport so it stays reachable. It hides only when the ANCHOR is unusable
- * (behind the camera or off-screen) — there is no box left to degenerate. Escape deselects either way.
+ * THE INVARIANT the group mode exists to keep: fixed-size UI must never be positioned from a
+ * projected BOX. A box's screen extents are a function of the camera — orbit until the group's long
+ * axis points away and it collapses to a sliver, dolly in and it outgrows the viewport — so buttons
+ * pinned to its corners converge, then vanish, then wander off the top of the screen, none of which
+ * the user asked for. A POINT projects predictably under any camera. Size, spacing and lift are
+ * therefore CONSTANTS (`selection-handles-layout.ts`); the camera decides only where the row sits,
+ * and the row is clamped into the viewport so it stays reachable. It hides only when the ANCHOR is
+ * unusable (behind the camera or off-screen) — there is no box left to degenerate. Escape deselects
+ * either way.
  *
  * THE ANCHOR HOLDS STILL ACROSS A ROTATION: this row is a control surface, not part of the scene —
  * the same argument that keeps it off the rotation's own arc animation. A quarter turn returns every
@@ -62,7 +62,7 @@
  * Styled with the cozy tokens (panelCream, float shadow) + framer-motion springs, so the handles
  * read as the same family as the app's other floating controls.
  */
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useWeightVars } from '../../design/scale';
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
@@ -70,10 +70,11 @@ import { singleSelection, selectedObjectIds } from '../../../state/selection';
 import { useT } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { groupMembers, groupBounds } from '../../../tools/objects/group-actions';
+import { groupMembers, groupBounds } from '../../../tools/objects';
 import { rotateGroupAction, rotateObjectAction, deleteSelection, isGroupRotationInFlight } from '../../../kit/group-edit';
 import { getCell } from '../../../core/model/grid-model';
 import { colors, font, radii, shadows, springs, cursors, z } from '../../design/styles';
+import { TEXT_FLOOR } from '../../design/text-weight';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { placeControlRow, groupRowMetrics, type RowMetrics } from './selection-handles-layout';
@@ -137,7 +138,7 @@ const countBadgeStyle = (size: number, width: number): CSSProperties => ({
   // Without the family this inherits the UA serif, which no other chrome uses.
   fontFamily: font.family,
   fontWeight: 800,
-  fontSize: Math.max(11, Math.round(size * 0.4)),
+  fontSize: Math.max(TEXT_FLOOR, Math.round(size * 0.4)),
   boxShadow: shadows.float,
   pointerEvents: 'none',
 });
@@ -167,6 +168,7 @@ export function SelectionHandles() {
   const eventBus = useEditorStore((s) => s.eventBus);
   const boxRef = useRef<HTMLDivElement>(null);
   const chrome = useChromeScale();
+  const weights = useWeightVars();
   // The rect tracker runs imperatively (outside render) — read the zoom via a ref.
   const chromeRef = useRef(chrome);
   chromeRef.current = chrome;
@@ -227,15 +229,10 @@ export function SelectionHandles() {
         return;
       }
       setAnchors(null);
-      // This row is a control surface, not part of the scene: a rotation returns the members to the
-      // same footprint bounds (modulo the half-cell snap direction, which alternates turn to turn —
-      // rotationPivot's `wide` sign flips whenever the box's aspect flips), so recomputing on every
-      // objects-changed made the row creep under a burst of clicks. The anchor therefore holds still
-      // for as long as the membership (`key`) is unchanged, EXCEPT while this module's own rotation
-      // call is in flight — a genuine group MOVE, or any other membership-preserving edit, still
-      // recomputes fresh, and the two are idempotent there, so freezing changes nothing but the
-      // rotation case. Precise geometry tracking is worth less than a stable click target: the same
-      // argument already keeps this row off the rotation's own arc animation.
+      // The anchor holds still for as long as the membership (`key`) is unchanged, EXCEPT while this
+      // module's own rotation call is in flight: a genuine group MOVE, or any other
+      // membership-preserving edit, still recomputes fresh, and the two are idempotent there, so
+      // freezing changes nothing but the rotation case. The file header has why it must hold still.
       const key = selectedObjectIds(sel).join(',');
       const cached = groupAnchorRef.current;
       const anchorWorld = cached && cached.key === key && isGroupRotationInFlight()
@@ -409,6 +406,7 @@ export function SelectionHandles() {
     pointerEvents: 'none',
     zIndex: z.canvasControls,
     zoom: chrome,
+    ...weights,
     visibility: handlesVisible ? 'visible' : 'hidden',
     ...(row
       ? { display: 'flex', alignItems: 'center', gap: `${row.gap}px`, width: row.width, height: row.height }

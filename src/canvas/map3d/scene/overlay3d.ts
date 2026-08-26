@@ -10,13 +10,19 @@ import type { Corners, GridState, MacroCoord, ValidationError } from '../../../c
 import type { ToolOverlay } from '../../view-projection';
 import type { MacroRect } from '../../interaction/marquee';
 import { filletOnly, type RowSpan } from '../../map2d/layers/ghost-geometry';
-import type { TrimmedCell } from '../../../tools/edge-cut/trim-preview';
-import { cellDecals, DECAL_LIFT, type DecalTrim } from '../build/overlay-decals';
+import type { TrimmedCell } from '../../../tools/edge-cut';
+import { cellDecals, rectDecals, DECAL_LIFT, type DecalTrim } from '../build/overlay-decals';
+import { spanCellCentres } from '../build/surface-pieces';
 import { surfaceHeightAt } from '../interaction/pick';
 import { mapCenterOffset } from '../core/coords';
-import { resolveErrorFlashCells, errorFlashSignature, shouldFlashErrors, flashDecay, type ErrorFlashGate } from '../../map2d/layers/error-flash';
+import { resolveErrorFlashCells, resolveErrorFlashRects, errorFlashSignature, shouldFlashErrors, flashDecay, type ErrorFlashGate, type ErrorFlashRect } from '../../map2d/layers/error-flash';
 import { isMotionReduced } from '../../map2d/motion-state';
 import { animConfig } from '../../../core/runtime/anim-config';
+import {
+  boundsOfCells, isPreviewCell, previewDots, previewIconRect, previewPalette,
+  type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette,
+} from '../../../core/runtime/preview-cell';
+import { HATCH_CELLS, previewHatchCanvas, previewIconCanvas } from '../../preview-cell-raster';
 import { objectInstance } from '../build/object-meshes';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { modelGeometry } from '../models/build-model';
@@ -25,8 +31,8 @@ import { type PlacedObject } from '../../../core/model/types';
 import type { ArchetypeKey } from '../core/types';
 
 type PendingGhost =
-  | { kind: 'cells'; cells: MacroCoord[]; color: number; terrainGrid: boolean; trim?: readonly TrimmedCell[]; losses?: readonly MacroCoord[] }
-  | { kind: 'spans'; spans: RowSpan[]; color: number; terrainGrid: boolean; trim?: readonly TrimmedCell[] }
+  | { kind: 'cells'; cells: MacroCoord[]; paint: GhostPaint; terrainGrid: boolean; trim?: readonly TrimmedCell[]; losses?: readonly MacroCoord[] }
+  | { kind: 'spans'; spans: RowSpan[]; paint: GhostPaint; terrainGrid: boolean; trim?: readonly TrimmedCell[] }
   | { kind: 'clear' };
 
 /** A ghost's `losses` wash: the same warning red `ghostMaterial(false)` already uses for an invalid
@@ -64,6 +70,57 @@ function toGeo(m: { positions: number[]; index: number[] }): THREE.BufferGeometr
   return geo;
 }
 
+/** Textures are cached for the overlay's life: a ghost rebuilds on every pointer move, and a
+ *  re-uploaded canvas per move is a texture upload per move. Materials are still per-flush (they are
+ *  disposed with the ghost), and disposing one leaves its texture alone. */
+const cardTextures = new Map<string, THREE.CanvasTexture | null>();
+
+function cardTexture(key: string, make: () => HTMLCanvasElement | null): THREE.CanvasTexture | null {
+  const hit = cardTextures.get(key);
+  if (hit !== undefined) return hit;
+  const canvas = make();
+  const tex = canvas ? new THREE.CanvasTexture(canvas) : null;
+  if (tex) tex.colorSpace = THREE.SRGBColorSpace;
+  cardTextures.set(key, tex);
+  return tex;
+}
+
+function iconTexture(icon: PreviewIcon): THREE.CanvasTexture | null {
+  return cardTexture(`icon:${icon}`, () => previewIconCanvas(icon));
+}
+
+/** The refused state's stripe tile, mapped in WORLD units (see `cardBackground`). */
+function hatchTexture(palette: PreviewPalette): THREE.CanvasTexture | null {
+  const tex = cardTexture(`hatch:${palette.bg}:${palette.hatch}`, () => previewHatchCanvas(palette));
+  if (tex) { tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; }
+  return tex;
+}
+
+/**
+ * The card's background material for one flush, plus the world-space UVs its stripes need.
+ *
+ * The drape is one polygon soup at many heights, so the stripes cannot ride a per-cell quad's own
+ * UVs: each vertex takes its texture coordinate from where it STANDS (x, z over the tile's 3-cell
+ * span), which is what keeps one continuous 45-degree pattern across a footprint whatever the
+ * terrain under it does. The tile carries the flat colour too, so this is one pass, not two.
+ */
+function cardBackground(palette: PreviewPalette, geo: THREE.BufferGeometry): THREE.MeshBasicMaterial {
+  const tex = palette.hatch === undefined ? null : hatchTexture(palette);
+  if (!tex) return makeMat(palette.bg, palette.bgAlpha);
+  const pos = geo.getAttribute('position');
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = pos.getX(i) / HATCH_CELLS;
+    // A CanvasTexture is flipped, so v runs against z — the bars would mirror to the other diagonal.
+    uv[i * 2 + 1] = -pos.getZ(i) / HATCH_CELLS;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, opacity: palette.bgAlpha, side: THREE.DoubleSide, depthWrite: false,
+  });
+  return mat;
+}
+
 export class Overlay3D implements ToolOverlay {
   readonly group = new THREE.Group();
 
@@ -81,6 +138,18 @@ export class Overlay3D implements ToolOverlay {
   private buildableAsk: { cells: MacroCoord[]; terrainMode: boolean } | null = null;
   private flashes: Flash[] = [];
   private errorGate: ErrorFlashGate | null = null;
+  /**
+   * BOX PAINT IS CACHED, one material per colour+opacity, and a box never disposes one.
+   *
+   * three deletes a program the moment its last referencing material is disposed, and links it
+   * again the next time something wears it — and the hover box is destroyed and rebuilt on every
+   * pointer move, so a per-box material re-links the outline shader that often. On a software
+   * rasterizer that link is over a second (the whole orbit sweep's shader cost was three
+   * compilations of ONE line shader, each preceded by this dispose). Colour and opacity are
+   * per-ROLE constants here — hover, band, selection, footprint — so one material per role paints
+   * every box that wears it, and the cache lives as long as the overlay.
+   */
+  private boxMats = new Map<string, THREE.Material>();
 
   constructor(
     private state: () => GridState,
@@ -93,13 +162,13 @@ export class Overlay3D implements ToolOverlay {
 
   // ── ghost (rAF-coalesced) ──────────────────────────────────────────────────
 
-  showGhost(cells: MacroCoord[], color: number, terrainGrid = true, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void {
-    this.pendingGhost = { kind: 'cells', cells, color, terrainGrid, trim, losses };
+  showGhost(cells: MacroCoord[], paint: GhostPaint, terrainGrid = true, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void {
+    this.pendingGhost = { kind: 'cells', cells, paint, terrainGrid, trim, losses };
     this.requestRender();
   }
 
-  showGhostSpans(spans: RowSpan[], color: number, terrainGrid = true, trim?: readonly TrimmedCell[]): void {
-    this.pendingGhost = { kind: 'spans', spans, color, terrainGrid, trim };
+  showGhostSpans(spans: RowSpan[], paint: GhostPaint, terrainGrid = true, trim?: readonly TrimmedCell[]): void {
+    this.pendingGhost = { kind: 'spans', spans, paint, terrainGrid, trim };
     this.requestRender();
   }
 
@@ -229,6 +298,7 @@ export class Overlay3D implements ToolOverlay {
     const pending = this.pendingGhost;
     if (!pending) return;
     this.pendingGhost = null;
+    this.dropCard();
     if (this.ghost) {
       this.group.remove(this.ghost.mesh);
       this.ghost.geo.dispose();
@@ -265,10 +335,100 @@ export class Overlay3D implements ToolOverlay {
     const data = cellDecals(this.state(), cells, pending.terrainGrid, trim);
     if (!data.positions.length) return;
     const geo = toGeo(data);
-    const mat = makeMat(pending.color, 0.4);
+    // The preview CARD or a plain wash — the same two paints the 2D overlay answers to.
+    const card = isPreviewCell(pending.paint) ? pending.paint : null;
+    const palette = card ? previewPalette(card) : null;
+    const mat = palette ? cardBackground(palette, geo) : makeMat(pending.paint as number, 0.4);
     const mesh = new THREE.Mesh(geo, mat);
     this.group.add(mesh);
     this.ghost = { mesh, geo, mat };
+    if (card && palette) this.buildCard(cells, pending.terrainGrid, card, palette);
+  }
+
+  /** The card's parts that do NOT stretch with the footprint: its four corner dots, its outline and
+   *  its centre glyph. Each is draped at the surface height where it stands, so the card follows a
+   *  slope the way the background decal does. */
+  private card: Array<THREE.Mesh | THREE.LineSegments> = [];
+
+  private dropCard(): void {
+    for (const part of this.card) {
+      this.group.remove(part);
+      part.geometry.dispose();
+    }
+    this.card = [];
+  }
+
+  private buildCard(
+    cells: readonly MacroCoord[], terrainGrid: boolean, card: PreviewCell, palette: PreviewPalette,
+  ): void {
+    const bounds = boundsOfCells(cells);
+    if (!bounds) return;
+    const s = this.state();
+    const off = mapCenterOffset(s.template.width, s.template.height);
+    const shift = terrainGrid ? -0.5 : 0;
+    const wx = (cx: number): number => cx - off.x + shift;
+    const wz = (cy: number): number => cy - off.z + shift;
+    const surface = (cx: number, cy: number): number => surfaceHeightAt(s, wx(cx), wz(cy));
+    const add = (part: THREE.Mesh | THREE.LineSegments): void => {
+      this.group.add(part);
+      this.card.push(part);
+    };
+
+    for (const dot of previewDots(bounds)) {
+      const geo = new THREE.CircleGeometry(dot.r, 12).rotateX(-Math.PI / 2);
+      geo.translate(wx(dot.x), surface(dot.x, dot.y) + DECAL_LIFT * 2, wz(dot.y));
+      add(new THREE.Mesh(geo, this.boxFill(palette.line, 1)));
+    }
+
+    // The footprint's own rim: a cell edge whose neighbour is outside the shape, at that cell's
+    // height — the 2D card's inset line, as far as a one-pixel line can carry it.
+    const inSet = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const rim: number[] = [];
+    for (const c of cells) {
+      const y = surface(c.x + 0.5, c.y + 0.5) + DECAL_LIFT * 2;
+      const x0 = wx(c.x), z0 = wz(c.y);
+      if (!inSet.has(`${c.x},${c.y - 1}`)) rim.push(x0, y, z0, x0 + 1, y, z0);
+      if (!inSet.has(`${c.x},${c.y + 1}`)) rim.push(x0, y, z0 + 1, x0 + 1, y, z0 + 1);
+      if (!inSet.has(`${c.x - 1},${c.y}`)) rim.push(x0, y, z0, x0, y, z0 + 1);
+      if (!inSet.has(`${c.x + 1},${c.y}`)) rim.push(x0 + 1, y, z0, x0 + 1, y, z0 + 1);
+    }
+    if (rim.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(rim, 3));
+      add(new THREE.LineSegments(geo, this.boxEdge(palette.line, 1)));
+    }
+
+    if (!card.icon) return;
+    const tex = iconTexture(card.icon);
+    if (!tex) return;
+    const rect = previewIconRect(bounds, card.icon);
+    const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
+    // The TALLEST surface under the footprint, sampled at a stride: a glyph at the centre cell's own
+    // height sinks into any block beside it, and a map-sized drag shape must not cost a sample a cell.
+    let top = surface(cx, cy);
+    const stride = Math.max(1, Math.floor(cells.length / 256));
+    for (let i = 0; i < cells.length; i += stride) {
+      const c = cells[i]!;
+      top = Math.max(top, surface(c.x + 0.5, c.y + 0.5));
+    }
+    const geo = new THREE.PlaneGeometry(rect.w, rect.h).rotateX(-Math.PI / 2);
+    geo.translate(wx(cx), top + DECAL_LIFT * 3, wz(cy));
+    add(new THREE.Mesh(geo, this.iconMaterial(tex)));
+  }
+
+  private iconMats = new Map<THREE.Texture, THREE.MeshBasicMaterial>();
+
+  /** One material per glyph, kept for the overlay's life (see `boxMats` for why a per-move material
+   *  is the expensive shape here). */
+  private iconMaterial(tex: THREE.CanvasTexture): THREE.MeshBasicMaterial {
+    let mat = this.iconMats.get(tex);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      });
+      this.iconMats.set(tex, mat);
+    }
+    return mat;
   }
 
   // ── selection / hover boxes ────────────────────────────────────────────────
@@ -305,6 +465,25 @@ export class Overlay3D implements ToolOverlay {
     return this.unresolved;
   }
 
+  /** The shared fill / outline material for a box role (see `boxMats`). */
+  private boxFill(color: number, opacity: number): THREE.MeshBasicMaterial {
+    const key = `fill:${color}:${opacity}`;
+    let mat = this.boxMats.get(key) as THREE.MeshBasicMaterial | undefined;
+    if (!mat) { mat = makeMat(color, opacity); this.boxMats.set(key, mat); }
+    return mat;
+  }
+
+  private boxEdge(color: number, opacity: number): THREE.LineBasicMaterial {
+    const key = `edge:${color}:${opacity}`;
+    let mat = this.boxMats.get(key) as THREE.LineBasicMaterial | undefined;
+    if (!mat) {
+      mat = new THREE.LineBasicMaterial({ transparent: true, opacity });
+      mat.color.setHex(color).convertSRGBToLinear();
+      this.boxMats.set(key, mat);
+    }
+    return mat;
+  }
+
   private buildObjectSelection(objectId: string): void {
     const box = this.objectBox(objectId);
     if (!box) {
@@ -324,10 +503,8 @@ export class Overlay3D implements ToolOverlay {
     geo.translate(center.x, center.y, center.z);
     const edgeGeo = new THREE.EdgesGeometry(geo);
     geo.dispose();
-    const edgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95 });
-    edgeMat.color.setHex(0xffb347).convertSRGBToLinear();
-    const edge = new THREE.LineSegments(edgeGeo, edgeMat);
-    const fillMat = makeMat(0xffb347, 0.06);
+    const edge = new THREE.LineSegments(edgeGeo, this.boxEdge(0xffb347, 0.95));
+    const fillMat = this.boxFill(0xffb347, 0.06);
     const fill = new THREE.Mesh(new THREE.BoxGeometry(Math.max(size.x, 0.05), Math.max(size.y, 0.05), Math.max(size.z, 0.05)).translate(center.x, center.y, center.z), fillMat);
     this.group.add(fill, edge);
     this.selection.push({ mesh: fill, edge });
@@ -363,71 +540,92 @@ export class Overlay3D implements ToolOverlay {
     this.band = null;
   }
 
-  /** A footprint box: translucent fill + a brighter outline, draped at the
-   *  footprint's tallest surface so it never sinks into a hill. */
+  /** A footprint box: translucent fill + a brighter outline, ONE flat rect at the footprint's
+   *  tallest surface so it never sinks into a hill — a box bounds what is under it, so unlike a
+   *  drape it does not follow a trimmed corner down.
+   *
+   *  The height is sampled at the CENTRE of each cell the box actually covers
+   *  (`spanCellCentres`), which is not the same set of points as stepping in whole cells from the
+   *  box's own — possibly fractional — origin. */
   private makeBox(x: number, y: number, w: number, h: number, terrainMode: boolean, color: number, fillA: number, edgeA: number) {
     const s = this.state();
     const off = mapCenterOffset(s.template.width, s.template.height);
     const shift = terrainMode ? -0.5 : 0;
     const x0 = x - off.x + shift, z0 = y - off.z + shift;
     let top = 0;
-    for (let cy = 0; cy < h; cy++) {
-      for (let cx = 0; cx < w; cx++) top = Math.max(top, surfaceHeightAt(s, x0 + cx + 0.5, z0 + cy + 0.5));
+    for (const cz of spanCellCentres(y, h)) {
+      for (const cx of spanCellCentres(x, w)) {
+        top = Math.max(top, surfaceHeightAt(s, cx - off.x + shift, cz - off.z + shift));
+      }
     }
     const yTop = top + DECAL_LIFT * 2;
     const geo = new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2);
     geo.translate(x0 + w / 2, yTop, z0 + h / 2);
-    const mesh = new THREE.Mesh(geo, makeMat(color, fillA));
+    const mesh = new THREE.Mesh(geo, this.boxFill(color, fillA));
     const edgeGeo = new THREE.EdgesGeometry(geo);
-    const edgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: edgeA });
-    edgeMat.color.setHex(color).convertSRGBToLinear();
-    const edge = new THREE.LineSegments(edgeGeo, edgeMat);
+    const edge = new THREE.LineSegments(edgeGeo, this.boxEdge(color, edgeA));
     this.group.add(mesh, edge);
     this.requestRender();
     return { mesh, edge };
   }
 
+  /** Geometry is per box and goes; the materials are the shared ones from `boxMats` and stay. */
   private dropBox(box: { mesh: THREE.Mesh; edge: THREE.LineSegments }): void {
     this.group.remove(box.mesh, box.edge);
     box.mesh.geometry.dispose();
-    (box.mesh.material as THREE.Material).dispose();
     box.edge.geometry.dispose();
-    (box.edge.material as THREE.Material).dispose();
     this.requestRender();
   }
 
   // ── flashes (commit + error) ───────────────────────────────────────────────
 
-  flashCommit(cells: MacroCoord[], opts: { color?: number; terrainMode?: boolean } = {}): void {
+  flashCommit(cells: readonly (MacroCoord & { micro?: boolean })[], opts: { color?: number; terrainMode?: boolean } = {}): void {
     // Matches the 2D policy exactly: the commit beat is DECORATIVE confirmation (the cells already
     // show their committed state), so reduced motion skips it. Error flashes below are essential
     // evidence and are never suppressed, only rate-limited.
     if (isMotionReduced() || cells.length === 0) return;
     const cfg = animConfig.flash.commit;
-    this.spawnFlash(cells, opts.color ?? cfg.color, opts.terrainMode ?? true, cfg.durationMs, cfg.peakAlpha);
+    const fallback = opts.terrainMode ?? true; // the terrain grid, as 2D states it — see OverlayLayer.flashCommit
+    // A cell may name its own grid — one undo step can hold a terrain change and an object change,
+    // which drape half a cell apart — so each grid gets its own decal.
+    for (const micro of [true, false]) {
+      const part = cells.filter((c) => (c.micro ?? fallback) === micro);
+      if (part.length) {
+        this.spawnFlash(part.map((c) => ({ x: c.x, y: c.y })), opts.color ?? cfg.color, micro, cfg.durationMs, cfg.peakAlpha);
+      }
+    }
   }
 
   /** The evidence contract: flash the offending cells, same resolve + repeat-
    *  violation cooldown gate as the 2D overlay. */
   flashErrors(errors: ValidationError[], terrainMode: boolean): void {
     const cells = resolveErrorFlashCells(errors, terrainMode);
-    if (!cells.length) return;
-    const sig = errorFlashSignature(cells);
+    const rects = resolveErrorFlashRects(errors, terrainMode);
+    if (!cells.length && !rects.length) return;
+    const sig = errorFlashSignature(cells, rects);
     const now = this.nowMs();
     if (!shouldFlashErrors(this.errorGate, sig, now, animConfig.flash.errorRepeatCooldownMs)) return;
     this.errorGate = { sig, at: now };
-    // Evidence cells carry their own grid (an object blocking a terrain paint
+    // Evidence carries its own grid (an object blocking a terrain paint
     // flashes on the macro grid even when the command was micro) — split and
-    // drape each set on its grid.
-    const micro = cells.filter((c) => c.micro);
-    const macro = cells.filter((c) => !c.micro);
+    // drape each set on its grid. A BODY (`rects`) is draped whole, the same exact footprint
+    // the 2D overlay fills, rather than as the cells it touches.
     const err = animConfig.flash.error;
-    if (micro.length) this.spawnFlash(micro.map((c) => ({ x: c.x, y: c.y })), err.color, true, err.durationMs, err.peakAlpha);
-    if (macro.length) this.spawnFlash(macro.map((c) => ({ x: c.x, y: c.y })), err.color, false, err.durationMs, err.peakAlpha);
+    for (const micro of [true, false]) {
+      const part = cells.filter((c) => c.micro === micro);
+      if (part.length) this.spawnFlash(part.map((c) => ({ x: c.x, y: c.y })), err.color, micro, err.durationMs, err.peakAlpha);
+      const bodies = rects.filter((r) => r.micro === micro);
+      if (bodies.length) this.spawnFlash(bodies, err.color, micro, err.durationMs, err.peakAlpha);
+    }
   }
 
-  private spawnFlash(cells: MacroCoord[], color: number, terrainGrid: boolean, lifeMs: number, peak: number): void {
-    const data = cellDecals(this.state(), cells, terrainGrid);
+  private spawnFlash(
+    shapes: MacroCoord[] | readonly ErrorFlashRect[], color: number, terrainGrid: boolean, lifeMs: number, peak: number,
+  ): void {
+    const state = this.state();
+    const data = isRectList(shapes)
+      ? rectDecals(state, shapes, terrainGrid)
+      : cellDecals(state, shapes, terrainGrid);
     if (!data.positions.length) return;
     const geo = toGeo(data);
     const mat = makeMat(color, peak);
@@ -440,7 +638,8 @@ export class Overlay3D implements ToolOverlay {
   /** Advance flash decay; true while any flash is alive (keeps the render
    *  window open, like a canvas animation). */
   tick(): boolean {
-    if (this.flashes.length === 0) return false;
+    const pulsing = this.stepRegionPulse();
+    if (this.flashes.length === 0) return pulsing;
     const now = this.nowMs();
     this.flashes = this.flashes.filter((f) => {
       const age = (now - f.bornMs) / f.lifeMs;
@@ -454,7 +653,7 @@ export class Overlay3D implements ToolOverlay {
       f.mat.opacity = flashDecay(f.peak, age);
       return true;
     });
-    return this.flashes.length > 0;
+    return this.flashes.length > 0 || pulsing;
   }
 
   // ── buildable region ───────────────────────────────────────────────────────
@@ -489,7 +688,46 @@ export class Overlay3D implements ToolOverlay {
     this.showBuildableRegion(ask.cells, ask.terrainMode);
   }
 
+  /** The pulse in flight: when it started, how long it runs and how far the drape dips. */
+  private regionPulse: { bornMs: number; lifeMs: number; dip: number; base: number } | null = null;
+
+  /**
+   * The standing region drape breathing once (`panel.region.pulse`; the numbers come from the
+   * caller, since the registry is where a duration is declared). The 2D view's own note explains
+   * why it is a dip and not a new mark.
+   *
+   * Driven from `tick()` rather than from an rAF of its own: this scene renders ON DEMAND, and an
+   * animation outside the loop that keeps the window open would paint into frames nobody drew.
+   */
+  pulseBuildableRegion(durationMs: number, dip: number): void {
+    const drape = this.buildable;
+    this.endRegionPulse();
+    if (!drape || isMotionReduced()) return;
+    this.regionPulse = { bornMs: this.nowMs(), lifeMs: durationMs, dip, base: drape.mat.opacity };
+    this.requestRender();
+  }
+
+  private stepRegionPulse(): boolean {
+    const p = this.regionPulse;
+    if (!p) return false;
+    const drape = this.buildable;
+    if (!drape) { this.regionPulse = null; return false; }
+    const t = Math.min((this.nowMs() - p.bornMs) / p.lifeMs, 1);
+    drape.mat.opacity = p.base * (1 - p.dip * Math.sin(Math.PI * t));
+    if (t < 1) return true;
+    drape.mat.opacity = p.base;
+    this.regionPulse = null;
+    return false;
+  }
+
+  private endRegionPulse(): void {
+    const p = this.regionPulse;
+    if (p && this.buildable) this.buildable.mat.opacity = p.base;
+    this.regionPulse = null;
+  }
+
   clearBuildableRegion(): void {
+    this.endRegionPulse();
     this.buildableAsk = null;
     if (!this.buildable) return;
     this.group.remove(this.buildable.mesh);
@@ -548,7 +786,16 @@ export class Overlay3D implements ToolOverlay {
       f.mat.dispose();
     }
     this.flashes = [];
+    for (const mat of this.boxMats.values()) mat.dispose();
+    this.boxMats.clear();
+    for (const mat of this.iconMats.values()) mat.dispose();
+    this.iconMats.clear();
   }
+}
+
+/** Which of `spawnFlash`'s two shape forms it was handed: a body carries an extent, a cell does not. */
+function isRectList(shapes: MacroCoord[] | readonly ErrorFlashRect[]): shapes is readonly ErrorFlashRect[] {
+  return shapes.length > 0 && 'w' in shapes[0]!;
 }
 
 /** Expand merged row spans back to cells (3D drapes per cell — heights vary). */

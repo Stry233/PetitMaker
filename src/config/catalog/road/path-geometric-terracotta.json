@@ -1,0 +1,28 @@
+{
+  "id": "path-geometric-terracotta",
+  "category": "road",
+  "icon": "path-geometric-terracotta",
+  "name": {
+    "en": "Geometric Terracotta Path",
+    "zh": "几何陶土路",
+    "ja": "幾何学テラコッタの道",
+    "ru": "Геометрическая терракотовая дорожка",
+    "th": "ทางดินเผาลายเรขาคณิต",
+    "id": "Jalan Terakota Geometris",
+    "fr": "Chemin de terre cuite géométrique"
+  },
+  "color": "#d36455",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -2,10 +2,9 @@
  * The AI-provider disclosure list rendered into the privacy policy's
  * `{providers}` token — DERIVED from the app's own provider registry
  * (`src/agent/providers/defaults.ts`) so the published list can never drift
- * from what the app can actually reach (design spec §8; pinned by the
- * provider-drift test).
+ * from what the app can actually reach (pinned by the provider-drift test).
  *
- * The named entries are the registry's display labels; the `custom` provider is
+ * The named entries are the registry's display names; the `custom` provider is
  * an arbitrary user-configured OpenAI-compatible endpoint, so it is disclosed
  * as a described category rather than a brand name.
  */
@@ -24,6 +23,6 @@ const CUSTOM_ENDPOINT_LINE: Record<'en' | 'zh', string> = {
  * across languages.
  */
 export function providerDisclosureList(lang: 'en' | 'zh' = 'en'): string[] {
-  const named = PROVIDER_IDS.filter((id) => id !== 'custom').map((id) => PROVIDER_META[id].label);
+  const named = PROVIDER_IDS.filter((id) => id !== 'custom').map((id) => PROVIDER_META[id].name);
   return [...named, CUSTOM_ENDPOINT_LINE[lang]];
 }

@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ItemCategory } from '../../../core/model/types';
+import { PLATFORM_UNIT_H } from '../core/coords';
 import type { ArchetypeKey } from '../core/types';
 
 /** Every shape proportion, in cell units. ONE table → consistent objects. */
@@ -20,7 +21,7 @@ const ARCHETYPE_TUNING = {
   facility: { r: 0.3, h: 0.5, capH: 0.12 },
   bridge:   { deckH: 0.1, deckW: 0.7, postR: 0.06, postH: 0.3 },
   road:     { h: 0.05, w: 1.0 },   // full cell so adjacent road tiles read continuous
-  platform: { h: 0.12, w: 1.0 },   // full footprint: the plaza (only user) must fill its exact 2D rect,
+  platform: { h: PLATFORM_UNIT_H, w: 1.0 }, // full footprint: the plaza (only user) must fill its exact 2D rect,
                                    // not a per-cell margin scaled up into a ~1-micro-block inset per side
 } as const;
 

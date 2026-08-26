@@ -11,6 +11,7 @@
     "fr": "Amaryllis blanche"
   },
   "icon": "flower-amaryllis-white",
+  "iconColor": "#8d7f70",
   "width": 1,
   "height": 1,
   "loadValue": 10,

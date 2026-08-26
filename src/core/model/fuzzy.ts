@@ -85,6 +85,13 @@ export function fuzzyScore(query: string, candidate: string): number | null {
     prevIndex = idx;
     ci = idx + 1;
   }
+  // The scattered tier exists to abbreviate a real WORD ("aple" for "apple", "苹树" for "苹果树"),
+  // not to let letters strung together by coincidence pass as one — a query landing mid-word is
+  // never that abbreviation, only noise ("tree" starting inside "paTteRnEd", never at a word of its
+  // own). Anchoring just the first hit at a word start is enough: it still lets the rest of the run
+  // wander across later words (an abbreviation can legitimately trail off into the next word), and a
+  // literal contiguous match — which needs no anchor — always outranks this tier regardless.
+  if (!isWordStart(c, firstIndex)) return null;
   const qLen = [...q].length;
   // 1.0 = the whole query landed as one unbroken run; lower = more of it was scattered.
   const contiguity = qLen > 1 ? 1 - (runs - 1) / qLen : 1;

@@ -6,9 +6,9 @@ import { SHELL_TOUR_STEPS as TOUR_STEPS } from '../../../ui/shell/tour-steps';
 import { translations } from '../../../i18n/translations';
 
 describe('tour steps', () => {
-  it('has seven steps in a fixed order', () => {
+  it('has ten steps in a fixed order, the three about 3D in the middle', () => {
     expect(TOUR_STEPS.map((s) => s.id)).toEqual([
-      'welcome', 'camera', 'modes', 'bar', 'assistant', 'share', 'menu',
+      'welcome', 'camera', 'modes', 'bar', 'view3d', 'orbit', 'build3d', 'assistant', 'share', 'menu',
     ]);
   });
 
@@ -35,10 +35,28 @@ describe('tour steps', () => {
     expect(new Set(targets).size).toBe(targets.length);
   });
 
-  it('leaves the two steps about the map as a whole targetless, so nothing spotlights the viewport', () => {
+  it('leaves every step about the map as a whole targetless, so nothing spotlights the viewport', () => {
     // The map fills the screen, so pointing at it would put the lit hole over everything and the
-    // bubble past the edge. Those steps dim the whole app and centre their bubble instead.
-    expect(TOUR_STEPS.filter((s) => !s.target).map((s) => s.id)).toEqual(['welcome', 'camera']);
+    // bubble past the edge. Those steps dim the whole app and centre their bubble instead. It is
+    // also what keeps the 3D steps off the scene's own readiness: a step that measures nothing
+    // cannot be measured against a view that is still building.
+    expect(TOUR_STEPS.filter((s) => !s.target).map((s) => s.id))
+      .toEqual(['welcome', 'camera', 'orbit', 'build3d']);
+  });
+
+  it('flips to 3D on the step that points AT the toggle, and lays the map flat after the block', () => {
+    // The flip rides the step whose card is anchored to a rail button, which stands over either
+    // canvas: the scene builds and flies in behind a bubble that is never measured against it. The
+    // step after the block puts the view back, the way the last step clears the build mode.
+    expect(TOUR_STEPS.filter((s) => s.view !== undefined).map((s) => [s.id, s.view])).toEqual([
+      ['view3d', '3d'],
+      ['assistant', '2d'],
+    ]);
+    const ids: string[] = TOUR_STEPS.map((s) => s.id);
+    for (const id of ['orbit', 'build3d']) {
+      expect(ids.indexOf(id)).toBeGreaterThan(ids.indexOf('view3d'));
+      expect(ids.indexOf(id)).toBeLessThan(ids.indexOf('assistant'));
+    }
   });
 
   it('selects a mode for the step about the tools, and clears it on the last one', () => {

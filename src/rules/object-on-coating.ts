@@ -17,16 +17,18 @@
  * EXEMPT: bridges and ramps. A crossing is paved ACROSS on purpose — the generator routes the
  * road bank-to-bank over the deck — so a road overlapping one is the intended arrangement, not a
  * violation. Coatings themselves are exempt for the same reason they are exempt from the overlap
- * rule: one road replacing another is the brush repainting.
+ * rule: one road replacing another is the brush repainting. And flora on a PLANTABLE coating is
+ * the game's own arrangement — flowers and crops grow on the dirt path (standsOnCoating).
  */
 import {
   ItemCategory,
   type GridState,
-  type MacroCoord,
   type PostStrokeRule,
+  type Rect,
   type ValidationError,
 } from '../core/model/types';
-import { cellKey, rectsOverlap } from '../core/model/grid-model';
+import { bodyEvidence, rectsOverlap } from '../core/model/grid-model';
+import { standsOnCoating } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
 import { getObjectIndex } from '../state/object-index';
 
@@ -38,7 +40,7 @@ function isCrossing(catalogId: string): boolean {
 
 export const objectOnCoatingRule: PostStrokeRule = {
   id: 'V-PLACE-COATED',
-  agentHint: 'Objects cannot stand on a road. Remove the road first, or place elsewhere.',
+  agentHint: 'Objects cannot stand on a road, except flora on the plantable dirt path. Remove the road first, or place elsewhere.',
   phase: 'post-stroke',
 
   validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
@@ -46,23 +48,20 @@ export const objectOnCoatingRule: PostStrokeRule = {
     const coatings = index.entries.filter((e) => e.coating);
     if (coatings.length === 0) return [];
 
-    const evidence: MacroCoord[] = [];
-    const seen = new Set<string>();
+    // Evidence = the region where the standing object meets the road, one rect per pair: an
+    // anchor on the half grid (a ramp end, the plaza) makes that region fractional, and whole
+    // cells would shade past both bodies.
+    const evidence: Rect[] = [];
     for (const e of index.entries) {
       if (e.coating || isCrossing(e.obj.catalogId)) continue;
       if (opts?.firstOnly && evidence.length > 0) break;
+      const item = getCatalogItem(e.obj.catalogId);
       for (const road of coatings) {
+        if (standsOnCoating(item, getCatalogItem(road.obj.catalogId)!)) continue;
         if (!rectsOverlap(e.rect, road.rect)) continue;
-        const x0 = Math.floor(Math.max(e.rect.x, road.rect.x));
-        const x1 = Math.ceil(Math.min(e.rect.x + e.rect.w, road.rect.x + road.rect.w));
-        const y0 = Math.floor(Math.max(e.rect.y, road.rect.y));
-        const y1 = Math.ceil(Math.min(e.rect.y + e.rect.h, road.rect.y + road.rect.h));
-        for (let y = y0; y < y1; y++) {
-          for (let x = x0; x < x1; x++) {
-            const key = cellKey(x, y);
-            if (!seen.has(key)) { seen.add(key); evidence.push({ x, y }); }
-          }
-        }
+        const x0 = Math.max(e.rect.x, road.rect.x), x1 = Math.min(e.rect.x + e.rect.w, road.rect.x + road.rect.w);
+        const y0 = Math.max(e.rect.y, road.rect.y), y1 = Math.min(e.rect.y + e.rect.h, road.rect.y + road.rect.h);
+        evidence.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
         // The auto-revert loop re-validates after every undone command and only needs yes/no.
         if (opts?.firstOnly) break;
       }
@@ -71,7 +70,7 @@ export const objectOnCoatingRule: PostStrokeRule = {
     return [{
       ruleId: 'V-PLACE-COATED',
       message: 'error.object_on_road',
-      cells: evidence,
+      ...bodyEvidence(evidence),
       grid: 'macro',
       severity: 'error',
     }];

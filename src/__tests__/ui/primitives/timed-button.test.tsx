@@ -9,8 +9,18 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { TimedButton } from '../../../ui/primitives/TimedButton';
+import { colors } from '../../../ui/design/styles';
+
+/** jsdom re-serializes a hex fill as `rgb(...)`, so the fired fill is compared in that form rather
+ *  than spelled out a second time. */
+const FIRED_RGB = (() => {
+  const probe = document.createElement('div');
+  probe.style.backgroundColor = colors.tileYellow;
+  return probe.style.backgroundColor;
+})();
 
 /** rAF is what drives the countdown, so the fake clock has to drive rAF. */
 beforeEach(() => vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout'] }));
@@ -35,6 +45,20 @@ describe('a timed button', () => {
     // click is what carries the browser's own press behaviour with it.
     run(5000);
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('says whether the press was its own or a hand\'s', () => {
+    // Nothing in a click event carries this, and a host must not guess from its internals: the
+    // arrival notice answers the saved-session offer beside it when a HAND takes its OK, and a
+    // countdown running out is nobody answering anything. Callers that mean the same thing by both
+    // (the restore card, the dev-build notice) simply ignore the argument.
+    const onPress = vi.fn();
+    mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(onPress).toHaveBeenLastCalledWith(false);
+    run(2200);
+    expect(onPress).toHaveBeenCalledTimes(2);
+    expect(onPress).toHaveBeenLastCalledWith(true);
   });
 
   it('holds the clock while the pointer is on it, and resumes where it left off', () => {
@@ -117,6 +141,85 @@ describe('the position a caller asks for', () => {
   });
 });
 
+describe('a clock the caller owns', () => {
+  // Same layout gap as the stadium's tests: nothing is laid out, so the drawing needs a width.
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
+  });
+
+  const ring = () => screen.getByRole('button').querySelector('svg rect')!;
+
+  it('draws the fraction it is handed, spent from whole', () => {
+    mount(<TimedButton after={9} external={{ fraction: 0.4 }} onPress={() => {}}>Retry now</TimedButton>);
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('0.4');
+  });
+
+  it('never presses itself: the clock that fires is the caller s', () => {
+    const onPress = vi.fn();
+    mount(<TimedButton after={2} external={{ fraction: 0 }} onPress={onPress}>Retry now</TimedButton>);
+    run(30_000);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('does not pause under the pointer, because the pointer does not hold the caller s clock', () => {
+    const { rerender } = mount(
+      <TimedButton after={9} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
+    );
+    fireEvent.pointerEnter(screen.getByRole('button'));
+    rerender(
+      <I18nProvider>
+        <TimedButton after={9} external={{ fraction: 0.7 }} onPress={() => {}}>Retry now</TimedButton>
+      </I18nProvider>,
+    );
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('0.7');
+  });
+
+  it('does not cancel on focus, and does not tell a reader it stopped', () => {
+    const { rerender } = mount(
+      <TimedButton after={9} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
+    );
+    fireEvent.focus(screen.getByRole('button'));
+    rerender(
+      <I18nProvider>
+        <TimedButton after={9} external={{ fraction: 0.9 }} onPress={() => {}}>Retry now</TimedButton>
+      </I18nProvider>,
+    );
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('0.9');
+    // A cancelled self-clocked button says so. Saying it here would be a lie: the loop retries
+    // whether the keyboard reached this pill or not, and nothing about the focus stopped it.
+    expect(screen.getByRole('status').textContent).toBe(translate('timed.self_press', { seconds: 9 }));
+  });
+
+  it('says EMPTY MEANS FIRED with the lit fill, the ring spent to nothing', () => {
+    mount(<TimedButton after={9} external={{ fraction: 1 }} onPress={() => {}}>Retry now</TimedButton>);
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('1');
+    expect(screen.getByRole('button').style.backgroundColor).toBe(FIRED_RGB);
+  });
+
+  it('holds a fraction outside 0..1 to the ends of the ring', () => {
+    const { rerender } = mount(
+      <TimedButton after={9} external={{ fraction: -3 }} onPress={() => {}}>Retry now</TimedButton>,
+    );
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('0');
+    rerender(
+      <I18nProvider>
+        <TimedButton after={9} external={{ fraction: 4 }} onPress={() => {}}>Retry now</TimedButton>
+      </I18nProvider>,
+    );
+    expect(ring().getAttribute('stroke-dashoffset')).toBe('1');
+  });
+
+  it('leaves a hand s press meaning what it always did', () => {
+    const onPress = vi.fn();
+    mount(<TimedButton after={9} external={{ fraction: 0.5 }} onPress={onPress}>Retry now</TimedButton>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(onPress).toHaveBeenLastCalledWith(false);
+  });
+});
+
 describe('the stadium clock', () => {
   // jsdom lays nothing out, so `offsetWidth` is 0 everywhere and the clock svg (gated on
   // `box.w > 0`) never renders. Give every element a fixed width for these two tests.
@@ -156,5 +259,100 @@ describe('the stadium clock', () => {
     const btn = screen.getByTestId('ringed');
     expect(btn.querySelector('svg rect'), 'the ring is the default').toBeTruthy();
     expect(btn.querySelector('svg line')).toBeNull();
+  });
+});
+
+/**
+ * THE LENT FUSE RUNS BETWEEN THE CALLER'S SAMPLES.
+ *
+ * A process clock is sampled at whatever rate its owner repaints — the retry face reads its backoff
+ * once a second — so a ring redrawn only on those samples is a staircase, which is the drawing
+ * REDUCED motion is supposed to be alone in getting. `spanMs` turns the handed fraction into a rate
+ * and a rAF walks the outline on from it. The rendered ATTRIBUTE is the sample; the inline STYLE is
+ * the walk, and it wins in the cascade, which is why the two are read separately here.
+ */
+describe('the lent fuse glides between the samples it is given', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
+  });
+
+  const ring = () => screen.getByRole('button').querySelector('svg rect') as SVGRectElement;
+  const drawn = () => Number(ring().style.strokeDashoffset);
+
+  function mountLent(reducedMotion: 'never' | 'always', fraction: number, spanMs: number) {
+    return render(
+      <MotionConfig reducedMotion={reducedMotion}>
+        <I18nProvider>
+          <TimedButton after={9} external={{ fraction, spanMs }} onPress={() => {}}>
+            Retry now
+          </TimedButton>
+        </I18nProvider>
+      </MotionConfig>,
+    );
+  }
+
+  it('walks the outline on between two 1Hz samples, at the caller s own rate', () => {
+    // A nine-second backoff, sampled at three seconds spent.
+    mountLent('never', 3 / 9, 9_000);
+    expect(drawn()).toBeCloseTo(3 / 9, 3);
+
+    // Half a second later, with NO new sample: the fuse has spent half a second of the nine.
+    run(500);
+    const mid = drawn();
+    expect(mid, 'the ring moved between samples').toBeGreaterThan(3 / 9);
+    expect(mid).toBeCloseTo(3.5 / 9, 2);
+
+    // And again, so the movement is a walk rather than one jump.
+    run(500);
+    expect(drawn()).toBeGreaterThan(mid);
+    expect(drawn()).toBeCloseTo(4 / 9, 2);
+  });
+
+  it('never walks past empty, whatever the caller does next', () => {
+    mountLent('never', 8.5 / 9, 9_000);
+    run(30_000);
+    expect(drawn()).toBe(1);
+  });
+
+  it('is re-seated by the next sample rather than accumulating its own drift', () => {
+    const { rerender } = mountLent('never', 0.2, 9_000);
+    run(2_000);
+    expect(drawn()).toBeGreaterThan(0.2);
+    // The caller's next reading says LESS is spent than the walk had drawn (a longer backoff on the
+    // next attempt). The sample is the truth: the walk restarts from it.
+    rerender(
+      <MotionConfig reducedMotion="never">
+        <I18nProvider>
+          <TimedButton after={9} external={{ fraction: 0.05, spanMs: 9_000 }} onPress={() => {}}>
+            Retry now
+          </TimedButton>
+        </I18nProvider>
+      </MotionConfig>,
+    );
+    expect(drawn()).toBeCloseTo(0.05, 3);
+  });
+
+  it('STEPS under reduced motion, which is the same drawing the caller s sample rate makes', () => {
+    mountLent('always', 3 / 9, 9_000);
+    expect(drawn()).toBeCloseTo(3 / 9, 3);
+    run(900);
+    expect(drawn(), 'nothing moved between samples').toBeCloseTo(3 / 9, 3);
+  });
+
+  it('draws the handed fraction and nothing more when no span is lent', () => {
+    render(
+      <MotionConfig reducedMotion="never">
+        <I18nProvider>
+          <TimedButton after={9} external={{ fraction: 0.4 }} onPress={() => {}}>
+            Retry now
+          </TimedButton>
+        </I18nProvider>
+      </MotionConfig>,
+    );
+    run(2_000);
+    expect(Number(ring().style.strokeDashoffset)).toBeCloseTo(0.4, 3);
   });
 });

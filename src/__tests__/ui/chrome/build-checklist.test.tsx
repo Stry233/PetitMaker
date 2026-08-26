@@ -6,6 +6,7 @@
  * AboutModal suite's convention (this repo does not register @testing-library/jest-dom).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { roleWeight } from '../../../ui/design/text-weight';
 import { render, screen, fireEvent, within, act, cleanup } from '@testing-library/react';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
@@ -14,7 +15,6 @@ import { I18nProvider, translateFor } from '../../../i18n/context';
 import { ItemCategory, TerrainType, type GridState, type MapTemplate, type PlacedObject } from '../../../core/model/types';
 import { createGrid, createPlazaObject } from '../../../core/model/grid-model';
 import { buildChecklist, buildChecklistText } from '../../../state/build-checklist';
-import { getCatalogItem } from '../../../state/catalog';
 import { setStoreState } from '../../_store';
 
 /** A small hand-built map: a couple of buildings/trees/flora, some road tiles, two terrain
@@ -37,7 +37,7 @@ function fixtureState(): GridState {
   place('building-stall', 2, 5, 5);
   place('tree-apple', 3, 5, 8);
   place('flower-daisy', 1, 5, 11);
-  place('road-dirt', 4, 5, 14);
+  place('path-overgrown-dirt', 4, 5, 14);
 
   cells[20]![20]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
   cells[20]![21]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
@@ -55,14 +55,6 @@ function renderChecklist() {
     </I18nProvider>,
   );
   return state;
-}
-
-/** A rendered inline color as hex. jsdom normalises `background` to `rgb(r, g, b)`, so a colour
- *  swatch check on what the element ACTUALLY renders has to come back through this. */
-function renderedHex(value: string): string {
-  const rgb = /rgb\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(value);
-  if (!rgb) throw new Error(`not a color: ${value}`);
-  return `#${rgb.slice(1, 4).map((c) => Number(c).toString(16).padStart(2, '0')).join('')}`;
 }
 
 function stubClipboard(writeText: (text: string) => Promise<void>) {
@@ -99,7 +91,7 @@ describe('BuildChecklist — supply shelves', () => {
     expect(screen.queryByTestId(`checklist-card-${ItemCategory.Facility}`)).toBeNull();
   });
 
-  it('shows the real catalog sprite for a normal item and a colour swatch for a road tile', () => {
+  it('shows the real catalog sprite for a normal item and the tile art for a road', () => {
     renderChecklist();
     const stallRow = screen.getByTestId('checklist-item-building-stall');
     // An icon's alt="" (decorative) reads as ARIA role "presentation", not "img" — query the
@@ -108,12 +100,13 @@ describe('BuildChecklist — supply shelves', () => {
     expect(img).toBeTruthy();
     expect(img.getAttribute('src')).toBeTruthy();
 
+    // Every road surface is an in-game path with tile art of its own (#37), so a road row shows
+    // that tile. The colour swatch behind it stays for an item that arrives without an icon.
     const roadCard = screen.getByTestId('checklist-card-roads');
-    const roadRow = within(roadCard).getByTestId('checklist-item-road-dirt');
-    expect(roadRow.querySelector('img')).toBeNull();
-    const swatch = roadRow.querySelector('span[style*="border-radius"]');
-    expect(swatch).toBeTruthy();
-    expect(renderedHex((swatch as HTMLElement).style.background)).toBe(getCatalogItem('road-dirt')!.color);
+    const roadRow = within(roadCard).getByTestId('checklist-item-path-overgrown-dirt');
+    const tile = roadRow.querySelector('img') as HTMLImageElement;
+    expect(tile).toBeTruthy();
+    expect(tile.getAttribute('src')).toContain('path-overgrown-dirt');
   });
 
   it('the item name ellipses and the count sits right-aligned, bold, tabular', () => {
@@ -121,7 +114,8 @@ describe('BuildChecklist — supply shelves', () => {
     const row = screen.getByTestId('checklist-item-building-stall');
     const count = row.querySelector('span:last-child') as HTMLElement;
     expect(count.textContent).toBe('x2');
-    expect(count.style.fontWeight).toBe('800');
+    // The count takes the chip rung, whose weight arrives as the card's own adapting property.
+    expect(count.style.fontWeight).toBe(roleWeight('chip'));
     expect(count.style.fontVariantNumeric).toBe('tabular-nums');
   });
 
@@ -137,7 +131,7 @@ describe('BuildChecklist — supply shelves', () => {
     renderChecklist();
     const roadCard = screen.getByTestId('checklist-card-roads');
     expect(within(roadCard).getAllByText('4 cells')).toHaveLength(2); // the header chip + the one road's own row
-    const row = within(roadCard).getByTestId('checklist-item-road-dirt');
+    const row = within(roadCard).getByTestId('checklist-item-path-overgrown-dirt');
     expect(within(row).getByText('4 cells')).toBeTruthy();
   });
 

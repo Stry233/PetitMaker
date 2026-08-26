@@ -7,11 +7,16 @@
 import type { ItemCategory } from '../../../core/model/types';
 
 /** A renderable mesh as flat arrays. positions/colors are xyz / rgb triples
- *  (colors in 0..1). `index` is the triangle index list. */
+ *  (colors in 0..1). `index` is the triangle index list. `alpha` (one value per
+ *  vertex, 0..1) is present only on meshes that fade — the road decal's feather.
+ *  `uv` (two per vertex) only on meshes that carry a texture — the road decal's
+ *  tile art, where 1 unit is one macro cell so the map repeats per cell. */
 export interface MeshData {
   positions: number[];
   colors: number[];
   index: number[];
+  alpha?: number[];
+  uv?: number[];
 }
 
 /** The terrain split by material / animation. */
@@ -20,7 +25,7 @@ export interface TerrainMeshes {
   solid: MeshData;
   /** Opaque land slabs + their underground shoreline skirt (vertex-coloured by zone). */
   ground: MeshData;
-  /** Translucent still water: surfaces, sea, short pond rims (gets the swell). */
+  /** Translucent still water: surfaces, sea, short pond rims. */
   water: MeshData;
   /** Translucent VERTICAL water drops (pond cliffs + waterfalls); gets the
    *  downward-flowing cascade animation so the falling side reads clearly. */

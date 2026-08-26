@@ -1,5 +1,3 @@
-// V1 PRESENTATION: pins the spotlight ring's corner-radius formula; expected to be removed with
-// the v1 tour visuals.
 /**
  * The tour spotlight's corner radius. It is drawn in unzoomed screen px over controls that ARE
  * zoomed, so a constant radius is only ever right at one scale — and on a phone, where the whole UI
@@ -17,8 +15,8 @@ describe('spotlightRx', () => {
   });
 
   it('never exceeds half the box, so a small target is not rounded into a pill', () => {
-    // A phone's scaled-down UI puts real targets well under the design radius. Reported as
-    // highlights with far too much corner, and unreproducible on a desktop for exactly that reason.
+    // A phone's scaled-down UI puts real targets well under the design radius, which shows as
+    // highlights with far too much corner and is unreproducible on a desktop for exactly that reason.
     expect(spotlightRx(20, 12, 1)).toBe(6);
     expect(spotlightRx(12, 40, 1)).toBe(6);
   });

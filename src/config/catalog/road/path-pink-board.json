@@ -1,0 +1,28 @@
+{
+  "id": "path-pink-board",
+  "category": "road",
+  "icon": "path-pink-board",
+  "name": {
+    "en": "Pink Board Path",
+    "zh": "粉色木板路",
+    "ja": "ピンクの板の道",
+    "ru": "Розовая дощатая дорожка",
+    "th": "ทางไม้กระดานสีชมพู",
+    "id": "Jalan Papan Merah Muda",
+    "fr": "Chemin de planches rose"
+  },
+  "color": "#db7f96",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

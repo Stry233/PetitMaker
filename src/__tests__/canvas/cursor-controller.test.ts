@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   __resetCursorController, pushCursorSurface, registerCursorSurface, releaseCursorSurface,
   resolveCursor, setCursorBusy, setCursorForbidden, setCursorOverSelected, setCursorCtrlHint,
@@ -23,15 +23,28 @@ describe('resolveCursor precedence', () => {
     expect(resolveCursor(state({ drag: 'orbit' }))).toEqual({ id: 'orbit', forbidden: false });
   });
 
-  it('lets busy outrank everything', () => {
-    expect(resolveCursor(state({ busy: true, drag: 'pan', forbidden: true })))
+  it('lets busy outrank the tool, and a live drag outrank busy', () => {
+    expect(resolveCursor(state({ busy: true, forbidden: true })))
       .toEqual({ id: 'busy', forbidden: false });
+    // A drag is the user's own hand mid-gesture: replacing the pan cursor with a work-in-progress
+    // one would take away the only sign the drag is still live.
+    expect(resolveCursor(state({ busy: true, drag: 'pan' })))
+      .toEqual({ id: 'move', forbidden: false });
+    expect(resolveCursor(state({ busy: true, drag: 'object' })).id).toBe('hand-closed');
+  });
+
+  it('closes a hand on a system-cursor pan, where the painted cross keeps its own drawing', () => {
+    // macOS renders the `move` KEYWORD as the open hand, so a system-cursor pan that kept the id
+    // showed a hand that never closes however much the user clicked and dragged.
+    expect(resolveCursor(state({ drag: 'pan' }), { system: true }).id).toBe('hand-closed');
+    expect(resolveCursor(state({ drag: 'pan' }), { system: false }).id).toBe('move');
+    expect(resolveCursor(state({ drag: 'pan' })).id).toBe('move');
   });
 
   it('opens the hand ONLY where the pointer is over the selected object', () => {
     // "Over the selected object" is positional, so it arrives from the pointer machine, not from
-    // a store-driven tool getter — which is what used to turn the whole canvas into a grab
-    // cursor after one click on one object.
+    // a store-driven tool getter, which cannot know where the pointer is and turns the whole
+    // canvas into a grab cursor after one click on one object.
     expect(resolveCursor(state({ tool: 'select', overSelected: true })))
       .toEqual({ id: 'hand-open', forbidden: false });
     expect(resolveCursor(state({ tool: 'select', overSelected: false })).id).toBe('select');
@@ -274,14 +287,51 @@ describe('an overlay borrowing the surface', () => {
 });
 
 describe('busy', () => {
-  it('takes over the surface while a long operation runs, and hands it back', () => {
+  it('takes over the surface while a long operation runs, animates its ring, and hands it back', () => {
+    vi.useFakeTimers();
     const el = document.createElement('div');
     registerCursorSurface(el);
     setToolCursor('mountain');
     setCursorBusy(true);
+    // The one ANIMATED cursor: frame 0 lands at once, and the controller's own clock advances the
+    // ring while the state holds — nothing else writes style.cursor, so the ticking is its job.
     expect(el.style.cursor).toBe(cursorCss('busy'));
-    expect(el.style.cursor).toBe('progress'); // keyword-only by design
+    expect(el.style.cursor).toContain('busy-0');
+    vi.advanceTimersByTime(125);
+    expect(el.style.cursor).toContain('busy-1');
+    vi.advanceTimersByTime(125 * 3);
+    expect(el.style.cursor).toContain('busy-4');
     setCursorBusy(false);
     expect(el.style.cursor).toBe(cursorCss('mountain'));
+    // The clock stops with the state: no further tick rewrites the surface.
+    const settled = el.style.cursor;
+    vi.advanceTimersByTime(1000);
+    expect(el.style.cursor).toBe(settled);
+    vi.useRealTimers();
+  });
+
+  it('sits above the tool and below a live drag', () => {
+    // The order is the whole design of it: a background job outranks the tool, because the tool
+    // cannot act until the job lands, but a gesture already under way outranks the job, because the
+    // pan or grab cursor is the only thing saying the drag is still live.
+    const el = document.createElement('div');
+    registerCursorSurface(el);
+    setToolCursor('mountain');
+    setCursorForbidden(true);
+    setCursorBusy(true);
+    expect(resolveCursor({ ...state(), busy: true })).toEqual({ id: 'busy', forbidden: false });
+    expect(el.style.cursor).toBe(cursorCss('busy'));
+
+    setCursorDrag('pan');
+    expect(el.style.cursor).toBe(cursorCss('move'));
+    setCursorDrag('object');
+    expect(el.style.cursor).toBe(cursorCss('hand-closed'));
+
+    // The drag ends first, so the job is still showing; then the job ends and the tool is back,
+    // badge and all.
+    setCursorDrag('none');
+    expect(el.style.cursor).toBe(cursorCss('busy'));
+    setCursorBusy(false);
+    expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
   });
 });

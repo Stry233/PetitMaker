@@ -1,7 +1,7 @@
 // Thumbnail capture for the export 3D-shots menu. Each still is captured once and CACHED by its
 // camera angle, so add/delete/reorder reuse cached images and only a genuinely-new angle triggers a
 // capture. This matters for performance: capturing spins up (and disposes) a whole throwaway
-// three.js scene, so recapturing the entire set on every delete froze the main thread mid-animation.
+// three.js scene, so recapturing the whole set on every delete freezes the main thread mid-animation.
 // The cache is cleared when the map (GridState) changes. Returns one data URL per shot in order
 // ('' for any not yet captured / that failed); [] when WebGL is unavailable.
 import { useEffect, useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import { CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
 const THUMB_PX = 220;
 // Capturing builds a throwaway three.js scene, which BLOCKS the main thread. Defer it until after
 // the shots strip's add/expand spring (springs.gentle, ~400ms) has settled, so the heavy build
-// never stalls that animation mid-flight (which snapped the layout on the final frame). Placeholders
+// never stalls that animation mid-flight (a stall snaps the layout on the final frame). Placeholders
 // show meanwhile. Delete needs no capture (cached), so it stays instant.
 const DEBOUNCE_MS = 480;
 

@@ -105,14 +105,16 @@ describe('LegalBar', () => {
     expect(screen.queryByText('·')).toBeNull();
   });
 
-  it('renders both links separated by · when both pairs are complete', () => {
+  it('renders both links, standing apart on space rather than on a mark between them', () => {
     LEGAL.icpNumber = '京ICP备2026xxxxxx号-1';
     LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
     LEGAL.psbNumber = '京公网安备 1101xxxxxxxxx号';
     LEGAL.psbUrl = 'https://www.beian.gov.cn/portal/registerSystemInfo';
-    renderBar();
-    expect(screen.getAllByRole('link')).toHaveLength(2);
-    expect(screen.getByText('·')).toBeTruthy();
+    const { container } = renderBar();
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(2);
+    expect(container.textContent).not.toContain('·');
+    expect(links[0]?.style.marginRight).toBe('12px');
   });
 
   it('omits a partial pair (number without url) even if the other pair is complete', () => {

@@ -96,15 +96,18 @@ describe('the Γ corner test', () => {
     expect(offered.length).toBeGreaterThan(0);
   });
 
-  it('and none where the fillet would hang over the notch instead of resting in it', () => {
-    // A tier-3 mass around a notch floored at the ground: the fillet adds no mass of its own, so
-    // rounding at 3 leaves a quarter block in the air with two layers of nothing under it.
+  it('a tall notch rounds as one grounded column, and never below or at its own floor (#17)', () => {
+    // A tier-3 mass around a notch floored at the ground: the fillet renders as a column walled
+    // from its tier down to the floor, so the notch of a tall wall is cuttable at the wall's tier.
     const state = plateau(3, [{ x: 10, y: 10 }, { x: 11, y: 10 }]);
-    for (let i = 0; i < 4; i++) expect(isInnerCorner(state, 10, 10, i, TerrainType.Mountain, 3)).toBe(false);
-    // Floor the notch at 2 and the same corner rounds: the fillet now rests on it.
+    const offeredTall = [0, 1, 2, 3].filter((i) => isInnerCorner(state, 10, 10, i, TerrainType.Mountain, 3));
+    expect(offeredTall.length).toBeGreaterThan(0);
+    // Floor the notch at 2 and the wall tier still rounds; the floor's own tier does not (a fillet
+    // at or below the surface it decorates would add nothing).
     setTerrain(state, 10, 10, TerrainType.Mountain, 2);
     const offered = [0, 1, 2, 3].filter((i) => isInnerCorner(state, 10, 10, i, TerrainType.Mountain, 3));
     expect(offered.length).toBeGreaterThan(0);
+    for (let i = 0; i < 4; i++) expect(isInnerCorner(state, 10, 10, i, TerrainType.Mountain, 2)).toBe(false);
   });
 });
 

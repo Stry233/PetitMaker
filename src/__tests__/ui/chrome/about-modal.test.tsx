@@ -220,7 +220,7 @@ describe('AboutModal — drill-in to the doc view', () => {
     renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
     await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
-    // The static /privacy page still exists; only the in-modal link was removed.
+    // The static /privacy page still exists: what the modal does not carry is a link out to it.
     expect(screen.queryByRole('link', { name: /open as page/i })).toBeNull();
   });
 

@@ -1,6 +1,7 @@
 import { TerrainType, ToolType } from '../../core/model/types';
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
-import type { Tool, ToolContext } from '../types';
+import type { Tool, ToolContext } from '../runtime/types';
+import type { PreviewCell } from '../../core/runtime/preview-cell';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { brushCells } from './drawing-tool';
 import { dragShapeCells, dragShapeSpans, snapShapeEnd } from './shapes';
@@ -12,10 +13,8 @@ import { peelCommand } from './terrain-peel';
 import { eraseTileCells } from './tile-coating';
 import { overlappingCoatings, removeObjectCommand } from '../objects/object-placer';
 
-const ERASER_GHOST_COLOR = 0xff6b6b;
-
-/** The drag shape this gesture lays out, or null for the DAB — which is the eraser as it has always
- *  been, and stays the default. One reading, so the press, the ghost and the release agree. */
+/** The drag shape this gesture lays out, or null for the DAB, which is the default. One reading, so
+ *  the press, the ghost and the release agree. */
 function dragShape(ctx: ToolContext): 'rect' | 'circle' | null {
   return ctx.eraserShape === 'dot' ? null : ctx.eraserShape;
 }
@@ -33,11 +32,11 @@ function erasesHere(type: TerrainType, surface: ContentType): boolean {
 /**
  * The eraser, in its three shapes (`ToolContext.eraserShape`).
  *
- * A DAB is the original tool: press and drag, and every cell the brush passes over is taken. The
- * two DRAG shapes are the batch: press at one corner, drag a rectangle or a circle out, and the
- * whole figure is taken on release. They are built by the drawing tool's own
- * `dragShapeCells`, so the eraser takes back exactly the figure the brush lays, and Shift
- * constrains them to a square / a round circle the same way it does there.
+ * A DAB is press and drag: every cell the brush passes over is taken. The two DRAG shapes are the
+ * batch: press at one corner, drag a rectangle or a circle out, and the whole figure is taken on
+ * release. They are built by the drawing tool's own `dragShapeCells`, so the eraser takes back
+ * exactly the figure the brush lays, and Shift constrains them to a square / a round circle the
+ * same way it does there.
  *
  * ONE STROKE EITHER WAY. The dab commits as it travels and the drag commits once on release, but
  * both open at the press and close in `onPointerUp`, so either is a single undo step.
@@ -68,6 +67,12 @@ export class EraserTool implements Tool {
     return !cmd || ctx.validateCommand(cmd).length === 0;
   }
 
+  /** The eraser's preview card, in the state this cell answers with — the same `canActAt` question
+   *  the cursor's refusal badge asks. */
+  private card(coord: MacroCoord, ctx: ToolContext): PreviewCell {
+    return { icon: 'eraser', valid: this.canActAt(coord, ctx) };
+  }
+
   private erasing = false;
   private lastCoord: MacroCoord | null = null;
   private strokeStartUndoSize = 0;
@@ -95,13 +100,13 @@ export class EraserTool implements Tool {
       // Span-native preview, as the drawing tool's own shapes are: a map-size drag never expands to
       // a cell list before it is committed.
       const end = this.shapeEnd(coord, shape);
-      ctx.overlay.showGhostSpans(dragShapeSpans(shape, this.shapeOrigin, end), ERASER_GHOST_COLOR, terrainGrid);
+      ctx.overlay.showGhostSpans(dragShapeSpans(shape, this.shapeOrigin, end), this.card(end, ctx), terrainGrid);
       return;
     }
 
     ctx.overlay.showGhost(
       shape ? [coord] : brushCells(coord.x, coord.y, ctx.brushSize),
-      ERASER_GHOST_COLOR, terrainGrid,
+      this.card(coord, ctx), terrainGrid,
     );
 
     if (this.erasing && (coord.x !== this.lastCoord?.x || coord.y !== this.lastCoord?.y)) {

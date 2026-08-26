@@ -8,14 +8,17 @@
  * Adding a step is one entry there plus its keys in the seven locales.
  */
 import type { BuildMode } from '../../../core/model/edit-mode';
+import type { ViewMode } from '../../../core/runtime/prefs';
 
 export type TourStepId =
   | 'welcome' | 'camera'
-  | 'modes' | 'bar' | 'assistant' | 'share' | 'menu';
+  | 'modes' | 'bar'
+  | 'view3d' | 'orbit' | 'build3d'
+  | 'assistant' | 'share' | 'menu';
 
 /** The elements a step can point at. Each is carried by exactly one element, via `tourTargetAttr`. */
 export type TourTargetId =
-  | 'modes' | 'bar' | 'assistant' | 'share' | 'menu';
+  | 'modes' | 'bar' | 'view3d' | 'assistant' | 'share' | 'menu';
 
 export interface TourStep {
   id: TourStepId;
@@ -35,6 +38,12 @@ export interface TourStep {
    *  point at until the mode is on; `null` clears it, which is how the run ends with the interface
    *  at rest. Absent means leave it alone, so the two states are distinct. */
   mode?: BuildMode;
+  /** The map view this step is about, applied by the shell's host as the step becomes current. The
+   *  3D scene is built lazily, so the flip rides the step that POINTS AT the toggle rather than the
+   *  steps that describe the 3D view: the visitor reads that step's card while the scene builds and
+   *  the island flies in behind it, and the steps that follow open onto a view already standing.
+   *  Absent means leave it alone. Whatever a run borrows, the shell puts back as the run ends. */
+  view?: ViewMode;
   /** The step shows the brand lockup above its title: the tour's opening step is the app introducing
    *  itself. The logo alone, without the name (see `BrandLockup`'s `logoOnly`). */
   brand?: boolean;

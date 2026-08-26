@@ -79,7 +79,7 @@ export const chunkLoadRule: PreCommandRule = {
   appliesTo: [CommandType.PlaceObject],
   validate(cmd: Command, state: GridState): ValidationError[] {
     if (cmd.type !== CommandType.PlaceObject) return [];
-    if (!CHUNK_LOAD_ENABLED) return []; // deliberate: load values unknown, placement is free for now
+    if (!CHUNK_LOAD_ENABLED) return []; // the real load values are unknown, so placement is free
     return chunkLoadViolations(state, cmd.object, cmd.loadValue);
   },
 };

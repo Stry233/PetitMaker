@@ -16,7 +16,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { categoryOf } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { applyMacro } from '../../../tools/macros';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 
 describe('roads on a live map', () => {
   it('connects two hand-placed houses past the fractional plaza', () => {

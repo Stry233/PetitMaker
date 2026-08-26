@@ -34,7 +34,7 @@
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties,
 } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { motion, useReducedMotionConfig } from 'framer-motion';
 import { ItemCategory } from '../../../core/model/types';
 import type { CatalogItem } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
@@ -46,9 +46,11 @@ import type { MacroId } from '../../../tools/macros';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { ScaleProvider, usePx } from '../../design/scale';
 import { btnReset, cursors, pressable, z } from '../../design/styles';
-import { MAP_LABEL, MAP_SHAPE_EDGE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
+import { MAP_SHAPE_EDGE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
+import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
 import { PLATE_BAND, SHELF_SCALE, TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
+import { CardNameBubble } from './CardNameBubble';
 import { ItemCard, SmartCard } from './ItemCard';
 import {
   BAR, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, shelfItems, tabRowGap,
@@ -139,7 +141,6 @@ export function ObjectShelf({ only, pick }: ObjectShelfProps = {}) {
 
 function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
   const { px, fw, scale } = usePx();
-  const nameMotion = useMotion('item.name.reach');
   const swapMotion = useMotion('shelf.category.swap');
   const t = useT();
   const locale = useEditorStore((s) => s.locale);
@@ -257,11 +258,16 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
       {/* The shelf's backing, as the design draws it: a band at the bottom that the item cards
           stand UP out of, not a box around the rows. See `units.ts:PLATE_BAND`. */}
       <span
+        data-testid="bar-plate"
         style={{
           position: 'absolute',
           left: -PLATE_BAND.overhang, right: -PLATE_BAND.overhang,
           bottom: -PLATE_BAND.radius, height: PLATE_BAND.top + PLATE_BAND.radius,
           borderRadius: PLATE_BAND.radius, background: BAR.fill,
+          // The plate is SOLID: the shelf's root is pointer-transparent so the map stays reachable
+          // around the shelf, but input over the visible dock belongs to the dock — without this a
+          // drag across it panned the map underneath.
+          pointerEvents: 'auto',
         }}
       />
 
@@ -275,8 +281,8 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
           ...TAB_ROW, position: 'relative', marginBottom: tabRowGap(),
           // One line, always. The field keeps its place at the end of the names and the NAMES take
           // whatever shortfall a language brings, by scrolling (`ShelfTabs`): a field pushed onto a
-          // line of its own lands at the shelf's left edge under the first name, which is where the
-          // long languages had put it.
+          // line of its own lands at the shelf's left edge under the first name, which is where a
+          // long language puts it.
           flexWrap: 'nowrap',
         }}
       >
@@ -304,10 +310,10 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
         />
 
         {/* The focus ring goes on the BOX, not on the input: an outline follows its own element's
-            corner, and the input is a rectangle laid over the drawn capsule. `pw-field-wrap` +
-            `pw-field-input` is the pair `animations.css` already moves a ring up for. */}
+            corner, and the input is a rectangle laid over the drawn capsule. The pair is declared in
+            `design/focus-source.ts`, which is where the whole rule reads. */}
         <div
-          className="pw-field-wrap"
+          className={FIELD_WRAP_CLASS}
           style={{
             position: 'relative', flex: 'none', marginLeft: SEARCH.inset,
             // The row's own bottom edge is the mark's, and the field stands off the names' INK
@@ -326,7 +332,7 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
           />
           <input
             type="search"
-            className="pw-search-field pw-field-input"
+            className={`pw-search-field ${FIELD_INPUT_CLASS}`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label={t('shelf.search')}
@@ -432,25 +438,9 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
 
         {/* The hovered card's name, in the gap the row keeps above it. It rises the last few pixels
             into place so it reads as coming off the tile rather than appearing over the map. */}
-        <AnimatePresence>
-          {reached ? (
-            <motion.span
-              key={reached.name}
-              data-testid="shell-card-name"
-              initial={{ opacity: 0, x: '-50%', y: 4 }}
-              animate={{ opacity: 1, x: '-50%', y: 0 }}
-              exit={{ opacity: 0, x: '-50%' }}
-              transition={nameMotion}
-              style={{
-                position: 'absolute', bottom: '100%', left: reached.centre - scrollLeft * scale,
-                fontSize: TEXT.label, fontWeight: 800, lineHeight: 1.15,
-                whiteSpace: 'nowrap', pointerEvents: 'none', ...MAP_LABEL,
-              }}
-            >
-              {reached.name}
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
+        <CardNameBubble
+          reached={reached ? { ...reached, centre: reached.centre - scrollLeft * scale } : null}
+        />
 
         {items.length === 0 ? (
           <div

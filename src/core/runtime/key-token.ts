@@ -1,6 +1,6 @@
 /*
  * key-token — the ONE map from a KeyboardEvent to the canonical key token a combo string ends with.
- * Shared by the shortcut engine (tools/shortcut-manager), the chord recorder (ui/chrome/modals/keyboard),
+ * Shared by the shortcut engine (core/runtime/shortcut-manager), the chord recorder (ui/chrome/modals/keyboard),
  * and the held-modifier tracker (core/runtime/modifier-state), so they can never disagree on what
  * key a physical press represents. Numpad keys map to `num0`…`num9` / `numadd` … via `event.code`
  * so they bind INDEPENDENTLY of the top-row digits (which share `event.key`). Space → `space`.

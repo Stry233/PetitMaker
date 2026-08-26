@@ -1,10 +1,9 @@
 /**
- * Director tools: high-level write tools wrapping the procedural populator's
- * machinery (themes/nature/network/crossings). Same bridge contract as every
- * write tool: ONE silent stroke group, reject-and-skip, REVERTED feedback.
- * Wrappers ADAPT arguments to the populator's unzoned (no-ZonePlan) path — the
- * same components the zone pipeline builds on; they never modify populator
- * internals.
+ * Director tools: high-level write tools wrapping the shared placement machinery
+ * (themes/nature/network/portals). Same bridge contract as every write tool: ONE
+ * silent stroke group, reject-and-skip, REVERTED feedback. A wrapper ADAPTS the
+ * model's arguments to what that machinery takes — a rect becomes the cells of one
+ * themed room, a region becomes an analysis — and never modifies it.
  *
  * plant_forest and build_road_network are the editor's `patch` and `roads`
  * macros, so their bodies come from `tools/macros`. The stroke stays here because
@@ -12,17 +11,16 @@
  * run from a tool call is the model's, and the export disclosure reads that.
  */
 import { ItemCategory, type GridState, type MacroCoord } from '../../core/model/types';
-import { analyzeTerrain } from '../../tools/generation/placement/analysis';
-import { makeCtx, tryPlace, forEachFootprintCell } from '../../tools/generation/placement/object';
+import {
+  analyzeTerrain, makeCtx, tryPlace, forEachFootprintCell, scanPortals, decorateZone, decorateCrossing, type Zone,
+} from '../../tools/placement';
 import { getPlaceableByCategory } from '../../state/catalog';
-import { scanPortals } from '../../tools/generation/placement/portals';
-import { decorateZone, decorateCrossing } from '../../tools/generation/placement/themes';
 import { makeRng } from '../../core/model/rng';
 import { layRoadNetwork, plantPatch } from '../../tools/macros';
 import type { KitContext } from '../../kit/context';
-import type { Zone } from '../../tools/generation/types';
-import { parseSeed, revertedMsg, runStrokeBody } from './tools-common';
+import { argError, parseSeed, revertedMsg, runStrokeBody } from './tools-common';
 import type { AgentToolDeps } from './tools';
+import type { ToolResultDetail } from '../core/types';
 
 // Default seed for reproducible calls when the caller omits seed.
 const DEFAULT_SEED = 0x4d616d65;
@@ -30,7 +28,7 @@ const DEFAULT_SEED = 0x4d616d65;
 export const THEMES = ['orchard', 'farm', 'garden', 'hamlet', 'waterfront', 'peak'] as const;
 type Theme = (typeof THEMES)[number];
 
-type ToolResultBody = { content: string; isError: boolean };
+type ToolResultBody = { content: string; isError: boolean; detail?: ToolResultDetail };
 
 /** Clamp an {x,y,w,h} rect input to the map and build its cell list. Returns null
  *  when the clamped rect is empty (the caller reports the empty-rect error). Shared
@@ -67,10 +65,7 @@ export async function decorateZoneHandler(
   // Validate theme first.
   const theme = String(input.theme) as Theme;
   if (!(THEMES as readonly string[]).includes(theme)) {
-    return {
-      isError: true,
-      content: `Unknown theme "${theme}". Valid themes: ${THEMES.join(', ')}.`,
-    };
+    return argError(`unknown theme "${theme}", valid themes: ${THEMES.join(', ')}.`, 'theme: "garden"');
   }
 
   const state = deps.getState();
@@ -78,7 +73,7 @@ export async function decorateZoneHandler(
 
   const clamped = clampRect(state, input);
   if (!clamped) {
-    return { isError: true, content: 'Rect is empty after clamping to the map.' };
+    return argError('the rect is empty after clamping to the map, pass x, y, w, h inside it.', 'x: 10, y: 10, w: 8, h: 6');
   }
   const { cells: rectCells, rx, ry, rw, rh, x2, y2 } = clamped;
 
@@ -89,7 +84,7 @@ export async function decorateZoneHandler(
 
   let placed = 0;
 
-  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     // Restrict analysis to the rect so the open mask only covers our area,
     // exactly mirroring the run_generator region-restricted path.
     const a = analyzeTerrain(state, rectCells);
@@ -113,20 +108,7 @@ export async function decorateZoneHandler(
       ? { x: Math.round(sumX / placeableCells.length), y: Math.round(sumY / placeableCells.length) }
       : { x: Math.round((rx + x2) / 2), y: Math.round((ry + y2) / 2) };
 
-    // Minimal Zone — only the fields the six theme decorators actually read:
-    //   orchard/farm/garden: zone.cells, a.width (for x = i % a.width, y = i / a.width)
-    //   hamlet: zone.cells, zone.centroid
-    //   waterfront: zone.cells, a.distToWater
-    //   peak: zone.centroid
-    const zone: Zone = {
-      id: 0,
-      cells: cellsForZone,
-      centroid,
-      level: 0,
-      theme,
-      bordersMap: false,
-      riverside: false,
-    };
+    const zone: Zone = { id: 0, cells: cellsForZone, centroid, theme };
 
     const ctx = makeCtx(state, (c) => exec.execute(c), reg, seed);
     const settled = new Set<string>();
@@ -147,6 +129,7 @@ export async function decorateZoneHandler(
   return {
     isError: false,
     content: `Placed ${placed} object(s) with theme "${theme}" over ${rectCells.length}-cell rect (${rx},${ry})+(${rw}x${rh}). Rule-rejected placement spots were skipped.`,
+    detail,
   };
 }
 
@@ -163,7 +146,7 @@ export async function plantForestHandler(
 
   const clamped = clampRect(state, input);
   if (!clamped) {
-    return { isError: true, content: 'Rect is empty after clamping to the map.' };
+    return argError('the rect is empty after clamping to the map, pass x, y, w, h inside it.', 'x: 10, y: 10, w: 8, h: 6');
   }
   const { cells: rectCells, rx, ry, rw, rh } = clamped;
 
@@ -175,7 +158,7 @@ export async function plantForestHandler(
   const exec = deps.getExecutor();
   const kit: KitContext = { state, executor: exec, registry: exec.getRegistry() };
 
-  const { reverted, violations, result: placed, outOfRegion } = await runStrokeBody(deps, () =>
+  const { reverted, violations, result: placed, outOfRegion, detail } = await runStrokeBody(deps, () =>
     plantPatch(kit, { cells: rectCells, density, seed }),
   );
 
@@ -189,6 +172,7 @@ export async function plantForestHandler(
   return {
     isError: false,
     content: `Planted ${placed} object(s) (trees + flora) over ${rectCells.length}-cell rect (${rx},${ry})+(${rw}x${rh}) at density ${density.toFixed(2)}. Rule-rejected placement spots were skipped.`,
+    detail,
   };
 }
 
@@ -212,7 +196,7 @@ export async function buildRoadNetworkHandler(
   // designed island-wide and then refused for straying would never lay a road at all.
   const region = deps.getRegion();
 
-  const { reverted, violations, result: routed, outOfRegion } = await runStrokeBody(deps, () =>
+  const { reverted, violations, result: routed, outOfRegion, detail } = await runStrokeBody(deps, () =>
     layRoadNetwork(kit, { seed, ...(region.length > 0 ? { region } : {}) }),
   );
 
@@ -229,6 +213,7 @@ export async function buildRoadNetworkHandler(
   return {
     isError: false,
     content: `Road network placed ${routed.laid} object(s) (roads + any bridges/ramps) connecting ${buildingCount} buildings. Rule-rejected placement spots were skipped.${narrowNote}`,
+    detail,
   };
 }
 
@@ -237,10 +222,9 @@ export async function buildRoadNetworkHandler(
  * (bridge or ramp) with the mirrored flora scene. Gracefully reports "no
  * crossing site found" when the map has no valid portals.
  *
- * scanPortals mutation-safety: the dry-run tryPlace+removePlaced pairs inside
- * scanPortals run through ctx.execute inside runSilently — event bus is quiet
- * and removePlaced synchronously undoes each dry-run place. Net mutation from
- * the scan is zero; only the deliberately realized crossing commits.
+ * scanPortals mutates nothing: its dry-run tryPlace+removePlaced pairs run through
+ * ctx.execute inside runSilently, so the event bus stays quiet and removePlaced
+ * synchronously undoes each dry-run place. Only the realized crossing commits.
  */
 export async function frameCrossingHandler(
   deps: AgentToolDeps,
@@ -260,13 +244,11 @@ export async function frameCrossingHandler(
 
   let resultMsg = '';
 
-  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     const a = analyzeTerrain(state, region.length > 0 ? region : null);
     const ctx = makeCtx(state, (c) => exec.execute(c), reg, seed);
 
-    // scanPortals validates each candidate (tryPlace + removePlaced dry-run)
-    // inside this runSilently context. Event bus is quiet; removePlaced cleanly
-    // undoes each dry-run. Net mutation so far is zero.
+    // Each candidate is validated by a dry-run place inside this runSilently context.
     const { portals } = scanPortals(ctx, a);
 
     if (portals.length === 0) {
@@ -313,5 +295,5 @@ export async function frameCrossingHandler(
     return { isError: true, content: revertedMsg('the crossing', violations) };
   }
 
-  return { isError: false, content: resultMsg };
+  return { isError: false, content: resultMsg, detail };
 }

@@ -4,7 +4,8 @@
  * footprints, hidden layers, ground islands), each at its cell's surface,
  * UV-mapped into the chunk's shared label canvas so a whole chunk renders as
  * ONE textured draw. (The reference grid itself is a flat ground-level line
- * set built by the scene — 2D semantics, never submerged by the water swell.)
+ * set built by the scene — its fixed world-space position stays stable across
+ * all framing, so it reads as an overlay grid, not terrain geometry.)
  */
 import { CHUNK_SIZE } from '../../../core/model/constants';
 import type { GridState } from '../../../core/model/types';

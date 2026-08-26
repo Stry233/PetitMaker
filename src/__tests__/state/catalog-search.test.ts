@@ -150,8 +150,8 @@ describe('searchCatalog multi-term', () => {
   });
 
   it('single-term search is unchanged: multi-term is a strict superset of behaviour, not a rewrite', () => {
-    // Same pinned single-word cases as the tests above, run again here to make the "single-term
-    // identical" contract explicit rather than merely implied by the older tests still passing.
+    // Same pinned single-word cases as the tests above, run again here so the "single-term
+    // identical" contract is asserted in its own right rather than implied by their passing.
     expect(searchCatalog('apple', 'en').map((i) => i.id)).toEqual(searchCatalog('apple ', 'en').map((i) => i.id));
     const ids = searchCatalog('red', 'en').map((i) => i.id);
     expect(ids.indexOf('flower-sunflower-red')).toBeLessThan(ids.indexOf('tree-apple'));

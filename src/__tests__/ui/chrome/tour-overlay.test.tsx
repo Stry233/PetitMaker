@@ -137,9 +137,9 @@ async function waitForSpotlight(container: HTMLElement) {
 }
 
 /** Wait until the tracking loop has let go of its target: two animation frames with no read. A
- *  spotlight now appears on the loop's FIRST frame, so a test that wants a fresh run out of an
- *  event has to let the one in flight finish — an event during a run is deliberately ignored. The
- *  gap is measured in FRAMES, not waitFor polls: the card animates, so its style mutations drive
+ *  spotlight appears on the loop's FIRST frame, so a test that wants a fresh run out of an event has
+ *  to let the one in flight finish: an event during a run is ignored. The gap is measured in FRAMES,
+ *  not waitFor polls: the card animates, so its style mutations drive
  *  waitFor at frame rate and two of its checks can land inside one frame and call a live loop idle. */
 async function waitForTrackingIdle() {
   for (let i = 0; i < 60; i++) {
@@ -382,8 +382,13 @@ describe('TourOverlay', () => {
     startTour();
     render(<TourOverlay steps={TOUR_STEPS} />, { wrapper });
     gotoTargetedStep();
-    // From here every step names a target, and none can be measured, so each is passed over in
-    // turn, which ends the tour rather than pointing at the origin.
+    // Nothing between here and the two 3D steps can be measured, so each is passed over in turn
+    // rather than pointing at the origin: the run lands on the next step that names no target.
+    await waitFor(() => expect(screen.getByText('Looking around in 3D')).toBeTruthy());
+    await clickNext(); // -> the other targetless 3D step
+    // Everything after those names a target, so the rest is passed over the same way and the run
+    // ends instead of cycling.
+    fireEvent.click(cardButton('Next'));
     await waitFor(() => expect(useEditorStore.getState().tourRunning).toBe(false));
   });
 
@@ -396,14 +401,19 @@ describe('TourOverlay', () => {
     await clickNext(); // -> camera
     await clickNext(); // -> modes
     await clickNext(); // -> bar: announced, but its own measurement never lands, so it's skipped
-    // The assistant step's own target was present, so it must actually have been shown, not
-    // swallowed by the same skip that passed over the tools step (the Finding 1 regression).
-    expect(screen.getByText('Ask the assistant')).toBeTruthy();
+    // The 3D toggle's own target was present, so it must actually have been shown, not swallowed by
+    // the same skip that passed over the tools step.
+    expect(screen.getByText('The map in 3D')).toBeTruthy();
+    await clickNext(); // -> orbit
+    await clickNext(); // -> build3d
+    await clickNext(); // -> assistant
     await clickNext(); // -> share
     await clickNext(); // -> menu
     fireEvent.click(cardButton('Start building'));
     expect(useEditorStore.getState().tourRunning).toBe(false);
-    expect(seenIds).toEqual(['welcome', 'camera', 'modes', 'bar', 'assistant', 'share', 'menu']);
+    expect(seenIds).toEqual([
+      'welcome', 'camera', 'modes', 'bar', 'view3d', 'orbit', 'build3d', 'assistant', 'share', 'menu',
+    ]);
   });
 
   it('announces a step even though its target starts absent, so the host can bring it into being (Finding 7)', async () => {
@@ -717,8 +727,8 @@ describe('TourOverlay', () => {
   });
 
   it('under reduced motion the spotlight is at its new geometry outright, never gliding to it', async () => {
-    // The glide is the animation reduced motion has to switch off, and a highlight that crawls to
-    // its target is exactly what the people who asked for less motion asked not to have.
+    // The glide is the animation reduced motion switches off: a highlight that crawls to its target
+    // is the motion the preference exists to remove.
     let left = 100;
     stubTargets([], () => rectAt(left, 100));
     startTour();
@@ -802,19 +812,19 @@ describe('TourOverlay', () => {
     }
   });
 
-  it('claims no modality, because the app under the dim stays operable', () => {
-    // aria-modal would tell a screen reader to hide the rest of the app, and there is no focus
-    // trap to back that up: the dim takes no pointer events, so every control a step points at
-    // stays live under it.
+  it('blocks the app under the dim, without claiming a modality the keyboard can escape', () => {
+    // The dim takes the pointer (#30), or a first-launch visitor can edit the map and press controls
+    // straight through the tour. aria-modal stays off, because there is no focus trap and Tab can
+    // still leave the card.
     startTour();
     render(<TourOverlay steps={TOUR_STEPS} />, { wrapper });
     expect(card().getAttribute('aria-modal')).toBeNull();
-    expect(screen.getByTestId('tour-dim').style.pointerEvents).toBe('none');
+    expect(screen.getByTestId('tour-dim').style.pointerEvents).toBe('auto');
   });
 
   it('a replay opens on step one, never announcing and acting on the step the last run stopped at', async () => {
-    // Reading the hook's settled index cannot see this: the reset used to be a passive effect, so
-    // `act()` had already flushed it by the time a test looked. What a passive reset CANNOT undo is
+    // Reading the hook's settled index cannot see this: a reset written as a passive effect is
+    // already flushed by `act()` by the time a test looks. What a passive reset CANNOT undo is
     // the work the commit before it did — the stale step is announced, and the host applies its
     // own action for it in front of the visitor.
     const entered: string[] = [];

@@ -145,6 +145,22 @@ function decodeProvenanceRecord(bytes: Uint8Array): ProvenanceInfo {
 
 // ── frame assembly ──────────────────────────────────────────────────────────────────────────
 
+/** The most a generation note may occupy in the frame. The whole payload must fit the glyph's
+ *  densest tier (T5, ~21 KB, map included), so a note is a passenger, never the cargo: one the
+ *  size of a painted-region cell list can starve the map it rides with, and past this it is
+ *  dropped whole rather than truncated (a cut JSON recipe parses as damage). */
+const NOTE_MAX_BYTES = 2048;
+
+/** The generation recipe as note bytes, or nothing where no faithful note can ride. A stencil
+ *  recipe never rides: its `stencilPlan` is the source picture in typed arrays, which JSON
+ *  mangles into per-element objects (tens of kilobytes that also read back wrong), and the map
+ *  itself already carries the picture. */
+function noteBytes(generation: GenerateConfig | undefined): Uint8Array {
+  if (!generation || generation.stencilPlan) return new Uint8Array(0);
+  const bytes = new TextEncoder().encode(JSON.stringify(generation));
+  return bytes.length <= NOTE_MAX_BYTES ? bytes : new Uint8Array(0);
+}
+
 function buildFrame(
   canonical: CanonicalSave, contentHash: Uint8Array, generation: GenerateConfig | undefined,
   summary: MapProvenanceSummary | null, meta: ShareCodeMeta, variant: number,
@@ -156,7 +172,7 @@ function buildFrame(
   const prov = encodeProvenanceRecord(summary, meta);
   // The recipe rides along as a NOTE: the editor shows it and can regenerate from it. Nothing in
   // the map's reconstruction reads it, so a code stays readable however the generator changes.
-  const note = generation ? new TextEncoder().encode(JSON.stringify(generation)) : new Uint8Array(0);
+  const note = noteBytes(generation);
 
   const w = new ByteWriter();
   w.u8(MAGIC0);

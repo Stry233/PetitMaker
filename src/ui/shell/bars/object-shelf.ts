@@ -87,10 +87,10 @@ export function tabRowGap(): number {
  * The search field, in css px. Its shape is the design source's (`搜索底图`, 476 x 82 design px with
  * a 44.5 px placeholder 50 px in); its SIZE is judged in the row it stands in.
  *
- * THE TEXT IS THE POINT. The placeholder is a THIRD of the plate's height in the drawing, and it was
- * being set at `TEXT.label` — the 35 design px em a TOOL's caption is drawn at, a different thing
- * that happened to share a constant. A plate two and a half times its own text reads as an empty
- * capsule, which is what a search field is not: it holds a word. So the plate's height is the row's
+ * THE TEXT IS THE POINT. The placeholder is a THIRD of the plate's height in the drawing, and set at
+ * `TEXT.label` — the 35 design px em a TOOL's caption is drawn at, a different thing that happens to
+ * share a constant — a plate two and a half times its own text reads as an empty capsule, which is
+ * what a search field is not: it holds a word. So the plate's height is the row's
  * (`SHELF_TABS.field`, grown past the drawing's own) and everything inside it keeps the drawing's
  * proportion to that height rather than to the design canvas.
  *
@@ -125,9 +125,9 @@ export const SEARCH = {
  * than the band — and against a category name whose size is fixed, a card that small reads as a row
  * of stamps under a heading. The game's own shelf was photographed and measured (1080-tall frame):
  * an item card is 119 px, the band shows 97 px above the bottom edge, and a category name's ink is
- * 29 px, so a card is 1.227 bands and 3.6 names. Ours were 1.054 bands and 3.0 names.
+ * 29 px, so a card is 1.227 bands and 3.6 names.
  *
- * ONE NUMBER FIXES THE THREE THINGS THAT WERE REPORTED, because they are the same number: the band's
+ * ONE NUMBER SETTLES ALL THREE, because they are the same number: the band's
  * depth is fixed by the drawing and the type by this frame's rule, so the card's size is the only
  * free term. At this ratio the name comes to 0.28 of a card against the game's 0.277; the card
  * stands 0.55 of itself clear of the band against the game's 0.555; and the item's picture, centred

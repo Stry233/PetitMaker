@@ -69,7 +69,7 @@ describe('hint catalogue', () => {
 
   it('the rotate row survives under the default keymap even though only cw is bound', () => {
     // rotate_ccw has no default combo under the game keymap; the row must keep its bound half
-    // rather than vanish because its unbound sibling used to take the whole row down with it.
+    // rather than go down with its unbound sibling.
     const rows = rowsFor('placer', {}, CAPS_2D, 'full');
     const rotate = rows.find((r) => r.textKey === 'hint.placer.rotate');
     expect(rotate).toBeDefined();

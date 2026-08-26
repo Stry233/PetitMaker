@@ -26,8 +26,8 @@
  */
 import { ItemCategory, type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
 import { categoryOf, getPlaceableByCategory } from '../../state/catalog';
-import { makeCtx, tryPlace } from '../generation/placement/object';
-import type { SpeciesPicker } from '../generation/placement/nature';
+import { makeCtx, tryPlace } from '../placement/object';
+import type { SpeciesPicker } from '../placement/nature';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
 import type { MacroContext } from './context';
 import { buildCommunity, type HabitatField } from './habitat';
@@ -183,7 +183,7 @@ export function ageStand(ctx: MacroContext, input: AgeInput): void {
   const grandAt = nearest && tierAt(input.stage, dist(nearest), input.ringWidth) === CLIMAX_STAGE
     ? nearest : undefined;
 
-  // The COMMUNITY, per tier: `buildCommunity` is Task 2's species policy (a seed-derived dominant
+  // The COMMUNITY, per tier: `buildCommunity` is the habitat's species policy (a seed-derived dominant
   // over most of the stand, habitat-sorted accents through the rest), and handing it one tier's pool
   // gives that tier a dominant of its own. Drawing each replacement by habitat alone instead would
   // quietly diversify a near-monoculture press into a catalog sample as it aged — a stand has to

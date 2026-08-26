@@ -22,14 +22,14 @@ describe.runIf(DUMP)('CUT dump', () => {
   it('dumps a window around a water/mountain boundary with corners', () => {
     const state = makeState(SIZE, SIZE);
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    // env overrides: CUT_SEED / CUT_MODE / CUT_CX / CUT_CY (centre); default centres on the
-    // highest-tier gamma patch (an N>=2 fillet sitting on a real N-1 base).
+    // env overrides: CUT_SEED / CUT_MODE / CUT_RICHNESS / CUT_CX / CUT_CY (centre); default centres
+    // on the highest-tier gamma patch (an N>=2 fillet sitting on a real N-1 base).
     // @ts-ignore dev-only harness
     const env = (globalThis as any).process?.env ?? {};
     const seed = Number(env.CUT_SEED ?? 42);
     const mode = (env.CUT_MODE ?? 'mixed') as GenerateConfig['mode'];
-    const config: GenerateConfig = { algorithm: 'random', mode, corridorWidth: 1, maxElevation: Number(env.CUT_ELEV ?? 6), seed, region: null, relief: Number(env.CUT_RELIEF ?? 0.6) };
-    exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c)));
+    const config: GenerateConfig = { algorithm: 'designed', mode, corridorWidth: 1, maxElevation: Number(env.CUT_ELEV ?? 6), seed, region: null, richness: Number(env.CUT_RICHNESS ?? 1) };
+    exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry()));
     exec.commitStrokeGroup(exec.getUndoStackSize());
 
     let fx = SIZE / 2, fy = SIZE / 2, best = -1;

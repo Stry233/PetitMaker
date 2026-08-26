@@ -1,10 +1,10 @@
 /**
  * The two smart-planting cards (task #26).
  *
- * `patch` used to be one undifferentiated macro armed from either the Trees or the Flora tab of
- * the object shelf, so a press from the Trees card could plant flowers with no tree at all, and a
- * press from the Flora card could plant a tree. `patch-tree`/`patch-flora` are the fix: two macro
- * ids, one per card, each pinned here on the property its card promises.
+ * THE ID IS THE SCOPE: `patch-tree` and `patch-flora` are two macros, one per card, each pinned here
+ * on the property its card promises. One undifferentiated `patch` armed from either tab of the object
+ * shelf cannot keep either promise — a press from the Trees card could plant flowers with no tree at
+ * all, and a press from the Flora card could plant a tree.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';

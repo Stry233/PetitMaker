@@ -11,6 +11,7 @@
     "fr": "Violette"
   },
   "icon": "flower-violet",
+  "iconColor": "#c492d1",
   "width": 1,
   "height": 1,
   "loadValue": 10,

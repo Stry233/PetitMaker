@@ -27,9 +27,9 @@ import { ModalShell } from '../../primitives/ModalShell';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { allChunkLoads, chunksAcross, CHUNK_LOAD_MAX, getPointerRegion } from './map-load';
 import { ACTIVE, INSET, LOAD_FILL, PLATE_INK, TRACK } from '../../design/tokens';
-import { TEXT } from '../units';
+import { roleFont } from '../../design/text-weight';
 
-/** One region's tile, in css px. Wide enough for a five-figure load at `TEXT.small`, and small
+/** One region's tile, in css px. Wide enough for a five-figure load at the `small` rung, and small
  *  enough that a real map's eleven columns fit a window without scrolling sideways. */
 const TILE = { w: 56, h: 46, gap: 4, radius: 8, bar: 5 } as const;
 
@@ -57,7 +57,7 @@ export function ChunkLoadWindow() {
       ariaLabel={t('hud.region_load')}
       cardStyle={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}
     >
-      <span style={{ fontSize: TEXT.head, fontWeight: 900, color: PLATE_INK, lineHeight: 1 }}>
+      <span style={{ ...roleFont('head'), color: PLATE_INK, lineHeight: 1 }}>
         {t('hud.region_load')}
       </span>
       <div
@@ -90,10 +90,10 @@ export function ChunkLoadWindow() {
                 padding: '0 6px', boxSizing: 'border-box',
               }}
             >
-              <span style={{ fontSize: TEXT.small, fontWeight: 900, color: PLATE_INK, lineHeight: 1 }}>
+              <span style={{ ...roleFont('small'), color: PLATE_INK, lineHeight: 1 }}>
                 {region.name}
               </span>
-              <span style={{ fontSize: TEXT.small, color: PLATE_INK, lineHeight: 1, opacity: 0.75 }}>
+              <span style={{ ...roleFont('caption'), color: PLATE_INK, lineHeight: 1, opacity: 0.75 }}>
                 {region.value.toLocaleString()}
               </span>
               {/* The figure is usually a few percent of the limit, which no tint can show. The bar

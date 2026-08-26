@@ -1,0 +1,28 @@
+{
+  "id": "path-classic-mosaic-brick",
+  "category": "road",
+  "icon": "path-classic-mosaic-brick",
+  "name": {
+    "en": "Classic Mosaic Brick Path",
+    "zh": "经典马赛克砖路",
+    "ja": "クラシックモザイクレンガの道",
+    "ru": "Классическая мозаичная кирпичная дорожка",
+    "th": "ทางอิฐโมเสกคลาสสิก",
+    "id": "Jalan Bata Mosaik Klasik",
+    "fr": "Chemin de briques en mosaïque classique"
+  },
+  "color": "#c7ab9b",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

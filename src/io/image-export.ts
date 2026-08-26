@@ -16,7 +16,6 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  // Clean up
   setTimeout(() => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);

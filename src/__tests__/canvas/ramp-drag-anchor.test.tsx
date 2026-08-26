@@ -9,13 +9,13 @@
  * (rot 270: `px = highX − spanLen`); for a bridge the anchor is a cell in the GAP and the position
  * is the near end, which is never a legal anchor at all.
  *
- * The drag path fed the second where the trait wants the first: `grabOffset = position −
- * pressAnchor` tracks the footprint rigidly, so the anchor handed to validation trailed the cliff
- * by the ramp's own length. The preview drawn there sat exactly where the ramp belongs and was
- * refused; the user had to push the cursor a further two cells east, at which point the placement
- * snapped back onto where the preview had already been. The pin below is the property that
- * replaces it: the pointer anywhere in the region whose snap resolves to position P draws the
- * ghost at P and accepts at P.
+ * Feeding the second where the trait wants the first is what breaks: `grabOffset = position −
+ * pressAnchor` tracks the footprint rigidly, so the anchor handed to validation trails the cliff
+ * by the ramp's own length. The preview drawn there sits exactly where the ramp belongs and is
+ * refused; the user has to push the cursor a further two cells east, at which point the placement
+ * snaps back onto where the preview already was. The pin below is the property that rules that
+ * out: the pointer anywhere in the region whose snap resolves to position P draws the ghost at P
+ * and accepts at P.
  *
  * Terrain: ground (elev 0) west of x = 12, a mountain wall (elev 1) from x = 12 east. Every ramp
  * on it faces west — rotation 270, `position.x = 8`, cliff cell x = 12.
@@ -32,7 +32,7 @@ import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
@@ -228,8 +228,8 @@ describe('dragging a snapping item', () => {
     const overlay = armRamp();
     // Pointer deep inside the mountain wall (x = 15.5, a HALF anchor): no cliff within reach, so
     // the placement is refused — and the body ghost must still ride the wall's own surface. A
-    // whole-cell `cells[y][x]` read at a fractional index is `undefined`, which used to sink the
-    // ghost to elevation 0, i.e. inside the mountain it is hovering over.
+    // whole-cell `cells[y][x]` read at a fractional index is `undefined`, which sinks the ghost to
+    // elevation 0, i.e. inside the mountain it is hovering over.
     pressAndMoveTo(GRAB, { x: 155, y: 140 });
 
     const calls = (overlay.showPlacementGhost as ReturnType<typeof vi.fn>).mock.calls;

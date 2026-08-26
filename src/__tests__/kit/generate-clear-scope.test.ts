@@ -2,11 +2,11 @@
  * What `clearGenerated` takes back.
  *
  * Clear is the counterpart of the button beside it, so it is bounded by what that button did: the
- * region the last run was given, and the authorship the run left behind. It used to read the
- * CURRENT painted region — which a finished run has already dropped — so a Clear right after
- * generating into a region fell back to the whole map and scrubbed everything, the person's own
- * work included. A caller therefore passes the region it was GIVEN (today's shell always passes
- * null), never the one the store is holding now.
+ * region the last run was given, and the authorship the run left behind. Reading the CURRENT
+ * painted region instead reads one a finished run has already dropped, so a Clear right after
+ * generating into a region falls back to the whole map and scrubs everything, the person's own work
+ * included. A caller therefore passes the region it was GIVEN (today's shell always passes null),
+ * never the one the store is holding now.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { clearGenerated, generateMap } from '../../kit/operations';
@@ -16,11 +16,11 @@ import { createDefaultRegistry } from '../../rules/index';
 import { getMapTemplate } from '../../config/maps';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { objectPlacementCommand } from '../../tools/objects/object-placer';
-import { generateObjectId } from '../../tools/utils';
+import { generateObjectId } from '../../core/model/object-id';
 import type { GenerateConfig, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 
 const config = (seed: number): GenerateConfig => ({
-  algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null, naturalness: 1,
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null, richness: 1,
 });
 
 /** A square of buildable cells in the west half, well clear of the plaza. */

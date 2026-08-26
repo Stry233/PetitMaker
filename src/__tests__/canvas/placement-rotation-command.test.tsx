@@ -28,7 +28,7 @@ import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';

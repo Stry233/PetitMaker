@@ -16,18 +16,18 @@
 // i18n: option labels are forced to one line — a longer language (ru/fr, …) that doesn't fit an
 // option's slot must never wrap to a second line (an uneven, ugly pill). The label is drawn at the
 // size it is asked for and never shrunk to its slot: a control is sized by its text, not the other
-// way round, so a row that does not fit is fixed where the room is decided. (The scale-to-fit this
-// carried was measured across all seven locales at every place this control appears and never once
-// engaged, so it only stood as an invitation to size a window by shrinking its words.)
+// way round, so a row that does not fit is fixed where the room is decided. (A scale-to-fit here
+// never engages: measured across all seven locales at every place this control appears, it only
+// stands as an invitation to size a window by shrinking its words.)
 //
 // STRETCH MODE'S PILL TARGET IS A FRACTION, NEVER A MEASURED PIXEL. Every option there is an equal
 // `flex: 1` slot in a `gap`ped row, so option i of n sits at `left: (i/n)*(100% + gap)` with
 // `width: (100% - gap*(n-1))/n` — geometry the DOM already guarantees without asking it (the gap
 // terms matter: the plain (i/n)*100% form runs the pill gap*(n-1)/n too wide and up to a whole gap
-// off its button). A host card that itself resizes (e.g. tweening to fit a new
-// panel) used to re-measure the active button's px offset on every tick, re-aiming the pill's spring
-// at a freshly-moved destination mid-flight; a spring chasing a moving target reads as a bounce no
-// matter how the card's own resize is eased. A fraction cannot move under a resize, so the track
+// off its button). A px offset measured off the active button is re-measured on every tick of a host
+// card's own resize (tweening to fit a new panel), which re-aims the pill's spring at a destination
+// that has already moved; a spring chasing a moving target reads as a bounce no matter how the
+// card's own resize is eased. A fraction cannot move under a resize, so the track
 // carries the pill passively and the spring only ever animates an actual INDEX change. Only
 // non-stretch (content-sized) mode still measures: there a slot's width depends on its own text, which
 // has no fractional formula, so px measurement is the only source of truth.
@@ -35,6 +35,7 @@ import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties } from
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { colors, font, springs, cursors } from '../design/styles';
 import { skin } from '../design/window-skin';
+import { roleWeight, TEXT_ROLES } from '../design/text-weight';
 
 const PAD_X = 6; // stretch-mode button horizontal padding (each side) — see `btn.padding` below
 const TRACK_PAD = 3; // wrap's own padding — see `wrap.padding` below, and the pill's top/bottom inset
@@ -59,11 +60,11 @@ type PillBox = { x: number; w: number };
 // A quick, crisp slide. `stiff` (600/30/0.5, ζ≈0.87 — slightly underdamped) is the house's fast
 // spring: it snaps across the row in a few frames yet still visibly TRAVELS (its ~1px arrival
 // overshoot is clipped by the track's `overflow: hidden`), so it reads as movement, not a
-// teleport. Chosen over `gentle` (stiffness 200), which the user found too slow. Existing token.
+// teleport. Chosen over `gentle` (stiffness 200), which reads as too slow for this travel.
 const PILL_SPRING = springs.stiff;
 
 export function SegmentedControl<T extends string>({
-  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = 12.5, height,
+  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = TEXT_ROLES.chip.px, height,
 }: {
   value: T;
   options: readonly T[];
@@ -73,6 +74,8 @@ export function SegmentedControl<T extends string>({
   idPrefix: string;
   /** Buttons fill the row (export) vs size to their content (inline settings toggle). */
   stretch?: boolean;
+  /** A segment names a choice, so it is drawn at the `chip` rung. Passed only where a caller's row
+   *  cannot hold that size. */
   fontSize?: number;
   /** The control's whole height in css px, for a caller whose row holds controls to one line (the
    *  generate strip). The buttons fill it; their vertical padding goes. Unset, the buttons size from
@@ -186,13 +189,12 @@ export function SegmentedControl<T extends string>({
 // overshoot. At rest the pill is inset by the `TRACK_PAD` padding on every side, so its
 // rounded corners sit inside the stadium and are never cut.
 const wrap: CSSProperties = { position: 'relative', display: 'flex', gap: TRACK_GAP, background: skin.track, borderRadius: 999, padding: TRACK_PAD, overflow: 'hidden' };
-const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: 999, fontFamily: font.family, fontWeight: 800, color: colors.frameDark, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
-// The pill's vertical placement is a static `top/bottom` inset (not measured/animated — see the
-// `PillBox` comment), so it is symmetric BY CONSTRUCTION at every zoom/scale: the browser lays
-// out both edges directly, with no JS offsetHeight integer round-trip to drift. NON-STRETCH MODE
-// ONLY: horizontal is still measured + animated (`x`/`width` in the `animate` prop above) from the
-// active button's offset box, since a content-sized slot has no fractional formula — `left: 0` is
-// that transform's origin. Stretch mode uses `pillTrack`/`pillStretch` below instead.
+const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: 999, fontFamily: font.family, fontWeight: roleWeight('chip'), color: colors.frameDark, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
+// The pill's vertical placement is a static `top/bottom` inset, never measured or animated (the
+// `PillBox` comment has why). NON-STRETCH MODE ONLY: horizontal is still measured + animated
+// (`x`/`width` in the `animate` prop above) from the active button's offset box, since a
+// content-sized slot has no fractional formula — `left: 0` is that transform's origin. Stretch mode
+// uses `pillTrack`/`pillStretch` below instead.
 // `height: 'auto'` is explicit (not merely omitted) so it doubles as the framer fallback for a
 // removed animated height — see the key comment on the motion.span.
 const pill: CSSProperties = { position: 'absolute', top: TRACK_PAD, bottom: TRACK_PAD, left: 0, height: 'auto', background: skin.active, borderRadius: 999, zIndex: 0 };

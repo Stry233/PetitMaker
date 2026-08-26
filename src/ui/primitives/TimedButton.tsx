@@ -43,15 +43,46 @@
  * a finger does — the handler, the focus and active states, anything listening above it. Calling
  * the handler directly would be a second way to press this button, and two ways diverge.
  *
+ * WHICH LEAVES ONE THING ONLY THIS BUTTON KNOWS: whether the press that just happened was the
+ * clock's or a hand's. Nothing in the event says so, and a host must not have to guess from its
+ * internals, so `onPress` is TOLD (`byClock`). Most callers ignore it, and should: the whole point
+ * of a default is that the two mean the same thing (the restore offer resumes either way). A caller
+ * reads it only where the press carries a SECOND meaning that belongs to the hand alone — the
+ * arrival notice answers the saved-session offer standing beside it when someone presses OK, and a
+ * countdown running out is not somebody answering anything.
+ *
  * REDUCED MOTION KEEPS IT. The ring is not decoration: it is the warning. What changes is how it is
  * drawn — a continuous sweep is motion, so under the preference the ring steps once a second, which
  * carries the same fact without anything gliding.
+ *
+ * ── AND ONE MODE WHERE THE CLOCK IS SOMEBODY ELSE'S (`external`) ──────────────────────────────
+ *
+ * Where the countdown belongs to a PROCESS rather than to the offer — a retry backoff a loop is
+ * already running, whose length it recomputes per attempt — the button draws that clock instead of
+ * keeping one. The caller hands in the fraction spent and the drawing is the same fuse: whole,
+ * spent to nothing, EMPTY MEANS FIRED, and at empty the pill flashes lit for the beat the loop
+ * takes to relight it.
+ *
+ * EVERY INTERRUPTION ABOVE IS DELIBERATELY INVERTED HERE, and that is the whole reason the mode is
+ * a mode. The pointer does not pause, focus does not cancel, and the button never presses itself:
+ * the loop retries whether a hand is resting on the pill or not, so a ring that paused under the
+ * pointer would be a drawing of something that is not happening. The press this button still
+ * carries is a hand's — retry NOW, ahead of the clock — and the clock is not the button's to stop.
+ *
+ * AND THE FUSE RUNS BETWEEN THE CALLER'S SAMPLES. A process clock is sampled at whatever rate its
+ * owner repaints — a retry face reads its backoff once a second — and a ring redrawn only on those
+ * samples is a nine-step staircase, which is the REDUCED-motion drawing of a countdown, not the
+ * full-motion one. So `external.spanMs` (how long the whole of the caller's clock lasts) turns the
+ * handed fraction into a RATE, and a rAF walks the outline on from the sample toward empty until
+ * the next sample re-seats it. Under reduced motion the walk is dropped and the ring steps at the
+ * caller's own rate, which is exactly the fallback that behaviour was already delivering.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../i18n/context';
 import { buttonMotion, colors } from '../design/styles';
+import { ACTIVE } from '../design/tokens';
 
 /** The ring's thickness, and the air between it and the button's own edge, in css px. Thin enough
  *  to read as the button's outline rather than as a collar around it. */
@@ -91,8 +122,10 @@ const spoken: CSSProperties = {
 export interface TimedButtonProps {
   /** Seconds until the button presses itself. */
   after: number;
-  /** What the press does. Reached through a real click, never called directly. */
-  onPress: () => void;
+  /** What the press does. Reached through a real click, never called directly. `byClock` is true
+   *  for the press this button makes when its time runs out, false for one a hand or a keyboard
+   *  made — the distinction the event itself cannot carry. */
+  onPress: (byClock: boolean) => void;
   /**
    * The host's own reason to hold the clock: it owns the surface this button stands on and knows
    * when someone is reading it, which the button cannot see from where it is.
@@ -104,6 +137,17 @@ export interface TimedButtonProps {
    *  under it — the mark a shelf's row of names puts under the chosen one, spent rather than
    *  filled. One control, two drawings; everything about the clock's behaviour is shared. */
   clock?: 'ring' | 'stadium';
+  /**
+   * The clock belongs to the CALLER, and `fraction` is how much of it is spent (0 = whole, 1 =
+   * empty, which means FIRED). Either drawing takes it. Present, this button keeps no clock of its
+   * own and none of the interruptions apply — see the header.
+   *
+   * `spanMs` is the whole length of that clock, which is what lets the fuse GLIDE between the
+   * caller's samples instead of stepping with them (see the header). Omitted, the ring is drawn at
+   * the handed fraction and nothing interpolates — the right answer for a caller whose clock is
+   * already sampled per frame.
+   */
+  external?: { fraction: number; spanMs?: number };
   /** Whether the press feedback moves the element. A band-sized surface must not spring under the
    *  pointer: the spring is a chip's way of saying "button", and a surface has other ways. */
   pressMotion?: boolean;
@@ -114,8 +158,8 @@ export interface TimedButtonProps {
 }
 
 export function TimedButton({
-  after, onPress, paused = false, ring = colors.accentPrimary, clock = 'ring', pressMotion = true, style,
-  'aria-label': ariaLabel, 'data-testid': testId, children,
+  after, onPress, paused = false, ring = colors.accentPrimary, clock = 'ring', external,
+  pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
   const t = useT();
   const reduced = useReducedMotionConfig();
@@ -123,6 +167,9 @@ export function TimedButton({
   const arc = useRef<SVGRectElement | SVGLineElement>(null);
   const hintId = useId();
   const [hovered, setHovered] = useState(false);
+  /** Raised around the click the countdown makes, and read by the handler inside it. A ref rather
+   *  than state: `click()` dispatches synchronously, so the flag is up for exactly that call. */
+  const selfPress = useRef(false);
   const [cancelled, setCancelled] = useState(false);
   /** The button's own laid-out box and corner. `offsetWidth` and not a client rect: the press
    *  feedback scales the element, and a measured rect would then describe the button mid-press. */
@@ -146,7 +193,44 @@ export function TimedButton({
     return () => ro.disconnect();
   }, []);
 
-  const running = after > 0 && !cancelled && !paused && !hovered;
+  /** Whether the clock is the caller's, and how much of it is spent. */
+  const lentClock = external != null;
+  const lent = external ? Math.max(0, Math.min(1, external.fraction)) : 0;
+  const fired = lentClock && lent >= 1;
+  /** How long the caller's whole clock lasts, which is what makes the handed fraction a rate. */
+  const lentSpan = external?.spanMs ?? 0;
+
+  // THE LENT FUSE, GLIDING between the caller's samples. It walks the drawn outline on from the
+  // fraction just handed in and stops at empty, re-seated at every sample: an inline style beats
+  // the rendered attribute, so this effect is the ONE writer while the clock is lent — a walk that
+  // ran fast or slow is corrected by the caller's next sample rather than accumulating, and a
+  // sample that says FIRED is drawn as fired rather than leaving the last walked frame standing.
+  // Reduced motion keeps the ring and drops the walk: the caller's sample rate becomes the step
+  // rate, which is the fact without the movement.
+  useEffect(() => {
+    if (!lentClock) return undefined;
+    const draw = (spent: number) => {
+      if (arc.current) arc.current.style.strokeDashoffset = String(spent);
+    };
+    if (reduced || lentSpan <= 0 || lent >= 1) {
+      draw(lent);
+      return undefined;
+    }
+    const from = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const spent = Math.min(1, lent + (now - from) / lentSpan);
+      draw(spent);
+      if (spent < 1) raf = requestAnimationFrame(tick);
+    };
+    draw(lent);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // `box.w` is a dependency because the ring is not RENDERED until the button has been measured:
+    // without it the first laid-out frame would carry no writer at all.
+  }, [lentClock, reduced, lentSpan, lent, box.w]);
+
+  const running = !lentClock && after > 0 && !cancelled && !paused && !hovered;
   /** What is left of the countdown, in ms. Held across a pause, which is what makes a pause a pause
    *  rather than a restart. */
   const left = useRef(after * 1000);
@@ -168,7 +252,9 @@ export function TimedButton({
       if (left.current <= 0) {
         draw(1);
         // A real press, so the countdown and a finger cannot take two different paths.
+        selfPress.current = true;
         btn.current?.click();
+        selfPress.current = false;
         return;
       }
       const spent = 1 - left.current / total;
@@ -179,7 +265,9 @@ export function TimedButton({
     return () => cancelAnimationFrame(raf);
   }, [running, after, reduced]);
 
-  const stop = useCallback(() => setCancelled(true), []);
+  // Focus declines an offer this button is making. It has no offer to decline while the clock is
+  // the caller's, and cancelling would only stop the DRAWING of something still running.
+  const stop = useCallback(() => { if (!lentClock) setCancelled(true); }, [lentClock]);
 
   // The ring stands just outside the button's edge, so its corner is the button's plus that offset:
   // a rounded rect grown by `d` has a corner of `r + d`, or it pinches at the corners.
@@ -197,7 +285,7 @@ export function TimedButton({
         aria-label={ariaLabel}
         aria-describedby={after > 0 ? hintId : undefined}
         data-testid={testId}
-        onClick={onPress}
+        onClick={() => onPress(selfPress.current)}
         onFocus={stop}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
@@ -205,10 +293,15 @@ export function TimedButton({
         // containing block, which is what anchors the ring/stadium svg below); a caller naming its
         // OWN position — the band's `absolute`, spanning the window edge to edge — must win, or
         // the button collapses to zero width with nothing in flow to give it one.
-        style={{ position: 'relative', ...style }}
+        // EMPTY MEANS FIRED, said as the pill lighting: at the last frame of the caller's clock the
+        // ring stands spent and the fill goes lit for the beat before the next attempt relights it.
+        // It stands AFTER the caller's own style, and is the one thing here that does: a caller that
+        // dresses the pill with a fill of its own (every one on a coloured paper does) would
+        // otherwise paint over the lighting and the fired beat would never be seen.
+        style={{ position: 'relative', ...style, ...(fired ? { backgroundColor: ACTIVE } : null) }}
       >
         {children}
-        {after > 0 && !cancelled && box.w > 0 ? (
+        {(lentClock || (after > 0 && !cancelled)) && box.w > 0 ? (
           clock === 'stadium' ? (
             <svg
               aria-hidden
@@ -227,7 +320,7 @@ export function TimedButton({
                 ref={arc as RefObject<SVGLineElement>}
                 x1={STADIUM / 2} y1={STADIUM / 2} x2={box.w - STADIUM / 2} y2={STADIUM / 2}
                 stroke={ring} strokeWidth={STADIUM} strokeLinecap="round"
-                pathLength={1} strokeDasharray={1} strokeDashoffset={0}
+                pathLength={1} strokeDasharray={1} strokeDashoffset={lent}
               />
             </svg>
           ) : (
@@ -244,7 +337,7 @@ export function TimedButton({
                 ref={arc as RefObject<SVGRectElement>}
                 x={RING / 2} y={RING / 2} width={w - RING} height={h - RING} rx={r} ry={r}
                 fill="none" stroke={ring} strokeWidth={RING} strokeLinecap="round"
-                pathLength={1} strokeDasharray={1} strokeDashoffset={0}
+                pathLength={1} strokeDasharray={1} strokeDashoffset={lent}
               />
             </svg>
           )

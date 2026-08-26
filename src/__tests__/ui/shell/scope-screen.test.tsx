@@ -24,7 +24,7 @@ import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { ScopeScreen } from '../../../ui/shell/bars/ScopeScreen';
-import { SCOPE_CELLS } from '../../../ui/shell/bars/scope-cells';
+import { SCOPE_CELLS, SCOPE_TOOLS_FOR } from '../../../ui/shell/bars/scope-cells';
 import { TOOL_CELLS } from '../../../ui/shell/bars/terrain-cells';
 import { makeState } from '../../rules/_helpers';
 
@@ -133,7 +133,7 @@ describe('the painted highlight', () => {
     view.unmount();
     expect(cleared).toBe(onDone);
 
-    // Painted away to nothing IS a clear, not a call to skip: the last one used to stay on the map.
+    // Painted away to nothing IS a clear, not a call to skip, or the last region stays on the map.
     const before = cleared;
     mount();
     act(() => { useEditorStore.setState({ region: [] }); });
@@ -159,17 +159,52 @@ describe('what the screen offers', () => {
     expect(screen.queryByText(new RegExp(en('gen.scope_all')))).toBeNull();
   });
 
-  /** Both go through the region channel rather than the store, because the collector owns the
+  /**
+   * A PICTURE MAY BE CIRCLED. Both picture kinds are fitted to the region's bounding box, and the
+   * two figures a drag produces whole — the rectangle and the circle inscribed in its own box — are
+   * both usable: a circled picture keeps its middle and gives up its corners, which is a vignette
+   * rather than damage. What neither can use is a figure with no interior (a brushed blob, a line, a
+   * curve), where the box is mostly empty and the picture comes out full of holes.
+   */
+  it('offers the picture kinds a rectangle and a circle, and nothing that leaves holes', () => {
+    expect(SCOPE_TOOLS_FOR.image).toEqual(['rect', 'circle']);
+    expect(SCOPE_TOOLS_FOR.text).toEqual(['rect', 'circle']);
+    render(
+      <I18nProvider>
+        <ScaleProvider value={0.5}>
+          <ScopeScreen onDone={() => {}} tools={SCOPE_TOOLS_FOR.image} minSide={20} />
+        </ScaleProvider>
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText(en('design.circle_brush'))).toBeTruthy();
+    expect(screen.getByLabelText(en('design.rect_brush'))).toBeTruthy();
+    expect(screen.queryByLabelText(en('design.line_brush'))).toBeNull();
+  });
+
+  /** The refusal has WORDS. `gen.scope_min` was called from here and defined in no locale, so the
+   *  button read as its own key until a region was big enough to make it go away. */
+  it('says the minimum in words while the region is too short', () => {
+    useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
+    render(
+      <I18nProvider>
+        <ScaleProvider value={0.5}>
+          <ScopeScreen onDone={() => {}} tools={SCOPE_TOOLS_FOR.image} minSide={20} />
+        </ScaleProvider>
+      </I18nProvider>,
+    );
+    const said = en('gen.scope_min').replace('{n}', '20');
+    expect(said).not.toContain('gen.');
+    expect(screen.getByText(said)).toBeTruthy();
+  });
+
+  /** It goes through the region channel rather than the store, because the collector owns the
    *  buffer AND its own undo stack. */
-  it('asks the region brush for select-all and clear', () => {
+  it('asks the region brush for clear', () => {
     const clear = vi.fn();
-    const selectAll = vi.fn();
-    const off = setRegionBrushHandler({ paint: vi.fn(), done: vi.fn(), clear, selectAll });
+    const off = setRegionBrushHandler({ paint: vi.fn(), done: vi.fn(), clear });
     installMap();
     mount();
 
-    fireEvent.click(screen.getByText(en('gen.select_all')));
-    expect(selectAll).toHaveBeenCalled();
     fireEvent.click(screen.getByText(en('generate.clear')));
     expect(clear).toHaveBeenCalled();
     off();

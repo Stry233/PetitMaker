@@ -50,8 +50,8 @@ function hexiaKit(): Counted {
 }
 
 const config = (seed: number): GenerateConfig => ({
-  algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed, region: null,
-  relief: 0.8, naturalness: 1, settlement: 0.5, nature: 0.5,
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed, region: null,
+  richness: 1,
 });
 
 const ids = (state: GridState): string[] => [...state.objects.keys()];
@@ -98,9 +98,9 @@ describe('what a generation costs', () => {
 
   /**
    * CLEAR LEAVES NO CRUMBS. An erase is refused outside the buildable zone, so the cosmetic Γ
-   * patches an auto edge-cut writes along the island's rim used to survive every clear and every
-   * regeneration — a blank map that still remembered the island before it, and a card built for
-   * plain ground that could never be landed as itself again.
+   * patches an auto edge-cut writes along the island's rim are the ones at risk of surviving every
+   * clear and every regeneration — leaving a blank map that still remembers the island before it,
+   * and a card built for plain ground that can never be landed as itself again.
    */
   it('clears a generated island back to the map it opened on', async () => {
     const kit = hexiaKit();

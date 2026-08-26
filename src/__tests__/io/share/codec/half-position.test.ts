@@ -38,7 +38,7 @@ function wholeMap(): GridState {
   }
   for (let x = 30; x < 34; x++) s.cells[24]![x]!.terrain = { type: TerrainType.Water, elevation: 0 };
   place(s, 'a', 'tree-ginkgo', 18, 18, 0, 0);
-  place(s, 'b', 'road-stone', 19, 19, 0, 0);
+  place(s, 'b', 'path-garden-stone', 19, 19, 0, 0);
   place(s, 'c', 'bridge-plank', 29, 24, 90, 0, 4);
   place(s, 'd', 'ramp-plank', 20, 27, 180, 2);
   return s;
@@ -49,8 +49,12 @@ describe('share codec: half positions are additive', () => {
     // A FROZEN pin, taken from the encoder before it learned about half positions. Every share
     // code in the wild was written by that encoder; a change here means codes stop matching the
     // ones the same map produced yesterday, so this must fail loudly rather than drift.
+    // The frame's catalogHash bytes shift whenever the catalog's item set changes. That is
+    // expected and is not a position-format change: re-freeze the four bytes, and only those.
+    // Re-frozen whole once, when the four plain colour roads were retired (#37): this map paved
+    // with one, so the item it now names moved its wire index and the content hash with it.
     const bytes = await encodeMapPayload(wholeMap(), null, META);
-    expect(hex(bytes)).toBe('5032030001056865786961fd3134f13bdad5b60b00010868616c662d70696eea8125b78116a08b72af0bba228c2a79d0da358d5c6740117a5733521324e1f7000000000344927b32bc639534e56b6a2c4ab69c73f633d9fbdab19376000c66d4970d587d0f00000000000000011b7de923f00054e247a3949fa2dbabda098818bb00000000');
+    expect(hex(bytes)).toBe('5032030001056865786961fd3134f1f7e4e61d0b00010868616c662d70696e26b988de59648006f79e42eef0219177224daae786bc4b08b9d3ff70cc63f503000000000344927b32bc639534e56b6a2c4ab69c73f633d9fbdab19376000c66d4970d587d0f00000000000000011b7de923f0005597ce127d6bb1f38e7828b110f000000000');
   });
 
   it('returns a map with no half position exactly', async () => {
@@ -115,7 +119,8 @@ describe('share codec: half positions are additive', () => {
 
   it('carries a half anchor the whole way out and back', async () => {
     // The live path: the code is drawn, read back off the pixels, and rebuilt through the save
-    // loader and the import gate — the two places that used to insist a position be a whole cell.
+    // loader and the import gate — the two places that decide whether a position may sit off the
+    // whole-cell grid.
     const state = wholeMap();
     place(state, 'e', 'ramp-teak-stair', 40.5, 30, 0, 1);
     place(state, 'f', 'bridge-teak', 44, 50.5, 90, 0, 4);

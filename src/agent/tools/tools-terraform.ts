@@ -4,10 +4,10 @@
  * folded into the same undo step, exactly like the build brushes (ATOMIC UNDO).
  */
 import { CommandType, TerrainType, type Command, type MacroCoord } from '../../core/model/types';
-import { circleCells, lineCells, bezier4, expandLine } from '../../tools/paint/shapes';
-import { edgeCutGeneratedTerrain } from '../../tools/edge-cut/auto-edge-cut';
+import { circleCells, lineCells, bezier4, expandLine } from '../../tools/paint';
+import { edgeCutGeneratedTerrain } from '../../tools/edge-cut';
 import { makeRng } from '../../core/model/rng';
-import { type AgentToolDeps, type ToolResultBody, clamp, runStroke } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError, clamp, runStroke } from './tools-common';
 
 /** Organic blob: union of a main circle and two seeded satellite circles. */
 function blobCells(cx: number, cy: number, r: number, rng: { float(): number }): MacroCoord[] {
@@ -83,7 +83,9 @@ export function sculptTerrace(deps: AgentToolDeps, input: Record<string, unknown
 
 export function carveRiver(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const points = ((input.points as MacroCoord[] | undefined) ?? []).slice(0, 6);
-  if (points.length < 2) return { isError: true, content: 'Need 2-6 waypoints.' };
+  if (points.length < 2) {
+    return argError('points needs 2-6 waypoints from source to mouth.', 'points: [{"x":8,"y":10},{"x":16,"y":14},{"x":24,"y":12}]');
+  }
   const width = clamp(Number(input.width) || 4, 2, 6);
   const smooth = input.smooth === 'rect' ? 'rect' : 'round';
   // smooth polyline: bezier through consecutive midpoints with waypoints as controls
@@ -105,7 +107,7 @@ export function carveRiver(deps: AgentToolDeps, input: Record<string, unknown>):
   // keep a 1-cell margin off the literal map edge: V-WTR-02 treats off-map
   // neighbors as uncapped, so edge-touching water always reverts
   const cells = expandLine(path, width).filter((c) => c.x >= 1 && c.y >= 1 && c.x < mw - 1 && c.y < mh - 1);
-  if (cells.length === 0) return { isError: true, content: 'River path is entirely off-map.' };
+  if (cells.length === 0) return argError(`the river path lies entirely off the ${mw}x${mh} map, pass points inside it.`);
   return runStroke(
     deps,
     [{ type: CommandType.PaintTerrain, timestamp: Date.now(), cells, terrainType: TerrainType.Water, elevation: 0 }],

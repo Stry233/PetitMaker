@@ -1,51 +1,33 @@
-ECOLOGY PLANTING — plant like nature works; applies to any style, any biome.
+ECOLOGY PLANTING — plant at exactly TWO grains, the bed and the specimen. The middle grain (little 4-7 plant clumps everywhere) is what makes a map read as generated dust; the expert maps almost never use it.
 
-WHEN TO USE: any planting pass — after terrain and buildings are settled. Also as a
-self-check when evaluate_map decoration is below 6 or view_map looks uniform/sparse.
+WHEN TO USE: any planting pass, after terrain and buildings are settled; also when view_map shows pink speckle outlining every edge.
 
-PRINCIPLES
-1. Drifts not confetti: clusters of one species with soft, overlapping edges. scatter_objects
-   in offset overlapping patches, or plant_forest for larger stands.
-2. Banding by elevation and moisture: waterside species (flowers, reeds) near water;
-   conifers on high tiers; broadleaf trees on mid-elevation benches; scrub/grass at bases.
-3. Ecotones: at boundaries between two bands, mix the neighboring species in a narrow
-   transitional strip. The junction between forest and meadow is richer than either alone.
-4. Clearings give forests shape: plant_forest leaves organic glades — do not fill them.
-   An empty clearing inside a forest reads as intentional; a uniform tree wall reads as
-   generated noise.
-5. Thin toward inhabited areas: forest density should decrease as it approaches buildings
-   and roads. A settlement ringed by solid forest looks fortified, not cozy.
-6. Specimen trees as accents: one notable tree (large species, elevated position, edge of
-   clearing) at a composition focal point ties the planting to the scene structure.
+THE TWO GRAINS
+- THE BED: one species, solid block. The reference habit is a 5x6 bed of 30 flowers (scatter_objects with ONE catalogId, count 30, rect 5x6, spacing 0); fields scale the same move up. A two-species bed is already a mixture — keep beds pure and let COLOR do the theming (flower-daisy-yellow, flower-sunflower, flower-rose, flower-violet-pink, plant-azalea...).
+- THE ORCHARD: one tree species on an open step-2 lattice, 18-48 trees in a rect from 11x5 to 23x7. scatter_objects with one tree id gives the lattice for free — trees keep their own exclusion radius (spacing 1 loosens it further).
+- THE SPECIMEN: a single deliberate placement (place_object, or scatter count 1) — one tree beside a door, one at the tip of a peninsula, one on the lookout. Specimens only work because the beds exist; contrast between the grains is what makes either legible.
+- Nothing in between. Replace every "sprinkle a few here" urge with "draw a bed of size S, or place one specimen".
+
+ONE PALETTE PER PLACE
+- Each region commits to 1-2 species; the VARIETY lives between regions, not inside one. Map-wide, no flower species should dominate unless that is the style (a garden-town can commit half its planting to one yellow field on purpose — but then that is the map's one big statement, not a default).
+- Elevation bands keep it natural: waterside flowers along banks, broadleaf and fruit trees (tree-peach, tree-apple, tree-plum) on the working benches, conifers (tree-fir) and bare rock up high. Trees-to-flowers is roughly 1:1 on a terraced map and can run to 1:6 on a flat garden map.
+
+WHERE PLANTS STAND
+- Beds sit INSIDE regions (a courtyard, a bench, a clearing), not strung along every street. On the terraced reference only ~15% of plants touch pavement. The opposite dialect — a 1-wide flower border escorting the streets in alternating colors — is legitimate for a formal garden-town look, but choose one dialect per map, never both.
+- Lines are deliberate: a single-species row of 6-10 lining ONE approach (the lane to a museum, a jetty) is an event; rows along everything are noise.
+- Wild slopes: plant_forest (rect + density 0.4-0.7) plants layered stands with glades and waterside drifts on its own — use it for anything larger than a yard and do NOT hand-scatter on top of it. Leave summits and the primary feature's surroundings nearly bare.
 
 METHOD
-1. Elevation bands: decide which species occupy each tier.
-   Example: tier 0 = flowers/shrubs near water; tier 1 = broadleaf mix; tier 2+ = conifers.
-2. Forest stands: plant_forest on mid/high tiers. Vary the scatter radius and species per
-   call so stands have irregular shapes and sizes. Leave 10-20% of each tier unforested.
-3. Waterside drifts: scatter_objects waterside species (flowers, reeds) in a band 1-3 cells
-   from any water edge. Two separate scatter calls with slight offset produce the soft drift.
-4. Ecotone strip: at the forest/meadow edge, one scatter_objects call mixing 2 species,
-   lighter density than the main forest stand.
-5. Settlement edges: scatter_objects 1-2 tree species in a loose ring around built areas
-   (spacing 2-3); leave the road approach unplanted.
-6. Specimen: one scatter_objects call, count 1, placing a large or distinctive species at
-   the scene's focal point (hill top, pond edge, plaza entrance).
+1. Decide the palette per region first (write it in the plan): which species owns each place.
+2. plant_forest the wild areas (backing slopes, map edges), density lower near the built areas.
+3. Beds: one scatter_objects call per bed, one species each, placed at the spots people look at (in front of doors, beside the plaza, at a pond's viewing side).
+4. Orchards/rows: one species per block or line, at region scale.
+5. Specimens last, at the composition's focal points — after these, STOP.
 
-FAILURE MODES TO AVOID
-- Uniform random sprinkle: a single scatter_objects over the entire map produces confetti.
-  Cluster the calls into distinct bands and stands instead.
-- Single-species walls: plant_forest with one species filling every cell up to a hard edge.
-  Vary species, leave glades, use soft edges (lower density near boundaries).
-- Planting over future road lines: roads need flat terrain. scatter_objects flora on a
-  planned road path will block build_road_network. Place roads before planting, or leave
-  clear corridors.
-- Over-decorating: evaluate_map decoration plateaus above 8; adding more past that reduces
-  negative space and hurts composition. Stop when decoration >= 7-8.
+FAILURE MODES
+- One scatter over the whole map: confetti by construction. Every call gets a small rect and one species.
+- Outlining: tracing building footprints and road edges with plants makes nothing an accent because everything is.
+- Planting over a future road line — roads need flat clear cells; lay routes first or keep corridors clear.
+- Density chasing: evaluate_map decoration saturates around 7-8; past that you are deleting negative space, not adding beauty.
 
-DONE CHECK
-- evaluate_map decoration >= 6.
-- At least 2 distinct elevation bands represented in the planting.
-- Waterside species present near any water body.
-- Forest stands have glades (not 100% filled).
-- Settlement approach has a clear unplanted road corridor.
+DONE CHECK: every planted area is nameable as a bed, an orchard, a row, a forest stand, or a specimen; each region reads as one palette; the map still has large deliberately empty ground.

@@ -1,9 +1,10 @@
-RIVER + BRIDGE PLAYBOOK
-Bridges are the most constraint-heavy object: a STRAIGHT 3-6 cell gap with flat EQUAL-height banks. Build the river FOR the bridge, not the other way round.
-1. Route: pick start/end on opposite map edges or between two features. paint_terrain water elevation 0 as a line width 4 — ONE call. Slight bends = 2-3 line calls sharing endpoints; keep each segment straight.
-2. Verify nothing reverted (the result snapshot shows the channel; ground-level water needs no caps on open flat grass).
-3. find_bridge_sites catalogId <bridge-of-choice> near the intended crossing — it returns exact anchors.
-4. place_object the bridge AT a returned anchor (position/rotation/span snap).
-5. Road: build_road road-dirt from each bank end of the bridge toward the destinations (the bridge deck itself is walkable; roads stop at the banks).
-6. Dressing: scatter_objects waterside flowers (2 species, count 8-10) along ONE bank; 2-3 trees on the outer bend.
-7. If find_bridge_sites returns nothing: the channel is too wide/narrow or banks uneven — clear_area the crossing zone and repaint that segment straight at width 4, then retry once.
+RIVER CROSSING — a river with believable bends and a bridge that reads as an event. Build the river FOR the bridge: a legal site needs a STRAIGHT 3-6 cell gap with flat equal banks, and round ponds have no such waist.
+
+1. ROUTE: pick source and mouth (opposite map edges, or a lake to the sea). carve_river through 3-5 waypoints with 4-8 cell sideways offsets; to vary the width, chain two calls at a shared waypoint — width 3 through the middle, 5 at the mouth. Avoid long dead-straight runs everywhere EXCEPT the crossing segment.
+2. THE CROSSING SEGMENT: where the road will cross, make the channel straight and uniform — paint_terrain water elevation 0 as a line, width 4, for an 8-10 cell run. Verify nothing reverted (ground-level water on open grass needs no caps).
+3. THE BRIDGE: find_bridge_sites with your bridge id near the intended crossing — ALWAYS, sites are invisible in the token grid. place_object at a returned anchor (position/rotation/span snap). bridge-plank is the 1-wide footbridge; the other bridges lay a 2-wide deck for a street. Alternatively frame_crossing near the spot realizes the nearest crossing and dresses both ends in one call.
+4. ROADS THAT ARRIVE: a 2-wide build_road lane to each bank end of the bridge (the deck itself is walkable; pavement stops at the banks). Let ONE bank's road continue to a destination and the OTHER end at the water a few cells downstream — a fishing spot, a jetty, a viewing bed — so the crossing leads somewhere and the river is also an arrival.
+5. DRESSING, two grains only: one solid single-species flower bed on the bank people approach from; one specimen tree on the outer bend. No flower ring around the water and no speckle along both banks.
+6. IF find_bridge_sites RETURNS NOTHING: the channel is too wide, too narrow, or the banks uneven. clear_area the crossing zone, repaint that segment straight at width 4, retry once.
+
+DONE BAR: the river meanders except at its straight crossing waist; the bridge sits on a found anchor; both ends are paved and at least one route ENDS at something; banks carry one bed and one specimen, nothing more.

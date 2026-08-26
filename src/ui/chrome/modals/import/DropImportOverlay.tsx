@@ -53,9 +53,8 @@ type DropPhase =
 
 // Padding lives on the CARD, matching ImportModal's `cardStyle`: a NUMBER `width` plus a
 // same-element padding is content-box additive (no `box-sizing:border-box` here), so padding a
-// CHILD instead would make this card narrower and shorter than the modal's. `position:relative`
-// lets `AnimatePresence mode="popLayout"` (below) absolutely-position the EXITING view against
-// this card; `overflow:hidden` clips transient overflow while the height morphs.
+// CHILD instead would make this card narrower and shorter than the modal's. `overflow:hidden`
+// clips transient overflow while the height morphs.
 const cardStyle: CSSProperties = { ...windowCard, padding: IMPORT_CARD_PADDING, position: 'relative', overflow: 'hidden' };
 
 // Visible for the one frame before the layout effect below measures the real height.
@@ -210,13 +209,18 @@ export function DropImportOverlay() {
       passive={phase.kind !== 'confirm'}
     >
       {(exiting) => (
-        // popLayout: framer measures the EXITING view's last box and holds it out of flow, so the
-        // entering view lays out normally in the card's padded content box instead of stacking.
-        <AnimatePresence mode="popLayout" initial={false}>
+        // The two views stand in the SAME grid cell, so the exiting one never adds to the flow
+        // while it fades. Not `mode="popLayout"`, which does the same job: framer 12's PopChild
+        // reads the child's `props.ref` for React 19, and React 18 answers that read with a dev
+        // warning on every render. The card's height is measured off the ACTIVE view alone
+        // (data-drop-view above), so the overlap never inflates it.
+        <div style={{ display: 'grid' }}>
+        <AnimatePresence initial={false}>
           {phase.kind === 'confirm' ? (
             <motion.div
               key="confirm"
               data-drop-view="confirm"
+              style={{ gridArea: '1 / 1' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               // While the shell itself is closing this view must NOT run its own exit fade: it
@@ -245,6 +249,7 @@ export function DropImportOverlay() {
             <motion.div
               key="zone"
               data-drop-view="zone"
+              style={{ gridArea: '1 / 1' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={exiting ? undefined : { opacity: 0, pointerEvents: 'none', transition: exitTransition }}
@@ -257,6 +262,7 @@ export function DropImportOverlay() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       )}
     </ModalShell>
   );

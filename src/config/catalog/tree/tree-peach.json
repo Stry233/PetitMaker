@@ -19,6 +19,7 @@
     "pink"
   ],
   "icon": "tree-peach",
+  "iconColor": "#ca7482",
   "width": 1,
   "height": 1,
   "loadValue": 50,

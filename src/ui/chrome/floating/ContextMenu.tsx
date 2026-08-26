@@ -1,10 +1,10 @@
 import { useEffect, type CSSProperties, type ReactElement } from 'react';
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useWeightVars } from '../../design/scale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getCell } from '../../../core/model/grid-model';
-import { peelTerrain } from '../../../tools/objects/actions';
+import { peelTerrain } from '../../../tools/objects';
 import { rotateObjectAction, deleteSelection } from '../../../kit/group-edit';
 import { useT } from '../../../i18n/context';
 import { colors, radii, shadows, font, easing, springs, exitTransition, z, cursors } from '../../design/styles';
@@ -46,6 +46,7 @@ const dividerStyle: CSSProperties = {
 
 export function ContextMenu() {
   const chrome = useChromeScale();
+  const weights = useWeightVars();
   const t = useT();
   const menu = useEditorStore((s) => s.contextMenu);
   const gridState = useEditorStore((s) => s.gridState);
@@ -107,7 +108,7 @@ export function ContextMenu() {
         close();
       };
       content = (
-        <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...pos }}>
+        <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...weights, ...pos }}>
           <button
             style={{ ...itemStyle, color: colors.statusError, opacity: isGround ? 0.4 : 1, pointerEvents: isGround ? 'none' : 'auto' }}
             onMouseEnter={(e) => { if (!isGround) (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
@@ -139,7 +140,7 @@ export function ContextMenu() {
           close();
         };
         content = (
-          <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...pos }}>
+          <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...weights, ...pos }}>
             {item?.rotatable && (
               <>
                 {ANGLES.map((a) => (

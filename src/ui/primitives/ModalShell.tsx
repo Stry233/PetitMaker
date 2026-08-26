@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, useIsPresent, type Transition } from 'framer-motion';
 import { cozyOverlay, springs, exitTransition } from '../design/styles';
 import { cozyPanel } from '../design/window-skin';
-import { useChromeScale } from '../design/scale';
+import { useChromeScale, useWeightVars } from '../design/scale';
 import { useOverlayLock } from '../hooks/useOverlayLock';
 
 /**
@@ -149,6 +149,9 @@ const sentinelStyle: CSSProperties = {
 export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive = false, children }: ModalShellProps) {
   useOverlayLock(open && lockOverlay); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
   const chrome = useChromeScale();
+  // Published on the card, the one element that carries the surface's `zoom` — so the weights and
+  // the zoom they were resolved for cannot come apart. Every token and label inside inherits them.
+  const weights = useWeightVars();
   const prefersReduced = useReducedMotionConfig();
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -164,10 +167,11 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
   onCloseRef.current = onClose;
 
   // Escape closes the modal — but ONLY the topmost open shell.
-  // Every current ModalShell consumer (About, Settings, Help, NewProject,
-  // Export, ExportJson, Import) treats `onClose` as a plain dismiss — none
-  // guards it against an in-flight async action — so a shared handler here is
-  // safe for all seven, with one caveat (ExportModal mid-export). Keyed on
+  // Most ModalShell consumers (About, Settings, Help, Export, ExportJson,
+  // Import) treat `onClose` as a plain dismiss, so a shared handler here is
+  // safe for them, with one caveat (ExportModal mid-export). A window with
+  // work in flight guards its own handler instead (ChangePlanetModal refuses
+  // to close while a transfer runs), which this reaches through `onCloseRef`. Keyed on
   // `open`+`passive`, not on `onClose` identity, so a consumer whose `passive`
   // flips mid-`open` joins or leaves the stack at that flip, not only at mount.
   useEffect(() => {
@@ -268,6 +272,7 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
   const card: CSSProperties = {
     ...cozyPanel,
     zoom: chrome,
+    ...weights,
     // With `motionSize`, framer owns width/height on `animate` — omit the static
     // ones so they don't fight the animated values (maxHeight still caps).
     ...(motionSize == null && resolvedWidth != null ? { width: resolvedWidth } : {}),

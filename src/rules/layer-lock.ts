@@ -7,9 +7,7 @@
  * the cell cannot be overwritten or erased. Painting at a locked target elevation
  * is also rejected regardless of existing terrain.
  *
- * Assumptions:
- * - state.lockedLayers is maintained by the UI; this rule only reads it.
- * - Returns [] immediately when lockedLayers is empty (fast path).
+ * `state.lockedLayers` is maintained by the UI; this rule only reads it.
  */
 import {
   CommandType,

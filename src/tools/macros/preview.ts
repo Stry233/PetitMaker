@@ -4,7 +4,7 @@
  * A macro is a small generation, so what it produces is not predictable from its aim point: a hill
  * reads the ground under it, a stream walks downhill until it finds water or gives up, and planting
  * asks the ecology what will grow. That is what makes them worth having and it is also what makes
- * them hard to aim — before this, the only way to find out what a press would do was to press.
+ * them hard to aim: without a preview the only way to find out what a press does is to press.
  *
  * So the preview runs the REAL macro on a detached clone (`runOnScratch`, the same path
  * `applyMacro` takes) and reports the cells its accepted commands touch. Nothing is committed,
@@ -22,8 +22,9 @@ import { cloneGridState } from '../../core/model/grid-model';
 import { hashJSON } from '../../core/model/hash';
 import type { EditorEvents, GridState, MacroCoord } from '../../core/model/types';
 import { roadLookup } from '../../state/object-index';
+import { catalogLoadValue } from '../../state/catalog';
 import type { MacroContext } from './context';
-import { applyMacro, type MacroId, type MacroOpts } from './index';
+import { applyMacro, type MacroId, type MacroOpts } from './run';
 
 /**
  * What the macro WOULD build, and what it would COST.
@@ -106,7 +107,7 @@ export function previewMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): M
   if (hit) return hit;
 
   const state = cloneGridState(ctx.state);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state));
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state), catalogLoadValue);
   // THE REAL PRESS, on a copy. A macro is more than its builder — it is the builder, the replay,
   // and the post-stroke commit that can revert all of it — so running `applyMacro` itself is what
   // keeps the shape shown from disagreeing with the shape laid.

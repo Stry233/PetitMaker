@@ -11,6 +11,7 @@
     "fr": "Canna rouge"
   },
   "icon": "flower-canna-red",
+  "iconColor": "#dc7064",
   "width": 1,
   "height": 1,
   "loadValue": 10,

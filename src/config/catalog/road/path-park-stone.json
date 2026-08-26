@@ -1,0 +1,28 @@
+{
+  "id": "path-park-stone",
+  "category": "road",
+  "icon": "path-park-stone",
+  "name": {
+    "en": "Park Stone Path",
+    "zh": "公园石路",
+    "ja": "公園の石の道",
+    "ru": "Парковая каменная дорожка",
+    "th": "ทางหินสวนสาธารณะ",
+    "id": "Jalan Batu Taman",
+    "fr": "Chemin de pierres de parc"
+  },
+  "color": "#9b7b74",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

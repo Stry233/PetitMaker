@@ -1,0 +1,378 @@
+/**
+ * The bench's live seam: what a dev-only bench run against a REAL gateway needs that the scripted
+ * and played rigs never touch. Web-standard globals only (fetch, Headers, Response, TextDecoder),
+ * no node imports, so `played-adapter.ts` stays the one node-only file under `src/`; the sink a
+ * caller passes in is where the filesystem happens.
+ *
+ * - `parseLiveEnv` reads the `AGENT_LIVE_*` triple (plus an optional headers JSON, a dialect, and
+ *   `AGENT_LIVE_THINKING`, an anthropic-dialect extended-thinking budget) and fails loudly naming
+ *   what is missing. The key may be a placeholder for a gateway authed by
+ *   headers, or a short-lived Bearer session token — an expired one answers 401, which classifies
+ *   `auth` and ends the run honestly rather than retrying blind.
+ * - `redactKey` scrubs the key to `first4…last3` anywhere it could surface.
+ * - `wireFetch` is the wire shim: it injects the gateway's own headers into every request (and
+ *   drops named ones — a Bearer-authed proxy must not also see the SDK's `x-api-key`), rewrites a
+ *   pinned SDK default host onto the gateway's base (the Anthropic-dialect adapter accepts no
+ *   base URL, so its requests leave aimed at the SDK's own host), drops an EMPTY `tools` array
+ *   from a JSON body (the OpenAI dialect serializes one when a request offers no tools, and an
+ *   endpoint without tool support may refuse even the empty list), runs the caller's body
+ *   transform (`withThinkingBudget` is the one the bench wires, turning the adapter's adaptive
+ *   thinking into an enabled budget for a seat that supports it), and appends every request,
+ *   response and stream chunk to a jsonl sink, redacted — the wire log a silent routing bug is
+ *   caught in.
+ * - `probeToolsMode` sends one minimal request WITH the `tools` parameter and reads the answer:
+ *   accepted is native mode, a tools-unsupported refusal is prose mode, anything else throws
+ *   (with a VPN hint where the host never resolved, the usual meaning for a tailnet-only gateway).
+ * - `probeVision` sends one tiny solid-color image and asks for its color: the named color is a
+ *   vision seat, a refusal OR an answer that never names it is text-only (a gateway can silently
+ *   drop image parts, which to the harness is the same blindness as refusing them), and a failure
+ *   that is not about the image (auth, rate, network) throws.
+ * - `redactImagePayloads` reduces base64 image payloads in a wire line to a size + FNV-1a stamp,
+ *   both dialect shapes (`image_url` data URLs, Anthropic base64 source blocks): the log must
+ *   record that an image rode, never the megabytes themselves.
+ * - `createPacedAdapter` keeps `stream()` starts a floor apart, for a gateway whose limit is known
+ *   before the first 429 teaches the loop's own pace (`core/retry.ts:pacingFloorMs`).
+ *
+ * An http:// base URL is reachable from HERE by construction and only here: the app's own settings
+ * path (`security/key-storage.ts:sanitizeEndpointUrl`) forces https for every non-loopback host,
+ * and this seam never goes through it.
+ */
+import type { StreamEvent, TurnError } from '../core/types';
+import type { Adapter, AdapterRequest } from '../providers/types';
+
+export interface LiveEnv {
+  baseUrl: string; key: string; model: string; dialect: 'openai' | 'anthropic' | 'responses'; headers?: Record<string, string>;
+  /** Extended-thinking token budget for the anthropic dialect (`AGENT_LIVE_THINKING`); absent is off. */
+  thinking?: number;
+}
+
+const LIVE_VARS = ['AGENT_LIVE_BASE_URL', 'AGENT_LIVE_KEY', 'AGENT_LIVE_MODEL'] as const;
+
+export function parseLiveEnv(env: Record<string, string | undefined>): LiveEnv {
+  const missing = LIVE_VARS.filter((v) => !env[v]);
+  if (missing.length > 0) {
+    throw new Error(
+      `--live needs ${LIVE_VARS.join(', ')} (any OpenAI-compatible gateway; the key may be a `
+      + `placeholder like "none" for a header-authed one). Missing: ${missing.join(', ')}.`,
+    );
+  }
+  const dialect = env.AGENT_LIVE_DIALECT ?? 'openai';
+  if (dialect !== 'openai' && dialect !== 'anthropic' && dialect !== 'responses') {
+    throw new Error(`AGENT_LIVE_DIALECT must be "openai", "anthropic" or "responses", not "${dialect}".`);
+  }
+  const out: LiveEnv = {
+    baseUrl: env.AGENT_LIVE_BASE_URL!, key: env.AGENT_LIVE_KEY!, model: env.AGENT_LIVE_MODEL!, dialect,
+  };
+  const rawHeaders = env.AGENT_LIVE_HEADERS;
+  if (rawHeaders !== undefined && rawHeaders !== '') {
+    let parsed: unknown;
+    try { parsed = JSON.parse(rawHeaders); } catch { parsed = undefined; }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)
+      || !Object.values(parsed).every((v) => typeof v === 'string')) {
+      throw new Error('AGENT_LIVE_HEADERS must be a JSON object of string header values, e.g. {"X-Client-Name":"@me"}.');
+    }
+    out.headers = parsed as Record<string, string>;
+  }
+  const rawThinking = env.AGENT_LIVE_THINKING;
+  if (rawThinking !== undefined && rawThinking !== '') {
+    const budget = Number(rawThinking);
+    if (!Number.isInteger(budget) || budget < 1024) {
+      throw new Error(`AGENT_LIVE_THINKING must be an integer budget of at least 1024 thinking tokens (the API minimum), not "${rawThinking}".`);
+    }
+    if (out.dialect !== 'anthropic') {
+      throw new Error(`AGENT_LIVE_THINKING drives the anthropic dialect's extended-thinking parameter and does nothing on "${out.dialect}"; unset it or set AGENT_LIVE_DIALECT=anthropic.`);
+    }
+    out.thinking = budget;
+  }
+  return out;
+}
+
+/** Every occurrence of the key replaced with `first4…last3`; a key too short to keep a head and a
+ *  tail of is replaced whole. */
+export function redactKey(text: string, key: string): string {
+  if (key === '') return text;
+  const stamp = key.length >= 8 ? `${key.slice(0, 4)}…${key.slice(-3)}` : '<redacted-key>';
+  return text.split(key).join(stamp);
+}
+
+export interface WireFetchOpts {
+  headers?: Record<string, string>;
+  /** Header names removed after injection (an SDK-minted credential header a proxy must not see). */
+  dropHeaders?: string[];
+  /** A pinned SDK default host mapped onto the gateway: a URL starting with `from` continues at
+   *  `to` instead, path and query kept. The log records the URL actually fetched. */
+  rewriteBase?: { from: string; to: string };
+  /** Applied to the JSON body after the empty-tools strip; what it returns is what goes out and
+   *  what the log records. */
+  transformBody?: (body: unknown) => unknown;
+  redact: (s: string) => string;
+  sink: (line: string) => void;
+  now?: () => number;
+}
+
+type Fetch = typeof globalThis.fetch;
+
+/** A JSON body's empty `tools` array (and the `tool_choice` that only makes sense beside one)
+ *  removed; any other body passes through untouched. */
+export function stripEmptyTools(body: unknown): unknown {
+  if (typeof body !== 'string') return body;
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return body; }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return body;
+  const rec = parsed as Record<string, unknown>;
+  if (!Array.isArray(rec.tools) || rec.tools.length > 0) return body;
+  delete rec.tools;
+  delete rec.tool_choice;
+  return JSON.stringify(rec);
+}
+
+/** A Messages API JSON body's `thinking` parameter replaced with the enabled budget —
+ *  `{type: 'enabled', budget_tokens}` is the installed SDK's extended-thinking shape, and the
+ *  wire is the only seam this rig has into a request the adapter has already built. The API
+ *  requires 1024 <= budget_tokens < max_tokens and the two share the ceiling, so a ceiling the
+ *  budget would not fit under is raised BY the original ceiling: the answer keeps the headroom it
+ *  had and the thinking rides on top. Messages (raw thinking/tool_use echoes included) are never
+ *  touched, and anything that is not a JSON object body carrying `messages` passes through. */
+export function withThinkingBudget(body: unknown, budgetTokens: number): unknown {
+  if (typeof body !== 'string') return body;
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return body; }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return body;
+  const rec = parsed as Record<string, unknown>;
+  if (!Array.isArray(rec.messages)) return body;
+  rec.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+  if (typeof rec.max_tokens === 'number' && rec.max_tokens <= budgetTokens) {
+    rec.max_tokens = budgetTokens + rec.max_tokens;
+  }
+  return JSON.stringify(rec);
+}
+
+function headerRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((v, k) => { out[k] = v; });
+  return out;
+}
+
+export function wireFetch(realFetch: Fetch, opts: WireFetchOpts): Fetch {
+  const now = opts.now ?? Date.now;
+  let nextId = 0;
+  const log = (record: Record<string, unknown>): void => {
+    opts.sink(opts.redact(JSON.stringify(record)));
+  };
+
+  async function logChunks(stream: ReadableStream<Uint8Array>, id: number): Promise<void> {
+    const decoder = new TextDecoder();
+    const reader = stream.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        log({ t: 'chunk', id, at: now(), body: decoder.decode(value, { stream: true }) });
+      }
+    } catch {
+      // The paired branch's consumer cancelled the response; nothing further to record.
+    }
+    log({ t: 'response-end', id, at: now() });
+  }
+
+  return async (input, init) => {
+    const id = ++nextId;
+    const asked = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const url = opts.rewriteBase !== undefined && asked.startsWith(opts.rewriteBase.from)
+      ? opts.rewriteBase.to + asked.slice(opts.rewriteBase.from.length)
+      : asked;
+    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+    const headers = new Headers(init?.headers);
+    for (const [k, v] of Object.entries(opts.headers ?? {})) headers.set(k, v);
+    for (const k of opts.dropHeaders ?? []) headers.delete(k);
+    const stripped = stripEmptyTools(init?.body);
+    const body = (opts.transformBody !== undefined ? opts.transformBody(stripped) : stripped) as RequestInit['body'];
+    log({
+      t: 'request', id, at: now(), method, url, headers: headerRecord(headers),
+      body: typeof body === 'string' ? body : null,
+    });
+
+    let res: Response;
+    try {
+      res = await realFetch(url, { ...init, headers, body });
+    } catch (err) {
+      log({ t: 'wire-error', id, at: now(), message: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+    log({ t: 'response', id, at: now(), status: res.status });
+    if (!res.body) {
+      log({ t: 'response-end', id, at: now() });
+      return res;
+    }
+    const [logged, passed] = res.body.tee();
+    void logChunks(logged, id);
+    return new Response(passed, { status: res.status, statusText: res.statusText, headers: res.headers });
+  };
+}
+
+export interface ToolsModeProbe { mode: 'native' | 'prose'; detail: string }
+
+/** Tiny and harmless on purpose: the probe measures whether the PARAMETER is accepted, not
+ *  whether any real tool works. */
+const PROBE_TOOL = {
+  name: 'probe_echo',
+  description: 'Echoes the given text back. Exists only to test whether this endpoint accepts the tools parameter.',
+  parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+};
+
+/** The refusal that means "no tool calling here", not "this request is otherwise broken": the
+ *  complaint must be about tools AND about support (Perplexity's regular API answers 400 "Tool
+ *  calling is not supported for this model"), on a client-error status or none at all (a gateway
+ *  can word the same refusal into a 200-shaped error body that carries no status). */
+function refusesTools(err: TurnError): boolean {
+  if (err.status !== undefined && ![400, 404, 422].includes(err.status)) return false;
+  return /tool/i.test(err.detail)
+    && /not (?:currently )?supported|unsupported|not allowed|does not support/i.test(err.detail);
+}
+
+const HOST_UNRESOLVED = /enotfound|eai_again|getaddrinfo|nxdomain|name or service not known/i;
+
+export async function probeToolsMode(
+  adapter: Adapter, model: string, signal: AbortSignal = new AbortController().signal,
+): Promise<ToolsModeProbe> {
+  const req: AdapterRequest = {
+    system: 'You are a connectivity probe. Answer in one word.',
+    messages: [{ role: 'user', text: 'Say ok. Do not call any tool.' }],
+    tools: [PROBE_TOOL],
+    model,
+    sameModel: false,
+    maxOutputTokens: 64,
+  };
+  for await (const ev of adapter.stream(req, signal)) {
+    if (ev.t === 'error') {
+      const first = ev.error.detail.split('\n')[0] ?? '';
+      if (refusesTools(ev.error)) {
+        return { mode: 'prose', detail: `tools refused (${ev.error.status ?? ev.error.cls}): ${first}` };
+      }
+      const vpnHint = ev.error.cls === 'network' || HOST_UNRESOLVED.test(ev.error.detail)
+        ? ' If the gateway lives behind a VPN (a tailnet host), an unreachable or unresolvable host usually means the VPN link is down, not a bench bug.'
+        : '';
+      throw new Error(
+        `tools-mode probe failed (${ev.error.cls}${ev.error.status !== undefined ? ` ${ev.error.status}` : ''}): ${first}.${vpnHint}`,
+      );
+    }
+    if (ev.t === 'done') {
+      if (ev.stop === 'aborted') throw new Error('tools-mode probe aborted before the endpoint answered.');
+      const called = (ev.final ?? []).length > 0;
+      // Any completed answer counts, a truncated one included: the parameter was not refused.
+      return { mode: 'native', detail: `tools accepted (stop=${ev.stop}${called ? ', answered with a tool call' : ''})` };
+    }
+  }
+  throw new Error('tools-mode probe ended without a final event.');
+}
+
+export interface VisionProbe { vision: boolean; detail: string }
+
+/** A 16x16 solid pure-red PNG (89 bytes): large enough that a resizing gateway cannot lose it,
+ *  small enough to cost nothing. */
+export const PROBE_IMAGE = 'data:image/png;base64,'
+  + 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGP8z0AaYCJRPcOoBmIAE1GqkMCoBmIAyRoAQC4BH1m1rqAAAAAASUVORK5CYII=';
+
+/** A failure the image cannot explain: these throw rather than reading as text-only, because the
+ *  probe's request differs from the already-accepted tools probe by the image part alone. */
+const NOT_ABOUT_THE_IMAGE = new Set(['auth', 'quota', 'rate-limit', 'overloaded', 'network', 'cors', 'abort']);
+
+export async function probeVision(
+  adapter: Adapter, model: string, signal: AbortSignal = new AbortController().signal,
+): Promise<VisionProbe> {
+  const req: AdapterRequest = {
+    system: 'You are a connectivity probe. Answer in one word.',
+    messages: [{ role: 'user', text: 'What color is the attached image? Answer with one word. Do not call any tool.', images: [PROBE_IMAGE] }],
+    tools: [],
+    model,
+    sameModel: false,
+    maxOutputTokens: 256,
+  };
+  let answer = '';
+  for await (const ev of adapter.stream(req, signal)) {
+    if (ev.t === 'text') answer += ev.delta;
+    if (ev.t === 'error') {
+      const first = ev.error.detail.split('\n')[0] ?? '';
+      if (!NOT_ABOUT_THE_IMAGE.has(ev.error.cls)) {
+        return { vision: false, detail: `image refused (${ev.error.status ?? ev.error.cls}): ${first}` };
+      }
+      throw new Error(
+        `vision probe failed (${ev.error.cls}${ev.error.status !== undefined ? ` ${ev.error.status}` : ''}): ${first}.`,
+      );
+    }
+    if (ev.t === 'done') {
+      if (ev.stop === 'aborted') throw new Error('vision probe aborted before the endpoint answered.');
+      const head = (answer.trim().split('\n')[0] ?? '').slice(0, 60);
+      return /\bred\b/i.test(answer)
+        ? { vision: true, detail: `image read (answered "${head}")` }
+        : { vision: false, detail: `image ignored (answered "${head}")` };
+    }
+  }
+  throw new Error('vision probe ended without a final event.');
+}
+
+/** FNV-1a 32-bit over the payload text, hex — a correlation stamp for telling shots apart, not a
+ *  security measure (the key redaction above is the security one). */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+function imageStamp(payload: string): string {
+  return `<image ~${Math.round((payload.length * 3) / 4)}B fnv1a:${fnv1a(payload)}>`;
+}
+
+/** OpenAI dialect: the data URL's payload. 40+ chars so a stamp is never itself restamped. */
+const DATA_URL_PAYLOAD = /(data:image\/[\w.+-]+;base64,)([A-Za-z0-9+/=]{40,})/g;
+/** Anthropic dialect: the `data` field beside an image `media_type`, quotes optionally escaped
+ *  because the wire log holds the request body as a JSON string inside a JSON line. */
+const SOURCE_BLOCK_PAYLOAD = /(\\?"media_type\\?":\s*\\?"image\/[\w.+-]+\\?",\s*\\?"data\\?":\s*\\?")([A-Za-z0-9+/=]{40,})(\\?")/g;
+
+export function redactImagePayloads(line: string): string {
+  return line
+    .replace(DATA_URL_PAYLOAD, (_m, prefix: string, payload: string) => `${prefix}${imageStamp(payload)}`)
+    .replace(SOURCE_BLOCK_PAYLOAD, (_m, prefix: string, payload: string, close: string) => `${prefix}${imageStamp(payload)}${close}`);
+}
+
+function pacedSleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error('aborted'));
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => { clearTimeout(timer); reject(new Error('aborted')); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** A floor between request STARTS, spent before each `stream()` call. The reactive half of pacing
+ *  (back off once an endpoint has refused) is the loop's own and is not rebuilt here. */
+export function createPacedAdapter(
+  inner: Adapter, floorMs: number,
+  deps?: { now?: () => number; sleep?: (ms: number, signal: AbortSignal) => Promise<void> },
+): Adapter {
+  const now = deps?.now ?? Date.now;
+  const sleep = deps?.sleep ?? pacedSleep;
+  let nextAt = 0;
+
+  return {
+    async *stream(req: AdapterRequest, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+      const wait = nextAt - now();
+      if (wait > 0) {
+        try {
+          await sleep(wait, signal);
+        } catch {
+          yield { t: 'done', stop: 'aborted' };
+          return;
+        }
+      }
+      nextAt = now() + floorMs;
+      yield* inner.stream(req, signal);
+    },
+    listModels(signal: AbortSignal): Promise<string[]> {
+      return inner.listModels(signal);
+    },
+  };
+}

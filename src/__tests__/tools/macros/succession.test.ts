@@ -18,7 +18,7 @@ import { applyMacro, type MacroId } from '../../../tools/macros';
 import { MacroTool } from '../../../tools/macros/macro-tool';
 import { CLIMAX_STAGE, successionPalette, tierAt, tierOf } from '../../../tools/macros/succession';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import type { ToolContext } from '../../../tools/types';
+import type { ToolContext } from '../../../tools/runtime/types';
 import { makeState } from '../../rules/_helpers';
 
 const AT = { x: 20, y: 20 };

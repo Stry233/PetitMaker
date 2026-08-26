@@ -32,15 +32,14 @@ export const DATA_ROWS = 27;
 
 /** Reed-Solomon block shape: 255 total symbols per block, RS_K data symbols, one byte per symbol.
  *
- *  The parity is sized for the threat this code actually faces: an image recompressed by a chat
- *  app or a social platform, which perturbs colours. It is NOT sized for a camera photographing a
- *  screen, or for a crop taking a bite out of the band — neither is a way anyone shares one of
- *  these. Measured across the corpus: the rated envelope (chroma subsampling, JPEG q60, a 0.75
- *  downscale) survives even at 9% parity, so 28% was far more than that envelope asks for. Past
- *  it the levels do separate — the largest map holds to q30/0.5 here and to q25/0.45 at 28% — so
- *  the surplus is spent, but not all of it: what is left over pays for the margin the band sits
- *  in, a narrower band at the same module size, and every tier still carries at least what the
- *  full-width band did. */
+ *  The parity (55 symbols of 255, ~22%) is sized for the threat this code actually faces: an image
+ *  recompressed by a chat app or a social platform, which perturbs colours. It is NOT sized for a
+ *  camera photographing a screen, or for a crop taking a bite out of the band — neither is a way
+ *  anyone shares one of these. Measured across the corpus: the rated envelope (chroma subsampling,
+ *  JPEG q60, a 0.75 downscale) survives even at 9% parity, and past that envelope the levels do
+ *  separate — the largest map holds to q30/0.5 at this parity and to q25/0.45 at 28%. What is not
+ *  spent on parity buys the margin the band sits in and a narrower band at the same module size,
+ *  with every tier still carrying at least a full-width band's payload. */
 export const RS_N = 255;
 export const RS_K = 200;
 

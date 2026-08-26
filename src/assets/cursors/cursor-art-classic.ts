@@ -66,7 +66,7 @@ import type { CursorId } from '../../core/runtime/cursor-spec';
 /** The size these shapes are authored at, and the size they ship at. */
 export const CLASSIC_CURSOR_SIZE = 32;
 
-/** Road tan: the same value the catalog gives road-dirt, which tileGhostColor() reads. */
+/** Road tan: the dirt-road value this set was drawn against (the item itself has since retired). */
 const ROAD = '#c4a882';
 const MOUNTAIN = ELEVATION_COLORS[3]!;
 

@@ -6,9 +6,9 @@
 // and only the seed's OUTPUT identity makes that reproduce their map.
 //
 // This file hashes the OUTCOME of a small fixed (seed, config) matrix run through the REAL
-// pipeline (generateTerrain + populate, the same entry App.tsx's Generate shelf calls) and pins
-// the hash as a literal. A failure here — ANY of the five, one included — means a change ALTERED
-// WHAT A SEED PRODUCES:
+// pipeline (`generateTerrain`, the same entry the Generate shelf calls) and pins the hash as a
+// literal. A failure here — any one of them included — means a change ALTERED WHAT A SEED
+// PRODUCES:
 //   - INTENTIONAL (a tuning knob, a new catalog item: the generator picks from the live catalog,
 //     so an addition changes every seed's output by design) → regenerate the literals (run this
 //     file, copy each test's printed actual hash — or log EXPECTED vs actual with a temporary
@@ -22,8 +22,6 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { getCell } from '../../../core/model/grid-model';
 import { roadLookup } from '../../../state/object-index';
 import type { Command, EditorEvents, GenerateConfig, GridState } from '../../../core/model/types';
@@ -42,9 +40,9 @@ function cellToken(state: GridState, x: number, y: number): string {
 }
 
 /** Canonical serialization of a generated map: cells in raster order, then every placed object
- *  (road tiles included — a road IS a PlacedObject, `catalogId.startsWith('road')`) sorted by
+ *  (road tiles included — a road IS a PlacedObject) sorted by
  *  its OWN serialized fields rather than by id or Map insertion order. Object ids are minted from
- *  `Date.now()`/`Math.random()` (tools/utils.ts:generateObjectId) and are never reproducible
+ *  `Date.now()`/`Math.random()` (core/model/object-id.ts:generateObjectId) and are never reproducible
  *  across runs, so they're excluded on purpose; sorting by the full per-object string (rather
  *  than a shorter key) gives a total order even when two objects tie on catalogId+position (a
  *  coating road tile under a building, say) without losing either from the digest. */
@@ -68,34 +66,26 @@ export function goldenHash(state: GridState, w = SIZE, h = SIZE): string {
   return createHash('sha256').update(canonicalSerialize(state, w, h)).digest('hex');
 }
 
-/** Runs the same real pipeline `design-quality.test.ts` drives: generateTerrain (dispatches on
- *  config.algorithm) then, for the 'random' algorithm, populate() over its ZonePlan — one
- *  stroke group, one undo, exactly what App's Generate shelf does. */
+/** One run through the shelf's own entry — one stroke group, one undo. */
 function run(config: GenerateConfig): GridState {
   const state = makeState(SIZE, SIZE);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  exec.runSilently(() => {
-    const r = generateTerrain(config, state, (c: Command) => exec.execute(c));
-    if (config.algorithm !== 'maze') void populate(toGenConfig(config), state, (c: Command) => exec.execute(c), exec.getRegistry(), undefined, r.zonePlan);
-  });
+  exec.runSilently(() => generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry()));
   exec.commitStrokeGroup(exec.getUndoStackSize());
   return state;
 }
 
 describe('golden hash: what a seed produces is pinned across commits', () => {
-  // Default recipe (naturalness 1, the organic style) across a few seeds — the matrix a saved
-  // "recipe number" most commonly is.
+  // The island across a few seeds at the shelf's default richness — the matrix a saved "recipe
+  // number" most commonly is — plus both ends of the richness axis on one seed.
   it.each([
-    ['mixed seed 4', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null } as GenerateConfig, '78eef0297d334b7efa1d59cdd322c969d3acd1ab84d76f0267e47e39c5e052aa'],
-    ['mixed seed 11', { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null } as GenerateConfig, 'c3be76a2058c8572d7ff82a07c1fd79ab7c74eab6b0dc7f769f1facb31d1442f'],
-    ['earth seed 42', { algorithm: 'random', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null } as GenerateConfig, 'c4e4020f53a29c7e7a5809283ee5fbd0e39c6dcad6166f9e2c2e39b5d69ba569'],
+    ['mixed seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0.7 } as GenerateConfig, 'cb13595ccccc2b165ec2ab28f2b87d3dc56312ae6bca241d3a52c910ba54a6c8'],
+    ['mixed seed 11', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null, richness: 0.7 } as GenerateConfig, '8ff05c9bd130862ec39ba02b03ecd54fefef35667534b039ba4d11ee26a58fdc'],
+    ['earth seed 42', { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, richness: 0.7 } as GenerateConfig, '8c41c6e68f9d23544128abcb1cfbef391b0f0d4b93f10020c83690ca3bb1f8e0'],
+    ['garden town (richness 0) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0 } as GenerateConfig, 'c2de47a918754f969b36ded1682ed9d9a67051ce1f4e5ee4ee9014677600ead4'],
+    ['terraced island (richness 1) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 1 } as GenerateConfig, 'a6fd5ad279d0bed4db20f5caa7dbbe93330466b353b2c426a78ce42a15bb72df'],
   ] as const)('%s', (_label, config, expected) => {
     expect(goldenHash(run(config))).toBe(expected);
-  });
-
-  it('rectilinear style (naturalness 0) seed 4', () => {
-    const config: GenerateConfig = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, naturalness: 0 };
-    expect(goldenHash(run(config))).toBe('f49ca68a61e59cab07752279ca69320ebb32cd63c9438e388d7c8c0eeeb7c5ad');
   });
 
   it('maze algorithm seed 7', () => {

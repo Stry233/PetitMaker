@@ -6,7 +6,7 @@
  * pure helpers, so the board's geometry and combo mapping are unit-testable without the DOM.
  */
 import { normalizeCombo, type CommandCategory } from '../../../../core/runtime/keybindings';
-import { eventKeyToken } from '../../../../tools/shortcut-manager';
+import { eventKeyToken } from '../../../../core/runtime/key-token';
 
 /** A modifier layer: any combination of the three chord modifiers (base = all false). */
 export interface Layer { ctrl: boolean; alt: boolean; shift: boolean }

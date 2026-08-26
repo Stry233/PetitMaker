@@ -1,0 +1,28 @@
+{
+  "id": "path-cobblestone",
+  "category": "road",
+  "icon": "path-cobblestone",
+  "name": {
+    "en": "Cobblestone Path",
+    "zh": "鹅卵石路",
+    "ja": "石畳の道",
+    "ru": "Булыжная дорожка",
+    "th": "ทางหินกรวด",
+    "id": "Jalan Batu Bulat",
+    "fr": "Chemin de pavés"
+  },
+  "color": "#bcad9c",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

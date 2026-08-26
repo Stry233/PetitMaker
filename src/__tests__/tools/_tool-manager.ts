@@ -1,6 +1,6 @@
 import type { MapRenderer } from '../../canvas/map2d/map-renderer';
 import type { EditorView } from '../../canvas/view-projection';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';

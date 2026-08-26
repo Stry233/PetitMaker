@@ -119,8 +119,7 @@ export const PALETTE16_V2: readonly RGB[] = [
  *  decode: its LENGTH, and the null that refuses an unknown version. Compatibility is therefore
  *  structural rather than archival — no edit to a released table can break a code already in the
  *  wild, and a table that had drifted from what its version actually drew would still decode every
- *  code drawn with it. That is a stronger guarantee than keeping the old numbers around, and it
- *  also means no decode can catch such a drift: the guard with teeth on a released table is
+ *  code drawn with it. No decode can catch such a drift, so the guard on a released table is
  *  palette.test.ts's re-derivation from Y_LEVELS / BASE_CHROMA_OFFSETS / CHROMA_SCALES. */
 export function paletteForVersion(version: number): readonly RGB[] | null {
   if (version === 1) return PALETTE16_V1;

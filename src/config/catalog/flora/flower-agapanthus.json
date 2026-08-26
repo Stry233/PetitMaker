@@ -11,6 +11,7 @@
     "fr": "Agapanthe violette"
   },
   "icon": "flower-agapanthus",
+  "iconColor": "#a15d8b",
   "width": 1,
   "height": 1,
   "loadValue": 10,

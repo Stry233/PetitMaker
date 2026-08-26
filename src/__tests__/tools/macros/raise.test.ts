@@ -27,7 +27,7 @@ import { applyMacro, type MacroOpts } from '../../../tools/macros';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { FLAT_TOP } from '../../../tools/macros/terrace';
 import { insetFor, LADDER_TOP, ladderPeak, raiseFooting, STEEP_INSET, WIDE_INSET } from '../../../tools/macros/raise';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { makeState } from '../../rules/_helpers';
 
 const SIZE = 40;

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, existsSync, statSync } from 'node:fs';
 
-// Minimal ambient shape for `process.cwd()` — matches this repo's existing convention (see
-// src/__tests__/agent/bench.live.test.ts) of a local declaration instead of an @types/node dep.
+// Minimal ambient shape for `process.cwd()` — this repo declares the node globals it uses locally,
+// per file, rather than carrying an @types/node dependency.
 declare const process: { cwd(): string };
 
 import {

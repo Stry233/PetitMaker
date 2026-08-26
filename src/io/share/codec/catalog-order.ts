@@ -8,8 +8,14 @@
  * than decode wrongly, but they are lost either way).
  *
  * A new catalog item goes at the END, whatever its id sorts to and whatever category it joins.
- * `catalog-order.test.ts` holds this list and the live catalog in agreement, and holds the
+ * `catalog-order.test.ts` holds every entry resolvable against the live catalog, and holds the
  * historical prefix fixed.
+ *
+ * A RETIRED id keeps its slot and no longer names a catalog item (`io/legacy-catalog.ts` says what
+ * each one reads as). Its index still has to resolve, and it still has to resolve to the same NAME:
+ * the content hash covers the ids the decoder produced, so a code written before the retirement
+ * verifies only if the decoder hands back what was encoded. The substitution happens later, where
+ * the decoded save becomes a GridState.
  *
  * The index is written with an 8-bit tree model, so this list may hold at most 256 entries.
  * The width costs about 0.2% of a full map's code and buys headroom the catalog will need.
@@ -63,8 +69,8 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'ramp-plank',
   'ramp-retro-steps',
   'ramp-teak-stair',
-  'road-dirt',
-  'road-stone',
+  'road-dirt',   // retired (#37)
+  'road-stone',  // retired (#37)
   'shrub',
   'tree-apple',
   'tree-avocado',
@@ -98,9 +104,35 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'flower-agapanthus-blue',
   'flower-rose-cyan',
   'flower-rose-blue',
-  // — road surfaces added after that release —
+  // — road surfaces added after that release, all four retired since (#37) —
   'road-brick',
   'road-slate',
+  // — the 25 in-game path surfaces, in the road barrel's authored order —
+  'path-blue-board',
+  'path-classic-basketweave-brick',
+  'path-classic-mosaic-brick',
+  'path-cobblestone',
+  'path-diamond-mosaic-brick',
+  'path-fan-shaped-brick',
+  'path-green-board',
+  'path-herringbone-clay-brick',
+  'path-park-stone',
+  'path-pink-board',
+  'path-yellow-board',
+  'path-floral-brick',
+  'path-garden-stone',
+  'path-geometric-terracotta',
+  'path-lattice-red-brick',
+  'path-overgrown-dirt',
+  'path-patterned-tile',
+  'path-radiant-star-stone',
+  'path-retro-block',
+  'path-seaside-wave',
+  'path-simple-brick',
+  'path-simple-flowerbed',
+  'path-square-brick',
+  'path-urban-asphalt',
+  'path-wavy-terracotta',
 ];
 
 /** How many entries the index can address. */

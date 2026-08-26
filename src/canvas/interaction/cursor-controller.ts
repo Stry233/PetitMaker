@@ -5,7 +5,8 @@
  * on every hover change, so it never goes through React and never writes the DOM unless the
  * resolved value changed. Both canvases register their container here.
  */
-import { cursorCss } from '../../assets/cursors/cursor-css';
+import { BUSY_FRAME_COUNT } from '../../assets/cursors/cursor-art';
+import { cursorCss, isSystemCursors } from '../../assets/cursors/cursor-css';
 import { FORBIDDABLE, type CursorId } from '../../core/runtime/cursor-spec';
 
 /** What the pointer is doing, when that outranks the tool. */
@@ -45,9 +46,14 @@ const DEFAULT_STATE: CursorState = {
 };
 
 /**
- * What to show. Highest precedence first: a long operation, then what the pointer is
- * currently doing, then the tool. The badge only survives on cursors that can be refused,
- * so panning or a marquee never claims to be forbidden.
+ * What to show. Highest precedence first: what the pointer is currently DOING, then a long
+ * operation running behind the app, then the tool. The badge only survives on cursors that can be
+ * refused, so panning or a marquee never claims to be forbidden.
+ *
+ * A drag outranks busy because a gesture already under way is the user's own hand: a work-in-
+ * progress pointer that replaced the pan or the grab mid-drag would take away the only feedback
+ * saying the drag is still live. Busy outranks the TOOL because the tool cannot act until the
+ * operation lands.
  */
 /**
  * The tool cursors whose mode can drag a selected object — the move tool and an idle placer, the
@@ -56,14 +62,20 @@ const DEFAULT_STATE: CursorState = {
  */
 const DRAG_CAPABLE: ReadonlySet<CursorId> = new Set<CursorId>(['select', 'move']);
 
-export function resolveCursor(state: CursorState): { id: CursorId; forbidden: boolean } {
-  if (state.busy) return { id: 'busy', forbidden: false };
+export function resolveCursor(
+  state: CursorState,
+  opts: { system?: boolean } = {},
+): { id: CursorId; forbidden: boolean } {
   if (state.drag === 'orbit') return { id: 'orbit', forbidden: false };
   // Panning IS the move tool doing its job, so it keeps that tool's own cursor rather than
-  // swapping to a hand: the hands belong to grabbing an OBJECT.
-  if (state.drag === 'pan') return { id: 'move', forbidden: false };
+  // swapping to a hand: the hands belong to grabbing an OBJECT. UNDER SYSTEM CURSORS the pan
+  // closes a hand instead: macOS renders the `move` KEYWORD as the open hand, so keeping the id
+  // would show a hand that never closes however much the user clicks and drags.
+  if (state.drag === 'pan') return { id: opts.system ? 'hand-closed' : 'move', forbidden: false };
   // An object drag is the hand closing on the thing it grabbed.
   if (state.drag === 'object') return { id: 'hand-closed', forbidden: false };
+  // Something long is running behind the app, and no tool can act until it lands.
+  if (state.busy) return { id: 'busy', forbidden: false };
   // A live Ctrl hint outranks the tool's own cursor. None of the three ids it can carry is
   // FORBIDDABLE, so there is nothing to badge here.
   if (state.ctrlHint) return { id: state.ctrlHint, forbidden: false };
@@ -103,10 +115,35 @@ function effectiveState(): CursorState {
   return top?.cursor ? { ...state, tool: top.cursor } : state;
 }
 
+/**
+ * The busy ring's clock. `busy` is the set's one animated cursor — the art is frames, and cycling
+ * them is this module's job since nothing else touches `style.cursor`. It keeps ticking under
+ * reduced motion: a progress indicator is ESSENTIAL feedback, the same exemption the Spinner
+ * carries, and a frozen spinner is exactly the "stuck" reading the animation exists to prevent.
+ */
+const BUSY_FRAME_MS = 125;
+let busyTick = 0;
+let busyTimer: ReturnType<typeof setInterval> | null = null;
+
+function driveBusyRing(on: boolean): void {
+  if (on === (busyTimer !== null)) return;
+  if (on && BUSY_FRAME_COUNT > 0) {
+    busyTimer = setInterval(() => {
+      busyTick = (busyTick + 1) % BUSY_FRAME_COUNT;
+      apply();
+    }, BUSY_FRAME_MS);
+  } else if (busyTimer !== null) {
+    clearInterval(busyTimer);
+    busyTimer = null;
+    busyTick = 0;
+  }
+}
+
 function apply(): void {
   if (!surface) return;
-  const { id, forbidden } = resolveCursor(effectiveState());
-  const value = cursorCss(id, { forbidden });
+  const { id, forbidden } = resolveCursor(effectiveState(), { system: isSystemCursors() });
+  driveBusyRing(id === 'busy');
+  const value = cursorCss(id, { forbidden, frame: busyTick });
   if (value === applied) return; // no DOM write per pointer-move
   applied = value;
   surface.style.cursor = value;
@@ -209,4 +246,5 @@ export function __resetCursorController(): void {
   overlays = [];
   surface = null;
   applied = '';
+  driveBusyRing(false);
 }

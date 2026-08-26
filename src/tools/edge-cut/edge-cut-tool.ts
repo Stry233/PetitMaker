@@ -1,6 +1,6 @@
 import { CommandType, TerrainType, ToolType } from '../../core/model/types';
 import type { Corners, CornerTrim, GridState, MacroCoord, MicroCoord, PlacedObject, TrimCornersCommand } from '../../core/model/types';
-import type { Tool, ToolContext } from '../types';
+import type { Tool, ToolContext } from '../runtime/types';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { getCell } from '../../core/model/grid-model';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
@@ -60,7 +60,7 @@ function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObj
     // slot table derived from the state list, so the cycle order is readable and
     // cannot drift from CANONICAL_ROAD_STATES. An isolated road has zero road
     // neighbours, so the seam-contact validation is vacuous here: every slot is
-    // legal by construction and validateCut is deliberately not consulted.
+    // legal by construction, which is why validateCut is not consulted.
     const slots: RoadCutResult[] = [{ corners: ['square', 'square', 'square', 'square'], rotation: 0 }];
     for (const rot of [0, 90, 180, 270] as const) {
       for (let sIdx = 1; sIdx < CANONICAL_ROAD_STATES.length; sIdx++) {
@@ -124,12 +124,19 @@ export class EdgeCutTool implements Tool {
       //     lower block's tier, or 0 (empty). The fillet renders at the higher tier; structurally the
       //     notch is unchanged.
 
-      // `isInnerCorner` carries the rest of the test — the notch, the pit, and the rule that a
-      // fillet rests one tier above the cell's own support rather than hanging over it.
-      if (hi && hi.type === TerrainType.Mountain && !cellIsDifferentReal && hi.elevation > cellElev
-          && isInnerCorner(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx, hi.type, hi.elevation)) {
-        sites.push({ slot, gamma: { type: hi.type, elev: hi.elevation } });
-        continue;
+      // `isInnerCorner` carries the rest of the test — the notch, the pit, the wrap. The fillet
+      // lands at the HIGHEST tier this corner is wrapped at, searched down from the tallest
+      // neighbour: walls of unequal height wrap the corner only up to the shorter one, and asking
+      // about the taller wall's tier alone refused the whole notch.
+      if (hi && hi.type === TerrainType.Mountain && !cellIsDifferentReal && hi.elevation > cellElev) {
+        let gammaTier = 0;
+        for (let e = hi.elevation; e > cellElev && e >= 1; e--) {
+          if (isInnerCorner(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx, hi.type, e)) { gammaTier = e; break; }
+        }
+        if (gammaTier > 0) {
+          sites.push({ slot, gamma: { type: hi.type, elev: gammaTier } });
+          continue;
+        }
       }
 
       // (B) An OUTER corner is cuttable — collect it; a single click may govern several (a diagonal pinch),
@@ -291,7 +298,7 @@ export class EdgeCutTool implements Tool {
     if (!hasAny) {
       hasAny = roads(coord.x, coord.y) !== null;
     }
-    ctx.overlay.showGhost([coord], hasAny ? 0x22c55e : 0xff6b6b, false);
+    ctx.overlay.showGhost([coord], { icon: 'trim', valid: hasAny }, false);
   }
 
   onPointerUp(_coord: MacroCoord, _micro: MicroCoord, _ctx: ToolContext): void {}

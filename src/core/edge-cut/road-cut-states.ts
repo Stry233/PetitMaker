@@ -51,10 +51,15 @@ export function cornersMatch(a: Corners | undefined, b: Corners | undefined): bo
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
-/** Is there a (non-patch) road at (nx,ny) OTHER than `road`? Shared by connection detection + neighbour count. */
-function isRoadNeighbor(roads: RoadLookup, road: PlacedObject, nx: number, ny: number): boolean {
+/** Is there a (non-patch) road of `road`'s OWN MATERIAL at (nx,ny), other than `road` itself?
+ *  Shared by connection detection + neighbour count — and by the cut validator, so every
+ *  connectivity question gives one answer. Different materials never connect: in the game two
+ *  surfaces meet with a hairline of ground between them, so a foreign road is no neighbour for
+ *  orientation, endpoint or cut-legality purposes (a trimmed endpoint keeps its cut when another
+ *  surface is laid beside it). */
+export function isRoadNeighbor(roads: RoadLookup, road: PlacedObject, nx: number, ny: number): boolean {
   const o = roads(nx, ny);
-  return !!o && o.id !== road.id;
+  return !!o && o.id !== road.id && o.catalogId === road.catalogId;
 }
 
 export function detectRoadConn(roads: RoadLookup, road: PlacedObject): 'left' | 'right' | 'top' | 'bottom' {
@@ -86,8 +91,7 @@ export type RoadSide = 'N' | 'E' | 'S' | 'W';
  * The per-quadrant corner TOKENS must not be used for road edge coverage: they are symbolic state markers
  * that drawRoadShape pattern-matches (e.g. state 3 stores tri-SE at TL, but the drawn \ diagonal keeps the
  * SW half of that quadrant), so token-derived coverage under-claims the connected edge for triangles and
- * over-claims the cut edges for fans — which is exactly what made triangles fail validation where their
- * same-direction fan passed.
+ * over-claims the cut edges for fans — enough to fail a triangle where its same-direction fan passes.
  */
 const STATE_KEPT_EDGES: readonly (readonly RoadSide[])[] = [
   ['N', 'E', 'S', 'W'], // 0: raw square
@@ -128,6 +132,14 @@ export function matchActualRoadState(corners: Corners | undefined, conn: RoadCon
  *  `actualSide`? The geometry-faithful contact question for road seams. */
 export function roadSideKept(stateIdx: number, conn: RoadConnSide, actualSide: RoadSide): boolean {
   return STATE_KEPT_EDGES[stateIdx]?.includes(TO_CANONICAL_SIDE[conn][actualSide]) ?? false;
+}
+
+/** A canonical-frame side placed on the grid for connection `conn` — the inverse of the mapping
+ *  `roadSideKept` reads, for callers that start from a canonical fact (which sides a state's
+ *  vacated area touches) and need the grid cells behind them. */
+export function fromCanonicalSide(conn: RoadConnSide, canonicalSide: RoadSide): RoadSide {
+  const row = TO_CANONICAL_SIDE[conn];
+  return (Object.keys(row) as RoadSide[]).find((s) => row[s] === canonicalSide)!;
 }
 
 /** Round = fan-based states (BR/TR fan, wedge); direct = triangle-based (\, /). */

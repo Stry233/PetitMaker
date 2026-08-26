@@ -1,0 +1,28 @@
+{
+  "id": "path-fan-shaped-brick",
+  "category": "road",
+  "icon": "path-fan-shaped-brick",
+  "name": {
+    "en": "Fan-Shaped Brick Path",
+    "zh": "扇形砖路",
+    "ja": "扇形レンガの道",
+    "ru": "Веерная кирпичная дорожка",
+    "th": "ทางอิฐลายพัด",
+    "id": "Jalan Bata Kipas",
+    "fr": "Chemin de briques en éventail"
+  },
+  "color": "#cf8a63",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

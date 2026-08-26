@@ -5,12 +5,11 @@
 // closure — it warns on any mismatch and unions the two sets so the notices file never under-
 // or over-reports what actually ships.
 //
-// Implementation note: the module ids are collected in `buildEnd` (per Rollup's `PluginContext`,
-// the right place to read `this.getModuleIds()` — the module graph is finalized there), but the
-// FILE IS WRITTEN in `writeBundle` instead. Vite only empties `build.outDir` lazily, right before
-// writing chunks to disk (i.e. AFTER `buildEnd` fires) — writing in `buildEnd` was verified to
-// get silently wiped by that later empty-then-write step. `writeBundle` runs after Vite/Rollup
-// have finished writing every output file, so nothing clobbers it afterwards.
+// The module ids are collected in `buildEnd` (per Rollup's `PluginContext`, the one place
+// `this.getModuleIds()` sees a finalized module graph), but the FILE IS WRITTEN in
+// `writeBundle`. Vite empties `build.outDir` lazily, right before writing chunks to disk —
+// i.e. AFTER `buildEnd` fires — so a file written there is silently wiped by that
+// empty-then-write step. `writeBundle` runs after every output file is on disk.
 //
 // Cheap: runs only in `build` mode (never during `vite dev`), and only re-walks the already-
 // resolved module id list Rollup hands to `buildEnd` — no extra I/O beyond one JSON write.

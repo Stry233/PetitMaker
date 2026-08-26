@@ -30,7 +30,7 @@ describe('serializeWithSections', () => {
   });
   it('generation + session + stats + catalogInfo sections appear on demand', () => {
     const s = edited();
-    s.generation = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 7, region: null } as GenerateConfig;
+    s.generation = { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 7, region: null } as GenerateConfig;
     const out = JSON.parse(serializeWithSections(s, { ...BASE, includeGeneration: true, includeStats: true, includeCatalogInfo: true, session: { v: 1, lockedLayers: [2], camera: { x: 1, y: 2, zoom: 1.5 } } }));
     expect(out.generation.seed).toBe(7);
     expect(out.session.lockedLayers).toEqual([2]);

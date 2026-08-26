@@ -2,8 +2,8 @@
  * Where the tour's bubble goes, given the lit box it is pointing at.
  *
  * A step names a PREFERRED side, and that side is honoured only where the bubble actually fits
- * beside the spotlight. Clamping a bubble that does not fit is what put it ON TOP of the control it
- * was describing: `clampLeft` pushes a box back inside the viewport, and beside a target near an
+ * beside the spotlight. Clamping a bubble that does not fit puts it ON TOP of the control it is
+ * describing: `clampLeft` pushes a box back inside the viewport, and beside a target near an
  * edge "inside the viewport" is the target itself.
  *
  * Everything here is in VISUAL px (what occupies screen), the units `getBoundingClientRect` reports
@@ -50,7 +50,7 @@ function roomOn(side: BubbleSide, spot: Box, gap: number, viewport: Viewport): n
 }
 
 /** Clamp to the viewport on the axis the chosen side does NOT control: the main axis is what keeps
- *  the bubble clear of the spotlight, so clamping it is what caused the overlap. */
+ *  the bubble clear of the spotlight, so clamping it would reintroduce the overlap. */
 function clampCross(value: number, extent: number, limit: number): number {
   return Math.max(MARGIN, Math.min(value, limit - extent - MARGIN));
 }

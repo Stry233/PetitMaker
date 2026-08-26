@@ -26,7 +26,7 @@ describe('applyOptionalSections', () => {
     srcExec.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 });
     srcExec.commitStroke(0);
     const raw = {
-      generation: { algorithm: 'random', seed: 42, mode: 'mixed', corridorWidth: 1, maxElevation: 8, region: null },
+      generation: { algorithm: 'designed', seed: 42, mode: 'mixed', corridorWidth: 1, maxElevation: 8, region: null },
       session: { v: 1, lockedLayers: [3, 5], camera: { x: 10, y: 20, zoom: 2 } },
       history: JSON.parse(JSON.stringify(encodeHistory(srcExec.getUndoEntries(), 'all'))),
     };

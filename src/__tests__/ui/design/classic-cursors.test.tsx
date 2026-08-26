@@ -53,11 +53,18 @@ describe('classic cursor art', () => {
   });
 
   it('keeps the hotspots the OLD art was drawn around, not today\'s', () => {
-    // The pointing cursors were drawn with a tip at their top-left corner; the pixel art puts the
-    // block under the pointer instead. A hotspot belongs to a drawing, so it travels with it.
-    expect(CLASSIC_HOTSPOTS.mountain).toEqual([2, 2]);
-    expect(CURSORS.mountain.hotspot).toEqual([24, 24]);
+    // A hotspot belongs to a DRAWING, so it travels with it. The two sets are authored at one tile
+    // size now, so several numbers coincide, and that is a coincidence of two compositions rather
+    // than a shared number: where the drawings genuinely differ, so do the tables. The classic
+    // clickable is a POINTING HAND and acts from its fingertip; the pixel one is the plain arrow. The
+    // classic marquee is a centred band; the pixel one is the arrow with a band beside it. The
+    // classic refusal sign is drawn around a pointer tip; the pixel one is the sign alone.
     expect(CLASSIC_HOTSPOTS.clickable).toEqual([11, 3]);
+    expect(CURSORS.clickable.hotspot).toEqual([2, 2]);
+    expect(CLASSIC_HOTSPOTS.marquee).toEqual([16, 16]);
+    expect(CURSORS.marquee.hotspot).toEqual([2, 2]);
+    expect(CLASSIC_HOTSPOTS.blocked).toEqual([2, 2]);
+    expect(CURSORS.blocked.hotspot).toEqual([16, 16]);
     for (const id of DRAWN) {
       const [x, y] = classicCursorArt(id)!.hotspot;
       expect(Number.isInteger(x) && Number.isInteger(y), id).toBe(true);
@@ -86,13 +93,16 @@ describe('classic cursor art', () => {
 });
 
 describe('classic cursors: the resolution seam', () => {
-  it('is the set this build ships', () => {
-    expect(USE_CLASSIC_CURSORS).toBe(true);
+  it('is the alternative, not the set this build ships', () => {
+    // The painted set ships; this one stays complete beside it, and the constant is the whole
+    // difference between them.
+    expect(USE_CLASSIC_CURSORS).toBe(false);
   });
 
-  it('hands back the SVG art and its own hotspot', () => {
+  it('hands back the SVG art and its own hotspot when the constant is on', async () => {
+    const seam = await seamWith(true);
     for (const id of DRAWN) {
-      const got = parse(cursorCss(id));
+      const got = parse(seam.cursorCss(id));
       expect(got, id).not.toBeNull();
       expect(got!.uri.startsWith('data:image/svg+xml,'), id).toBe(true);
       expect(got!.hotspot, id).toEqual([...CLASSIC_HOTSPOTS[id]!]);
@@ -100,12 +110,11 @@ describe('classic cursors: the resolution seam', () => {
     }
   });
 
-  it('hands back the pixel art and ITS hotspot when the constant is off', async () => {
-    const seam = await seamWith(false);
+  it('hands back the generated SVG art and ITS hotspot when the constant is off', () => {
     for (const id of DRAWN) {
-      const got = parse(seam.cursorCss(id));
+      const got = parse(cursorCss(id));
       expect(got, id).not.toBeNull();
-      expect(got!.uri, id).toContain(`${id}.png`);
+      expect(got!.uri, id).toContain(`${id}.svg`);
       expect(got!.hotspot, id).toEqual([...CURSORS[id].hotspot]);
     }
   });
@@ -118,16 +127,17 @@ describe('classic cursors: the resolution seam', () => {
     }
   });
 
-  it('still answers for a keyword-only cursor', () => {
-    expect(cursorCss('busy')).toBe('progress');
+  it('falls through to the painted busy ring, which the classic set never drew', () => {
+    expect(cursorCss('busy')).toContain('busy-0');
   });
 });
 
 describe('classic cursors: an id the drawn set never had', () => {
-  it('falls back to the pixel art and its hotspot rather than going imageless', async () => {
+  it('falls back to the painted art and its hotspot rather than going imageless', async () => {
     // The two sets are drawn independently, so a cursor added after the SVG era has no classic
-    // shape. It must still get a cursor.
+    // shape. With the drawn set selected it must still get a cursor.
     vi.resetModules();
+    vi.doMock('../../../assets/cursors/cursor-set', () => ({ USE_CLASSIC_CURSORS: true }));
     vi.doMock('../../../assets/cursors/cursor-art-classic', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../../assets/cursors/cursor-art-classic')>();
       return {
@@ -139,7 +149,7 @@ describe('classic cursors: an id the drawn set never had', () => {
     const fresh = await import('../../../assets/cursors/cursor-css');
 
     const missing = parse(fresh.cursorCss('mountain'))!;
-    expect(missing.uri).toContain('mountain.png');
+    expect(missing.uri).toContain('mountain.svg');
     expect(missing.hotspot).toEqual([...CURSORS.mountain.hotspot]);
 
     // Its neighbour, which the drawn set does have, is unaffected.

@@ -19,16 +19,16 @@ import { createDefaultRegistry } from '../../../rules';
 import { roadLookup } from '../../../state/object-index';
 import { categoryOf } from '../../../state/catalog';
 import { cloneGridState } from '../../../core/model/grid-model';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { analyzeTerrain } from '../../../tools/generation/placement/analysis';
-import { scoreCrossing, crossingDetour, type RouteWorld } from '../../../tools/generation/placement/route';
+import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
+import { analyzeTerrain } from '../../../tools/placement/analysis';
+import { scoreCrossing, crossingDetour, type RouteWorld } from '../../../tools/placement/route';
 import { applyMacro } from '../../../tools/macros';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import {
   CellZone, ItemCategory, TerrainType,
   type Command, type EditorEvents, type GenerateConfig, type GridState, type MacroCoord, type PlacedObject,
 } from '../../../core/model/types';
-import type { Portal } from '../../../tools/generation/placement/portals';
+import type { Portal } from '../../../tools/placement/portals';
 
 /** The style a bare map reads: no turn penalty, no learned alignment, no standing material. */
 const DEFAULT_STYLE = { turnPenalty: 0, naturalness: 1, alignment: new Map<number, 'x' | 'y'>(), materialId: undefined, source: 'default' as const };
@@ -68,10 +68,15 @@ function islandKit(seed: number): Kit {
     base = makeState(ISLAND, ISLAND);
     const exec = new CommandExecutor(base, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(base));
     const config: GenerateConfig = {
-      algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
+      algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
     };
     const state = base;
-    exec.runSilently(() => { generateTerrain(config, state, (c: Command) => exec.execute(c)); });
+    exec.runSilently(() => {
+      generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
+      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // about relief. What stands on it is the case's own subject, planted or laid below.
+      clearAllObjects(state, (c: Command) => exec.execute(c));
+    });
     exec.commitStrokeGroup(exec.getUndoStackSize());
     islands.set(seed, base);
   }

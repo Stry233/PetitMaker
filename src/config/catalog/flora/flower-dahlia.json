@@ -14,6 +14,7 @@
     "大丽花"
   ],
   "icon": "flower-dahlia",
+  "iconColor": "#d8ad60",
   "width": 1,
   "height": 1,
   "loadValue": 10,

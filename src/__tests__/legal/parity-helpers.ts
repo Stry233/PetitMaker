@@ -14,7 +14,7 @@ import { PROVIDER_IDS, PROVIDER_META } from '../../agent/providers/defaults';
 /** The named provider brand labels (custom endpoint excluded — it is a
  *  described category, not a brand, and its line is language-specific). */
 const PROVIDER_LABELS = PROVIDER_IDS.filter((id) => id !== 'custom').map(
-  (id) => PROVIDER_META[id].label,
+  (id) => PROVIDER_META[id].name,
 );
 
 /** Count of `##` (h2) headings — the material-section skeleton. */

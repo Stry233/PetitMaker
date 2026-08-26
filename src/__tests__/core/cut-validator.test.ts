@@ -117,7 +117,7 @@ describe('validateCut', () => {
     const state = makeState(10, 10);
     function addRoad(x: number, y: number) {
       state.objects.set(`r-${x}-${y}`, {
-        id: `r-${x}-${y}`, catalogId: 'road-dirt',
+        id: `r-${x}-${y}`, catalogId: 'path-overgrown-dirt',
         position: { x, y }, rotation: 0 as const, elevation: 0,
       });
     }
@@ -129,11 +129,11 @@ describe('validateCut', () => {
   it('endpoint road: valid if connected side preserved', () => {
     const state = makeState(10, 10);
     state.objects.set('r1', {
-      id: 'r1', catalogId: 'road-dirt',
+      id: 'r1', catalogId: 'path-overgrown-dirt',
       position: { x: 5, y: 5 }, rotation: 0 as const, elevation: 0,
     });
     state.objects.set('r2', {
-      id: 'r2', catalogId: 'road-dirt',
+      id: 'r2', catalogId: 'path-overgrown-dirt',
       position: { x: 4, y: 5 }, rotation: 0 as const, elevation: 0,
     });
     const cutRight: Corners = ['square', 'fan', 'square', 'fan'];

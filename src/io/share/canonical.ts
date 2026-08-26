@@ -34,8 +34,8 @@ function optionalFields(o: SaveObject): Partial<SaveObject> {
   return r;
 }
 
-/** Deterministic, id-normalized view of the existing SaveFile. Built on top of the existing
- *  encoder (DRY): serialize → parse → normalize (sort objects, re-id o0,o1,…, drop timestamp). */
+/** Deterministic, id-normalized view of the SaveFile, built on the save encoder itself:
+ *  serialize → parse → normalize (sort objects, re-id o0,o1,…, drop timestamp). */
 export function canonicalize(state: GridState): CanonicalSave {
   const save = JSON.parse(serialize(state)) as SaveFile;
   const sorted = [...save.objects].sort((a, b) => {

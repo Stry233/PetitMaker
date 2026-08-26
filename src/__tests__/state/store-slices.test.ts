@@ -22,20 +22,21 @@ declare const __dirname: string;
 // The fields the composed store is expected to expose. Checked in so that losing one fails here:
 // comparing the slices against the store only proves the two agree, and they shrink together.
 const EXPECTED_STORE_FIELDS: readonly string[] = [
-  'activeLayer', 'activeTool', 'armedMacro', 'armingEpoch', 'assistantOpen', 'autoEdgeCut', 'brushSize', 'clearSelection',
+  'activeLayer', 'activeTool', 'armedMacro', 'armingEpoch', 'assistantDockSide', 'assistantOpen', 'assistantPinned', 'autoEdgeCut', 'brushSize', 'clearSelection',
   'commandExecutor', 'contentType', 'contextMenu', 'deletePopover', 'designMode', 'displayLayer',
   'editMode', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'hintLevel', 'initMap',
   'layerLocked', 'layerPinned', 'layerVisibility', 'loadMap', 'locale', 'markExported', 'modals',
   'motionPref', 'placementRotation', 'portraitBlocked', 'preview3DEdit', 'region', 'regionBrushSize',
-  'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setActiveLayer', 'setAssistantOpen', 'setAutoEdgeCut',
+  'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',
+  'setAutoEdgeCut',
   'setBrushSize', 'setContextMenu', 'setDeletePopover', 'setDisplayLayer',
   'setEditMode', 'setEraserShape', 'setExport3dShots', 'setHintLevel', 'setLayerLocked', 'setLayerVisibility',
   'setLocale', 'setModal', 'setMotionPref', 'setPlacementRotation',
   'setPortraitBlocked', 'setPreview3DEdit', 'setRegion', 'setRegionBrushSize', 'setRegionTool',
   'selectLayer',
   'setSelectingRegion', 'setSelection', 'setShowChunkBounds', 'setShowGrid', 'setShowLayerNumbers',
-  'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode',
-  'showChunkBounds', 'showGrid', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
+  'setQuality3d', 'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode',
+  'quality3d', 'showChunkBounds', 'showGrid', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
   'toggleSelection', 'tourRunning', 'uiZoom', 'viewMode',
 ];
 

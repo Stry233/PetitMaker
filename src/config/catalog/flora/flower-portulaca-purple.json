@@ -16,6 +16,7 @@
     "sun plant"
   ],
   "icon": "flower-portulaca-purple",
+  "iconColor": "#cc6fa1",
   "width": 1,
   "height": 1,
   "loadValue": 10,

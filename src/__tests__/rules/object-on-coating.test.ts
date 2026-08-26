@@ -33,32 +33,46 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
   });
 
   it('passes when the object and the road are on different cells', () => {
-    const state = withObjects(at('r', 'road-dirt', 3, 3), at('t', 'tree-apple', 7, 7));
+    const state = withObjects(at('r', 'path-overgrown-dirt', 3, 3), at('t', 'tree-apple', 7, 7));
     expect(objectOnCoatingRule.validate(state)).toEqual([]);
   });
 
   it('reports the covered cells when an object stands on a road', () => {
-    const state = withObjects(at('r', 'road-dirt', 4, 4), at('t', 'tree-apple', 4, 4));
+    const state = withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('t', 'tree-apple', 4, 4));
     const errors = objectOnCoatingRule.validate(state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.ruleId).toBe('V-PLACE-COATED');
     expect(errors[0]!.cells).toEqual([{ x: 4, y: 4 }]);
   });
 
+  it('lets flora stand on a plantable road, and only on one', () => {
+    // The game plants flowers and crops on some road surfaces; the editor grants it through the
+    // road's `plantable` trait, which the dirt road carries (issue #11).
+    expect(objectOnCoatingRule.validate(
+      withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('f', 'flower-daisy', 4, 4)))).toEqual([]);
+    expect(objectOnCoatingRule.validate(
+      withObjects(at('r', 'path-cobblestone', 4, 4), at('f', 'flower-daisy', 4, 4))).length).toBeGreaterThan(0);
+  });
+
+  it('a tree is not flora, so a plantable road refuses it like any road', () => {
+    const state = withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('t', 'tree-apple', 4, 4));
+    expect(objectOnCoatingRule.validate(state).length).toBeGreaterThan(0);
+  });
+
   it('exempts a crossing, whose deck is paved across on purpose', () => {
     // The generator routes the street bank-to-bank OVER a bridge; a road on those cells is the
     // intended arrangement, so flagging it would revert every generation that builds one.
-    const state = withObjects(at('r', 'road-dirt', 5, 5), at('b', 'bridge-plank', 5, 5));
+    const state = withObjects(at('r', 'path-overgrown-dirt', 5, 5), at('b', 'bridge-plank', 5, 5));
     expect(objectOnCoatingRule.validate(state)).toEqual([]);
   });
 
   it('exempts a road over a road, which is the brush repainting', () => {
-    const state = withObjects(at('r1', 'road-dirt', 6, 6), at('r2', 'road-stone', 6, 6));
+    const state = withObjects(at('r1', 'path-overgrown-dirt', 6, 6), at('r2', 'path-cobblestone', 6, 6));
     expect(objectOnCoatingRule.validate(state)).toEqual([]);
   });
 
   it('passes once the coating under the object is gone', () => {
-    const state = withObjects(at('r', 'road-dirt', 4, 4), at('t', 'tree-apple', 4, 4));
+    const state = withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('t', 'tree-apple', 4, 4));
     expect(objectOnCoatingRule.validate(state)).toHaveLength(1);
 
     const road = state.objects.get('r')!;
@@ -75,7 +89,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
     // strip and an illegal map.
     const state = makeState(20, 20);
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    expect(executor.execute(placeCmd(at('r', 'road-dirt', 4, 4))).success).toBe(true);
+    expect(executor.execute(placeCmd(at('r', 'path-overgrown-dirt', 4, 4))).success).toBe(true);
     executor.commitStroke(executor.getUndoStackSize() - 1);
 
     const strokeStart = executor.getUndoStackSize();
@@ -90,8 +104,8 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
 
   it('answers firstOnly without sweeping the whole map', () => {
     const state = withObjects(
-      at('r1', 'road-dirt', 1, 1), at('t1', 'tree-apple', 1, 1),
-      at('r2', 'road-dirt', 9, 9), at('t2', 'tree-apple', 9, 9),
+      at('r1', 'path-overgrown-dirt', 1, 1), at('t1', 'tree-apple', 1, 1),
+      at('r2', 'path-overgrown-dirt', 9, 9), at('t2', 'tree-apple', 9, 9),
     );
     expect(objectOnCoatingRule.validate(state, { firstOnly: true })).toHaveLength(1);
     // The full sweep still names every offending cell, so the flash covers both.

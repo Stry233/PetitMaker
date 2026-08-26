@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
-import { GROUND_SLAB_Y, LAYER_HEIGHT } from '../../canvas/map3d/core/coords';
+import { GROUND_SLAB_Y, LAYER_HEIGHT, PLATFORM_UNIT_H, platformTopY } from '../../canvas/map3d/core/coords';
 import { registerCatalogItem } from '../../state/catalog';
 import { ItemCategory, CellZone, TerrainType } from '../../core/model/types';
 import type { GridState, MapTemplate, PlacedObject } from '../../core/model/types';
@@ -41,7 +41,18 @@ describe('preview3d/object-meshes', () => {
     const inst = groups.get('a:platform')![0]!;
     expect(inst.scaleX).toBeCloseTo(3);
     expect(inst.scaleZ).toBeCloseTo(2);
-    expect(inst.y).toBe(0); // rests on the ground despite elevation: 1
+    // A platform is its own plinth: it fills from the ground up to the deck at its
+    // authored elevation, so a raised plaza stands a layer tall instead of lying flat.
+    expect(inst.y).toBe(0);
+    expect(inst.scaleY * PLATFORM_UNIT_H).toBeCloseTo(platformTopY(1));
+    expect(platformTopY(1)).toBeGreaterThan(LAYER_HEIGHT); // the deck clears the layer-1 terrain top
+  });
+
+  it('a ground-level platform keeps the unit slab', () => {
+    const plaza: PlacedObject = { id: '__plaza__', catalogId: '__plaza__', position: { x: 1, y: 1 }, rotation: 0, elevation: 0, width: 3, height: 2, color: '#e2e8f0', locked: true };
+    const inst = buildObjectInstances(emptyGrid(8, 8, [plaza])).get('a:platform')![0]!;
+    expect(inst.y).toBe(0);
+    expect(inst.scaleY).toBeCloseTo(1);
   });
 
   it('a 90°-rotated 2×1 object orients via rotationY but keeps unrotated scale', () => {

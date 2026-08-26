@@ -31,7 +31,7 @@ export interface EditSlice {
    *  is the ONLY writer of any of the four. `tool`/`shape` are projections for callers not yet
    *  migrated onto `arming`. */
   editMode: EditModeInputs;
-  /** A road catalog id, e.g. 'road-dirt'. The tile brush can lay any item in the Road category. */
+  /** A road catalog id, e.g. 'path-overgrown-dirt'. The tile brush can lay any item in the Road category. */
   tileMaterial: string;
   /**
    * Whether a HAND put `tileMaterial` where it is, as opposed to it being the catalog's first road
@@ -79,8 +79,8 @@ export interface EditSlice {
    *  read by the ghost preview and the placement it lands. Lives here (not the placer tool instance)
    *  because the shortcut engine, the ghost preview, and the placement command are three separate
    *  call sites that all need it, and only two of those touch a tool at all. Reset by `setEditMode`
-   *  whenever the armed item changes — a fresh item starts at its natural orientation, and it
-   *  doesn't matter what it reads while nothing is armed. */
+   *  whenever the armed item changes, so a fresh item starts at its natural orientation; nothing
+   *  reads it while nothing is armed. */
   placementRotation: 0 | 90 | 180 | 270;
   setPlacementRotation: (r: 0 | 90 | 180 | 270) => void;
   selectingRegion: boolean;

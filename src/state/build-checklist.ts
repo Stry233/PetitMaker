@@ -150,7 +150,7 @@ export type ChecklistTranslate = (key: string, params?: Record<string, string | 
 /**
  * The checklist as a flat text sheet, for the "copy as text" button: a header line with the total,
  * one section per category card with its items as `  {count}x {name}`, roads with cell counts, and
- * terrain as one line of per-layer parts. Sections with nothing are omitted, same as the panel.
+ * terrain as one indented line per layer. Sections with nothing are omitted, same as the panel.
  *
  * Pure: everything it prints comes from `list` + `locale` + `t`, so a fixed `BuildChecklist`
  * fixture reproduces an exact string, which is what pins its shape in tests.
@@ -177,14 +177,14 @@ export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Chec
   }
 
   if (list.layers.length > 0) {
-    const parts = list.layers.map((layer) => {
+    lines.push('', `${t('checklist.sec_terrain')}:`);
+    for (const layer of list.layers) {
       const label = layer.layer === 0 ? t('export.layer_ground') : t('export.layer_level', { n: layer.layer });
       const bits: string[] = [];
       if (layer.blocks > 0) bits.push(t('checklist.cells', { n: layer.blocks }));
       if (layer.water > 0) bits.push(t('checklist.water_part', { n: layer.water }));
-      return `${label} ${bits.join(', ')}`;
-    });
-    lines.push('', `${t('checklist.sec_terrain')}: ${parts.join(' · ')}`);
+      lines.push(`  ${label} ${bits.join(', ')}`);
+    }
   }
 
   if (list.unresolved > 0) lines.push('', t('checklist.unknown', { n: list.unresolved }));

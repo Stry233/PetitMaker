@@ -2,7 +2,7 @@
  * smart-menu.ts — what smart build offers on each surface, and where the open cell draws.
  *
  * Each surface offers its OWN actions. The design source draws the road action under all three
- * bars because one group was reused there; the list below is the intent, confirmed with the owner.
+ * bars because one group is reused there; the list below is what each surface actually offers.
  *
  * An AIM action builds where the user points, so it needs a target cell before it can run; a
  * PROPOSAL action works over the whole buildable region and needs none. That is the only thing the
@@ -32,9 +32,9 @@ export interface SmartAction {
 
 export const SMART_MENU: Record<SmartSurface, readonly SmartAction[]> = {
   mountain: [
-    // ONE verb: a tap lays a mound, a hold climbs it a terrace at a time, a drag lays a ridge. The
-    // two it replaces were one builder split by a boolean, so the surface offered two names for a
-    // choice nobody could make.
+    // ONE verb: a tap lays a mound, a hold climbs it a terrace at a time, a drag lays a ridge. Split
+    // into two entries it is one builder behind a boolean, offering two names for a choice nobody
+    // could make.
     { id: 'raise', labelKey: 'smart.raise', aim: true },
   ],
   water: [

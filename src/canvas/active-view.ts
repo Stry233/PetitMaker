@@ -14,7 +14,7 @@
  * "the registry was pointed at a view".
  */
 import type { ActiveView } from './view-projection';
-import type { ToolManager } from '../tools/tool-manager';
+import type { ToolManager } from '../tools/runtime';
 
 type ActiveViewListener = (view: ActiveView | null, previous: ActiveView | null) => void;
 

@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useWeightVars } from '../../design/scale';
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { colors, font, inkTint, radii, springs, z } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { useEditorStore } from '../../../state/store';
 import { useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
 import { setToastPresenter, type ToastType } from '../../../core/runtime/toast-bus';
+import { TOAST_BAND_TOP } from './toast-band';
 
 export { showToast } from '../../../core/runtime/toast-bus';
 
@@ -14,8 +16,11 @@ const TOAST_DURATION = 3000;
 
 const containerStyle: CSSProperties = {
   position: 'fixed',
-  top: 64,
-  left: '50%',
+  top: TOAST_BAND_TOP,
+  // Centred over the WORK: while the assistant's panel is docked it owns a strip at one side of the
+  // window, and a notice about what just happened on the map belongs over the map. Half the difference
+  // between the two edges, since the dock stands at either and only one is ever non-zero.
+  left: 'calc(50% + (var(--pin-dock-left, 0px) - var(--pin-dock-right, 0px)) / 2)',
   transform: 'translateX(-50%)',
   zIndex: z.toast,
   display: 'flex',
@@ -42,9 +47,10 @@ function accentColor(type: ToastType): string {
 const toastStyle: CSSProperties = {
   background: colors.panelCream,
   color: colors.frameDark,
-  ...font.body,
+  ...roleFont('menu'),
+  // A toast wraps at `maxWidth`, so the leading is part of the token rather than the browser's.
+  lineHeight: '150%',
   fontFamily: font.family,
-  fontWeight: 800,
   padding: '11px 18px',
   borderRadius: 18,
   boxShadow: `0 10px 28px ${inkTint(0.22)}, 0 2px 6px ${colors.inkBorder}`,
@@ -66,8 +72,7 @@ const dotStyle = (type: ToastType): CSSProperties => ({
 const badgeStyle = (type: ToastType): CSSProperties => ({
   background: accentColor(type),
   color: colors.white,
-  fontSize: 11,
-  fontWeight: 700,
+  ...roleFont('caption'),
   fontFamily: font.family,
   borderRadius: radii.pill,
   padding: '1px 7px',
@@ -126,16 +131,18 @@ export function ToastContainer() {
   }, [eventBus, t, addToast]);
 
   const chrome = useChromeScale();
-  // NOTE: never early-return null while toasts could be exiting — unmounting the
+  const weights = useWeightVars();
+  // Never early-return null while toasts could be exiting: unmounting the
   // container tears down <AnimatePresence> before it can play the last toast's
   // exit. The empty container is inert (pointerEvents: none), so keep it mounted
   // and let AnimatePresence animate the final toast out.
   return (
-    <div style={{ ...containerStyle, zoom: chrome }}>
+    <div style={{ ...containerStyle, zoom: chrome, ...weights }}>
       <AnimatePresence>
         {toasts.map((toast) => (
           <motion.div
             key={toast.id}
+            data-testid="toast"
             style={toastStyle}
             initial={{ opacity: 0, y: -20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}

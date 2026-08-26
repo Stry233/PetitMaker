@@ -2,11 +2,11 @@
  * WHOSE SURFACE A ROAD MACRO LAYS, through the tool the two aimed gestures ship behind.
  *
  * `readRoadStyle` works out what a map is already paved with so a new lane comes out matching the
- * street it grows from, and until the fix below nothing a hand could press ever saw it. The store
- * seeds `tileMaterial` with the catalog's first road because the tile brush needs something armed,
- * and every shell caller passed that seed as `material` — a decision nobody made, overriding the
- * map's own surface on every press. Only the agent's `build_road_network`, which names no material
- * at all, reached the feature.
+ * street it grows from, and a caller that always names a material never reaches it. The store seeds
+ * `tileMaterial` with the catalog's first road because the tile brush needs something armed, so a shell
+ * caller passing that seed as `material` overrides the map's own surface on every press with a decision
+ * nobody made. The agent's `build_road_network` names no material at all, which is why it does reach the
+ * feature.
  *
  * The rule this pins: a surface the CALLER named wins, and the map's own fills in when nobody
  * chose. `tileMaterialPicked` is the store's answer to which of the two is happening
@@ -22,11 +22,11 @@ import { createDefaultRegistry } from '../../../rules';
 import { categoryOf } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { MacroTool } from '../../../tools/macros/macro-tool';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
-import type { ToolContext } from '../../../tools/types';
+import type { ToolContext } from '../../../tools/runtime/types';
 import {
   CellZone, ItemCategory,
   type EditorEvents, type GridState, type MacroCoord, type PlacedObject,
@@ -37,8 +37,8 @@ const SHORE = 3;
 
 interface Kit { state: GridState; executor: CommandExecutor; registry: ReturnType<CommandExecutor['getRegistry']> }
 
-/** An open, flat, buildable map with a sea border, already paved with a STONE street along y = 10:
- *  the surface a lane laid beside it should come out in. */
+/** An open, flat, buildable map with a sea border, already paved with a PARK STONE street along
+ *  y = 10: the surface a lane laid beside it should come out in. */
 function stoneStreet(): Kit {
   const state = makeState(SIZE, SIZE);
   for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
@@ -47,7 +47,7 @@ function stoneStreet(): Kit {
   const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   for (let x = 8; x <= 34; x++) {
     const obj: PlacedObject = {
-      id: generateObjectId(), catalogId: 'road-stone', position: { x, y: 10 }, rotation: 0, elevation: 0,
+      id: generateObjectId(), catalogId: 'path-park-stone', position: { x, y: 10 }, rotation: 0, elevation: 0,
     };
     expect(executor.execute(objectPlacementCommand(obj)).success).toBe(true);
   }
@@ -77,14 +77,14 @@ describe('which surface a road macro lays', () => {
   it('matches the street already standing when nobody has picked one', async () => {
     const kit = stoneStreet();
     // The store's own fresh state: dirt armed for the tile brush, chosen by no one.
-    const laid = await twoTaps(kit, { tileMaterial: 'road-dirt', tileMaterialPicked: false }, { x: 12, y: 20 }, { x: 30, y: 20 });
+    const laid = await twoTaps(kit, { tileMaterial: 'path-overgrown-dirt', tileMaterialPicked: false }, { x: 12, y: 20 }, { x: 30, y: 20 });
     expect(laid.size, 'the route laid nothing to read a material off').toBeGreaterThan(0);
-    expect([...laid]).toEqual(['road-stone']);
+    expect([...laid]).toEqual(['path-park-stone']);
   });
 
   it('takes the bar\'s own surface once a hand has picked one', async () => {
     const kit = stoneStreet();
-    const laid = await twoTaps(kit, { tileMaterial: 'road-brick', tileMaterialPicked: true }, { x: 12, y: 20 }, { x: 30, y: 20 });
-    expect([...laid]).toEqual(['road-brick']);
+    const laid = await twoTaps(kit, { tileMaterial: 'path-simple-brick', tileMaterialPicked: true }, { x: 12, y: 20 }, { x: 30, y: 20 });
+    expect([...laid]).toEqual(['path-simple-brick']);
   });
 });

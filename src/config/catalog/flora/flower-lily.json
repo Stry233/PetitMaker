@@ -11,6 +11,7 @@
     "fr": "Lys blanc"
   },
   "icon": "flower-lily",
+  "iconColor": "#ad8c77",
   "width": 1,
   "height": 1,
   "loadValue": 10,

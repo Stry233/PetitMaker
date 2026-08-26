@@ -11,10 +11,9 @@ import { EventBus } from '../../core/commands/event-bus';
 import { decodeCells, encodeCells } from '../../core/model/grid-wire';
 import { createDefaultRegistry } from '../../rules';
 import { roadLookup } from '../../state/object-index';
+import { catalogLoadValue } from '../../state/catalog';
 import type { EditorEvents, GenerateConfig, GridState, MacroCoord, MapTemplate } from '../../core/model/types';
-import { previewMacro } from '../../tools/macros/preview';
-import { buildMacroRun, type MacroId, type MacroOpts } from '../../tools/macros';
-import type { MacroContext } from '../../tools/macros/context';
+import { buildMacroRun, previewMacro, type MacroContext, type MacroId, type MacroOpts } from '../../tools/macros';
 import type { WireCandidate, WireGrid } from './candidate-pool';
 import { runCandidateOn } from './generate';
 
@@ -48,7 +47,7 @@ function reviveGrid(grid: WireGrid): GridState {
 }
 
 function contextOver(state: GridState): MacroContext {
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue);
   return { state, executor, registry: executor.getRegistry() };
 }
 

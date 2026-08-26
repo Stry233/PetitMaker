@@ -1,8 +1,9 @@
 import { EventBus } from './event-bus';
 import { cloneCell, getCell, cellKey } from '../model/grid-model';
 import type { RuleDispatcher } from '../model/rule-dispatcher';
-import type { RoadLookup } from '../model/road-lookup';
+import type { LoadValueLookup, RoadLookup } from '../model/road-lookup';
 import { reconcileCuts } from '../edge-cut/cut-reconcile';
+import { reconcileRoads } from './road-reconcile';
 import {
   CommandType,
   type CellSnapshot,
@@ -63,23 +64,37 @@ export class CommandExecutor {
   private redoStack: HistoryEntry[] = [];
   private silent = false; // when true, rejected commands don't emit validation-failed (no error toast)
   private provenance: ProvenanceRecorder;
-  /** Satisfies `CutReconcileTarget` — the executor passes itself as the reconcile target. */
+  /** Satisfies `CutReconcileTarget` and `RoadReconcileTarget` — the executor passes itself as the
+   *  reconcile target. */
   readonly roadAt: RoadLookup;
+  readonly loadValueOf: LoadValueLookup;
 
   /** `roadAt` must answer for `state`. The reconcile pass reads terrain from one and coatings from
    *  the other and treats them as one map, so a lookup bound to a different grid reports roads that
-   *  are not on the map being repaired. Bind the pair in one expression. */
+   *  are not on the map being repaired. Bind the pair in one expression.
+   *
+   *  `loadValueOf` prices the PlaceObject a road repair issues; every app construction passes
+   *  `state/catalog:catalogLoadValue`. Left out (the tests' shorthand), a re-placed coating is
+   *  accounted weightless, and its own removal has already freed at least as much chunk load. */
   constructor(
     state: GridState,
     eventBus: EventBus<EditorEvents>,
     registry: RuleDispatcher,
     roadAt: RoadLookup,
+    loadValueOf: LoadValueLookup = () => 0,
   ) {
     this.state = state;
     this.eventBus = eventBus;
     this.registry = registry;
     this.roadAt = roadAt;
+    this.loadValueOf = loadValueOf;
     this.provenance = new ProvenanceRecorder(state);
+  }
+
+  /** Pre-command validation with no execution and no validation-failed event — the reconcile
+   *  passes probe with this, since their refusals are outcomes, not errors. */
+  validatePre(cmd: Command): ValidationError[] {
+    return this.registry.validatePreCommand(cmd, this.state);
   }
 
   /** Run `fn` with validation-failed events silenced — for bulk generation, which reject-and-skips many
@@ -98,6 +113,12 @@ export class CommandExecutor {
     try { return await fn(); } finally { this.silent = prev; }
   }
 
+  /** True while a road-reconcile pass is issuing its own commands through execute(). */
+  private reconciling = false;
+  /** Roads the settle pass removed mid-stroke, kept so a footprint that settles back to uniform
+   *  gets its road re-seated — emptied when the stroke commits. */
+  private strokeRemovedRoads = new Map<string, PlacedObject>();
+
   /** Validates and applies a single command. Returns success/failure with errors. State unchanged on failure. */
   execute(cmd: Command): ValidationResult {
     const errors: ValidationError[] = this.registry.validatePreCommand(cmd, this.state);
@@ -106,6 +127,11 @@ export class CommandExecutor {
       if (!this.silent) this.eventBus.emit('validation-failed', { cmd, errors });
       return { success: false, errors };
     }
+
+    // Whether a removal is taking the coating at its cell — asked before the apply, since the
+    // lookup cannot answer for an object already gone.
+    const removesCoating = cmd.type === CommandType.RemoveObject
+      && this.roadAt(cmd.removedObject.position.x, cmd.removedObject.position.y)?.id === cmd.objectId;
 
     const coords = getAffectedCells(cmd);
     const before = this.snapshot(coords);
@@ -116,8 +142,43 @@ export class CommandExecutor {
     this.undoStack.push({ cmd, before, after, taint });
     this.redoStack = [];
 
+    // A road tile's drawn boundary depends on its neighbours (road-shape.ts: roadEdgeInsets,
+    // roadCutFeeds — the feather lifts where its surface continues, and a cut tile's gap is fed
+    // by the wrap), so a coating arriving, leaving or changing its cut re-announces the roads it
+    // borders — the objects-changed idiom a corner trim already uses, which both views answer by
+    // redrawing the object in place.
+    const seamHost = cmd.type === CommandType.PlaceObject
+      ? (this.roadAt(cmd.object.position.x, cmd.object.position.y)?.id === cmd.object.id ? cmd.object : null)
+      : removesCoating && cmd.type === CommandType.RemoveObject ? cmd.removedObject
+      : cmd.type === CommandType.TrimCorners && cmd.layer === 'road' ? this.roadAt(cmd.x, cmd.y) : null;
+    if (seamHost) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const n = this.roadAt(seamHost.position.x + dx, seamHost.position.y + dy);
+        if (n && n.id !== seamHost.id) this.eventBus.emit('objects-changed', { added: [n] });
+      }
+    }
+
     this.eventBus.emit('cells-changed', { cells: coords });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
+
+    // A road rides the terrain change under it AS IT HAPPENS, not at the pointer's release: the
+    // settle-only pass carries a road whose footprint stands uniform at a new level and leaves a
+    // mixed one for commitStroke's full pass (mid-stroke, mixed usually means the stroke has not
+    // finished covering the footprint). Edge cuts repair on the same beat — a fillet whose walls
+    // this dab outgrew, a bevel the new mass covered — so the map is right under the moving
+    // pointer, not at its release; commitStroke's full passes stay as the backstop. Guarded,
+    // since both passes issue commands through here.
+    if (!this.reconciling && (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain)) {
+      this.reconciling = true;
+      try {
+        this.provenance.deriveScope(() => {
+          reconcileRoads(cmd.cells, this.state, this, { settleOnly: true, removedPool: this.strokeRemovedRoads });
+          reconcileCuts(cmd.cells, this.state, this);
+        });
+      } finally {
+        this.reconciling = false;
+      }
+    }
 
     return { success: true, errors: [] };
   }
@@ -134,8 +195,20 @@ export class CommandExecutor {
    */
   commitStroke(strokeStartSize: number, opts: { reconcile?: boolean } = {}): ValidationError[] {
     const reconcile = opts.reconcile ?? true;
+    if (this.undoStack.length - strokeStartSize <= 0) return [];
+
+    // Roads follow the surface they coat, whoever edited it — this pass runs BEFORE the
+    // post-stroke validation below so its re-places are validated (and auto-revertable) with the
+    // stroke, unlike the cut repairs, which are legal by construction and run after.
+    if (reconcile) {
+      const changed = this.cellsChangedSince(strokeStartSize);
+      if (changed.length > 0 || this.strokeRemovedRoads.size > 0) {
+        this.provenance.deriveScope(() =>
+          reconcileRoads(changed, this.state, this, { removedPool: this.strokeRemovedRoads }));
+      }
+    }
+    this.strokeRemovedRoads.clear();
     const maxUndos = this.undoStack.length - strokeStartSize;
-    if (maxUndos <= 0) return [];
 
     const violations = this.registry.validatePostStroke(this.state);
 
@@ -166,10 +239,7 @@ export class CommandExecutor {
     // the silhouette, never terrain support, so it can't invalidate any cut — running the neighbourhood
     // repair there could only mis-touch a neighbour's cut. The tool already produces its final valid state.
     if (reconcile) {
-      const changed: MacroCoord[] = [];
-      for (let i = strokeStartSize; i < this.undoStack.length; i++) {
-        changed.push(...getAffectedCells(this.undoStack[i]!.cmd));
-      }
+      const changed = this.cellsChangedSince(strokeStartSize);
       if (changed.length > 0) {
         this.provenance.deriveScope(() => reconcileCuts(changed, this.state, this));
       }
@@ -181,6 +251,16 @@ export class CommandExecutor {
     this.collapseHistory(strokeStartSize);
 
     return violations;
+  }
+
+  /** Every cell touched by the entries above `strokeStartSize` — the region both reconcile
+   *  passes work over. Re-collected between them, since road repairs add entries of their own. */
+  private cellsChangedSince(strokeStartSize: number): MacroCoord[] {
+    const changed: MacroCoord[] = [];
+    for (let i = strokeStartSize; i < this.undoStack.length; i++) {
+      changed.push(...getAffectedCells(this.undoStack[i]!.cmd));
+    }
+    return changed;
   }
 
   /**
@@ -329,12 +409,12 @@ export class CommandExecutor {
   }
 
   /**
-   * The objects an object-only history step touched, for an object-anchored flash
-   * (rendered at the object footprint, no terrain offset). Returns undefined when
-   * any reverted entry changed terrain, so those flash as terrain cells instead.
+   * The objects a history step touched, for an object-anchored flash (rendered at the object's own
+   * footprint, no terrain offset). Reported alongside the step's terrain cells rather than instead
+   * of them: one step can move both — a stroke whose road reconcile carried a coating away, a
+   * generate — and the renderer flashes each part on its own grid (`resolveHistoryFlash`).
    */
   private flashObjects(entries: HistoryEntry[]): PlacedObject[] | undefined {
-    if (entries.length === 0 || !entries.every(e => this.isObjectOnly(e))) return undefined;
     const out: PlacedObject[] = [];
     for (const e of entries) {
       if (e.objectOps) out.push(...e.objectOps.removed, ...e.objectOps.added);
@@ -342,19 +422,6 @@ export class CommandExecutor {
       else if (e.cmd.type === CommandType.RemoveObject) out.push(e.cmd.removedObject);
     }
     return out.length > 0 ? out : undefined;
-  }
-
-  /** An entry that only added/removed/modified objects (no terrain change). A
-   *  collapsed entry qualifies only when every added id was also removed (an
-   *  in-place modify like rotate), never a Clear/Generate that also moved terrain. */
-  private isObjectOnly(e: HistoryEntry): boolean {
-    if (e.objectOps) {
-      const { added, removed } = e.objectOps;
-      if (added.length === 0 || removed.length === 0) return false;
-      const removedIds = new Set(removed.map(o => o.id));
-      return added.every(o => removedIds.has(o.id));
-    }
-    return e.cmd.type === CommandType.PlaceObject || e.cmd.type === CommandType.RemoveObject;
   }
 
   /** Reverts a history entry: taint first (lockstep), then its cell/object state via command-apply. */

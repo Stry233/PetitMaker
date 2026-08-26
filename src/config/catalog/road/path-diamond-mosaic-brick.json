@@ -1,0 +1,28 @@
+{
+  "id": "path-diamond-mosaic-brick",
+  "category": "road",
+  "icon": "path-diamond-mosaic-brick",
+  "name": {
+    "en": "Diamond Mosaic Brick Path",
+    "zh": "菱形马赛克砖路",
+    "ja": "ダイヤモザイクレンガの道",
+    "ru": "Ромбовидная мозаичная кирпичная дорожка",
+    "th": "ทางอิฐโมเสกลายข้าวหลามตัด",
+    "id": "Jalan Bata Mosaik Berlian",
+    "fr": "Chemin de briques en mosaïque à losanges"
+  },
+  "color": "#abb1ae",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

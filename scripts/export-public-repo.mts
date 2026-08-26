@@ -1,5 +1,5 @@
-// Public-repo export CLI (Task 20, spec §16): snapshots the allowlisted subset of this
-// repo (per docs/internal/deployment/public-repo-manifest.md) into a clean output directory with
+// Public-repo export CLI: snapshots the allowlisted subset of this repo (per
+// docs/internal/deployment/public-repo-manifest.md) into a clean output directory with
 // fresh history-free files, then leak-checks the result.
 //
 // This file is CLI-ONLY (side-effecting: reads real files off disk, writes to --out, may
@@ -7,8 +7,8 @@
 // is never imported for its exports. The pure/testable core (glob matcher, manifest
 // parsing, classification, leak-check re-derivation) lives in
 // ./export-public-repo-core.mts, which src/__tests__/legal/repo-hygiene.test.ts imports
-// directly instead of this file. See scripts/license-audit.mts's doc comment for why a
-// main-module guard doesn't work under `vite-node` (the same trap this file avoids).
+// directly instead of this file. scripts/license-audit.mts's doc comment says why a
+// main-module guard cannot host both under `vite-node`.
 //
 // IP-CRITICAL: internal documents and game-derived reference material must NEVER be
 // exportable. This script only ever COPIES the manifest's allowlist — it never has a code
@@ -26,16 +26,19 @@
 //                                                                       manual/CI use only)
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join, resolve } from 'node:path';
 // @ts-ignore - node:child_process is untyped here (no @types/node)
 import { execFileSync, spawnSync } from 'node:child_process';
 
 import {
+  AGENT_DOC_NAMES,
   auditStatus,
   DENYLIST_SPOTCHECK,
+  findAgentDocPointers,
   findAiAttribution,
+  findByBasename,
   isProbablyText,
   findLeakedPaths,
   parseManifest,
@@ -83,16 +86,28 @@ function spotCheckDenylist(outDir: string): string[] {
   return DENYLIST_SPOTCHECK.filter((name) => existsSync(join(outDir, name)));
 }
 
-// The exported snapshot has no `.git` (Task 20 deliberately ships "fresh history-free
-// files", not a history). But the shipped test suite includes
-// `src/__tests__/legal/repo-hygiene.test.ts`, which calls `git ls-files -z` to re-derive
-// its own hygiene/leak-check assertions — exactly what the REAL published public repo will
-// be (a fresh `git init` + commit of this same file set) once a human pushes it. Without a
-// `.git` here, that test suite fails not because the export is wrong but because our own
-// verify harness doesn't yet look like a repo. `--verify` is a "this tree is
-// publish-ready" claim, so it inits + commits a throwaway local repo first — same shape as
-// the real publish step, scoped to `--verify` only (the plain dry-run copy stays a pure
-// file snapshot, unchanged).
+/** Every file in the output, as a path relative to it. */
+function walkOutput(outDir: string, rel = ''): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(outDir, rel), { withFileTypes: true }) as Array<{
+    name: string;
+    isDirectory(): boolean;
+  }>) {
+    const child = rel ? `${rel}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...walkOutput(outDir, child));
+    else out.push(child);
+  }
+  return out;
+}
+
+// The exported snapshot ships fresh history-free files, so it has no `.git`. But the
+// shipped test suite includes `src/__tests__/legal/repo-hygiene.test.ts`, which calls
+// `git ls-files -z` to re-derive its own hygiene/leak-check assertions — exactly what the
+// published public repo is (a fresh `git init` + commit of this same file set). Without a
+// `.git` here, that suite fails because the verify harness doesn't look like a repo, not
+// because the export is wrong. `--verify` is a "this tree is publish-ready" claim, so it
+// inits + commits a throwaway local repo first, the same shape as the real publish step;
+// the plain dry-run copy stays a pure file snapshot.
 function initGitSnapshot(outDir: string): void {
   const run = (args: string[]) => {
     const result = spawnSync('git', args, { cwd: outDir, stdio: 'inherit' });
@@ -163,14 +178,34 @@ async function main(): Promise<void> {
         spotted.map((p) => `  ${p}`).join('\n')
     );
   }
+  // The agent-instruction files sit beside the source they describe, so they have no fixed
+  // path for the check above to name — the whole output is walked for the basename instead.
+  const denied = findByBasename(walkOutput(outDir), AGENT_DOC_NAMES);
+  if (denied.length > 0) {
+    throw new Error(
+      `[export-public-repo] LEAK: agent-instruction file(s) exist in the output:\n` +
+        denied.map((p) => `  ${p}`).join('\n')
+    );
+  }
+
+  const copiedText = toCopy
+    .map((p) => ({ path: p, bytes: readFileSync(join(outDir, p)) as Uint8Array }))
+    .filter(({ bytes }) => isProbablyText(bytes))
+    .map(({ path, bytes }) => ({ path, text: Buffer.from(bytes).toString('utf8') }));
+
+  // --- Agent-doc pointer scan (the snapshot has no agent instructions to point at) ----
+  const pointers = findAgentDocPointers(copiedText);
+  if (pointers.length > 0) {
+    throw new Error(
+      `[export-public-repo] INTERNAL POINTER: ${pointers.length} copied file(s) name an ` +
+        `agent-instruction file the public repository does not have. State the fact in the shipped ` +
+        `file and keep the pointer in the agent doc:\n` +
+        pointers.map(({ path, name }) => `  ${path}: ${name}`).join('\n')
+    );
+  }
 
   // --- AI-attribution scan (the export must carry no commit-trailer attribution) ----
-  const attributed = findAiAttribution(
-    toCopy
-      .map((p) => ({ path: p, bytes: readFileSync(join(outDir, p)) as Uint8Array }))
-      .filter(({ bytes }) => isProbablyText(bytes))
-      .map(({ path, bytes }) => ({ path, text: Buffer.from(bytes).toString('utf8') })),
-  );
+  const attributed = findAiAttribution(copiedText);
   if (attributed.length > 0) {
     throw new Error(
       `[export-public-repo] AI ATTRIBUTION: ${attributed.length} copied file(s) contain a commit-trailer ` +

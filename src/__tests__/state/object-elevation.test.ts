@@ -4,8 +4,10 @@
  * `PlacedObject.elevation` is a placement-time cache that nothing re-derives, so any terrain edit
  * under a standing object leaves it stale and the object draws at a height the ground no longer has.
  *
- * A SPANNING object is the exception: a bridge and a ramp are placed across a gap or a step by
+ * A SPANNING object is an exception: a bridge and a ramp are placed across a gap or a step by
  * their own traits, so their elevation is the high end they reach and no cell beneath them holds it.
+ * A TERRAIN-BASE object (the plaza) is the other: its footprint is itself a base at its authored
+ * elevation, the same field the base-support rule reads.
  */
 import { describe, expect, it } from 'vitest';
 import { objectElevation } from '../../state/object-geometry';
@@ -30,7 +32,7 @@ function put(state: GridState, catalogId: string, x: number, y: number, elevatio
 describe('objectElevation', () => {
   it('follows the ground when the ground moves under it', () => {
     const state = flatMap();
-    const road = put(state, 'road-dirt', 5, 5);
+    const road = put(state, 'path-overgrown-dirt', 5, 5);
     expect(objectElevation(state, road)).toBe(0);
 
     setTerrain(state, 5, 5, TerrainType.Mountain, 2);
@@ -43,7 +45,7 @@ describe('objectElevation', () => {
     const state = flatMap();
     for (let tier = 1; tier <= 3; tier++) setTerrain(state, 8, tier + 4, TerrainType.Mountain, tier);
     for (let tier = 1; tier <= 3; tier++) {
-      const o = put(state, 'road-dirt', 8, tier + 4);
+      const o = put(state, 'path-overgrown-dirt', 8, tier + 4);
       expect(objectElevation(state, o)).toBe(surfaceElevation(state.cells[tier + 4]![8]!.terrain));
     }
   });
@@ -64,5 +66,17 @@ describe('objectElevation', () => {
     const house = put(state, 'building-myhouse', 10, 10);
     for (let y = 9; y <= 13; y++) for (let x = 9; x <= 13; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     expect(objectElevation(state, house)).toBe(1);
+  });
+
+  it('a terrainBase object (the plaza) keeps its authored elevation', () => {
+    // Its footprint is itself a structural base at the stored elevation (the base-support rule
+    // reads the same field), so the bare ground beneath does not hold its height.
+    const state = flatMap();
+    const plaza: PlacedObject = {
+      id: '__plaza__', catalogId: '__plaza__', position: { x: 4.5, y: 4.5 },
+      rotation: 0, elevation: 1, width: 3, height: 2, color: '#e2e8f0', locked: true,
+    };
+    state.objects.set(plaza.id, plaza);
+    expect(objectElevation(state, plaza)).toBe(1);
   });
 });

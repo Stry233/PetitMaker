@@ -4,16 +4,15 @@
  * exactly once per user action — a slider release, an arrow-key step, Ctrl+/-,
  * the reset chip, or double-click (see `setUiZoom` in `state/store.ts`, the
  * single persistence path). Every consumer that turns `uiZoom` into layout
- * (`useMenuScale` / `useMenuCenterOffset`, and `useChromeScale` which derives
- * from `useMenuScale`) reads the ANIMATED value from here instead of the raw
- * store field, so a slider release, a keyboard step, and Ctrl+/- all ease
- * identically — one mechanism, not several reimplementations.
+ * (`scale.tsx:useChromeScale` and `shell/use-frame-zoom.ts:useFrameZoom`) reads
+ * the ANIMATED value from here instead of the raw store field, so a slider
+ * release, a keyboard step, and Ctrl+/- all ease identically — one mechanism,
+ * not several reimplementations.
  *
  * A single persistent rAF follow loop (exponential smoothing via
- * `renderer/zoom-accum`'s `followStep` — the exact curve Ctrl+/- used before
- * this module existed; see the "Shake fix" note this replaces in
- * `use-view-shortcuts.ts`) chases the store's target. It's a module-level
- * singleton (like `motion-state.ts` / `render-scheduler.ts`) so every consumer
+ * `renderer/zoom-accum`'s `followStep`, the one curve every zoom path eases
+ * on) chases the store's target. It's a module-level singleton (like
+ * `motion-state.ts` / `render-scheduler.ts`) so every consumer
  * reads the exact same live value on the exact same frame — no drift between
  * the menu scale and the centre offset derived from it.
  *

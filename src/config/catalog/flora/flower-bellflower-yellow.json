@@ -11,6 +11,7 @@
     "fr": "Campanule jaune"
   },
   "icon": "flower-bellflower-yellow",
+  "iconColor": "#ac8155",
   "width": 1,
   "height": 1,
   "loadValue": 10,

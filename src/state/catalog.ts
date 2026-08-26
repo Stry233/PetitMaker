@@ -39,6 +39,11 @@ export function getCatalogItem(id: string): CatalogItem | undefined {
   return byId.get(id);
 }
 
+/** The `LoadValueLookup` the CommandExecutor takes: an item's chunk-load cost, 0 off-catalog. */
+export function catalogLoadValue(catalogId: string): number {
+  return byId.get(catalogId)?.loadValue ?? 0;
+}
+
 /** A placed object's category, the full 7-way ItemCategory. A PlacedObject carries none of its
  *  own — `catalogId` determines it — so this is the ONE way to ask. Undefined for a catalogId the
  *  catalog does not know, which json-codec drops on load. */
@@ -63,7 +68,22 @@ export function registerCatalogItem(item: CatalogItem): void {
   const list = byCategory.get(item.category) ?? [];
   if (!list.includes(item)) { list.push(item); byCategory.set(item.category, list); }
   searchIndex = null;
+  epoch++;
 }
+
+/**
+ * How many times the catalog has changed.
+ *
+ * The catalog is a module singleton every layer above reads, and several of them memoize what they
+ * read from it — the species a colour family offers, say. Nothing may import UPWARD to tell those
+ * caches a fixture has been registered, so the catalog publishes the one fact they need instead:
+ * a cache keyed on this number is stale exactly when the catalog is not the one it was built from.
+ */
+export function catalogEpoch(): number {
+  return epoch;
+}
+
+let epoch = 0;
 
 export function getCatalogByCategory(category: ItemCategory): CatalogItem[] {
   return byCategory.get(category) ?? [];
@@ -162,8 +182,8 @@ interface SearchEntry {
   categoryFields: readonly string[];
 }
 
-// Lazily built and memoized per locale (81 items makes a linear scan over a prebuilt index
-// cheap on every keystroke). registerCatalogItem drops the whole cache, since a fixture a test
+// Lazily built and memoized per locale (a catalog of this size makes a linear scan over a prebuilt
+// index cheap on every keystroke). registerCatalogItem drops the whole cache, since a fixture a test
 // adds mid-run must be searchable without another module reaching in to invalidate it by hand.
 let searchIndex: Map<Locale, SearchEntry[]> | null = null;
 
@@ -187,11 +207,11 @@ function indexForLocale(locale: Locale): SearchEntry[] {
 /**
  * A field match is reweighted by WHICH KIND of field produced it before two items are ever
  * compared, so a match on an item's own catalogued name outranks a match reached only through
- * another item's alias EVEN WHEN the alias's raw coverage was better — "red" hitting the whole of
+ * another item's alias EVEN WHEN the alias's raw coverage is better — "red" hitting the whole of
  * a short alias ("red") scores a higher raw coverage bonus than "red" hitting the first word of a
- * longer name ("Red Sunflower"), which used to let an aliased apple tree beat the flower actually
- * named for the colour. Reserving disjoint bonus BANDS per field type fixes that unconditionally
- * within a tier: alias tops out at `ALIAS_BONUS_CAP`, name starts strictly above it at
+ * longer name ("Red Sunflower"), which on raw score alone puts an aliased apple tree above the
+ * flower actually named for the colour. Disjoint bonus BANDS per field type settle it
+ * unconditionally within a tier: alias tops out at `ALIAS_BONUS_CAP`, name starts strictly above at
  * `NAME_BONUS_FLOOR`. Both bands stay under `MAX_BONUS`, so the tier itself (word-start substring
  * / mid-word substring / subsequence — `fuzzy.ts`) still dominates everything: a name match can
  * never leapfrog into a higher tier than its own text quality earned.
@@ -239,12 +259,10 @@ function bestFieldScore(term: string, entry: SearchEntry, includeCategory: boole
  *  (AND across terms — "red tree" is a red thing that is also a tree, not either alone), and the
  *  item's score is the sum of each term's own best facet score.
  *
- *  The category facet only opens up once there's more than one term. A single term is otherwise
- *  the one-element case of this sum, so it would be identical to the pre-multi-term search either
- *  way — EXCEPT that the category facet, if left open, would make a bare category word (e.g.
- *  "bridge") match every item of that category instead of only ones actually named for it, which
- *  changes standing single-term results (pinned: the object shelf's "bridge" search still means
- *  "named Bridge", the category tab already covers "is a Bridge"). */
+ *  The category facet only opens up once there's more than one term: left open, a bare category
+ *  word (e.g. "bridge") would match every item of that category instead of only the ones actually
+ *  named for it (pinned: the object shelf's "bridge" search means "named Bridge", and the category
+ *  tab already covers "is a Bridge"). */
 function scoreAllTerms(terms: readonly string[], entry: SearchEntry): number | null {
   const includeCategory = terms.length > 1;
   let total = 0;

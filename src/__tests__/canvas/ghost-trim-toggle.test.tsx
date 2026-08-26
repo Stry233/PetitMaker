@@ -1,9 +1,9 @@
 /**
  * The ghost promises the shape the stroke will leave, so auto-trim is one of its inputs — and the
  * pointer is not the only thing that can change it. Turning the trim on with the cursor standing
- * over the map used to leave the square-cornered preview where it was until the mouse moved, while
- * a stroke started from that same standing position committed a trimmed shape. The ghost was then
- * promising something the click did not do.
+ * over the map has to redraw it: a square-cornered preview left where it was until the mouse moves
+ * promises a shape the click does not do, since a stroke started from that same standing position
+ * commits a trimmed one.
  *
  * Driven through the STORE, which is the half the tool-level pins miss: they hand the tool a
  * context with `autoEdgeCut` already set, so nothing in them exercises the toggle reaching the
@@ -19,7 +19,7 @@ import { ToolType, type GridState } from '../../core/model/types';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
 import type { TrimmedCell } from '../../tools/edge-cut/trim-preview';
 import { makeStubRenderer } from '../tools/_tool-manager';
@@ -164,7 +164,7 @@ describe('the ghost trims when the stroke will', () => {
     el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
     overlay.showGhost.mockClear();
 
-    setStoreState({ tileMaterial: 'road-stone' });
+    setStoreState({ tileMaterial: 'path-cobblestone' });
 
     expect(overlay.showGhost).toHaveBeenCalled();
   });

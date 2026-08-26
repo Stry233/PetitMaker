@@ -1,17 +1,17 @@
 /**
  * Display/session preferences. Persisted ones delegate to `core/runtime/prefs`'s `PREFS` table
- * (the only declaration site for a storage key); the rest (`motionPref`, `showGrid`,
- * `showChunkBounds`, `showLayerNumbers`) are session-only toggles that live beside them because
- * they are the same kind of fact — how the editor currently looks, not what it is editing.
+ * (the only declaration site for a storage key); `showLayerNumbers` is the one session-only
+ * toggle beside them — a LayerPanel inspection aid rather than a Settings choice, so a fresh
+ * session starting with it off is the expected state, not a lost preference.
  *
  * Self-contained: no field here is read by `initMap`/`setEditMode`/any shell action, so this slice
  * takes no cross-slice dependency and imports nothing from `engine`/`edit`/`shell`.
  */
 import type { StateCreator } from 'zustand';
 import type { Locale } from '../../core/model/types';
-import { readPref, writePref, type HintLevel, type ViewMode } from '../../core/runtime/prefs';
+import { readPref, writePref, type HintLevel, type MotionPref, type Quality3d, type ViewMode } from '../../core/runtime/prefs';
 
-export type { HintLevel, ViewMode };
+export type { HintLevel, Quality3d, ViewMode };
 
 export interface PrefsSlice {
   uiZoom: number;  // UI scale multiplier (Ctrl +/-), independent of the map zoom
@@ -23,8 +23,8 @@ export interface PrefsSlice {
   setViewMode: (mode: ViewMode) => void;
   /** Animation preference. 'system' follows the OS prefers-reduced-motion; the
    *  others override it. */
-  motionPref: 'system' | 'reduced' | 'full';
-  setMotionPref: (p: 'system' | 'reduced' | 'full') => void;
+  motionPref: MotionPref;
+  setMotionPref: (p: MotionPref) => void;
   /** Draw the pointer with the OS cursors instead of the app's own set, everywhere: the DOM
    *  reads it through `ui/design/cursors/cursor-vars`, the canvas through the cursor controller. */
   systemCursors: boolean;
@@ -32,6 +32,11 @@ export interface PrefsSlice {
   /** How verbose the quick-hints panel is, 'off' hiding it entirely. */
   hintLevel: HintLevel;
   setHintLevel: (level: HintLevel) => void;
+  /** The 3D scene's quality: 'auto' lets the GL probe decide (a software rasterizer renders
+   *  lite), the others pin it — for a misread GPU, or a software-GL user who will pay the
+   *  seconds a full frame costs there. */
+  quality3d: Quality3d;
+  setQuality3d: (q: Quality3d) => void;
   showGrid: boolean;
   setShowGrid: (show: boolean) => void;
   showChunkBounds: boolean;
@@ -57,8 +62,11 @@ export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (s
     set({ viewMode: mode });
     writePref('viewMode', mode);
   },
-  motionPref: 'system',
-  setMotionPref: (p) => set({ motionPref: p }),
+  motionPref: readPref('motionPref'),
+  setMotionPref: (p) => {
+    set({ motionPref: p });
+    writePref('motionPref', p);
+  },
   systemCursors: readPref('systemCursors'),
   setSystemCursors: (on) => {
     set({ systemCursors: on });
@@ -69,10 +77,21 @@ export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (s
     set({ hintLevel: level });
     writePref('hintLevel', level);
   },
-  showGrid: true,
-  setShowGrid: (show) => set({ showGrid: show }),
-  showChunkBounds: true,
-  setShowChunkBounds: (show) => set({ showChunkBounds: show }),
+  quality3d: readPref('quality3d'),
+  setQuality3d: (q) => {
+    set({ quality3d: q });
+    writePref('quality3d', q);
+  },
+  showGrid: readPref('showGrid'),
+  setShowGrid: (show) => {
+    set({ showGrid: show });
+    writePref('showGrid', show);
+  },
+  showChunkBounds: readPref('showChunkBounds'),
+  setShowChunkBounds: (show) => {
+    set({ showChunkBounds: show });
+    writePref('showChunkBounds', show);
+  },
   showLayerNumbers: false,
   setShowLayerNumbers: (show) => set({ showLayerNumbers: show }),
 });

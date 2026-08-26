@@ -39,7 +39,7 @@ import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import {
   closeRouteMarks, getRouteSession, moveRouteMark, subscribeRouteSession, type RouteMarkId,
-} from '../../../tools/macros/route-session';
+} from '../../../tools/macros';
 import { cursors, font, springs, z } from '../../design/styles';
 import { ACTIVE, PLATE_INK } from '../../design/tokens';
 

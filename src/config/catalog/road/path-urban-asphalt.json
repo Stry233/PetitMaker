@@ -1,0 +1,28 @@
+{
+  "id": "path-urban-asphalt",
+  "category": "road",
+  "icon": "path-urban-asphalt",
+  "name": {
+    "en": "Urban Asphalt Path",
+    "zh": "城市沥青路",
+    "ja": "都会のアスファルトの道",
+    "ru": "Городская асфальтовая дорожка",
+    "th": "ทางยางมะตอยในเมือง",
+    "id": "Jalan Aspal Kota",
+    "fr": "Chemin d'asphalte urbain"
+  },
+  "color": "#797a7b",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

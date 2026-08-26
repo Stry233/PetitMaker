@@ -30,18 +30,18 @@ import { roadLookup } from '../../../state/object-index';
 import { categoryOf } from '../../../state/catalog';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { MacroTool } from '../../../tools/macros/macro-tool';
 import { applyMacro, type MacroOpts } from '../../../tools/macros';
 import { previewMacro } from '../../../tools/macros/preview';
 import { setToastPresenter } from '../../../core/runtime/toast-bus';
-import { gateTerminalCells } from '../../../tools/generation/placement/route';
-import { OFFER_ORDER } from '../../../tools/generation/placement/route-offers';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
+import { gateTerminalCells } from '../../../tools/placement/route';
+import { OFFER_ORDER } from '../../../tools/placement/route-offers';
+import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
 import { cloneGridState } from '../../../core/model/grid-model';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
-import type { ToolContext } from '../../../tools/types';
+import type { ToolContext } from '../../../tools/runtime/types';
 import {
   CellZone, ItemCategory, TerrainType,
   type Command, type EditorEvents, type GenerateConfig, type GridState, type MacroCoord, type PlacedObject,
@@ -74,10 +74,15 @@ function generatedIsland(seed: number): Kit {
     base = makeState(ISLAND, ISLAND);
     const exec = new CommandExecutor(base, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(base));
     const config: GenerateConfig = {
-      algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
+      algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
     };
     const state = base;
-    exec.runSilently(() => { generateTerrain(config, state, (c: Command) => exec.execute(c)); });
+    exec.runSilently(() => {
+      generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
+      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // about relief. What stands on it is the case's own subject, planted or laid below.
+      clearAllObjects(state, (c: Command) => exec.execute(c));
+    });
     exec.commitStrokeGroup(exec.getUndoStackSize());
     islands.set(seed, base);
   }
@@ -245,6 +250,37 @@ async function twoTaps(
 }
 
 /** Every object id the map gained while `body` ran, as cells. */
+/** Two taps on the generated island whose route has to take a crossing, searched for on the fixture
+ *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
+ *  across a tier step, and the first pair a link actually joins over a bridge or a ramp wins. It
+ *  throws rather than skipping if the island offers none — a fixture with no step in it cannot ask
+ *  this question, and passing quietly would hide that. */
+function pairOverACrossing(): { from: MacroCoord; to: MacroCoord } {
+  const probe = generatedIsland(11);
+  const { width: W, height: H } = probe.state.template;
+  const standable = (x: number, y: number): number | null => {
+    const cell = probe.state.cells[y]?.[x];
+    if (!cell || cell.zone !== CellZone.Grass) return null;
+    if (cell.terrain && cell.terrain.type !== TerrainType.Mountain) return null;
+    return cell.terrain?.elevation ?? 0;
+  };
+  for (let y = 8; y < H - 8; y += 6) {
+    for (let x = 8; x < W - 26; x += 4) {
+      const a = standable(x, y);
+      if (a === null) continue;
+      for (const span of [18, 22, 26]) {
+        const b = standable(x + span, y);
+        if (b === null || b === a) continue;
+        const trial = generatedIsland(11);
+        const from = at(x, y), to = at(x + span, y);
+        const outcome = applyMacro(trial, 'road-link', { seed: 1, from, at: to });
+        if (outcome.changes > 0 && crossings(trial.state).length > 0) return { from, to };
+      }
+    }
+  }
+  throw new Error('the fixture no longer offers a pair whose route takes a crossing');
+}
+
 function laidBy(kit: Kit, body: () => void): Set<string> {
   const before = new Set(kit.state.objects.keys());
   body();
@@ -258,8 +294,8 @@ describe('acceptance: the ghost promises what the press lays', () => {
     const kit = makeKit();
     // Off the direct line but inside a width-3 dilation's reach: the standing dirt tile is a LOSS,
     // and the ghost has to say so before the press replaces it with the armed material.
-    const dirt = place(kit, 'road-dirt', 20, 11);
-    const d = linkTool(kit, { tileMaterial: 'road-stone', brushSize: 3 });
+    const dirt = place(kit, 'path-overgrown-dirt', 20, 11);
+    const d = linkTool(kit, { tileMaterial: 'path-cobblestone', brushSize: 3 });
 
     d.tool.onPointerDown(at(10, 10), at(10, 10), d.ctx);
     d.tool.onPointerMove(at(30, 10), at(30, 10), d.ctx);
@@ -272,12 +308,12 @@ describe('acceptance: the ghost promises what the press lays', () => {
     expect(new Set(ghost.cells.map(key))).toEqual(laid);
     expect(kit.state.objects.has(dirt.id), 'the standing coating was reused rather than replaced').toBe(false);
     const replaced = roadObjects(kit.state).find((o) => o.position.x === 20 && o.position.y === 11);
-    expect(replaced?.catalogId, 'the run paved in the bar\'s own material').toBe('road-stone');
+    expect(replaced?.catalogId, 'the run paved in the bar\'s own material').toBe('path-cobblestone');
   });
 
   it('gesture 2: a door spur into a standing street', async () => {
     const kit = makeKit();
-    for (let x = 8; x <= 34; x++) place(kit, 'road-dirt', x, 10);
+    for (let x = 8; x <= 34; x++) place(kit, 'path-overgrown-dirt', x, 10);
     const house = place(kit, 'building-myhouse', 20, 24, 0);
     const d = linkTool(kit);
 
@@ -394,7 +430,7 @@ describe('acceptance: the contract, through the tool', () => {
 describe('acceptance: a gate is a terminal', () => {
   it('gesture 2: the spur ends in the gate strip it was tapped for', async () => {
     const kit = makeKit();
-    for (let x = 8; x <= 34; x++) place(kit, 'road-dirt', x, 10);
+    for (let x = 8; x <= 34; x++) place(kit, 'path-overgrown-dirt', x, 10);
     const house = place(kit, 'building-myhouse', 20, 24, 0);
     const d = linkTool(kit);
 
@@ -406,11 +442,11 @@ describe('acceptance: a gate is a terminal', () => {
 
   it('gesture 2: a door already served is SAID to be, rather than paved again', () => {
     const kit = makeKit();
-    for (let x = 8; x <= 34; x++) place(kit, 'road-dirt', x, 10);
+    for (let x = 8; x <= 34; x++) place(kit, 'path-overgrown-dirt', x, 10);
     const house = place(kit, 'building-myhouse', 20, 24, 0);
     // The APPROACH row only: the strip's first three cells are the footprint's own gate row, and a
     // coating there overlaps the house.
-    for (const c of gateTerminalCells(objectRect(house), house.rotation).slice(0, 3)) place(kit, 'road-dirt', c.x, c.y);
+    for (const c of gateTerminalCells(objectRect(house), house.rotation).slice(0, 3)) place(kit, 'path-overgrown-dirt', c.x, c.y);
 
     const d = linkTool(kit);
     const before = roadObjects(kit.state).length;
@@ -425,7 +461,7 @@ describe('acceptance: a gate is a terminal', () => {
   it('gesture 3: EVERY house the whole-map press connected is paved to its door', () => {
     const kit = makeKit();
     // Three houses, three facings, all on open flat ground the press can reach: the clause is about
-    // the LAST cell of a spur, and a gate that rotates with its house is where it used to be missed.
+    // the LAST cell of a spur, and a gate that rotates with its house is the case a spur misses.
     // No terrain stands between them, so every door here is reachable and the run has no excuse.
     const houses = [
       place(kit, 'building-myhouse', 8, 8, 0),
@@ -522,10 +558,12 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     // A hand-built ford or terrace joins whether or not the run stitches its pavement: the deck
     // lands where the plan put it. What breaks the route is a `waterSpan`/`heightDrop` trait moving
     // a realized deck several cells along its own axis, so the plan's approach cells fall under it
-    // or a cell short of its entrance — and that needs real terrain. This pair came out in pieces of
-    // 96 and 92 cells with the two taps in different ones.
+    // or a cell short of its entrance — and that needs real terrain.
+    //
+    // THE PAIR IS FOUND, NOT WRITTEN DOWN. The taps have to sit on ground the generator happened to
+    // build a step between, so a pair copied into the file goes stale the next time the terrain moves.
+    const { from, to } = pairOverACrossing();
     const kit = generatedIsland(11);
-    const from = at(35, 8), to = at(53, 8);
     const d = linkTool(kit);
     await twoTaps(d, from, to);
 
@@ -557,15 +595,15 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
 describe('acceptance: the map\'s own character routes the press', () => {
   // The turn-penalty half of `readRoadStyle` is pinned at the unit level (`road-style.test.ts`):
   // over the fixtures a two-tap route can actually be laid on, the straightener collapses the
-  // rectilinear and the organic answer onto the same line, so the recipe's naturalness is not
-  // observable from the pavement here.
+  // rectilinear and the organic answer onto the same line, so the style the map was measured at is
+  // not observable from the pavement here.
   //
   // The MATERIAL half runs only where the caller names none, which is why these three drive
   // `applyMacro`: `state/slices/edit.ts` seeds `tileMaterial` with the first road in the catalog and
   // never clears it, so both `MacroTool.linkOpts` and `SmartBuild.tsx` always name one and the
   // learned material is always overridden. The agent's `build_road_network` is the caller that
   // reaches this, and it is the caller these cases stand for.
-  it.each(['road-brick', 'road-slate', 'road-stone'])('a new lane is paved in the standing street\'s own surface: %s', (material) => {
+  it.each(['path-simple-brick', 'path-park-stone', 'path-cobblestone'])('a new lane is paved in the standing street\'s own surface: %s', (material) => {
     const kit = makeKit();
     for (let y = 8; y <= 30; y++) place(kit, material, 30, y);
 
@@ -580,7 +618,7 @@ describe('acceptance: the map\'s own character routes the press', () => {
 
   it('a route joins a standing street rather than stopping beside it', async () => {
     const kit = makeKit();
-    for (let y = 6; y <= 34; y++) place(kit, 'road-dirt', 28, y);
+    for (let y = 6; y <= 34; y++) place(kit, 'path-overgrown-dirt', 28, y);
 
     const before = new Set(kit.state.objects.keys());
     const d = linkTool(kit);

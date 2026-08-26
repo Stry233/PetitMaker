@@ -11,6 +11,7 @@
     "fr": "Cactus"
   },
   "icon": "tree-cactus",
+  "iconColor": "#829767",
   "width": 1,
   "height": 1,
   "loadValue": 50,

@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { buildRoadTrimMesh } from '../../canvas/map3d/build/terrain-geometry';
+import { buildRoadTrimMeshes } from '../../canvas/map3d/build/terrain-geometry';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { surfaceY } from '../../canvas/map3d/core/coords';
 import { type GridState, TerrainType } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 
-// A road whose edge-cut gave it non-square corners can't ride the shared full-square instance geometry, so
-// its trimmed top face is meshed separately — a 1:1 port of 2D drawRoadShape. Untrimmed roads stay instanced.
+// EVERY road is meshed (never instanced): the surface feathers at its boundary, a vertex-colour
+// fade no instanced unit box can carry. The geometry is a 1:1 port of the 2D painter's.
 const addRoad = (s: any, id: string, corners?: any, rotation = 0) =>
-  s.objects.set(id, { id, catalogId: 'road-dirt', position: { x: 5, y: 5 }, rotation, elevation: 0, corners });
+  s.objects.set(id, { id, catalogId: 'path-overgrown-dirt', position: { x: 5, y: 5 }, rotation, elevation: 0, corners });
+/** These maps are paved in ONE material, so the split's single part is the road mesh. */
+const buildRoadTrimMesh = (s: GridState) =>
+  buildRoadTrimMeshes(s)[0]?.mesh ?? { positions: [] as number[] };
 const instanceCount = (s: GridState) => [...buildObjectInstances(s).values()].reduce((n, l) => n + l.length, 0);
 const xCentroid = (m: { positions: number[] }) => { let sx = 0, n = 0; for (let i = 0; i < m.positions.length; i += 3) { sx += m.positions[i]!; n++; } return sx / n; };
 
@@ -20,15 +23,15 @@ describe('preview3d: road edge-cut renders in 3D', () => {
     expect(instanceCount(s), 'excluded from the instanced decals').toBe(0);
   });
 
-  it('an untrimmed road has NO custom mesh and stays instanced', () => {
+  it('an untrimmed road is meshed too — its boundary feather needs the mesh', () => {
     const s = makeState(20, 20) as GridState;
     addRoad(s, 'r2'); // no corners
-    expect(buildRoadTrimMesh(s).positions.length).toBe(0);
-    expect(instanceCount(s)).toBe(1);
+    expect(buildRoadTrimMesh(s).positions.length).toBeGreaterThan(0);
+    expect(instanceCount(s)).toBe(0);
     const s2 = makeState(20, 20) as GridState;
     addRoad(s2, 'r3', ['square', 'square', 'square', 'square']); // all-square = untrimmed
-    expect(buildRoadTrimMesh(s2).positions.length).toBe(0);
-    expect(instanceCount(s2)).toBe(1);
+    expect(buildRoadTrimMesh(s2).positions.length).toBeGreaterThan(0);
+    expect(instanceCount(s2)).toBe(0);
   });
 
   it('the cut DIRECTION follows the connection side (a 1:1 port of 2D drawRoadShape)', () => {
@@ -42,11 +45,9 @@ describe('preview3d: road edge-cut renders in 3D', () => {
     expect(xCentroid(left), 'cut flips with the connection side').toBeLessThan(xCentroid(right));
   });
 
-  it('the trim mesh matches the instanced decal: top at surfaceY + lift + slab, walls down to the lift base', () => {
-    // The instanced road is a 0.05-thick box lifted 0.05 above the VISIBLE surface
-    // (surfaceY — the ground slab top at layer 0, not layerToY). The trimmed tile
-    // must occupy the same vertical band or it reads as a disconnected step, and
-    // it needs side walls so its edges have the same thickness as its neighbours.
+  it('a road is a FLAT decal: one plane a hair above the surface, no thickness of its own', () => {
+    // A tile with height read as a raised slab, and two representations of one road could sit at
+    // two heights. Every vertex of the mesh lies in ONE plane just above the visible surface.
     const s = makeState(20, 20) as GridState;
     addRoad(s, 'r4', ['square', 'square', 'square', 'fan']);
     const m = buildRoadTrimMesh(s);
@@ -59,18 +60,19 @@ describe('preview3d: road edge-cut renders in 3D', () => {
       expect(m.positions[i + 2]!).toBeGreaterThanOrEqual(-5 - 1e-6);
       expect(m.positions[i + 2]!).toBeLessThanOrEqual(-4 + 1e-6);
     }
-    expect(maxY, 'top face at the instanced road top (ground slab 0.08 + lift 0.05 + slab 0.05)').toBeCloseTo(surfaceY(0) + 0.1, 5);
-    expect(minY, 'side walls reach down to the lift base, giving the tile thickness').toBeCloseTo(surfaceY(0) + 0.05, 5);
+    expect(maxY, 'one flat plane').toBeCloseTo(minY, 6);
+    expect(maxY).toBeGreaterThan(surfaceY(0));
+    expect(maxY).toBeLessThan(surfaceY(0) + 0.05);
   });
 
-  it('a road with an UNRECOGNISED corner state falls back to the instanced full square (never vanishes)', () => {
+  it('a road with an UNRECOGNISED corner state draws as the full square (never vanishes)', () => {
     // Only the five canonical road-cut states have trim polygons. Anything else
-    // (e.g. a crafted save) must still draw SOMETHING — the plain decal — rather
+    // (e.g. a crafted save) must still draw SOMETHING — the whole cell — rather
     // than leaving a hole in the paved path.
     const s = makeState(20, 20) as GridState;
     addRoad(s, 'rX', ['fan', 'square', 'square', 'square']); // not a canonical state
-    expect(buildRoadTrimMesh(s).positions.length, 'no trim shape for it').toBe(0);
-    expect(instanceCount(s), 'still drawn as the plain instanced decal').toBe(1);
+    expect(buildRoadTrimMesh(s).positions.length, 'meshed as the whole cell').toBeGreaterThan(0);
+    expect(instanceCount(s), 'roads are never instanced').toBe(0);
   });
 
   it('an ELEVATED trimmed road rides its terrain surface like its instanced neighbours', () => {
@@ -84,6 +86,58 @@ describe('preview3d: road edge-cut renders in 3D', () => {
     const m = buildRoadTrimMesh(s);
     let maxY = -Infinity;
     for (let i = 1; i < m.positions.length; i += 3) maxY = Math.max(maxY, m.positions[i]!);
-    expect(maxY).toBeCloseTo(surfaceY(3) + 0.1, 5);
+    expect(maxY).toBeGreaterThan(surfaceY(3));
+    expect(maxY).toBeLessThan(surfaceY(3) + 0.05);
+  });
+});
+
+/**
+ * A path material paves with its own tile art, and a texture is a per-MESH thing: the split is what
+ * lets two materials meeting on one map wear two different tiles. The UVs carry the phase — cell
+ * units off the map corner, exactly the anchor the 2D fill matrix uses — so the same material's
+ * separate surfaces cannot disagree about where the pattern starts.
+ */
+describe('preview3d: road decals split per material and carry tile UVs', () => {
+  const paved = (s: any, id: string, catalogId: string, x: number, y: number) =>
+    s.objects.set(id, { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
+
+  it('splits per material, naming the tile art each half wears', () => {
+    const s = makeState(20, 20) as GridState;
+    paved(s, 'd', 'path-overgrown-dirt', 2, 2);
+    paved(s, 'c', 'path-cobblestone', 5, 2);
+    const parts = buildRoadTrimMeshes(s);
+    expect(parts.map((p) => p.material).sort()).toEqual(['path-cobblestone', 'path-overgrown-dirt']);
+    for (const p of parts) expect(p.icon, p.material).toBe(p.material);
+    for (const p of parts) expect(p.mesh.positions.length).toBeGreaterThan(0);
+  });
+
+  it('emits one UV per vertex, phased on the world grid (one cell = one repeat)', () => {
+    const s = makeState(20, 20) as GridState;
+    paved(s, 'c1', 'path-cobblestone', 3, 4);
+    paved(s, 'c2', 'path-cobblestone', 9, 12); // a second, disconnected surface of the same material
+    const [part] = buildRoadTrimMeshes(s);
+    const uv = part!.mesh.uv!;
+    expect(uv.length * 3).toBe(part!.mesh.positions.length * 2);
+    for (let i = 0; i < part!.mesh.positions.length / 3; i++) {
+      const wx = part!.mesh.positions[i * 3]!, wz = part!.mesh.positions[i * 3 + 2]!;
+      // The map is centred on the origin (20 cells → corner at −10), so a cell line at integer
+      // world x is an integer u: the repeat starts on the grid, never on the surface.
+      expect(uv[i * 2]!).toBeCloseTo(wx + 10, 6);
+      expect(uv[i * 2 + 1]!).toBeCloseTo(wz + 10, 6);
+    }
+  });
+
+  it('leaves a textured surface untinted', () => {
+    // The tile art carries the colour; multiplying the item's hex on top would darken it twice.
+    // Every road in the catalog is an in-game path with art of its own (#37), so this is every
+    // road — the untextured branch survives for an item that arrives without an icon.
+    const s = makeState(20, 20) as GridState;
+    paved(s, 'd', 'path-overgrown-dirt', 2, 2);
+    paved(s, 'c', 'path-cobblestone', 5, 2);
+    const parts = buildRoadTrimMeshes(s);
+    for (const p of parts) {
+      expect(p.mesh.colors.length, p.material).toBeGreaterThan(0);
+      for (const c of p.mesh.colors) expect(c, p.material).toBe(1);
+    }
   });
 });

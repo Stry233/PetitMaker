@@ -18,9 +18,9 @@ import { roadLookup } from '../../../state/object-index';
 import { applyMacro } from '../../../tools/macros';
 import { readGrammar } from '../../../tools/macros/grammar';
 import { previewMacro } from '../../../tools/macros/preview';
-import { buildingGate } from '../../../tools/generation/placement/object';
+import { buildingGate } from '../../../tools/placement/object';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { circleCells } from '../../../tools/paint/shapes';
 import type { KitContext } from '../../../kit/context';
 import { makeState } from '../../rules/_helpers';
@@ -57,7 +57,7 @@ const withCabin = (): { kit: KitContext; cabin: PlacedObject } => {
 
 function withRoad(): KitContext {
   const kit = setup();
-  for (let x = 12; x <= 32; x++) place(kit, 'road-stone', x, ROAD_Y);
+  for (let x = 12; x <= 32; x++) place(kit, 'path-cobblestone', x, ROAD_Y);
   return kit;
 }
 
@@ -110,7 +110,7 @@ describe('which grammar a press falls under', () => {
   it('takes the building when the disc holds both', () => {
     const kit = setup();
     place(kit, CABIN.id, CABIN.x, CABIN.y);
-    for (let x = 16; x <= 26; x++) place(kit, 'road-stone', x, 24);
+    for (let x = 16; x <= 26; x++) place(kit, 'path-cobblestone', x, 24);
     // A house standing on a paved street is still a house.
     expect(grammarAt(kit.state, BESIDE)?.kind).toBe('building');
   });

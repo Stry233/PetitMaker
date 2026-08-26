@@ -10,9 +10,11 @@ import {
   TerrainType,
 } from '../core/model/types';
 import { cellKey, createGrid, createPlazaObject, onHalfGrid } from '../core/model/grid-model';
+import { generateObjectId } from '../core/model/object-id';
 import { PLAZA_ID } from '../core/model/constants';
 import { isCoating } from '../core/model/traits';
 import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
+import { currentCatalogId } from './legacy-catalog';
 import { getCatalogItem } from '../state/catalog';
 import { hasHalfStep, objectRect } from '../state/object-geometry';
 import {
@@ -211,8 +213,8 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
     objects: objectList,
     metadata: { savedAt: new Date().toISOString() },
     ...(state.provenance ? { provenance: serializeProvenance(state.provenance) } : {}),
-    // Notes round-trip with the map (autosave keeps them). Written only when non-empty.
-    // Safe for the share codecs: canonicalize() reads just version/templateId/cells/objects.
+    // Notes round-trip with the map (autosave keeps them). Written only when non-empty, and
+    // outside what the share codecs read: canonicalize() takes version/templateId/cells/objects.
     ...(state.notes && (state.notes.title || state.notes.description || state.notes.author)
       ? { notes: state.notes }
       : {}),
@@ -323,8 +325,8 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (!row) continue;
     for (let x = 0; x < template.width; x++) {
       const token = tokens[idx++];
-      // Plaza cells are plain grass (the plaza is an object now); ignore any
-      // terrain a legacy save baked into them. createGrid already set grass.
+      // The plaza is an object, so its cells are plain grass: terrain a legacy save baked into
+      // them is ignored, and createGrid has already set grass there.
       if (token && (template.zones[y]?.[x] ?? CellZone.Grass) !== CellZone.Plaza) {
         row[x] = tokenToCell(token, row[x]?.zone ?? CellZone.Grass);
       }
@@ -334,11 +336,16 @@ export function deserialize(json: string, template: MapTemplate): GridState {
   const objects = new Map<string, PlacedObject>();
   for (const obj of save.objects) {
     if (obj.id === PLAZA_ID) continue; // recreated fresh from the template below
+    // A retired id (the four plain colour roads) reads as the item that replaced it, BEFORE the
+    // guard below drops what it cannot resolve — an old map converts rather than losing its roads.
+    // Exact match only: this is a rename table, not a prefix rule, so a crafted near-miss id still
+    // falls through to the drop.
+    const catalogId = currentCatalogId(obj.catalogId);
     // Import validation: only real catalog items may enter the state. A crafted
     // save could otherwise smuggle arbitrary strings as catalogId — which the
     // renderer/rules would choke on, and which the AI agent would echo into its
     // model context (prompt-injection vector via shared map files).
-    const item = getCatalogItem(obj.catalogId);
+    const item = getCatalogItem(catalogId);
     if (!item) continue;
     // Numeric fields are untrusted: a NaN position or a 45° rotation would pass the
     // type cast and corrupt every downstream footprint read. Drop the object instead.
@@ -351,9 +358,15 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (obj.elevation !== undefined && !isValidElevation(obj.elevation)) continue;
     if (obj.spanLength !== undefined
       && (!Number.isInteger(obj.spanLength) || obj.spanLength < 1 || obj.spanLength > Math.max(template.width, template.height))) continue;
+    // The id is untrusted free text and the agent's get_objects prints it verbatim into model
+    // context, so an id outside the minter's own alphabet is replaced rather than carried — the
+    // other prompt-injection door beside catalogId. Every id this app ever wrote passes (the
+    // minter emits base36, the share decoder o<n>), so only a crafted or hand-edited save is
+    // touched, and such a save's exported step history was never replayable anyway.
+    const id = /^[A-Za-z0-9_-]{1,64}$/.test(obj.id) ? obj.id : generateObjectId();
     const placed: PlacedObject = {
-      id: obj.id,
-      catalogId: obj.catalogId,
+      id,
+      catalogId,
       position: { x: obj.x, y: obj.y },
       rotation: obj.rotation as 0 | 90 | 180 | 270,
       elevation: obj.elevation ?? 0,
@@ -363,7 +376,7 @@ export function deserialize(json: string, template: MapTemplate): GridState {
       placed.corners = decodeCorners(obj.corners);
     }
     if ((obj as any).patchOnly) placed.patchOnly = true;
-    objects.set(obj.id, placed);
+    objects.set(id, placed);
   }
 
   // Repair a map that arrives with coatings stacked on one cell, beside the unknown-catalogId

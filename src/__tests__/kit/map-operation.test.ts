@@ -13,8 +13,8 @@ import { getImportFileDeps } from '../../ui/chrome/modals/import/import-deps';
 import type { GenerateConfig, GridState } from '../../core/model/types';
 
 const config: GenerateConfig = {
-  algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 4, seed: 3, region: null,
-  relief: 0.8, naturalness: 1, settlement: 0.5, nature: 0.5,
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 4, seed: 3, region: null,
+  richness: 1,
 };
 
 const SCOPE = [{ x: 40, y: 40 }, { x: 41, y: 40 }, { x: 40, y: 41 }, { x: 41, y: 41 }];

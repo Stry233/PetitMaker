@@ -52,10 +52,9 @@ export interface CompositionAssets {
   translate: (key: string, vars?: Record<string, string | number>) => string;
 }
 
-/** Draw the full composition into ctx per the computed layout. Browser-only.
- *  Order: frame → header (title/desc + badge pill) → MAIN MAP (left) + layer column (right) →
- *         3D card → share-code band → footer.
- *  Font sizes are multiplied by comp.scale so text reads proportionally at any resolution. */
+/** Draw the full composition into ctx per the computed layout (band order in the file header).
+ *  Browser-only. Font sizes are multiplied by comp.scale so text reads proportionally at any
+ *  resolution. */
 export function paintComposition(
   ctx: CanvasRenderingContext2D,
   comp: ExportComposition,
@@ -83,8 +82,8 @@ function drawFrame(ctx: CanvasRenderingContext2D, width: number, height: number,
   ctx.stroke();
 }
 
-/** Width of a badge pill at a given scale (DRY: used to measure for layout AND to draw).
- *  Sets the font itself so the measure matches drawBadgePill's text exactly. */
+/** Width of a badge pill at a given scale, read both to lay the row out and to draw it. Sets the
+ *  font itself so the measure matches drawBadgePill's text exactly. */
 function badgePillWidth(ctx: CanvasRenderingContext2D, label: string, ff: string, S: number, scale: number): number {
   ctx.font = `800 ${14 * S * scale}px ${ff}`;
   const padX = 11 * S * scale, iconW = 16 * S * scale, gap = 6 * S * scale;

@@ -11,6 +11,7 @@
     "fr": "Tournesol jaune"
   },
   "icon": "flower-sunflower",
+  "iconColor": "#bf8c56",
   "width": 1,
   "height": 1,
   "loadValue": 10,

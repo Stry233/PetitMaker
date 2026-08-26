@@ -36,7 +36,7 @@ The images and files the editor produces for you (screenshots, exported map file
 | Item | License | Owner | Notes |
 |---|---|---|---|
 | PetitMaker name and logo | All Rights Reserved | PetitMaker | Not licensed under Apache-2.0. |
-| Catalog item sprites (`src/assets/icons/catalog/`) | All Rights Reserved (unless stated) | 火山野牛王 / PetitMaker | The per-item icons across the seven catalog families (Building, Tree, Flora, Road, Bridge, Ramp, Facility; e.g. `building-bamboo-cabin.png`, `bridge-suspension.png`); game-referential where noted (see disclosure below). |
+| Catalog item sprites (`src/assets/icons/catalog/`) | All Rights Reserved (unless stated) | 火山野牛王 / PetitMaker | The per-item icons across the seven catalog families (Building, Tree, Flora, Road, Bridge, Ramp, Facility; e.g. `building-bamboo-cabin.png`, `bridge-suspension.png`); game-referential where noted (see disclosure below). The 25 `path-*.png` files are the exception: they are game-derived, not original art, and are listed in the table below. |
 | UI chrome icons (`src/assets/icons/ui/`) | All Rights Reserved (unless stated) | 火山野牛王 / PetitMaker | Interface art: tool, brush, and control glyphs (e.g. `brush-circle.png`, `dice.png`). Created for the project. |
 | Original low-poly 3D model specs (`model3d`) | All Rights Reserved (unless stated) | PetitMaker | Original interpretations authored inline in the catalog JSON; game-referential where noted (see below). |
 
@@ -51,8 +51,8 @@ The images and files the editor produces for you (screenshots, exported map file
 
 **AI provider brand marks.** Connecting the agent means pasting your own API key, and the key screen
 shows each supported platform's mark so you can tell which one a key belongs to. Anthropic, OpenAI,
-Google, DeepSeek, Zhipu, Alibaba, Moonshot and OpenRouter, together with their names and logos, are
-trademarks of their respective owners. They appear here for identification only. This project is not
+Google, DeepSeek, Zhipu, Alibaba, Moonshot, OpenRouter and Perplexity, together with their names and
+logos, are trademarks of their respective owners. They appear here for identification only. This project is not
 affiliated with, endorsed by, or sponsored by any of them, and displaying a mark is not a claim of
 partnership or of support for this software.
 
@@ -66,12 +66,15 @@ bundling the marks into a product.
 | Item | Category | Notes |
 |---|---|---|
 | Maps a user creates/exports | User-provided | Rights held by the creator, subject to incorporated third-party material. |
+| The README's sample map (`docs/media/share-map.png`, `share-map.zh.png`, and the figures drawn on it) | User-provided | 鱼松的爱心桃花岛, a map built in the editor by team member 鱼松 (credited in the README) and shipped as the README's importable share image; the map's rights stay theirs, subject to the in-game material it depicts, and the permission record is kept in the internal audit like every class-4 entry. |
 | Map templates (`src/config/maps/hexia.json`, `tafa.json`) | Game-derived | Layouts measured from in-game map/grid data (see disclosure below). |
+| Path surface icons (`src/assets/icons/catalog/path-*.png`, 25 files) | Game-derived | The in-game path tile art, shipped unmodified. Each file is both the road picker's icon and the texture the map draws that surface with, so the editor shows the surface a player would actually lay. The files were obtained from the image library of the community-maintained [Petit Planet Wiki](https://petitplanet.wiki/) (petitplanet.wiki), which hosts the game's unpacked assets; we acknowledge the wiki's collection work with thanks. The wiki is the source of the copies, not a rights holder in the artwork: the art is the game owner's, it is not original art, and it is not covered by the class-2 terms above (see disclosure below). |
+| Neighbour portraits (`src/assets/neighbors/*-icon.png`, 14 files) | Game-derived | The in-game character portrait icons, shipped unmodified. The generate shelf deals them as the example pictures a map can be built from, so the picture mode can be tried without a file on hand. Obtained from the image library of the community-maintained [Petit Planet Wiki](https://petitplanet.wiki/) (petitplanet.wiki), with thanks for its collection work; as with the path tiles, the wiki is the source of the copies and not a rights holder in the artwork, which is the game owner's and is not covered by the class-2 terms above (see disclosure below). |
 | Item sprites & references drawn from the game | Redrawn-referential / game-derived | Determined per file in the internal audit; game-referential material remains its owners'. |
 
 ## Game-Derived Material: Disclosure
 
-Some material in this project is **game-derived**: for example, the bundled map templates (`hexia.json`, `tafa.json`) are measured from *Petit Planet* in-game map/grid data, and certain catalog icons and `model3d` specs are original interpretations that reference in-game items.
+Some material in this project is **game-derived**: for example, the bundled map templates (`hexia.json`, `tafa.json`) are measured from *Petit Planet* in-game map/grid data, the 25 `path-*.png` surface icons and the 14 `src/assets/neighbors/*-icon.png` character portraits are the game's own art (both obtained via the community-maintained Petit Planet Wiki, per the table above), and certain catalog icons and `model3d` specs are original interpretations that reference in-game items.
 
 A per-file provenance **audit is in progress**. Its detailed ledger, which records each asset's category, owner, source, permission basis, and reviewer, is maintained **internally** and is not part of the public repository. This public document carries only the summary posture, so a reader can see what kind of material is present and how it is treated.
 

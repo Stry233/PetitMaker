@@ -14,10 +14,8 @@ import { CellZone, TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import { getCell } from '../../../core/model/grid-model';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
-import { GROUND_SLAB_Y, layerToY, mapCenterOffset } from '../core/coords';
+import { GROUND_SLAB_Y, SEA_Y, layerToY, mapCenterOffset, waterSurfaceY } from '../core/coords';
 
-const SEA_Y = 0.05;         // = terrain-geometry SEA_Y
-const WATER_MIN = GROUND_SLAB_Y + 0.02; // ground-level pool surface (mesher's max(...) floor)
 
 export interface Vec3 { x: number; y: number; z: number }
 
@@ -50,7 +48,7 @@ function surfaceAt(state: GridState, wx: number, wz: number): SurfaceAt | null {
       if (top > 0) best = { h: layerToY(top), cell: { x: tx, y: tz }, elevation: top, kind: 'terrain' };
     } else if (t && t.type === TerrainType.Water) {
       const top = t.patchOnly ? t.elevation : solidTopOf(t, TerrainType.Water);
-      const h = Math.max(layerToY(top) + SEA_Y, WATER_MIN);
+      const h = waterSurfaceY(top);
       best = { h, cell: { x: tx, y: tz }, elevation: top, kind: 'water' };
     }
   }

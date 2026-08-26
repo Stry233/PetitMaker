@@ -93,8 +93,8 @@ export type ContentMode = Exclude<BuildMode, null | 'object' | 'generate'>;
  * WHAT A CONTENT SURFACE HAS ARMED. One field, so it holds one thing: a surface cannot be erasing
  * AND laying a circle AND holding a macro, which is what five loose fields let it say.
  *
- * `smart` CARRIES its macro. A macro-less smart tool was the rest state wearing a tool's name, and
- * `resolveEditMode` had a branch to catch it; now it cannot be written down.
+ * `smart` CARRIES its macro, so a macro-less smart tool — the rest state wearing a tool's name —
+ * cannot be written down.
  */
 export type ContentArming =
   | { kind: 'brush' }
@@ -121,7 +121,7 @@ export type Arming = ContentArming | ObjectArming;
 
 /** A mode and what it has armed, paired so the pair cannot be mismatched. `tool` and `shape` are
  *  DERIVED, exactly as `activeTool`/`designMode` are: written only by `nextEditMode`, never read by
- *  `resolveEditMode`, and deleted by the follow-up sweep that moves the shell onto `arming`. */
+ *  `resolveEditMode`. */
 interface Inputs<M extends BuildMode, A extends Arming> {
   mode: M;
   arming: A;
@@ -139,8 +139,8 @@ export type EditModeInputs =
   // arming here, but the surface resumes with what it held when the bar comes back.
   | Inputs<null | 'generate', Arming>;
 
-/** The flat keys every shell caller still passes. ONE adapter (`nextEditMode`) turns them into an
- *  arming; migrating the callers to `arming` is a follow-up sweep, not a blocker. */
+/** The flat keys every shell caller passes. ONE adapter (`nextEditMode`) turns them into an
+ *  arming. */
 export interface EditModePatch {
   mode?: BuildMode;
   tool?: BuildTool;
@@ -270,12 +270,10 @@ function objectArmedBy(patch: EditModePatch, held: Arming): ObjectArming | null 
 
 /** What object mode INHERITS when the call arms nothing of its own: nothing.
  *
- *  Entering the shelf arms nothing at all, because every object arming is an ask. The eraser has
- *  dual citizenship (it is the
- *  one tool in both families, and the three terrain bars share its cell), so it rode INTO object
- *  mode uninvited, where the resolver reads it ahead of the card that was just chosen and no bar
- *  has a cell to show it: a chosen card that kept erasing, a cursor that never reset. Held here by
- *  one line instead, and by the type everywhere else. */
+ *  Entering the shelf arms nothing at all, because every object arming is an ask. The eraser is the
+ *  one tool in both families (the three terrain bars share its cell), so carrying it in would put it
+ *  ahead of the card just chosen, with no bar cell to show it: a card that keeps erasing, a cursor
+ *  that never resets. */
 function carriedObject(prev: EditModeInputs): ObjectArming {
   if (prev.mode !== 'object') return { kind: 'none' };
   return prev.arming;
@@ -300,13 +298,12 @@ function carriedContent(prev: EditModeInputs, surface: ContentMode): ContentArmi
 /**
  * THE ONE ADAPTER: the shell's flat keys in, the arming union out.
  *
- * WHAT THIS CALL ARMS OUTRANKS WHAT WAS CARRIED — and that now holds BY ASSIGNMENT, because arming
- * is one field. The three recency conditionals `setEditMode` grew (item clears macro, macro clears
- * item, a carried eraser is demoted in object mode) said the same thing about five fields that
- * could each disagree with the others; there is nothing left for them to sanitise.
+ * WHAT THIS CALL ARMS OUTRANKS WHAT WAS CARRIED, and that holds BY ASSIGNMENT: arming is one field,
+ * so no recency conditional (item clears macro, macro clears item, a carried eraser demoted in
+ * object mode) is needed to keep five separately-writable fields agreeing.
  *
  * Every caller keeps its call shape (`setEditMode({mode, tool, shape, itemId, macro})`); this is
- * where that shape stops. Moving the callers onto `arming` is a follow-up sweep.
+ * where that shape stops.
  */
 export function nextEditMode(prev: EditModeInputs, patch: EditModePatch): EditModeInputs {
   const mode = patch.mode === undefined ? prev.mode : patch.mode;

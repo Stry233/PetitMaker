@@ -1,0 +1,28 @@
+{
+  "id": "path-herringbone-clay-brick",
+  "category": "road",
+  "icon": "path-herringbone-clay-brick",
+  "name": {
+    "en": "Herringbone Clay Brick Path",
+    "zh": "人字纹陶砖路",
+    "ja": "ヘリンボーン土レンガの道",
+    "ru": "Кирпичная дорожка «ёлочка»",
+    "th": "ทางอิฐดินเผาลายก้างปลา",
+    "id": "Jalan Bata Tanah Liat Tulang Ikan",
+    "fr": "Chemin de briques en chevrons"
+  },
+  "color": "#c18674",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

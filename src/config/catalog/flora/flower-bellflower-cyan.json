@@ -15,6 +15,7 @@
     "蓝"
   ],
   "icon": "flower-bellflower-cyan",
+  "iconColor": "#b0c1b8",
   "width": 1,
   "height": 1,
   "loadValue": 10,

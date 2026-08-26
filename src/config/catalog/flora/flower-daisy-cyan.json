@@ -15,6 +15,7 @@
     "蓝"
   ],
   "icon": "flower-daisy-cyan",
+  "iconColor": "#98c8d3",
   "width": 1,
   "height": 1,
   "loadValue": 10,

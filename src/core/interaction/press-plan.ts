@@ -54,8 +54,9 @@ export interface PressFacts {
   hit: PressHit | null;
   /** The active tool's own `canActAt` answer for this cell. */
   placementAllowed: boolean;
-  /** Whether the active tool has a multi-tap gesture standing (`Tool.hasPending`). Only the macro
-   *  tool answers true today; a tool that does not implement it is unaffected by the branch below. */
+  /** Whether the active tool has a multi-tap gesture standing (`Tool.hasPending`) — the macro tool's
+   *  road-link mark, the curve's chain of anchors. A tool that does not implement it is unaffected
+   *  by the branch below. */
   pendingGesture: boolean;
   /** The view pans a left drag through its own tool path (2D, through the Hand tool). False where
    *  the pointer machine must pan it (the 3D editor). */

@@ -123,9 +123,9 @@ export class Projection3D implements ViewProjection {
     if (!box) return null;
     const cam = this.host.camera;
     // Off-camera guard: a box whose CENTRE is at or behind the camera plane projects with a sign
-    // flip (perspective divide by a negative w), which threw the handles to a wrong spot. Return
-    // null so the caller hides them. Objects are small, so centre-in-front ⇒ every corner is in
-    // front and safe to project (a large locked object like the plaza carries no handles anyway).
+    // flip (perspective divide by a negative w), throwing the handles to a wrong spot. Return null
+    // so the caller hides them. Objects are small, so centre-in-front ⇒ every corner is in front
+    // and safe to project (a large locked object like the plaza carries no handles anyway).
     const center = box.getCenter(new THREE.Vector3());
     if (center.clone().applyMatrix4(cam.matrixWorldInverse).z >= -0.05) return null;
     const rect = this.host.canvas.getBoundingClientRect();
@@ -151,7 +151,7 @@ export class Projection3D implements ViewProjection {
     // perspective diamond).
     top.sort((a, b) => a.x - b.x);
     // Button size tracks the OBJECT'S own apparent size — one world unit projected AT the object —
-    // not a cell at the map origin (which ballooned the handles when the origin sat near the camera).
+    // not a cell at the map origin (which balloons the handles when the origin sits near the camera).
     const s0 = project(center.x, center.y, center.z);
     const s1 = project(center.x + 1, center.y, center.z);
     const scale = Math.hypot(s1.x - s0.x, s1.y - s0.y);

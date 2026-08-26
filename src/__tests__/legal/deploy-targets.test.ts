@@ -26,7 +26,9 @@ describe('every target', () => {
     expect(DEPLOY_TARGETS.global.title).toMatch(/^[\x20-\x7E]+$/);
     expect(DEPLOY_TARGETS.global.description).toMatch(/^[\x20-\x7E]+$/);
     expect(DEPLOY_TARGETS.cn.title).not.toMatch(/[A-Za-z]/);
-    expect(DEPLOY_TARGETS.cn.description).not.toMatch(/[A-Za-z]{4}/);
+    // The one Latin run the zh description may carry is the game's own name: it is the term a
+    // cross-language search arrives by, and a name is not a language switch.
+    expect(DEPLOY_TARGETS.cn.description.replace(/Petit Planet/g, '')).not.toMatch(/[A-Za-z]{4}/);
   });
 
   it('still names both products, each in the deployment\'s own language', () => {

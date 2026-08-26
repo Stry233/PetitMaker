@@ -16,6 +16,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { roadLookup } from '../../state/object-index';
+import { catalogLoadValue } from '../../state/catalog';
 
 export function makeTemplate(width = 20, height = 20): MapTemplate {
   const zones: CellZone[][] = Array.from({ length: height }, () =>
@@ -87,5 +88,5 @@ export function makeObject(
 }
 
 export function makeExecutor(state: GridState): CommandExecutor {
-  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue);
 }

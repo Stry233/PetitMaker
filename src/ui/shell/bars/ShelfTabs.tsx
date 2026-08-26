@@ -16,15 +16,15 @@
  *
  * THE MARK IS WHAT IS CHOSEN, NOT THE WORD. Every name is the same warm off-white on the same
  * outline, and the yellow bar under one of them is the whole difference — which is how the game
- * marks its own category row. Colouring the chosen word instead put the one name the eye is meant
+ * marks its own category row. Colouring the chosen word instead puts the one name the eye is meant
  * to find in the interface's lightest colour, over an island whose sand border is nearly that
  * colour already.
  *
  * IT TRAVELS SIDEWAYS RATHER THAN WRAPPING. Six category names at one fixed size are wider than the
  * room left beside the search field in every language but Chinese and Japanese — English included —
- * and wrapping them ran the row onto two lines: the shelf grew upward into the map, the names
- * stopped being one line to read along, and the mark under the chosen one could sit under a line
- * the eye had already left. So the row is one line that scrolls. It is a scroller only where there
+ * and wrapping them runs the row onto two lines: the shelf grows upward into the map, the names stop
+ * being one line to read along, and the mark under the chosen one can sit under a line the eye has
+ * already left. So the row is one line that scrolls. It is a scroller only where there
  * is something to scroll: the generator's two names never fill their row, and every part of this —
  * the fade, the wheel, the reveal — resolves to nothing there.
  *
@@ -179,6 +179,9 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
         // Positioned, so a name's `offsetLeft` is measured from the row's own box and the fade can
         // be told where the words are; static, it would report against the shelf's row instead.
         position: 'relative',
+        // Solid, gaps between names included: the shelf's root is pointer-transparent, so without
+        // this a wheel between two names falls through to the map instead of gliding the row.
+        pointerEvents: 'auto',
         display: 'flex', alignItems: 'flex-end', flexWrap: 'nowrap', gap: SHELF_TABS.gap,
         // Shrinkable to nothing, so the row gives way to whatever stands beside it rather than
         // pushing it: the search field keeps its place and the names take the shortfall.

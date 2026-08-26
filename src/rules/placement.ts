@@ -251,6 +251,10 @@ function validateTrait(
       // It imposes no placement constraint of its own.
       return [];
 
+    case 'plantable':
+      // Passive marker (flora may stand on this coating — see standsOnCoating's readers).
+      return [];
+
     case 'halfStep':
       // Passive marker: grants the item a half-cell anchor on both axes
       // (state/object-geometry:hasHalfStep). It imposes no placement constraint of its

@@ -1,11 +1,10 @@
 /**
  * NESTED-RING TERRACING, ON LIVE CELLS.
  *
- * The generator climbs a zone into a massif by carving the INSET CORE of what it just raised and
- * raising that core one tier further (`generation/zones.ts:carveCrown`), so every step nests inside
- * its parent. This is that math on CELLS: no zone graph, no `ZonePlan`, no adjacency map, none of
- * the planning-time island. It is a PORT rather than a call, because `carveCrown` mutates a plan in
- * place and has no live-map shape to hand back.
+ * A mound climbs by carving the INSET CORE of what was just raised and raising that core one tier
+ * further, so every step nests inside its parent. This is that math on CELLS, with no plan behind
+ * it: nothing here reads a tier field or a region, so a press works on ground a person painted by
+ * hand as readily as on ground a run laid.
  *
  * PURE. It places nothing, validates nothing and reads no rule.
  *
@@ -26,11 +25,10 @@
  */
 import { NEIGHBORS4, distanceField } from '../../core/model/grid-model';
 import type { MacroCoord } from '../../core/model/types';
-import { largestComponent } from '../generation/geometry';
+import { largestComponent } from '../../core/model/geometry';
 
-/** The highest tier a flat top may reach. V-MTN-03 exempts 1-3 and engages at 4, so this is where
- *  the shape has to start nesting; it is the old plateau macro's hidden ceiling, promoted to the
- *  ladder's visible stage boundary. */
+/** The highest tier a flat top may reach. V-MTN-03 exempts 1-3 and engages at 4, so this is where the
+ *  shape has to start nesting, and the ladder's stage boundary is drawn there rather than hidden. */
 export const FLAT_TOP = 3;
 
 /** The smallest core worth another tier. Below it a ring is a pixel on a hillside, not a summit. */

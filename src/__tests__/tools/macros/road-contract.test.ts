@@ -14,10 +14,10 @@ import { makeState, setTerrain } from '../../rules/_helpers';
 import { categoryOf } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { buildingGate } from '../../../tools/generation/placement/object';
-import { crossingEnds } from '../../../tools/generation/placement/themes';
+import { buildingGate } from '../../../tools/placement/object';
+import { crossingEnds } from '../../../tools/placement/themes';
 import { objectRect } from '../../../state/object-geometry';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { applyMacro, type MacroOpts } from '../../../tools/macros';
 import { previewMacro } from '../../../tools/macros/preview';
 import type { KitContext } from '../../../kit/context';
@@ -178,8 +178,8 @@ describe('road contract: the ghost shows what it would replace', () => {
     const kit = makeKit();
     // Off the direct (10,10)->(30,10) line but inside a width-3 dilation's reach: the widen pass
     // strips this standing coating and repaves it in the run's own material.
-    const dirtTile = place(kit, 'road-dirt', 20, 11);
-    const opts: MacroOpts = { seed: 1, from: { x: 10, y: 10 }, at: { x: 30, y: 10 }, material: 'road-stone', width: 3 };
+    const dirtTile = place(kit, 'path-overgrown-dirt', 20, 11);
+    const opts: MacroOpts = { seed: 1, from: { x: 10, y: 10 }, at: { x: 30, y: 10 }, material: 'path-cobblestone', width: 3 };
 
     const preview = previewMacro(kit, 'road-link', opts);
     expect(preview.removed).toEqual([dirtTile.position]);
@@ -188,7 +188,7 @@ describe('road contract: the ghost shows what it would replace', () => {
     expect(outcome.changes, outcome.reason ?? '').toBeGreaterThan(0);
     expect(kit.state.objects.has(dirtTile.id), 'the old coating was replaced, not reused').toBe(false);
     const replaced = roadObjects(kit.state).find((o) => o.position.x === 20 && o.position.y === 11);
-    expect(replaced?.catalogId).toBe('road-stone');
+    expect(replaced?.catalogId).toBe('path-cobblestone');
   });
 });
 

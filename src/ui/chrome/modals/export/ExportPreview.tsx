@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font, exitTransition } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { Spinner } from '../../../primitives/Spinner';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
@@ -34,7 +35,7 @@ export function ExportPreview({ open, options, summary, codeImg, codePending, co
   const [view, setView] = useState({ tx: 0, ty: 0, scale: 1 });
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   // The reset hint: hidden at rest, shown once the user has actually panned or zoomed, and faded
-  // back out after a quiet spell so it doesn't linger as a permanent fixture like the old pill.
+  // back out after a quiet spell so it doesn't linger as a permanent fixture.
   const [showResetHint, setShowResetHint] = useState(false);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteInteraction = () => {
@@ -71,7 +72,7 @@ export function ExportPreview({ open, options, summary, codeImg, codePending, co
     let alive = true;
     // Defer this (heavy, main-thread-blocking) 3D re-capture until AFTER the shots strip's
     // add/expand spring settles (~400ms), so building the throwaway scene never stalls that
-    // animation mid-flight — which caused the layout to snap on the final frame.
+    // animation mid-flight (a stall snaps the layout on the final frame).
     const id = setTimeout(() => {
       captureCard3dAngles(state, shots.length ? shots : undefined).then((imgs) => { if (alive) setCard3d(imgs); }).catch(() => undefined);
     }, 480);
@@ -136,5 +137,5 @@ export function ExportPreview({ open, options, summary, codeImg, codePending, co
 const stage: CSSProperties = { position: 'relative', flex: 1, minHeight: 0, borderRadius: radii.lg, background: skin.inset, display: 'grid', placeItems: 'center', overflow: 'hidden', touchAction: 'none' };
 // A sibling overlay rather than `stage`'s own box-shadow: see the JSX comment above its use.
 const outlineStyle: CSSProperties = { position: 'absolute', inset: 0, borderRadius: radii.lg, boxShadow: `inset 0 0 0 1.5px ${skin.line}`, pointerEvents: 'none' };
-const hintStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: skin.muted, fontFamily: font.family, fontWeight: 700, fontSize: 13 };
-const hintPill: CSSProperties = { position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', fontSize: 10.5, fontWeight: 700, color: skin.plateInk, background: skin.plate, borderRadius: 999, padding: '3px 11px', whiteSpace: 'nowrap', pointerEvents: 'none', fontFamily: font.family };
+const hintStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: skin.muted, fontFamily: font.family, ...roleFont('label') };
+const hintPill: CSSProperties = { position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', ...roleFont('caption'), color: skin.plateInk, background: skin.plate, borderRadius: 999, padding: '3px 11px', whiteSpace: 'nowrap', pointerEvents: 'none', fontFamily: font.family };

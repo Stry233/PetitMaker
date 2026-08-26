@@ -38,7 +38,6 @@ describe('operational docs — existence', () => {
 });
 
 describe('legal-release-checklist.md — spec §17 gate list', () => {
-  // internal-repo-only check: docs/internal/deployment/legal-release-checklist.md is never exported.
   if (!existsSync(RELEASE_CHECKLIST)) {
     it.skip('internal-repo-only: legal-release-checklist.md not present (public-repo export)', () => {});
     return;
@@ -72,7 +71,6 @@ describe('legal-release-checklist.md — spec §17 gate list', () => {
 });
 
 describe('data-inventory.md — real storage keys', () => {
-  // internal-repo-only check: docs/internal/legal/data-inventory.md is never exported.
   if (!existsSync(DATA_INVENTORY)) {
     it.skip('internal-repo-only: data-inventory.md not present (public-repo export)', () => {});
     return;
@@ -104,7 +102,6 @@ describe('data-inventory.md — real storage keys', () => {
 });
 
 describe('retention-schedule.md — spec §8 categories', () => {
-  // internal-repo-only check: docs/internal/legal/retention-schedule.md is never exported.
   if (!existsSync(RETENTION_SCHEDULE)) {
     it.skip('internal-repo-only: retention-schedule.md not present (public-repo export)', () => {});
     return;
@@ -133,7 +130,6 @@ describe('retention-schedule.md — spec §8 categories', () => {
 });
 
 describe('asset-provenance.md — spec §10 ledger', () => {
-  // internal-repo-only check: docs/internal/legal/asset-provenance.md is never exported.
   if (!existsSync(ASSET_PROVENANCE)) {
     it.skip('internal-repo-only: asset-provenance.md not present (public-repo export)', () => {});
     return;
@@ -217,7 +213,6 @@ describe('asset-provenance.md — spec §10 ledger', () => {
 });
 
 describe('consents/README.md — record types + status table', () => {
-  // internal-repo-only check: docs/internal/legal/consents/README.md is never exported.
   if (!existsSync(CONSENTS_README)) {
     it.skip('internal-repo-only: consents/README.md not present (public-repo export)', () => {});
     return;

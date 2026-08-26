@@ -18,6 +18,7 @@
  */
 import type { CSSProperties } from 'react';
 import { colors, cursors, font, radii } from './styles';
+import { roleFont } from './text-weight';
 import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK } from './tokens';
 
 /** The modal card: the cream plate a `ModalShell` (and the portrait guard) is drawn on. */
@@ -47,8 +48,8 @@ export const skin = {
    *
    * The design source has no tone for this. Its one grey is the placeholder in an empty field, and
    * a grey second line on a warm cream plate reads as a page from another interface, so the windows
-   * recede in a warm brown instead. About reached for it first, with a contrast note, and this is
-   * what makes the keyboard legend and the import note agree with it.
+   * recede in a warm brown instead: About's version line, the keyboard legend and the import note
+   * all take it from here.
    */
   muted: colors.brownText,
   /** A surface sitting ON the plate. */
@@ -71,8 +72,7 @@ export const windowCard: CSSProperties = {
 };
 
 export const windowTitle: CSSProperties = {
-  fontSize: 24,
-  fontWeight: 900,
+  ...roleFont('title'),
   color: skin.ink,
   textAlign: 'center',
   fontFamily: font.family,
@@ -96,8 +96,7 @@ export const windowRow: CSSProperties = {
 };
 
 export const windowLabel: CSSProperties = {
-  fontSize: 16,
-  fontWeight: 700,
+  ...roleFont('head'),
   color: skin.ink,
   fontFamily: font.family,
   marginRight: 'auto',
@@ -116,8 +115,7 @@ export type PillVariant = 'quiet' | 'active' | 'danger';
 export function windowPill(variant: PillVariant = 'quiet', disabled = false, on: WindowSurface = 'plate'): CSSProperties {
   const base: CSSProperties = {
     fontFamily: font.family,
-    fontSize: 13,
-    fontWeight: 800,
+    ...roleFont('chip'),
     padding: '7px 14px',
     borderRadius: radii.pill,
     border: 'none',
@@ -137,8 +135,7 @@ export const windowPrimary: CSSProperties = {
   border: 'none',
   borderRadius: 14,
   padding: '11px 30px',
-  fontSize: 15,
-  fontWeight: 800,
+  ...roleFont('action'),
   fontFamily: font.family,
   alignSelf: 'center',
 };
@@ -154,8 +151,7 @@ export const windowFooterPrimary: CSSProperties = {
   borderRadius: radii.md,
   padding: '12px 20px',
   fontFamily: font.family,
-  fontSize: 15,
-  fontWeight: 800,
+  ...roleFont('action'),
 };
 
 export const windowFooterGhost: CSSProperties = {
@@ -165,8 +161,7 @@ export const windowFooterGhost: CSSProperties = {
   borderRadius: radii.md,
   padding: '12px 20px',
   fontFamily: font.family,
-  fontSize: 15,
-  fontWeight: 800,
+  ...roleFont('action'),
 };
 
 /** A floating menu of choices (the language picker, the preset picker).
@@ -193,8 +188,7 @@ export const windowMenu: CSSProperties = {
 
 export function windowMenuItem(active: boolean): CSSProperties {
   return {
-    fontSize: 14,
-    fontWeight: active ? 800 : 700,
+    ...roleFont(active ? 'menu' : 'label'),
     fontFamily: font.family,
     border: 'none',
     cursor: cursors.clickable,

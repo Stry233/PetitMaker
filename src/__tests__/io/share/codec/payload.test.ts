@@ -59,4 +59,45 @@ describe('payload frame', () => {
     bytes[2] = 99;
     await expect(decodeMapPayload(bytes)).rejects.toMatchObject({ code: 'future-version' });
   });
+
+  it('an ordinary generation recipe rides as the note', async () => {
+    const state = registerSynthetic(makeState(24, 24));
+    state.generation = { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 11, region: null };
+    const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
+    expect(dec.generation?.seed).toBe(11);
+  });
+
+  it('a stencil recipe never rides — the picture is binary source data, and the map already carries it (#29)', async () => {
+    // JSON turns the stencil's typed arrays into per-element objects: tens of kilobytes for a real
+    // picture, past the note's u16 prefix and past the whole glyph's densest tier — the export
+    // crash behind "generated pixel art cannot be exported". The map itself codes small; only the
+    // note had to go.
+    const state = registerSynthetic(makeState(64, 64));
+    const W = 48, H = 48;
+    for (let y = 8; y < 8 + H; y += 2) for (let x = 8; x < 8 + W; x += 3) {
+      state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 1 + ((x + y) % 4) };
+    }
+    state.generation = {
+      algorithm: 'stencil', mode: 'earth', corridorWidth: 1, maxElevation: 8, seed: 7, region: null,
+      stencilPlan: {
+        read: 'color',
+        stencil: { width: W, height: H, coverage: new Uint8Array(W * H).fill(255), color: new Uint32Array(W * H).fill(0xe74c3c) },
+        origin: { x: 8, y: 8 },
+      },
+    };
+    const bytes = await encodeMapPayload(state, null, META);
+    expect(bytes.length).toBeLessThan(4096); // the note would have been ~50 KB on its own
+    const dec = await decodeMapPayload(bytes);
+    expect(dec.generation).toBeUndefined();
+    expect(canonicalBytes(dec.canonical)).toEqual(canonicalBytes(canonicalize(state)));
+  });
+
+  it('a recipe too large for a note is dropped whole, never truncated', async () => {
+    const state = registerSynthetic(makeState(64, 64));
+    const region = [] as { x: number; y: number }[];
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) region.push({ x, y });
+    state.generation = { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 3, region };
+    const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
+    expect(dec.generation).toBeUndefined();
+  });
 });

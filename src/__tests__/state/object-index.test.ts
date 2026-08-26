@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { ItemCategory, type GridState, type PlacedObject } from '../../core/model/types';
-import { entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
+import { entriesCovering, entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
 import { PLAZA_ID } from '../../core/model/constants';
 import { registerCatalogItem } from '../../state/catalog';
 import { makeState } from '../rules/_helpers';
@@ -26,7 +26,7 @@ function tree(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0 };
 }
 function road(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 };
+  return { id, catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 function add(state: GridState, ...objs: PlacedObject[]): void {
@@ -54,9 +54,28 @@ function shape(index: ObjectIndex, state: GridState): unknown {
     roads: [...index.roadByCell].map(([k, o]) => `${k}=${o.id}`).sort(),
     counts: [...index.countByCatalog].sort(),
     chunks: [...index.byChunk].map(([k, b]) => `${k}:${b.map(e => e.obj.id).sort().join(',')}`).sort(),
+    cells: [...index.byCell].map(([k, b]) => `${k}:${b.map(e => e.obj.id).sort().join(',')}`).sort(),
     // the actual query surface, over a rect spanning the whole populated area
     near: entriesNear(index, { x: 0, y: 0, w: state.template.width, h: state.template.height }).map(e => e.obj.id),
+    // AND THE FINE ONE, CELL BY CELL. `byCell` has consumers of its own (`entriesCovering`,
+    // `objectAt`), so a patch that maintained every other structure and forgot this one would leave
+    // the suite green while a placement was judged against an object that had been removed. Swept
+    // rather than sampled: the bug it guards is exactly a cell nobody thought to ask about.
+    covering: sweep(index, state),
   };
+}
+
+/** Every cell of the map, and what claims to cover it. The whole query surface `entriesCovering`
+ *  offers, in consumer-visible form. */
+function sweep(index: ObjectIndex, state: GridState): string[] {
+  const out: string[] = [];
+  for (let y = 0; y < state.template.height; y++) {
+    for (let x = 0; x < state.template.width; x++) {
+      const here = entriesCovering(index, { x, y, w: 1, h: 1 }).map(e => e.obj.id);
+      if (here.length) out.push(`${x},${y}:${here.join(',')}`);
+    }
+  }
+  return out;
 }
 
 function expectMatchesRebuild(state: GridState): ObjectIndex {
@@ -224,9 +243,9 @@ describe('objectAt', () => {
   it('hit-tests a half-anchored deck by CELL OVERLAP, not by whether the cell origin sits inside it', () => {
     // A 1-wide deck anchored at x=10.5 spans [10.5, 11.5): it partially covers BOTH macro
     // columns 10 and 11 (`footprintCells`' floor/ceil expansion agrees), so a click on either
-    // must hit it — the origin-inside-rect test used to answer column 10 (its origin 10 < 10.5)
-    // and 12 (12 < 11.5 is false, so actually neither — the point is the OLD test disagreed with
-    // what's actually drawn on 10, matching the 3D mesh raycast only by accident on 11).
+    // must hit it. An origin-inside-rect test finds column 11 alone (origin 11 lands inside the
+    // span; 10 does not, and 12 is past its end), so it disagrees with what is drawn on column 10
+    // and agrees with the 3D mesh raycast on 11 only by accident.
     const state = makeState(30, 30);
     add(state, { id: 'd', catalogId: 'hs-hit-test-deck', position: { x: 10.5, y: 5 }, rotation: 0, elevation: 0 });
     expect(objectAt(getObjectIndex(state), { x: 10, y: 5 })?.id).toBe('d');
@@ -241,5 +260,43 @@ describe('objectAt', () => {
     expect(objectAt(getObjectIndex(state), { x: 4, y: 4 })?.id).toBe('a');
     expect(objectAt(getObjectIndex(state), { x: 3, y: 4 })).toBeNull();
     expect(objectAt(getObjectIndex(state), { x: 5, y: 4 })).toBeNull();
+  });
+
+  /**
+   * A REMOVAL HAS TO REACH EVERY STRUCTURE, and this asks the finest one directly.
+   *
+   * `objectAt` reads the per-CELL bucket, so a patch that dropped an entry from the entries list,
+   * the chunk buckets and the road map but left the cell bucket alone would report an object that
+   * is not on the map any more — and a placement, which asks the same question through
+   * `entriesCovering`, would be refused for overlapping something that had been deleted. Every
+   * footprint shape is covered, since each maintains a different number of cell buckets: one cell,
+   * a fractional multi-cell body, and a half-anchored deck straddling two columns.
+   */
+  it('forgets an object the moment it is removed, at every cell it covered', () => {
+    const state = makeState(30, 30);
+    const deck: PlacedObject = { id: 'd', catalogId: 'hs-hit-test-deck', position: { x: 10.5, y: 5 }, rotation: 0, elevation: 0 };
+    const plaza: PlacedObject = {
+      id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
+      rotation: 0, elevation: 0, locked: true,
+    };
+    add(state, tree('a', 20, 20), deck, plaza);
+    expect(objectAt(getObjectIndex(state), { x: 20, y: 20 })?.id).toBe('a');
+
+    remove(state, state.objects.get('a') as PlacedObject);
+    expect(objectAt(getObjectIndex(state), { x: 20, y: 20 })).toBeNull();
+    expect(entriesCovering(getObjectIndex(state), { x: 20, y: 20, w: 1, h: 1 })).toEqual([]);
+
+    remove(state, deck);
+    for (const x of [10, 11]) {
+      expect(objectAt(getObjectIndex(state), { x, y: 5 })).toBeNull();
+      expect(entriesCovering(getObjectIndex(state), { x, y: 5, w: 1, h: 1 })).toEqual([]);
+    }
+
+    remove(state, plaza);
+    for (let y = 4; y <= 7; y++) {
+      for (let x = 4; x <= 7; x++) expect(objectAt(getObjectIndex(state), { x, y })).toBeNull();
+    }
+    expect(getObjectIndex(state).byCell.size).toBe(0);
+    expectMatchesRebuild(state);
   });
 });

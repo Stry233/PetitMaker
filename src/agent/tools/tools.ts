@@ -2,22 +2,14 @@
  * Agent tool surface: JSON-schema tool definitions + the execution bridge that
  * maps LLM tool calls onto the editor's CommandExecutor.
  *
- * Every WRITE tool call is exactly ONE stroke group:
- *   getUndoStackSize() → runSilently(execute each command) → commitStrokeGroup()
- * - runSilently suppresses `validation-failed` events, so the error Toast never
- *   fires for agent edits — rejections are fed back to the LLM instead.
- * - Pre-command rejections are reported per command (reject-and-skip, same
- *   semantics as generation); post-stroke violations mean the executor already
- *   rolled the stroke back, reported as "REVERTED: …" so the model re-plans.
- * - One stroke group = one undo step, so the user can undo agent work normally.
- *
- * Error strings are always rendered in ENGLISH (translateFor('en', …)) — the
- * model converses with the user in any language but reasons over stable rule
- * feedback, augmented with the rule's own agentHint (RULE_HINTS) for the violated rule.
+ * The write contract every handler here runs under — one silent stroke group per call,
+ * reject-and-skip, "REVERTED: …" feedback, English rule text — lives with the stroke
+ * runner in tools-common.ts.
  */
 import {
   CellZone,
   CommandType,
+  ItemCategory,
   TerrainType,
   type Command,
   type Corners,
@@ -28,9 +20,9 @@ import {
 } from '../../core/model/types';
 import { getCell, rectsOverlap } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
-import { getCatalogItem, getRoadMaterials } from '../../state/catalog';
+import { getCatalogByCategory, getCatalogItem, getRoadMaterials } from '../../state/catalog';
 import { localizedName } from '../../i18n/context';
-import { edgeCutGeneratedTerrain, edgeCutGeneratedRoads } from '../../tools/edge-cut/auto-edge-cut';
+import { edgeCutGeneratedTerrain, edgeCutGeneratedRoads } from '../../tools/edge-cut';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { validateCut } from '../../core/edge-cut/cut-validator';
 import { roadLookup } from '../../state/object-index';
@@ -43,12 +35,13 @@ import { generateMap } from '../../kit/operations';
 import { mapOverview, mapSummary, objectLine, regionTokens, selectionContext, REGION_CAP } from '../serialize';
 import { decorateZoneHandler, plantForestHandler, buildRoadNetworkHandler, frameCrossingHandler, THEMES } from './tools-director';
 import { SKILLS, listSkills } from '../skills';
-import { evaluateMap, renderScorecard, renderScoreDelta, type QualityReport } from '../quality';
-import type { PlanStage, ToolCall, ToolResult, ToolSchema } from '../types';
-import { type AgentToolDeps, type ToolResultBody, clamp, dedupe, formatErrors, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
+import { evaluateMap, renderScorecard, type QualityReport } from '../quality';
+import type { ToolCall, ToolResult, ToolSchema } from './types';
+import { type AgentToolDeps, type ToolResultBody, argError, clamp, dedupe, formatErrors, geometryError, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
+import { rectInput } from './geometry';
 import { sculptTerrace, carveRiver } from './tools-terraform';
 import { findFlatAreas, findBridgeSites, findRampSites, scanBridgeSites } from './tools-search';
-import { objectPlacementCommand, removeObjectCommand } from '../../tools/objects/object-placer';
+import { objectPlacementCommand, removeObjectCommand } from '../../tools/objects';
 
 /** Re-exported from tools-common so existing importers keep their path. */
 export type { AgentToolDeps } from './tools-common';
@@ -76,18 +69,40 @@ const coordProps = {
   x2: { type: 'integer' },
   y2: { type: 'integer' },
 };
+const cellsProp = {
+  type: 'array',
+  items: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'] },
+  description: 'Explicit cell list, for shape "cells".',
+};
+// The area, FLAT FIRST: some guided decoders never emit an optional nested object, so every
+// geometry is reachable through top-level scalars; the nested forms stay accepted beside them.
 const cellsOrRect = {
+  shape: {
+    type: 'string',
+    enum: ['rect', 'circle', 'line', 'cells'],
+    description: 'Area form: "rect" fills x1,y1..x2,y2 (inclusive corners); "circle" fills radius r around cx,cy; "line" strokes x1,y1..x2,y2 at width; "cells" reads the cells array.',
+  },
+  ...coordProps,
+  cx: { type: 'integer' },
+  cy: { type: 'integer' },
+  r: { type: 'integer', minimum: 1 },
+  width: { type: 'integer', minimum: 1, description: 'Line stroke width (default 1).' },
+  outline: {
+    type: 'boolean',
+    description: 'With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water).',
+  },
+  cells: cellsProp,
   rect: {
     type: 'object',
     properties: coordProps,
     required: ['x1', 'y1', 'x2', 'y2'],
-    description: 'Inclusive rectangle of cells.',
+    description: 'Nested alternative to shape "rect".',
   },
   circle: {
     type: 'object',
     properties: { cx: { type: 'integer' }, cy: { type: 'integer' }, r: { type: 'integer', minimum: 1 } },
     required: ['cx', 'cy', 'r'],
-    description: 'Filled circle (organic lakes/hills).',
+    description: 'Nested alternative to shape "circle".',
   },
   line: {
     type: 'object',
@@ -96,16 +111,7 @@ const cellsOrRect = {
       width: { type: 'integer', minimum: 1, description: 'Stroke width (default 1).' },
     },
     required: ['x1', 'y1', 'x2', 'y2'],
-    description: 'Straight stroke between two points (rivers, paths, walls).',
-  },
-  outline: {
-    type: 'boolean',
-    description: 'With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water).',
-  },
-  cells: {
-    type: 'array',
-    items: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'] },
-    description: 'Explicit cell list (alternative to the shapes).',
+    description: 'Nested alternative to shape "line".',
   },
 };
 
@@ -136,8 +142,14 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'view_map',
     description:
-      'See the map as a rendered image (on vision models) or a token grid. Use it to judge COMPOSITION — shapes, balance, ragged edges — after major terrain or decoration work. Costs tokens on vision models; prefer evaluate_map for objective metrics.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+      'See the map as a rendered image (on vision models) or a token grid. Pass x1,y1,x2,y2 to view just that region, close up. Rendered images carry a coordinate ruler so you can map what you see to the cells you edit. Use it to judge COMPOSITION — shapes, balance, ragged edges — after major terrain or decoration work. Costs tokens on vision models; prefer evaluate_map for objective metrics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x1: { type: 'number' }, y1: { type: 'number' }, x2: { type: 'number' }, y2: { type: 'number' },
+      },
+      required: [],
+    },
   },
   {
     name: 'evaluate_map',
@@ -148,16 +160,17 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'update_plan',
     description:
-      'Commit or update your staged build plan (replaces the whole plan each call). Use for any multi-stage request: plan first, keep exactly one stage active, mark stages done as you finish. The user sees this as a progress header. Completing a stage automatically returns a one-line scorecard trend — read it before starting the next stage.',
+      'Commit your staged build plan (replaces the whole plan each call). Use for any multi-stage request: call it FIRST, before any edit, with 3-6 concrete stages in the order you will build them, then work down the list. The user sees the stages as a rail beside the work, each stage one row about 30 characters wide with a step count beside it — write each label as a short noun phrase ("terrace the north hills"), not a sentence, or it will not read as one line.',
     inputSchema: {
       type: 'object',
       properties: {
         stages: {
           type: 'array',
+          minItems: 1,
           items: {
             type: 'object',
-            properties: { title: { type: 'string' }, status: { type: 'string', enum: ['pending', 'active', 'done'] } },
-            required: ['title', 'status'],
+            properties: { label: { type: 'string' } },
+            required: ['label'],
           },
         },
       },
@@ -176,18 +189,42 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'suggest_reply',
+    // THE ONE MODEL-AUTHORED STRING WITH A HARD CLIP, so its budget is the one that has to be true.
+    // It stands as a ghost inside the composer's field (`ui/agent/Composer.tsx:GHOST_STYLE`:
+    // `nowrap` + `overflow: hidden` + `ellipsis`), so unlike the says line (which expands on a tap)
+    // and a stage label (which wraps), characters past the end are LOST. Measured from the shipped
+    // faces at the real box — 378px of panel less its padding, the well's own inset, and the send
+    // and stop buttons at 36px each — the field holds about 30 Latin characters and about 15 CJK,
+    // where a glyph is a full em. The number was 60, which is roughly twice the room in English and
+    // three and a half times it in Chinese, on the same line that also asks for the user's own
+    // language.
     description:
-      "When your closing message leaves ONE obvious next step (a yes/no offer, a single natural follow-up), call this with the short reply the user would most likely send — in the user's own language, under 60 characters. It appears as a one-tap suggestion in their reply box. Skip it whenever the next step is genuinely open.",
+      "When your closing message leaves ONE obvious next step (a yes/no offer, a single natural follow-up), call this with the short reply the user would most likely send, in the user's own language. It appears as a one-tap suggestion inside their reply box, which shows about 30 characters in a Latin script and about 15 in Chinese, Japanese or Korean and simply cuts off what does not fit — so keep it to a few words. Skip it whenever the next step is genuinely open.",
     inputSchema: {
       type: 'object',
-      properties: { reply: { type: 'string', description: 'The predicted user reply, short and verbatim-sendable.' } },
+      properties: {
+        reply: {
+          type: 'string',
+          description: 'The predicted user reply, verbatim-sendable. A few words: ~30 Latin characters, ~15 CJK.',
+        },
+      },
       required: ['reply'],
     },
   },
+  // NO TOOL HERE PRODUCES `SessionEvent.gateAsked.quickAnswers`/`.options` (core/types.ts) — nothing
+  // in this file calls `askGate` with either populated, so the wire shape stands ready with no
+  // producer (a future "ask the user a multiple-choice question" tool is where one would go, right
+  // here beside suggest_reply, the other tool that shapes the closing message). When it lands, state
+  // its lengths as plainly as suggest_reply states its own 60: a `quickAnswers` entry is one pill
+  // that wraps onto its own row with its siblings (`GateBlock.tsx:QuickRow`, no hard per-pill cap,
+  // but a handful of short words reads as a choice, a sentence reads as an essay) — call it 20
+  // characters; a `GateOption.cap` is ONE ellipsized line beside an 88x62 thumbnail in a card sized
+  // to the panel's own content width (`OptionPick.tsx:OPTION_THUMB`, `PanelShell.tsx`'s ~326px) —
+  // call it 40 characters before it clips.
   {
     name: 'paint_terrain',
     description:
-      'Paint mountain or water on cells. Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; elevation 0 clears the cell). Water paints at exactly the given elevation — elevated water needs mountain at elevation-1 beneath it, and ALL water must be enclosed (V-WTR-02) by the end of this call or the whole call reverts.',
+      'Paint mountain or water on an area given as shape + flat coordinates (e.g. shape "rect" with x1,y1,x2,y2). Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; elevation 0 clears the cell). Water paints at exactly the given elevation — elevated water needs mountain at elevation-1 beneath it, and ALL water must be enclosed (V-WTR-02) by the end of this call or the whole call reverts.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -258,7 +295,9 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         minWidth: { type: 'integer', minimum: 1 },
         minHeight: { type: 'integer', minimum: 1 },
         elevation: { type: 'integer', minimum: 0, maximum: ELEVATION_MAX, description: 'Terrain elevation to search on (default 0 = flat ground).' },
-        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, description: 'Prefer anchors close to this point.' },
+        nearX: { type: 'integer', description: 'Prefer anchors close to (nearX,nearY).' },
+        nearY: { type: 'integer' },
+        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, description: 'Nested alternative to nearX/nearY.' },
         limit: { type: 'integer', minimum: 1, maximum: 10, description: 'Max anchors to return (default 5, spread apart).' },
       },
       required: ['minWidth', 'minHeight'],
@@ -273,7 +312,8 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       properties: {
         catalogIds: { type: 'array', items: { type: 'string' }, description: 'Pool to sample from (mix species for natural looks).' },
         count: { type: 'integer', minimum: 1, maximum: 200 },
-        rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'] },
+        ...coordProps,
+        rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Scatter area; the flat corners x1,y1,x2,y2 mean the same.' },
         spacing: { type: 'integer', minimum: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius).' },
       },
       required: ['catalogIds', 'count'],
@@ -330,7 +370,9 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       type: 'object',
       properties: {
         catalogId: { type: 'string', description: 'Bridge item id (determines deck width); default bridge-plank.' },
-        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, description: 'Prefer sites close to this point.' },
+        nearX: { type: 'integer', description: 'Prefer sites close to (nearX,nearY).' },
+        nearY: { type: 'integer' },
+        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, description: 'Nested alternative to nearX/nearY.' },
         limit: { type: 'integer', minimum: 1, maximum: 10 },
       },
     },
@@ -338,11 +380,13 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'find_ramp_sites',
     description:
-      'Scan for validated ramp placements connecting elevation tiers (the ramp equivalent of find_bridge_sites). Returns anchor cells, the catalog ramp item whose heightDrop matches each cliff, and which elevations it connects. Optional near {x,y} and limit. Use before placing ramps instead of guessing cliff edges.',
+      'Scan for validated ramp placements connecting elevation tiers (the ramp equivalent of find_bridge_sites). Returns anchor cells, the catalog ramp item whose heightDrop matches each cliff, and which elevations it connects. Optional nearX/nearY and limit. Use before placing ramps instead of guessing cliff edges.',
     inputSchema: {
       type: 'object',
       properties: {
-        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } } },
+        nearX: { type: 'integer', description: 'Prefer sites close to (nearX,nearY).' },
+        nearY: { type: 'integer' },
+        near: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, description: 'Nested alternative to nearX/nearY.' },
         limit: { type: 'integer' },
       },
       required: [],
@@ -351,15 +395,19 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'build_road',
     description:
-      'Lay a road in one call: places one road tile per cell along a line (or explicit cells), skipping illegal cells. End-caps and bends are auto-trimmed like the manual road brush (smooth:"off" keeps them square). One undo step. Use instead of placing road cells one by one.',
+      'Lay a road in one call: places one road tile per cell along a line given as flat x1,y1,x2,y2 (or explicit cells), skipping illegal cells. End-caps and bends are auto-trimmed like the manual road brush (smooth:"off" keeps them square). One undo step. Use instead of placing road cells one by one.',
     inputSchema: {
       type: 'object',
       properties: {
         catalogId: { type: 'string', enum: getRoadMaterials().map((i) => i.id) },
+        shape: { type: 'string', enum: ['line', 'cells'], description: 'Path form: "line" strokes x1,y1..x2,y2 at width (bare corners mean the same); "cells" reads the cells array.' },
+        ...coordProps,
+        width: { type: 'integer', minimum: 1, description: 'Line stroke width (default 1).' },
         line: {
           type: 'object',
           properties: { x1: { type: 'integer' }, y1: { type: 'integer' }, x2: { type: 'integer' }, y2: { type: 'integer' }, width: { type: 'integer', minimum: 1 } },
           required: ['x1', 'y1', 'x2', 'y2'],
+          description: 'Nested alternative to shape "line".',
         },
         cells: { type: 'array', items: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'] } },
         smooth: { type: 'string', enum: ['round', 'rect', 'off'], description: "End-cap/bend trim style (default 'round', the manual brush's Auto Trim)." },
@@ -374,15 +422,13 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        algorithm: { type: 'string', enum: ['random', 'maze'], description: "'random' = designed island (default); 'maze' = mountain maze." },
-        mode: { type: 'string', enum: ['earth', 'water', 'mixed'], description: 'Terrain bias (random only; default mixed).' },
+        algorithm: { type: 'string', enum: ['designed', 'maze'], description: "'designed' = a composed island, regions and hierarchical roads (default); 'maze' = mountain maze." },
+        mode: { type: 'string', enum: ['earth', 'water', 'mixed'], description: 'Terrain bias (island only; default mixed).' },
         maxElevation: { type: 'integer', minimum: 1, maximum: 6 },
-        relief: { type: 'integer', minimum: 0, maximum: 100, description: 'Hilliness 0-100 (default 80).' },
-        naturalness: { type: 'integer', minimum: 0, maximum: 100, description: 'Geometry style 0-100 (default 100): 100 = organic seams/winding rivers, 0 = fully rectilinear "lego" terrain and straight roads.' },
-        settlement: { type: 'number', minimum: 0, maximum: 1, description: 'Building/road density (default 0.5).' },
-        nature: { type: 'number', minimum: 0, maximum: 1, description: 'Vegetation density (default 0.5).' },
+        richness: { type: 'integer', minimum: 0, maximum: 100, description: 'Scenery richness 0-100 (default 70), the island generator\'s ONE style knob: 100 = terraced, watery, densely composed, roughly one tree per flower; 0 = a flat garden town with beds along its streets. It scales the terrain drama, the water, the decoration and the theme count together.' },
         seed: { type: 'integer', description: 'Recipe id for reproducibility (random if omitted).' },
-        rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Target area; falls back to the user selection, then the WHOLE MAP.' },
+        ...coordProps,
+        rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Target area (the flat corners x1,y1,x2,y2 mean the same); falls back to the user selection, then the WHOLE MAP.' },
         mazeEntrance: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: where the maze opens to let a walker in. Snapped to the nearest cell on the maze border. Omit both gates for two default openings on opposite sides.' },
         mazeExit: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: the second opening, snapped the same way.' },
       },
@@ -401,10 +447,13 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'delegate_task',
     description:
-      'Spawn a focused sub-agent with a FRESH context to execute one well-scoped build task, and get back its summary. Use for big requests: split them into independent parts (e.g. "terrain the north hills", "build the village at (40,60)-(70,90)", "decorate the lakeshore") and delegate each. The sub-agent sees the live map but NOT this conversation — the task text must be self-contained (locations, sizes, style).',
+      'Spawn a focused sub-agent with a FRESH context to execute one well-scoped build task, and get back its summary. Use for big requests: split them into independent parts (e.g. "terrain the north hills", "build the village at (40,60)-(70,90)", "decorate the lakeshore") and delegate each. The sub-agent sees the live map but NOT this conversation — the task text must be self-contained (locations, sizes, style). While it works, the panel names it by `label` if you gave one, else by the first line of `task` — so give a short `label` whenever `task` runs longer than a few words.',
     inputSchema: {
       type: 'object',
-      properties: { task: { type: 'string', description: 'Complete, self-contained instructions incl. coordinates/area and desired style.' } },
+      properties: {
+        task: { type: 'string', description: 'Complete, self-contained instructions incl. coordinates/area and desired style.' },
+        label: { type: 'string', description: "Optional short name (a few words, e.g. \"north grove\") shown in the panel while the helper works. Omit only when task already reads as one." },
+      },
       required: ['task'],
     },
   },
@@ -494,8 +543,8 @@ export const SUBAGENT_TOOL_SCHEMAS: ToolSchema[] = TOOL_SCHEMAS.filter(
 
 function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const cells = resolveCells(input, deps.getState());
-  if (cells.length === 0) return { isError: true, content: 'No cells given — pass rect, circle, line, or cells.' };
-  if (cells.length > 4000) return { isError: true, content: 'Too many cells in one call (max 4000) — split the edit.' };
+  if (cells.length === 0) return geometryError(input, 'area');
+  if (cells.length > 4000) return argError('too many cells in one call (max 4000), split the edit into smaller areas.');
   const type = input.terrain === 'water' ? TerrainType.Water : TerrainType.Mountain;
   const elevation = Number(input.elevation);
   const commands: Command[] = [];
@@ -516,8 +565,8 @@ function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
     cells,
     // Non-interactive edge-cut (rounds convex tips/steps, fills empty notches).
     // Uses the generated-* path, NOT applyAutoEdgeCut: the latter needs a full
-    // interactive ToolContext + the renderer's reconcile handling; driving it
-    // from a silent agent stroke left detached scene nodes (Pixi _parentID null).
+    // interactive ToolContext + the renderer's reconcile handling, and driving it
+    // from a silent agent stroke leaves detached scene nodes (Pixi _parentID null).
     smooth ? (exec) => edgeCutGeneratedTerrain({ gridState: deps.getState(), executeCommand: (c: Command) => exec.execute(c) }, cells, smooth) : undefined,
   );
 }
@@ -525,7 +574,7 @@ function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
 
 function eraseTerrain(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const cells = resolveCells(input, deps.getState());
-  if (cells.length === 0) return { isError: true, content: 'No cells given — pass rect, circle, line, or cells.' };
+  if (cells.length === 0) return geometryError(input, 'area');
   return runStroke(
     deps,
     [{ type: CommandType.EraseTerrain, timestamp: Date.now(), cells }],
@@ -540,7 +589,7 @@ function eraseTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
 function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const state = deps.getState();
   const cells = resolveCells(input, state);
-  if (cells.length === 0) return { isError: true, content: 'No cells given — pass rect, circle, line, or cells.' };
+  if (cells.length === 0) return geometryError(input, 'area');
   const cellSet = new Set(cells.map((c) => `${c.x},${c.y}`));
   const commands: Command[] = [];
   for (const obj of state.objects.values()) {
@@ -565,17 +614,21 @@ function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolRes
 /* ── batch: lay a road along a path in one stroke ────────────────────── */
 
 async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
-  const catalogId = String(input.catalogId ?? 'road-dirt');
+  // The schema requires catalogId; a model that omits it anyway gets the catalog's first road, the
+  // same surface the tile brush arms by default.
+  const catalogId = String(input.catalogId ?? getRoadMaterials()[0]!.id);
   const item = getCatalogItem(catalogId);
-  if (!item || item.category !== 'road') return { isError: true, content: `"${catalogId}" is not a road item.` };
-  const cells = resolveCells(input, deps.getState());
-  if (cells.length === 0) return { isError: true, content: 'No cells given — pass line or cells.' };
-  if (cells.length > 400) return { isError: true, content: 'Road too long for one call (max 400 cells).' };
+  if (!item || item.category !== 'road') {
+    return argError(`"${catalogId}" is not a road item, pass a road id from the catalog.`, `catalogId: "${getRoadMaterials()[0]!.id}"`);
+  }
+  const cells = resolveCells(input, deps.getState(), 'line');
+  if (cells.length === 0) return geometryError(input, 'path');
+  if (cells.length > 400) return argError('road too long for one call (max 400 cells), split it into segments.');
   const exec = deps.getExecutor();
   const failures: string[] = [];
   let ok = 0;
   const smooth = input.smooth === 'off' ? 'off' : input.smooth === 'rect' ? 'rect' as const : 'round' as const;
-  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     for (const cell of cells) {
       const cmd = buildPlaceCmd(deps, catalogId, cell.x, cell.y, 0);
       if (typeof cmd === 'string') continue;
@@ -583,8 +636,8 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
       if (r.success) ok++;
       else failures.push(formatErrors(r.errors));
     }
-    // end-cap/bend trim via the non-interactive road cut (safe to drive from a
-    // silent stroke, unlike the interactive applyAutoEdgeCut)
+    // end-cap/bend trim via the non-interactive road cut; the interactive
+    // applyAutoEdgeCut wants a ToolContext a silent stroke has not got
     if (ok > 0 && smooth !== 'off') {
       edgeCutGeneratedRoads({ gridState: deps.getState(), executeCommand: (c: Command) => exec.execute(c) }, cells, smooth);
     }
@@ -597,7 +650,7 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
   if (ok === 0) {
     msg += '\nRoads coat FLAT GROUND-LEVEL GRASS only. Fixes: route across grass (roads may cross a bridge/ramp but not open water, mountains, or object footprints); clear_area to open a blocked path; or place a bridge/ramp for the gap first, then road up to it.';
   }
-  return { isError: ok === 0, content: msg };
+  return { isError: ok === 0, content: msg, detail };
 }
 
 /* ── batch: scatter objects with natural randomness ──────────────────── */
@@ -605,17 +658,21 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
 async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
   const ids = (input.catalogIds as string[] | undefined) ?? [];
   const count = Math.min(Math.max(Number(input.count) || 0, 1), 200);
-  if (ids.length === 0) return { isError: true, content: 'catalogIds must be a non-empty array of item ids.' };
+  if (ids.length === 0) {
+    const treeId = getCatalogByCategory(ItemCategory.Tree)[0]?.id ?? 'tree';
+    return argError('catalogIds must be a non-empty array of item ids from the CATALOG section.', `catalogIds: ["${treeId}"], count: 20`);
+  }
   for (const id of ids) {
-    if (!getCatalogItem(id)) return { isError: true, content: `Unknown catalogId "${id}".` };
+    if (!getCatalogItem(id)) return argError(`unknown catalogId "${id}", use ids from the CATALOG section or get_catalog_item.`);
   }
   const state = deps.getState();
-  const pool = input.rect ? resolveCells({ rect: input.rect }, state) : [...deps.getRegion()];
+  const rect = rectInput(input);
+  const pool = rect ? resolveCells({ rect }, state) : [...deps.getRegion()];
   if (pool.length === 0) {
-    return { isError: true, content: 'No area: pass rect, or have the user select a region first.' };
+    return argError('no area to scatter over, pass the rect corners or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
   }
   const spacing = Math.max(0, Number(input.spacing) || 0);
-  // shuffle (Fisher-Yates); interactive tool, so non-seeded randomness is fine
+  // shuffle (Fisher-Yates), unseeded: nothing replays a scatter
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j]!, pool[i]!];
@@ -623,7 +680,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   const exec = deps.getExecutor();
   const placedAt: MacroCoord[] = [];
   const failures: string[] = [];
-  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     for (const cell of pool) {
       if (placedAt.length >= count) break;
       if (spacing > 0 && placedAt.some((p) => Math.abs(p.x - cell.x) <= spacing && Math.abs(p.y - cell.y) <= spacing)) continue;
@@ -645,16 +702,25 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   return {
     isError: placedAt.length === 0,
     content: `Scattered ${placedAt.length}/${count} object(s) over ${pool.length} candidate cell(s).${why}`,
+    detail,
   };
 }
 
 /* ── the procedural generator as a tool ──────────────────────────────── */
 
-
+/**
+ * THE REGION LOCK HERE IS THE PIPELINE'S OWN, not this file's.
+ *
+ * Every other write tool is checked by `firstStray` over the commands as applied; a generator run
+ * issues thousands, so the confinement is the generator's contract instead: it designs the WHOLE
+ * island and the painted region crops what lands, which is the same contract Generate has in the UI.
+ * A change to that contract is a change to `designer/pipeline.ts`, and nothing added here can
+ * tighten it.
+ */
 async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
   const state = deps.getState();
-  const algorithm = input.algorithm === 'maze' ? 'maze' : 'random';
-  const rect = input.rect as { x1: number; y1: number; x2: number; y2: number } | undefined;
+  const algorithm = input.algorithm === 'maze' ? 'maze' : 'designed';
+  const rect = rectInput(input);
   const region: MacroCoord[] | null = rect
     ? resolveCells({ rect }, state)
     : deps.getRegion().length > 0
@@ -670,10 +736,8 @@ async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>)
     maxElevation: clamp(Number(input.maxElevation) || 3, 1, algorithm === 'maze' ? 3 : 6),
     seed: Number.isFinite(Number(input.seed)) && input.seed !== undefined ? Number(input.seed) : Math.floor(Math.random() * 99999),
     region,
-    relief: clamp(input.relief !== undefined ? Number(input.relief) : 80, 0, 100) / 100,       // explicit 0 stays 0 (no falsy fallback)
-    naturalness: clamp(input.naturalness !== undefined ? Number(input.naturalness) : 100, 0, 100) / 100,
-    settlement: clamp(input.settlement !== undefined ? Number(input.settlement) : 0.5, 0, 1),
-    nature: clamp(input.nature !== undefined ? Number(input.nature) : 0.5, 0, 1),
+    // The one 0..1 style knob. The default matches the shelf's.
+    richness: clamp(input.richness !== undefined ? Number(input.richness) : 70, 0, 100) / 100,
   };
   const kit: KitContext = {
     state,
@@ -687,10 +751,18 @@ async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>)
   const gateNote = g
     ? ` Maze gates (snapped to the border): entrance ${g.entrance ? `(${g.entrance.x},${g.entrance.y})` : 'none'}, exit ${g.exit ? `(${g.exit.x},${g.exit.y})` : 'none'}.`
     : '';
+  // A REGION THAT BUILT NOTHING SAYS WHY, so the model re-plans instead of retrying the same call.
+  // 'reclaimed' is not a failure and not retryable at that seed or any other: the terrain around the
+  // region rests on the ground inside it, so only what that terrain needs could be left there.
+  const scopeNote = outcome.scopeEmpty === 'reclaimed'
+    ? ' Nothing could be built in that region: the terrain around it rests on the ground inside it (a mountain 3x3 base, a pond cap), so only what those surroundings need was left standing there. Re-running will not help at any seed; choose a region over lower ground, or a wider one that takes in the higher ground too.'
+    : outcome.scopeEmpty === 'empty'
+      ? ' Nothing was built in that region: the ground was free to build on, and this run put nothing there. Try a wider region, another seed, or a higher richness.'
+      : '';
   deps.onFlash?.(outcome.cells);
   return {
     isError: false,
-    content: `Generated (${config.algorithm}, seed ${config.seed}) over the ${scope}: ${outcome.placed} terrain cell(s); objects now on map: ${state.objects.size}.${gateNote} Refine with inspect_region + the editing tools.`,
+    content: `Generated (${config.algorithm}, seed ${config.seed}) over the ${scope}: ${outcome.placed} terrain cell(s); objects now on map: ${state.objects.size}.${gateNote}${scopeNote} Refine with inspect_region + the editing tools.`,
   };
 }
 
@@ -703,7 +775,7 @@ function buildPlaceCmd(
   id?: string,
 ): Extract<Command, { type: CommandType.PlaceObject }> | string {
   const item = getCatalogItem(catalogId);
-  if (!item) return `Unknown catalogId "${catalogId}" — use ids from the CATALOG section or get_catalog_item.`;
+  if (!item) return `Arguments: unknown catalogId "${catalogId}", use ids from the CATALOG section or get_catalog_item.`;
   const obj: PlacedObject = {
     id: id ?? `agent-${Date.now().toString(36)}-${agentObjCounter++}`,
     catalogId,
@@ -833,7 +905,7 @@ function trimCorner(deps: AgentToolDeps, input: Record<string, unknown>): ToolRe
   if (layer === 'terrain' && !cell?.terrain) return { isError: true, content: `No terrain at (${x},${y}) to trim.` };
   if (layer === 'road' && !roadObj) return { isError: true, content: `No road at (${x},${y}) to trim.` };
   const idx = CORNER_POS.indexOf(String(input.corner) as CornerPos);
-  if (idx < 0) return { isError: true, content: 'corner must be TL|TR|BL|BR.' };
+  if (idx < 0) return argError('corner must be one of TL, TR, BL, BR.', 'corner: "TL"');
   const style = String(input.style);
   // The persisted CornerTrim value keeps the frozen compass suffix (TL→'tri-NW', same index).
   const value: CornerTrim = style === 'tri' ? (`tri-${CORNER_COMPASS[idx]}` as CornerTrim) : (style as CornerTrim);
@@ -866,7 +938,7 @@ function trimCorner(deps: AgentToolDeps, input: Record<string, unknown>): ToolRe
 
 function getCatalogItemTool(input: Record<string, unknown>): ToolResultBody {
   const item = getCatalogItem(String(input.id));
-  if (!item) return { isError: true, content: `Unknown item id "${String(input.id)}".` };
+  if (!item) return argError(`unknown item id "${String(input.id)}", use ids from the CATALOG section.`);
   return {
     isError: false,
     content: `${item.id}: "${localizedName(item.name, 'en')}" — category ${item.category}, ${item.width}x${item.height}, rotatable=${item.rotatable}, maxCount=${item.maxCount ?? 'unlimited'}, traits=${JSON.stringify(item.traits)}`,
@@ -889,7 +961,15 @@ type ToolHandler = (deps: AgentToolDeps, input: Record<string, unknown>) => Tool
  */
 export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandler }> = {
   // ── read / inspect ──
-  inspect_region: { handler: (deps, input) => ({ isError: false, content: regionTokens(deps.getState(), { x1: Number(input.x1), y1: Number(input.y1), x2: Number(input.x2), y2: Number(input.y2) }) }) },
+  inspect_region: { handler: (deps, input) => {
+    const x1 = Number(input.x1), y1 = Number(input.y1), x2 = Number(input.x2), y2 = Number(input.y2);
+    // A missing corner must refuse, not read: NaN corners yield an empty grid that reads as a
+    // successful blank answer, which is how a misnamed argument once went unnoticed for a whole turn.
+    if ([x1, y1, x2, y2].some(Number.isNaN)) {
+      return argError('inspect_region needs all four corners as numbers, x1 y1 x2 y2.', '{"x1":40,"y1":30,"x2":60,"y2":45}');
+    }
+    return { isError: false, content: regionTokens(deps.getState(), { x1, y1, x2, y2 }) };
+  } },
   get_objects: { handler: (deps, input) => {
     const cat = input.category as string | undefined;
     const objs = [...deps.getState().objects.values()].filter((o) => !cat || getCatalogItem(o.catalogId)?.category === cat);
@@ -897,7 +977,19 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   } },
   get_selection: { handler: (deps) => ({ isError: false, content: `${selectionContext(deps.getRegion())}\n${selectedBlockContext(deps)}` }) },
   get_catalog_item: { handler: (_deps, input) => getCatalogItemTool(input) },
-  view_map: { handler: async (deps) => {
+  view_map: { handler: async (deps, input) => {
+    const given = [input.x1, input.y1, input.x2, input.y2].filter((c) => c !== undefined).length;
+    if (given > 0) {
+      const x1 = Number(input.x1), y1 = Number(input.y1), x2 = Number(input.x2), y2 = Number(input.y2);
+      if (given < 4 || [x1, y1, x2, y2].some(Number.isNaN)) {
+        return argError('view_map takes either no region or all four corners as numbers, x1 y1 x2 y2.', '{"x1":40,"y1":30,"x2":60,"y2":45}');
+      }
+      const rect = { x1, y1, x2, y2 };
+      const url = deps.snapshotRegion ? await deps.snapshotRegion(rect) : null;
+      return url
+        ? { isError: false, content: `Rendered view of region (${x1},${y1})-(${x2},${y2}) attached.`, image: { dataUrl: url } }
+        : { isError: false, content: `Render unavailable, token region instead.\n${regionTokens(deps.getState(), rect)}` };
+    }
     const url = deps.snapshot ? await deps.snapshot() : null;
     return url
       ? { isError: false, content: 'Rendered view of the current map attached.', image: { dataUrl: url } }
@@ -917,33 +1009,20 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   } },
   suggest_reply: { handler: (_deps, input) => {
     const reply = typeof input.reply === 'string' ? input.reply.trim() : '';
-    if (!reply) return { isError: true, content: 'reply must be a non-empty string.' };
+    if (!reply) return argError('reply must be a non-empty string.', 'reply: "Yes, go ahead"');
     return { isError: false, content: 'Suggestion noted.' };
   } },
-  update_plan: { handler: (deps, input) => {
-    const raw = input.stages;
-    const ok = Array.isArray(raw) && raw.every(
-      (s) => s && typeof (s as PlanStage).title === 'string' && ['pending', 'active', 'done'].includes((s as PlanStage).status),
-    );
-    if (!ok) return { isError: true, content: 'stages must be [{title, status: pending|active|done}, …].' };
-    const stages = raw as PlanStage[];
-    const doneBefore = new Set((deps.getPlan?.() ?? []).filter((s) => s.status === 'done').map((s) => s.title));
-    deps.setPlan?.(stages);
-    let msg = `Plan updated (${stages.filter((s) => s.status === 'done').length}/${stages.length} done).`;
-    // Closed-loop hook: a stage just completed → measure NOW and hand the model
-    // the trend, so course corrections happen at the stage boundary for free.
-    if (stages.some((s) => s.status === 'done' && !doneBefore.has(s.title))) {
-      const { report, prev } = evaluateWithTrend(deps.getState());
-      msg += `\n${renderScoreDelta(prev, report)}`;
-    }
-    return { isError: false, content: msg };
-  } },
+  // `update_plan` has NO handler here, and that is the wiring rather than an omission: the loop
+  // intercepts the call before the executor and appends the `plan` event itself (core/loop.ts's
+  // `handleUpdatePlan`), because the plan is a log fact and the call is gated at plan scope. A
+  // subagent, whose schema set excludes the tool, gets the executor's unknown-tool answer instead.
   list_skills: { handler: () => ({ isError: false, content: `Available skills:\n${listSkills()}\nUse load_skill to get the full playbook.` }) },
   load_skill: { handler: (_deps, input) => {
-    const skill = SKILLS[String(input.name)];
+    const name = String(input.name);
+    const skill = SKILLS[name];
     return skill
-      ? { isError: false, content: skill.body }
-      : { isError: true, content: `Unknown skill "${String(input.name)}". Available:\n${listSkills()}` };
+      ? { isError: false, content: skill.body, detail: { skill: { name, kind: skill.kind, title: skill.title } } }
+      : { isError: true, content: `Unknown skill "${name}". Call list_skills for the catalogue.` };
   } },
   find_flat_areas: { handler: findFlatAreas },
   find_bridge_sites: { handler: findBridgeSites },
@@ -992,10 +1071,18 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set(
 
 export async function executeToolCall(call: ToolCall, deps: AgentToolDeps): Promise<ToolResult> {
   let body: ToolResultBody;
+  // THE CALL'S OWN IDENTITY REACHES THE PROVENANCE SOURCE HERE AND NOWHERE ELSE. `runStroke` is
+  // handed `deps`, not the call, so without this the source cannot tell an edit a human approved at
+  // this call's gate from one that ran under a session-wide allow-always — and the export
+  // disclosure's `aiAccepted` count was permanently zero on a panel whose whole gate machinery
+  // exists to obtain that approval.
+  const scoped: AgentToolDeps = deps.getProvenanceSource
+    ? { ...deps, getProvenanceSource: () => deps.getProvenanceSource!(call.id) }
+    : deps;
   try {
     const def = TOOL_HANDLERS[call.name];
     body = def
-      ? await def.handler(deps, call.input ?? {})
+      ? await def.handler(scoped, call.input ?? {})
       : { isError: true, content: `Unknown tool "${call.name}".` };
   } catch (err) {
     body = { isError: true, content: `Tool crashed: ${err instanceof Error ? err.message : String(err)}` };

@@ -14,21 +14,21 @@ import { MOTIONS } from '../motion/registry';
  *
  * A VERTICAL NOTCH GLIDES, THE WAY THE SIDEWAYS AXIS ALREADY DOES. This row's horizontal scroll is
  * the browser's own, and on a mouse with smooth scrolling the browser glides it — so a vertical
- * notch handed straight to `scrollLeft` was the one stepped movement on a surface where everything
- * else arrived, and the two rolls of one wheel felt like different controls. Two things made a
- * glide read as lag, and `wheelGlider` answers both: aiming FROM THE ROW'S CURRENT POSITION (rapid
- * notches each re-aimed one step past a row that had barely moved, so the notches now accumulate
- * against the TARGET), and the browser's smooth `scrollTo` itself, whose slow-start fixed-length
- * ease holds the row still for the first frames of every notch. The glider drives its own
+ * notch handed straight to `scrollLeft` is the one stepped movement on a surface where everything
+ * else arrives, and the two rolls of one wheel read as different controls. Two things make a glide
+ * read as lag, and `wheelGlider` answers both: aiming FROM THE ROW'S CURRENT POSITION (rapid notches
+ * each re-aim one step past a row that has barely moved, so the notches accumulate against the
+ * TARGET instead), and the browser's smooth `scrollTo` itself, whose slow-start fixed-length ease
+ * holds the row still for the first frames of every notch. The glider drives its own
  * exponential approach instead — the registry's `shelf.row.wheel-glide` — so the row moves on the
  * next frame after every notch, the way the browser's own axis does.
  *
  * A WHEEL REPORTS IN THE PAGE'S PIXELS AND THE ROW IS NOT DRAWN IN THEM. The shelf stands inside the
  * frame's `zoom` (`useFrameZoom` below), where one of the row's own pixels is bigger than one of the
  * page's, and `scrollLeft` counts the row's. So the browser scrolling a row from a horizontal wheel
- * moves it `delta / zoom`, and a vertical notch handed straight to `scrollLeft` moved it `delta` — a
- * quarter further per notch than the same notch sideways, at the shipped zoom. Measured over the two
- * axes, that overshoot was the whole of the difference between them: one wheel, one distance,
+ * moves it `delta / zoom`, where a vertical notch handed straight to `scrollLeft` moves it `delta` —
+ * a quarter further per notch than the same notch sideways, at the shipped zoom. Measured over the
+ * two axes, that overshoot is the whole of the difference between them: one wheel, one distance,
  * whichever way it is turned.
  */
 export interface WheelPush {
@@ -99,7 +99,7 @@ export function wheelGlider(): WheelGlider {
       // Floored at zero: the first callback's timestamp is the FRAME's start, which can precede
       // the mid-frame `performance.now()` the run was stamped with. A negative dt turns the
       // approach factor negative — a step AWAY from the target, which at a row still at 0 cannot
-      // stick and read as the clamped-edge stop: the glide died on its first notch.
+      // stick and reads as the clamped-edge stop, killing the glide on its first notch.
       const dt = Math.max(0, Math.min(GLIDE_DT_CAP_MS, t - at));
       at = t;
       const left = target - row.scrollLeft;

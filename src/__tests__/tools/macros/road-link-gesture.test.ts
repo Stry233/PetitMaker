@@ -20,7 +20,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { roadLookup } from '../../../state/object-index';
 import { categoryOf } from '../../../state/catalog';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { MacroTool } from '../../../tools/macros/macro-tool';
@@ -314,7 +314,7 @@ describe('road-link: the choice moves to the road it laid', () => {
 
   it('a cycle does not re-lay what stood', async () => {
     let byHand: PlacedObject | null = null;
-    const { tool, ctx, state } = await laidRoute((executor) => { byHand = place(executor, 'road-dirt', 8, 36); });
+    const { tool, ctx, state } = await laidRoute((executor) => { byHand = place(executor, 'path-overgrown-dirt', 8, 36); });
     const first = pavement(state);
 
     const cell = onRoad(state);

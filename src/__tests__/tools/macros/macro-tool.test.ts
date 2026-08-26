@@ -14,7 +14,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { roadLookup } from '../../../state/object-index';
 import { MacroTool, armedMacroId } from '../../../tools/macros/macro-tool';
 import { previewMacro } from '../../../tools/macros/preview';
-import type { ToolContext } from '../../../tools/types';
+import type { ToolContext } from '../../../tools/runtime/types';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 

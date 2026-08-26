@@ -65,7 +65,6 @@ function getFullStrip(
   // Build the full strip: capA, then water cells from sx,sy to ex,ey, then capB
   const cells: MacroCoord[] = [capA];
   let cx = sx, cy = sy;
-  // Walk from sx,sy in the opposite direction toward ex,ey
   while (true) {
     cells.push({ x: cx, y: cy });
     if (cx === ex && cy === ey) break;
@@ -92,7 +91,7 @@ function checkAdjacentRowUniformity(
   const { dx, dy } = DIR_OFFSETS[flowDir];
   const n = strip.cells.length;
 
-  // Get elevations of all n cells in the adjacent row
+  // Off the map reads as -1, so an edge-adjacent row can never pass as uniform with real terrain.
   const adjacentElevs: number[] = [];
   for (const cell of strip.cells) {
     const ax = cell.x + dx, ay = cell.y + dy;
@@ -103,12 +102,10 @@ function checkAdjacentRowUniformity(
     adjacentElevs.push(cellElevation(state, ax, ay));
   }
 
-  // Check uniformity: all must be the same
   const firstElev = adjacentElevs[0]!;
   const isUniform = adjacentElevs.every(e => e === firstElev);
 
   if (!isUniform) {
-    // Report the non-uniform cells
     for (let i = 0; i < n; i++) {
       if (adjacentElevs[i] !== firstElev) {
         const cell = strip.cells[i]!;
@@ -153,13 +150,11 @@ export const waterfallAdjacentUniformityRule: PostStrokeRule = {
           const cappedB = traceToMountain(state, x, y, elev, pdxB, pdyB);
           if (!cappedA || !cappedB) continue;
 
-          // Find full strip (water + caps)
           const strip = getFullStrip(state, x, y, elev, perpA);
           const faceKey = `${strip.cells[0]!.x},${strip.cells[0]!.y},${flowDir}`;
           if (processedFaces.has(faceKey)) continue;
           processedFaces.add(faceKey);
 
-          // Check the adjacent row in the flow direction
           checkAdjacentRowUniformity(state, strip, flowDir, width, height, errors);
           if (opts?.firstOnly && errors.length > 0) return errors;
         }

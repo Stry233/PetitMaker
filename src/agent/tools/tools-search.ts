@@ -16,8 +16,9 @@ import { getCatalogItem, getCatalogByCategory } from '../../state/catalog';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
 import { footprintCells, objectRect } from '../../state/object-geometry';
-import { type AgentToolDeps, type ToolResultBody, waterSpanTrait } from './tools-common';
-import { objectPlacementCommand } from '../../tools/objects/object-placer';
+import { type AgentToolDeps, type ToolResultBody, argError, waterSpanTrait } from './tools-common';
+import { pointInput } from './geometry';
+import { objectPlacementCommand } from '../../tools/objects';
 
 /* ── search: flat areas a footprint fits on ─────────────────────────── */
 
@@ -27,11 +28,11 @@ export function findFlatAreas(deps: AgentToolDeps, input: Record<string, unknown
   const minW = Number(input.minWidth);
   const minH = Number(input.minHeight);
   if (!Number.isInteger(minW) || !Number.isInteger(minH) || minW < 1 || minH < 1) {
-    return { isError: true, content: 'minWidth and minHeight must be positive integers.' };
+    return argError('minWidth and minHeight must be positive integers.', 'minWidth: 3, minHeight: 3');
   }
   const elevation = input.elevation !== undefined ? Number(input.elevation) : 0;
   const limit = Math.min(Math.max(Number(input.limit) || 5, 1), 10);
-  const near = (input.near as MacroCoord | undefined) ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+  const near = pointInput(input, 'near') ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) };
   // match the flat trait's check area: footprint + 1 cell right/bottom
   const needW = minW + 1;
   const needH = minH + 1;
@@ -40,8 +41,8 @@ export function findFlatAreas(deps: AgentToolDeps, input: Record<string, unknown
   for (const o of state.objects.values()) {
     const r = objectRect(o);
     // footprintCells, not `pos + integer offset`: a half-integer origin (a halfStep ramp/bridge)
-    // would otherwise add a fractional key ("4.5,4") the integer probe below never matches, so a
-    // deck's own cells came back "flat" and unoccupied.
+    // would add a fractional key ("4.5,4") the integer probe below never matches, and a deck's
+    // own cells would read as flat and unoccupied.
     for (const { x, y } of footprintCells(r.x, r.y, r.w, r.h)) occupied.add(`${x},${y}`);
   }
   const ok = (x: number, y: number): boolean => {
@@ -117,9 +118,9 @@ export function findBridgeSites(deps: AgentToolDeps, input: Record<string, unkno
   const catalogId = String(input.catalogId ?? 'bridge-plank');
   const item = getCatalogItem(catalogId);
   const trait = waterSpanTrait(item);
-  if (!item || !trait) return { isError: true, content: `"${catalogId}" is not a bridge (no waterSpan trait).` };
+  if (!item || !trait) return argError(`"${catalogId}" is not a bridge (no waterSpan trait).`, 'catalogId: "bridge-plank"');
   const limit = Math.min(Math.max(Number(input.limit) || 6, 1), 10);
-  const near = (input.near as MacroCoord | undefined) ?? { x: Math.floor(state.template.width / 2), y: Math.floor(state.template.height / 2) };
+  const near = pointInput(input, 'near') ?? { x: Math.floor(state.template.width / 2), y: Math.floor(state.template.height / 2) };
   const sites = scanBridgeSites(state, item.width, trait.min, trait.max, near, limit);
   if (sites.length === 0) {
     return {
@@ -227,7 +228,7 @@ function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): Ra
 export function findRampSites(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const state = deps.getState();
   const limit = Math.min(Math.max(Number(input.limit) || 6, 1), 10);
-  const near = (input.near as MacroCoord | undefined) ??
+  const near = pointInput(input, 'near') ??
     { x: Math.floor(state.template.width / 2), y: Math.floor(state.template.height / 2) };
   const sites = scanRampSites(deps, near, limit);
   if (sites.length === 0) {

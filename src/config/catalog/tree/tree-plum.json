@@ -18,6 +18,7 @@
     "red"
   ],
   "icon": "tree-plum",
+  "iconColor": "#999951",
   "width": 1,
   "height": 1,
   "loadValue": 50,

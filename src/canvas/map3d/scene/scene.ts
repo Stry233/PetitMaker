@@ -11,11 +11,11 @@ import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import helvetikerBold from 'three/examples/fonts/helvetiker_bold.typeface.json';
 import { ItemCategory, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
 import { ELEVATION_MAX } from '../../../core/model/constants';
-import { maxRenderScale } from '../../../core/runtime/device-quality';
+import { glQuality, maxRenderScale } from '../../../core/runtime/device-quality';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { resolveHistoryFlash } from '../../map2d/layers/error-flash';
-import { buildChunkTerrain, buildRoadTrimMesh, waterSwellWeights } from '../build/terrain-geometry';
+import { buildChunkTerrain, buildRoadTrimMeshes, type RoadTrimPart } from '../build/terrain-geometry';
 import { dirtyChunksFor } from '../build/chunk-dirty';
 import { bodyRoute, objectInstance } from '../build/object-meshes';
 import { getCatalogItem } from '../../../state/catalog';
@@ -44,11 +44,12 @@ import { clamp } from '../../../core/model/math';
 import { makeCamera, makeControls, frameBounds, type MapBounds } from './camera-controls';
 import { CameraInertia } from './camera-inertia';
 import { CameraRestDetector } from './camera-rest';
-import { layerToY, mapCenterOffset, cellCornerWorld } from '../core/coords';
+import { layerToY, mapCenterOffset, cellCornerWorld, platformTopY } from '../core/coords';
 
 /** Ease for the camera fly-in (decelerate into the resting frame). */
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 import { iconUrl } from '../../../assets/icon-urls';
+import { roadTileCanvas } from '../../road-tile-texture';
 import { waterColor } from '../core/palette';
 import { iconDominantColor } from './icon-color';
 import type { MeshData, ObjectInstance, ArchetypeKey } from '../core/types';
@@ -68,10 +69,6 @@ const UP_AXIS = new THREE.Vector3(0, 1, 0);
 interface TerrainChunk {
   meshes: THREE.Mesh[];
   geometries: THREE.BufferGeometry[];
-  /** Present only so a rebuild can decrement `waterChunks`: the swell itself is a vertex-shader
-   *  displacement off the baked `aSwell` attribute, so nothing here is read per frame. */
-  water: { mesh: THREE.Mesh } | null;
-  fall: { mesh: THREE.Mesh; pos: Float32Array } | null;
   numbers: { mesh: THREE.Mesh; tex: THREE.CanvasTexture } | null;
 }
 
@@ -80,16 +77,30 @@ function toGeometry(m: MeshData): THREE.BufferGeometry {
   g.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3));
   // The builders emit sRGB colours; convert to the renderer's LINEAR working
   // space so colour-managed output reproduces them at full (2D-matching) vibrance
-  // instead of washing them out.
-  const lin = new Float32Array(m.colors.length);
+  // instead of washing them out. A mesh carrying per-vertex alpha (the road
+  // decal's feather) gets a 4-component colour attribute, which is what makes
+  // three.js sample the alpha in the shader.
+  const stride = m.alpha ? 4 : 3;
+  const lin = new Float32Array((m.colors.length / 3) * stride);
   const c = new THREE.Color();
-  for (let i = 0; i < m.colors.length; i += 3) {
+  for (let i = 0, v = 0; i < m.colors.length; i += 3, v++) {
     c.setRGB(m.colors[i]!, m.colors[i + 1]!, m.colors[i + 2]!, THREE.SRGBColorSpace);
-    lin[i] = c.r; lin[i + 1] = c.g; lin[i + 2] = c.b;
+    lin[v * stride] = c.r; lin[v * stride + 1] = c.g; lin[v * stride + 2] = c.b;
+    if (m.alpha) lin[v * stride + 3] = m.alpha[v]!;
   }
-  g.setAttribute('color', new THREE.Float32BufferAttribute(lin, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(lin, stride));
+  if (m.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(m.uv, 2));
   g.setIndex(m.index);
-  g.computeVertexNormals();
+  if (m.alpha) {
+    // The alpha-fading mesh is the flat road decal: its normal is +Y everywhere by construction.
+    // Computing normals instead NaNs the vertices whose triangles are all zero-area (a ring
+    // segment that does not fade), and each NaN flares its vertex's sample pure white.
+    const up = new Float32Array(m.positions.length);
+    for (let i = 1; i < up.length; i += 3) up[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(up, 3));
+  } else {
+    g.computeVertexNormals();
+  }
   return g;
 }
 
@@ -164,46 +175,8 @@ function addProximityFade(mat: THREE.Material): void {
   };
 }
 
-/** How far the water surface rises at full weight, in world units, and how fast the lobe travels
- *  per frame. Both were the CPU loop's own constants. */
-const SWELL_RISE = 0.05;
-const SWELL_SPEED = 0.045;
-
-interface SwellUniforms { uSwellTime: { value: number }; uSwellAmp: { value: number } }
-
-/**
- * The water's gentle swell, as a VERTEX DISPLACEMENT rather than a per-frame rewrite of the
- * position buffer.
- *
- * It is a pure function of a vertex's resting position and the clock, so the CPU had nothing to
- * contribute: it walked every water vertex of every water chunk, took a `Math.sin` each, and flagged
- * the whole buffer for re-upload — every other frame, for as long as the view was open. On the GPU
- * it costs one uniform write per frame for the entire map.
- *
- * `aSwell` is the per-vertex weight (0 pins a vertex: the body's outline stays put, so the
- * water/land silhouette never re-antialiases). A geometry WITHOUT the attribute reads 0 and is
- * therefore untouched, which is what keeps the waterfall meshes sharing this material flat — the
- * same fallback `addProximityFade` relies on for `aObjR`.
- *
- * The phase keys on WORLD x/z so the lobe is seamless across chunk boundaries; chunk geometry is
- * built at absolute world coordinates and its meshes carry no translation, so the local position is
- * the world one. Normals are left alone, exactly as the CPU version left them.
- */
-function addWaterSwell(mat: THREE.Material, u: SwellUniforms): void {
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uSwellTime = u.uSwellTime;
-    shader.uniforms.uSwellAmp = u.uSwellAmp;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uSwellTime;\nuniform float uSwellAmp;\nattribute float aSwell;')
-      .replace('#include <begin_vertex>', [
-        '#include <begin_vertex>',
-        '\tif ( aSwell > 0.0 && uSwellAmp > 0.0 ) {',
-        '\t\tfloat swellLobe = sin( uSwellTime + position.x * 1.2 + position.z * 1.4 ) * 0.5 + 0.5;',
-        `\t\ttransformed.y += swellLobe * ${SWELL_RISE.toFixed(3)} * aSwell * uSwellAmp;`,
-        '\t}',
-      ].join('\n'));
-  };
-}
+/** Where along the cascade pattern a waterfall face is shaded (see shadeFall). */
+const FALL_PHASE = 0;
 
 /** Bake the geometry's radius — the max vertex distance from its LOCAL origin — onto every vertex as
  *  the `aObjR` attribute (idempotent). The proximity-fade shader multiplies it by the per-instance
@@ -280,8 +253,7 @@ function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
  *  fwidth of its world XZ is cell-units-per-pixel — identical to the grid's gfw.
  *  Using the grid's EXACT cell-grid fade window (0.05..0.11) makes the numbers
  *  appear and fade in lockstep with the cell lines: wherever the grid shows,
- *  the numbers show. Per-pixel, so near chunks stay readable while far ones
- *  fade (replacing the old binary per-chunk pop). */
+ *  the numbers show. Per-pixel, so near chunks stay readable while far ones fade. */
 function addLabelFade(mat: THREE.Material): void {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -372,16 +344,19 @@ export class ThreeScene {
   private overlay3d: Overlay3D | null = null;
   private passive = { grid: false, numbers: false, chunks: false };
   private gridUniforms: GridUniforms = { uGrid: { value: 0 }, uChunks: { value: 0 }, uGridOff: { value: new THREE.Vector2() } };
-  /** The water swell's clock, shared by every water chunk — one write per frame drives the lot. */
-  private swellUniforms: SwellUniforms = { uSwellTime: { value: 0 }, uSwellAmp: { value: 1 } };
   private legendGroup: THREE.Group | null = null;
   private legendMat: THREE.MeshBasicMaterial | null = null;
   private arrowGroup = new THREE.Group();
   private editorView: ActiveView | null = null;
   private bus: EventBus<EditorEvents> | null = null;
-  private roadTrimMesh: THREE.Mesh | null = null;
-  private roadTrimGeo: THREE.BufferGeometry | null = null;
+  /** One mesh per road material present (each wears that material's tile art). */
+  private roadTrimMeshes: THREE.Mesh[] = [];
+  private roadTrimGeos: THREE.BufferGeometry[] = [];
   private roadTrimMat!: THREE.MeshLambertMaterial;
+  /** The per-material road materials, keyed `<catalogId>:tex|flat`. A textured surface's vertex
+   *  colours are white, so the stand-in used while the art decodes must carry the item's hex
+   *  itself — the two are separate cache entries, and the textured one wins once it exists. */
+  private roadTileMats = new Map<string, THREE.MeshLambertMaterial>();
   private sharedMat: THREE.MeshLambertMaterial;
   private modelMat: THREE.MeshLambertMaterial;
   private decalMat: THREE.MeshLambertMaterial;
@@ -405,8 +380,6 @@ export class ThreeScene {
    *  emitting it per object turned every command into a full pointer re-sample — in 3D, a
    *  heightfield ray-march per command, hundreds of them inside one fast pointermove. */
   private chromeNudgeDirty = false;
-  private waterChunks = 0;
-  private fallChunks = 0;
   private opaqueMat!: THREE.MeshLambertMaterial;
   private wetMat!: THREE.MeshLambertMaterial;
   private busDetach: (() => void) | null = null;
@@ -419,7 +392,6 @@ export class ThreeScene {
   private copyCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private fallDeep: [number, number, number] = [0, 0, 0];   // linear deep-water colour
   private fallFoam: [number, number, number] = [1, 1, 1];   // linear foam colour
-  private frame = 0;
   // Camera intro fly-in: the WHOLE map glides from a far framing (small in the fog) down to its
   // resting frame, so the atmosphere does the work. introActive gates it; the controls are paused
   // until it finishes.
@@ -428,6 +400,21 @@ export class ThreeScene {
   private introFrom = new THREE.Vector3();
   private introTo = new THREE.Vector3();
   private introTarget = new THREE.Vector3();
+  /** Software-GL profile: no shadows, no MSAA, 1x pixels, no fly-in (see the constructor). */
+  private lite = false;
+  private contextLost = false;
+
+  private onContextLost = (e: Event): void => {
+    e.preventDefault();
+    this.contextLost = true;
+  };
+
+  private onContextRestored = (): void => {
+    this.contextLost = false;
+    // The frozen shadow map died with the context; recompute it once on the restored one.
+    this.renderer.shadowMap.needsUpdate = true;
+    this.requestRender();
+  };
 
   // Toolkit camera moves (zoom / tilt / fit buttons) glide instead of snapping —
   // a short eased tween of the camera position + orbit target, ticked in the loop.
@@ -464,14 +451,37 @@ export class ThreeScene {
     // colour/alpha combinations (Firefox composites the canvas as fully
     // transparent — a blank preview).
     this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
-    this.renderer.setPixelRatio(maxRenderScale()); // shared cap (≤2×, ≤1.5× low-end) — see device-quality
+    // SHADER DIAGNOSTICS ARE A DEVELOPMENT TOOL, and they are not free. The first time three uses a
+    // program it fetches the program log and both shader logs synchronously, only to report a
+    // compile error; each of those queries forces the driver to finish linking, and on a software
+    // rasterizer that costs over a second PER PROGRAM (measured: 1.9s per program on SwiftShader,
+    // ~1.2s of it the logs themselves). It is paid again every time a program is rebuilt, so it
+    // lands in front of the user — during an orbit, or inside the shadow pass at the first edit.
+    // The shaders are build-time constants (three's own, plus this file's string injections), so a
+    // link failure is a development bug and dev keeps the reporting. Nothing at runtime reads a
+    // shader log: a context that cannot be created and a scene that cannot build toast
+    // `view3d.unavailable` from Editor3DCanvas, and a lost context is handled by the listeners below.
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
+    // On a SOFTWARE rasterizer (glQuality 'lite') every pixel is CPU work: shadow maps and the
+    // MSAA target each multiply it, and the reported result is seconds of latency at 100% GPU
+    // process. Lite drops both and renders at 1x — a plainer picture that actually moves.
+    this.lite = glQuality() === 'lite';
+    // maxRenderScale carries the lite tier itself (1x there, ≤2×/≤1.5× on hardware) AND never asks
+    // for more pixels than the display has, which a fixed 1 would on a page zoomed below 100%.
+    // onResize re-reads it, so the two sites must read the same one thing.
+    this.renderer.setPixelRatio(maxRenderScale());
     this.renderer.setSize(w, h);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping; // keep colours vivid, no filmic desaturation
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.lite;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft contact shadows
     container.appendChild(this.renderer.domElement);
-    this.setupMsaaTarget(w, h);
+    if (!this.lite) this.setupMsaaTarget(w, h);
+    // A GPU reset (driver crash, process eviction) LOSES the context mid-session. preventDefault
+    // is what tells the browser a restore is wanted; rendering pauses meanwhile, and the restore
+    // re-opens the render window so the scene repaints instead of staying frozen.
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
 
     const sky = gradientTexture(SKY_TOP, HORIZON);
     this.scene.background = sky;
@@ -515,7 +525,7 @@ export class ThreeScene {
         for (const obj of data.added ?? []) roads = this.addObjectInstance(obj) || roads;
         // Deferred to the next rendered frame (flushObjectDirty): both rebuilds scan every object on
         // the map, and a dab's own remove+add churn (auto-trim especially) fires several of these
-        // events — rebuilding inline here paid for that scan once per EVENT instead of once per FRAME.
+        // events — rebuilding inline here pays for that scan once per EVENT instead of once per FRAME.
         if (roads) this.roadTrimDirty = true;
         if (data.added?.length) this.iconRefineDirty = true;
         this.renderer.shadowMap.needsUpdate = true;
@@ -528,7 +538,7 @@ export class ThreeScene {
       };
       const onHistory = ({ cells, objects }: EditorEvents['history-applied']) => {
         const flash = resolveHistoryFlash(cells, objects);
-        if (flash) this.overlay3d?.flashCommit(flash.cells, { terrainMode: flash.terrainMode });
+        if (flash) this.overlay3d?.flashCommit(flash.cells);
       };
       bus.on('cells-changed', onCells);
       bus.on('objects-changed', onObjects);
@@ -563,7 +573,7 @@ export class ThreeScene {
     this.introFrom.set(this.introTarget.x + start.x, this.introTarget.y + start.y, this.introTarget.z + start.z);
     // Reduced motion: no fly-in at all. The camera simply STAYS at the resting frame captured
     // above (introTo), controls stay live, and nothing glides.
-    if (!isMotionReduced()) {
+    if (!isMotionReduced() && !this.lite) {
       this.camera.position.copy(this.introFrom);
       this.camera.lookAt(this.introTarget);
       this.controls.enabled = false;
@@ -571,16 +581,28 @@ export class ThreeScene {
       this.introStartMs = performance.now();
     }
 
-    // The scene is STATIC after build (geometry + the directional sun never move; only the camera
-    // orbits and the water shimmers a hair), so re-rendering the 2048² PCF soft shadow map every frame
-    // is pure waste. Compute it ONCE, then freeze it — identical look, big per-frame FPS win.
+    // The scene is STATIC after build (geometry + the directional sun + water never move; only the camera
+    // orbits), so re-rendering the 2048² PCF soft shadow map every frame is pure waste. Compute it ONCE,
+    // then freeze it — identical look, big per-frame FPS win.
+    // autoUpdate first, so the priming render below cannot be the bake.
     this.renderer.shadowMap.autoUpdate = false;
+    this.primeLightState();
     this.renderer.shadowMap.needsUpdate = true;
 
+    // THE HOST'S BOX CHANGES WITHOUT THE WINDOW'S: the map is a layer of the interface, and the
+    // assistant's docked panel takes a strip of the window out from under it. The window listener
+    // stays for the one thing it alone reports, a page-zoom step, which redefines the css px the
+    // box is measured in without necessarily changing the number.
     window.addEventListener('resize', this.onResize);
+    if (typeof ResizeObserver === 'function') {
+      this.boxWatch = new ResizeObserver(this.onResize);
+      this.boxWatch.observe(this.container);
+    }
     this.requestRender();
     this.loop();
   }
+
+  private boxWatch: ResizeObserver | null = null;
 
   /** Open a short keep-alive render window (coalesced, spam-safe). */
   requestRender = (): void => { this.renderWindow = 4; };
@@ -622,10 +644,34 @@ export class ThreeScene {
     this.disposables.push(quadGeo, copyMat, this.msaaTarget);
   }
 
+  /** Render the scene once with the shadow pass switched off, so three has SET THE LIGHT STATE UP
+   *  before the shadow map is ever baked.
+   *
+   *  `WebGLRenderer.render` runs `shadowMap.render` BEFORE `setupLights`, and a render state's light
+   *  arrays start empty — so on a scene's FIRST render the shadow pass keys every depth program with
+   *  zero lights, counts no later frame repeats (from the second render the state still holds the
+   *  previous frame's setup). Those counts reach the program CACHE KEY but not the depth shader,
+   *  whose source never mentions them: the programs are byte-identical and cached under keys nothing
+   *  asks for again. The next bake therefore links the whole set a second time — and with the map
+   *  frozen above, that bake is the user's FIRST EDIT. Measured on a software rasterizer: ~1.4s of
+   *  driver link, in one block, the first time a brush touched the map.
+   *
+   *  Offscreen by construction: it draws into the target the next frame overwrites and skips the
+   *  copy pass, so nothing reaches the canvas. Only the profile that HAS shadows pays for it (lite
+   *  has neither shadows nor the MSAA target). */
+  private primeLightState(): void {
+    if (!this.renderer.shadowMap.enabled || !this.msaaTarget) return;
+    this.renderer.shadowMap.needsUpdate = false;
+    this.renderer.setRenderTarget(this.msaaTarget);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setRenderTarget(null);
+  }
+
   /** Draw one frame: scene into the MSAA target, then the resolved copy to the
    *  canvas. Every producer of a visible frame (loop, capture, intro skip) goes
    *  through here so on-screen and captured frames share one pipeline. */
   private renderFrame(): void {
+    if (this.contextLost) return;
     this.flushTerrainDirty();
     this.flushObjectDirty();
     this.overlay3d?.flush();
@@ -682,9 +728,9 @@ export class ThreeScene {
    *  flying somewhere else first would undo it (see captureFromAngle, which shares this math for
    *  the export-angle preview and always wants the intro out of the way too).
    *
-   *  The distance is clamped into the controls' own dolly range: saves written before the
-   *  mid-intro camera read was guarded (see reportedCameraAngle) hold a `dist` of ~2.4, past
-   *  anything the controls allow, and restoring one verbatim landed the user out in the fog. */
+   *  The distance is clamped into the controls' own dolly range: a save whose camera was read
+   *  mid-intro (see reportedCameraAngle) holds a `dist` of ~2.4, past anything the controls allow,
+   *  and restoring one verbatim lands the user out in the fog. */
   applyCameraAngle(angle: CameraAngle): void {
     this.introActive = false;
     const baseDist = this.introTo.distanceTo(this.introTarget);
@@ -722,10 +768,9 @@ export class ThreeScene {
     this.camera.position.copy(this.introTo);
     this.camera.lookAt(this.introTarget);
     this.controls.target.copy(this.introTarget);
-    // The controls resume ONLY where they own input: in editor mode the
-    // pointer machine drives the camera and OrbitControls must stay dark —
-    // re-arming it here handed LEFT-drag back to its rotate handler, which
-    // fought every brush stroke.
+    // The controls resume ONLY where they own input: in editor mode the pointer machine drives the
+    // camera and OrbitControls must stay dark, or LEFT-drag goes back to its rotate handler and
+    // fights every brush stroke.
     this.controls.enabled = !this.editorInput;
     this.controls.update();
     this.introActive = false;
@@ -742,32 +787,11 @@ export class ThreeScene {
   private loop = (): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.loop);
-    this.frame++;
+    // The lines below are read verbatim by src/__tests__/canvas3d/water-rest.test.ts (lines 30-40).
+    // Do not reformat this section without updating that test's expectations.
     let move = this.tickInertia();
     if (this.introActive) { this.animateIntro(); move = true; }
     if (this.camTween) { this.animateCamTween(); move = true; }
-    // Gentle water swell updates its VERTICES on every second frame (the halved
-    // geometry churn + buffer upload is the cost that matters), but the window it
-    // opens spans both frames: the canvas must PRESENT on every display frame while
-    // anything animates. Presenting only on alternate frames makes the compositor
-    // interleave fresh MSAA-resolved images with re-composited preserved-buffer ones,
-    // and the two paths don't resolve silhouette edges identically — small models'
-    // borders flicker between smooth and aliased.
-    // The water swell and the waterfall scroll are CONTINUOUS ambient motion, which is exactly what
-    // the reduced-motion preference is for: freeze them at their built pose rather than idling.
-    // The swell is a shader displacement, so switching it off is an AMPLITUDE of zero rather than
-    // simply not advancing the clock: left running down, the water would freeze mid-lobe instead of
-    // at the flat pose it was built at. Read every frame, since the preference can change while the
-    // view is open, and a change is itself something to redraw for.
-    const swelling = !isMotionReduced();
-    if (this.swellUniforms.uSwellAmp.value !== (swelling ? 1 : 0)) {
-      this.swellUniforms.uSwellAmp.value = swelling ? 1 : 0;
-      move = true;
-    }
-    if (this.frame % 2 === 0 && swelling) {
-      if (this.waterChunks > 0) { this.swellUniforms.uSwellTime.value = this.frame * SWELL_SPEED; move = true; }
-      if (this.fallChunks > 0) { this.animateFall(); move = true; }
-    }
     if (this.overlay3d?.tick()) move = true;
     if (this.tickPlops()) move = true;
     if (this.tickSpins()) move = true;
@@ -775,12 +799,12 @@ export class ThreeScene {
     if (move) this.renderWindow = Math.max(this.renderWindow, 2);
     if (this.renderWindow <= 0) return;
     this.renderWindow--;
-    // A camera glide decays exponentially, so it approaches rest without reaching it — and with the
-    // water animation holding the render window open, every one of those frames re-antialiases all
-    // thin silhouettes (strobing borders on small models). Once the detector sees visual rest, the
-    // controls' update is skipped so the pose truly freezes. The detector is fed the pose EVERY
-    // frame and is purely observational: motion from any source (a gesture, the glide, key pan, a
-    // view change — all of which write the camera directly) unfreezes it by itself.
+    // A camera glide decays exponentially, so it approaches rest without reaching it, and every one
+    // of those frames re-antialiases all thin silhouettes (strobing borders on small models). Once
+    // the detector sees visual rest, the controls' update is skipped so the pose truly freezes. The
+    // detector is fed the pose EVERY frame and is purely observational: motion from any source (a
+    // gesture, the glide, key pan, a view change — all of which write the camera directly)
+    // unfreezes it by itself.
     if (!this.introActive && !this.camTween) {       // intro/tween drive the camera directly; controls resume after
       if (!this.cameraRest.isResting()) {
         if (this.controls.update()) this.renderWindow = Math.max(this.renderWindow, 2);
@@ -825,22 +849,17 @@ export class ThreeScene {
     sun.shadow.normalBias = 0.03;
   }
 
-  /** Gentle sine swell on the water surface. UPWARD-ONLY (0..1 lobe): the surface
-   *  only ever rises above its resting waterline, never dips below it — so a
-   *  ground-level river's troughs can't sink under the terrain and reveal the
-   *  grass through the translucent water. Scaled per-vertex by waterSwellWeights:
-   *  the body's OUTLINE (shoreline, rims, map edge) stays pinned at rest, because
-   *  a moving outline re-antialiases the water/land silhouette every vertex
-   *  update and reads as flickering borders around shoreline objects. */
-
   private buildTerrain(state: GridState): void {
     this.opaqueMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
     this.wetMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-    addWaterSwell(this.wetMat, this.swellUniforms);
-    // Trimmed roads use the SAME lit vertex-colour look as terrain but must NOT carry the draped
-    // grid (untrimmed roads are instanced with a grid-free material — the grid on only the trimmed
-    // ones read as inconsistent). Same config as opaqueMat, minus the addGridOverlay injection.
-    this.roadTrimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+    // The road decal composites over the terrain by per-vertex ALPHA (the feather fades to the
+    // ground as it actually renders, and two fades crossing blend instead of z-fighting), so it is
+    // transparent and never writes depth — it lies a hair above a surface the depth buffer already
+    // holds. No grid injection: the draped grid lives in the terrain material, so it stops at a
+    // road's own surface.
+    this.roadTrimMat = new THREE.MeshLambertMaterial({
+      vertexColors: true, flatShading: true, side: THREE.DoubleSide, transparent: true, depthWrite: false,
+    });
     this.disposables.push(this.opaqueMat, this.wetMat, this.roadTrimMat);
     // The reference grid + chunk bounds are DRAPED onto the terrain via the material shader (world XZ),
     // so they follow the surface as a light texture. Align to macro cells + seed the live toggles.
@@ -1061,12 +1080,10 @@ export class ThreeScene {
         prev.numbers.tex.dispose();
       }
       for (const geo of prev.geometries) geo.dispose();
-      if (prev.water) this.waterChunks--;
-      if (prev.fall) this.fallChunks--;
       this.terrainChunks.delete(key);
     }
     const { solid, ground, water, fall } = buildChunkTerrain(this.meshState(), cx, cy);
-    const entry: TerrainChunk = { meshes: [], geometries: [], water: null, fall: null, numbers: null };
+    const entry: TerrainChunk = { meshes: [], geometries: [], numbers: null };
     const addOpaque = (data: MeshData) => {
       if (!data.positions.length) return;
       const geo = toGeometry(data);
@@ -1086,21 +1103,15 @@ export class ThreeScene {
       this.scene.add(mesh);
       entry.meshes.push(mesh);
       entry.geometries.push(geo);
-      // The swell rides the geometry as a per-vertex weight and is applied in the vertex shader
-      // (see addWaterSwell), so the position buffer stays at its resting values for the mesh's life.
-      geo.setAttribute('aSwell', new THREE.BufferAttribute(waterSwellWeights(this.meshState(), water.positions), 1));
-      entry.water = { mesh };
-      this.waterChunks++;
     }
     if (fall.positions.length) {
-      // Waterfall / pond-cliff faces: a downward-flowing colour cascade (animateFall).
+      // Waterfall / pond-cliff faces: the cascade shading, painted into the colour buffer once.
       const geo = toGeometry(fall);
+      this.shadeFall(geo);
       const mesh = new THREE.Mesh(geo, this.wetMat);
       this.scene.add(mesh);
       entry.meshes.push(mesh);
       entry.geometries.push(geo);
-      entry.fall = { mesh, pos: (geo.getAttribute('position') as THREE.BufferAttribute).array as Float32Array };
-      this.fallChunks++;
     }
     this.attachPassive(entry, cx, cy);
     if (entry.meshes.length || entry.numbers) this.terrainChunks.set(key, entry);
@@ -1121,7 +1132,7 @@ export class ThreeScene {
         geo.setAttribute('uv', new THREE.Float32BufferAttribute(quads.uvs, 2));
         geo.setIndex(quads.index);
         const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-        addLabelFade(mat); // smooth density LOD (same idea as the grid), not a per-chunk pop
+        addLabelFade(mat); // smooth density LOD, the same window the draped grid fades on
         const mesh = new THREE.Mesh(geo, mat);
         this.scene.add(mesh);
         entry.numbers = { mesh, tex };
@@ -1178,7 +1189,8 @@ export class ThreeScene {
       // Black bold sans-serif like the 2D legend, but a heavier alpha: the 2D map's 0.12 reads over a
       // light map background, whereas the 3D ground beside the map is darker, so the same alpha washes
       // out — 0.45 carries the equivalent visual weight. depthTest stays ON (the default) so terrain
-      // between the camera and a label OCCLUDES it (no longer punching through onto the top layer).
+      // between the camera and a label OCCLUDES it instead of the label punching through onto the
+      // top layer.
       this.legendMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
       this.disposables.push(this.legendMat);
     }
@@ -1235,7 +1247,7 @@ export class ThreeScene {
 
   /** Runs the road-trim/icon-colour rebuilds onObjects flagged as dirty, and nudges the chrome —
    *  once per rendered frame, so however many objects-changed events one dab's remove+add churn
-   *  fires, each whole-map scan (buildRoadTrimMesh over every object, refineIconColors over every
+   *  fires, each whole-map scan (buildRoadTrimMeshes over every object, refineIconColors over every
    *  instance) and each chrome repaint runs only once. */
   private flushObjectDirty(): void {
     if (this.roadTrimDirty) { this.roadTrimDirty = false; this.rebuildRoadTrim(); }
@@ -1297,40 +1309,39 @@ export class ThreeScene {
 
   private arrowDisposables: { dispose(): void }[] = [];
 
-  /** The cascade shading, three layers deep so a fall reads as WATER rather
-   *  than a blinking texture: broad slow SHEETS set the large-scale flow, fine
-   *  faster STREAKS ride on top (both squared/cubed so the base stays deep,
-   *  never a white flash), and a SPLASH band brightens the bottom of the drop
-   *  where the water lands, shimmering slowly. Everything travels downward;
-   *  the speeds stay low enough that a distant fall glimmers instead of
-   *  strobing (the round-trip lesson from the flicker hunt). */
-  private animateFall(): void {
+  /** The cascade shading, three layers deep so a fall reads as WATER rather than one flat blue
+   *  face: broad SHEETS set the large-scale flow, fine STREAKS ride on top (both squared/cubed so
+   *  the base stays deep, never a white flash), and a SPLASH band brightens the bottom of the drop
+   *  where the water lands. Painted into the fall mesh's colour buffer as it is built, which is why
+   *  `FALL_SEGMENTS` subdivides the face: the pattern varies down the drop.
+   *
+   *  `FALL_PHASE` shifts the pattern along the face. Any value draws the same kind of cascade — the
+   *  shading is a function of the vertex's own position, so the phase moves the streaks rather than
+   *  changing what they are. */
+  private shadeFall(geo: THREE.BufferGeometry): void {
     const [dr, dg, db] = this.fallDeep;
     const [fr, fg, fb] = this.fallFoam;
-    const t1 = this.frame * 0.18; // sheets
-    const t2 = this.frame * 0.34; // streaks + splash shimmer
-    for (const chunk of this.terrainChunks.values()) {
-      if (!chunk.fall) continue;
-      const { mesh, pos } = chunk.fall;
-      const colAttr = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
-      const arr = colAttr.array as Float32Array;
-      const n = pos.length / 3;
-      for (let i = 0; i < n; i++) {
-        const px = pos[i * 3]!, py = pos[i * 3 + 1]!;
-        const s1 = Math.sin(py * 5.5 + px * 3.1 + t1);
-        const sheet = s1 > 0 ? s1 * s1 : 0;
-        const s2 = Math.sin(py * 13 + px * 8.7 + t2 + 1.7);
-        const streak = s2 > 0 ? s2 * s2 * s2 : 0;
-        const base = Math.max(0, 1 - py / 0.35);
-        const splash = base * base * (0.5 + 0.2 * Math.sin(px * 7 + t2 * 1.3));
-        let k = 0.1 + 0.26 * sheet + 0.22 * streak + 0.5 * splash;
-        if (k > 1) k = 1;
-        arr[i * 3] = dr + (fr - dr) * k;
-        arr[i * 3 + 1] = dg + (fg - dg) * k;
-        arr[i * 3 + 2] = db + (fb - db) * k;
-      }
-      colAttr.needsUpdate = true;
+    const t1 = FALL_PHASE * 0.18; // sheets
+    const t2 = FALL_PHASE * 0.34; // streaks + splash
+    const pos = (geo.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    const colAttr = geo.getAttribute('color') as THREE.BufferAttribute;
+    const arr = colAttr.array as Float32Array;
+    const n = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const px = pos[i * 3]!, py = pos[i * 3 + 1]!;
+      const s1 = Math.sin(py * 5.5 + px * 3.1 + t1);
+      const sheet = s1 > 0 ? s1 * s1 : 0;
+      const s2 = Math.sin(py * 13 + px * 8.7 + t2 + 1.7);
+      const streak = s2 > 0 ? s2 * s2 * s2 : 0;
+      const base = Math.max(0, 1 - py / 0.35);
+      const splash = base * base * (0.5 + 0.2 * Math.sin(px * 7 + t2 * 1.3));
+      let k = 0.1 + 0.26 * sheet + 0.22 * streak + 0.5 * splash;
+      if (k > 1) k = 1;
+      arr[i * 3] = dr + (fr - dr) * k;
+      arr[i * 3 + 1] = dg + (fg - dg) * k;
+      arr[i * 3 + 2] = db + (fb - db) * k;
     }
+    colAttr.needsUpdate = true;
   }
 
   private buildObjects(state: GridState): void {
@@ -1450,22 +1461,70 @@ export class ThreeScene {
    *  `offsets` displaces named roads on the ground plane: the group-rotation tween's
    *  per-frame arc for a road that has no instance matrix to back-date. */
   private rebuildRoadTrim(offsets?: ReadonlyMap<string, { dx: number; dz: number }>): void {
-    if (this.roadTrimMesh) {
-      this.scene.remove(this.roadTrimMesh);
-      this.roadTrimGeo?.dispose();
-      this.roadTrimMesh = null;
-      this.roadTrimGeo = null;
+    for (const mesh of this.roadTrimMeshes) this.scene.remove(mesh);
+    for (const geo of this.roadTrimGeos) geo.dispose(); // the materials are cached per material, not per rebuild
+    this.roadTrimMeshes = [];
+    this.roadTrimGeos = [];
+    for (const part of buildRoadTrimMeshes(this.liveState, this.hiddenLayers, offsets)) {
+      const geo = toGeometry(part.mesh);
+      const mesh = new THREE.Mesh(geo, this.roadMaterial(part));
+      // A flat decal on the surface casts no shadow of its own — and the shadow depth pass ignores
+      // vertex alpha, so letting it cast would print the feather's full square silhouette.
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.roadTrimMeshes.push(mesh);
+      this.roadTrimGeos.push(geo);
     }
-    const roadTrim = buildRoadTrimMesh(this.liveState, this.hiddenLayers, offsets);
-    if (!roadTrim.positions.length) return;
-    const geo = toGeometry(roadTrim);
-    const mesh = new THREE.Mesh(geo, this.roadTrimMat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.scene.add(mesh);
-    this.roadTrimMesh = mesh;
-    this.roadTrimGeo = geo;
   }
+
+  /**
+   * The material one road material's surfaces draw with: its tile art repeat-wrapped across the
+   * decal's grid UVs, or — until that art has decoded, and for a road that has no art at all — the
+   * plain vertex-coloured decal material. The stand-in for a TEXTURED material is a tinted clone,
+   * since the builder leaves those vertices white for the art to colour.
+   */
+  private roadMaterial(part: RoadTrimPart): THREE.MeshLambertMaterial {
+    if (!part.icon) return this.roadTrimMat;
+    const url = iconUrl(part.icon);
+    const canvas = url ? roadTileCanvas(url, this.onRoadArtLoaded) : undefined;
+    const key = `${part.material}:${canvas ? 'tex' : 'flat'}`;
+    const hit = this.roadTileMats.get(key);
+    if (hit) return hit;
+    const mat = this.roadTrimMat.clone();
+    if (canvas) {
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping; // the crop is power-of-two, so REPEAT is legal on WebGL1 too
+      // A road decal's v IS its world Z (build/terrain-geometry:fillGridUvs), so v grows SOUTH,
+      // the direction a canvas row index grows. three.js uploads a CanvasTexture flipped by
+      // default, which would sample the tile bottom-up and hand the 3D view a vertically mirrored
+      // pattern — visible on any asymmetric path (a herringbone's chevrons point the other way).
+      // The label atlas solves the same thing on the UV side (build/passive-geometry emits 1 - v);
+      // here the texture is ours alone, so it is one property rather than a term in the geometry.
+      tex.flipY = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      // A ground plane is seen at glancing angles almost everywhere; without this the tiling
+      // pattern aliases into a shimmer well before the horizon.
+      tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      mat.map = tex;
+      this.disposables.push(tex);
+    } else {
+      const hex = getCatalogItem(part.material)?.color;
+      if (hex) mat.color.setStyle(hex, THREE.SRGBColorSpace);
+    }
+    this.disposables.push(mat);
+    this.roadTileMats.set(key, mat);
+    return mat;
+  }
+
+  /** A path's tile art has decoded: the surfaces already standing were built with the stand-in
+   *  material, and only a rebuild swaps them onto the textured one. Marks the same dirty flag an
+   *  edit does, so however many materials land together they cost one rebuild. */
+  private onRoadArtLoaded = (): void => {
+    if (this.disposed) return; // the view was torn down while its art was still loading
+    this.roadTrimDirty = true;
+    this.requestRender();
+  };
 
   /** A small LOW-POLY model for the central plaza (it would otherwise be a blank platform): a raised
    *  wood courtyard inset on the stone platform, with an octagonal pavilion umbrella + a green awning
@@ -1480,7 +1539,7 @@ export class ThreeScene {
     const corner = cellCornerWorld(plaza.position.x, plaza.position.y, width, height);
     const cx = corner.x + size.w / 2, cz = corner.z + size.h / 2;
     const W = size.w, H = size.h, s = Math.min(W, H); // s = accent scale
-    const PLAT = 0.12; // top of the generic platform box this sits on
+    const PLAT = platformTopY(plaza.elevation); // deck top of the plinth the accents stand on
     const plazaGroup = new THREE.Group();
     this.scene.add(plazaGroup);
     this.plazaGroup = plazaGroup;
@@ -1574,6 +1633,21 @@ export class ThreeScene {
     };
   }
 
+  /**
+   * The canvas following its own box, which the interface moves without the window changing
+   * (the assistant's dock taking a strip of it).
+   *
+   * IT DRAWS THE FRAME IT RESIZES INTO, IN THE SAME TASK, and that is the whole reason this does not
+   * simply ask for a render. Resizing a WebGL canvas reallocates the drawing buffer and the new one
+   * starts EMPTY; this renderer keeps no preserved buffer and draws on demand, so a render merely
+   * requested happens on the next frame and the compositor puts the empty one on screen first — one
+   * transparent flash, at the moment the dock's slide settles and swaps the plane's transform for its
+   * inset. A ResizeObserver callback runs before that frame is composited, so a synchronous draw here
+   * means the resized buffer has the scene in it the first time anyone sees it.
+   *
+   * The render window is opened as well, since a box change often comes with a camera the controls
+   * are still settling.
+   */
   private onResize = (): void => {
     const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
     this.camera.aspect = w / h;
@@ -1587,6 +1661,7 @@ export class ThreeScene {
     const size = this.targetSize(w, h);
     this.msaaTarget?.setSize(size.w, size.h);
     this.requestRender();
+    this.renderFrame();
   };
 
   /** World-space bounding box of one placed object's live mesh (instance
@@ -1760,7 +1835,7 @@ export class ThreeScene {
    * skips the accumulator entirely and applies the step at once.
    */
   private dragCamera(mode: 'orbit' | 'pan', dx: number, dy: number): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     if (isMotionReduced()) { this.applyDrag(mode, dx, dy); return; }
     if (mode !== this.inertiaMode) {
       // Travel measured while orbiting must never be applied as a pan. Hand back what is owed
@@ -1788,7 +1863,7 @@ export class ThreeScene {
   /** A wheel/pinch dolly, eased. Reduced motion applies it outright: the smoothing is decoration,
    *  and the zoom itself is not. */
   private dollyEased(factor: number): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     if (isMotionReduced()) { this.dollyBy(factor); return; }
     this.zoomInertia.sample(Math.log(factor), 0, performance.now());
     this.requestRender();
@@ -1803,7 +1878,7 @@ export class ThreeScene {
 
   /** Yaw/pitch the camera around the orbit target (radians). */
   orbitBy(dYaw: number, dPitch: number): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const sph = new THREE.Spherical().setFromVector3(offset);
@@ -1933,7 +2008,7 @@ export class ThreeScene {
 
   /** Toolkit ZOOM: glide the orbit distance by `factor` (>1 = away), clamped. */
   animateDolly(factor: number): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const d = Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, offset.length() * factor));
@@ -1943,7 +2018,7 @@ export class ThreeScene {
 
   /** Toolkit TILT: glide to tilt value v (0..1 across the polar clamp range). */
   animateTilt(v: number): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     const t = this.controls.target;
     const offset = new THREE.Vector3().subVectors(this.camera.position, t);
     const sph = new THREE.Spherical().setFromVector3(offset);
@@ -1956,7 +2031,7 @@ export class ThreeScene {
 
   /** Toolkit FIT: glide back to the resting whole-map framing. */
   animateFit(): void {
-    this.landIntro(); // a hand on the camera ends the fly-in; see landIntro
+    this.landIntro();
     this.startCamTween(this.introTo.clone(), this.introTarget.clone());
   }
 
@@ -1996,7 +2071,14 @@ export class ThreeScene {
       for (const geo of chunk.geometries) geo.dispose();
     }
     this.terrainChunks.clear();
+    for (const geo of this.roadTrimGeos) geo.dispose(); // their materials/textures ride `disposables`
+    this.roadTrimGeos = [];
+    this.roadTrimMeshes = [];
     window.removeEventListener('resize', this.onResize);
+    this.boxWatch?.disconnect();
+    this.boxWatch = null;
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.removeEventListener('change', this.requestRender);
     this.controls.dispose();
     // Free per-instance buffers (instanceMatrix/instanceColor). NOT their

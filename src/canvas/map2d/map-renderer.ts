@@ -1,13 +1,14 @@
 import * as PIXI from 'pixi.js-legacy';
 import '@pixi/unsafe-eval'; // self-installs on import (7.1+) — keeps strict-CSP shader builds
 import type { ActiveView } from '../view-projection';
+import type { CellFrame } from '../thumbnail';
 
 // Snap sprite rendering to whole device pixels: at fractional zooms every icon
 // otherwise samples BETWEEN pixels, a uniform slight blur no texture LOD can fix
 // (the editor is a static scene, so per-frame snapping has no motion cost).
 PIXI.settings.ROUND_PIXELS = true;
 import type { EventBus } from '../../core/commands/event-bus';
-import { CommandType } from '../../core/model/types';
+import { CommandType, ItemCategory } from '../../core/model/types';
 import type { EditorEvents, GridState, MacroCoord } from '../../core/model/types';
 import { CHUNK_SIZE, TILE_SIZE, WATER_COLOR } from '../../core/model/constants';
 import { getCell } from '../../core/model/grid-model';
@@ -15,6 +16,8 @@ import { pageZoom } from '../../core/runtime/page-zoom';
 import { hexStringToNumber } from '../../core/model/colors';
 import { maxRenderScale } from '../../core/runtime/device-quality';
 import { getCatalogItem } from '../../state/catalog';
+import { iconUrl } from '../../assets/icon-urls';
+import { roadTileReady } from '../road-tile-texture';
 import { decodeIcons } from './draw/icon-color';
 import { BaseLayer } from './layers/base-layer';
 import { resolveHistoryFlash } from './layers/error-flash';
@@ -151,6 +154,14 @@ export class MapRenderer {
     this.app.stage.addChild(this.worldContainer);
 
     this.viewport = new Viewport(width, height);
+    // The projection answers in client coordinates, and the canvas does not always start at the
+    // window's corner (the assistant's dock insets it). The container's rect is read AT USE: the
+    // box also moves without resizing — the dock slide settles a transform away — and no resize
+    // event marks that moment, so a recorded origin would keep answering for where the box was.
+    this.viewport.setOriginSource(() => {
+      const rect = container.getBoundingClientRect();
+      return { x: rect.left, y: rect.top };
+    });
 
     // Subscribe to EventBus events. Every handler is registered through
     // subscribe() so destroy() can detach them all: the bus outlives any one
@@ -183,18 +194,23 @@ export class MapRenderer {
     });
 
     // Flash the region an undo/redo touched (neutral, latest-wins so a
-    // mashed-undo burst coalesces into one beat). Object-only steps flash each
-    // item's footprint on the macro grid (no offset); everything else flashes
-    // the terrain cells offset to the micro grid.
+    // mashed-undo burst coalesces into one beat). Each part of the step is on its own grid:
+    // an item's footprint on the macro grid (no offset), terrain cells on the micro grid.
     this.subscribe('history-applied', ({ cells, objects }) => {
       const flash = resolveHistoryFlash(cells, objects);
-      if (flash) this.overlayLayer.flashCommit(flash.cells, { terrainMode: flash.terrainMode });
+      if (flash) this.overlayLayer.flashCommit(flash.cells);
       this.requestRender();
     });
 
     // Drive the render-on-demand loop and route every scene mutation /
     // animation frame (via render-scheduler) to open the render window.
     setRenderRequester(this.requestRender);
+    // Pixi's TickerPlugin adds `app.render` to the application ticker inside the `ticker` property
+    // setter, i.e. at construction; `autoStart` decides only whether the ticker is STARTED. Starting
+    // it here for our own gated tick therefore runs pixi's UNGATED whole-scene render beside it —
+    // measured at exactly 2.00 renders per frame while panning, and one full repaint per frame on an
+    // untouched map, which is the render-on-demand gate defeated. renderTick is the only drawer.
+    this.app.ticker.remove(this.app.render, this.app);
     this.app.ticker.add(this.renderTick);
     this.app.ticker.start();
     this.requestRender();
@@ -383,7 +399,20 @@ export class MapRenderer {
 
   private lastPageZoom = pageZoom();
 
+  /**
+   * A BOX CHANGE MOVES THE BOX'S CENTRE, AND THE WORLD FOLLOWS IT. The box is a layer of the
+   * interface — the assistant's dock takes a strip of the window, so the box changes size and place
+   * while the scene inside should keep reading as the same scene. Anchoring the world point at the
+   * old centre onto the new one is the 3D camera's own behaviour (its projection is about its box
+   * centre, and a resize hands it only the aspect), and it is what makes the dock slide land
+   * silently: the slide carries the drawing by HALF the dock's width, which is exactly the centre's
+   * travel, so the one resize at each end of the slide moves nothing on screen. The anchor is read
+   * BEFORE the page-zoom rebase — a zoom step redefines the css px, and the world point at the old
+   * css centre standing at the new css centre is that rebase's own answer. Where the box STANDS is
+   * not taken here at all: the projection reads the container's rect at use.
+   */
   resize(width: number, height: number): void {
+    const centre = this.viewport.worldAtCentre();
     // A page-zoom step arrives here as a resize (the CSS viewport changed), so this is where the
     // map is held still against it — see `Viewport.rebaseForPageZoom`. Compared against the LAST
     // seen factor, not against 1, so an ordinary window resize rebases nothing.
@@ -394,10 +423,11 @@ export class MapRenderer {
     }
     this.app.renderer.resize(width, height);
     this.viewport.resize(width, height);
-    // Push the camera to the stage rather than only re-culling: a resize can move the camera (the
-    // page-zoom rebase, and the clamp that keeps the map on screen inside a smaller canvas). Left
-    // in the model, that change would sit invisible until the next pan or zoom applied it, and the
-    // map would jump then.
+    this.viewport.centreOn(centre);
+    // Push the camera to the stage rather than only re-culling: a resize moves the camera (the
+    // centre anchor, the page-zoom rebase, and the clamp that keeps the map on screen inside a
+    // smaller canvas). Left in the model, that change would sit invisible until the next pan or
+    // zoom applied it, and the map would jump then.
     this.applyViewportTransform();
   }
 
@@ -410,8 +440,10 @@ export class MapRenderer {
    *  off-screen map. Returns the restore fn that re-culls for the live camera. */
   private uncullForCapture(): () => void {
     // Captures render synchronously, outside the render tick — repaint any
-    // pending terrain edits first or they'd be missing from the export.
+    // pending terrain edits first or they'd be missing from the export. Road
+    // surfaces rebuild on the same schedule, so flush those too.
     if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
+    this.objectLayer.flushRoadRegions();
     const everything = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
     this.terrainLayer.cull(everything);
     this.objectLayer.cull(everything);
@@ -517,26 +549,37 @@ export class MapRenderer {
    * A PNG-ready canvas of SOME OTHER map, drawn by this renderer.
    *
    * The generate shelf shows what a recipe builds before anything is built, and that picture has to
-   * be the map the click produces. It is one map drawn twice otherwise, and two drawings of one
-   * thing drift: the second one grew its own framing and its own idea of what an object looks like,
-   * and the cards stopped resembling the island they promised.
+   * be the map the click produces — a second drawing of one `GridState` grows its own framing and
+   * its own idea of what an object looks like, and the card stops resembling the island it promises.
    *
    * So the candidate is drawn by the real layers, off the stage. Three fresh layers over `state`
    * build into a detached container, this renderer's GPU context rasterizes it and the container is
    * thrown away — the live scene is never touched, so the map under the shelf keeps its camera, its
    * culling and its sprites. Framed to the template exactly, as `captureMapImage` frames an export:
-   * the whole map, no chrome, which is the view the editor itself opens on.
+   * the whole map, no chrome, which is the view the editor itself opens on — or to `frame`'s cells,
+   * which is how a run bounded by a painted region is photographed at the size it was made at
+   * (`canvas/thumbnail.ts:focusFrame` decides the rectangle).
    *
    * Asynchronous for one reason: the drawing itself is a single synchronous pass with no next
    * frame, so every icon on the map has to have decoded before it starts or those sprites are holes.
+   * A path material's art is the same fact one step further along: its icon is cropped into a
+   * repeating tile (`roadTileCanvas`), and a road whose tile has not been cropped yet photographs
+   * as flat colour — a surface the map itself never shows.
    */
-  async captureState(state: GridState, maxPx = 640): Promise<HTMLCanvasElement | null> {
+  async captureState(state: GridState, maxPx = 640, frame?: CellFrame): Promise<HTMLCanvasElement | null> {
     const icons = new Set<string>();
+    const tiles = new Set<string>();
     for (const obj of state.objects.values()) {
-      const url = objectSpriteUrl(obj, getCatalogItem(obj.catalogId));
+      const item = getCatalogItem(obj.catalogId);
+      const url = objectSpriteUrl(obj, item);
       if (url) icons.add(url);
+      // A road carries a colour, so it has no sprite url — its art reaches the map as the fill of
+      // its surface instead, one tile per material.
+      const tile = item?.category === ItemCategory.Road ? item.icon : undefined;
+      const tileUrl = tile ? iconUrl(tile) : undefined;
+      if (tileUrl) tiles.add(tileUrl);
     }
-    await decodeIcons(icons);
+    await Promise.all([decodeIcons(icons), ...[...tiles].map((url) => roadTileReady(url))]);
     if (this.destroyed) return null;
 
     const base = new BaseLayer();
@@ -548,10 +591,22 @@ export class MapRenderer {
       base.drawFull(state);
       terrain.drawFull(state);
       objects.sync(state.objects, state);
+      // sync only QUEUES the road surfaces for the next frame, and this capture has none: the world
+      // is rasterized below and destroyed on the way out. Draw them now, as every other capture does.
+      objects.flushRoadRegions();
 
       const { width, height } = state.template;
       const half = TILE_SIZE / 2;
-      const region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      // The frame's own cells, or the template's. A mountain draws at `x * TILE_SIZE - HALF_TILE`,
+      // so a rectangle of cells starts half a tile before its first one on both axes.
+      const box = frame ?? { x: 0, y: 0, width, height };
+      // The whole map keeps a trailing half tile; a frame ends where its last cell does, or the
+      // picture is a half tile off the region it promises.
+      const tail = frame ? 0 : half;
+      const region = new PIXI.Rectangle(
+        box.x * TILE_SIZE - half, box.y * TILE_SIZE - half,
+        box.width * TILE_SIZE + tail, box.height * TILE_SIZE + tail,
+      );
       if (region.width <= 0 || region.height <= 0) return null;
       const resolution = Math.min(1, maxPx / Math.max(region.width, region.height));
       const rt = this.app.renderer.generateTexture(world, {

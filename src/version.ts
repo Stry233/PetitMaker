@@ -1,8 +1,7 @@
 /*
- * App + build metadata. The build number is the git commit count, injected by
- * Vite's `define` at build time (vite.config.ts), so it auto-increments with
- * every commit. The `typeof` guards keep this safe in any context where the
- * define didn't run (e.g. a bare unit-test import).
+ * App + build metadata. Where the build identity comes from is described at the
+ * BUILD block below; the `typeof` guards keep every read working in a context
+ * where Vite's `define` never ran (e.g. a bare unit-test import).
  */
 
 /**

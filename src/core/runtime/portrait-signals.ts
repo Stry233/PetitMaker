@@ -44,8 +44,8 @@ export interface OrientationSignals {
  * Pure predicate: block only a touch-primary device that is actually held in portrait.
  *
  * `coarsePointer` is the part that can never be true on a desktop, so it is required. `noHover`
- * normally rides with it, but several in-app WebViews report `hover: hover` on a phone, which left
- * the guard silent exactly where it was needed; being in one of those is itself evidence of a phone,
+ * normally rides with it, but several in-app WebViews report `hover: hover` on a phone, which leaves
+ * the guard silent exactly where it is needed; being in one of those is itself evidence of a phone,
  * so it stands in. Neither substitute can fire on a desktop, which is the property that matters.
  */
 export function shouldBlockPortrait(signals: OrientationSignals): boolean {

@@ -1,0 +1,28 @@
+{
+  "id": "path-yellow-board",
+  "category": "road",
+  "icon": "path-yellow-board",
+  "name": {
+    "en": "Yellow Board Path",
+    "zh": "黄色木板路",
+    "ja": "黄色い板の道",
+    "ru": "Жёлтая дощатая дорожка",
+    "th": "ทางไม้กระดานสีเหลือง",
+    "id": "Jalan Papan Kuning",
+    "fr": "Chemin de planches jaune"
+  },
+  "color": "#e0a76d",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

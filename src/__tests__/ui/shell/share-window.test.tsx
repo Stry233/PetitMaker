@@ -105,8 +105,8 @@ describe('the save-and-share window', () => {
     expect(screen.getByText('Layer 1')).toBeTruthy();
     expect(screen.getByText('Layer 2')).toBeTruthy();
     // The plaza is on the map but is NOT something to place: it comes with the template, so a list
-    // for rebuilding by hand leaves it out. The list used to say so in a sentence under itself; the
-    // omission is the fact, and a sentence explaining it was one more thing to read.
+    // for rebuilding by hand leaves it out. The omission is the fact: a sentence under the list
+    // explaining it is one more thing to read.
     expect(screen.queryByText(/plaza/i)).toBeNull();
     act(() => { useEditorStore.setState({ gridState: null }); });
   });

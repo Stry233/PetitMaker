@@ -17,13 +17,13 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { makeState } from '../../rules/_helpers';
 import { createDefaultRegistry } from '../../../rules';
 import { roadLookup } from '../../../state/object-index';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
+import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
 import {
   CellZone, CommandType,
   type Command, type EditorEvents, type GenerateConfig, type MacroCoord,
 } from '../../../core/model/types';
 import { applyMacro, MACRO_IDS, type MacroId } from '../../../tools/macros';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
 
 const SIZE = 96;
@@ -31,8 +31,13 @@ const SIZE = 96;
 function reach(seed: number, maxElevation: number): Record<MacroId, number> {
   const state = makeState(SIZE, SIZE);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  const config: GenerateConfig = { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation, seed, region: null };
-  exec.runSilently(() => { generateTerrain(config, state, (c: Command) => exec.execute(c)); });
+  const config: GenerateConfig = { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation, seed, region: null };
+  exec.runSilently(() => {
+    generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
+    // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+    // about relief. What stands on it is the case's own subject, planted or laid below.
+    clearAllObjects(state, (c: Command) => exec.execute(c));
+  });
   exec.commitStrokeGroup(exec.getUndoStackSize());
 
   // A PERSON'S MAP HAS THINGS STANDING ON IT, and for `roads` that is the whole question: it connects
@@ -79,35 +84,16 @@ describe('a macro reaches the map a person has', () => {
   const rates = reach(7, 8);
 
   /**
-   * All but the stream land almost everywhere they are asked. The floor is deliberately far below
-   * what they measure (96 to 100 per cent): this is a "the feature is reachable" gate, not a
-   * regression test on a number that moves with the generator.
+   * Every one of them lands almost everywhere it is asked. The floor sits far below what they measure
+   * (82 to 100 per cent): this is a "the feature is reachable" gate, not a regression test on a number
+   * that moves with the generator.
+   *
+   * THE STREAM IS THE ONE WHOSE RATE IS THE GROUND'S, not the macro's. Its honesty rule reverts a course
+   * whole where it cannot walk downhill all the way to open water, because half a stream on a hillside is
+   * worse than none: on organic relief that refuses about half of all aims, while the island generator's
+   * terraced plates step down to the coast, so from nearly anywhere on them there IS a way down.
    */
-  it.each(['raise', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {
+  it.each(['raise', 'stream', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {
     expect(rates[id]).toBeGreaterThan(0.8);
-  });
-
-  /**
-   * THE STREAM DOES NOT, AND THIS RECORDS IT RATHER THAN EXCUSING IT.
-   *
-   * Measured at 53 per cent on a 96-cell island with relief to spare, and at ZERO on a 64-cell one
-   * whose tallest ground is two tiers. The cause is its own honesty rule: a course that cannot walk
-   * downhill all the way to open water is reverted whole ("grounded or nothing"), which is right —
-   * half a stream on a hillside is worse — but it means the answer to half of all aims is a toast
-   * saying nothing happened, with no way to know beforehand which half.
-   *
-   * Two ways out, and both are real work rather than a threshold change: let a course that cannot
-   * reach the sea END in a pond, which is what the island generator's own water does; or show where
-   * it CAN run before the press, so a refusal is visible rather than discovered.
-   *
-   * Failing on purpose until one of them lands.
-   */
-  it.fails('stream builds nearly everywhere it is aimed', () => {
-    expect(rates.stream).toBeGreaterThan(0.8);
-  });
-
-  /** What it does manage today, so a change that makes it worse is visible even while it fails. */
-  it('stream still builds on at least a third of raised ground', () => {
-    expect(rates.stream).toBeGreaterThan(0.33);
   });
 }, 300_000);

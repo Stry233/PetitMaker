@@ -35,12 +35,32 @@ export function layerToY(layer: number): number {
 /** Top of the land slab that renders under every ground cell (cell units). */
 export const GROUND_SLAB_Y = 0.08;
 
+/** How far a water surface floats above the layer it fills — the sea's own waterline over the void. */
+export const SEA_Y = 0.05;
+
+/** The world Y of a water surface at `tier`. A ground-level pool lies ON the land slab rather than
+ *  inside it, so the surface is floored just above the slab; everything that has to meet water at
+ *  its own height — the mesher, the pointer's heightfield, a surface drape — reads it here. */
+export function waterSurfaceY(tier: number): number {
+  return Math.max(layerToY(tier) + SEA_Y, GROUND_SLAB_Y + 0.02);
+}
+
 /** The VISIBLE standable surface of a layer: elevated terrain tops out exactly at
  *  layerToY(e), but layer 0 is covered by the ground slab — an object based at raw
  *  layer 0 sinks into it, and the buried faces depth-fight the slab plane (small
  *  models shimmer at viewing distance). */
 export function surfaceY(layer: number): number {
   return layer === 0 ? GROUND_SLAB_Y : layerToY(layer);
+}
+
+/** The platform archetype's unit thickness: a ground-level plinth's deck height. */
+export const PLATFORM_UNIT_H = 0.12;
+
+/** Deck top of a platform (the plaza plinth) at `elevation`. The deck stands proud of
+ *  the standable surface by the same lip the unit slab has over the ground slab, so a
+ *  raised plaza clears the terrain beside it exactly as a ground one clears the grass. */
+export function platformTopY(elevation: number): number {
+  return surfaceY(elevation) + (PLATFORM_UNIT_H - GROUND_SLAB_Y);
 }
 
 /** World X/Z of the CORNER (low edge) of macro cell (cx, cy). The object and

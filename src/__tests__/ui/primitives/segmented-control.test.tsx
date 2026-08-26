@@ -1,10 +1,10 @@
 /**
- * The Save/Share toggle bounce: in stretch mode, `SegmentedControl`'s pill used to animate to a
- * PIXEL box measured off the active button's DOM offset. A host card resizing (e.g. tweening to
- * fit a new panel) re-measured on every tick and re-aimed the pill's spring at a moving target —
- * a spring chasing a moving destination reads as bounce no matter how the resize itself is eased.
+ * The Save/Share toggle bounce: in stretch mode, animating `SegmentedControl`'s pill to a PIXEL box
+ * measured off the active button's DOM offset re-measures on every tick of a host card's resize (e.g.
+ * tweening to fit a new panel) and re-aims the pill's spring at a moving target — a spring chasing a
+ * moving destination reads as bounce no matter how the resize itself is eased.
  *
- * The fix makes the target a FRACTION of the track — gap-aware, since the buttons flex in a
+ * The target is instead a FRACTION of the track — gap-aware, since the buttons flex in a
  * `gap`ped row: `left: calc((100% + gap) * i/n)`, `width: calc((100% - gap*(n-1)) / n)` — which a
  * resize cannot move: the fraction is exact by construction and the track carries the pill
  * passively under a resize. What these pin: the fraction is what actually reaches the DOM for a

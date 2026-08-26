@@ -92,8 +92,7 @@ export function computeComposition(
   if (opts.footer) { y += GAP; baseRects.footer = { x: PAD, y, w: innerW, h: FOOTER_H }; y += FOOTER_H; }
   const baseH = y + PAD;
 
-  // Output width: presets are fixed; Native uses the map's native pixel width (≥ High as a floor)
-  // so the image is full-resolution while keeping the identical layout ratio.
+  // Output width: presets are fixed; Native uses the map's native pixel width, with High as a floor.
   let width = opts.resolution === 'original' && ctx.mapPx
     ? Math.max(RESOLUTION_WIDTHS.high, ctx.mapPx.w)
     : RESOLUTION_WIDTHS[opts.resolution];
@@ -111,11 +110,9 @@ export function computeComposition(
 
   // Code band: EXACT pixel geometry driven by the FINAL (post-f) width, never scaled through
   // scaleRect — a share code's modules must land on whole device pixels (see glyph/geometry.ts),
-  // so its size is derived straight from moduleBaseFor(out.width) instead of the BASE-800 layout.
+  // so its size comes from moduleBaseFor(out.width) rather than the BASE-800 layout. The band
+  // sits at the same PAD as everything else and takes its module base from that inset width.
   if (hasShareCode(opts)) {
-    // The band sits at the same PAD as everything else. Its module base comes from the INSET
-    // width, so it is painted at a whole number of device pixels and never scaled to fit a
-    // margin — scaling is what would soften its modules.
     const padPx = Math.round(PAD * S);
     const mb = moduleBaseFor(out.width - 2 * padPx);
     if (mb === null) {

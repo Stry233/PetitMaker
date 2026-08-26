@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { useCursorCss } from '../../../design/cursors/cursor-vars';
 import { Spinner } from '../../../primitives/Spinner';
 import { useT, translate } from '../../../../i18n/context';
@@ -16,7 +17,6 @@ import { paintComposition, CARD_3D_CELL_ASPECT } from '../../../../io/export/pai
 import { DEFAULT_FOOTER, formatFooterDate } from '../../../../io/export/footer-template';
 import { captureMapStills } from '../../../../canvas/map3d/capture';
 import { seedShots } from '../../../../canvas/map3d/shot-list';
-import type { PixelBuffer } from '../../../../io/export/paint-types';
 import { loadImage } from '../../../../io/export/canvas-helpers';
 import { renderExport } from '../../../../io/export/render';
 import { originalCaptureRequestPx } from '../../../../io/share';
@@ -110,9 +110,9 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       let codeTooSmall = false;
       let codeFailed: ShareCodeIssue | null = null;
 
-      // Capture function: paints the full composition into an offscreen canvas and returns a PixelBuffer.
+      // Capture function: paints the full composition into an offscreen canvas and returns it.
       // The computed ExportComposition is passed in so we can render the full layout including the 3D card.
-      const capture = async (comp: ExportComposition): Promise<PixelBuffer | null> => {
+      const capture = async (comp: ExportComposition): Promise<HTMLCanvasElement | null> => {
         // Build the share code (if requested) at the composition's FINAL width — comp.codeBand
         // is only present when hasShareCode(options) AND the width fit a module base;
         // comp.codeBandUnavailable is compose.ts's own too-small signal (the source of truth for
@@ -174,20 +174,15 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           translate,
         });
 
-        const imageData = ctx.getImageData(0, 0, comp.width, comp.height);
-        return { data: imageData.data, width: comp.width, height: comp.height };
+        return canvas;
       };
 
       // Plain PNG encode — the share code (if any) is already a visible band painted into the
-      // composition above, so there is no pixel-level embedding step here.
-      const encode = (buf: PixelBuffer): Promise<Blob> => {
+      // composition above, so there is no pixel-level embedding step here. The painted canvas is
+      // encoded as it stands: at export sizes a round trip through ImageData reads ~6 MPx out to
+      // the CPU and writes them into a second canvas before the encoder ever sees them.
+      const encode = (c: HTMLCanvasElement): Promise<Blob> => {
         return new Promise((res, rej) => {
-          const c = document.createElement('canvas');
-          c.width = buf.width; c.height = buf.height;
-          const cx = c.getContext('2d');
-          if (!cx) { rej(new Error('no 2d context')); return; }
-          const id = new ImageData(buf.data, buf.width, buf.height);
-          cx.putImageData(id, 0, 0);
           c.toBlob((blob) => { blob ? res(blob) : rej(new Error('toBlob returned null')); }, 'image/png');
         });
       };
@@ -240,7 +235,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
             style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(253,251,224,0.82)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radii.lg }}
           >
             <Spinner size={38} thickness={4} />
-            <div style={{ fontFamily: font.family, fontWeight: 800, fontSize: 14, color: skin.ink }}>{t('export.exporting')}</div>
+            <div style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{t('export.exporting')}</div>
           </motion.div>
         )}
       </AnimatePresence>

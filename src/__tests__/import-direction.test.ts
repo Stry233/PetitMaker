@@ -42,9 +42,8 @@ const RANK = new Map<Layer, number>(
   LAYERS.flatMap((group, i) => group.map((l): [Layer, number] => [l, i])),
 );
 
-/** Edges that point up and are accepted, as `importer layer -> imported path prefix`. Empty: an entry
- *  names a module that belongs lower than where it sits, and adding one needs the same argument that
- *  moving the module would. */
+/** Edges that point up and are accepted, as `importer layer -> imported path prefix`. Empty, and an
+ *  entry here names a module that belongs lower than where it sits. */
 const ALLOWED_UPWARD: ReadonlyArray<readonly [Layer, string]> = [];
 
 const SRC = resolve(__dirname, '..');
@@ -148,7 +147,7 @@ describe('layer imports point downward', () => {
  * is given. `state/catalog`, `state/object-index` and `state/object-geometry` are not the store —
  * they are pure functions over map data — and are deliberately not named here.
  */
-const CONTEXT_WIRING: ReadonlyArray<string> = ['tools/tool-manager.ts'];
+const CONTEXT_WIRING: ReadonlyArray<string> = ['tools/runtime/tool-manager.ts'];
 const STORE = 'state/store';
 
 describe('tools reach the editor through ToolContext', () => {

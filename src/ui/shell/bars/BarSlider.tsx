@@ -77,8 +77,8 @@ export function BarSlider({
   /*
    * THE READING LIVES ON THE KNOB, and only while a hand is on the slider.
    *
-   * It stood permanently to the LEFT of every track, with the setting's name beside it. Two problems:
-   * a row of names and numbers is most of the strip's width spent on labels for controls whose own
+   * Standing permanently to the LEFT of every track with the setting's name beside it, it costs twice:
+   * a row of names and numbers spends most of the strip's width on labels for controls whose own
    * drawing already says what they are, and a reading that is always there is read once and then
    * never again. On the knob it answers the question at the moment it is asked -- which value am I
    * on -- and it costs the row nothing the rest of the time.

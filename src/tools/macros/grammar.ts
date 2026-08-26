@@ -12,8 +12,8 @@
  * hold over a grammar site lays the same composition again and the placement rules refuse it cell by
  * cell once it stands, so every burst after the first is a no-op rather than a second bed.
  *
- * THE SPECIES ARE THE SITE'S OWN. `dominantSpecies` is Task 2's policy (the plant this ground would
- * grow), asked once for the bed's colour and once for its accent, rather than a palette of this
+ * THE SPECIES ARE THE SITE'S OWN. `dominantSpecies` is the habitat's own answer (the plant this ground
+ * would grow), asked once for the bed's colour and once for its accent, rather than a palette of this
  * module's own — a bed beside a pond should be the bed that shore would carry. What the grammar adds
  * is the ARRANGEMENT. The bed's colour is keyed to the BUILDING rather than to the press seed, so
  * pressing twice beside one house extends one bed instead of laying two; the accent follows the
@@ -29,8 +29,8 @@ import { ItemCategory, type GridState, type MacroCoord, type PlacedObject } from
 import { getPlaceableByCategory } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
-import { analyzeTerrain } from '../generation/placement/analysis';
-import { buildingGate, forEachFootprintCell, hasGate, makeCtx, tryDecorate, type PlaceCtx } from '../generation/placement/object';
+import { analyzeTerrain } from '../placement/analysis';
+import { buildingGate, forEachFootprintCell, hasGate, makeCtx, tryDecorate, type PlaceCtx } from '../placement/object';
 import type { MacroContext } from './context';
 import { buildHabitatField, dominantSpecies } from './habitat';
 
@@ -153,8 +153,8 @@ function layBed(
  * colour with the accent every fourth step.
  *
  * Bounded to the DISC, unlike the bed: a road runs the length of the map and a press is a press. A
- * TREE press takes every third cell, which is `plantHedges`' own rhythm — a line with gaps to walk
- * through, and the spacing every tree's `exclusionRadius` needs anyway.
+ * TREE press takes every third cell: a line with gaps to walk through, and the spacing every tree's
+ * `exclusionRadius` needs anyway.
  */
 function layBorder(
   place: PlaceCtx, state: GridState, paved: readonly MacroCoord[], cells: readonly MacroCoord[],

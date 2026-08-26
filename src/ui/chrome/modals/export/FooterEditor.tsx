@@ -8,6 +8,7 @@ import { useRef, useLayoutEffect, useEffect, useState, type CSSProperties } from
 import { motion, AnimatePresence } from 'framer-motion';
 import { colors, font, radii, springs, cursors } from '../../../design/styles';
 import { skin, windowMenu } from '../../../design/window-skin';
+import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
 import { useChromeScale } from '../../../design/scale';
 import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
 import { useScrollFade } from '../../../primitives/scroll-fade';
@@ -164,7 +165,7 @@ export function FooterEditor({ value, onChange, samples, t }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <style>{`
-        .ppfe-field .ppfe-chip{display:inline-flex;align-items:center;line-height:1;background:${skin.active};color:${skin.ink};border-radius:999px;padding:5px 9px;margin:0 1px;font-weight:800;font-size:11.5px;white-space:nowrap;user-select:none;}
+        .ppfe-field .ppfe-chip{display:inline-flex;align-items:center;line-height:1;background:${skin.active};color:${skin.ink};border-radius:999px;padding:5px 9px;margin:0 1px;font-weight:${roleWeight('small')};font-size:${TEXT_ROLES.small.px}px;white-space:nowrap;user-select:none;}
         .ppfe-field .ppfe-fill{background:${colors.tileModeGreen};}
         .ppfe-field:empty:before{content:attr(data-ph);color:${skin.muted};}
       `}</style>
@@ -203,13 +204,13 @@ export function FooterEditor({ value, onChange, samples, t }: {
               >
                 {FOOTER_TOKENS.map((tk, i) => (
                   <button key={tk.id} type="button" data-idx={i} style={rowStyle(i)} onMouseEnter={() => setMenuIndex(i)} onMouseDown={(e) => { e.preventDefault(); insertToken(tk.id, menu.fromSlash); }}>
-                    <span style={{ fontWeight: 800 }}>{t(tk.labelKey)}</span>
+                    <span style={{ fontWeight: roleWeight('menu') }}>{t(tk.labelKey)}</span>
                     <span style={menuSample}>{samples[tk.id] || t('export.footer_na')}</span>
                   </button>
                 ))}
                 <div style={menuSep} />
                 <button type="button" data-idx={FOOTER_TOKENS.length} style={rowStyle(FOOTER_TOKENS.length)} onMouseEnter={() => setMenuIndex(FOOTER_TOKENS.length)} onMouseDown={(e) => { e.preventDefault(); insertToken(FOOTER_FILL, menu.fromSlash); }}>
-                  <span style={{ fontWeight: 800 }}>⇥ {t('export.footer_fill')}</span>
+                  <span style={{ fontWeight: roleWeight('menu') }}>⇥ {t('export.footer_fill')}</span>
                   <span style={menuSample}>{t('export.footer_fill_hint')}</span>
                 </button>
               </motion.div>
@@ -229,16 +230,16 @@ const FIELD_LINE = 26;
 const FIELD_PAD_Y = 8;
 const FIELD_BORDER = 1.5;
 // Single-line box height (border-box): the line + top/bottom padding + top/bottom border. The
-// border MUST be included — both the field and the button are border-box, so leaving it out made
-// the field 3px taller than the button (they only top-aligned, so the button looked higher).
+// border MUST be included — both the field and the button are border-box, so leaving it out makes
+// the field 3px taller than the button, which reads as the button sitting higher.
 const FIELD_BOX = FIELD_LINE + FIELD_PAD_Y * 2 + FIELD_BORDER * 2;
-const fieldStyle: CSSProperties = { flex: 1, minHeight: FIELD_BOX, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: `${FIELD_PAD_Y}px 10px`, fontFamily: font.family, fontSize: 13, fontWeight: 600, color: skin.ink, lineHeight: `${FIELD_LINE}px`, outline: 'none', boxSizing: 'border-box', overflowWrap: 'anywhere' };
+const fieldStyle: CSSProperties = { flex: 1, minHeight: FIELD_BOX, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: `${FIELD_PAD_Y}px 10px`, fontFamily: font.family, ...roleFont('field'), color: skin.ink, lineHeight: `${FIELD_LINE}px`, outline: 'none', boxSizing: 'border-box', overflowWrap: 'anywhere' };
 // Exactly one line tall — same box height as the field's collapsed state, so the button and the
-// input align at the top. The dash is the affordance (an edge that takes a tag), so it stays where
-// the repaint dropped every other border.
-const addBtn: CSSProperties = { flex: 'none', height: FIELD_BOX, display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', border: `1.5px dashed ${skin.line}`, background: 'transparent', cursor: cursors.clickable, borderRadius: radii.md, padding: '0 12px', fontFamily: font.family, fontWeight: 800, fontSize: 11.5, color: skin.muted, whiteSpace: 'nowrap' };
-const hintStyle: CSSProperties = { fontSize: 11, fontWeight: 600, color: skin.muted };
+// input align at the top. The dash is the affordance (an edge that takes a tag), which is why this
+// control carries a border where the rest of the window carries none.
+const addBtn: CSSProperties = { flex: 'none', height: FIELD_BOX, display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', border: `1.5px dashed ${skin.line}`, background: 'transparent', cursor: cursors.clickable, borderRadius: radii.md, padding: '0 12px', fontFamily: font.family, ...roleFont('small'), color: skin.muted, whiteSpace: 'nowrap' };
+const hintStyle: CSSProperties = { ...roleFont('caption'), color: skin.muted };
 const menuStyle: CSSProperties = { ...windowMenu, position: 'fixed', zIndex: 301, width: MENU_W, overflowY: 'auto', borderRadius: radii.md, padding: 5 };
-const menuRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: 'none', cursor: cursors.clickable, borderRadius: radii.sm, padding: '7px 9px', fontFamily: font.family, fontSize: 12.5, color: skin.plateInk, textAlign: 'left', width: '100%' };
-const menuSample: CSSProperties = { fontSize: 11, fontWeight: 600, color: skin.muted, fontVariantNumeric: 'tabular-nums', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+const menuRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: 'none', cursor: cursors.clickable, borderRadius: radii.sm, padding: '7px 9px', fontFamily: font.family, ...roleFont('label'), color: skin.plateInk, textAlign: 'left', width: '100%' };
+const menuSample: CSSProperties = { ...roleFont('caption'), color: skin.muted, fontVariantNumeric: 'tabular-nums', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const menuSep: CSSProperties = { height: 1, background: skin.line, margin: '3px 4px' };

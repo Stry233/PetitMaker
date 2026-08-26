@@ -2,10 +2,10 @@
  * PRESS AGAIN FOR ANOTHER WAY: the whole-map roads press hands back a different candidate each time,
  * takes its OWN last one back to do it, and touches nothing else.
  *
- * The press used to be seed-invariant — five seeds over the fixture below laid the same 679 cells,
- * Jaccard 1.000 across every pair — because nothing the seed fed was read by anything that shapes a
- * layout. `network-variation.ts` gives it four decisions to land on, behind `NetworkOptions.variation`
- * so generation (which runs this same router and is hash-pinned) cannot see them.
+ * A SEED THE ROUTER DOES NOT READ makes the press seed-invariant: five seeds over the fixture below
+ * laid the same 679 cells, Jaccard 1.000 across every pair. `network-variation.ts` gives the seed four
+ * decisions to land on, behind `NetworkOptions.variation` so generation (which runs this same router and
+ * is hash-pinned) cannot see them.
  *
  * ON THE OWNER'S OWN MAP. `hand-terraced-hexia.json` is a real hand-built island: many small
  * plateaus, houses on raised ground, a river, a plaza in its own court. Every earlier road pin but
@@ -214,8 +214,8 @@ describe('a re-press replaces its own last answer', () => {
       sizes.push(networkCells(kit.state).size);
     }
 
-    // THE OLD NETWORK IS GONE, not buried: the map holds ONE candidate's worth of pavement however
-    // many times it was pressed. A press that added would grow this without bound.
+    // THE PREVIOUS CANDIDATE IS GONE, not buried: the map holds ONE candidate's worth of pavement
+    // however many times it was pressed. A press that added would grow this without bound.
     expect(Math.max(...sizes), `network sizes across three presses: ${sizes.join(', ')}`)
       .toBeLessThan(sizes[0]! * 1.5);
     // And it IS another candidate rather than the same one relaid.
@@ -242,7 +242,7 @@ describe('a re-press replaces its own last answer', () => {
       for (let x = 2; x < kit.state.template.width - 2 && !hand; x += 1) {
         if (far.some((p) => Math.abs(p.x - x) + Math.abs(p.y - y) < 25)) continue;
         const obj: PlacedObject = {
-          id: 'hand-painted-road', catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0,
+          id: 'hand-painted-road', catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0,
         };
         if (kit.executor.execute(objectPlacementCommand(obj)).success) hand = obj;
       }

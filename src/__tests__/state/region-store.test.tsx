@@ -1,9 +1,9 @@
 /**
  * The painted region lives in the store (edit slice), not in a shell's local state.
  *
- * It used to be `useState` inside App.tsx, which left four things with nothing to read: the
- * region overlay's cell count, the region panel's count, the generate scope's disabled state and
- * the agent's region guard. This pins the contract those four now share — a consumer that never
+ * Held as `useState` inside App.tsx it leaves four things with nothing to read: the region
+ * overlay's cell count, the region panel's count, the generate scope's disabled state and the
+ * agent's region guard. This pins the contract those four share — a consumer that never
  * renders inside App reads the cells and their count straight off the store, and `region.length`
  * IS the count (the brush deduplicates as it paints, so no second field and no scan).
  */

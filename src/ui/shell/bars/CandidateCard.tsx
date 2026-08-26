@@ -81,9 +81,9 @@ const FLIP_RISE = MOTIONS['candidate.custom.flip'].amplitude;
 
 /**
  * How large EVERY typed digit stands, in css px, whatever the count: fixed at the size the
- * ten-digit ceiling itself fits the frame's own ~136px real width at (screenshot-verified), so the
- * number never resizes as more are typed — stability over spectacle, an explicit call over the
- * per-count table this replaced, which made a short number visibly bigger than a long one.
+ * ten-digit ceiling fits the frame's own ~136px real width at (screenshot-verified), so the number
+ * never resizes as more are typed. A size per digit count instead makes a short number visibly
+ * bigger than a long one.
  */
 const GIANT_SIZE = 20;
 
@@ -91,8 +91,8 @@ const GIANT_SIZE = 20;
  * The rule the number is written on: a fixed grey line, drawn INDEPENDENTLY of the digits.
  *
  * It is its own absolutely-positioned element rather than a border on the number's box, because a
- * border follows whatever that box is doing — it moved when focus added the caret, and it stretched
- * as the number got longer. A blank to write on is the same blank before, during and after typing,
+ * border follows whatever that box is doing: it moves when focus adds the caret and it stretches as
+ * the number grows. A blank to write on is the same blank before, during and after typing,
  * so its width and its place are fixed here and nothing about the digits reaches them.
  *
  * Sized in px off `GIANT_SIZE`, not in `em`: the slot around it carries the card's ambient font, so
@@ -200,6 +200,16 @@ function ChosenPlate() {
   );
 }
 
+/** Why a card has no picture, drawn in the empty frame — the one place on this bar with room for a
+ *  sentence. Shared by the drawn cards and the typed one, which refuse for the same reasons. */
+function NoteText({ text }: { text: string }) {
+  return (
+    <BarText size={TEXT.small} color={PLATE_INK} weight={700}>
+      <span style={{ display: 'block', padding: '0 8%', textAlign: 'center', whiteSpace: 'normal' }}>{text}</span>
+    </BarText>
+  );
+}
+
 /** The two plates and the picture between them: the drawing every candidate is made of, and the
  *  drawing the restore offer stands one of at 1.8x. It fills whatever box it is given, so the size
  *  is the caller's and the proportions are the drawing's. */
@@ -274,17 +284,26 @@ export function CandidateCard({ seed, name, note, shot, selected, failed, landin
   // A picture kind's card IS what it shows -- the letter, or the picture's name -- so it names
   // itself with that rather than with a recipe number it does not have.
   const label = name ?? t('gen.recipe', { n: seed });
+  /*
+   * A CARD WITH A NOTE ON IT HAS NOTHING TO LAND. The note says why there is no picture — a region
+   * too small for the kind, a word too wide for the region — and a card in that state must not take
+   * a click and build whatever it was showing before the region changed under it. It
+   * STANDS, per the layout rule, and refuses in the way every other control here refuses: dimmed,
+   * a blocked cursor, and the reason written where the picture would be.
+   */
+  const refuses = Boolean(note) && !shot;
 
   return (
     <motion.button
       type="button"
-      {...buttonMotion}
+      {...(refuses ? {} : buttonMotion)}
       aria-label={label}
       aria-pressed={selected}
+      aria-disabled={refuses}
       data-testid={`shell-candidate-${name ?? seed}`}
-      onClick={onSelect}
+      onClick={() => { if (!refuses) onSelect(); }}
       style={{
-        ...btnReset, ...BOX, cursor: cursors.clickable, pointerEvents: 'auto',
+        ...btnReset, ...BOX, cursor: refuses ? cursors.blocked : cursors.clickable, pointerEvents: 'auto',
       }}
     >
       {/* Drawn first, so the card's own plate covers all of it but the margin. */}
@@ -292,13 +311,7 @@ export function CandidateCard({ seed, name, note, shot, selected, failed, landin
       <CardFace
         shot={shot}
         waited={waited.current}
-        {...(note && !shot ? {
-          placeholder: (
-            <BarText size={TEXT.small} color={PLATE_INK} weight={700}>
-              <span style={{ display: 'block', padding: '0 8%', textAlign: 'center', whiteSpace: 'normal' }}>{note}</span>
-            </BarText>
-          ),
-        } : {})}
+        {...(note && !shot ? { placeholder: <NoteText text={note} /> } : {})}
       />
       {landing ? <Landing /> : null}
 
@@ -385,6 +398,10 @@ interface CustomProps {
    * typed, where the input IS the recipe and there is nothing random left to name.
    */
   field?: 'number' | 'glyph';
+  /** Why this card built nothing, where there is a reason worth saying. Drawn in the empty frame,
+   *  exactly as a drawn card's is: what the visitor typed can be refused for the same reasons the
+   *  dealt cards are, and this is the card they authored. */
+  note?: string;
   /** The number the visitor gave this card, or null while it has none. */
   seed: number | null;
   /** `glyph` field only: the character they gave it, or null while it has none. */
@@ -432,7 +449,7 @@ interface CustomProps {
  * alone is invisible.
  */
 export function CustomCard({
-  field = 'number', seed, glyph = null, title, draft, shot, selected, failed, landing,
+  field = 'number', seed, glyph = null, title, note, draft, shot, selected, failed, landing,
   onDraft, onCommit, onEdit, onSelect,
 }: CustomProps) {
   const isGlyph = field === 'glyph';
@@ -556,16 +573,18 @@ export function CustomCard({
             transition={flip}
             aria-label={t('gen.recipe', { n: seed ?? 0 })}
             aria-pressed={selected}
-            onClick={onSelect}
+            aria-disabled={Boolean(note) && !shot}
+            onClick={() => { if (!(note && !shot)) onSelect(); }}
             style={{
-              ...btnReset, ...PICTURE, cursor: cursors.clickable,
+              ...btnReset, ...PICTURE,
+              cursor: note && !shot ? cursors.blocked : cursors.clickable,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               overflow: 'hidden', borderRadius: PICTURE_CORNER,
             }}
           >
             {shot ? (
               <img src={shot} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : shot === undefined ? <LoadingDots color={PLATE_INK} /> : null}
+            ) : shot === undefined ? <LoadingDots color={PLATE_INK} /> : note ? <NoteText text={note} /> : null}
           </motion.button>
         )}
       </AnimatePresence>

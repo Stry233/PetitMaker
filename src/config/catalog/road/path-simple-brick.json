@@ -1,0 +1,28 @@
+{
+  "id": "path-simple-brick",
+  "category": "road",
+  "icon": "path-simple-brick",
+  "name": {
+    "en": "Simple Brick Path",
+    "zh": "简约砖路",
+    "ja": "シンプルレンガの道",
+    "ru": "Простая кирпичная дорожка",
+    "th": "ทางอิฐเรียบง่าย",
+    "id": "Jalan Bata Sederhana",
+    "fr": "Chemin de briques simple"
+  },
+  "color": "#e49e86",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

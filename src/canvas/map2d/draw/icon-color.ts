@@ -38,7 +38,7 @@ function steppedDownscale(img: HTMLImageElement | HTMLCanvasElement, target: num
  * much larger than their map footprint — pre-downscaling with stepped halving
  * keeps 4K fit-to-map views crisp where raw LINEAR (or trilinear between far
  * mip levels) reads blurry. Falls back to the raw texture until the image
- * loads (the sprite re-fits via baseTexture 'loaded' as before).
+ * loads (the sprite re-fits on the baseTexture's 'loaded').
  */
 /** Bumped whenever an icon's cache entry is ASYNC-swapped to its downscaled LOD texture (image
  *  decode lands after getIconTexture returned the raw fallback). Skip-if-unchanged consumers

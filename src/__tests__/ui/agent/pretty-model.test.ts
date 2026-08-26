@@ -1,14 +1,19 @@
 /**
  * prettyModel v2 — friendly names derived from a real cross-platform corpus
- * (OpenAI + OpenRouter public catalog + an Open WebUI/ollama campus gateway).
+ * (OpenAI + OpenRouter public catalog + Perplexity's Router catalog + an Open WebUI/ollama campus
+ * gateway).
  * Rules under test: version dots survive, glued family+version splits
  * (llama3.1), dash-versions join (opus-4-8 → 4.8), dates drop (both -20250414
  * and split -2025-04-14 and MMDD like -0125), sizes/quant uppercase (70b→70B,
  * fp16→FP16), ollama :tags fold in (:latest drops), vendor prefixes drop, and
  * brand casing (GPT/GLM/QwQ/DeepSeek/o3…).
+ *
+ * Cases carried verbatim from the retired site log's own copy of this suite, against the panel's
+ * `pretty-model.ts` — which is where the function lives now that the site log it was written inside
+ * of is gone.
  */
 import { describe, it, expect } from 'vitest';
-import { prettyModel } from '../../../ui/agent/atoms';
+import { prettyModel, shortModel } from '../../../ui/agent/pretty-model';
 
 const CASES: [string, string][] = [
   // platform defaults
@@ -59,6 +64,13 @@ const CASES: [string, string][] = [
   ['recycling-test-bot', 'Recycling Test Bot'],
   // openrouter :free routing tag survives as a suffix word
   ['google/gemma-4-26b-a4b-it:free', 'Gemma 4 26B A4B IT Free'],
+  // perplexity's Router catalog: the slug's creator prefix names who SERVES the model, so dropping
+  // it leaves the model's own name, and the MoE active-parameter suffix uppercases like a quant.
+  ['perplexity/kimi-k3', 'Kimi K3'],
+  ['perplexity/glm-5.2', 'GLM 5.2'],
+  ['perplexity/deepseek-v4-flash-0731', 'DeepSeek V4 Flash'],
+  ['perplexity/nemotron-3.5-lightning-30b-a3b', 'Nemotron 3.5 Lightning 30B A3B'],
+  ['perplexity/nemotron-3-ultra-550b-a55b', 'Nemotron 3 Ultra 550B A55B'],
 ];
 
 describe('prettyModel', () => {
@@ -69,5 +81,27 @@ describe('prettyModel', () => {
     for (const id of ['latest', ':', 'x', '2025-04-14', 'a/b/c']) {
       expect(prettyModel(id).length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The short form, for the ONE line that carries a model name beside a second fact and cannot wrap
+ * (the dock's manage meta: "Claude Sonnet 4.5, Checkpoint" ellipsized the oversight word away).
+ */
+describe('shortModel', () => {
+  const CUT: [string, string][] = [
+    ['claude-sonnet-4-5', 'Claude Sonnet'],
+    ['claude-opus-4-1', 'Claude Opus'],
+    ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
+    ['deepseek-chat', 'DeepSeek Chat'],
+  ];
+  for (const [id, want] of CUT) {
+    it(`${id} -> ${want}`, () => expect(shortModel(id)).toBe(want));
+  }
+
+  /** A version is noise only where a family name survives without it. */
+  it('keeps a version that is carrying the name on its own', () => {
+    expect(shortModel('gpt-5.1')).toBe('GPT 5.1');
+    expect(shortModel('o3')).toBe('o3');
   });
 });

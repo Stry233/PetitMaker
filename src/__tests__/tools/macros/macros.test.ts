@@ -14,7 +14,7 @@ import { NEIGHBORS4 } from '../../../core/model/grid-model';
 import { objectRect } from '../../../state/object-geometry';
 import { roadLookup } from '../../../state/object-index';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { categoryOf } from '../../../state/catalog';
 import { applyMacro } from '../../../tools/macros';
 import { FLAT_TOP } from '../../../tools/macros/terrace';
@@ -140,7 +140,7 @@ describe('applyMacro', () => {
 
     const outcome = applyMacro(kit, 'roads', { seed: 5 });
     expect(outcome.changes).toBeGreaterThan(0);
-    expect([...state.objects.values()].some((o) => o.catalogId.startsWith('road-'))).toBe(true);
+    expect([...state.objects.values()].some((o) => categoryOf(o) === ItemCategory.Road)).toBe(true);
   });
 
   // Relief in the middle of the map is the shape that broke this: the open ground wrapping a hill is

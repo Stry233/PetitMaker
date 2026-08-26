@@ -5,18 +5,18 @@
  * drawing STANDS IN rather than something a component reports.
  *
  * The margins are ONE number on the three edges the chrome stands on, measured to the ink that is
- * always there. What the left one still has to survive is the splat behind a selected block, which
- * is drawn wider than the block and centred on it: it hangs into the margin, and a margin narrower
- * than that overhang would cut it off at the window. It did, which is what this pins.
+ * always there. What the left one has to survive is the splat behind a selected block, which is drawn
+ * wider than the block and centred on it: it hangs into the margin, and a margin narrower than that
+ * overhang cuts it off at the window.
  *
  * The shadow rule comes from the design source, which has no gradient, no pattern, no layer effect
  * and not one stroke. So no control and no line of type casts anything; what separates the chrome
  * from the map is the viewport's own vignette.
  *
- * Nothing in `tokens.ts` is written with a shadow property any more. The vignette was, and is a
- * gradient now — a shadow casts from a whole box and the map is shaded at the bottom only — so the
- * one name still exempt is the hairline edge a drawing standing on the map wears, which is an SVG
- * dilation rather than an offset copy, and the two tests below are what keep it one.
+ * No token in `tokens.ts` carries a shadow property. The vignette is a gradient, since a shadow casts
+ * from a whole box and the map is shaded at the bottom only, so the one name exempt is the hairline
+ * edge a drawing standing on the map wears, which is an SVG dilation rather than an offset copy, and
+ * the two tests below are what keep it one.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
@@ -48,17 +48,17 @@ function sources(dir: string): { path: string; text: string }[] {
 /**
  * THE GUTTER IS THE BOTTOM SHELF'S, AND THE TWO SIDES REACH IT WITH DIFFERENT NUMBERS.
  *
- * It used to be one number on three edges, 28, chosen against the size of the things standing in it.
- * That fixed the lopsidedness the design source had (116 design px left against 72 right, which
- * lands at 36 and 22) but only across the top of the window: the shelf's row of names began 74 px in
- * and nothing above it did, so a straight edge down the screen met the chrome at two different
- * places. The gutter is now that row's own, arrived at from the inside out.
+ * The gutter is that row's own, arrived at from the inside out. One number on three edges, 28,
+ * chosen against the size of the things standing in it, fixes the lopsidedness the design source has
+ * (116 design px left against 72 right, which lands at 36 and 22) only across the top of the window:
+ * the shelf's row of names begins 74 px in and nothing above it does, so a straight edge down the
+ * screen meets the chrome at two different places.
  *
- * Setting it on both sides then made the frame lopsided AGAIN, the other way, because a margin and a
+ * Setting that gutter on both sides makes the frame lopsided the other way, because a margin and a
  * visible gap are not the same thing: the right holds plates whose ink is their box, the left holds
  * the mode row, and the splat under the chosen block hangs into the margin. Off a screenshot diffed
  * against the bare map the two came out 58.4 and 72.8. So the right is the left LESS the overhang,
- * and the assertion that the two are equal is gone — what replaces it is that their INK is.
+ * and what the two sides hold equal is their INK, not their margins.
  */
 describe('the frame\'s margins', () => {
   it('put the two sides\' outermost ink on one line, which is not the same margin', () => {
@@ -155,8 +155,8 @@ describe('the assistant stands under the row above it', () => {
 describe('nothing in the frame casts a shadow', () => {
   it('except the screen\'s own vignette and the edge a drawing wears on the map', () => {
     const offender = /box-?[Ss]hadow|text-?[Ss]hadow|drop-shadow/;
-    // The vignette used to be the one exception. It is a gradient now, because a shadow cannot be
-    // given to a single edge, so the only name left here is the hairline every drawing wears.
+    // The vignette is a gradient rather than a shadow, since a shadow cannot be given to a single
+    // edge, so the only name exempt here is the hairline every drawing wears.
     const exempt = ['MAP_SHAPE_EDGE'];
     // A line is allowed if it NAMES one of the two (a place that applies the treatment) or if it is
     // written inside one's declaration (the treatment's own body, which is built out of a list, so
@@ -175,11 +175,11 @@ describe('nothing in the frame casts a shadow', () => {
   /**
    * The edge is a DILATION, and the two tests below are what that has to keep meaning.
    *
-   * It used to be a stack of offset copies, which is the usual way to fake an outline and which
-   * failed here for a reason no arrangement of offsets could fix: at this width every copy sits
-   * under a third of a device pixel from the original, so each one rasterizes as a partial-coverage
-   * smear rather than as the shape, and eight smears land differently depending on where a given
-   * edge falls on the pixel grid. Growing the alpha instead has no sub-pixel step in it at all.
+   * A stack of offset copies is the usual way to fake an outline, and it fails here for a reason no
+   * arrangement of offsets can fix: at this width every copy sits under a third of a device pixel
+   * from the original, so each one rasterizes as a partial-coverage smear rather than as the shape,
+   * and eight smears land differently depending on where a given edge falls on the pixel grid.
+   * Growing the alpha instead has no sub-pixel step in it at all.
    */
   it('and that edge is an outline: grown from the shape, not offset from it', () => {
     expect(MAP_SHAPE_EDGE).toBe(`url(#${SHAPE_EDGE_ID})`);
@@ -248,13 +248,13 @@ describe('the top of the window is one band', () => {
     // It genuinely cannot fill the row: the corner is a good deal shallower, which is why the
     // question is where its middle goes rather than which edge it meets.
     expect(MODE.height - TOP_RIGHT_H).toBeGreaterThan(20);
-    // Centring in the BOX would put it here, and that is the arrangement this replaces.
+    // Centring in the BOX would put it here, which is not where it goes.
     expect(TOP_RIGHT_TOP).not.toBeCloseTo(EDGE_TOP + (MODE.height - TOP_RIGHT_H) / 2, 1);
   });
 
   it('keeps the corner\'s own three on one line, which is what makes them a group', () => {
     // Measured to the INK. The cluster's depth is the deepest ink standing on that line rather than
-    // a box height the three no longer share: each hangs its own slack below the line instead
+    // a box height the three do not share: each hangs its own slack below the line instead
     // (`Shell.tsx:Piece`), which is what puts three different drawings on one line.
     expect(TOP_RIGHT_H).toBeCloseTo(
       Math.max(...TOP_RIGHT.map((art) => topRightHeight(art) - topRightSlack(art))), 6,
@@ -313,9 +313,9 @@ describe('the right-hand column', () => {
     expect(RAIL.groupMin).toBeLessThan(RAIL.groupGap);
   });
 
-  /** It used to hang a group's gap under the line the mode row and the corner share, which placed
-   *  it against what stood above it and left it 9 px higher than the assistant across the window.
-   *  The two are the frame's second row, one at each edge, so they start together. */
+  /** Hanging a group's gap under the line the mode row and the corner share places the rail against
+   *  what stands above it and leaves it 9 px higher than the assistant across the window. The two
+   *  are the frame's second row, one at each edge, so they start together. */
   it('starts level with the assistant on the other side of the window', () => {
     expect(RAIL_TOP).toBe(ASSISTANT_INK.top);
     // Ink to ink: the plate is a filled pill, so its own ink is its box and nothing is subtracted
@@ -357,9 +357,9 @@ describe('the right-hand column', () => {
   describe('and the layer stack takes its turn among them', () => {
     const layerBottom = RAIL_TOP + RAIL.layer.h;
     const plan = (vh: number, open: boolean) => planRail(vh / ZOOM, { open, plateDepth: PLATE_DEPTH });
-    /** How deep the pair stands in a given plan. It FOLDS on a short window, so this is not the
-     *  constant it used to be, and reading it off the plan is what keeps every separation below
-     *  measured against the arrangement the plan actually chose. */
+    /** How deep the pair stands in a given plan. It FOLDS on a short window, so it is not a
+     *  constant, and reading it off the plan is what keeps every separation below measured against
+     *  the arrangement the plan actually chose. */
     const pairDepth = (p: RailPlan) => railStack(Math.ceil(HISTORY_BUTTONS / p.historyFiles));
     /** The least of the plate worth showing: its head, its own padding, and one whole row of the
      *  SQUARE's floors, which is the size these plans are made for. A plate cut above this is a head
@@ -477,9 +477,9 @@ describe('the right-hand column', () => {
      *
      * Whether the plate is seated at all is asked of the room the pair COULD yield, which is the
      * lowest it can stand. Where it then stands is a different question with a smaller answer: it
-     * steps down until the plate clears it and stops. The two used to be one number, so a window
-     * with 170 px of slack left in the lane still pushed undo and redo down against the view kit,
-     * and three groups read as two.
+     * steps down until the plate clears it and stops. Answering both with one number pushes undo and
+     * redo down against the view kit on a window with 170 px of slack left in the lane, and three
+     * groups read as two.
      */
     it('does make room for it on a tall one, and steps down by exactly what the plate needs', () => {
       const p = plan(1440, true);
@@ -548,8 +548,8 @@ describe('the right-hand column', () => {
      * The window it bites on is a real one: a 1366x768 laptop with browser chrome lands near 660.
      */
     it('folds the pair after the kit, and only where a folded kit is not enough', () => {
-      // Not every window in the set any more: with seven in the kit, a folded kit stops being
-      // enough at about 766 device px, so the smallest of the three is now below that.
+      // Not every window in the set: with seven in the kit, a folded kit stops being enough at about
+      // 766 device px, and the smallest of the three is below that.
       for (const vh of WINDOWS.filter((h) => h > 766)) {
         expect(plan(vh, false).historyFiles, `${vh}px keeps the pair in one file`).toBe(1);
       }

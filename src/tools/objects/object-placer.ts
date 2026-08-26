@@ -1,14 +1,15 @@
 import { CommandType, ToolType } from '../../core/model/types';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
-import type { GridState, MacroCoord, MicroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand, ValidationError } from '../../core/model/types';
+import type { CatalogItem, GridState, MacroCoord, MicroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand, ValidationError } from '../../core/model/types';
+import { standsOnCoating } from '../../core/model/traits';
 import type { CommandExecutor } from '../../core/commands/command-executor';
-import type { Tool, ToolContext } from '../types';
+import type { Tool, ToolContext } from '../runtime/types';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { getCatalogItem } from '../../state/catalog';
 import { bumpObjectsVersion, cellKey, getFootprint } from '../../core/model/grid-model';
 import { getPlacedObjectSize, getRotatedSize, resolveAnchor, snapsOwnPlacement, surfaceElevationAt } from '../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
-import { generateObjectId } from '../utils';
+import { generateObjectId } from '../../core/model/object-id';
 
 
 export const GHOST_VALID = 0x22c55e;
@@ -78,13 +79,13 @@ export function planObjectRotation(
 // Bridge ghost = the detected span's footprint (empty when no legal span). Uses
 // the same detector as the placement rule so preview and validation never drift.
 function computeBridgeGhost(
-  coord: MacroCoord, width: number, min: number, max: number, ctx: import('../types').ToolContext,
+  coord: MacroCoord, width: number, min: number, max: number, ctx: import('../runtime/types').ToolContext,
 ): MacroCoord[] {
   return detectBridgeSpan(ctx.gridState, coord, width, min, max)?.cells ?? [];
 }
 
 function computeRampGhost(
-  coord: MacroCoord, itemId: string, ctx: import('../types').ToolContext,
+  coord: MacroCoord, itemId: string, ctx: import('../runtime/types').ToolContext,
 ): MacroCoord[] {
   // Validate through the SAME rule the placement uses (V-PLACE-TRAIT heightDrop), so the ghost can NEVER be
   // green where the actual placement fails — e.g. when the lower terrace is shorter than the ramp's 3.5-block
@@ -154,12 +155,14 @@ export function removeObjectCommand(obj: PlacedObject): RemoveObjectCommand {
 /**
  * Strip every coating (road/tile) object covering any of `footprint`, so the caller can coat
  * over it. The overlap set is resolved BEFORE the removals, so the commands cannot disturb
- * the iteration.
+ * the iteration. A coating that `forItem` may STAND ON (flora on the plantable dirt path) is
+ * kept — the pair coexists, which is issue #11's in-game behaviour.
  */
 export function removeOverlappingCoatings(
-  footprint: MacroCoord[], ctx: ToolContext,
+  footprint: MacroCoord[], ctx: ToolContext, forItem?: CatalogItem,
 ): void {
   for (const obj of overlappingCoatings(ctx.gridState, footprint)) {
+    if (standsOnCoating(forItem, getCatalogItem(obj.catalogId)!)) continue;
     ctx.executeCommand(removeObjectCommand(obj));
   }
 }
@@ -179,11 +182,13 @@ export function removeOverlappingCoatings(
 export function stripCoatingsFor(
   executor: CommandExecutor, gs: GridState, dest: PlacedObject,
 ): void {
-  if (snapsOwnPlacement(getCatalogItem(dest.catalogId))) return;
+  const destItem = getCatalogItem(dest.catalogId);
+  if (snapsOwnPlacement(destItem)) return;
   const size = getPlacedObjectSize(dest);
   const cells = getFootprint(dest.position.x, dest.position.y, size.w, size.h);
   for (const obj of overlappingCoatings(gs, cells)) {
     if (obj.id === dest.id) continue; // moving a road: it is its own coating, not one to strip
+    if (standsOnCoating(destItem, getCatalogItem(obj.catalogId)!)) continue; // a flower lands ON the dirt path
     executor.execute(removeObjectCommand(obj));
   }
 }
@@ -322,11 +327,11 @@ export class ObjectPlacerTool implements Tool {
     // exactly the state we're about to create. On rejection, execute() re-validates and fires the
     // validation-failed toast without removing anything.
     //
-    // Validate a THROWAWAY CLONE: the bridge (waterSpan) and ramp (heightDrop) traits SNAP — i.e. MUTATE —
-    // the command's position/rotation during validation. If we validated the real command here, then
-    // executeCommand re-validates it, the second pass would re-detect from the already-snapped near end (a
-    // raised cell) and wrongly reject a perfectly legal bridge/ramp. Validating a copy keeps the original
-    // command unsnapped, so executeCommand validates + snaps it exactly once.
+    // Validate a THROWAWAY CLONE: the bridge (waterSpan) and ramp (heightDrop) traits SNAP — i.e.
+    // MUTATE — the command's position/rotation during validation, and executeCommand's own
+    // re-validation of a snapped command re-detects from the snapped near end (a raised cell) and
+    // rejects a legal bridge/ramp (the same trap `planObjectPlacement` documents). Validating a copy
+    // keeps the original unsnapped, so executeCommand validates + snaps it exactly once.
     const probe: PlaceObjectCommand = { ...cmd, object: { ...obj } };
     if (ctx.validateCommand(probe).length > 0) {
       ctx.executeCommand(cmd);
@@ -338,7 +343,7 @@ export class ObjectPlacerTool implements Tool {
     const start = ctx.getUndoStackSize();
     const { w, h } = getRotatedSize(item, rotation);
     const fp = getFootprint(anchor.x, anchor.y, w, h);
-    removeOverlappingCoatings(fp, ctx);
+    removeOverlappingCoatings(fp, ctx, item);
     // Request the plop BEFORE executing: executeCommand emits objects-changed synchronously, so
     // addObjects runs and consumes the pending plop in the same tick.
     ctx.plopObject?.(obj.id);

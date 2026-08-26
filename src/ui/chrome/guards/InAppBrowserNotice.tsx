@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { isInAppBrowser } from '../../../core/runtime/browser-env';
 import { colors, font, inkTint, radii, springs, z, cursors } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { useChromeScale } from '../../design/scale';
 import { readPref, writePref } from '../../../core/runtime/prefs';
 
@@ -41,8 +42,7 @@ const wrap: CSSProperties = {
   background: colors.panelCream,
   color: colors.frameDark,
   fontFamily: font.family,
-  fontSize: 12.5,
-  fontWeight: 700,
+  ...roleFont('caption'),
   lineHeight: 1.35,
   boxShadow: `0 10px 28px ${inkTint(0.22)}, 0 2px 6px ${colors.inkBorder}`,
 };
@@ -57,8 +57,7 @@ const dismissStyle: CSSProperties = {
   background: colors.surfaceSecondary,
   color: colors.frameDark,
   fontFamily: font.family,
-  fontWeight: 800,
-  fontSize: 11.5,
+  ...roleFont('small'),
   padding: '6px 10px',
   borderRadius: radii.md,
   cursor: cursors.clickable,

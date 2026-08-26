@@ -1,0 +1,28 @@
+{
+  "id": "path-retro-block",
+  "category": "road",
+  "icon": "path-retro-block",
+  "name": {
+    "en": "Retro Block Path",
+    "zh": "复古砌块路",
+    "ja": "レトロブロックの道",
+    "ru": "Ретро-дорожка из блоков",
+    "th": "ทางบล็อกย้อนยุค",
+    "id": "Jalan Blok Retro",
+    "fr": "Chemin de blocs rétro"
+  },
+  "color": "#be9883",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

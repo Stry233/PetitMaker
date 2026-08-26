@@ -103,10 +103,17 @@ describe('the host reveals a step\'s target from inside onStepEnter', () => {
     await waitFor(() => expect(shownStep()).toBe(3));
 
     clickNext();
-    // ONE press, and the tour is over: the tools step and every step after it names a target this
-    // host never draws, so each is passed over in turn. No step past 3 was ever put on the card,
-    // which is what a press would otherwise have been needed to leave.
-    await waitFor(() => expect(useEditorStore.getState().tourRunning).toBe(false));
+    // ONE press, and the run has walked past every step this host never draws a target for: the
+    // tools step and the 3D toggle are both passed over rather than lighting the origin, and it
+    // comes to rest on the next step that names no target at all.
+    await waitFor(() => expect(screen.getByText('Looking around in 3D')).toBeTruthy());
     expect(screen.queryByText('Your tools are down here')).toBeNull();
+    expect(screen.queryByText('The map in 3D')).toBeNull();
+    // From that step on, the ones that name a target are passed over the same way, so the two
+    // targetless steps are the whole of what is left and the second press ends the run.
+    clickNext();
+    await waitFor(() => expect(screen.getByText('Build right here in 3D')).toBeTruthy());
+    clickNext();
+    await waitFor(() => expect(useEditorStore.getState().tourRunning).toBe(false));
   });
 });

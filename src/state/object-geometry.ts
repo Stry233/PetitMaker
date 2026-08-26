@@ -54,10 +54,14 @@ export function surfaceElevationAt(state: GridState, x: number, y: number): numb
  *
  * A SPANNING object keeps what it stored: a bridge and a ramp are placed across a gap or a step by
  * their own traits, so their elevation is the high end they reach and no cell beneath them holds it.
+ *
+ * A TERRAIN-BASE object (the plaza) keeps what it stored too: its footprint IS a structural base
+ * at that elevation (see base-support, which reads the same field), so its height is its own fact
+ * — authored by the map template — not a reading of the ground beneath.
  */
 export function objectElevation(state: GridState, obj: PlacedObject): number {
   const item = getCatalogItem(obj.catalogId);
-  if (snapsOwnPlacement(item)) return obj.elevation;
+  if (!item || snapsOwnPlacement(item) || hasTrait(item, 'terrainBase')) return obj.elevation;
   return surfaceElevationAt(state, obj.position.x, obj.position.y);
 }
 

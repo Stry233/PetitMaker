@@ -7,8 +7,8 @@ import { createDefaultRegistry } from '../../rules/index';
 import { DEFAULT_MAP } from '../../config/maps';
 import { ToolType } from '../../core/model/types';
 
-import { ToolManager } from '../../tools/tool-manager';
-import { DrawingTool } from '../../tools/paint/drawing-tool';
+import { ToolManager } from '../../tools/runtime';
+import { DrawingTool } from '../../tools/paint';
 
 import { useWasdPan, useUiZoomShortcut } from '../interaction/use-view-shortcuts';
 import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
@@ -26,8 +26,8 @@ export function PixiCanvas() {
   useUiZoomShortcut();
 
   // The pointer-gesture state machine (right-drag pan, wheel zoom, block select,
-  // drag-to-move, region brush, context menu) — owns the canvas pointer/wheel
-  // listeners with its own mount-only effect, same as when it lived inline.
+  // drag-to-move, region brush, context menu) — it owns the canvas pointer/wheel
+  // listeners through its own mount-only effect.
   usePointerInteraction(containerRef);
   // Both canvases stay mounted, so the cursor surface follows whichever is VISIBLE.
   const viewMode = useEditorStore((s) => s.viewMode);
@@ -58,9 +58,8 @@ export function PixiCanvas() {
     const container = containerRef.current;
     if (!container) return;
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const renderer = new MapRenderer(eventBus, container, w, h);
+    const box = container.getBoundingClientRect();
+    const renderer = new MapRenderer(eventBus, container, box.width, box.height);
     rendererRef.current = renderer;
     setMapRenderer(renderer);
 
@@ -168,15 +167,32 @@ export function PixiCanvas() {
     renderer.updateGridVisibility(showGrid, showChunkBounds);
   }, [showGrid, showChunkBounds]);
 
-  // Window resize
+  /*
+   * THE CANVAS IS SIZED AND PLACED BY ITS OWN BOX, not by the window's.
+   *
+   * The map is a layer of the interface rather than the page under it: the assistant's docked panel
+   * takes a strip of the window and the map occupies what is left, so the box moves without the
+   * window changing at all. A `ResizeObserver` is what sees that (the box narrows as the strip
+   * opens, every frame of the slide), and the window listener stays for the one thing it alone
+   * reports: a PAGE ZOOM step, which redefines the css px the box is measured in without
+   * necessarily changing the number.
+   */
   useEffect(() => {
-    const onResize = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    const sync = () => {
       const renderer = rendererRef.current;
       if (!renderer) return;
-      renderer.resize(window.innerWidth, window.innerHeight);
+      const box = container.getBoundingClientRect();
+      renderer.resize(box.width, box.height);
     };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener('resize', sync);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : null;
+    observer?.observe(container);
+    return () => {
+      window.removeEventListener('resize', sync);
+      observer?.disconnect();
+    };
   }, []);
 
   // Re-paint the selection box when the selected object's geometry changes — a
@@ -200,17 +216,21 @@ export function PixiCanvas() {
   return (
     // One-shot cold-start reveal on first mount. MotionConfig gates it
     // under reduced motion; map re-loads don't remount this, so it fires once.
+    //
+    // OPACITY ONLY, AND THAT IS FORCED: this box is the surface a pointer is projected onto, and its
+    // rect is what says where the world is (the effect above, and the projection's origin with it).
+    // A transform here is a lie about that for as long as it runs, and a scale that had not finished
+    // when the renderer was sized left the canvas permanently 2% short of its own box.
     <motion.div
       ref={containerRef}
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.6, ease: [0.2, 0, 0, 1] }}
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
+        // The whole of the plane it stands in, which is the window less whatever the interface has
+        // taken out of it (`ui/shell/Shell.tsx`'s map plane).
+        position: 'absolute',
+        inset: 0,
         overflow: 'hidden',
         userSelect: 'none',
         touchAction: 'none',

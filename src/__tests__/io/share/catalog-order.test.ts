@@ -3,12 +3,14 @@
 // catalog in agreement, and holds the shipped prefix fixed.
 import { describe, it, expect } from 'vitest';
 import { SHARE_CATALOG_ORDER, SHARE_CATALOG_LIMIT } from '../../../io/share/codec/catalog-order';
-import { getAllItems } from '../../../state/catalog';
+import { RETIRED_CATALOG_IDS, currentCatalogId } from '../../../io/legacy-catalog';
+import { getAllItems, getCatalogItem } from '../../../state/catalog';
 
 /**
  * The order as the first PetitGlyph v2 release shipped it. Every share image made before a later
  * item existed resolves its indices through this prefix, so these 62 entries stay where they are,
- * in this sequence. A new item appends after them.
+ * in this sequence. A new item appends after them. A RETIRED one (`road-dirt`, `road-stone`) stays
+ * too: retiring an item removes it from the catalog, never from the wire.
  */
 const RELEASED_PREFIX = [
   'bridge-iron', 'bridge-light-wood', 'bridge-park-arch', 'bridge-plank', 'bridge-retro-arch',
@@ -32,11 +34,22 @@ describe('share catalog wire order', () => {
     expect(SHARE_CATALOG_ORDER.slice(0, RELEASED_PREFIX.length)).toEqual(RELEASED_PREFIX);
   });
 
-  it('names every catalog item, and nothing else', () => {
+  it('names every catalog item, and nothing else a reader cannot resolve', () => {
     // An item missing here cannot be shared at all (indexOf returns -1, which the encoder would
-    // write as garbage); a name here with no item behind it would decode to nothing.
-    const live = getAllItems().map((i) => i.id).sort();
-    expect([...SHARE_CATALOG_ORDER].sort()).toEqual(live);
+    // write as garbage); a name here with no item and no replacement behind it would decode to
+    // nothing. A RETIRED id has no item of its own on purpose — it keeps its index so an old code
+    // still decodes, and the loader reads it as its replacement.
+    const live = getAllItems().map((i) => i.id);
+    const resolvable = SHARE_CATALOG_ORDER.map(currentCatalogId);
+    expect([...new Set(resolvable)].sort()).toEqual([...live].sort());
+  });
+
+  it('gives every retired id a replacement that exists, and no item of its own', () => {
+    for (const [retired, replacement] of Object.entries(RETIRED_CATALOG_IDS)) {
+      expect(SHARE_CATALOG_ORDER, `${retired} lost its slot`).toContain(retired);
+      expect(getCatalogItem(retired), `${retired} is still in the catalog`).toBeUndefined();
+      expect(getCatalogItem(replacement), `${replacement} is not a catalog item`).toBeTruthy();
+    }
   });
 
   it('lists each id once', () => {

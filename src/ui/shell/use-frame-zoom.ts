@@ -1,32 +1,38 @@
 /*
  * use-frame-zoom.ts — the frame's live zoom, and what a moving element has to do about it.
  *
- * The whole frame stands under one `zoom` (`units.ts:ZOOM` times the user's Ctrl +/-), which is
- * what lets the chrome be authored in fixed css px. Everything inside it is therefore laid out in a
- * unit that is not the page's, and anything measuring the frame from outside has to divide.
+ * The whole frame stands under one `zoom` (`units.ts:ZOOM` times the window's fit times the user's
+ * Ctrl +/-), which is what lets the chrome be authored in fixed css px. Everything inside it is
+ * therefore laid out in a unit that is not the page's, and anything measuring the frame from outside
+ * has to divide.
  */
-import { useEffect, useState } from 'react';
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
-import { frameFit, ZOOM } from './units';
-
-/** `units.ts:frameFit` of the live window, re-read on resize. */
-function useViewportFit(): number {
-  const [fit, setFit] = useState(() => (
-    typeof window === 'undefined' ? 1 : frameFit(window.innerWidth, window.innerHeight)
-  ));
-  useEffect(() => {
-    const onResize = () => setFit(frameFit(window.innerWidth, window.innerHeight));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return fit;
-}
+import { useDenseScript, useDevicePixelRatio, useViewportFit } from '../design/scale';
+import { readableWeight, textDevicePx } from '../design/text-weight';
+import { ZOOM } from './units';
 
 /** The factor every length inside the frame is drawn at: the frame's own page zoom, times the
  *  window's fit below the design reference, times the user's UI zoom — live through that tween
- *  rather than snapping when it starts. */
+ *  rather than snapping when it starts. The chrome rides the same fit (`useChromeScale`), so the
+ *  two carry one ratio at every window shape. */
 export function useFrameZoom(): number {
   return ZOOM * useViewportFit() * useAnimatedUiZoom();
+}
+
+/**
+ * `(nominalWeight, cssPx) => weight` for text INSIDE the frame — the `TEXT` ladder is authored in css
+ * px and the frame's zoom is what carries it to the glass, so a size here lands `ZOOM` larger than
+ * the same number in a modal and keeps a weight the modal drops. The chrome's own is
+ * `design/scale:useReadableWeight`; a frame surface must not take that one.
+ *
+ * Only for a site whose size is its own. Anything on `text-weight:TEXT_ROLES` inherits its answer
+ * from the custom properties the frame root already publishes.
+ */
+export function useFrameReadableWeight(): (nominal: number, cssPx: number) => number {
+  const zoom = useFrameZoom();
+  const dpr = useDevicePixelRatio();
+  const dense = useDenseScript();
+  return (nominal, cssPx) => readableWeight(nominal, textDevicePx(cssPx, zoom, dpr), dense);
 }
 
 /**

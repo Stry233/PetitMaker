@@ -106,7 +106,7 @@ export const COMMAND_META: readonly CommandMeta[] = [
   { id: 'app.generate', category: 'app', labelKey: 'menu.generate', defaultCombo: 'ctrl+g' },
   // Ctrl+N belongs to the browser (new window) and preventDefault does not reach it, so the editor
   // asks for the modifier the browser has left alone rather than binding a key that never arrives.
-  { id: 'app.new', category: 'app', labelKey: 'menu.new', defaultCombo: 'ctrl+alt+n' },
+  { id: 'app.new', category: 'app', labelKey: 'modal.new_title', defaultCombo: 'ctrl+alt+n' },
   // The two exports on the keys their output matches: the save file goes on Save, the picture on
   // Print. Both shadow a browser binding, which the engine's preventDefault takes care of on a
   // match — so unbinding either here hands that key back to the browser, as it should.
@@ -323,8 +323,9 @@ export interface KeymapPreset {
   binds: Record<string, string | null>;
 }
 
-/** Pro is the pre-game-layout shipped default, frozen 2026-08-09: the desktop-editor idiom
- *  (single-letter tool keys, V/B/E), for hands that learned it. */
+/** Pro is the desktop-editor idiom (single-letter tool keys, V/B/E), for hands that learned it. A
+ *  FROZEN keymap: it states its combos outright rather than inheriting, so a change to the shipped
+ *  defaults never moves a key under those hands. */
 const PRO: Record<string, string | null> = {
   'surface.mountain': '1', 'surface.river': '2', 'surface.road': '3',
   'tool.move': 'v', 'tool.brush': 'b', 'tool.eraser': 'e', 'tool.edgecut': 'x',

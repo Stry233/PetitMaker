@@ -11,6 +11,7 @@
     "fr": "Bambou"
   },
   "icon": "tree-bamboo",
+  "iconColor": "#929e51",
   "width": 1,
   "height": 1,
   "loadValue": 50,

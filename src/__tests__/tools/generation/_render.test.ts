@@ -1,6 +1,6 @@
-// DEV harness, not a test: generates + populates sample maps and dumps them to
-// /tmp/petit-terrain.json so an offline renderer can draw a PNG montage for visual
-// inspection (no browser needed). Skipped by default — run with PETIT_DUMP=1.
+// DEV harness, not a test: generates sample maps and dumps them to /tmp/petit-terrain.json so an
+// offline renderer can draw a PNG montage for visual inspection (no browser needed). Skipped by
+// default — run with PETIT_DUMP=1.
 import { describe, it } from 'vitest';
 // @ts-ignore - node:fs is untyped in this project (no @types/node); dev-only render harness.
 import { writeFileSync } from 'node:fs';
@@ -9,8 +9,6 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { objectRect } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { TerrainType, type EditorEvents, type GenerateConfig } from '../../../core/model/types';
@@ -18,16 +16,15 @@ import { roadLookup } from '../../../state/object-index';
 
 const SIZE = 80;
 
-function gen(mode: 'earth' | 'water' | 'mixed', seed: number, relief: number, label: string, row: number, col: number) {
+function gen(mode: 'earth' | 'water' | 'mixed', seed: number, richness: number, label: string, row: number, col: number) {
   const state = makeState(SIZE, SIZE);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = {
-    algorithm: 'random', mode, corridorWidth: 1, maxElevation: 6, seed, region: null,
-    relief, waterAmount: 0.5, rivers: 0.4, flatness: 0.5, settlement: 0.7, nature: 0.7,
+    algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 6, seed, region: null,
+    richness: richness,
   };
   const start = exec.getUndoStackSize();
-  const r = generateTerrain(config, state, (c) => exec.execute(c));
-  populate(toGenConfig(config), state, (c) => exec.execute(c), exec.getRegistry(), undefined, r.zonePlan);
+  generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry());
   exec.commitStrokeGroup(start);
 
   // Reconstruct tier/water from the committed cells (mountain elevation vs water elevation).
@@ -51,30 +48,30 @@ const DUMP = Boolean((globalThis as { process?: { env?: Record<string, string> }
 describe.runIf(DUMP)('RENDER dump', () => {
   it('dumps populated maps', () => {
     const maps = [
-      // Row 0 — relief trend (earth, seed 7): does higher relief = more/taller mountains, monotonically?
-      gen('earth', 7, 0.0, 'earth s7 relief0', 0, 0),
-      gen('earth', 7, 0.25, 'earth s7 relief.25', 0, 1),
-      gen('earth', 7, 0.5, 'earth s7 relief.5', 0, 2),
-      gen('earth', 7, 0.75, 'earth s7 relief.75', 0, 3),
-      gen('earth', 7, 1.0, 'earth s7 relief1', 0, 4),
-      // Row 1 — modes at relief .5 (water should be water-only, no mountains)
+      // Row 0 — the richness axis on one seed: does a richer island get more relief, water and decor?
+      gen('mixed', 7, 0.0, 'mixed s7 r0', 0, 0),
+      gen('mixed', 7, 0.25, 'mixed s7 r.25', 0, 1),
+      gen('mixed', 7, 0.5, 'mixed s7 r.5', 0, 2),
+      gen('mixed', 7, 0.75, 'mixed s7 r.75', 0, 3),
+      gen('mixed', 7, 1.0, 'mixed s7 r1', 0, 4),
+      // Row 1 — the three island kinds at mid richness (water should carry the most water)
       gen('earth', 7, 0.5, 'earth s7', 1, 0),
       gen('water', 7, 0.5, 'water s7', 1, 1),
       gen('mixed', 7, 0.5, 'mixed s7', 1, 2),
       gen('water', 1, 0.5, 'water s1', 1, 3),
       gen('mixed', 1, 0.5, 'mixed s1', 1, 4),
-      // Row 2 — mixed variety (rivers + lakes → bridges; village + groves + waterside flora)
-      gen('mixed', 42, 0.5, 'mixed s42', 2, 0),
-      gen('mixed', 99, 0.5, 'mixed s99', 2, 1),
-      gen('mixed', 13, 0.6, 'mixed s13 r.6', 2, 2),
-      gen('mixed', 2, 0.7, 'mixed s2 r.7', 2, 3),
-      gen('mixed', 100, 0.4, 'mixed s100 r.4', 2, 4),
-      // Row 3 — more seeds for a broader sample (bridges/ramps + crafted villages across variety)
-      gen('mixed', 11, 0.5, 'mixed s11', 3, 0),
-      gen('mixed', 64, 0.5, 'mixed s64', 3, 1),
-      gen('water', 12, 0.5, 'water s12', 3, 2),
-      gen('mixed', 137, 0.6, 'mixed s137 r.6', 3, 3),
-      gen('earth', 23, 0.7, 'earth s23 r.7', 3, 4),
+      // Row 2 — seed variety at the shelf's own default richness
+      gen('mixed', 42, 0.7, 'mixed s42', 2, 0),
+      gen('mixed', 99, 0.7, 'mixed s99', 2, 1),
+      gen('mixed', 13, 0.7, 'mixed s13', 2, 2),
+      gen('mixed', 2, 0.7, 'mixed s2', 2, 3),
+      gen('mixed', 100, 0.7, 'mixed s100', 2, 4),
+      // Row 3 — a broader sample (crossings + composed places across variety)
+      gen('mixed', 11, 1.0, 'mixed s11 r1', 3, 0),
+      gen('mixed', 64, 1.0, 'mixed s64 r1', 3, 1),
+      gen('water', 12, 1.0, 'water s12 r1', 3, 2),
+      gen('mixed', 137, 1.0, 'mixed s137 r1', 3, 3),
+      gen('earth', 23, 1.0, 'earth s23 r1', 3, 4),
     ];
     writeFileSync('/tmp/petit-terrain.json', JSON.stringify({ size: SIZE, cols: 5, maps }));
   });

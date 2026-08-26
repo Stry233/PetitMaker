@@ -13,6 +13,7 @@ import { useEditorStore } from '../../../../state/store';
 import { useT } from '../../../../i18n/context';
 import { springs, exitTransition, colors, font, shadows, pressable, radii, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { downloadBlob, dataUrlToBlob } from '../../../../io/image-export';
 import { ThreeScene } from '../../../../canvas/map3d/scene/scene';
 import { replaceShot } from '../../../../canvas/map3d/shot-list';
@@ -182,7 +183,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
           {edit && gridState && (
             <div style={{ position: 'absolute', left: '50%', bottom: 24, transform: 'translateX(-50%)', display: 'flex', gap: 10, zoom: chrome }}>
               <motion.button type="button" onClick={useThisView} {...pressable}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: skin.ink, color: skin.plate, border: 'none', borderRadius: radii.md, padding: '11px 22px', fontFamily: font.family, fontWeight: 800, fontSize: 15, cursor: cursors.clickable, boxShadow: shadows.float }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: skin.ink, color: skin.plate, border: 'none', borderRadius: radii.md, padding: '11px 22px', fontFamily: font.family, ...roleFont('action'), cursor: cursors.clickable, boxShadow: shadows.float }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 13l4 4L19 7" stroke={skin.active} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>

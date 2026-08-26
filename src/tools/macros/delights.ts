@@ -26,7 +26,7 @@ import { makeRng } from '../../core/model/rng';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { ItemCategory, TerrainType, type GridState, type MacroCoord } from '../../core/model/types';
 import { getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
-import { makeCtx, tryDecorate, type PlaceCtx } from '../generation/placement/object';
+import { makeCtx, tryDecorate, type PlaceCtx } from '../placement/object';
 import type { MacroContext } from './context';
 import { CLIMAX_STAGE, successionPalette, tierOf } from './succession';
 

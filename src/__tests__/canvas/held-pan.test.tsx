@@ -1,8 +1,8 @@
 /**
  * Held pan keys, shared by the editor and the export shot editor.
  *
- * The shot editor used to run its own loop hardcoded to literal w/a/s/d, so a user who rebound the
- * pan keys got them everywhere EXCEPT there. These pin that both surfaces read the one key map.
+ * A surface running its own loop against literal w/a/s/d gives a user who rebound the pan keys their
+ * keys everywhere EXCEPT there. These pin that both surfaces read the one key map.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';

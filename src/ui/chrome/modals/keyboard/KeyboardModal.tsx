@@ -15,6 +15,7 @@ import {
   skin, windowCard, windowInset, windowMenu, windowMenuItem, windowMenuItemHover, windowPill,
   windowTitle, type WindowSurface,
 } from '../../../design/window-skin';
+import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { useScrollFadeBoth } from '../../../primitives/scroll-fade';
 import { showToast } from '../../floating/Toast';
@@ -63,19 +64,19 @@ const titleStyle: CSSProperties = { ...windowTitle, marginBottom: 16, flexShrink
 // `on` is the cream the pill stands on — the detail strip is an inset, the rest of the page a plate.
 function pill(variant: 'quiet' | 'primary' | 'danger', disabled = false, on: WindowSurface = 'plate'): CSSProperties {
   const base = windowPill(variant === 'primary' ? 'active' : variant, disabled, on);
-  return { ...base, fontSize: 14, padding: '8px 16px' };
+  return { ...base, padding: '8px 16px' };
 }
 
 // Layer chips = a filled segmented control: active is the dark ink pill, inactive the quiet fill.
 function chip(active: boolean): CSSProperties {
   return {
-    ...pill('quiet'), fontWeight: active ? 800 : 700, padding: '7px 16px',
+    ...pill('quiet'), fontWeight: roleWeight(active ? 'menu' : 'label'), padding: '7px 16px',
     ...(active ? { background: skin.ink, color: skin.plate } : {}),
   };
 }
 
 const comboChip: CSSProperties = {
-  fontFamily: font.family, fontSize: 13.5, fontWeight: 800, color: skin.plate,
+  fontFamily: font.family, ...roleFont('chip'), color: skin.plate,
   background: skin.ink, padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap',
 };
 
@@ -254,7 +255,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
         transition={{ default: springs.stiff, backgroundColor: { duration: 0.18, ease: 'easeOut' } }}
       >
         {/* The engraved glyph never changes with the layer, so it stays put and is not animated. */}
-        <span style={{ position: 'absolute', top: 4, left: 6, fontSize: 11, fontWeight: 800, color: inkTint(key.fixed ? 0.55 : 0.5) }}>
+        <span style={{ position: 'absolute', top: 4, left: 6, ...roleFont('small'), color: inkTint(key.fixed ? 0.55 : 0.5) }}>
           {key.label}
         </span>
         {/* Only the COMMAND label differs per layer, so it cross-fades inside a fixed box: the
@@ -273,7 +274,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
               >
                 {/* clamped INSIDE the centred fader, so a long label still ellipsizes at two lines */}
                 <span style={{
-                  fontSize: 11.5, fontWeight: 700, lineHeight: 1.12, color: skin.ink, textAlign: 'center',
+                  ...roleFont('caption'), lineHeight: 1.12, color: skin.ink, textAlign: 'center',
                   display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                   overflow: 'hidden', wordBreak: 'break-word',
                 }}>
@@ -312,12 +313,12 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   /* ── detail strip ───────────────────────────────────────────────────────── */
   const selCombo = selectedId ? effectiveCombo(overrides, selectedId) : null;
   const detail = (() => {
-    if (!selected) return <span style={{ fontSize: 14, color: skin.muted, fontFamily: font.family }}>{t('kbd.hint')}</span>;
+    if (!selected) return <span style={{ ...roleFont('body'), color: skin.muted, fontFamily: font.family }}>{t('kbd.hint')}</span>;
     const reserved = !!selected.reserved;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ width: 13, height: 13, borderRadius: 4, background: CATEGORY_COLOR[selected.category], flex: '0 0 auto' }} />
-        <span style={{ fontSize: 15, fontWeight: 800, color: skin.ink, fontFamily: font.family }}>{t(selected.labelKey)}</span>
+        <span style={{ ...roleFont('head'), color: skin.ink, fontFamily: font.family }}>{t(selected.labelKey)}</span>
         <span style={recording ? { ...comboChip, background: skin.active, color: skin.ink } : comboChip}>
           {recording ? t('kbd.recording') : reserved ? t('kbd.reserved') : selCombo ? prettyCombo(selCombo) : t('kbd.unbound')}
         </span>
@@ -336,7 +337,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
             </>
           );
         })()}
-        {note && <span style={{ fontSize: 13, color: skin.muted, fontFamily: font.family }}>{note}</span>}
+        {note && <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{note}</span>}
       </div>
     );
   })();
@@ -370,7 +371,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('kbd.search')}
             style={{
-              width: '100%', boxSizing: 'border-box', fontFamily: font.family, fontSize: 14.5,
+              width: '100%', boxSizing: 'border-box', fontFamily: font.family, ...roleFont('field'),
               padding: '10px 16px', borderRadius: radii.pill, border: `1.5px solid ${skin.line}`,
               background: skin.inset, color: skin.ink, outline: 'none',
             }}
@@ -395,8 +396,8 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: windowMenuItem(false).background, borderRadius: radii.md, padding: '9px 14px', cursor: cursors.clickable }}
                     >
                       <span style={{ width: 11, height: 11, borderRadius: 3, background: CATEGORY_COLOR[c.category], flex: '0 0 auto' }} />
-                      <span style={{ flex: '1 1 auto', textAlign: 'left', fontSize: 14, fontWeight: 700, color: skin.ink, fontFamily: font.family }}>{t(c.labelKey)}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: skin.muted, fontFamily: font.family }}>{combo ? prettyCombo(combo) : t('kbd.unbound')}</span>
+                      <span style={{ flex: '1 1 auto', textAlign: 'left', ...roleFont('label'), color: skin.ink, fontFamily: font.family }}>{t(c.labelKey)}</span>
+                      <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{combo ? prettyCombo(combo) : t('kbd.unbound')}</span>
                     </motion.button>
                   );
                 })}
@@ -419,7 +420,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
 
         <div ref={presetRef} style={{ position: 'relative' }}>
           <motion.button {...buttonMotion} onClick={() => setPresetOpen((o) => !o)} style={{ ...pill('quiet'), display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ color: skin.muted, fontWeight: 700 }}>{t('kbd.preset')}</span>
+            <span style={{ color: skin.muted, fontWeight: roleWeight('label') }}>{t('kbd.preset')}</span>
             {activePreset === 'custom' ? t('kbd.preset.custom') : t(PRESETS.find((p) => p.id === activePreset)!.labelKey)}
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden style={{ transition: 'transform 0.18s ease', transform: presetOpen ? 'rotate(180deg)' : 'none' }}>
               <path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke={skin.ink} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -441,7 +442,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                     style={menuItem(activePreset === p.id)}
                   >
                     {t(p.labelKey)}
-                    {activePreset === p.id && <span style={{ fontSize: 12 }}>✓</span>}
+                    {activePreset === p.id && <span style={{ fontSize: TEXT_ROLES.caption.px }}>✓</span>}
                   </motion.button>
                 ))}
               </motion.div>
@@ -487,7 +488,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
       {/* category legend — pinned (always visible) at the bottom */}
       <div style={{ marginTop: 14, flexShrink: 0, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {CATEGORY_ORDER.map((cat) => (
-          <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: skin.muted, fontFamily: font.family }}>
+          <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: CATEGORY_COLOR[cat] }} />
             {t(`kbd.cat.${cat}`)}
           </span>

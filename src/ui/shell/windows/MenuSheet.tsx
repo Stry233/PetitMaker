@@ -17,6 +17,7 @@ import { useT } from '../../../i18n/context';
 import { useEditorStore, type ModalId } from '../../../state/store';
 import { ClickCatcher } from '../../primitives/ClickCatcher';
 import { btnReset, cursors, springs, z } from '../../design/styles';
+import { useReadableWeight } from '../../design/scale';
 import { MODE_ROW_BASE } from '../frame';
 import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, TEXT } from '../units';
@@ -55,6 +56,7 @@ export interface MenuSheetProps {
 
 export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
   const t = useT();
+  const fw = useReadableWeight();
   const setModal = useEditorStore((s) => s.setModal);
 
   // Escape closes the sheet. It is not a modal — nothing is locked out behind it — so this is its
@@ -83,6 +85,9 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
               position: 'fixed',
               top: SHEET_TOP,
               right: EDGE_RIGHT,
+              // The frame's plane is deaf so the map keeps its presses; a surface standing on it
+              // claims its own (`shell/Shell.tsx`'s frame style).
+              pointerEvents: 'auto',
               minWidth: 176,
               padding: 10,
               boxSizing: 'border-box',
@@ -125,7 +130,7 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
                     justifyContent: 'flex-start',
                     whiteSpace: 'nowrap',
                     fontSize: TEXT.tab,
-                    fontWeight: 700,
+                    fontWeight: fw(700, TEXT.tab),
                     color: PLATE_INK,
                     cursor: cursors.clickable,
                   }}

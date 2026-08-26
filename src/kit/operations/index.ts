@@ -11,3 +11,5 @@ export { generateMap, generateCandidate, clearGenerated } from './generate';
 export type { Candidate } from './generate';
 export { pressRoadNetwork } from './road-press';
 export type { RoadPress } from './road-press';
+export { transferMap, plazaOffset, hasCarriableContent } from './transfer';
+export type { TransferOutcome, TransferOptions, TransferCounts } from './transfer';

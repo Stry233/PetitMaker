@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- CSP fallback subset — production headers are authoritative (see security/headers-policy.ts) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'none'; form-action 'self'; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.deepseek.com https://generativelanguage.googleapis.com https://openrouter.ai https://open.bigmodel.cn https://api.z.ai https://dashscope-intl.aliyuncs.com https://dashscope.aliyuncs.com https://api.moonshot.cn https://api.moonshot.ai https: http://localhost:* http://127.0.0.1:*" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'none'; form-action 'self'; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.deepseek.com https://generativelanguage.googleapis.com https://openrouter.ai https://open.bigmodel.cn https://api.z.ai https://dashscope-intl.aliyuncs.com https://dashscope.aliyuncs.com https://api.moonshot.cn https://api.moonshot.ai https://api.perplexity.ai https: http://localhost:* http://127.0.0.1:*" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <!-- Vite rewrites these with the configured base, so they resolve under the dev site's
          /Apollonius/ prefix as well as at a domain root. -->
@@ -17,7 +17,10 @@
     <title>PetitMaker: Petit Planet Map Editor</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- The pre-React ground: the page is this cream, not white, while the bundle itself
+         downloads (a phase no in-app splash can cover, since the splash ships inside the
+         bundle). React's first render into #root replaces it. -->
+    <div id="root"><style>@keyframes petit-boot-pulse{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.45);opacity:1}}@media (prefers-reduced-motion: reduce){#petit-boot i{animation:none}}</style><div id="petit-boot" style="position:fixed;inset:0;background:#FFFBE1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px"><img src="/banner.svg" alt="" width="300" height="86" style="display:block;max-width:70vw"><i style="display:block;width:12px;height:12px;border-radius:50%;background:#FFDA7E;animation:petit-boot-pulse 1.1s ease-in-out infinite"></i></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

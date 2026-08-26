@@ -11,7 +11,13 @@
 import type { Locale } from '../model/types';
 
 export type HintLevel = 'full' | 'concise' | 'off';
+/** The 3D scene's quality choice: 'auto' follows the GL probe (device-quality), the others pin it. */
+export type Quality3d = 'auto' | 'full' | 'lite';
 export type ViewMode = '2d' | '3d';
+/** Animation preference: 'system' follows the OS prefers-reduced-motion, the others override it. */
+export type MotionPref = 'system' | 'reduced' | 'full';
+/** Which end of the window the assistant's panel docks at. */
+export type DockSide = 'left' | 'right';
 
 /** All UI locales, ordered most- to least-specific for prefix matching. `Locale` (core/model/types,
  *  imported far more widely than this array) is the single source of what a locale IS; `satisfies`
@@ -61,10 +67,25 @@ export const PREFS = {
   uiZoom:         pref<number>({    key: 'petit-planet-ui-zoom',         parse: inRange(0.6, 1.8),        fallback: () => 1 }),
   viewMode:       pref<ViewMode>({  key: 'petit-planet-view-mode',       parse: oneOf(['2d', '3d'] as const), fallback: () => '2d' }),
   hintLevel:      pref<HintLevel>({ key: 'petit-planet-hint-level',      parse: oneOf(['full', 'concise', 'off'] as const), fallback: () => 'full' }),
+  quality3d:      pref<Quality3d>({ key: 'petit-planet-3d-quality',      parse: oneOf(['auto', 'full', 'lite'] as const), fallback: () => 'auto' }),
+  // The build tag of the last COMPLETED asset preload. The boot splash shows only when it
+  // differs from the running build: same build means the immutable asset URLs were fetched once
+  // already, so the browser cache answers and a splash would be a wait in front of nothing.
+  splashDone:     pref<string>({    key: 'petit-planet-splash-done',     parse: raw, fallback: none }),
+  // Painted cursors by default on every platform — including desktop Linux,
+  // where Wayland Chromium under fractional display scaling draws custom bitmaps at the wrong
+  // size (see cursor-css.ts's header); the Settings cursor choice is the way out there.
   systemCursors:  pref<boolean>({   key: 'petit-planet-system-cursors',  parse: asBool, fallback: () => false, write: fromBool }),
-  // The assistant's panel is a card over the map, and the editor opens on the map: closed until
-  // the visitor presses its block in the mode row.
-  assistantOpen:  pref<boolean>({   key: 'petit-planet-assistant-open',  parse: asBool, fallback: () => false, write: fromBool }),
+  motionPref:     pref<MotionPref>({ key: 'petit-planet-motion',         parse: oneOf(['system', 'reduced', 'full'] as const), fallback: () => 'system' }),
+  // Whether the assistant's panel is DOCKED to a side of the window rather than standing over the
+  // map, and WHICH side. They are the things about the panel that persist, and remembering them is
+  // the point: a visitor who has docked the panel works in an interface that has a place for it, at
+  // the end of the window they put it at, so the editor opens that way. Whether the panel is merely
+  // OPEN is not persisted (`state/slices/shell.ts`).
+  assistantPinned: pref<boolean>({  key: 'petit-planet-assistant-pinned', parse: asBool, fallback: () => false, write: fromBool }),
+  assistantDockSide: pref<DockSide>({ key: 'petit-planet-assistant-dock-side', parse: oneOf(['left', 'right'] as const), fallback: () => 'left' }),
+  showGrid:       pref<boolean>({   key: 'petit-planet-show-grid',       parse: asBool, fallback: () => true, write: fromBool }),
+  showChunkBounds: pref<boolean>({  key: 'petit-planet-chunk-bounds',    parse: asBool, fallback: () => true, write: fromBool }),
   keybinds:       pref<string>({    key: 'petit-planet-keybinds',        parse: raw, fallback: none }),
 
   // Two hints predate the `petit-planet-` prefix. The key is kept verbatim: renaming one
@@ -73,8 +94,8 @@ export const PREFS = {
   inAppBrowserSeen:pref<boolean>({ key: 'petit.inAppBrowserNoticeSeen',   parse: asBool, fallback: () => false, write: fromBool }),
 
   // Structured blobs whose own modules own the shape. They are declared here so the app can
-  // enumerate everything it persists; `io/autosave`, `agent/key-storage` and `agent/session`
-  // keep parsing them.
+  // enumerate everything it persists; `io/autosave`, `agent/security/key-storage` and
+  // `agent/session/persist` keep parsing them.
   //
   // `tourSeen` joins this group rather than reading as a plain boolean: its real policy
   // (`ui/chrome/tour/use-tour.ts:hasSeenTour`) is that a functioning browser with the key simply
@@ -91,8 +112,15 @@ export const PREFS = {
   // describes, so the pair cannot come apart (`io/autosave.ts`).
   autosaveHistory: pref<string>({ key: 'petit-planet-autosave-history', parse: raw, fallback: none }),
   agentSettings: pref<string>({ key: 'petit-agent-settings-v1',  parse: raw, fallback: none }),
-  agentSession:  pref<string>({ key: 'petit-agent-session-v1',   parse: raw, fallback: none }),
-  // Not a localStorage blob: `agent/vault.ts` reads this as an IndexedDB database name. Declared
+  // The v3 session log's own versioned envelope (`agent/session/persist.ts`); null means nothing
+  // persisted yet, distinct from an empty string.
+  agentLogV3:    pref<string | null>({ key: 'petit-agent-log-v3', parse: raw, fallback: () => null }),
+  // Which settled records the user has put away, beside the log rather than in it: filing a card
+  // away is not something the model or the record is folded from, and the marks are keyed by the
+  // log's own order seqs, so they are dropped with the envelope they belong to
+  // (`agent/session/persist.ts`).
+  agentMarksV3:  pref<string | null>({ key: 'petit-agent-marks-v3', parse: raw, fallback: () => null }),
+  // Not a localStorage blob: `agent/security/vault.ts` reads this as an IndexedDB database name. Declared
   // here anyway so this table is the complete list of what the origin persists, to either storage.
   agentVault:    pref<string>({ key: 'petit-agent-vault',        parse: raw, fallback: none }),
 } as const;
@@ -112,8 +140,12 @@ export function readPref<K extends PrefId>(id: K): ValueOf<K> {
   return def.parse(stored) ?? def.fallback();
 }
 
-export function writePref<K extends PrefId>(id: K, value: ValueOf<K>): void {
+/** True on a successful write; false when storage is unavailable or the write throws (quota,
+ *  disabled storage). Most call sites discard the result; `agent/session/persist.ts:saveLog`
+ *  reads it to prune and retry once rather than losing the session log silently. */
+export function writePref<K extends PrefId>(id: K, value: ValueOf<K>): boolean {
   const def = PREFS[id] as unknown as PrefDef<ValueOf<K>>;
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(def.key, def.write ? def.write(value) : String(value)); } catch { /* storage disabled */ }
+  if (typeof localStorage === 'undefined') return false;
+  try { localStorage.setItem(def.key, def.write ? def.write(value) : String(value)); return true; } catch { /* storage disabled, or quota exceeded */ }
+  return false;
 }

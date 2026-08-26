@@ -31,8 +31,8 @@ function hexiaKit(): KitContext {
 }
 
 const config = (seed: number): GenerateConfig => ({
-  algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null,
-  relief: 0.8, naturalness: 1, settlement: 0.5, nature: 0.5,
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null,
+  richness: 1,
 });
 
 interface Counters {

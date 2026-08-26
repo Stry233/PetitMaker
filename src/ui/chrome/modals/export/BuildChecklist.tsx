@@ -26,10 +26,11 @@ import { subscribeMapStats } from '../../../../state/map-stats';
 import { useEditorStore } from '../../../../state/store';
 import { btnReset, buttonMotion, exitTransition, radii, shadows, springs } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont, roleWeight } from '../../../design/text-weight';
 
-const sectionTitle: CSSProperties = { fontSize: 15, fontWeight: 900, color: skin.ink };
-const noteText: CSSProperties = { fontSize: 12, fontWeight: 600, color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
-const totalChip: CSSProperties = { fontSize: 12, fontWeight: 800, color: skin.plateInk, fontVariantNumeric: 'tabular-nums' };
+const sectionTitle: CSSProperties = { ...roleFont('head'), color: skin.ink };
+const noteText: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
+const totalChip: CSSProperties = { ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums' };
 
 /** The supply crate itself: an inset plate (the same fill today's rows already stand on), heavy
  *  header, everything else inside. */
@@ -38,13 +39,13 @@ const card: CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 8,
 };
 const cardHeaderRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 };
-/** Small-caps-style: uppercase + tracked out + the heaviest weight on the card, so a header reads
- *  as ranking well above its own rows even at a similar font size. */
+/** Sentence case like every other window heading; `subhead` is the rung whose heaviest weight ranks
+ *  a header above its own rows at a similar font size. */
 const cardHeaderLabel: CSSProperties = {
-  fontSize: 12.5, fontWeight: 900, color: skin.ink, textTransform: 'uppercase', letterSpacing: '0.06em',
+  ...roleFont('subhead'), color: skin.ink,
 };
 const cardHeaderChip: CSSProperties = {
-  fontSize: 11.5, fontWeight: 800, color: skin.onDark, background: skin.ink, borderRadius: radii.pill,
+  ...roleFont('small'), color: skin.onDark, background: skin.ink, borderRadius: radii.pill,
   padding: '2px 9px', fontVariantNumeric: 'tabular-nums', flex: 'none',
 };
 
@@ -59,20 +60,22 @@ const iconSlot: CSSProperties = { width: 20, height: 20, flex: 'none', display: 
 const iconImg: CSSProperties = { width: 18, height: 18, objectFit: 'contain', pointerEvents: 'none' };
 const colorSwatch: CSSProperties = { width: 14, height: 14, borderRadius: radii.sm, border: `1px solid ${skin.line}` };
 const itemName: CSSProperties = {
-  fontSize: 13.5, fontWeight: 700, color: skin.ink, minWidth: 0, overflow: 'hidden',
+  ...roleFont('label'), color: skin.ink, minWidth: 0, overflow: 'hidden',
   textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto',
 };
-const itemCount: CSSProperties = { fontSize: 13, fontWeight: 800, color: skin.ink, fontVariantNumeric: 'tabular-nums', flex: 'none' };
+const itemCount: CSSProperties = { ...roleFont('chip'), color: skin.ink, fontVariantNumeric: 'tabular-nums', flex: 'none' };
 
 const chipsRow: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 };
 /** A layer chip steps back up to `skin.plate`, the cream one level lighter than the card's own
  *  `skin.inset` — the alternation `window-skin.ts` describes, so a chip reads as its own token
  *  sitting IN the crate rather than another row of it. */
 const layerChip: CSSProperties = {
-  background: skin.plate, borderRadius: radii.pill, padding: '5px 12px', fontSize: 12.5, fontWeight: 700,
+  background: skin.plate, borderRadius: radii.pill, padding: '5px 12px', ...roleFont('chip'),
   color: skin.ink, display: 'flex', alignItems: 'baseline', gap: 6,
 };
-const layerChipCount: CSSProperties = { fontWeight: 900, fontVariantNumeric: 'tabular-nums' };
+// The figure outranks the layer name it sits beside inside the chip. `subhead` is the 13px Heavy
+// answer, borrowed for its weight alone, so the count adapts with the rest of the window.
+const layerChipCount: CSSProperties = { fontWeight: roleWeight('subhead'), fontVariantNumeric: 'tabular-nums' };
 
 function ItemIcon({ icon, color }: { icon?: string; color?: string }) {
   const url = icon ? iconUrl(icon) : undefined;
@@ -158,12 +161,12 @@ function TerrainCard({ layers }: { layers: ChecklistLayer[] }) {
 }
 
 // Lifted above its siblings: a positioned element paints over later non-positioned content
-// regardless of DOM order, so without the raise the bubble slid UNDER the next shelf's count chip.
+// regardless of DOM order, so without the raise the bubble paints UNDER the next shelf's count chip.
 const copyButtonWrap: CSSProperties = { position: 'relative', display: 'inline-block', flex: 'none', zIndex: 1 };
 const copyButton: CSSProperties = {
   ...btnReset,
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  background: skin.inset, color: skin.ink, fontWeight: 800, fontSize: 12.5, borderRadius: radii.pill,
+  background: skin.inset, color: skin.ink, ...roleFont('chip'), borderRadius: radii.pill,
   padding: '7px 14px',
 };
 /** The "Copied" confirmation, styled exactly like About's own build-info bubble (same plate + ink
@@ -173,7 +176,7 @@ const copyButton: CSSProperties = {
 const copiedBubble: CSSProperties = {
   position: 'absolute', left: '50%', top: '100%', marginTop: 8,
   background: skin.plate, color: skin.ink, border: `1px solid ${skin.line}`, borderRadius: radii.md,
-  padding: '5px 11px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', boxShadow: shadows.float,
+  padding: '5px 11px', ...roleFont('caption'), whiteSpace: 'nowrap', boxShadow: shadows.float,
   pointerEvents: 'none',
 };
 const copiedBubbleTail: CSSProperties = {

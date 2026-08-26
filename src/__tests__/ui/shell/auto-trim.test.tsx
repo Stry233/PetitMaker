@@ -4,8 +4,8 @@
  * It is a SETTING that the row otherwise has no shape for: every cell of that row arms a tool, and
  * this one arms nothing. So what is worth pinning is where it can be reached from, that a press
  * walks the three states rather than toggling two, and that it says which state it is in with a
- * word rather than with a key — the accessible name used to be assembled as `'edgecut.' + mode`,
- * which is a lookup no test can enumerate and which announces the raw key the day it misses.
+ * word rather than with a key: an accessible name assembled as `'edgecut.' + mode` is a lookup no
+ * test can enumerate, and it announces the raw key the day it misses.
  *
  * The chip has room for ONE word, and which word is a choice rather than a lookup: doing something
  * it names what it does, doing nothing it names itself, since "off" is the absence of a thing and

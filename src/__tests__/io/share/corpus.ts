@@ -2,9 +2,8 @@
 // for the PetitGlyph v2 codec measurement test (codec-measure.test.ts). NOT a test file itself —
 // pure builders, reused by the measurement test and (later) the degradation matrix.
 //
-// `genOn`: a silent
-// CommandExecutor stroke group drives generateTerrain (+ populate for the 'random' algorithm),
-// then one commitStrokeGroup collapses it to a single undo entry — exactly the live Generate path.
+// `genOn`: a silent CommandExecutor stroke group drives generateTerrain, then one
+// commitStrokeGroup collapses it to a single undo entry — exactly the live Generate path.
 // It does NOT set `state.generation` (matching the existing pattern); callers that want the
 // P_REPLAY predictor exercised set it manually afterward.
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -12,8 +11,6 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState, makeTemplate } from '../../rules/_helpers';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { deserialize } from '../../../io/json-codec';
 import { getMapTemplate, MAP_TEMPLATES } from '../../../config/maps';
 import { createGrid, NEIGHBORS4 } from '../../../core/model/grid-model';
@@ -37,24 +34,20 @@ import { roadLookup } from '../../../state/object-index';
 
 // ── Shared generation helpers (the genOn stroke-group pattern) ─────────────────────────────────
 
-/** Drive the real Generate path inside one silent stroke group: generateTerrain, then populate
- *  for the 'random' algorithm only (the same order and the same gate as `kit/operations/generate.ts`
- *  :runGeneration, so these are maps the app itself can produce). Does
+/** Drive the real Generate path inside one silent stroke group (the same order as
+ *  `kit/operations/generate.ts:runGeneration`, so these are maps the app itself can produce). Does
  *  NOT set `state.generation` — callers do that explicitly so hand-built states never carry it. */
 function genOn(state: GridState, cfg: GenerateConfig): GridState {
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   exec.runSilently(() => {
-    const r = generateTerrain(cfg, state, (c: Command) => exec.execute(c));
-    if (cfg.algorithm === 'random') {
-      populate(toGenConfig(cfg), state, (c: Command) => exec.execute(c), exec.getRegistry(), undefined, r.zonePlan);
-    }
+    generateTerrain(cfg, state, (c: Command) => exec.execute(c), exec.getRegistry());
   });
   exec.commitStrokeGroup(exec.getUndoStackSize());
   return state;
 }
 
-function randomCfg(seed: number): GenerateConfig {
-  return { algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null };
+function islandCfg(seed: number): GenerateConfig {
+  return { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null };
 }
 
 /** The hexia map template with a blank grid (no cells painted) — the real-map baseline case, and
@@ -93,7 +86,7 @@ function handEditSmall(): GridState {
 }
 
 function generatedThenEdited(): GridState {
-  const cfg = randomCfg(7);
+  const cfg = islandCfg(7);
   const state = genOn(namedState('generated-then-edited', 64, 64), cfg);
   state.generation = cfg;
 
@@ -230,17 +223,17 @@ export async function corpusCases(): Promise<{ name: string; state: GridState }[
   cases.push({ name: 'empty-hexia', state: hexiaBlank() });
   cases.push({ name: 'hand-edit-small', state: handEditSmall() });
 
-  const gen64Cfg = randomCfg(7);
+  const gen64Cfg = islandCfg(7);
   const gen64 = genOn(namedState('generated-64', 64, 64), gen64Cfg);
   gen64.generation = gen64Cfg;
   cases.push({ name: 'generated-64', state: gen64 });
 
-  const gen96Cfg = randomCfg(11);
+  const gen96Cfg = islandCfg(11);
   const gen96 = genOn(namedState('generated-96', 96, 96), gen96Cfg);
   gen96.generation = gen96Cfg;
   cases.push({ name: 'generated-96', state: gen96 });
 
-  const genHexiaCfg = randomCfg(7);
+  const genHexiaCfg = islandCfg(7);
   const genHexia = genOn(hexiaBlank(), genHexiaCfg);
   genHexia.generation = genHexiaCfg;
   cases.push({ name: 'generated-hexia', state: genHexia });

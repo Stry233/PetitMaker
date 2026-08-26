@@ -1,10 +1,10 @@
 /**
- * `roads`: connect what is already standing on a live map with the populator's router
- * (`scanPortals` + `buildNetwork`, the unzoned path).
+ * `roads`: connect what is already standing on a live map with the shared router
+ * (`scanPortals` + `buildNetwork`).
  *
  * Node derivation: `road-paving.ts:standingNodes` — hub = the locked plaza when there is one, else
- * the centroid of the largest open region SNAPPED into that region, mirroring `placeSettlement`'s hub
- * logic (shared with `road-link` so the two macros keep one hub). A region that wraps relief is a
+ * the centroid of the largest open region SNAPPED into that region (shared with `road-link` so the
+ * two macros keep one hub). A region that wraps relief is a
  * ring, and a ring's centroid sits in the hole: on a hilltop plateau of its own, or on slope
  * belonging to no region at all. `setupNet` seeds the whole network on the hub cell, so an unsnapped
  * hub strands every route on ground nothing else can reach and the run lays nothing.
@@ -15,7 +15,7 @@
  *
  * PRESSING AGAIN OFFERS ANOTHER CANDIDATE, and does it by taking its own last one back rather than
  * by adding to it (`replace`, and `NetworkOptions.variation` for the seed the router's shaping
- * decisions read). The two halves are separate on purpose: the seed alone would stack a second
+ * decisions read). The two halves are separate: the seed alone would stack a second
  * network on the first, and the take-back alone would hand back the same network every time.
  *
  * The body runs INSIDE the caller's stroke group and pushes no provenance of its own (see patch.ts).
@@ -28,14 +28,13 @@ import { getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
 import { getObjectIndex, objectAt } from '../../state/object-index';
 import { objectRect } from '../../state/object-geometry';
 import { removeObjectCommand } from '../objects/object-placer';
-import { analyzeTerrain, type PlacementAnalysis } from '../generation/placement/analysis';
-import { buildNetwork } from '../generation/placement/network';
-import { buildingGate, hasGate, makeCtx, type PlaceCtx } from '../generation/placement/object';
-import { readRoadStyle } from '../generation/placement/road-style';
-import { scanPortals } from '../generation/placement/portals';
-import type { Node } from '../generation/placement/settlement';
+import { analyzeTerrain, type PlacementAnalysis } from '../placement/analysis';
+import { buildNetwork, type Node } from '../placement/network';
+import { buildingGate, hasGate, makeCtx, type PlaceCtx } from '../placement/object';
+import { readRoadStyle } from '../placement/road-style';
+import { scanPortals } from '../placement/portals';
 import type { MacroContext } from './context';
-import type { MacroRefusal } from './index';
+import type { MacroRefusal } from './run';
 import { objectsChanged } from './measure';
 import { floodFrom, networkCells } from './walkable';
 import { beautifyRoads, ensureGateTerminals, ringCells, standingNodes, widenRoads } from './road-paving';
@@ -216,9 +215,9 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   const laid = objectsChanged(state);
   const watermark = executor.getUndoStackSize();
   const standing = new Set(state.objects.keys());
-  // BEFORE THE ANALYSIS, because the analysis is what the run is planned against: a map still
-  // carrying the last press's pavement reads as a map with nothing left to serve, which is exactly
-  // the `already-connected` dead end this replaces.
+  // BEFORE THE ANALYSIS, because the analysis is what the run is planned against: a map still carrying
+  // the last press's pavement reads as a map with nothing left to serve, and the run reports
+  // `already-connected` instead of laying the moved road.
   const { kept, removed } = input.replace?.length
     ? takeBackOwnWork(ctx, input.replace, input.region)
     : { kept: [], removed: 0 };
@@ -243,8 +242,8 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   const materialId = roadPool.find((r) => r.id === wanted)?.id ?? roadPool[0]?.id;
   // `refuse`: a live map's decor was placed by a hand, so the gate/crossing clearance this press
   // reserves goes round it rather than through it (`NetworkOptions.clearance`, `PlaceCtx.sweep`).
-  // The map's OWN learned naturalness routes this press, not the organic default `makeCtx` used to
-  // fall back to when the macro called it with no naturalness at all.
+  // The map's OWN learned naturalness routes this press, rather than the organic default `makeCtx` falls
+  // back to when it is called with no naturalness at all.
   const place = makeCtx(state, (c) => executor.execute(c), registry, input.seed, style.naturalness, 'refuse');
   const { regionAdj } = scanPortals(place, analysis, PRESS_PORTALS_PER_PAIR);
 
@@ -260,7 +259,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   const before = new Set(state.objects.keys());
   // A live-map press lays what a road tool lays: roads, bridges and ramps, and nothing the user did
   // not ask a road tool for — generation's own roadside tree-lining stays generation's.
-  buildNetwork(place, analysis, SETTLEMENT, nodes, regionAdj, undefined, materialId,
+  buildNetwork(place, analysis, SETTLEMENT, nodes, regionAdj, materialId,
     { clearance: 'refuse', treeLining: false, scenic: false, standingCrossings: true, variation: input.seed });
   const width = Math.floor(input.width ?? 1);
   let narrowedByPlanting = 0;

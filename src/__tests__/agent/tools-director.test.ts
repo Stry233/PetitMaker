@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules';
-import { type EditorEvents } from '../../core/model/types';
+import { ItemCategory, type EditorEvents } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { executeToolCall, type AgentToolDeps } from '../../agent/tools';
 import { roadLookup } from '../../state/object-index';
+import { categoryOf } from '../../state/catalog';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
@@ -127,7 +128,7 @@ describe('build_road_network', () => {
     const r = await executeToolCall(call('build_road_network', {}), deps);
     expect(r.isError).toBe(false);
     expect(exec.getUndoStackSize()).toBe(before + 1);
-    const roads = [...state.objects.values()].filter((o) => o.catalogId.startsWith('road-'));
+    const roads = [...state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Road);
     expect(roads.length).toBeGreaterThan(0);
   });
 

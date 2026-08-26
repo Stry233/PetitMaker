@@ -27,7 +27,7 @@ import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { getCatalogItem } from '../../state/catalog';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { selectedObjectIds } from '../../state/selection';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
@@ -283,7 +283,7 @@ describe('a coating armed', () => {
     // `ObjectPlacerTool.onPointerDown` returns on a non-point item. The rule would not misfire
     // anyway: a coating over an existing coating is LEGAL (the overlap rule exempts the covered
     // one), so it places and strips rather than selecting.
-    for (const id of ['road-dirt', 'road-stone']) {
+    for (const id of ['path-overgrown-dirt', 'path-cobblestone']) {
       const item = getCatalogItem(id);
       expect(item?.traits.some((tr) => tr.type === 'surfaceCoating')).toBe(true);
       expect(item?.placementMode).toBe('brush');

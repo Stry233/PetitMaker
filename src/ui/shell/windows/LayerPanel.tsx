@@ -131,7 +131,7 @@ import { cssMotion, useMotion } from '../motion/use-motion';
 import { frameZoomAttr } from '../motion/zoom-corrected-radius';
 import { ACTIVE, INK, INSET, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
-import { useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
+import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 
 /** How long a refusal holds the tint on the locked tiles before it fades.
  *
@@ -439,6 +439,7 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
   const resize = useMotion('layer.mode.resize');
   const zoomed = useZoomedLayoutTransform();
   const zoom = useFrameZoom();
+  const fw = useFrameReadableWeight();
   const selectLayer = useEditorStore((s) => s.selectLayer);
   const setLayerVisibility = useEditorStore((s) => s.setLayerVisibility);
   const setLayerLocked = useEditorStore((s) => s.setLayerLocked);
@@ -468,7 +469,7 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
           background: band, opacity: visible ? 1 : 0.35,
         }}
       />
-      <span style={{ fontSize: TEXT.tab, fontWeight: 800, color: ink }}>{row.name}</span>
+      <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink }}>{row.name}</span>
     </motion.div>
   );
   const countFigure = (
@@ -481,7 +482,7 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
         // hold the tile's right edge; in the file the name has taken it already, so the figure sits
         // against the toggles and is read off its right edge.
         ...(stacked ? { flex: 1 } : { textAlign: 'right' as const }),
-        fontSize: TEXT.small, fontWeight: 800, color: ink, fontVariantNumeric: 'tabular-nums',
+        fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, fontVariantNumeric: 'tabular-nums',
       }}
     >
       {row.count}
@@ -700,6 +701,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
   const veilFade = useMotion(veiled ? 'frame.veil' : 'frame.unveil');
   const zoomed = useZoomedLayoutTransform();
   const zoom = useFrameZoom();
+  const fw = useFrameReadableWeight();
   // The layer-numbers toggle's pill: the button's own box, and its name's laid-out width. Measured
   // rather than chosen, so a language that spells it longer gets the room it needs.
   const numbersRef = useRef<HTMLButtonElement>(null);
@@ -839,6 +841,10 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
               right,
               padding: PANEL.pad,
               boxSizing: 'border-box',
+              // The carrier it stands in is deaf so the air between rail buttons lets the map
+              // through; a plate is a surface, not air, and every press, wheel and scroll inside
+              // its box is its own.
+              pointerEvents: 'auto',
               background: PLATE,
               // A HAIRLINE INSTEAD OF A SHADOW. The plate stands on the island and needs one dark
               // pixel between its cream and whatever is under it; a shadow would be a second
@@ -930,7 +936,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: 999,
                   minWidth: PANEL.headGlyph,
-                  fontSize: TEXT.small, fontWeight: 900, color: showLayerNumbers ? INK : PLATE_INK,
+                  fontSize: TEXT.small, fontWeight: fw(900, TEXT.small), color: showLayerNumbers ? INK : PLATE_INK,
                   lineHeight: 1, height: TEXT.head, boxSizing: 'content-box',
                   transformOrigin: 'left center',
                   cursor: cursors.clickable,
@@ -955,7 +961,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
                   <span
                     ref={numbersNameRef}
                     style={{
-                      flex: 'none', whiteSpace: 'nowrap', fontWeight: 800,
+                      flex: 'none', whiteSpace: 'nowrap', fontWeight: fw(800, TEXT.tab),
                       paddingRight: PANEL.headPadX,
                     }}
                   >

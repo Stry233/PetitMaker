@@ -20,7 +20,7 @@ import type {
 } from '../../core/model/types';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import type { RoadConnSide } from '../../core/edge-cut/road-cut-states';
-import { getCell } from '../../core/model/grid-model';
+import { getCell, scratchGrid } from '../../core/model/grid-model';
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
 import { applyAutoEdgeCut } from './auto-edge-cut';
@@ -144,24 +144,6 @@ function clipToScratch(cmd: Command, owns: (x: number, y: number) => boolean): C
   return null;      // the preview issues terrain commands only
 }
 
-/** A grid whose cells in `region` are private copies, sharing everything else with the live one. */
-function scratchGrid(state: GridState, cells: readonly MacroCoord[]): GridState {
-  const rows = new Map<number, GridState['cells'][number]>();
-  const scratch: GridState = { ...state, cells: state.cells.slice() };
-  for (const { x, y } of cells) {
-    const src = getCell(state.cells, x, y);
-    if (!src) continue;
-    let row = rows.get(y);
-    if (!row) {
-      row = scratch.cells[y]!.slice();
-      scratch.cells[y] = row;
-      rows.set(y, row);
-    }
-    row[x] = { ...src, terrain: src.terrain ? ({ ...src.terrain, corners: src.terrain.corners ? ([...src.terrain.corners] as Corners) : undefined }) : null };
-  }
-  return scratch;
-}
-
 /**
  * Run the stroke and its trim pass on a scratch grid, and report every cell that ends up with a
  * shape a square ghost would misdraw.
@@ -210,8 +192,8 @@ export function previewAutoTrim(
 
   // Only what a square ghost would draw wrongly: a cut shape inside the stroke, or a Γ patch the
   // trim filled a notch with. A cell OUTSIDE the stroke counts only if this preview changed it —
-  // the map is full of trim shapes that were already there, and reporting those had the ghost
-  // drawing detached wedges and circles over terrain it is not touching.
+  // the map is full of trim shapes that were already there, and reporting those draws detached
+  // wedges and circles over terrain the ghost is not touching.
   const out: TrimmedCell[] = [];
   for (const { x, y } of touched) {
     const t = getCell(scratch.cells, x, y)?.terrain;

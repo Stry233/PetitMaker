@@ -1,0 +1,28 @@
+{
+  "id": "path-floral-brick",
+  "category": "road",
+  "icon": "path-floral-brick",
+  "name": {
+    "en": "Floral Brick Path",
+    "zh": "花纹砖路",
+    "ja": "花柄レンガの道",
+    "ru": "Кирпичная дорожка с цветами",
+    "th": "ทางอิฐลายดอกไม้",
+    "id": "Jalan Bata Bunga",
+    "fr": "Chemin de briques fleuri"
+  },
+  "color": "#885041",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

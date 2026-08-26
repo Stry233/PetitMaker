@@ -1,0 +1,28 @@
+{
+  "id": "path-green-board",
+  "category": "road",
+  "icon": "path-green-board",
+  "name": {
+    "en": "Green Board Path",
+    "zh": "绿色木板路",
+    "ja": "緑の板の道",
+    "ru": "Зелёная дощатая дорожка",
+    "th": "ทางไม้กระดานสีเขียว",
+    "id": "Jalan Papan Hijau",
+    "fr": "Chemin de planches vert"
+  },
+  "color": "#81c4b6",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

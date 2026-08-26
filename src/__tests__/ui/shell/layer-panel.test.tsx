@@ -26,7 +26,8 @@ import { LAYER_MODES, planRail, railStack, RAIL_TOP, stepLayerMode } from '../..
 import { plateDepth, PLATE_DEPTH } from '../../../ui/shell/windows/LayerPanel';
 import { Rail } from '../../../ui/shell/Rail';
 import { ACTIVE, INK, MAP_EDGE_ALPHA } from '../../../ui/design/tokens';
-import { EDGE_RIGHT, RAIL, ZOOM, frameFit } from '../../../ui/shell/units';
+import { EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
+import { frameFit } from '../../../ui/design/scale';
 import { makeState, setTerrain, setZone } from '../../rules/_helpers';
 
 /** A map with a shape to it: a broad first floor, a narrower second, one cell on the third. */
@@ -49,12 +50,12 @@ function mountAt(windowHeight: number) {
   return mount();
 }
 
-/** The column's plan for that window, which is what the rail is reading. `mode` is the size the
- *  layer control is in, since the plate's own depth is one of the plan's inputs. */
 /** The zoom the live Rail runs under: the authored zoom times the window's fit (jsdom's window is
  *  below the design reference, so the fit is in force here). */
 const zoomAt = (windowHeight: number) => ZOOM * frameFit(window.innerWidth, windowHeight);
 
+/** The column's plan for that window, which is what the rail is reading. `mode` is the size the
+ *  layer control is in, since the plate's own depth is one of the plan's inputs. */
 function planAt(windowHeight: number, open: boolean, mode: 'column' | 'grid' = 'grid') {
   return planRail(windowHeight / zoomAt(windowHeight), { open, plateDepth: plateDepth(open ? mode : 'pill') });
 }
@@ -168,13 +169,13 @@ describe('the layer panel', () => {
   });
 
   /**
-   * THE HEAD NO LONGER NAMES THE ACTIVE FLOOR, because the plate marks that floor on the floor's own
-   * tile. It was the one thing on the plate said twice, and it was said in two different places by
-   * two different derivations.
+   * THE HEAD DOES NOT NAME THE ACTIVE FLOOR, because the plate marks that floor on the floor's own
+   * tile. A head that named it too would be the one thing on the plate said twice, from two
+   * derivations that can disagree.
    *
-   * What it carried was FINDABILITY, and that is what the arrow had to inherit rather than the word:
-   * the plate, the corner, the size. So this holds the absence AND the inheritance together, since
-   * removing the count without them is exactly the regression the count was introduced to fix.
+   * What the word carries is FINDABILITY, so the arrow inherits that instead: the plate, the corner,
+   * the size. The absence and the inheritance are held together here, since the absence on its own
+   * takes the findability with it.
    */
   it('does not repeat the active floor in its head, and hands the way back the pill it wore', () => {
     useEditorStore.setState({ activeLayer: 3 });
@@ -237,12 +238,12 @@ describe('the layer panel', () => {
    * OPENING IS ONE STEP OF THE LADDER, AT EVERY WINDOW.
    *
    * The three sizes are one control, so the way in is the way the arrows go: pill, file, square.
-   * The press used to land on whichever of the two the window had room for, which made the same
-   * press give two different panels — the middle rung was skipped on a tall monitor and was the
-   * only rung on a laptop, and the file could then only be reached by stepping back DOWN to it.
+   * A press that landed on whichever of the two the window had room for would make the one press
+   * give two different panels: the middle rung skipped on a tall monitor and the only rung on a
+   * laptop, with the file reachable only by stepping back DOWN to it.
    *
-   * What the window still decides is where the plate STANDS once it is open (`planRail`), which is
-   * a different question and is held below.
+   * What the window does decide is where the plate STANDS once it is open (`planRail`), which is a
+   * different question and is held below.
    */
   it('opens the same size at every window, one step up the ladder', () => {
     for (const h of [720, 900, 1440]) {
@@ -479,6 +480,18 @@ describe('the layer panel', () => {
    * `MAP_LABEL` and a drawing from `MAP_SHAPE_EDGE`: the same ink at the same alpha, drawn as a
    * plain border because a panel is a rectangle rather than a silhouette.
    */
+  /**
+   * THE PLATE RE-CLAIMS THE POINTER. It stands in a carrier that is deaf on purpose (the air
+   * between rail buttons lets the map through), and a deaf plate hands every press and wheel in
+   * its box to the canvas underneath — the head's buttons dead, the floors unscrollable, with only
+   * the toggles' own re-claims still answering.
+   */
+  it('re-claims pointer events from its deaf carrier', () => {
+    mount();
+    openPanel();
+    expect(screen.getByTestId('shell-layer-panel').style.pointerEvents).toBe('auto');
+  });
+
   it('stands on the island behind a hairline rather than a shadow', () => {
     mount();
     openPanel();
@@ -563,8 +576,7 @@ describe('the layer panel', () => {
   /**
    * WHERE THE LANE CAN HOLD IT, IT STANDS ON THE RAIL'S OWN LINE. The plate's right edge is the
    * round buttons' right edge, so the two square up down the window rather than the plate stopping a
-   * button's width short of the lane, which is where it used to stop and what read as a
-   * misalignment.
+   * button's width short of the lane, which reads as a misalignment.
    *
    * That puts it ACROSS the lane, so the pair below moves: the two facts are one decision and are
    * asserted together. The pair drops to the lowest the column allows and the plate takes the room
@@ -735,12 +747,11 @@ describe('the layer panel', () => {
 
   /**
    * ONE NAME PER FLOOR. The ground is the implicit base and stores no terrain cell at all, so it has
-   * a word rather than an index, and the two places that word appears used to derive it separately:
-   * a plate came to read "Layer 0" over a tile reading "Ground".
+   * a word rather than an index, and two places derive that word: deriving it separately gives a
+   * plate reading "Layer 0" over a tile reading "Ground".
    *
-   * The head is no longer one of those places, so the pair this now guards is the COLLAPSED COUNT
-   * and the tiles — the same two derivations, one click apart, which is where the risk went rather
-   * than where it ended.
+   * The head is not one of those places, so the pair guarded here is the COLLAPSED COUNT and the
+   * tiles — the same two derivations, one click apart.
    */
   it('names a floor the same way on the count as in its tiles', () => {
     useEditorStore.setState({ activeLayer: 0 });

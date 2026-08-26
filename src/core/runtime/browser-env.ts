@@ -62,3 +62,4 @@ export function isInAppBrowser(): boolean {
   if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
   return isInAppBrowserUA(navigator.userAgent);
 }
+

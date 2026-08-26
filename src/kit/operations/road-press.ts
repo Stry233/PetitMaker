@@ -51,7 +51,7 @@ export function pressRoadNetwork(kit: KitContext, opts: Omit<MacroOpts, 'seed' |
   });
   if (outcome.changes > 0) {
     // The macro answers with what the gesture owns AFTER the run, take-back included; a run that
-    // kept nothing hands back the list unchanged, so this is safe on every path.
+    // kept nothing hands back the list unchanged.
     ownedIds = outcome.ownedIds ?? [];
     seed += 1;
     landed += 1;

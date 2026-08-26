@@ -24,9 +24,9 @@ function kitOn(size = 24): KitContext {
 }
 
 const config = (seed: number): GenerateConfig => ({
-  algorithm: 'random', seed, maxElevation: 3, relief: 0.5, naturalness: 1,
-  settlement: 0, nature: 0,
-} as unknown as GenerateConfig);
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, region: null,
+  seed, maxElevation: 3, richness: 1,
+});
 
 beforeEach(() => { __resetCandidateCache(); });
 
@@ -56,19 +56,19 @@ describe('the candidate cache', () => {
     expect(scoped).not.toBe(whole);
   });
 
-  /** The user's own round trip, through the shelf's OWN recipe builder: a tab left for Isles and
-   *  returned to must find the Land batch standing — `shelfConfig` is pure over (kind, sliders,
+  /** The user's own round trip, through the shelf's OWN recipe builder: a tab left for the maze and
+   *  returned to must find the island batch standing — `shelfConfig` is pure over (kind, sliders,
    *  seed) and nothing else may leak into the key. */
   it('answers a tab round trip from the cache', async () => {
     const kit = kitOn();
     const at = (kind: GenerateKind, seed: number) => shelfConfig({
-      kind, seed, naturalness: 100, maxElevation: 4, corridorWidth: 2, gates: null,
+      kind, seed, richness: 100, maxElevation: 4, corridorWidth: 2, gates: null,
     });
-    const land = await generateCandidate(kit, { config: at('earth', 7), region: null });
-    await generateCandidate(kit, { config: at('water', 7), region: null });
-    const back = await generateCandidate(kit, { config: at('earth', 7), region: null });
+    const land = await generateCandidate(kit, { config: at('island', 7), region: null });
+    await generateCandidate(kit, { config: at('maze', 7), region: null });
+    const back = await generateCandidate(kit, { config: at('island', 7), region: null });
     expect(land).not.toBeNull();
-    expect(back, 'the Land batch was still in the cache').toBe(land);
+    expect(back, 'the island batch was still in the cache').toBe(land);
   });
 
   /**

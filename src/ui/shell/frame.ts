@@ -245,6 +245,10 @@ export const MODE_ROW_BASE = MODE_ROW_TOP + MODE.height;
  */
 const MODE_ROW_DEPTH = MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
 
+/** How far down the mode row's own ink reaches, in css px: the baseline plus the name under it.
+ *  What anything standing below the row has to clear (`panel-frame.ts:PANEL_TOP`). */
+export const MODE_ROW_INK_BOTTOM = MODE_ROW_BASE + MODE_ROW_DEPTH;
+
 /**
  * Where the assistant's own row starts, in css px.
  *
@@ -257,7 +261,7 @@ const MODE_ROW_DEPTH = MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
  * term takes that slack back off. Setting the gap to the box, as a constant, is what made one number
  * mean two very different distances depending on which state the frame was in.
  */
-export const ASSISTANT_ROW_TOP = MODE_ROW_BASE + MODE_ROW_DEPTH + MODE.rowClearance
+export const ASSISTANT_ROW_TOP = MODE_ROW_INK_BOTTOM + MODE.rowClearance
   - (MODE.height - ASSISTANT_BLOCK.selected.h * MODE_SCALE);
 
 /** The centre of the mode row's `i`th block, in css px from the window's left edge. */
@@ -286,10 +290,10 @@ export const ASSISTANT_INK = {
  *   load  — none. A translucent disc drawn edge to edge in its box, so `apparentSize` already reads
  *           it as a solid disc of that diameter and the formula lands it on a rail button exactly.
  *   menu  — 0.95. A cream disc with three holes punched in it is still a disc, and a person reads it
- *           by its diameter; the formula charges it for the missing area and grew it 5% past the
- *           plain plates it stands with, which was visible against the rail directly below.
+ *           by its diameter; the formula charges it for the missing area and grows it 5% past the
+ *           plain plates it stands with, which shows against the rail directly below.
  *   share — 0.84. The open one, and the reason this field exists. Untrimmed it stands 53 css tall
- *           against 44 for the two discs. It was walked down at 0.94 / 0.88 / 0.85 / 0.82: at 0.88
+ *           against 44 for the two discs. Walked down through 0.94 / 0.88 / 0.85 / 0.82: at 0.88
  *           the cradle is still wider than the menu disc and the arrow well over it, at 0.82 it has
  *           gone light. 0.84 puts its cradle at the disc's width and lets the arrow's spike sit a
  *           fraction proud, which is what a spike may do — an extremity carries less weight to the
@@ -352,9 +356,9 @@ export const TOP_RIGHT_TOP = RESTING_INK_CENTRE - TOP_RIGHT_H / 2;
 /**
  * Where the right-hand column starts: level with the ASSISTANT on the other side of the window.
  *
- * The two are the second row of the frame, one at each edge, and they were a group's gap apart
- * vertically for no reason but that each was placed against what stood above it. Measured off a
- * screenshot diffed against the bare map, the layer plate's ink began at 128.8 and the character's
+ * The two are the second row of the frame, one at each edge, and placed against whatever stands
+ * above each of them they end up a group's gap apart vertically for no reason at all. Measured off a
+ * screenshot diffed against the bare map, the layer plate's ink begins at 128.8 and the character's
  * at 137.6.
  *
  * Ink to ink, not box to box: the plate is a filled pill so its ink IS its box, and the character is
@@ -383,6 +387,33 @@ export const LAYER_PANEL_TOP = RAIL_TOP;
  */
 export const LAYER_STEP_RIGHT = EDGE_RIGHT + (RAIL.button - RAIL.layer.w) / 2;
 
+/**
+ * How much of the collapsed layer count still takes a press, in frame px measured from its RIGHT end,
+ * or `null` for the whole of it.
+ *
+ * The count hangs off the window's right edge and grows LEFTWARD with its word; the assistant's
+ * column hangs off the left edge and grows RIGHTWARD with the frame's zoom. So on a window too narrow
+ * for both the word is drawn over the panel, and standing at `z.column` over the panel's `z.panel` it
+ * takes the presses that land there as well: at 1280x800 and uiZoom 1.8 it covered the panel's gear
+ * whole, and the one door to the manage screen, the model and forget-key answered with the layer
+ * stack instead.
+ *
+ * A word cannot move (it is anchored to the edge it reads from) and neither can the column (it is
+ * anchored to the block that opens it), so what gives is the HIT TEST: the part of the count standing
+ * over the panel is the panel's to answer, and the part clear of it is still the count's. `panelRight`
+ * is `null` where no panel is open, and a box nothing has laid out yet (no width) has no collision to
+ * settle.
+ */
+export function readoutPressLane(
+  box: { left: number; width: number },
+  panelRight: number | null,
+): number | null {
+  if (panelRight === null || box.width === 0) return null;
+  const covered = panelRight - box.left;
+  if (covered <= 0) return null;
+  return Math.max(0, box.width - covered);
+}
+
 /** A file of `n` round rail buttons, in css px, and equally the width of `n` files of them. */
 export const railStack = (n: number) => n * RAIL.button + (n - 1) * RAIL.gap;
 
@@ -395,8 +426,14 @@ export const HISTORY_BUTTONS = 2;
 /** A group of `n` round buttons broken into `files` files, in css px of depth. */
 const foldedHeight = (n: number, files: number) => railStack(Math.ceil(n / files));
 
+/** Where one button of a right-hand group stands in its grid. Both 1-based, as the grid is. */
+export interface RailCell {
+  column: number;
+  row: number;
+}
+
 /**
- * Which grid column the `i`th button of a folded group starts in, or nothing to let it flow.
+ * Which cell the `i`th button of a group of `count` in `files` files stands in.
  *
  * A FOLDED GROUP FILLS FROM THE RIGHT, so the hole a partial row has is on its LEFT. Everything in
  * this column hangs off the window's right edge and shares it — the buttons, the pair, the layer
@@ -407,11 +444,21 @@ const foldedHeight = (n: number, files: number) => railStack(Math.ceil(n / files
  *
  * It is a property of the ARRANGEMENT rather than of any one button: WHICH button ends up alone
  * falls out of the count, and the count changes whenever the group gains or loses one.
+ *
+ * EVERY BUTTON IS PLACED, rather than the odd one being pushed right and the rest left to flow. A
+ * button on its way out is still mounted for the length of its exit and auto-placement counts it,
+ * so the kit losing its two turns re-flows the row they stood in WHILE they leave: a turn mid-fade
+ * jumps a row and a column on its way off. Placed, a button keeps its cell whatever else
+ * is in the grid, the only one that moves is the one whose cell the new arrangement changed, and the
+ * two may share a cell for the length of the fade — which is what one button leaving as another
+ * arrives in its place should look like.
  */
-export function railCellStart(i: number, count: number, files: number): number | undefined {
+export function railCell(i: number, count: number, files: number): RailCell {
   const orphans = count % files;
-  if (files < 2 || orphans === 0 || i !== count - orphans) return undefined;
-  return files - orphans + 1;
+  /** The buttons that fill whole rows; the rest are the short last row, right-aligned. */
+  const full = count - orphans;
+  if (i < full) return { column: (i % files) + 1, row: Math.floor(i / files) + 1 };
+  return { column: files - orphans + 1 + (i - full), row: full / files + 1 };
 }
 
 /**

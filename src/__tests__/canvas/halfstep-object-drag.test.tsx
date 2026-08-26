@@ -1,18 +1,17 @@
 /**
- * Fix round 1 (issue #4, Task 3): dragging a halfStep object through the REAL pointer path must
- * step in HALF cells, not whole ones. The regression: both drag sites computed
- * `screenToMacro(...) + grabOffset` — `screenToMacro` floors, and the offset is fixed at press
- * time, so the raw value was ALREADY whole-stepped before any snap ran, making the snap a no-op.
- * `screenToHalf` was never consulted on the drag path at all, so a halfStep object could never
- * REACH the half grid by dragging (only by starting there). `object-drag-move.test.ts`'s tests
- * never caught this because they call `planObjectMove` directly with a hand-picked x.5 — they
- * never exercise the pointer machine's own grab-offset arithmetic.
+ * Dragging a halfStep object through the REAL pointer path (issue #4) must step in HALF cells, not
+ * whole ones. The failure mode: a drag site that computes `screenToMacro(...) + grabOffset` —
+ * `screenToMacro` floors, and the offset is fixed at press time, so the raw value is ALREADY
+ * whole-stepped before any snap runs, which makes the snap a no-op. With `screenToHalf` never
+ * consulted on the drag path, a halfStep object can only START on the half grid and can never
+ * REACH it by dragging. `object-drag-move.test.ts` calls `planObjectMove` directly with a
+ * hand-picked x.5, so it never exercises the pointer machine's own grab-offset arithmetic.
  *
  * This drives the real `usePointerInteraction` over a mocked view whose `screenToHalf` returns a
  * genuine half-cell reading (not derived from `screenToMacro`), so a drag that never leaves the
  * SAME whole macro cell (`screenToMacro` unchanged throughout) must still move a halfStep object
- * by half a cell — the one signature the old `macro + fixed offset` arithmetic could never
- * produce, whichever way the offset was computed.
+ * by half a cell — the one signature `macro + fixed offset` arithmetic cannot produce, whichever
+ * way the offset is computed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -26,7 +25,7 @@ import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { registerCatalogItem } from '../../state/catalog';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
@@ -41,7 +40,7 @@ registerCatalogItem({
 
 /** 1 macro cell = 10 screen px (half cell = 5px). `screenToHalf` is a GENUINE half-grid read
  *  (round(2·world)/2), computed independently of `screenToMacro`, not derived from its floor —
- *  exactly what the real 2D/3D projections do, and what the regression's bug never consulted. */
+ *  exactly what the real 2D/3D projections do, and what a floor-derived drag path never reads. */
 function makeView() {
   const overlay = {
     showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(),
@@ -159,13 +158,13 @@ describe('dragging a halfStep object through the real pointer path', () => {
   });
 
   it('the live drag ghost of a half-anchored ramp reads its OWN planned elevation, not the ground under a half index', () => {
-    // Finding 2 (final review, half-step span items): `gs.cells[y]?.[x]` with a fractional x is
-    // undefined, so the naive inline lookup always reads elevation 0 — the ghost "sinks to
-    // ground" for exactly the decks this feature exists for. Same cliff shape as
+    // `gs.cells[y]?.[x]` with a fractional x is undefined, so an inline whole-cell lookup always
+    // reads elevation 0 — the ghost "sinks to ground" for exactly the decks the half grid exists
+    // for. Same cliff shape as
     // object-drag-move.test.ts's half-anchor case: a mountain band at y <= 9, a shoulder at
     // x = 7 and a water bank at x = 4 for y in [10, 14] leave a lane only the HALF anchor at
     // x = 4.5 clears, so the heightDrop trait re-detects there and stamps elevation 1 (the
-    // mountain's own height) on the validated candidate — the value this fix must surface.
+    // mountain's own height) on the validated candidate — the value the ghost must read.
     const S = 24;
     const ramp: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 15, y: 9 }, rotation: 0, elevation: 1 };
     const { overlay } = arm([ramp], S);

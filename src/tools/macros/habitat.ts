@@ -27,8 +27,8 @@ import { clamp01, smoothstep } from '../../core/model/math';
 import { distanceField } from '../../core/model/grid-model';
 import { ItemCategory } from '../../core/model/types';
 import { makeRng } from '../../core/model/rng';
-import type { PlacementAnalysis } from '../generation/placement/analysis';
-import type { SpeciesPicker } from '../generation/placement/nature';
+import type { PlacementAnalysis } from '../placement/analysis';
+import type { SpeciesPicker } from '../placement/nature';
 
 /** How far from water a cell is still damp ground, in cells. Past it the shoreline is not a
  *  habitat any more, it is the same dry meadow as anywhere else. */
@@ -162,7 +162,7 @@ const SPECIES_HABITAT: Record<string, HabitatPreference> = {
   'tree-peach': pref({ moisture: { at: 0.5, tol: 0.4 }, exposure: { at: 0.3, tol: 0.45 } }),
   'tree-plum': pref({ moisture: { at: 0.45, tol: 0.4 }, exposure: { at: 0.3, tol: 0.45 } }),
 
-  // Flora. Two ends of the moisture axis are deliberately sharp — the waterside lily and the dry
+  // Flora. Two ends of the moisture axis are sharp — the waterside lily and the dry
   // agave — so a press that lands across a shoreline visibly sorts itself.
   'flower-lily': pref({ moisture: { at: 1, tol: 0.22 }, exposure: { at: 0.1, tol: 0.45 }, edge: { at: 0.7, tol: 0.7 } }),
   'flower-canna': pref({ moisture: { at: 0.85, tol: 0.3 }, exposure: { at: 0.2, tol: 0.5 } }),
@@ -175,7 +175,7 @@ const SPECIES_HABITAT: Record<string, HabitatPreference> = {
   'flower-daisy': pref({ moisture: { at: 0.45, tol: 0.5 }, exposure: { at: 0.4, tol: 0.6 } }),
   'flower-sunflower': pref({ moisture: { at: 0.35, tol: 0.4 }, exposure: { at: 0.55, tol: 0.5 }, edge: { at: 0.6, tol: 0.7 } }),
   'flower-protea': pref({ moisture: { at: 0.2, tol: 0.35 }, exposure: { at: 0.85, tol: 0.45 } }),
-  // The dry end of the moisture axis is deliberately WIDE on exposure: these are the plants that
+  // The dry end of the moisture axis is WIDE on exposure: these are the plants that
   // read as dry ground, and dry ground is not only ridges. A narrow exposure window here left an
   // ordinary flat meadow with nothing characteristic to plant on it at all.
   'flower-portulaca': pref({ moisture: { at: 0.05, tol: 0.3 }, exposure: { at: 0.7, tol: 0.7 } }),

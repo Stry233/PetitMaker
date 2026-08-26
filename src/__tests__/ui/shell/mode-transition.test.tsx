@@ -46,10 +46,10 @@ describe('the mode transition', () => {
   /**
    * The plate is MADE and DESTROYED, not carried.
    *
-   * It travelled at first, and a splat sliding along the row read as one object being moved, which
-   * is a claim about the row rather than about the block. What the mark means is "this is the one",
-   * and the one it was is no longer it, so the old is destroyed and a new is made. The element
-   * identity is the assertion: a carried plate is the same node at a new place.
+   * A plate that travelled would read as one splat sliding along the row, a claim about the row
+   * rather than about the block. What the mark means is "this is the one", and the block that was it
+   * no longer is, so the old plate is destroyed and a new one made. The element identity is the
+   * assertion: a carried plate is the same node at a new place.
    */
   it('makes a new plate for the block chosen and destroys the old one', async () => {
     mount();

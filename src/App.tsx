@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { host } from './kit/host';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from './i18n/context';
@@ -11,7 +11,15 @@ import { useCursorVars } from './ui/design/cursors/cursor-vars';
 import { useMotionEnabled } from './ui/hooks/useMotionEnabled';
 
 import { Shell } from './ui/shell/Shell';
+import { DockRefProvider } from './ui/design/scale';
+import { PINNED_DOCK_REF_W } from './ui/shell/panel-frame';
+import { useDockStage } from './ui/shell/use-dock';
+import { Splash } from './ui/shell/splash/Splash';
+import { probeWarmCache, shouldShowSplash } from './ui/shell/splash/preload';
+import { warmIconDecodes } from './ui/shell/splash/idle-warm';
+import { cssMotion } from './ui/shell/motion/use-motion';
 import { ToastContainer } from './ui/chrome/floating/Toast';
+import { ArrivalToast } from './ui/chrome/floating/ArrivalToast';
 import { CurveHandles } from './ui/chrome/floating/CurveHandles';
 import { RouteMarks } from './ui/chrome/floating/RouteMarks';
 import { InAppBrowserNotice } from './ui/chrome/guards/InAppBrowserNotice';
@@ -23,15 +31,17 @@ import { DeletePopover } from './ui/chrome/floating/DeletePopover';
 import { SelectionHandles } from './ui/chrome/floating/SelectionHandles';
 import { useRestoreFade } from './ui/hooks/useRestoreFade';
 
+import { announceArrival } from './core/runtime/arrival-bus';
 import { scheduleAutosave, type RestoredAutosave } from './io/autosave';
 import { installAPI } from './api/editor-api';
 import { poolAvailable, runMacroBuildInPool, runPreviewInPool, warmPool } from './kit/operations/candidate-pool';
-import { installMacroPreviewRunner } from './tools/macros/preview';
-import { installMacroBuildRunner } from './tools/macros';
+import { installMacroBuildRunner, installMacroPreviewRunner } from './tools/macros';
 
 import type { PersistedCamera } from './io/save-format';
-// safe in the main bundle: the agent store only pulls provider METADATA (defaults.ts), not the SDKs
-import { useAgentSession } from './agent/session';
+// The panel's settings store pulls provider METADATA (defaults.ts) and the key vault only, never
+// the SDKs, so it costs the main bundle nothing.
+import { useAgentSession } from './agent/session/store';
+import { useAgentPanelSettings } from './ui/agent/settings';
 
 import { loadMap } from './kit/operations';
 
@@ -54,6 +64,21 @@ export default function App() {
   const settleRestoreFade = restoreFade.settle;
 
   const motionPref = useEditorStore((s) => s.motionPref);
+  // The boot splash: shown until this build's assets have been fetched once (see splash/preload).
+  const [splashActive, setSplashActive] = useState(() => shouldShowSplash());
+  const [splashLeaving, setSplashLeaving] = useState(false);
+  // The flag can lie warm: a hard reload or cache eviction empties the HTTP cache while
+  // localStorage keeps the flag. When the flag skipped the splash, one probe fetch verifies the
+  // cache actually answers; a cold answer mounts the splash after all (within the first frames,
+  // before anything meaningful is on screen).
+  useEffect(() => {
+    if (shouldShowSplash()) return;
+    let cancelled = false;
+    void probeWarmCache().then((warm) => {
+      if (!cancelled && !warm) setSplashActive(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
   const viewMode = useEditorStore((s) => s.viewMode);
   const gridState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
@@ -118,9 +143,29 @@ export default function App() {
     // views blind-swapped — each is independently optional, so a save missing one
     // (older build, or that view was never opened last session) simply leaves it alone.
     pendingRestoreCamera.current = save.camera ?? null;
-    // the agent's site log follows the map: resuming the map resumes the chat
-    useAgentSession.getState().hydrateFromStorage();
+    // The assistant's session follows the map: resuming the map resumes the conversation about it.
+    useAgentSession.getState().hydrate();
+    // What the arrival notice will say once the offer's own surface is gone. It replaces the boot
+    // arrival announced below, which was posted before this was an answerable question.
+    announceArrival({ kind: 'restored' });
   }, [restoreFade]);
+
+  /* ── THE ARRIVAL NOTICE. Announced HERE because this is where a map arrives: the boot map
+       appearing (the one null → map transition there is) and the saved session coming back. A
+       planet chosen in the New-project window announces from that window, since a template swapped
+       for another of the same shape is not visible from here. Loading a map FILE deliberately
+       announces nothing: a file is work, not a place.
+
+       It does NOT wait for the saved-session offer. The two stand together — the notice says where
+       you are, the card asks whether to pick the work back up — and answering either answers both:
+       resuming re-announces the arrival as 'restored' under a notice already up, and a HAND on the
+       notice declines the offer through the shell's own path (`core/runtime/restore-offer`). ── */
+  const arrivalAnnounced = useRef(false);
+  useEffect(() => {
+    if (!gridState || arrivalAnnounced.current) return;
+    arrivalAnnounced.current = true;
+    announceArrival({ kind: 'boot' });
+  }, [gridState]);
 
   /* ── The selection ring moves with the active view (2D↔3D). One subscription for both canvases,
        installed here because this is where both views are mounted. ── */
@@ -142,6 +187,16 @@ export default function App() {
        button otherwise waits on a download before it can start building. A session that OPENS in
        3D has already started it eagerly from the entry point, where it can overlap this mount. ── */
   useEffect(() => { preloadScene3D({ idle: true }); }, []);
+  // Decode the catalog icons at idle, so the object shelf's first open paints already-decoded
+  // art instead of paying ~80 PNG decodes in one burst.
+  useEffect(() => { warmIconDecodes(); }, []);
+
+  /* ── The assistant's SETTINGS, read in at boot: which provider is armed, which model, how closely
+       the user wants to be asked, and (through the vault, asynchronously) whether a key is held at
+       all. The panel needs the answer before it can show a desk rather than a setup screen, and the
+       character at the entrance needs it to know whether it is asleep. The SESSION LOG is not read
+       here: a conversation is about a map, so it comes back with one (`restoreSession` above). ── */
+  useEffect(() => { void useAgentPanelSettings.getState().hydrate(); }, []);
 
   /* ── Install programmatic API on mount ────────────────── */
   useEffect(() => {
@@ -194,14 +249,46 @@ export default function App() {
     </div>
   );
 
+  // THE ASSISTANT'S DOCK IS A FACT ABOUT THE WINDOW, so it is published from the top: while the sheet
+  // of interface is slid aside the docked panel owns a strip of the viewport, and the frame and the
+  // chrome both fit into what is left at ONE factor (`ui/design/scale.tsx:frameFit`'s `refWiden`). A
+  // surface deriving its own answer is the drift that file exists to prevent, so the number stands
+  // over the whole app.
+  const { aside } = useDockStage();
+
   return (
     // reducedMotion="user" gates EVERY Framer/DOM animation on prefers-reduced-motion
     // (the canvas side is gated separately via renderer/motion-state). One switch.
     <MotionConfig reducedMotion={motionPref === 'reduced' ? 'always' : motionPref === 'full' ? 'never' : 'user'}>
     <I18nProvider>
-      <Shell onRestoreSession={restoreSession}>{mapViews}</Shell>
+    <DockRefProvider value={aside * PINNED_DOCK_REF_W}>
+      {/* The splash hand-off is two planes parting: the overlay slides up and away while this
+          plane — the whole app — slides its last stretch up into place on the same clock. The
+          transform breaks position:fixed anchoring INSIDE the plane for exactly the boot
+          hand-off (everything rides together, which is the effect), and is removed entirely,
+          not left at an identity value, the moment the splash unmounts. */}
+      <div
+        style={splashActive
+          ? {
+              // A real full-viewport box, not a bare wrapper: the app's surfaces are
+              // position:fixed, so the plane must be their containing block at viewport size for
+              // the translate to carry them — a zero-height div translates nothing. vh, not %,
+              // for the same reason.
+              position: 'fixed',
+              inset: 0,
+              transform: splashLeaving ? 'translateY(0)' : 'translateY(4vh)',
+              transition: splashLeaving ? cssMotion('splash.handoff', 'transform') : 'none',
+            }
+          : undefined}
+      >
+      <Shell onRestoreSession={restoreSession} splashActive={splashActive}>{mapViews}</Shell>
 
       {/* Chrome the shell does not own: it reads the store and the event bus, and places itself. */}
+      {/* BEFORE the toasts, and it has to be: the two share the `z.toast` rung, so paint order is
+          what decides which wins where they meet. A refusal answers something the visitor just
+          tried and must never be lost under an eight-second greeting. The greeting also stands one
+          toast lower on the screen, so the two only meet under a stack of them. */}
+      <ArrivalToast splashActive={splashActive} />
       <ToastContainer />
       <CurveHandles />
       <RouteMarks />
@@ -212,6 +299,11 @@ export default function App() {
       <SelectionHandles />
       <ContextMenu />
       <DeletePopover />
+      </div>
+      {splashActive && (
+        <Splash onHandoff={() => setSplashLeaving(true)} onDone={() => setSplashActive(false)} />
+      )}
+    </DockRefProvider>
     </I18nProvider>
     </MotionConfig>
   );

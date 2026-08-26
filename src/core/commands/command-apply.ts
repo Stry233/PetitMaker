@@ -14,13 +14,12 @@ import type { TaintDelta } from '../provenance/tracker';
 
 /**
  * The per-CommandType STATE MUTATION half of the executor: how a command (and a
- * history entry's inverse) writes cells and adds/removes/mutates objects. Pure
- * code motion out of CommandExecutor — free functions taking explicit state +
- * eventBus so the executor stays an orchestrator (validate → apply → record →
- * history → events).
+ * history entry's inverse) writes cells and adds/removes/mutates objects. Free
+ * functions taking explicit state + eventBus, so the executor stays an
+ * orchestrator (validate → apply → record → history → events).
  *
  * Invariants held here (NOT the executor's concern):
- * - `objects-changed` emissions live at the mutation site, exactly as before.
+ * - `objects-changed` is emitted at the mutation site.
  * - History bookkeeping (undo/redo stacks, `cells-changed`/`history-*` events)
  *   and provenance taint threading stay in the executor and wrap these calls.
  */

@@ -2,7 +2,7 @@
  * The drawn shape of a trimmed road, pinned to LITERAL coordinates.
  *
  * `core/edge-cut/road-shape.ts` is the one implementation behind 2D's `drawRoadShape`, 3D's
- * `buildRoadTrimMesh` and both ghost previews. Before it existed each view carried its own copy, so
+ * `buildRoadTrimMeshes` and both ghost previews. Before it existed each view carried its own copy, so
  * a drift in one had a chance of showing up as the two views disagreeing; now nothing downstream
  * can notice, and a test that derives its expectation from the function it is testing notices even
  * less. So every number below is worked out by hand from the canonical states and the four

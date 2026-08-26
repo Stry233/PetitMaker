@@ -1,12 +1,12 @@
 // Writes the build identity into `build-info.json` from THIS repository's history —
 // the one and only place the build number is produced. Every build then reads that
 // file, so the number is identical on any host, at any clone depth, with no git at
-// all (see scripts/build-info-core.mts for why deriving it per build was wrong).
+// all (see scripts/build-info-core.mts for why deriving it per build cannot work).
 //
 // CLI-ONLY (side-effecting, may set process.exitCode) and unconditionally runs main()
 // at the bottom — the pure core lives in ./build-info-core.mts and is what the tests
-// and vite.config.ts import. Same split as generate-headers.mts (see its doc comment
-// for why a main-module guard doesn't work under vite-node).
+// and vite.config.ts import. scripts/license-audit.mts's doc comment says why a
+// main-module guard cannot host both under vite-node.
 //
 // Usage:
 //   vite-node scripts/stamp-build.mts            write build-info.json (refuses to

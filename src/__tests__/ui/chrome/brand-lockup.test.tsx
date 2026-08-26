@@ -18,7 +18,7 @@ describe('BrandLockup', () => {
 
   it('points at the same logo file the favicon uses', () => {
     const { container } = render(<BrandLockup size={72} />, { wrapper });
-    // The logo is decorative (alt=""), so it is deliberately absent from the accessibility tree
+    // The logo is decorative (alt=""), so it is absent from the accessibility tree
     // and has to be found in the DOM rather than by role.
     const img = container.querySelector('img') as HTMLImageElement;
     expect(img.getAttribute('src')).toContain('logo-256.png');

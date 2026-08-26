@@ -17,17 +17,18 @@
  * (jsdom lays nothing out), so what the assertions are really about is which corner it names and
  * what happens to it when each of those two arrives.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ToolType } from '../../../core/model/types';
-import { PREFS, readPref } from '../../../core/runtime/prefs';
+import { PREF_STORAGE_KEYS } from '../../../core/runtime/prefs';
+import { declineRestoreOffer } from '../../../core/runtime/restore-offer';
 import { I18nProvider, translate } from '../../../i18n/context';
-import { useAgentStore } from '../../../agent/store';
+import { createShellSlice } from '../../../state/slices/shell';
 import { useEditorStore } from '../../../state/store';
 import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
 import { VIGNETTE_DEPTH } from '../../../ui/design/tokens';
-import { footReserve } from '../../../ui/shell/assistant/assistant-frame';
+import { footReserve } from '../../../ui/shell/panel-frame';
 import { MODES } from '../../../ui/shell/frame';
 import { RestoreShelf, RESTORE_AFTER_S } from '../../../ui/shell/bars/RestoreShelf';
 import { Shell } from '../../../ui/shell/Shell';
@@ -62,13 +63,32 @@ function assistantBlock(): HTMLElement {
   return screen.getByLabelText(translate('generate.algo_agent'));
 }
 
+/**
+ * OPEN THE PANEL ONCE BEFORE ANY OF IT IS TIMED.
+ *
+ * The panel is the app's one lazy chunk, and two costs ride on the first mount of its life, neither
+ * of them the product's. `import()` here is a live transform of the whole assistant graph rather
+ * than a fetch of a built one (measured 0.6-1.0s with the shell warm, 3.1-3.6s cold, against the 1s
+ * an async query allows by default); and React's `lazy` payload suspends on its FIRST render however
+ * warm the module is, so a mount is what moves it to resolved, not an import. Paying both here
+ * leaves every assertion below measuring the shell's own work: the async ones stop racing a
+ * compiler, and the one that reads the panel SYNCHRONOUSLY (a returning visitor's, further down)
+ * stops passing merely for having run after another test.
+ */
+beforeAll(async () => {
+  backing.set(TOUR_SEEN_KEY, '1');
+  useEditorStore.setState({ locale: 'en', assistantOpen: true });
+  mountShell();
+  await screen.findByTestId('shell-assistant-panel', undefined, { timeout: 30_000 });
+  cleanup();
+});
+
 beforeEach(() => {
   backing.clear();
   offered.save = null; // nothing to restore, unless a test says there is
   backing.set(TOUR_SEEN_KEY, '1'); // a returning visitor: the first-launch tour is not the subject
   useEditorStore.setState({ locale: 'en', assistantOpen: false });
   useEditorStore.getState().setEditMode({ mode: null });
-  useAgentStore.setState({ keysHydrated: true, setupOpen: null });
 });
 afterEach(cleanup);
 
@@ -105,16 +125,18 @@ describe('the assistant is a block on its own row', () => {
     expect(useEditorStore.getState().editMode.mode).toBe('mountain');
   });
 
-  it('remembers the choice, so a reload opens where the visitor left it', () => {
-    mountShell();
-    fireEvent.click(assistantBlock());
-    expect(readPref('assistantOpen')).toBe(true);
+  it('boots collapsed, and a press leaves nothing behind that could open it next time', () => {
+    // The key an earlier build kept the choice under, written by hand: a device that still holds
+    // it must still boot to the map.
+    backing.set(LEGACY_OPEN_KEY, '1');
+    expect(freshShellSlice().assistantOpen).toBe(false);
 
-    // A fresh visit reads the pref into the store the way `createShellSlice` does.
-    cleanup();
-    act(() => { useEditorStore.setState({ assistantOpen: readPref('assistantOpen') }); });
     mountShell();
-    expect(screen.getByTestId('shell-assistant-panel')).toBeTruthy();
+    expect(screen.queryByTestId('shell-assistant-panel')).toBeNull();
+    fireEvent.click(assistantBlock());
+    expect(useEditorStore.getState().assistantOpen).toBe(true);
+    expect(PREF_STORAGE_KEYS).not.toContain(LEGACY_OPEN_KEY);
+    expect(backing.get(LEGACY_OPEN_KEY)).toBe('1'); // untouched: nothing writes it
   });
 
   it('says so to a screen reader either way', () => {
@@ -292,12 +314,43 @@ describe('the restore offer', () => {
       const dismiss = vi.fn();
       shelf(restore, dismiss);
       expect(restore).not.toHaveBeenCalled();
-      // IGNORING THE OFFER NOW MEANS RESUME. It used to mean start fresh, and that is the one thing
-      // this design changes: the default falls toward the recoverable option, since New brings back
-      // a clean map while declining destroys what was saved.
+      // IGNORING THE OFFER MEANS RESUME: the default falls toward the recoverable option, since New
+      // brings back a clean map while declining destroys what was saved.
       await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
       expect(restore).toHaveBeenCalled();
       expect(dismiss).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * A COUNTDOWN MAY ONLY RUN OVER TIME THE CARD WAS ON SCREEN FOR.
+   *
+   * The frame is drawn behind the boot splash, so the offer is standing (and counting) while a
+   * visitor is still watching the island being built. Whatever was left of the twelve seconds when
+   * the splash cleared is what they got, which on a cold boot was most of the offer spent.
+   */
+  it('does not spend its clock while the boot splash still covers it', async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+    try {
+      const restore = vi.fn();
+      const draw = (splashActive: boolean) => (
+        <I18nProvider>
+          <RestoreShelf state={{} as never} splashActive={splashActive} onRestore={restore} onDismiss={noop} />
+        </I18nProvider>
+      );
+      const view = render(draw(true));
+      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
+      expect(restore, 'nobody has seen the offer yet').not.toHaveBeenCalled();
+
+      view.rerender(draw(false));
+      // And the WHOLE of it is still there to spend, rather than the remainder of a clock that ran
+      // behind the splash: a second short of the full wait is a second short.
+      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S - 1) * 1000); });
+      expect(restore).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(restore).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -352,24 +405,59 @@ describe('where the restore offer stands', () => {
     await waitFor(() => expect(card()).toBeNull());
   });
 
-  it('waits while the assistant panel is open rather than being discarded', async () => {
-    act(() => { useEditorStore.setState({ assistantOpen: true }); });
+  /** The one dismissal, offered to a surface standing outside this shell: the arrival notice's OK
+   *  is a hand saying where it is, which answers this card too. It goes through the SAME path the
+   *  card's own "start fresh" takes rather than a second one, which is what this pins. */
+  it('offers its own dismissal to whatever stands beside it', async () => {
     mountShell();
-    // The panel comes down the left side to the bar's top, so the corner is not free.
+    await screen.findByTestId('restore-card');
+    act(() => { declineRestoreOffer(); });
+    await waitFor(() => expect(card()).toBeNull());
+    // And nothing is registered once the offer has gone, so a later press falls on nothing.
+    expect(() => declineRestoreOffer()).not.toThrow();
+  });
+
+  /** ENGAGING THE ASSISTANT IS AN ANSWER, not merely a panel drawn over the corner. It goes through
+   *  `dismissRestore` itself (discarding the saved session, same as opening the menu or choosing a
+   *  mode), so the card must not come back once the panel is put away. */
+  it('is dismissed for good once the assistant panel opens, and stays gone once it closes', async () => {
+    mountShell();
+    await screen.findByTestId('restore-card');
+
+    act(() => { useEditorStore.setState({ assistantOpen: true }); });
     await waitFor(() => expect(card()).toBeNull());
 
-    // Opening it armed nothing, so it was never an answer: putting it away gives the offer back.
+    // Putting the panel away again must not resurrect the offer: opening it was the decision.
     act(() => { useEditorStore.setState({ assistantOpen: false }); });
-    expect(await screen.findByTestId('restore-card')).toBeTruthy();
+    await waitFor(() => expect(useEditorStore.getState().assistantOpen).toBe(false));
+    expect(card()).toBeNull();
+
+    // And the channel other surfaces answer it through falls on nothing, same as any other
+    // dismissal already taken.
+    expect(() => declineRestoreOffer()).not.toThrow();
+  });
+
+  /** A page that mounts the shell with the panel already engaged counts the same as a fresh press:
+   *  the offer never stands, and closing the panel does not raise it. */
+  it('never stands at all when the assistant panel is already open at mount, and stays gone once it closes', async () => {
+    act(() => { useEditorStore.setState({ assistantOpen: true }); });
+    mountShell();
+    await waitFor(() => expect(card()).toBeNull());
+
+    act(() => { useEditorStore.setState({ assistantOpen: false }); });
+    await waitFor(() => expect(useEditorStore.getState().assistantOpen).toBe(false));
+    expect(card()).toBeNull();
   });
 });
 
-describe('the assistant pref', () => {
-  it('is declared once, and closed until the visitor opens it', () => {
-    expect(PREFS.assistantOpen.key).toBe('petit-planet-assistant-open');
-    expect(readPref('assistantOpen')).toBe(false);
-  });
-});
+/** A fresh `createShellSlice`, as a boot builds it: the state a new page starts from, read without
+ *  standing up a store. The two setters it is handed do nothing — nothing here calls one. */
+function freshShellSlice() {
+  return createShellSlice(() => {}, () => ({}) as never, null as never);
+}
+
+/** The key an earlier build persisted the open state under. Nothing reads or writes it. */
+const LEGACY_OPEN_KEY = 'petit-planet-assistant-open';
 
 /**
  * PUTTING THE INTERFACE AWAY. What is worth pinning is the line: the frame goes, and the one button

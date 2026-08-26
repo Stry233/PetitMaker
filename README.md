@@ -13,9 +13,9 @@ _Cozy, rule-perfect map planning for **[Petit Planet](https://planet.hoyoverse.c
 &nbsp;![Release](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&color=8CC9A1&labelColor=43413F)
 &nbsp;[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](./LICENSE)
 
-<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding an island with its menu open, and four labels: Menu on the open card at the left, Layers panel at the top right, Zoom at the bottom right, and Undo and redo at the bottom left" width="840">
+<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished island, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
 
-<sub>This is the island you can download and import further down the page.</sub>
+<sub>The island is 鱼松的爱心桃花岛, built cell by cell by 鱼松 (see Credits). You can download and import it further down the page.</sub>
 
 </div>
 
@@ -29,9 +29,9 @@ PetitMaker is an independent, **unofficial** fan project. It is **not affiliated
 ## Two views, one map
 
 <div align="center">
-<img src="./docs/media/two-views.gif" alt="Animation cross-fading between the 2D and 3D editing views of one map region: a terrace raised a step with three trees planted on it, and the same tree ringed as selected in both views" width="440">
+<img src="./docs/media/two-views.gif" alt="Animation cross-fading between the 2D and 3D editing views of one map region: a house in a heart-shaped garden pond, selected in 2D, and the same house still framed as selected after the switch to 3D" width="440">
 
-<sub>One edit, both views: a terrace raised a step, three trees on top, and the same tree still selected after the switch.</sub>
+<sub>One map, both views: the house in the heart garden, selected with a click, and still selected after the switch.</sub>
 </div>
 
 2D and 3D are both editing views of the same grid, and every tool works in either one: brushes, shapes, the eraser, item placement, edge cuts, region select, undo. Switch views mid-edit and you keep the same map, the same selection and the same history. The 3D side adds animated water, soft shadows, and a model for every placed item. The corner you round in 2D is the corner you orbit in 3D.
@@ -46,7 +46,15 @@ Painting terrain works like any pixel editor: free brush, line, curve, rectangle
 <sub>The same refusal in both views: a tree cannot stand on the lip of a step. The 3D view is where you can see why.</sub>
 </div>
 
-The rest of the toolbox is for detail work. The edge-cut tool trims mountain corners one click at a time, or auto-trim does it as you paint, in whichever of its two shapes you pick. The eraser takes one layer per pass. Items snap to the grid, rotate on click, and drag to a new spot. A bridge needs two flat banks of equal height and snaps into place once it has them. Layers carry their own visibility and lock switches, autosave keeps your last session, and the interface is available in seven languages. No account, no server.
+The rest of the toolbox is for detail work. The edge-cut tool trims mountain corners one click at a time, or auto-trim does it as you paint, in whichever of its two shapes you pick. The eraser takes one layer per pass. Items snap to the grid, rotate on click, and drag to a new spot. A bridge needs two flat banks of equal height and snaps into place once it has them. Autosave keeps your last session, and the interface is available in seven languages. No account, no server.
+
+The layers panel opens from the elevation count and grows through three sizes, up to the whole stack at once. Every floor carries its own cell count, visibility eye and lock, so you can hide the canopy while you work on the ground, or lock a finished terrace against a stray stroke.
+
+<div align="center">
+<img src="./docs/media/layer-panel.gif" alt="Animated editor view: the elevation count at the top right is pressed and unfolds into a column of layer rows, each with a cell count, a visibility eye and a lock; an arrow press grows it into a grid holding the whole stack at once with Ground highlighted, then two more presses fold it back down to the count" width="440">
+
+<sub>The layers panel at its three sizes: the count, the file, the whole stack, and back. Each press is the panel's own control.</sub>
+</div>
 
 <div align="center">
 <img src="./docs/media/edge-cut.png" alt="Three panels of the same three-level mountain: on the left every corner is square, in the middle each outer corner is sliced off at 45 degrees, on the right each outer corner is a quarter-circle; the inner corner of the L stays square in all three" width="900">
@@ -55,9 +63,9 @@ The rest of the toolbox is for detail work. The edge-cut tool trims mountain cor
 </div>
 
 <div align="center">
-<img src="./docs/media/item-showcase.png" alt="All placeable items arranged on five shelves: ten cabins and two facilities, seven bridges and seven ramps, twelve trees, and forty flowers and plants" width="900">
+<img src="./docs/media/item-showcase.png" alt="All placeable items arranged on five shelves: cabins and facilities, bridges and ramps, twelve trees, and forty flowers and plants" width="900">
 
-<sub>The whole toybox: cabins, bridges, ramps, trees, and flowers, ready to place. (Plus two road styles you paint like a brush.)</sub>
+<sub>The whole toybox: cabins, facilities, bridges, ramps, trees, and flowers, ready to place. (Plus twenty-five in-game path surfaces you paint like a brush.)</sub>
 </div>
 
 ## This picture is a map
@@ -66,40 +74,40 @@ The rest of the toolbox is for detail work. The edge-cut tool trims mountain cor
 <img src="./docs/media/share-map.png" alt="A PetitMaker share image: a title and one line of description, the island on a lettered and numbered grid, a column of per-layer thumbnails beside it, a row of four 3D views under it, the PetitGlyph share-code band below that, and a footer carrying the export date and pixel size" width="480">
 </div>
 
-Not a picture *of* the map. The map. **[Download this image](./docs/media/share-map.png)** (save the file itself, not a screenshot of it), drop it onto **[petit-maker.com](https://petit-maker.com)** → Import, and you are holding the island above: every terrace, every river bend, all two thousand nine hundred placements, cell for cell.
+Not a picture *of* the map. The map. **[Download this image](./docs/media/share-map.png)** (save the file itself, not a screenshot of it), drop it onto **[petit-maker.com](https://petit-maker.com)** → Import, and you are holding 鱼松's island from the top of this page: every terrace, every waterway, all three thousand two hundred placements, cell for cell.
 
 The mosaic stripe along the bottom is the **PetitGlyph**: the whole map encoded into visible pixels. Reed-Solomon error correction carries it through compression and re-sharing, and it verifies itself on import, so it either rebuilds the exported map cell for cell or reports that the image is too damaged to read. Nothing is uploaded. The picture is the save file.
 
 ## The generator: watch an island grow
 
 <div align="center">
-<img src="./docs/media/island-growth.gif" alt="Animated stages of generation, each captioned in the lower left and wiping left to right into the next: the empty map, the neighbourhood plan in pastel, terraced hills, lakes and a river, waterfalls stepping down, bridges and roads and homes, then trees and flowers" width="300">
+<img src="./docs/media/island-growth.gif" alt="Animated stages of generation, each captioned in the lower left and wiping left to right into the next: the empty map, terraced hills, lakes and rivers with waterfalls, streets across the island, bridges and ramps and homes, then trees and flowers" width="300">
 
-<sub>One recipe, seven stages: the generator plans neighbourhoods, terraces them, runs a river down to the sea, then moves everyone in.</sub>
+<sub>One recipe, six steps: the generator terraces the ground, settles the water, lays the streets, then moves everyone in.</sub>
 </div>
 
-Give either generator a recipe number and it builds the map through the same rules your brush obeys. The same number always produces the same map, so a number you like is a number you can share.
+The Generate shelf offers four kinds of island. **Island** and **Maze** build from a recipe number, through the same rules your brush obeys, and the same number always produces the same map, so a number you like is a number you can share. **Letter** and **Picture** build from what you bring: a phrase raised as terrain or tiled with an item you pick, or a dropped image read as ground, water and plantings.
 
 <div align="center">
-<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Random and Maze: on the left a settled island of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
+<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Island and Maze: on the left a settled island of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
 
-<sub>One recipe number, both generators: <b>Random</b> settles an island, <b>Maze</b> fills the same ground with corridors.</sub>
+<sub>One recipe number, two kinds: <b>Island</b> settles a place, <b>Maze</b> fills the same ground with corridors.</sub>
 </div>
 
-**Random** designs an island: themed neighbourhoods, terraces that keep every slope climbable, a river stepping down to the sea waterfall by waterfall, bridges where two banks match, roads out to every home. Naturalness is its one shape knob.
+**Island** designs a whole place before it touches a cell: terrace plates, a few long streets cutting the island into districts, themed places seated along them, water composed into the ground, then homes with roads to every door. Its one style knob is **Scenery richness**: the quiet end is a flat garden town, the full end a terraced island.
 
 <div align="center">
-<img src="./docs/media/naturalness-strip.png" alt="The same recipe generated three ways: rectilinear lego-like terrain at naturalness 0, an intermediate look at 50, and organic coves and doglegs at 100" width="620">
+<img src="./docs/media/richness-strip.png" alt="The same recipe generated three ways: a flat garden town at scenery richness 0, terraces and ponds appearing at 50, and a fully terraced island with deep greens and stepped water at 100" width="620">
 
-<sub>From lego to landscape: <b>Naturalness</b> 0 · 50 · 100, one recipe. Square lakes and straight streets on the left, coves and doglegs on the right.</sub>
+<sub>One recipe, the knob's whole range: <b>Scenery richness</b> 0, 50, 100. A flat garden town on the left, a terraced island on the right.</sub>
 </div>
 
-**Maze** fills the buildable ground with a recursive backtracker's maze, every corridor reaching every other one. Its walls are ordinary mountain, so you can paint, trim and decorate them afterwards, and a selected region keeps the maze to one corner of the map.
+**Maze** fills the buildable ground with a recursive backtracker's maze, every corridor reaching every other one. Its walls are ordinary mountain, so you can paint, trim and decorate them afterwards, and a selected region keeps the maze to one corner of the map. You can even drag its entrance and exit where you want them, and ask it to pave the answer.
 
 <div align="center">
 <img src="./docs/media/corridor-strip.png" alt="Three panels of the same patch of map, labelled Corridor 1, Corridor 2 and Corridor 3: the maze walls thin out and the passages widen from left to right, with the central plaza in each panel for scale" width="620">
 
-<sub><b>Corridor</b> 1 · 2 · 3: not three samples, the setting's whole range. Same recipe number, wider passages, fewer walls.</sub>
+<sub><b>Corridor</b> 1, 2, 3: not three samples, the setting's whole range. Same recipe number, wider passages, fewer walls.</sub>
 </div>
 
 ## An agent that builds beside you
@@ -107,9 +115,9 @@ Give either generator a recipe number and it builds the map through the same rul
 Bring your own API key. It is encrypted on your device and speaks only to the platform you picked, and the agent reaches your map and nothing else: no storage, no page access, no network of its own.
 
 <div align="center">
-<img src="./docs/media/providers.png" alt="A band of nine tiles in the editor's cream and ink, each carrying the platform's brand mark on a badge in that platform's own colour, and its name: Anthropic, OpenAI, DeepSeek, Google, OpenRouter, Zhipu, Alibaba, Moonshot, and a wider Custom tile with a gear badge reading any OpenAI-compatible endpoint works (Ollama, LiteLLM, a campus gateway)" width="900">
+<img src="./docs/media/providers.png" alt="A band of ten tiles in the editor's cream and ink, each carrying the platform's brand mark on a badge in that platform's own colour, and its name: Anthropic, OpenAI, DeepSeek, Google, OpenRouter, Zhipu, Alibaba, Moonshot, Perplexity, and a wider Custom tile with a gear badge reading any OpenAI-compatible endpoint works (Ollama, LiteLLM, a campus gateway)" width="900">
 
-<sub>Nine platforms to pick from, and the last row is anything that speaks the OpenAI protocol, including a model running on your own machine.</sub>
+<sub>Ten platforms to pick from, and the last row is anything that speaks the OpenAI protocol, including a model running on your own machine.</sub>
 </div>
 
 Ask for a cozy village, a terraced hill park, a river crossing, an alpine cascade, a zen garden or a field of rice terraces. It knows what those are made of, and builds one on your map.
@@ -119,9 +127,9 @@ Point at where you want it: select a hillside, ask for the work *there*, and the
 It writes the plan out before it builds, and waits for your go. While it works you can send it a note to change course, stop it at the end of the step it is on, or send it back to an earlier stage and take a different road from there. Every stage is a rewind point, and the whole run is one undo away.
 
 <div align="center">
-<img src="./docs/media/sitelog.png" alt="Three views of the agent panel, side by side: first a drafted blueprint with three unchecked stages and Looks right go / Not now buttons; then a May I? card with Allow, Always and Skip it buttons above a stage list where one stage is ticked and the next carries a line reading Undid that: water must be contained by mountains on perpendicular sides; last the finished run, every stage ticked, a Finished in 6 steps card offering Undo all, and a closing note from the agent" width="900">
+<img src="./docs/media/agent-run.png" alt="The assistant panel at three moments of one job, side by side: first the written plan of four stages with an Approve button waiting; then the build under way, the plan's stages ticking off with two placements in flight; then the finished receipt stamped Built, with the map photograph, the cell and object counts, and a How it was built button" width="900">
 
-<sub>One job, three moments: the plan waiting for a yes, a step waiting for permission after a rollback, and the finished run with every stage still a rewind point. The cards are the editor's own record of tool calls that really ran. The model's sentences are written for the figure.</sub>
+<sub>One job, three moments: the plan waits for your go, the build ticks through its stages, and the receipt says what stands, one undo away.</sub>
 </div>
 
 You choose how often it checks in. **Strict** waits for your ok on every edit, **Checkpoint** asks before plans and big steps and lets small edits through, **YOLO** never waits.
@@ -139,7 +147,7 @@ And it gets told no. It goes through the same checks your brush does, and the ed
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/media/underhood-dark.svg">
-  <img src="./docs/media/underhood-light.svg" alt="Layered block diagram of the source tree: stacked full-width bands, each packed with the modules it holds. Who edits (your brush, the generator, the AI agent) on top, then agent, io and api, ui, canvas (the 2D editor and the 3D editor), i18n and legal, tools, rules, state, core, and config with assets on the floor. A highlighted channel runs from the three editors down through rules into core/commands, and a rail down the right edge reads: imports only ever point down" width="900">
+  <img src="./docs/media/underhood-light.svg" alt="Layered block diagram of the source tree: stacked full-width bands, each packed with the modules it holds. Who edits (your brush, the generator, the AI agent) on top, then ui and legal, agent with io and api, kit, canvas (the 2D editor and the 3D editor), tools, i18n, rules, state, config with assets, and core on the floor. A highlighted channel runs from the three editors down through rules into core/commands, and a rail down the right edge reads: imports only ever point down" width="900">
 </picture>
 </div>
 

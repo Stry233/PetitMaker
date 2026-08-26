@@ -11,10 +11,9 @@
  * card is unaffected, the way it is everywhere else: it is the one thing on the shelf they authored.
  */
 import { makeRng } from '../../../core/model/rng';
-import { iconUrl } from '../../../assets/icon-urls';
-import { getCatalogItem } from '../../../state/catalog';
 import { localizedName } from '../../../i18n/context';
-import type { Locale } from '../../../core/model/types';
+import { brandName } from '../../../version';
+import type { Locale, LocalizedName } from '../../../core/model/types';
 
 /** One example on the row: a letter to build, or a picture to build from. */
 export interface StencilSample {
@@ -23,9 +22,9 @@ export interface StencilSample {
   text?: string;
   /** The image a picture sample loads. */
   src?: string;
-  /** The catalog item this picture IS, where it is one — so the card can show the item's own name
-   *  instead of the file's. `flower-agapanthus` is a filename; "Agapanthus" is a picture. */
-  itemId?: string;
+  /** What the picture IS, in the visitor's own language — `yunguo-icon` is a filename, 云果 is a
+   *  neighbour. A sample carries its own name, since none of these pictures is a catalog item. */
+  name?: LocalizedName;
 }
 
 /**
@@ -42,36 +41,64 @@ export const TEXT_POOL: readonly StencilSample[] = [
 
 /**
  * Pictures to build from, all art this app already ships, so the mode can be tried with one press
- * and no file on hand.
+ * and no file on hand: the game's fourteen neighbours, plus the app's own mark.
  *
- * The logo comes from `public/` through BASE_URL, the same path `BrandLockup` and the favicon
- * resolve. The rest are CATALOG SPRITES, reached through the same `iconUrl` resolver the item cards
- * use: they are small, colourful and read at a glance, which is what a colour mode wants to show off.
+ * A portrait is what a colour mode wants to show off — a large flat-shaded face, a few strong hues
+ * and a silhouette that survives being read at twenty cells, where a small sprite is mostly outline
+ * and outline is the first thing a reduction loses. Scored with the image harness's own fidelity
+ * metric (`__tests__/tools/_stencil-image.ts`) over both terrain materials at 20, 28 and 40 cells,
+ * the set means 0.58 against 0.53 for the item sprites. The names are the game's own, in the
+ * visitor's language where the game has one.
+ *
+ * The art is the game's, shipped verbatim under `src/assets/neighbors/`; it is not catalog sprites
+ * and does not go through `iconUrl`, whose folder is this project's own item art.
  */
-const PICTURE_ICONS = [
-  'building-myhouse', 'building-plush-cabin', 'facility-pavilion', 'tree-apple',
-  'flower-agapanthus', 'bridge-park-arch', 'facility-shop', 'tree-avocado',
+const NEIGHBORS: readonly { id: string; name: LocalizedName }[] = [
+  { id: 'dorjelang', name: { en: 'Dorjelang', zh: '多杰朗' } },
+  { id: 'elsasani', name: { en: 'Elsasani', zh: '艾莎莎尼' } },
+  { id: 'frostia', name: { en: 'Frostia', zh: '幻雪' } },
+  { id: 'glenn', name: { en: 'Glenn', zh: '格连' } },
+  { id: 'harpeno', name: { en: 'Harpeno', zh: '哈佩诺' } },
+  { id: 'isaki', name: { en: 'Isaki', zh: '伊佐奇' } },
+  { id: 'medowlyn', name: { en: 'Medowlyn', zh: '绵朵莉' } },
+  { id: 'mobai', name: { en: 'Mobai', zh: '莫白' } },
+  { id: 'mors', name: { en: 'Mors', zh: '墨尔斯' } },
+  { id: 'msafiri', name: { en: 'Msafiri', zh: '萨飞里' } },
+  { id: 'nerina', name: { en: 'Nerina', zh: '纳蕾娜' } },
+  { id: 'rebella', name: { en: 'Rebella', zh: '热贝尔' } },
+  { id: 'trixie', name: { en: 'Trixie', zh: '鹊可' } },
+  { id: 'yunguo', name: { en: 'Yunguo', zh: '云果' } },
 ];
 
+const portraits = import.meta.glob('../../../assets/neighbors/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+
+const portraitUrl: Record<string, string> = {};
+for (const path in portraits) {
+  portraitUrl[path.split('/').pop()!.replace('-icon.png', '')] = portraits[path]!;
+}
+
 export const IMAGE_POOL: readonly StencilSample[] = [
+  // The logo comes from `public/` through BASE_URL, the same path `BrandLockup` and the favicon
+  // resolve.
   { id: 'logo', src: `${import.meta.env.BASE_URL}logo-256.png` },
-  ...PICTURE_ICONS.flatMap((name) => {
-    const src = iconUrl(name);
-    return src ? [{ id: name, src, itemId: name }] : [];
+  ...NEIGHBORS.flatMap(({ id, name }) => {
+    const src = portraitUrl[id];
+    return src ? [{ id, src, name }] : [];
   }),
 ];
 
 /**
- * What to call a sample on its card: the letters themselves, the catalog item's own localized name,
- * or the app's name for its own logo. Never the id, which is a filename.
+ * What to call a sample on its card: the letters themselves, the picture's own localized name, or
+ * the app's name for its own mark. Never the id, which is a filename.
  */
-export function sampleName(sample: StencilSample, locale: Locale, appName: string): string {
+export function sampleName(sample: StencilSample, locale: Locale): string {
   if (sample.text) return sample.text;
-  if (sample.itemId) {
-    const item = getCatalogItem(sample.itemId);
-    if (item) return localizedName(item.name, locale);
-  }
-  return sample.id === 'logo' ? appName : sample.id;
+  if (sample.name) return localizedName(sample.name, locale);
+  return sample.id === 'logo' ? brandName(locale) : sample.id;
 }
 
 /** The pool a kind draws from; empty for the kinds that generate their own recipes. */

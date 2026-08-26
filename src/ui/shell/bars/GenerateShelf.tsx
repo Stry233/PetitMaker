@@ -5,13 +5,13 @@
  * THREE BANDS. The names are on the map and carry nothing but the four kinds; the cards stand UP out
  * of the backing band (`units.ts:PLATE_BAND`) with the batch tile at their end; the settings sit
  * INSIDE the plate, in the room that runs to the bottom of the window and that only the object
- * shelf was using, for its scrollbar. There is no fourth thing, and the shelf had eleven: the
- * earth/water/mixed toggle became the names, the seed field became the last card, New batch became
- * the tile, and Clear went to the menu, where the one destructive action here belongs.
+ * shelf was using, for its scrollbar. There is no fourth thing: the names carry the kinds, the last
+ * card carries the recipe number, the tile at the cards' end asks for another batch, and Clear is in
+ * the menu, where the one destructive action here belongs.
  *
  * THE SHELF HAS NO TOTAL WIDTH. A control is as wide as its own label at a fixed type size, and the
- * cards give up width to whatever a language needs, which is the only way "Естественность" and
- * 自然度 both read at full size in the same place.
+ * cards give up width to whatever a language needs, which is the only way "Насыщенность" and
+ * 丰富度 both read at full size in the same place.
  *
  * THE ROW OF NAMES CANNOT BE MOVED. It is `ShelfTabs`, the same element the object shelf is headed
  * with, hung from the same left edge AND standing on the same floor (`units.ts:shelfRowFloor`), so
@@ -38,10 +38,10 @@
  * generates for real. The bar does not decide which: it hands over what it has and `kit/operations`
  * checks whether the map underneath is still the map the run was built on.
  *
- * A CLICK IS THE ANSWER, AND THERE IS NO SECOND STEP. There was a Keep button that finalised what a
- * click had provisionally applied, which made the click mean less than it looked like it meant and
- * put the difference nowhere a person could read it. Clicking a card lands the map; undo is the way
- * back, the same way back every other edit in this editor has.
+ * A CLICK IS THE ANSWER, AND THERE IS NO SECOND STEP. Clicking a card lands the map; undo is the way
+ * back, the same way back every other edit in this editor has. A Keep button finalising what a click
+ * had provisionally applied would make the click mean less than it looks like it means, and put the
+ * difference nowhere a person could read it.
  *
  * AND EVERY CLICK IS ITS OWN EDIT. A second card does not swap the first out, it replaces the map
  * the way a generation replaces it, and the history says so: three cards clicked in a row leave
@@ -62,8 +62,8 @@
  * candidate is built with the pair, and a drop while a run stands re-runs it at its own seed
  * (`MazeEndpoints` draws them, this bar resolves them). What each end IS — a hole in the wall, or
  * a place inside to reach — is read from where it was dropped, so this bar never asks. The WAY
- * switch appears only once the ends are chosen (it answers for that pair, and the strip stays
- * shallow for everyone who never touches them), and it is a DRAPE, not an edit: a road's flat
+ * switch stands beside it in every state and refuses until the ends are chosen, since it answers
+ * for that pair; it is a DRAPE, not an edit: a road's flat
  * sweep reaches the wall beside every corridor lane, so the answer cannot legally be paved — it is
  * drawn over the corridor floor instead, on the terrain grid the walls are shifted onto, and it
  * follows the maze through every regeneration while it is on.
@@ -79,8 +79,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { setCursorBusy } from '../../../canvas/interaction/cursor-controller';
-import { renderThumbnail } from '../../../canvas/thumbnail';
-import { useT } from '../../../i18n/context';
+import { showToast } from '../../../core/runtime/toast-bus';
+import { focusFrame, renderThumbnail } from '../../../canvas/thumbnail';
+import { localizedName, useT } from '../../../i18n/context';
+import { getCatalogItem } from '../../../state/catalog';
 import { TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord, ResolvedMazeGates, StencilPlan } from '../../../core/model/types';
 import { currentKit } from '../../../kit/context';
@@ -88,11 +90,10 @@ import { host } from '../../../kit/host';
 import { clearGenerated, generateCandidate, generateMap, type Candidate } from '../../../kit/operations';
 import { useEditorStore } from '../../../state/store';
 import { useScrollFade } from '../../primitives/scroll-fade';
-import type { GenSignal } from '../../../tools/generation/placement';
-import { latticeField, mazeFootprint } from '../../../tools/generation/maze-generator';
+import type { GenSignal } from '../../../kit/operations/generate';
 import {
-  onRing, resolveEnd, type MazeEnd, type MazeField,
-} from '../../../tools/generation/maze-endpoints';
+  latticeField, mazeFootprint, onRing, resolveEnd, type MazeEnd, type MazeField,
+} from '../../../tools/generation/maze';
 import { layerName } from '../layer-name';
 import { ScaleProvider, usePx } from '../../design/scale';
 import { btnReset, buttonMotion, cursors, UNAVAILABLE, z } from '../../design/styles';
@@ -101,6 +102,8 @@ import { GlyphIcon } from '../GlyphIcon';
 import { IconTrash } from '../glyph-icons';
 import { DARK_GROOVE, MUTED_INK, ON_DARK, PLATE, PLATE_INK } from '../../design/tokens';
 import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT } from '../units';
+import { MOTIONS } from '../motion/registry';
+import { useMotion } from '../motion/use-motion';
 import { BarSlider } from './BarSlider';
 import { BarText } from './bar-atoms';
 import { Switch } from '../../primitives/Switch';
@@ -113,9 +116,10 @@ import { SCOPE_TOOLS_FOR } from './scope-cells';
 import { useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
 import { ShelfTabs, TAB_ROW } from './ShelfTabs';
 import {
-  BAR, BATCH, PAIR_GAP, BODY_H, CANDIDATES, CARD, CARD_H, CHOSEN, CORRIDOR, GAP, NATURALNESS, PAD, SEED_MAX, SLIDERS,
-  STRIP, TABS, batchSeeds, maxElevationFor, minElevationFor, newSeed, shelfConfig,
-  CONTRAST, FILL_KEY, FILL_KINDS, fillTakesElevation, isStencilKind, regionFitsStencil, STENCIL_MIN_SIDE,
+  BAR, BATCH, PAIR_GAP, BODY_H, CANDIDATES, CARD, CARD_H, CHOSEN, CORRIDOR, GAP, PAD, RICHNESS, SEED_MAX,
+  STRIP, TABS, batchSeeds, maxElevationFor, minElevationFor, newSeed, shelfConfig, slidersFor,
+  CONTRAST, fillKindsFor, fillLabelKey, fillTakesElevation, fillTakesItem,
+  isStencilKind, pictureRecipe, regionFitsStencil, stencilNote, textFitsBox, textNeedsWidth, STENCIL_MIN_SIDE,
   type GenerateKind, type ShelfSettings, type StencilFillKind,
 } from './generate-shelf';
 import { drawSamples, poolFor, sampleName, type StencilSample } from './stencil-samples';
@@ -152,6 +156,13 @@ const FAILED_MS = 4000;
  *  that, so this is headroom for a high-DPI screen and nothing more. */
 const SHOT_PX = 640;
 
+/** The shape of the picture slot on a card, which is the shape every candidate is photographed in. */
+const SHOT_ASPECT = CARD.pic.w / CARD.pic.h;
+
+/** How far the block under the names travels as it arrives, in css px: the object shelf's own
+ *  category swap, since a change of kind here is the same event one shelf along. */
+const SWAP_X = MOTIONS['shelf.category.swap'].amplitude ?? 0;
+
 /** The cards and the tile at their end. It never wraps: the cards shrink together instead, since a
  *  candidate on a line of its own stops being one of the row to compare. */
 const ROW: CSSProperties = {
@@ -160,28 +171,77 @@ const ROW: CSSProperties = {
 
 
 /**
- * The scope chip: what a run will act on, and the way into the screen that paints it.
+ * A setting that stands in the strip as its own READING and opens a screen to change it: the scope,
+ * and the item a letter is tiled with.
  *
- * Name then value, like the knobs beside it, because it is another setting in the same strip. Empty
- * is not "nothing": a region nobody has painted is the whole island, which is what it says.
+ * Name then value, like the knobs beside it, because it is another setting in the same strip. And
+ * the value STAYS on the strip once it has been answered, which is the whole reason this is a chip
+ * rather than a press that opens a screen and leaves nothing behind: a choice you cannot see is a
+ * choice you cannot change.
  */
-function ScopeChip({ what, onOpen }: { what: string; onOpen: () => void }) {
-  const t = useT();
+function StripChip({ name, value, onOpen, testId, disabled, width }: {
+  name: string; value: string; onOpen: () => void; testId: string;
+  /** Standing but inapplicable in this state: dimmed and refusing, never taken away. */
+  disabled?: boolean;
+  /**
+   * A FIXED width, for a chip standing among the knobs at the right of the strip.
+   *
+   * Its reading changes with the setting — an item's name, or the n/a of a state it cannot act in —
+   * and a chip as wide as its own words would shove every control beside it each time. The scope
+   * chip needs none of this: it stands BEFORE the strip's spacer, so its width comes out of the
+   * spacer and nothing to its right moves. A reading too long for the box is ellipsized; the item
+   * shelf is where the full name is read.
+   */
+  width?: number;
+}) {
   return (
     <motion.button
       type="button"
-      {...buttonMotion}
-      data-testid="shell-gen-scope"
-      onClick={onOpen}
+      {...(disabled ? {} : buttonMotion)}
+      aria-disabled={disabled}
+      data-testid={testId}
+      onClick={disabled ? undefined : onOpen}
+      title={value}
       style={{
-        ...btnReset, flex: '0 0 auto', pointerEvents: 'auto', cursor: cursors.clickable,
+        ...btnReset, flex: '0 0 auto', pointerEvents: 'auto',
+        cursor: disabled ? cursors.blocked : cursors.clickable,
+        opacity: disabled ? UNAVAILABLE : 1,
         height: STRIP.h, padding: `0 ${STRIP.padX}px`, borderRadius: 999, background: PLATE,
-        display: 'flex', alignItems: 'center', gap: 8,
+        display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+        ...(width ? { width, boxSizing: 'border-box' as const } : {}),
       }}
     >
-      <BarText size={TEXT.label} color={MUTED_INK}>{t('gen.scope')}</BarText>
-      <BarText size={TEXT.label} color={PLATE_INK}>{what}</BarText>
+      <BarText size={TEXT.label} color={MUTED_INK}>{name}</BarText>
+      <BarText size={TEXT.label} color={PLATE_INK} align="left" style={{ minWidth: 0, flex: '1 1 auto' }}>
+        <span style={{ display: 'block', minWidth: 0, maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {value}
+        </span>
+      </BarText>
     </motion.button>
+  );
+}
+
+/**
+ * A switch with its name before it, the way the maze's own pair stand in this strip.
+ *
+ * Standing but inapplicable is DIMMED AND REFUSING, never taken away, exactly as the chip beside it
+ * is: a control that comes and goes as its neighbour is pressed shoves every knob in the row. The
+ * dimming is the switch's own — the name takes the same treatment, and nothing wraps both, since two
+ * dimmings multiply and the pair goes past faint to invisible.
+ */
+function StripSwitch({ label, on, onToggle, testId, disabled }: {
+  label: string; on: boolean; onToggle: () => void; testId: string; disabled?: boolean;
+}) {
+  return (
+    <span
+      data-testid={testId}
+      style={{ display: 'flex', alignItems: 'center', gap: GAP.sliderPart, flex: '0 0 auto', pointerEvents: 'auto' }}
+    >
+      <BarText size={TEXT.label} color={ON_DARK} align="left" style={{ opacity: disabled ? UNAVAILABLE : 1 }}>
+        {label}
+      </BarText>
+      <Switch on={on} onClick={onToggle} label={label} {...(disabled ? { disabled } : {})} />
+    </span>
   );
 }
 
@@ -257,8 +317,25 @@ function GenerateShelfBody() {
   // moment the order changed.
   const [kind, setKind] = useState<GenerateKind>(TABS[0]!.id);
   const [base, setBase] = useState(newSeed);
-  const [naturalness, setNaturalness] = useState<number>(NATURALNESS.max);
-  const [maxElevation, setMaxElevation] = useState<number>(() => maxElevationFor(TABS[0]!.id));
+  const [richness, setRichness] = useState<number>(RICHNESS.default);
+  /**
+   * The tallest layer, REMEMBERED PER KIND and defaulted to that kind's own ceiling.
+   *
+   * ONE SHARED NUMBER LEAVES EVERY PICTURE THREE GREENS DEEP. A maze wall may not stand above layer 3
+   * (`MAZE_MAX_ELEVATION`), the shelf opens on the maze, and a clamp that follows a kind change can
+   * only raise the floor, never restore the ceiling the last kind took away — so a picture's ramp
+   * arrives three entries long without anybody touching the knob, and a picture coloured in three
+   * greens is a flat, sparse island. A ceiling belongs to the kind that has it, exactly as the
+   * material choice does (`fillByKind`).
+   */
+  const [maxByKind, setMaxByKind] = useState<Record<GenerateKind, number>>(
+    () => Object.fromEntries(TABS.map((tab) => [tab.id, maxElevationFor(tab.id)])) as Record<GenerateKind, number>,
+  );
+  const maxElevation = maxByKind[kind];
+  const setMaxElevation = useCallback(
+    (next: number) => setMaxByKind((prev) => ({ ...prev, [kind]: next })),
+    [kind],
+  );
   const [corridorWidth, setCorridorWidth] = useState<number>(CORRIDOR.min);
   /** Whether the visitor is choosing the ends at all. OFF by default: the generator picks its own
    *  pair (in from the edge, out at the square) and the map stays clear of marks; ON puts the two
@@ -375,7 +452,7 @@ function GenerateShelfBody() {
   }, [kind, gridState, region, corridorWidth]);
   const effectiveGates = kind === 'maze' && customEnds ? (gates ?? mazeSetup?.defaults ?? null) : null;
 
-  const settings = { kind, naturalness, maxElevation: elevation, corridorWidth, gates: effectiveGates };
+  const settings = { kind, richness, maxElevation: elevation, corridorWidth, gates: effectiveGates };
   /** The last card's place in the row, which is one past the ones drawn for the visitor. */
   /** Clear's mark: the tool row's own eraser, so the shelf does not draw a second one. The road
  *  variant, since that row draws each tool once per surface and a generation is not a surface. */
@@ -408,12 +485,21 @@ const CUSTOM = CANDIDATES;
    * A CLICK ON A CARD IS THE ANSWER, so what it landed is the visitor's map from that moment: this
    * shelf stops pointing at it and never takes it back. Undo is the way back, the same way back
    * every other edit has.
+   *
+   * WHICH CARD IS OURS AND WHAT THE MAP HOLDS ARE TWO FACTS. This forgets the first only. The gates
+   * a run opened and the walk between them describe the maze STANDING ON THE MAP, and moving a
+   * slider does not touch it: dropped here, they leave the way switch with nothing to show and the
+   * drape cannot go up until another card is clicked.
    */
   const forgetApplied = useCallback(() => {
     setAppliedIndex(null);
+    setDragging(null);
+  }, []);
+
+  /** And what the map holds, for the one thing that takes the generation back. */
+  const forgetLanded = useCallback(() => {
     setLandedGates(null);
     setWalk(null);
-    setDragging(null);
   }, []);
 
 
@@ -422,13 +508,6 @@ const CUSTOM = CANDIDATES;
     setCursorBusy(busy);
     return () => setCursorBusy(false);
   }, [busy]);
-
-  // Both ends of this knob belong to the kind (water lies flat, a maze wall has nothing to stand on
-  // above layer 3 and is not a wall at all on the ground), so a value outside them moves with a
-  // switch rather than leaving the slider reading past its own end.
-  useEffect(() => {
-    setMaxElevation((v) => Math.min(Math.max(v, minElevationFor(kind)), maxElevationFor(kind)));
-  }, [kind]);
 
   /*
    * The pictures. Every setting that reaches the generator is a dependency, because a picture that
@@ -444,6 +523,15 @@ const CUSTOM = CANDIDATES;
   /** The space a picture fills: what was painted, or the island itself when nothing was. */
   const box = useMemo(
     () => regionBox(region) ?? (gridState ? islandBox(gridState, isBuildableZone) : null),
+    [region, gridState],
+  );
+  /**
+   * What the pictures are FRAMED on: the painted region's own cells, or the whole map where none is
+   * painted. A run bounded by a region writes only inside it, and framed on the island a change a
+   * few cells across is a few pixels of the card.
+   */
+  const shotFrame = useMemo(
+    () => focusFrame(regionBox(region), gridState?.template ?? null, SHOT_ASPECT),
     [region, gridState],
   );
   const fits = regionFitsStencil(kind, box);
@@ -473,23 +561,51 @@ const CUSTOM = CANDIDATES;
     const w = gridState.template.width;
     return new Set(region.map((c) => c.y * w + c.x));
   }, [region, gridState]);
+  /** What the chosen material actually builds: the palette every cell is matched against, what
+   *  stands at the anchor points, and the part water plays. A LETTER is a shape and reads none of
+   *  it — its own material is `fill`. */
+  const recipe = kind === 'image' ? pictureRecipe(fillKind) : null;
   const planInputs = useMemo(
     () => (box
       ? {
         box, fill, contrast: contrast / 100,
-        objects: fillKind === 'object',
-        water: fillKind === 'water',
+        objects: recipe?.tiles != null,
+        water: recipe?.water ?? 'none',
+        ...(recipe?.tiles ? { material: recipe.tiles } : {}),
+        ...(recipe?.decor ? { decor: { species: recipe.decor } } : {}),
         ...(allow ? { allow } : {}),
       }
       : null),
     // `fill` is rebuilt each render; its VALUE is what matters, so the parts are the dependencies.
-    [box, fillKind, fillItem, contrast, allow],
+    [box, kind, fillKind, fillItem, contrast, allow],
   );
 
   const takesElevation = fillTakesElevation(kind, fillKind);
+  /** Whether the letter's item chip has anything to open. It stands either way. */
+  const takesItem = fillTakesItem(kind, fillKind);
+  /**
+   * Whether this particular WORD has the room, which the region gate cannot answer: a row of
+   * characters divides the region's width between them, so the floor scales with the word
+   * (`generate-shelf.ts:textFitsBox`). Asked BEFORE anything is generated — a word too long for its
+   * region rasterizes to a row of two-cell smudges and costs a full generation to find that out.
+   */
+  const wordFits = (sample: StencilSample | null): boolean =>
+    kind !== 'text' || !sample?.text || textFitsBox(sample.text, box);
+  /** Why a card has no picture, where there is a reason: the region has no room for the kind at
+   *  all, or this word has no room in the region. */
+  const cardNote = (sample: StencilSample | null): string | null => {
+    if (!stencil) return null;
+    if (!fits) return t('gen.region_too_small', { n: STENCIL_MIN_SIDE[kind as 'text' | 'image'] });
+    if (wordFits(sample)) return null;
+    // ONE LETTER AND A ROW OF THEM FAIL FOR DIFFERENT REASONS. A word runs out of width and the remedy
+    // is fewer characters or a wider region; a single letter that will not fit has run out of room for
+    // its own strokes, and telling someone to use fewer letters than one is nonsense.
+    const glyphs = [...(sample!.text ?? '')].length;
+    return t(glyphs > 1 ? 'gen.text_too_wide' : 'gen.text_needs_room', { n: textNeedsWidth(sample!.text!) });
+  };
 
   const recipeKey = JSON.stringify([
-    kind, naturalness, elevation, corridorWidth, kind === 'maze' ? effectiveGates : null,
+    kind, richness, elevation, corridorWidth, kind === 'maze' ? effectiveGates : null,
     stencil ? [fillKind, fillItem, contrast, box] : null,
   ]);
   const previewKey = `${recipeKey}|${base}`;
@@ -497,11 +613,16 @@ const CUSTOM = CANDIDATES;
     // Nothing is worth photographing while the region is being painted: the next stroke would make
     // every picture a promise the click cannot keep, and the cards are not on screen anyway.
     // A picture kind with no region to work in has nothing to photograph — and the cards must go
-    // BLANK rather than keep the last kind's pictures, which is what left another generator's
-    // islands standing under the letters.
+    // BLANK rather than keep the last kind's pictures, which leaves another generator's islands
+    // standing under the letters.
     if (stencil && !fits) {
       setShots(Array(CANDIDATES).fill(null));
       candidatesRef.current = Array(CANDIDATES).fill(null);
+      // AND THE PLANS WITH THEM. A candidate is dropped here but a plan is the RECIPE, and one left
+      // standing is a card with no picture that still builds — the region shrank under it and the
+      // click laid the picture the last region was fitted for. A card that cannot show what it
+      // would do must not be able to do it.
+      plansRef.current = Array(CANDIDATES + 1).fill(null);
       return undefined;
     }
     if (!gridState || selectingRegion) return undefined;
@@ -510,8 +631,8 @@ const CUSTOM = CANDIDATES;
     /*
      * THE CARDS GO BLANK NOW, NOT WHEN THE RUN STARTS. The seeds change with the recipe, and the
      * pass that photographs them waits `SETTLE_MS` for the settings to stop moving — so a batch
-     * cleared inside `run` left the OLD batch's pictures standing under the NEW batch's numbers for
-     * a third of a second, which is a card saying it is a recipe it is not a picture of. Pending is
+     * cleared inside `run` would leave the OLD batch's pictures standing under the NEW batch's
+     * numbers for a third of a second, a card saying it is a recipe it is not a picture of. Pending is
      * the honest state, and it is the one the card already knows how to draw.
      */
     setShots(Array(CANDIDATES).fill(undefined));
@@ -535,11 +656,18 @@ const CUSTOM = CANDIDATES;
       const dealt = stencil ? hand : seeds;
       await Promise.all(dealt.map(async (entry, i) => {
         const seed = stencil ? base + i : (entry as number);
-        const plan = stencil && planInputs
+        const plan = stencil && planInputs && wordFits(entry as StencilSample)
           ? await buildStencilPlan(entry as StencilSample, planInputs)
           : null;
         if (dropped) return;
-        if (stencil && !plan) { setShots((prev) => prev.map((sh, j) => (j === i ? null : sh))); return; }
+        // The card is refused, or its picture would not build. Its PLAN goes with its photograph, or
+        // the one the last region left behind stays live and a click builds a letter fitted to a
+        // region that is no longer painted.
+        if (stencil && !plan) {
+          plansRef.current[i] = null;
+          setShots((prev) => prev.map((sh, j) => (j === i ? null : sh)));
+          return;
+        }
         plansRef.current[i] = plan;
         const candidate = await generateCandidate(kit, {
           config: shelfConfig({ ...settings, seed, stencilPlan: plan }),
@@ -550,7 +678,7 @@ const CUSTOM = CANDIDATES;
         candidatesRef.current[i] = candidate;
         // The picture waits on the map's own icons being decoded, so it is taken asynchronously and
         // the batch may have been dropped by the time it is back.
-        const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, CARD.pic.w / CARD.pic.h) : null;
+        const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, SHOT_ASPECT, shotFrame) : null;
         if (dropped) return;
         setShots((prev) => prev.map((s, j) => (j === i ? shot : s)));
       }));
@@ -590,9 +718,11 @@ const CUSTOM = CANDIDATES;
       const kit = currentKit();
       if (!kit) return;
       setCustomPending(true);
-      const plan = stencil && ownSample && planInputs ? await buildStencilPlan(ownSample, planInputs) : null;
+      const plan = stencil && ownSample && planInputs && wordFits(ownSample)
+        ? await buildStencilPlan(ownSample, planInputs)
+        : null;
       if (dropped) return;
-      if (stencil && !plan) { setCustomShot(null); setCustomPending(false); return; }
+      if (stencil && !plan) { plansRef.current[CUSTOM] = null; setCustomShot(null); setCustomPending(false); return; }
       plansRef.current[CUSTOM] = plan;
       const candidate = await generateCandidate(kit, {
         config: shelfConfig({ ...settings, seed: customSeed ?? base, stencilPlan: plan }),
@@ -601,7 +731,7 @@ const CUSTOM = CANDIDATES;
       });
       if (dropped) return;
       customRef.current = candidate;
-      const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, CARD.pic.w / CARD.pic.h) : null;
+      const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, SHOT_ASPECT, shotFrame) : null;
       if (dropped) return;
       setCustomShot(shot);
       setCustomPending(false);
@@ -625,6 +755,11 @@ const CUSTOM = CANDIDATES;
    * state turn: the ends and the way are hyper-parameters of the maze — the carve grows out from
    * the entrance — so moving one while a run stands is asking for ANOTHER maze at the same seed.
    * An overridden run never replays the card's cached candidate, which was built without it.
+   *
+   * A CARD IS ITS OWN. The batch is asked for all at once and each picture lands as its own run
+   * comes back, so a finished card is a finished answer whatever the four beside it are still doing:
+   * what refuses a click is this card's own run being unfinished, or another card already on its way
+   * to the map — a map cannot take two landings at once.
    */
   const applyCandidate = useCallback(async (index: number, over?: Partial<ShelfSettings>) => {
     const kit = currentKit();
@@ -632,7 +767,12 @@ const CUSTOM = CANDIDATES;
     // kinds' recipe is the number, and without one there is nothing to land.
     const plan = stencil ? plansRef.current[index] ?? null : null;
     const seed = stencil ? base + index : seedAt(index);
-    if (!kit || busy || (stencil ? !plan : seed === null)) return;
+    const pending = index === CUSTOM ? customPending : previewing && shots[index] === undefined;
+    if (!kit || landingIndex !== null || pending || (stencil ? !plan : seed === null)) return;
+    // The region has to still be one this kind can work in. The plan is dropped the moment it is
+    // not, so this is the second lock on the same door — and it is the one that holds if a future
+    // path ever caches a plan somewhere else.
+    if (stencil && !fits) return;
     forgetApplied();
     clearFailed();
     setLandingIndex(index);
@@ -647,6 +787,21 @@ const CUSTOM = CANDIDATES;
       // next run, and the drape is what says so. It comes down in one place only — the scope
       // screen's own Clear (use-region-brush), where the region itself is emptied.
       host.feedback.flash(outcome.cells, { terrainMode: true });
+      // WHAT THE WORD DID WITH THE GROUND IT WAS GIVEN. A letter stands one layer on the region's
+      // own surface, so cells that cross a step, reach the edge of that ground or stand on the
+      // tallest layer there is are left alone — and a word arriving shorter than it was typed says
+      // why rather than going quietly missing. Nothing to say on a run that wrote all of it.
+      // ONE LINE, NAMING THE LARGEST REASON, except that a run which wrote NOTHING against the
+      // grid's ceiling always says so: `generate-shelf.ts:stencilNote` holds the rule and the
+      // argument for it. A run that wrote none of the word is a warning; a short one is a note.
+      const said = stencil ? stencilNote(kind, outcome.stencil, outcome.placed) : null;
+      // THE GROUND'S OWN REASON COMES FIRST, and it outranks a word's: a region painted inside a tall
+      // massif is ground the terrain around it stands on, so a run there hands every cell back and
+      // builds nothing whatever it was asked to build. Naming the letters that did not fit would be
+      // true and useless, since no letter could have fit. A region the run was free to build on and
+      // put nothing in stays quiet, which is what it always was.
+      if (outcome.scopeEmpty === 'reclaimed') showToast(t('gen.scope_reclaimed'), 'warning');
+      else if (said) showToast(t(said.key, { n: said.n }), outcome.placed === 0 ? 'warning' : 'info');
       setAppliedIndex(index);
       // The run reports where its gates opened and its own walk between them. NOT the marks: those
       // are the visitor's setting, and a run answers them rather than moving them.
@@ -660,7 +815,10 @@ const CUSTOM = CANDIDATES;
     } finally {
       setLandingIndex(null);
     }
-  }, [busy, clearFailed, forgetApplied, previewKey, customSeed, region, stencil, base]);
+  }, [
+    landingIndex, previewing, customPending, shots, clearFailed, forgetApplied,
+    previewKey, customSeed, region, stencil, fits, base, t,
+  ]);
 
   /*
    * The marks over the map: THE VISITOR'S OWN CELLS, always. A landed run never rewrites them —
@@ -736,7 +894,8 @@ const CUSTOM = CANDIDATES;
     clearGenerated(kit, { region: null });
     host.resync();
     forgetApplied();
-  }, [forgetApplied]);
+    forgetLanded();
+  }, [forgetApplied, forgetLanded]);
 
   /*
    * The cards' own scroll. A card keeps one size, so a window or a language that cannot hold them
@@ -751,6 +910,7 @@ const CUSTOM = CANDIDATES;
   // that there is more to see, so it earns its keep here more than anywhere else in the shelf.
   const cardsFade = useScrollFade(cardsRef, 'x');
   const reducedMotion = useReducedMotionConfig() ?? false;
+  const swapMotion = useMotion('shelf.category.swap');
   const cardsGlide = useRef(wheelGlider()).current;
 
   const reroll = useCallback(() => {
@@ -809,7 +969,7 @@ const CUSTOM = CANDIDATES;
     setOwnImage((prev) => { if (prev) { forgetStencilImage(prev.src); URL.revokeObjectURL(prev.src); } return null; });
   }, []);
 
-  /** The upper track carries the knob the kind actually has: naturalness shapes an island and means
+  /** The upper track carries the knob the kind actually has: richness shapes an island and means
    *  nothing to a maze, which is turned by its corridor width instead. */
   interface UpperKnob {
     label: string;
@@ -822,24 +982,22 @@ const CUSTOM = CANDIDATES;
   /**
    * The upper slot's content, which every kind names for itself. The SLOT is constant — one label,
    * one reading, one control, standing in the same place on every kind — and only what fills it
-   * changes, so nothing appears or vanishes as the row of names is walked.
+   * changes, so nothing appears or vanishes as the row of names is walked. The picture kinds fill
+   * it with their material instead, and never read this.
    */
+  /** The tracks this kind's row can spare, which is the design's own drawn length everywhere but the
+   *  picture, where six material segments stand beside them. */
+  const sliders = slidersFor(kind);
   const upper: UpperKnob = kind === 'maze'
     ? {
       label: t('generate.corridor'),
       reading: t(corridorWidth === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: corridorWidth }),
       min: CORRIDOR.min, max: CORRIDOR.max, value: corridorWidth, set: setCorridorWidth,
     }
-    : kind === 'image'
-      ? {
-        label: t('gen.contrast'),
-        reading: t('gen.percent', { n: contrast }),
-        min: CONTRAST.min, max: CONTRAST.max, value: contrast, set: setContrast,
-      }
-      : {
-        label: t('generate.naturalness'), reading: t('gen.percent', { n: naturalness }),
-        min: NATURALNESS.min, max: NATURALNESS.max, value: naturalness, set: setNaturalness,
-      };
+    : {
+      label: t('generate.richness'), reading: t('gen.percent', { n: richness }),
+      min: RICHNESS.min, max: RICHNESS.max, value: richness, set: setRichness,
+    };
 
   // The room the row of names leaves over the window's bottom, capped at the drawn card height: a
   // 1918-tall design canvas assumes more screen than a screen has.
@@ -862,6 +1020,15 @@ const CUSTOM = CANDIDATES;
    * is the thing to change. Saying so on the chip that opens the region screen puts the reason and
    * the remedy in one place, and adds no element that exists only sometimes.
    */
+  /** The visitor's own card refuses for the same reasons a dealt one does, and it is the card a
+   *  word too long for its region will actually be typed into. */
+  const ownNote = cardNote(ownSample);
+
+  /** The item a letter is tiled with, by its own name. Null until one is chosen, and null again if
+   *  the catalog has lost it, which the chip says as plainly as never having chosen. */
+  const chosenItem = fillItem ? getCatalogItem(fillItem) : null;
+  const itemName = chosenItem ? localizedName(chosenItem.name, locale) : null;
+
   const scopeSays = stencil && !fits
     ? t('gen.scope_too_small', { n: STENCIL_MIN_SIDE[kind as 'text' | 'image'] })
     : scope
@@ -901,11 +1068,14 @@ const CUSTOM = CANDIDATES;
           {/* The backing, as the design draws it: a band at the bottom of the window that the
               candidates stand UP out of, and that the strip sits inside. See `units.ts:PLATE_BAND`. */}
           <div
+            data-testid="bar-plate"
             style={{
               position: 'absolute',
               left: -PLATE_BAND.overhang, right: -PLATE_BAND.overhang,
               bottom: -PLATE_BAND.radius, height: PLATE_BAND.top + PLATE_BAND.radius,
               borderRadius: PLATE_BAND.radius, background: BAR.fill,
+              // Solid: input over the visible dock belongs to the dock, never to the map under it.
+              pointerEvents: 'auto',
             }}
           />
 
@@ -930,9 +1100,19 @@ const CUSTOM = CANDIDATES;
 
             {/* The cards, and the strip inside the plate under them. Its height is DECLARED rather
                 than taken from whatever is in it, so the names above stay put through a change of
-                kind, of language and of report. */}
-            <div
+                kind, of language and of report.
+
+                A CHANGE OF KIND SWAPS THE WHOLE BLOCK, so it is keyed on the kind and arrives:
+                other recipes, and the settings that belong to them. The names above do not move,
+                which is what makes the motion readable as the block under them answering the press
+                rather than the shelf being rebuilt. It is the object shelf's own category swap,
+                same motion and same distance, since it is the same event one shelf along. */}
+            <motion.div
+              key={kind}
               data-testid="shell-gen-body"
+              initial={{ opacity: 0, x: SWAP_X }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={swapMotion}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'stretch',
                 width: '100%', height: BODY_H, gap: STRIP.gap,
@@ -954,6 +1134,7 @@ const CUSTOM = CANDIDATES;
               <div
                 ref={cardsRef}
                 className="pw-noscroll"
+                data-testid="gen-cards-row"
                 onScroll={(e) => setCardsLeft(e.currentTarget.scrollLeft)}
                 onWheel={(e) => {
                   const push = wheelPush(e, e.currentTarget.clientWidth, zoom);
@@ -961,6 +1142,9 @@ const CUSTOM = CANDIDATES;
                 }}
                 style={{
                   ...ROW, gap: GAP.card,
+                  // Solid, gaps between cards included: a wheel between two cards glides the row
+                  // rather than falling through to the map (the shelf's root is pointer-transparent).
+                  pointerEvents: 'auto',
                   // Content-sized, shrinkable: the pair after this row stands beside the last card
                   // when the row has room to spare, and only reaches the window's edge when the
                   // cards themselves do (the row then scrolls under it).
@@ -980,28 +1164,29 @@ const CUSTOM = CANDIDATES;
               >
                 {/* A picture kind deals its cards from a pool, so what stands here is the hand; every
                     other kind deals recipe numbers. Same card, same click, same picture slot. */}
-                {(stencil ? hand : seeds).map((entry, i) => (
-                  <div
-                    key={stencil ? (entry as StencilSample).id : (entry as number)}
-                    // The chosen plate bleeds into the neighbours' boxes, and siblings paint in DOM
-                    // order — without this the NEXT card covers the plate's right side, which read
-                    // as the outline clipped.
-                    style={{ flex: '0 0 auto', width: cardW, position: 'relative', zIndex: appliedIndex === i ? 1 : 0 }}
-                  >
-                    <CandidateCard
-                      seed={stencil ? base + i : (entry as number)}
-                      {...(stencil ? { name: sampleName(entry as StencilSample, locale, t('app.name')) } : {})}
-                      {...(stencil && !fits
-                        ? { note: t('gen.region_too_small', { n: STENCIL_MIN_SIDE[kind as 'text' | 'image'] }) }
-                        : {})}
-                      shot={shots[i]}
-                      selected={appliedIndex === i}
-                      failed={failedIndex === i}
-                      landing={landingIndex === i}
-                      onSelect={() => { void applyCandidate(i); }}
-                    />
-                  </div>
-                ))}
+                {(stencil ? hand : seeds).map((entry, i) => {
+                  const note = cardNote(stencil ? (entry as StencilSample) : null);
+                  return (
+                    <div
+                      key={stencil ? (entry as StencilSample).id : (entry as number)}
+                      // The chosen plate bleeds into the neighbours' boxes, and siblings paint in DOM
+                      // order — without this the NEXT card covers the plate's right side, which read
+                      // as the outline clipped.
+                      style={{ flex: '0 0 auto', width: cardW, position: 'relative', zIndex: appliedIndex === i ? 1 : 0 }}
+                    >
+                      <CandidateCard
+                        seed={stencil ? base + i : (entry as number)}
+                        {...(stencil ? { name: sampleName(entry as StencilSample, locale) } : {})}
+                        {...(note ? { note } : {})}
+                        shot={shots[i]}
+                        selected={appliedIndex === i}
+                        failed={failedIndex === i}
+                        landing={landingIndex === i}
+                        onSelect={() => { void applyCandidate(i); }}
+                      />
+                    </div>
+                  );
+                })}
 
                 {/* The last one is the visitor's own: a recipe they name, in the row with the ones
                     named for them, rather than a field and a confirm step somewhere else. It scrolls
@@ -1024,6 +1209,7 @@ const CUSTOM = CANDIDATES;
                     <CustomCard
                       field={kind === 'text' ? 'glyph' : 'number'}
                       {...(kind === 'text' ? { title: t('gen.custom_text') } : {})}
+                      {...(ownNote ? { note: ownNote } : {})}
                       seed={customSeed}
                       glyph={ownText}
                       draft={customDraft}
@@ -1106,42 +1292,41 @@ const CUSTOM = CANDIDATES;
                   marginRight: -(PAD.right - STRIP.right),
                 }}
               >
-                <ScopeChip what={scopeSays} onOpen={() => setSelectingRegion(true)} />
+                <StripChip
+                  testId="shell-gen-scope"
+                  name={t('gen.scope')}
+                  value={scopeSays}
+                  onOpen={() => setSelectingRegion(true)}
+                />
                 <span style={{ flex: '1 1 auto', minWidth: 0 }} />
                 {/* The maze's own pair of switches, at the right with its knobs. The ends first:
                     off, the generator picks the pair and the map stays clear of marks; on, the two
-                    marks stand as recipe settings. The way only APPEARS once the ends are chosen —
-                    it answers for that pair, and a strip that carried it always would be one
-                    control deeper for every visitor who never touches the ends. */}
+                    marks stand as recipe settings. The way answers FOR THAT PAIR, so it refuses
+                    until they are chosen — dimmed and standing, since a switch that arrived when
+                    its neighbour was pressed pushed that neighbour along the strip, and a control
+                    that moves under the hand that just pressed it is the one thing a toggle must
+                    never do. */}
                 {kind === 'maze' ? (
-                  <span
-                    data-testid="shell-gen-ends"
-                    style={{ display: 'flex', alignItems: 'center', gap: GAP.sliderPart, flex: '0 0 auto', pointerEvents: 'auto' }}
-                  >
-                    <BarText size={TEXT.label} color={ON_DARK} align="left">{t('gen.ends')}</BarText>
-                    <Switch on={customEnds} onClick={toggleEnds} label={t('gen.ends')} />
-                  </span>
+                  <StripSwitch testId="shell-gen-ends" label={t('gen.ends')} on={customEnds} onToggle={toggleEnds} />
                 ) : null}
-                {kind === 'maze' && customEnds ? (
-                  <span
-                    data-testid="shell-gen-route"
-                    style={{ display: 'flex', alignItems: 'center', gap: GAP.sliderPart, flex: '0 0 auto', pointerEvents: 'auto' }}
-                  >
-                    <BarText size={TEXT.label} color={ON_DARK} align="left">{t('gen.way')}</BarText>
-                    <Switch on={showWay} onClick={() => setShowWay(!showWay)} label={t('gen.way')} />
-                  </span>
+                {kind === 'maze' ? (
+                  <StripSwitch
+                    testId="shell-gen-route" label={t('gen.way')} on={showWay}
+                    onToggle={() => setShowWay(!showWay)} disabled={!customEnds}
+                  />
                 ) : null}
                 {/* THE SAME SLOT ON EVERY KIND, holding one control. A picture kind's is its choice of
                     material, which is a segmented control and not a slider: there is no range between
                     water and a building. */}
                 {stencil ? (
                   <Knob
-                    label={t('gen.built_from')}
                     groove={false}
                     control={(
-                      // The words on the segments say what the choice is, so the group's name is not
-                      // drawn: it would repeat them. It is still ANNOUNCED, since a reader arriving at
-                      // three unexplained words needs to know what they are three of.
+                      // THE WORDS ON THE SEGMENTS SAY WHAT THE CHOICE IS, so the group's name is not
+                      // drawn: it would repeat them, and the strip has no width to spend saying a
+                      // thing twice. The sliders beside it keep their names because a track is not a
+                      // word. It is still ANNOUNCED, since a reader arriving at unexplained words
+                      // needs to know what they are a set of.
                       <span
                         role="group"
                         aria-label={t('gen.built_from')}
@@ -1152,15 +1337,15 @@ const CUSTOM = CANDIDATES;
                           idPrefix="gen-fill"
                           height={STRIP.h}
                           value={fillKind}
-                          options={FILL_KINDS}
+                          options={fillKindsFor(kind)}
                           onChange={(next) => {
                             setFillKind(next);
                             // Choosing OBJECT for a LETTER with nothing chosen opens the shelf that
                             // chooses one. A PICTURE never does: it matches every cell against the
                             // catalogue's own colours, so its items pick themselves.
-                            if (kind === 'text' && next === 'object' && !fillItem) setPickingItem(true);
+                            if (fillTakesItem(kind, next) && !fillItem) setPickingItem(true);
                           }}
-                          render={(o) => t(FILL_KEY[o])}
+                          render={(o) => t(fillLabelKey(kind, o))}
                           stretch={false}
                           fontSize={TEXT.label}
                         />
@@ -1172,7 +1357,7 @@ const CUSTOM = CANDIDATES;
                     label={upper.label}
                     control={(
                       <BarSlider
-                        art={SLIDER_ART} shape={SLIDERS.upper} ticks={SLIDER_TICKS}
+                        art={SLIDER_ART} shape={sliders.upper} ticks={SLIDER_TICKS}
                         min={upper.min} max={upper.max}
                         value={upper.value} onChange={upper.set} label={upper.label}
                         valueText={upper.reading}
@@ -1180,37 +1365,72 @@ const CUSTOM = CANDIDATES;
                     )}
                   />
                 )}
-                {/* A water letter lies at ground level and an object letter has no height at all, so
-                    for those the layer knob has nothing to set. It STAYS, dimmed and refusing, the
-                    way the terrain bar's width slider does for the tools laid to their own size: a
-                    control that vanished would move every knob beside it as the fill is changed. */}
-                {/* A PICTURE's lower slot is its contrast, which is what decides how much of the
-                    palette it reaches; its heights are its colours, so there is no tallest layer to
-                    choose. Every other kind keeps the layer knob, and a letter that is water or
-                    objects has no height either, so there it stays and refuses. */}
-                <Knob
-                  label={kind === 'image' ? t('gen.contrast') : t('gen.max_layer')}
-                  control={kind === 'image' ? (
-                    <BarSlider
-                      art={SLIDER_ART} shape={SLIDERS.maxLayer} ticks={SLIDER_TICKS}
-                      min={CONTRAST.min} max={CONTRAST.max}
-                      value={contrast} onChange={setContrast} label={t('gen.contrast')}
-                      valueText={t('gen.percent', { n: contrast })}
-                    />
-                  ) : (
-                    <span style={{ display: 'flex', opacity: takesElevation ? 1 : UNAVAILABLE }}>
+
+                {/*
+                  WHICH ITEM A LETTER IS TILED WITH: the chip both names it and is the way back to
+                  the shelf that chooses it; without it, nothing on the strip says what was chosen
+                  or offers another.
+
+                  IT STANDS ON EVERY LETTER, dimmed and refusing while the letter is being raised as
+                  terrain, because a control that comes and go as its neighbour is pressed shoves
+                  every knob beside it and the visitor's aim with them. A picture names its own items
+                  by colour, so it has no such question at all: that is a MODE difference, and a mode
+                  swaps its whole row.
+                */}
+                {kind === 'text' ? (
+                  <StripChip
+                    testId="shell-gen-item"
+                    name={t('gen.fill_item')}
+                    value={takesItem ? itemName ?? t('gen.fill_pick') : t('gen.not_applicable')}
+                    width={STRIP.chip}
+                    disabled={!takesItem}
+                    onOpen={() => setPickingItem(true)}
+                  />
+                ) : null}
+
+                {/* A PICTURE'S CONTRAST decides how much of the palette it reaches, so it stands on
+                    every picture whatever the picture is made of. */}
+                {kind === 'image' ? (
+                  <Knob
+                    label={t('gen.contrast')}
+                    control={(
                       <BarSlider
-                        art={SLIDER_ART} shape={SLIDERS.maxLayer} ticks={SLIDER_TICKS}
+                        art={SLIDER_ART} shape={sliders.upper} ticks={SLIDER_TICKS}
+                        min={CONTRAST.min} max={CONTRAST.max}
+                        value={contrast} onChange={setContrast} label={t('gen.contrast')}
+                        valueText={t('gen.percent', { n: contrast })}
+                      />
+                    )}
+                  />
+                ) : null}
+
+                {/* THE TALLEST LAYER, on every kind that has one — which is every kind but the
+                    LETTER, and that is a mode difference rather than a state: a letter stands exactly
+                    one layer on the surface the region already holds, so the knob is not among the
+                    controls that mode offers at all.
+
+                    Within a mode it never moves. A PICTURE'S heights ARE its colours, so the knob is
+                    the depth of the terrain ramp and means nothing once the picture is tiled with
+                    items instead: there it stands dimmed and refusing, reading n/a, exactly as the
+                    terrain bar's width slider does for the tools laid to their own size. */}
+                {kind !== 'text' ? (
+                  <Knob
+                    label={t('gen.max_layer')}
+                    control={(
+                      // `BarSlider` wears the dimming itself when it refuses, so there is no wrapper
+                      // here: two of them multiply and the knob goes past faint to invisible.
+                      <BarSlider
+                        art={SLIDER_ART} shape={sliders.maxLayer} ticks={SLIDER_TICKS}
                         min={floor} max={ceiling}
                         value={elevation} onChange={setMaxElevation} label={t('gen.max_layer')}
                         valueText={takesElevation ? layerName(t, elevation) : t('gen.not_applicable')}
                         disabled={!takesElevation}
                       />
-                    </span>
-                  )}
-                />
+                    )}
+                  />
+                ) : null}
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>

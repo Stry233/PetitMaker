@@ -1,12 +1,12 @@
 /**
  * DID THE ROUTE ACTUALLY CONNECT THE TWO TAPS?
  *
- * The two-tap gesture exists to put a road between two points, and it used to report success for a
- * road in three pieces: `route.ts` plans against crossing SITES, the `waterSpan`/`heightDrop` traits
- * SNAP the deck somewhere else during validation, and the plan's approach cells then land under the
- * deck or one cell short of its entrance. One hole at an entrance and the deck plus its aprons are an
- * island of pavement neither leg reaches. Over three generated islands, 21% of laid routes left the
- * taps in different components, and every one of them reported success.
+ * The two-tap gesture exists to put a road between two points, and A ROAD IN THREE PIECES CAN REPORT
+ * SUCCESS: `route.ts` plans against crossing SITES, the `waterSpan`/`heightDrop` traits SNAP the deck
+ * somewhere else during validation, and the plan's approach cells then land under the deck or one cell
+ * short of its entrance. One hole at an entrance and the deck plus its aprons are an island of pavement
+ * neither leg reaches. Measured over three generated islands, that left the taps in different
+ * components on 21% of laid routes, every one of them reported as a success.
  *
  * Both outcomes are pinned: a route that CAN be joined comes out as one walkable piece, and one that
  * cannot lays nothing and says so. The middle case — pavement on the map plus a success report — is
@@ -25,9 +25,9 @@ import { categoryOf } from '../../../state/catalog';
 import { cloneGridState, NEIGHBORS4 } from '../../../core/model/grid-model';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { crossingExitCells } from '../../../tools/generation/placement/network';
+import { generateObjectId } from '../../../core/model/object-id';
+import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
+import { crossingExitCells } from '../../../tools/placement/network';
 import { applyMacro } from '../../../tools/macros';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import {
@@ -66,14 +66,64 @@ function islandKit(seed: number): Kit {
     base = makeState(ISLAND, ISLAND);
     const exec = new CommandExecutor(base, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(base));
     const config: GenerateConfig = {
-      algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
+      algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed, region: null,
     };
     const state = base;
-    exec.runSilently(() => { generateTerrain(config, state, (c: Command) => exec.execute(c)); });
+    exec.runSilently(() => {
+      generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
+      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // about relief. What stands on it is the case's own subject, planted or laid below.
+      clearAllObjects(state, (c: Command) => exec.execute(c));
+    });
     exec.commitStrokeGroup(exec.getUndoStackSize());
     islands.set(seed, base);
   }
   return kitOf(cloneGridState(base));
+}
+
+/** Two taps on the generated island whose route has to take a crossing, searched for on the fixture
+ *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
+ *  across a tier step, and the first pair a link joins over a bridge or a ramp wins. A written-down
+ *  pair goes stale the next time the terrain moves. It throws rather than skipping if the island offers
+ *  none — a fixture with
+ *  no step in it cannot ask this question. */
+function pairOverACrossing(seed: number): { from: MacroCoord; to: MacroCoord } {
+  return pairWhere(seed, (outcome, state) => outcome.changes > 0 && crossings(state).length > 0);
+}
+
+/** The lattice both searches walk: standable cells paired east-west at link range, each pair tried on
+ *  its own copy of the island until `want` is satisfied. It throws rather than skipping when nothing
+ *  qualifies — a fixture that cannot pose the question must say so, not pass quietly. */
+function pairWhere(
+  seed: number,
+  want: (outcome: ReturnType<typeof applyMacro>, state: GridState) => boolean,
+): { from: MacroCoord; to: MacroCoord } {
+  const probe = islandKit(seed);
+  const { width: W, height: H } = probe.state.template;
+  const standable = (x: number, y: number): boolean => {
+    const cell = probe.state.cells[y]?.[x];
+    if (!cell || cell.zone !== CellZone.Grass) return false;
+    return !cell.terrain || cell.terrain.type === TerrainType.Mountain;
+  };
+  for (let y = 8; y < H - 8; y += 8) {
+    for (let x = 8; x < W - 26; x += 8) {
+      if (!standable(x, y)) continue;
+      for (const span of [18, 22, 26]) {
+        if (!standable(x + span, y)) continue;
+        const trial = islandKit(seed);
+        const from: MacroCoord = { x, y }, to: MacroCoord = { x: x + span, y };
+        if (want(applyMacro(trial, 'road-link', { seed: 1, from, at: to }), trial.state)) return { from, to };
+      }
+    }
+  }
+  throw new Error('the fixture no longer offers a pair this case can be asked about');
+}
+
+/** Two taps on the generated island whose link comes back `unjoined`: the router found a line and
+ *  laying it came apart, which is the clause under test. Searched on the same lattice and for the
+ *  same reason as `pairOverACrossing`. */
+function pairThatCannotJoin(seed: number): { from: MacroCoord; to: MacroCoord } {
+  return pairWhere(seed, (outcome) => outcome.changes === 0 && outcome.code === 'unjoined');
 }
 
 function place(kit: Kit, catalogId: string, x: number, y: number): PlacedObject {
@@ -194,8 +244,8 @@ function expectJoined(state: GridState, from: MacroCoord, to: MacroCoord): void 
 
 describe('a two-tap route joins the two taps', () => {
   it('over a ramp the trait snapped elsewhere: the deck is IN the road', () => {
+    const { from, to } = pairOverACrossing(11);
     const kit = islandKit(11);
-    const from: MacroCoord = { x: 35, y: 8 }, to: MacroCoord = { x: 53, y: 8 };
 
     const outcome = applyMacro(kit, 'road-link', { seed: 1, from, at: to });
     expect(outcome.changes, outcome.reason ?? '').toBeGreaterThan(0);
@@ -232,8 +282,8 @@ describe('a two-tap route joins the two taps', () => {
     expect(kit.state.objects.get(bridge.id)!.position, 'the standing bridge was moved').toEqual(wasAt);
     expect(crossings(kit.state).length, 'a second crossing was built beside the one already there').toBe(1);
     expectJoined(kit.state, from, to);
-    // The road WALKS ONTO the deck rather than round the lake: the pavement reaches both entrances,
-    // and a way round exists here, which is what the route used to take.
+    // The road WALKS ONTO the deck rather than round the lake: the pavement reaches both entrances, and
+    // a way round does exist here for a route that would rather take it.
     expectPavementAtDeck(kit.state, bridge);
     expect(roadObjects(kit.state).length, 'the route walked round the lake instead of over the bridge')
       .toBeLessThanOrEqual(30);
@@ -270,10 +320,14 @@ describe('a two-tap route joins the two taps', () => {
   });
 
   it('a route that cannot be joined lays nothing and names where it stopped', () => {
+    // `unjoined` is the accident this clause exists for: the router DID find a line, and laying it
+    // came apart on the way — a crossing the traits would not seat where the plan wanted it. Which
+    // pairs those are belongs to the terrain, so the pair is searched for rather than remembered.
+    const { from, to } = pairThatCannotJoin(7);
     const kit = islandKit(7);
     const before = roadObjects(kit.state).length;
 
-    const outcome = applyMacro(kit, 'road-link', { seed: 1, from: { x: 62, y: 8 }, at: { x: 80, y: 8 } });
+    const outcome = applyMacro(kit, 'road-link', { seed: 1, from, at: to });
     expect(outcome.changes, 'a route that does not connect kept its pavement').toBe(0);
     expect(outcome.code).toBe('unjoined');
     expect(outcome.at, 'the refusal does not say where the road stopped').toBeTruthy();

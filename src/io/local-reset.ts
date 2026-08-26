@@ -4,11 +4,11 @@
  * the autosaved map, locale/zoom/agent preferences — then reload so the app
  * boots brand new (in-memory stores, timers, and transcripts all reset).
  *
- * Deliberately a full origin wipe rather than a curated key list: a curated
- * list silently drifts the day someone adds a new persisted key, and "brand
- * new startup" is exactly localStorage.clear() semantics.
+ * A full origin wipe rather than a curated key list: a curated list silently
+ * drifts the day someone adds a new persisted key, and "brand new startup" is
+ * exactly localStorage.clear() semantics.
  */
-import { deleteVault } from '../agent/vault';
+import { deleteVault } from '../agent/security/vault';
 
 /** The wipe half, separated from the reload so it is unit-testable. */
 export async function wipeLocalData(): Promise<void> {

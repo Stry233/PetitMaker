@@ -1,7 +1,7 @@
 /**
- * The rotate shortcut on a PLURAL selection: it used to route through `singleSelection`,
- * which returns null for a group, so the shortcut silently did nothing. It must instead run the
- * exact call path the SelectionHandles rotate button uses (`kit/group-edit.ts:rotateGroupAction`)
+ * The rotate shortcut on a PLURAL selection: routing it through `singleSelection`, which returns null
+ * for a group, makes the shortcut silently do nothing. It must instead run the exact call path the
+ * SelectionHandles rotate button uses (`kit/group-edit.ts:rotateGroupAction`)
  * — same rigid-body turn, same refusal register — so the keyboard and the button can never diverge.
  */
 import { describe, it, expect, afterEach } from 'vitest';

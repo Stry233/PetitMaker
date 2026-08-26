@@ -11,6 +11,7 @@
     "fr": "Campanule blanche"
   },
   "icon": "flower-bellflower",
+  "iconColor": "#a68159",
   "width": 1,
   "height": 1,
   "loadValue": 10,

@@ -2,7 +2,7 @@ import { CommandType, TerrainType } from '../model/types';
 import type { Command, Corners, GridState, MacroCoord, PlacedObject, TrimCornersCommand } from '../model/types';
 import { getCell, cellKey } from '../model/grid-model';
 import { computeLockedCorners } from './trim-lock';
-import { groundConvexCornerInWater } from './terrain-silhouette';
+import { cornerWrappedAt, groundConvexCornerInWater } from './terrain-silhouette';
 import { validateCut, isInnerCorner } from './cut-validator';
 import type { RoadLookup } from '../model/road-lookup';
 import {
@@ -156,11 +156,30 @@ function reconcilePatchTerrain(state: GridState, target: CutReconcileTarget, x: 
   const corners = terrain.corners;
   if (!corners) return false;
   // A gamma fillet lives on a WRAPPED (concave) corner. Full-base 'square' corners and UNWRAPPED outer
-  // cuts (a bevel sharing the cell) are NOT fillets — they must not be mistaken for one. The patch is
-  // intact as long as at least one wrapped fillet's concave context still holds.
-  const hasValidFillet = corners.some((c, i) =>
-    c !== 'empty' && c !== 'square' && isInnerCorner(state, x, y, i, terrain.type, terrain.elevation));
-  if (hasValidFillet) return false;
+  // cuts (a bevel sharing the cell) are NOT fillets — they must not be mistaken for one. A fillet is
+  // CURRENT while its concave context holds AND it still rounds the wrapping mass's rim: a wall
+  // stacked past the fillet's tier (the corner wrapped one tier ABOVE it) has OUTGROWN it, and the
+  // fillet can never follow — it already sits at the one tier its support allows — so it would stand
+  // as a stray wedge at the foot of the taller notch. The patch survives while some fillet is
+  // current; a raise invalidates a fillet exactly as it clears an OUTER cut.
+  const filletCurrent = (c: string, i: number): boolean =>
+    c !== 'empty' && c !== 'square'
+    && isInnerCorner(state, x, y, i, terrain.type, terrain.elevation)
+    && !cornerWrappedAt(state, x, y, i, terrain.type, terrain.elevation + 1);
+  if (corners.some(filletCurrent)) {
+    // Clear any OUTGROWN corner beside the surviving fillet(s). A corner no longer wrapped at all
+    // stays, since it renders as an outer bevel on the base.
+    const stale = corners.map((c, i) =>
+      c !== 'empty' && c !== 'square' && !filletCurrent(c, i)
+      && cornerWrappedAt(state, x, y, i, terrain.type, terrain.elevation + 1));
+    if (!stale.some(Boolean)) return false;
+    const kept = corners.map((c, i) => (stale[i] ? 'empty' : c)) as Corners;
+    target.execute({
+      type: CommandType.TrimCorners, timestamp: Date.now(),
+      x, y, layer: 'terrain', beforeCorners: corners, afterCorners: kept,
+    } as TrimCornersCommand);
+    return true;
+  }
 
   // No fillet's context holds → drop the gamma. CYCLE-OFF-KEEPS-BASE: a real base (patchBase >= 1)
   // drops to its square block; a from-empty gamma (patchBase 0) clears to nothing.

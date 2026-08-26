@@ -26,6 +26,7 @@
  */
 
 import type { LegalConfig } from './config';
+import { activeTarget } from './deploy-targets';
 import { brandName } from '../version';
 import { parseLegalMarkdown, type Inline, type MdNode } from './markdown';
 import { providerDisclosureList } from './providers-list';
@@ -342,6 +343,12 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
     tokens.providers = providerDisclosureList(lang)
       .map((p) => `- ${p}`)
       .join('\n');
+    // The host and its edge differ per deployment (Cloudflare abroad, Alibaba Cloud on the
+    // mainland), and each build's policy must state its own truth — the facts live on the
+    // deploy-target row beside the origin and the filing numbers.
+    const target = activeTarget();
+    tokens.hostNetwork = target.privacyHostNetwork[lang];
+    tokens.edgeDelivery = target.privacyEdgeDelivery[lang];
   }
   if (id === 'terms') {
     tokens.effectiveDate = cfg.effectiveDates.terms;
@@ -361,9 +368,9 @@ function substituteTokens(src: string, tokens: Record<string, string>): string {
 
 /**
  * The token-substituted body for a document in the requested language. A
- * `zh`-null doc (license/third-party) falls back to its `en` body — the doc
- * viewer is the one that adds a zh intro note for those (chrome, not content;
- * see the design spec §6).
+ * `zh`-null doc (license/third-party) falls back to its `en` body; the doc
+ * viewer is the one that adds a zh intro note for those, as chrome rather than
+ * content.
  */
 export function docBody(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): string {
   const meta = DOCS[id];
@@ -442,8 +449,8 @@ function localizeNodeZh(node: MdNode): MdNode {
 }
 
 /**
- * The rendered node tree for a doc, guaranteeing exactly one leading h1
- * (spec §14 heading-hierarchy criterion). Every authored doc
+ * The rendered node tree for a doc, guaranteeing exactly one leading h1 (the
+ * accessibility heading-hierarchy contract). Every authored doc
  * (`src/legal/content/*`) already opens with a `# ` heading — but a root-file doc
  * reproduced byte-exact (`LICENSE`, pinned verbatim by
  * `license-files.test.ts`: 201 lines / 11357 bytes) carries no markdown

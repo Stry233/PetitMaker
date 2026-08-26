@@ -12,8 +12,8 @@ import { roadLookup } from '../../../state/object-index';
 import { categoryOf } from '../../../state/catalog';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { buildingGate } from '../../../tools/generation/placement/object';
-import { generateObjectId } from '../../../tools/utils';
+import { buildingGate } from '../../../tools/placement/object';
+import { generateObjectId } from '../../../core/model/object-id';
 import {
   CellZone, ItemCategory, TerrainType,
   type EditorEvents, type GridState, type MacroCoord, type PlacedObject,
@@ -181,19 +181,19 @@ describe('road-link: two taps', () => {
 
   it('picks the standing street\'s material, then the caller\'s own', () => {
     const kit = makeKit();
-    place(kit, 'road-slate', 30, 10);
+    place(kit, 'path-park-stone', 30, 10);
     const from = { x: 10, y: 10 }, to = { x: 29, y: 12 };
 
     const learned = makeKitFrom(kit.state);
     applyMacro(learned, 'road-link', { seed: 1, from, at: to, width: 1 });
     const laid = [...learned.state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Road);
     expect(laid.length).toBeGreaterThan(0);
-    expect(laid.every((o) => o.catalogId === 'road-slate'), 'learned the nearest street\'s material').toBe(true);
+    expect(laid.every((o) => o.catalogId === 'path-park-stone'), 'learned the nearest street\'s material').toBe(true);
 
     const forced = makeKitFrom(kit.state);
-    applyMacro(forced, 'road-link', { seed: 1, from, at: to, width: 1, material: 'road-brick' });
+    applyMacro(forced, 'road-link', { seed: 1, from, at: to, width: 1, material: 'path-simple-brick' });
     const laidForced = [...forced.state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Road);
-    expect(laidForced.some((o) => o.catalogId === 'road-brick'), 'the caller\'s own material wins').toBe(true);
+    expect(laidForced.some((o) => o.catalogId === 'path-simple-brick'), 'the caller\'s own material wins').toBe(true);
   });
 });
 
@@ -225,10 +225,10 @@ describe('road-link: one tap on a building', () => {
     expect(clear.some((c) => c.x === outcome.at!.x && c.y === outcome.at!.y)).toBe(true);
   });
 
-  /** Regression: `ensureGateTerminals`' "already terminates" check used to trust a `PlaceCtx.roads`
-   *  Set that `widenRoads` (a bare `executor.execute`, never `tryPlace`) never updated, so a spur
-   *  wide enough to widen straight over its own gate strip stacked a second road object there —
-   *  the exact corruption class `road-stack.test.ts` guards for the sibling `roads` macro. */
+  /** `ensureGateTerminals`' "already terminates" check cannot trust a `PlaceCtx.roads` Set that
+   *  `widenRoads` (a bare `executor.execute`, never `tryPlace`) does not update: a spur wide enough to
+   *  widen straight over its own gate strip then stacks a second road object there, the corruption class
+   *  `road-stack.test.ts` guards for the sibling `roads` macro. */
   it('a spur press never stacks two road objects on one cell (width > 1)', () => {
     const kit = makeKit();
     const house = place(kit, 'building-myhouse', 18, 20, 0);
@@ -248,7 +248,7 @@ describe('road-link: one tap on a building', () => {
     const kit = makeKit();
     const house = place(kit, 'building-myhouse', 18, 20, 0);
     // The approach cell, already paved — as if an earlier press already reached this door.
-    place(kit, 'road-stone', 21, 24);
+    place(kit, 'path-cobblestone', 21, 24);
     const before = [...kit.state.objects.keys()].sort();
 
     const outcome = applyMacro(kit, 'road-link', { seed: 1, at: { x: house.position.x + 3, y: house.position.y + 1 } });
@@ -267,20 +267,19 @@ describe('road-link: one tap on a building', () => {
 });
 
 describe('routeWorld', () => {
-  /** Regression: the cache used to key on `${cellsVersion}|${objectsVersion}|${regionKey}` alone,
-   *  omitting `near` even though `style.materialId` ("the nearest standing street") is a function
-   *  of it — so a second call on the same unedited map with a different `near` silently returned
-   *  the first call's material. */
+  /** The cache key has to carry `near`: `style.materialId` ("the nearest standing street") is a function
+   *  of it, so a key of `${cellsVersion}|${objectsVersion}|${regionKey}` alone answers a second call on
+   *  the same unedited map with the first call's material. */
   it('reads the material nearest EACH call\'s own `near`, not a stale cache hit', () => {
     const kit = makeKit();
-    place(kit, 'road-stone', 5, 5);
-    place(kit, 'road-brick', 40, 40);
+    place(kit, 'path-park-stone', 5, 5);
+    place(kit, 'path-simple-brick', 40, 40);
 
     const nearStone = routeWorld(kit, { seed: 1, near: { x: 6, y: 6 } });
     const nearBrick = routeWorld(kit, { seed: 1, near: { x: 39, y: 39 } });
 
-    expect(nearStone.style.materialId).toBe('road-stone');
-    expect(nearBrick.style.materialId).toBe('road-brick');
+    expect(nearStone.style.materialId).toBe('path-park-stone');
+    expect(nearBrick.style.materialId).toBe('path-simple-brick');
   });
 });
 

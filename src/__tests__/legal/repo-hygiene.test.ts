@@ -11,11 +11,15 @@ declare const process: { cwd(): string };
 import {
   auditStatus,
   classifyPaths,
+  AGENT_DOC_NAMES,
+  AGENT_DOC_SCAN_EXEMPT,
   AI_ATTRIBUTION_MARKERS,
   ATTRIBUTION_SCAN_EXEMPT,
   planPublicSync,
   DENYLIST_SPOTCHECK,
+  findAgentDocPointers,
   findAiAttribution,
+  findByBasename,
   isProbablyText,
   findLeakedPaths,
   globToRegExp,
@@ -92,6 +96,24 @@ describe('public-repo-manifest.md — internal block carries the critical entrie
     expect(isPublicPath('CLAUDE.md', manifest)).toBe(false);
   });
 
+  it('classifies every AGENTS.md as internal, at the root and beside source that ships', () => {
+    // The agent instructions are working notes: they name internal paths freely, and one sits
+    // in nearly every module directory inside `src/**`, which tier 1 ships whole. The by-name
+    // glob therefore has to WIN over the allowlist, which is what `withholdingGlobs` does.
+    for (const path of [
+      'AGENTS.md',
+      'src/core/AGENTS.md',
+      'src/ui/AGENTS.md',
+      'scripts/internal/AGENTS.md',
+      'src/some/module/added/later/AGENTS.md',
+    ]) {
+      expect(isInternalPath(path, manifest), `${path} must be internal`).toBe(true);
+      expect(isPublicPath(path, manifest), `${path} must not be public`).toBe(false);
+    }
+    // The name is exact: a file that merely contains it still ships.
+    expect(isPublicPath('src/ui/AGENTS.md.tsx', manifest)).toBe(true);
+  });
+
   it('classifies docs/internal/design/** as internal (PSDs, in-game references, IP-sensitive)', () => {
     expect(isInternalPath('docs/internal/design/v2/some-file.psd', manifest)).toBe(true);
   });
@@ -141,7 +163,7 @@ describe('public-repo-manifest.md — internal block carries the critical entrie
     expect(isPublicPath('docs/ARCHITECTURE.md', manifest)).toBe(true);
     expect(isInternalPath('docs/ARCHITECTURE.md', manifest)).toBe(false);
     // The game's building rules are game-derived, so they sit under docs/internal/ rather
-    // than beside the architecture reference they used to ship with.
+    // than beside the public architecture reference.
     expect(isInternalPath('docs/internal/RULES.md', manifest)).toBe(true);
     expect(isPublicPath('docs/internal/RULES.md', manifest)).toBe(false);
     expect(isPublicPath('docs/RULES.md', manifest)).toBe(false);
@@ -204,9 +226,8 @@ describe('repo hygiene — no source file hides from text search', () => {
 
 describe('export leak check — re-derived independently of the copy step', () => {
   // internal-repo-only check: needs the manifest to re-derive the selection — self-skip on
-  // export (the inner CLAUDE.md-existence guard below covers the "sanity" sub-test
-  // separately, but it too depends on the manifest, so it's dead-but-harmless once this
-  // guard fires).
+  // export. The inner CLAUDE.md-existence guard below covers the "sanity" sub-test separately
+  // and depends on the manifest too, so it never runs once this guard fires.
   if (!existsSync(MANIFEST_PATH)) {
     it.skip('internal-repo-only: public-repo-manifest.md not present (public-repo export)', () => {});
     return;
@@ -219,6 +240,31 @@ describe('export leak check — re-derived independently of the copy step', () =
     expect(toCopy.length).toBeGreaterThan(0);
     const leaked = findLeakedPaths(toCopy, manifest);
     expect(leaked, `leaked internal path(s):\n${leaked.join('\n')}`).toEqual([]);
+  });
+
+  it('a planted AGENTS.md never lands in the output, wherever it sits', () => {
+    const manifest = loadManifest();
+    // A tracked-file list with agent docs planted at every shape they can take, including
+    // inside `src/**`, which tier 1 ships whole.
+    const planted = [
+      'AGENTS.md',
+      'CLAUDE.md',
+      'src/x/AGENTS.md',
+      'src/ui/shell/bars/AGENTS.md',
+      'scripts/internal/AGENTS.md',
+    ];
+    const tracked = ['README.md', 'package.json', 'src/App.tsx', ...planted];
+    const toCopy = selectPublicPaths(tracked, manifest);
+    expect(toCopy).toEqual(['README.md', 'package.json', 'src/App.tsx']);
+    // ...and each of the three later gates catches one that reached the output anyway.
+    expect(findLeakedPaths(planted, manifest)).toEqual(planted);
+    expect(findByBasename(planted, AGENT_DOC_NAMES)).toEqual(planted);
+    expect(DENYLIST_SPOTCHECK).toContain('AGENTS.md');
+  });
+
+  it('no file the export would copy has a denied basename at any depth', () => {
+    const toCopy = selectPublicPaths(gitTrackedFiles(), loadManifest());
+    expect(findByBasename(toCopy, AGENT_DOC_NAMES)).toEqual([]);
   });
 
   it('none of the explicit denylist-spotcheck names are selected for copy', () => {
@@ -334,6 +380,44 @@ describe('AI-attribution guard — the snapshot carries no commit-trailer author
   }
 });
 
+describe('agent-doc pointer guard — nothing that ships names an AGENTS.md', () => {
+  // The public repository has no AGENTS.md and no CLAUDE.md, so a shipped comment saying "see
+  // AGENTS.md" sends its reader to a path that does not exist there and publishes the shape of
+  // what was withheld. The rule is the same one that keeps `docs/internal/...` out of shipped
+  // prose: state the fact in the shipped file, keep the pointer in the agent doc.
+  it('finds a pointer wherever it appears in a copied file', () => {
+    const hits = findAgentDocPointers([
+      { path: 'src/ui/shell/Shell.tsx', text: '// layout rules: see AGENTS.md\n' },
+      { path: 'docs/ARCHITECTURE.md', text: 'The stack is described in CLAUDE.md.\n' },
+      { path: 'README.md', text: 'A map editor.\n' },
+    ]);
+    expect(hits.map((h) => h.path)).toEqual(['src/ui/shell/Shell.tsx', 'docs/ARCHITECTURE.md']);
+    expect(hits[0]!.name).toBe('AGENTS.md');
+  });
+
+  it('exempts only the two files that hold the names as data', () => {
+    expect([...AGENT_DOC_SCAN_EXEMPT].sort()).toEqual([
+      'scripts/export-public-repo-core.mts',
+      'src/__tests__/legal/repo-hygiene.test.ts',
+    ]);
+    expect(findAgentDocPointers([{ path: AGENT_DOC_SCAN_EXEMPT[0]!, text: 'AGENTS.md' }])).toEqual([]);
+  });
+
+  // internal-repo-only check: needs the manifest to know what would ship.
+  if (!existsSync(MANIFEST_PATH)) {
+    it.skip('internal-repo-only: public-repo-manifest.md not present (public-repo export)', () => {});
+  } else {
+    it('no file the manifest would publish names one today', () => {
+      const files = selectPublicPaths(gitTrackedFiles(), loadManifest())
+        .map((path) => ({ path, bytes: readFileSync(path) as unknown as Uint8Array }))
+        .filter(({ bytes }) => isProbablyText(bytes))
+        .map(({ path, bytes }) => ({ path, text: new TextDecoder().decode(bytes) }));
+      expect(files.length).toBeGreaterThan(100);
+      expect(findAgentDocPointers(files)).toEqual([]);
+    });
+  }
+});
+
 describe('applying a snapshot to the public checkout', () => {
   // internal-repo-only check: the plan consults the manifest.
   if (!existsSync(MANIFEST_PATH)) {
@@ -352,10 +436,12 @@ describe('applying a snapshot to the public checkout', () => {
       const previousTree = ['README.md', ...theirs]; // the whole repo, as a tree always is
       const { deletions, foreign, orphaned } = plan(['README.md'], ['README.md', ...theirs], previousTree);
       expect(deletions).toEqual([]);
-      // A maintainer-added workflow matches an internal glob (foreign); a funding file and a code
-      // of conduct match nothing at all (orphaned). Both readings leave the file in place.
-      expect(foreign).toContain('.github/workflows/codeql.yml');
-      expect(orphaned).toEqual(['.github/FUNDING.yml', 'CODE_OF_CONDUCT.md']);
+      // The manifest names its two internal workflows individually (the issue-desk one is
+      // public), so a maintainer-added workflow matches nothing at all and reads as orphaned,
+      // like the funding file and the code of conduct. Either reading leaves the file in place;
+      // orphaned additionally reports it as a decision for the maintainer.
+      expect(orphaned).toEqual(['.github/FUNDING.yml', '.github/workflows/codeql.yml', 'CODE_OF_CONDUCT.md'].sort());
+      expect(foreign).not.toContain('.github/workflows/codeql.yml');
     });
 
     it('retires an issue template we published, now that templates are ours', () => {
@@ -439,9 +525,9 @@ describe('generated public .gitignore', () => {
       for (const name of names) {
         expect(gi, `${name} must not appear in the public .gitignore`).not.toContain(name);
       }
-      // The three guards that actually keep internal files out (allowlist copy, by-name
-      // denylist, the workflow's re-assertion) do not need a fourth that leaks structure.
-      expect(gi).not.toMatch(/internal|CLAUDE|superpowers|claude/i);
+      // The guards that actually keep internal files out (allowlist copy, by-name denylist,
+      // basename walk, the workflow's re-assertion) do not need one more that leaks structure.
+      expect(gi).not.toMatch(/internal|CLAUDE|AGENTS|superpowers|claude/i);
     });
   }
 });

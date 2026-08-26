@@ -39,10 +39,10 @@ beforeEach(() => useEditorStore.getState().setEditMode({ mode: null }));
 
 describe('select-all enters selection', () => {
   /**
-   * Ctrl+A with a brush or macro armed used to be a silent no-op: the command SET the selection
-   * and the mode rule (`selection-view-sync`) dropped it in the same tick, because the armed tool
-   * cannot hold one. The command now puts the tool away first — the same "leave the brush, keep
-   * the surface" move a selection gesture makes — so the set survives.
+   * Ctrl+A with a brush or macro armed is a silent no-op unless the command puts the tool away
+   * first: an armed tool cannot hold a selection, so the mode rule (`selection-view-sync`) drops
+   * the set in the same tick it is made. Putting the tool away is the same "leave the brush, keep
+   * the surface" move a selection gesture makes, and it is what lets the set survive.
    */
   it('puts an armed brush away so the selection it makes can stand', () => {
     const state = makeState(12, 12);

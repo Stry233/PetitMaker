@@ -68,7 +68,7 @@ describe('reconcileCuts — terrain', () => {
 
 function addRoad(state: any, x: number, y: number): PlacedObject {
   const road: PlacedObject = {
-    id: `road-${x}-${y}`, catalogId: 'road-dirt',
+    id: `road-${x}-${y}`, catalogId: 'path-overgrown-dirt',
     position: { x, y }, rotation: 0, elevation: 0,
   };
   state.objects.set(road.id, road);
@@ -155,5 +155,63 @@ describe('reconcileCuts — Γ-patches', () => {
 
     expect(state.cells[6]![6]!.terrain).not.toBeNull();
     expect(state.cells[6]![6]!.terrain!.patchOnly).toBe(true);
+  });
+
+  it('drops a fillet whose wrapping walls are stacked past it — the raise restores the notch (#17)', () => {
+    // A fillet sits at the one tier its support allows, so a wall raised past it can never be
+    // followed: left standing it reads as a stray wedge at the foot of the taller notch. An outer
+    // cut clears on a raise, and the gamma follows the same rule.
+    const state = makeState(10, 10);
+    setTerrain(state, 5, 5, TerrainType.Mountain, 2);
+    setTerrain(state, 6, 5, TerrainType.Mountain, 2);
+    setTerrain(state, 5, 6, TerrainType.Mountain, 2);
+    const patch = createDefaultTerrainCell(TerrainType.Mountain, 1); // from-empty fillet at tier 1
+    patch.patchOnly = true;
+    patch.patchBase = 0;
+    patch.corners = ['fan', 'empty', 'empty', 'empty'];
+    state.cells[6]![6]!.terrain = patch;
+
+    reconcileCuts([{ x: 6, y: 5 }], state, exec(state));
+    expect(state.cells[6]![6]!.terrain, 'the outgrown from-empty fillet clears to open ground').toBeNull();
+  });
+
+  it('an outgrown fillet on a real base drops to its base block, never below', () => {
+    const state = makeState(10, 10);
+    for (const [x, y] of [[5, 5], [6, 5], [5, 6]]) setTerrain(state, x!, y!, TerrainType.Mountain, 3);
+    setTerrain(state, 6, 6, TerrainType.Mountain, 1); // the notch floor
+    const t = state.cells[6]![6]!.terrain!;
+    t.patchOnly = true;
+    t.patchBase = 1;
+    t.elevation = 2; // fillet one tier above its base, wrapped by the (now taller) walls
+    t.corners = ['fan', 'empty', 'empty', 'empty'];
+
+    reconcileCuts([{ x: 6, y: 5 }], state, exec(state));
+    const after = state.cells[6]![6]!.terrain;
+    expect(after, 'the base block survives').not.toBeNull();
+    expect(after!.patchOnly ?? false).toBe(false);
+    expect(after!.elevation).toBe(1);
+  });
+
+  it('clears only the outgrown corner when another fillet still rounds its own rim', () => {
+    // Two fillets in one cell (TL and TR, south side open so the cell is no pit): the TL wall
+    // rises, the TR wall does not. The TR fillet keeps rounding a rim and survives; only the
+    // outgrown TL corner clears.
+    const state = makeState(10, 10);
+    setTerrain(state, 5, 5, TerrainType.Mountain, 2); // NW
+    setTerrain(state, 5, 6, TerrainType.Mountain, 2); // W
+    setTerrain(state, 6, 5, TerrainType.Mountain, 2); // N (shared by both wraps; reaches tier 1 too)
+    setTerrain(state, 7, 5, TerrainType.Mountain, 1); // NE
+    setTerrain(state, 7, 6, TerrainType.Mountain, 1); // E
+    const patch = createDefaultTerrainCell(TerrainType.Mountain, 1);
+    patch.patchOnly = true;
+    patch.patchBase = 0;
+    patch.corners = ['fan', 'fan', 'empty', 'empty'];
+    state.cells[6]![6]!.terrain = patch;
+
+    reconcileCuts([{ x: 6, y: 5 }], state, exec(state));
+    const after = state.cells[6]![6]!.terrain;
+    expect(after).not.toBeNull();
+    expect(after!.patchOnly).toBe(true);
+    expect(after!.corners).toEqual(['empty', 'fan', 'empty', 'empty']);
   });
 });

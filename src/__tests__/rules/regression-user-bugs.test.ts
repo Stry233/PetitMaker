@@ -1,7 +1,6 @@
 /**
- * Regression tests for user-reported bugs (2026-05-24).
+ * Regression tests for user-reported bugs (2026-05-24), each reproducing the scenario as described.
  *
- * These tests reproduce the exact scenarios the user described.
  * All diagrams use top-view at elevation 2 unless noted otherwise.
  * "Two level" = elevation 2 (layer 2).
  */
@@ -200,8 +199,8 @@ describe('User Bug 5: Plaza collision boundary', () => {
   //   x=77 → [76.5, 77.5]  overlaps the plaza                → blocked
   //   x=96 → [95.5, 96.5]  overlaps the plaza                → blocked
   //   x=97 → [96.5, 97.5]  touches the plaza edge, no overlap → buildable
-  // The plaza is an immutable object now; build a state that has it (from the
-  // template's plaza config) so the standard placement rules enforce no-build.
+  // The plaza is an immutable OBJECT, so a state must actually carry it (built from the
+  // template's plaza config) for the standard placement rules to enforce no-build.
   const PLAZA = { x: 76.5, y: 58.5, width: 20, height: 27, elevation: 1 };
   const withPlaza = (w = 100, h = 100) => {
     const state = makeState(w, h);
@@ -421,9 +420,9 @@ describe('Ramp placement — all 4 directions on rectangular mountain', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  // Bug (user-reported): a mountain intruding on the LOW footprint from the trailing (bottom /
-  // down-right) edge was MISSED — the validator swept the -HALF_TILE bleed on ONE axis only, so an
-  // illegal ramp was accepted. The low run + its trailing bleed must all be clear.
+  // A mountain intruding on the LOW footprint from the trailing (bottom / down-right) edge is what
+  // a validator sweeping the -HALF_TILE bleed on ONE axis only misses, accepting an illegal ramp.
+  // The low run and its trailing bleed must all be clear.
   it('rejects ramp when a mountain intrudes on the trailing/bottom edge of the low run (no leak)', () => {
     const state = makeRampState();         // 10x10 elev-1 block [5,14]; south ramp at (8,14) spans y=14..17
     setTerrain(state, 8, 18, TerrainType.Mountain, 1); // the trailing bleed row that must be swept

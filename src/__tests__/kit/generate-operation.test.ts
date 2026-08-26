@@ -7,22 +7,24 @@ import { generateMap, generateCandidate, clearGenerated } from '../../kit/operat
 import { currentKit } from '../../kit/context';
 import { newMap } from '../../kit/operations';
 import { objectPlacementCommand } from '../../tools/objects/object-placer';
-import { generateObjectId } from '../../tools/utils';
+import { generateObjectId } from '../../core/model/object-id';
 import { serialize } from '../../io/json-codec';
 import { stableSerialize } from './_stable-serialize';
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { GenerateConfig, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 
 const config = (seed: number): GenerateConfig => ({
-  algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 4, seed, region: null,
-  relief: 0.8, naturalness: 1, settlement: 0.5, nature: 0.5,
+  algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 4, seed, region: null,
+  richness: 1,
 });
 
-/** A square dense enough that a 'random' run reliably drops both roads/flora AND leaves at least
- *  one cell free for a hand placement, at the settlement/nature densities the tests below use. */
+/** A square over the TOWN — the ground around hexia's plaza, which every island design builds on,
+ *  so a scoped run reliably drops both pavement and planting there AND leaves at least one cell free
+ *  for a hand placement. A region over open outskirts legitimately comes back bare: the island is
+ *  designed whole and the commands are cropped, so a region only receives what the design put in it. */
 function denseRegion(): MacroCoord[] {
   const region: MacroCoord[] = [];
-  for (let y = 30; y < 50; y++) for (let x = 30; x < 50; x++) region.push({ x, y });
+  for (let y = 62; y < 92; y++) for (let x = 56; x < 100; x++) region.push({ x, y });
   return region;
 }
 
@@ -162,8 +164,7 @@ describe('generate operation', () => {
 
     await generateMap(kit, { config: config(2718), region: null, candidate });
 
-    // Equal down to the object ids, which a second generation would have minted fresh: this is the
-    // candidate's own run arriving on the map, not a repeat of it.
+    // The candidate's own run arriving on the map, not a repeat of it.
     expect(withIds(kit.state)).toBe(withIds(candidate!.state));
     expect(kit.executor.getUndoStackSize()).toBe(1);
     expect(kit.executor.getProvenanceSummary().containsProcedural).toBe(true);
@@ -201,9 +202,9 @@ describe('generate operation', () => {
    * clears before it builds and an island clears to the same ground a blank map does. What the
    * candidate was photographed on is not the map underneath, it is the map after that clearing.
    *
-   * And each click is still its own undo step. The shelf used to UNDO its own previous apply before
-   * landing another card, which put the candidate's base map back and let the replay run — at the
-   * cost of the history holding one entry and one redo however many islands had been looked at.
+   * And each click is still its own undo step. Undoing the previous apply before landing another
+   * card is the other way to make the replay run — it puts the candidate's base map back — but it
+   * costs the history: one entry and one redo however many islands have been looked at.
    */
   it('lands a second card over the first island without building it again', async () => {
     const kit = currentKit()!;
@@ -214,17 +215,15 @@ describe('generate operation', () => {
     const landedFirst = mapOnly(kit.state);
     await generateMap(kit, { config: config(2719), region: null, candidate: second });
 
-    // Equal down to the object ids, which a second generation would have minted fresh: the card's
-    // own run arrived, over an island, without being built a second time.
+    // The card's own run arrived, over an island, without being built a second time.
     expect(withIds(kit.state)).toBe(withIds(second!.state));
     // A second island, not the first one left standing.
     expect(mapOnly(kit.state)).not.toBe(landedFirst);
     expect(kit.executor.getUndoStackSize()).toBe(2);
 
-    // AND EVERY STEP WALKS BACK. This is the whole of it: the shelf used to undo its own previous
-    // apply to make the replay possible, so three cards left one entry and one redo.
-    // Compared by CONTENT rather than by `state.objects`' iteration order, which is the order the
-    // undo happened to reinstate them in and is not a fact about the map.
+    // AND EVERY STEP WALKS BACK, compared by CONTENT rather than by `state.objects`' iteration
+    // order, which is the order the undo happened to reinstate them in and is not a fact about the
+    // map.
     kit.executor.undo();
     expect(mapOnly(kit.state)).toBe(landedFirst);
   }, 120_000);
@@ -248,7 +247,7 @@ describe('generate operation', () => {
   it('builds for real when a scoped candidate\'s surroundings moved, and still lands the picture', async () => {
     const kit = currentKit()!;
     const region = denseRegion();
-    const rich: GenerateConfig = { ...config(3), settlement: 0.8, nature: 0.8 };
+    const rich: GenerateConfig = config(3);
     const candidate = await generateCandidate(kit, { config: rich, region });
     expect(candidate!.state.objects.size, 'the scoped run placed something').toBeGreaterThan(1);
     paintByHand(kit.state, { x: 60, y: 60 });   // outside the region, so the run will not take it
@@ -263,7 +262,7 @@ describe('generate operation', () => {
   it('spares a hand-placed object inside the region while clearing the generated ones', async () => {
     const kit = currentKit()!;
     const region = denseRegion();
-    const richConfig: GenerateConfig = { ...config(3), settlement: 0.8, nature: 0.8 };
+    const richConfig: GenerateConfig = config(3);
     await generateMap(kit, { config: richConfig, region });
     expect(kit.state.objects.size, 'the region run placed something').toBeGreaterThan(0);
 

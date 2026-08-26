@@ -21,8 +21,8 @@
  * which is the surface it stands on. The prior that decides this is a WIRE CONSTANT, frozen here
  * rather than read from the live rules — see `lockedCorners`.
  *
- * Costs are asymmetric on purpose: deriving is work the reader does once on import, and it buys
- * bytes in an image whose size is fixed.
+ * The costs are asymmetric: deriving is work the reader does once on import, and it buys bytes in
+ * an image whose size is fixed.
  */
 import {
   RangeEncoder, RangeDecoder, BitModel, TreeModel, UintModel,
@@ -81,7 +81,7 @@ class Models {
  * WIRE CONSTANT — the corner prior. A corner is pinned square when an EDGE-sharing neighbour holds
  * same-type mass reaching this cell's tier; a diagonal touches at a point and never pins.
  *
- * This is a FROZEN copy of the geometry, deliberately not a call into the live edge-cut rules.
+ * This is a FROZEN copy of the geometry, not a call into the live edge-cut rules.
  * A predictor does not have to be right, only STABLE: every code ever written was coded against
  * this partition of the corner slots, so a reader has to reproduce it exactly, forever. Wiring it
  * to `trim-lock.ts` would mean that editing a game rule silently invalidates every share code in

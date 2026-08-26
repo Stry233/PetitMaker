@@ -6,8 +6,6 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { createGrid, createPlazaObject } from '../../../core/model/grid-model';
 import { generateTerrain, clearAllObjects, clearAllTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { objectRect, getPlacedObjectSize } from '../../../state/object-geometry';
 import { PLAZA_ID } from '../../../core/model/constants';
 import { CellZone, TerrainType, type GridState, type MapTemplate, type EditorEvents, type GenerateConfig, type Command } from '../../../core/model/types';
@@ -28,16 +26,15 @@ function realState(file: string): GridState {
 function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
   const state = realState(file);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  // A mid-slider config (mode varied): relief/water/settlement/nature pinned at 0.5, maxElev 3.
+  // A mid-richness config, mode varied, maxElev 3.
   const config: GenerateConfig = {
-    algorithm: 'random', mode, corridorWidth: 1, maxElevation: 3, seed, region: null,
-    relief: 0.5, waterAmount: 0.5, settlement: 0.5, nature: 0.5,
+    algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 3, seed, region: null,
+    richness: 0.5,
   };
   const start = exec.getUndoStackSize();
   clearAllObjects(state, (c: Command) => exec.execute(c));
   clearAllTerrain(state, (c: Command) => exec.execute(c));
-  generateTerrain(config, state, (c: Command) => exec.execute(c));
-  populate(toGenConfig(config), state, (c: Command) => exec.execute(c), exec.getRegistry());
+  generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
   const postViol = exec.commitStrokeGroup(start).length;
   let mtn = 0, water = 0;
   for (let y = 0; y < state.template.height; y++) for (let x = 0; x < state.template.width; x++) {

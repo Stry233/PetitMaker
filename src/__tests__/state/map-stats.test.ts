@@ -19,7 +19,7 @@ function tree(id: string, x: number, y: number): PlacedObject {
 }
 
 function road(id: string, x: number, y: number): PlacedObject {
-  return { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 };
+  return { id, catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0 };
 }
 
 function add(state: GridState, ...objs: PlacedObject[]): void {
@@ -93,8 +93,8 @@ describe('map stats', () => {
 describe('chunksOf', () => {
   it('keys BOTH chunks a half-anchored footprint straddles, not just the one at its floored origin', () => {
     // A 1-wide deck anchored at x = CHUNK_SIZE - 0.5 spans [15.5, 16.5): half in chunk 0
-    // (cols 0-15), half in chunk 1 (cols 16-31). Iterating `pos + integer offset` (the old body)
-    // only ever visits Math.floor(pos) + 0, missing the trailing half cell's chunk entirely.
+    // (cols 0-15), half in chunk 1 (cols 16-31). Iterating `pos + integer offset` only ever visits
+    // Math.floor(pos) + 0, missing the trailing half cell's chunk entirely.
     const deck: PlacedObject = {
       id: 'd', catalogId: 'nope', position: { x: CHUNK_SIZE - 0.5, y: 0 }, width: 1, height: 1,
       rotation: 0, elevation: 0,

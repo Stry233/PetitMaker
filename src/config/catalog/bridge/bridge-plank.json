@@ -16,6 +16,7 @@
     "木桥"
   ],
   "icon": "bridge-plank",
+  "iconColor": "#a4795e",
   "width": 1,
   "height": 1,
   "loadValue": 140,

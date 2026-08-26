@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { font, radii, springs, inkTint, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { Spinner } from '../../../primitives/Spinner';
@@ -112,7 +113,7 @@ export function Shot3dStrip({ open }: { open: boolean }) {
 
   const delBtn: CSSProperties = {
     position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: '50%', border: 'none',
-    background: inkTint(0.66), color: skin.onDark, cursor: cursors.clickable, fontSize: 12, fontWeight: 900,
+    background: inkTint(0.66), color: skin.onDark, cursor: cursors.clickable, ...roleFont('small'),
     lineHeight: '18px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
     WebkitTapHighlightColor: 'transparent',
   };

@@ -1,0 +1,28 @@
+{
+  "id": "path-patterned-tile",
+  "category": "road",
+  "icon": "path-patterned-tile",
+  "name": {
+    "en": "Patterned Tile Path",
+    "zh": "花砖路",
+    "ja": "模様タイルの道",
+    "ru": "Узорчатая плиточная дорожка",
+    "th": "ทางกระเบื้องลวดลาย",
+    "id": "Jalan Ubin Bermotif",
+    "fr": "Chemin de carreaux à motifs"
+  },
+  "color": "#85706f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -30,7 +30,7 @@ const CELLS_PER_HOP = 2;
 /** Widest fall the run picks, in cells across the lip. */
 const RUN_MAX = 3;
 /** Lips tried per hop. Each one that passes the geometry costs a whole-map validation, so the
- *  search is deliberately shallow: a hop that needs the seventh-nearest lip is not a stream the
+ *  search is shallow: a hop that needs the seventh-nearest lip is not a stream the
  *  user aimed at. */
 const DROP_TRIES = 6;
 /** How far a channel may look for a cell it can start from when the course's foot itself cannot

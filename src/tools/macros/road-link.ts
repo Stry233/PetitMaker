@@ -16,18 +16,18 @@ import { clamp } from '../../core/model/math';
 import { categoryOf, getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
 import { getObjectIndex, objectAt } from '../../state/object-index';
 import { objectRect } from '../../state/object-geometry';
-import { bySizeDesc } from '../generation/geometry';
-import { approachCells } from '../generation/placement/network';
-import { hasGate, openAt, sweepClearanceCells, tryPlace, type PlaceCtx } from '../generation/placement/object';
-import { crossingEnds } from '../generation/placement/themes';
-import { gateTerminalCells, planRoute, type RoutePlan, type RouteWorld } from '../generation/placement/route';
-import { routeOffers } from '../generation/placement/route-offers';
-import type { Portal } from '../generation/placement/portals';
+import { bySizeDesc } from '../../core/model/geometry';
+import { approachCells } from '../placement/network';
+import { hasGate, openAt, sweepClearanceCells, tryPlace, type PlaceCtx } from '../placement/object';
+import { crossingEnds } from '../placement/themes';
+import { gateTerminalCells, planRoute, type RoutePlan, type RouteWorld } from '../placement/route';
+import { routeOffers } from '../placement/route-offers';
+import type { Portal } from '../placement/portals';
 import { objectsChanged } from './measure';
 import { beautifyRoads, ensureGateTerminals, gateAlreadyPaved, hubNode, joinRoute, paveCells, widenRoads } from './road-paving';
 import { routeWorld } from './route-world';
 import type { MacroContext } from './context';
-import type { MacroReport } from './index';
+import type { MacroReport } from './run';
 
 export interface RoadLinkInput {
   seed: number;

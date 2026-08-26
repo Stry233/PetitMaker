@@ -43,7 +43,7 @@ import { getRoadMaterials } from '../../../state/catalog';
 import { localizedName } from '../../../i18n/context';
 import { makeState } from '../../rules/_helpers';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 
 /** Mounted at REST inside the surface: nothing armed, so a press on any cell arms it. A cell is a
  *  toggle, and the free brush is the store's own default, so a bar mounted with it already armed
@@ -187,7 +187,7 @@ describe('the row of tool glyphs reads as one set', () => {
 });
 
 describe('the road surfaces', () => {
-  it('are the catalog\'s own, colour and name and all, and only 路面 offers them', () => {
+  it('are the catalog\'s own, name and picture and all, and only 路面 offers them', () => {
     const items = getRoadMaterials();
     expect(items.length).toBeGreaterThan(1);
 
@@ -196,11 +196,19 @@ describe('the road surfaces', () => {
     const swatches = within(group).getAllByRole('button');
     expect(swatches.map((b) => b.getAttribute('aria-label')))
       .toEqual(items.map((i) => localizedName(i.name, 'en')));
-    // The colour a road item carries INSTEAD of a sprite icon, which is what the swatch shows.
     // A style attribute reads back as `rgb(...)`, so the catalog's hex is put in those terms.
     const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
-    expect(swatches.map((b) => (b.lastElementChild as HTMLElement).style.background))
-      .toEqual(items.map((i) => rgb(i.color!)));
+    // The catalog's own icon is what the swatch shows; only the plain dirt road carries none,
+    // and it falls back to the flat colour a sprite-less item is drawn with everywhere else.
+    items.forEach((item, i) => {
+      const swatch = swatches[i]!;
+      if (item.icon) {
+        expect(swatch.querySelector('img')?.getAttribute('src')).toContain(item.icon);
+      } else {
+        expect(swatch.querySelector('img')).toBeNull();
+        expect((swatch.lastElementChild as HTMLElement).style.background).toBe(rgb(item.color!));
+      }
+    });
 
     cleanup();
     mount('mountain');
@@ -411,10 +419,10 @@ describe('the shortcut badges', () => {
 /**
  * THE ROW IS ONE HEIGHT, whatever any cell is doing.
  *
- * Choosing the free brush grows its plate into a pill around the auto-trim setting, and that used to
- * be the wrapper's own height pulled back by a bottom margin alone: the half above went unaccounted
- * and the whole tool row lifted three px. Everything the plate does past the cell box is an absolute
- * span now, so the box the row is laid out from cannot move.
+ * Choosing the free brush grows its plate into a pill around the auto-trim setting. Taking that
+ * growth as the wrapper's own height pulled back by a bottom margin alone leaves the half above
+ * unaccounted and lifts the whole tool row three px. Everything the plate does past the cell box is
+ * an absolute span, so the box the row is laid out from cannot move.
  */
 describe('a cell that grows changes its width and nothing else', () => {
   const box = (label: string) => screen.getByLabelText(label).parentElement as HTMLElement;
@@ -498,7 +506,7 @@ describe('smart build', () => {
     const { state, exec } = installMap();
     // Something for the router to connect: the seed advancing at all rests on THIS press laying a
     // network — a press that changes nothing reuses its seed instead (see the empty-press case
-    // below), so an empty fixture would no longer tell the two apart.
+    // below), so an empty fixture could not tell the two apart.
     const stall = { id: generateObjectId(), catalogId: 'building-stall', position: { x: 10, y: 10 }, rotation: 0 as const, elevation: 0 };
     expect(exec.execute(objectPlacementCommand(stall)).success).toBe(true);
     const depth = exec.getUndoStackSize();
@@ -577,10 +585,10 @@ describe('smart build', () => {
 
   /**
    * THE MAP'S OWN SURFACE, WHEN NOBODY HAS PICKED ONE. `readRoadStyle` works out what the island is
-   * already paved with so a new lane matches the street it grows from, and the bar used to override
+   * already paved with so a new lane matches the street it grows from, and the bar must not override
    * it on every press: `tileMaterial` is seeded with the catalog's first road because the tile brush
-   * needs something armed, and the press passed that seed as if it were a decision. The material
-   * reached the map only from the agent, which is the one caller that never sets one.
+   * needs something armed, so a press that passes that seed on as a decision overrides the reading
+   * for every caller but the agent, the one that never names a material.
    */
   it('names no surface until a hand picks one, so the run reads the map', () => {
     installMap();

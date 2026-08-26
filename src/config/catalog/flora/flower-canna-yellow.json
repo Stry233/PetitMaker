@@ -11,6 +11,7 @@
     "fr": "Canna jaune"
   },
   "icon": "flower-canna-yellow",
+  "iconColor": "#e9ad61",
   "width": 1,
   "height": 1,
   "loadValue": 10,

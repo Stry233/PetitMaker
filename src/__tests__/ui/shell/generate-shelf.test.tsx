@@ -24,7 +24,28 @@ vi.mock('../../../kit/operations', async (importOriginal) => {
   };
 });
 
+/**
+ * A picture kind's plan is rasterized on a real canvas, which jsdom does not have — so every card of
+ * those kinds would be refused before anything this file is about could happen. The plan itself is
+ * proved against the engine (`__tests__/tools/stencil-*`); what a shelf test needs is that there IS
+ * one.
+ */
+vi.mock('../../../ui/shell/bars/stencil-plan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../ui/shell/bars/stencil-plan')>();
+  return {
+    ...actual,
+    buildStencilPlan: vi.fn(async () => ({
+      read: 'shape' as const,
+      fill: { kind: 'terrain' as const, terrain: 1 },
+      stencil: { width: 1, height: 1, coverage: new Uint8Array([255]), color: new Uint32Array([0]) },
+      origin: { x: 0, y: 0 },
+    })),
+  };
+});
+
 import { setActiveView } from '../../../canvas/active-view';
+import { setMapRenderer } from '../../../canvas/map2d/renderer-registry';
+import type { MapRenderer } from '../../../canvas/map2d/map-renderer';
 import type { ActiveView } from '../../../canvas/view-projection';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { ELEVATION_MAX } from '../../../core/model/constants';
@@ -32,7 +53,8 @@ import {
   CommandType, ItemCategory, TerrainType,
   type GenerateConfig, type GridState, type MacroCoord,
 } from '../../../core/model/types';
-import { I18nProvider } from '../../../i18n/context';
+import { I18nProvider, localizedName } from '../../../i18n/context';
+import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import type { KitContext } from '../../../kit/context';
 import { serialize } from '../../../io/json-codec';
 // The component reads the barrel, which is mocked above; these are the real implementations.
@@ -47,9 +69,11 @@ import { ScaleProvider } from '../../../ui/design/scale';
 import { GenerateShelf } from '../../../ui/shell/bars/GenerateShelf';
 import { MazeEndpoints } from '../../../ui/shell/bars/MazeEndpoints';
 import {
-  BODY_H, CANDIDATES, CARD_H, CARD_MAX_H, GAP, PAD, SEED_DIGITS, SLIDERS, STRIP, TABS,
-  batchSeeds, maxElevationFor, shelfConfig,
+  BODY_H, CANDIDATES, CARD_H, CARD_MAX_H, GAP, PAD, SEED_DIGITS, SLIDERS, SLIDERS_TIGHT, STRIP, TABS,
+  batchSeeds, maxElevationFor, shelfConfig, slidersFor, stencilNote, textNeedsWidth,
 } from '../../../ui/shell/bars/generate-shelf';
+import { IMAGE_POOL, sampleName } from '../../../ui/shell/bars/stencil-samples';
+import { APP_NAME, brandName } from '../../../version';
 import { ROW, SCROLL, SEARCH, SHELF_BOX, tabRowGap } from '../../../ui/shell/bars/object-shelf';
 import { SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../../ui/shell/units';
 import { makeState, placeCmd } from '../../rules/_helpers';
@@ -104,13 +128,13 @@ function installKit(): KitContext {
 
 /** One island recipe with the seed left open, so a test can vary a single term of it. */
 const ISLAND = {
-  kind: 'earth', naturalness: 100, maxElevation: 4, corridorWidth: 1, gates: null,
+  kind: 'island', richness: 100, maxElevation: 4, corridorWidth: 1, gates: null,
 } as const;
 
 const island = (seed: number): GenerateConfig => shelfConfig({ ...ISLAND, seed });
 
 const maze = (seed: number, gates: { entrance: MacroCoord | null; exit: MacroCoord | null } | null): GenerateConfig =>
-  shelfConfig({ kind: 'maze', seed, naturalness: 100, maxElevation: 3, corridorWidth: 1, gates });
+  shelfConfig({ kind: 'maze', seed, richness: 100, maxElevation: 3, corridorWidth: 1, gates });
 
 function mount() {
   useEditorStore.getState().setEditMode({ mode: 'generate' });
@@ -159,6 +183,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setActiveView(null);
+  setMapRenderer(null);
   useEditorStore.setState({ gridState: null, commandExecutor: null, region: [], selectingRegion: false });
   useEditorStore.getState().setEditMode({ mode: null });
 });
@@ -265,10 +290,10 @@ describe('the maze ends', () => {
   }, 30_000);
 
   /**
-   * THE ENDS ARE OPT-IN: a landed default maze puts no marks up and offers no way switch — the
-   * generator chose the pair, and a strip that carried the way's control anyway would answer for
-   * ends nobody chose. Flipping "in and out" adopts the LANDED pair, so the marks appear where the
-   * maze's ends already are, and the way's switch arrives with them.
+   * THE ENDS ARE OPT-IN: a landed default maze puts no marks up, and the way's switch stands beside
+   * the ends' own refusing, since it answers for a pair nobody has chosen. Flipping "in and out"
+   * adopts the LANDED pair, so the marks appear where the maze's ends already are and the way
+   * becomes something that can be asked for.
    */
   it('keeps the map clear of marks by default, and adopts the landed pair when the ends are chosen', async () => {
     installKit();
@@ -283,15 +308,44 @@ describe('the maze ends', () => {
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
     await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
     expect(screen.queryByTestId('shell-gate-entrance'), 'no marks uninvited').toBeNull();
-    expect(screen.queryByTestId('shell-gen-route'), 'no way switch uninvited').toBeNull();
+    expect(
+      screen.getByRole('switch', { name: 'Show the way' }).getAttribute('aria-disabled'),
+      'the way answers for a pair nobody chose',
+    ).toBe('true');
 
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
     await waitFor(() => expect(screen.queryByTestId('shell-gate-entrance')).not.toBeNull());
     const kinds = ['shell-gate-entrance', 'shell-gate-exit']
       .map((id) => screen.getByTestId(id).getAttribute('data-kind'));
     for (const kind of kinds) expect(['hole', 'target']).toContain(kind);
-    expect(within(screen.getByTestId('shell-gen-strip')).getByTestId('shell-gen-route')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('shell-gen-strip')).getByRole('switch', { name: 'Show the way' })
+        .getAttribute('aria-disabled'),
+      'and the way can be asked for once they are',
+    ).toBeNull();
   }, 60_000);
+
+  /**
+   * A TOGGLE MAY NOT MOVE THE CONTROLS BESIDE IT, ITS OWN INCLUDED. A way's switch that arrives with
+   * the ends pushes the ends' switch along the strip, and the control the hand has just pressed is
+   * somewhere else by the time the hand leaves it.
+   */
+  it('leaves the strip the same shape whichever way the ends switch is thrown', async () => {
+    installKit();
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
+    await settle();
+
+    const shape = (): string[] => [...screen.getByTestId('shell-gen-strip').children]
+      .map((c) => c.getAttribute('data-testid') ?? c.querySelector('[role="slider"]')?.getAttribute('aria-label') ?? 'spacer');
+    const before = shape();
+    expect(before).toContain('shell-gen-route');
+
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
+    expect(shape()).toEqual(before);
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
+    expect(shape()).toEqual(before);
+  }, 30_000);
 
   /**
    * THE DRAG IS THE WHOLE INTERACTION, so it is driven here rather than described: a press on the
@@ -356,8 +410,8 @@ describe('the maze ends', () => {
   /**
    * THE ENDS ARE SETTINGS, NOT PROPERTIES OF A LANDED MAZE: the moment they are asked for the
    * marks stand, draggable, with no card clicked — they are inputs to every run the tab can make.
-   * The old model showed them only after a landing, which made the inputs unreachable until the
-   * thing they were inputs TO had already run without them.
+   * Showing them only after a landing makes the inputs unreachable until the thing they are inputs
+   * TO has already run without them.
    */
   it('offers both marks the moment the ends are chosen, before any run', async () => {
     installKit();
@@ -419,6 +473,35 @@ describe('the maze ends', () => {
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Show the way' })); });
     expect(cleared, 'the drape came down').toBeGreaterThan(before);
   });
+
+  /**
+   * THE WALK BELONGS TO THE MAP, NOT TO THE CARD. Choosing the ends re-photographs the batch, and
+   * the shelf lets go of the card it landed when it does — but the maze standing on the map is
+   * untouched by a setting moving, so its walk is still the answer. Dropped with the card, the way's
+   * first press did nothing at all and the drape only appeared once another candidate was clicked.
+   */
+  it('shows the way of the maze already standing, on the first press', async () => {
+    const kit = installKit();
+    const shown: MacroCoord[][] = [];
+    setActiveView({
+      projection: { screenToMacro: () => ({ x: 0, y: 0 }), cellToScreen: (x: number, y: number) => ({ x, y, scale: 1 }) },
+      overlay: { flashCommit: () => {}, showRoute: (cells: MacroCoord[]) => { shown.push(cells); }, clearRoute: () => {} },
+    } as unknown as ActiveView);
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
+    await settle();
+    // Landed with the ends left to the generator, which is the state a visitor arrives in.
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
+    await waitFor(() => expect(kit.executor.getUndoStackSize()).toBeGreaterThan(0));
+
+    // Then the ends, which is a recipe setting and drops the batch's pictures.
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
+    await settle();
+
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Show the way' })); });
+    expect(shown.length, 'the way of the maze that is standing').toBeGreaterThan(0);
+    expect(shown[shown.length - 1]!.length).toBeGreaterThan(1);
+  }, 60_000);
 });
 
 describe('a run', () => {
@@ -463,6 +546,29 @@ describe('a run', () => {
 });
 
 describe('the three bands', () => {
+  /**
+   * A CHANGE OF KIND SWAPS THE BLOCK, AND THE SWAP IS ANNOUNCED. Other recipes and other settings
+   * arrive together, so the block under the names is made again and comes in on the object shelf's
+   * own category motion rather than changing under the eye with nothing said. The names themselves
+   * stand outside it and do not move.
+   */
+  it('makes the block under the names again when the kind changes', async () => {
+    installKit();
+    mount();
+    await settle();
+    const before = screen.getByTestId('shell-gen-body');
+    const names = screen.getByRole('tab', { name: 'Maze' }).parentElement;
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    await settle();
+
+    const after = screen.getByTestId('shell-gen-body');
+    expect(after, 'the block arrives rather than being edited in place').not.toBe(before);
+    expect(after.style.height, 'at the one declared height').toBe(`${BODY_H}px`);
+    expect(within(after).getByTestId('shell-gen-strip')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Maze' }).parentElement, 'the names stay put').toBe(names);
+  }, 30_000);
+
   it('hangs the names where the object shelf hangs its own, so switching modes does not move them', () => {
     expect(PAD.side).toBe(SHELF_TABS.left);
     expect(SHELF_BOX.left).toBe(SHELF_TABS.left);
@@ -541,8 +647,8 @@ describe('the row of names', () => {
     mount();
     await settle();
     expect(screen.getAllByRole('tab').map((el) => el.textContent))
-      .toEqual(['Maze', 'Letter', 'Picture', 'Land', 'Isles', 'Lakes']);
-    expect(TABS.map((tab) => tab.id)).toEqual(['maze', 'text', 'image', 'earth', 'water', 'mixed']);
+      .toEqual(['Maze', 'Letter', 'Picture', 'Island']);
+    expect(TABS.map((tab) => tab.id)).toEqual(['maze', 'text', 'image', 'island']);
     // Nothing stands beside them: no recipe field, and no actions.
     expect(screen.queryByLabelText('Seed')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
@@ -609,6 +715,35 @@ describe('the scope chip', () => {
     expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(CANDIDATES);
     // And the batch is built for the region that was painted, not for the whole island.
     expect(vi.mocked(barrelCandidate).mock.calls[0]![1].region).toHaveLength(49);
+  }, 60_000);
+
+  /**
+   * A CARD WITH NO PICTURE HAS NOTHING TO LAND.
+   *
+   * Painting a region too small for the picture kind blanks the cards and says why on them — but the
+   * PLAN behind each card survived, so a click on the blank card still built the picture the last
+   * region was fitted for. The card stands (nothing on this shelf vanishes), and it refuses.
+   */
+  it('refuses a card whose region no longer fits, rather than landing the last one', async () => {
+    installKit();
+    // Big enough for a picture to start with, so the cards are real.
+    useEditorStore.setState({ region: rect(2, 2, 30, 30) });
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    await settle();
+    const cards = (): HTMLElement[] => screen.getAllByTestId(/^shell-candidate-/);
+    expect(cards().length).toBeGreaterThan(0);
+
+    // Now paint one the kind cannot work in.
+    act(() => { useEditorStore.setState({ region: rect(2, 2, 6, 6) }); });
+    await settle();
+    vi.mocked(barrelGenerateMap).mockClear();
+
+    const card = cards()[0]!;
+    expect(card.getAttribute('aria-disabled'), 'it stands, and it refuses').toBe('true');
+    await act(async () => { fireEvent.click(card); });
+    await settle();
+    expect(vi.mocked(barrelGenerateMap)).not.toHaveBeenCalled();
   }, 60_000);
 });
 
@@ -824,17 +959,17 @@ describe('the card you type', () => {
 });
 
 /**
- * What used to be the Keep button's job, done by the click itself. The two halves of it are
- * separate: another candidate REPLACES the one standing, and anything else lets go of it.
+ * The click itself does what a Keep button would, and the two halves of it are separate: another
+ * candidate REPLACES the one standing, and anything else lets go of it.
  */
 describe('a candidate that has been clicked', () => {
   /**
    * EACH CLICK IS ITS OWN UNDO STEP, and three of them leave three.
    *
-   * This bar used to UNDO its own previous apply before landing the next, so however many islands
-   * had been looked at the history held one entry and one redo, and the fourth card could not be
-   * taken back to the third. The undo was there to make a candidate's fingerprint match again;
-   * clearing the scope before the replay does that instead, which is what a generation does anyway.
+   * Undoing the bar's own previous apply before landing the next holds the history at one entry and
+   * one redo however many islands have been looked at, and the fourth card cannot be taken back to
+   * the third. What such an undo is for is making a candidate's fingerprint match again; clearing
+   * the scope before the replay does that instead, which is what a generation does anyway.
    */
   it('leaves one undo step per card clicked, and every one of them walks back', async () => {
     const kit = installKit();
@@ -859,46 +994,53 @@ describe('a candidate that has been clicked', () => {
     }
     act(() => { kit.executor.undo(); });
     expect(kit.executor.getUndoStackSize()).toBe(depth);
-    // Every one of them is still ahead, which is the "only ever one redo" this replaces.
+    // Every one of them is still ahead, rather than a single redo for the whole session.
     expect(kit.executor.canRedo()).toBe(true);
   }, 120_000);
 });
 
-describe('the kind of island', () => {
-  it('is a real setting: the same recipe builds a different map under a different kind', async () => {
-    const dry = makeKit();
-    await generateMap(dry, { config: shelfConfig({ ...ISLAND, kind: 'earth', seed: 2024 }), region: null });
-    const wet = makeKit();
-    await generateMap(wet, { config: shelfConfig({ ...ISLAND, kind: 'water', seed: 2024 }), region: null });
+/**
+ * ONE ISLAND KIND. Land, Isles and Lakes were three biases of one generator, and the split made the
+ * thing being tuned three things where the references describe one style. What is left in the
+ * config is the FIELD, which the engine still reads and every saved recipe still carries.
+ */
+describe('the island kind', () => {
+  it('records the one bias the interface still means, whatever the kind', () => {
+    for (const kind of TABS.map((tab) => tab.id)) {
+      expect({ kind, mode: shelfConfig({ ...ISLAND, kind, seed: 1 }).mode }).toEqual({ kind, mode: 'mixed' });
+    }
+    // WHY `mixed` is the one to stop offering the choice at, rather than either end of it, is
+    // argued where the number is (`generate-shelf.ts:modeFor`): it is the bias that neither
+    // suppresses the water the richness knob asks for nor amplifies it.
+  });
 
-    expect(mapValue(wet.state)).not.toBe(mapValue(dry.state));
-    // The kinds are named after the difference: dry land gets no water at all, and water mode
-    // spends the map on it.
-    const water = (state: GridState): number =>
-      state.cells.flat().filter((c) => c.terrain?.type === TerrainType.Water).length;
-    expect(water(dry.state)).toBe(0);
-    expect(water(wet.state)).toBeGreaterThan(0);
-    // Water mode holds the land at ground level, which is where its own ceiling comes from.
-    const tallest = (state: GridState): number => Math.max(
-      0, ...state.cells.flat().map((c) => c.terrain?.elevation ?? 0),
-    );
-    expect(tallest(wet.state)).toBeLessThanOrEqual(maxElevationFor('water'));
+  /** AN OLD RECIPE STILL REPLAYS. A saved map names the bias it was built under, and two of the
+   *  three names are ones this interface does not produce; the engine reads them all. */
+  it.each(['earth', 'water', 'mixed'] as const)('generates a saved %s recipe', async (mode) => {
+    const kit = makeKit();
+    await generateMap(kit, {
+      config: { ...shelfConfig({ ...ISLAND, kind: 'island', seed: 2024 }), mode },
+      region: null,
+    });
+    expect(kit.state.cells.flat().some((c) => c.terrain)).toBe(true);
+    expect(kit.state.generation?.mode).toBe(mode);
   }, 60_000);
 
-  it('reaches the config the click generates from, and takes the ceiling with it', async () => {
+  it('reaches the config the click generates from, and takes the grid\'s own ceiling with it', async () => {
     const kit = installKit();
     mount();
     await settle();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Isles' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
     await settle();
     expect(Number(screen.getByRole('slider', { name: 'Tallest layer' }).getAttribute('aria-valuemax')))
-      .toBe(maxElevationFor('water'));
+      .toBe(maxElevationFor('island'));
+    expect(maxElevationFor('island')).toBe(ELEVATION_MAX);
 
     fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!);
     // The map records the recipe it was built from, so this is the chosen kind arriving at the
     // engine rather than at another piece of component state.
-    await waitFor(() => expect(kit.state.generation?.mode).toBe('water'));
+    await waitFor(() => expect(kit.state.generation?.algorithm).toBe('designed'));
   }, 60_000);
 });
 
@@ -907,12 +1049,12 @@ describe('the sliders', () => {
     installKit();
     mount();
     // Named rather than assumed: the row's first tab is the default, and it is not this one.
-    fireEvent.click(screen.getByRole('tab', { name: 'Land' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
     await settle();
 
     const slider = screen.getByRole('slider', { name: 'Tallest layer' });
     expect(Number(slider.getAttribute('aria-valuemax'))).toBe(ELEVATION_MAX);
-    expect(maxElevationFor('earth')).toBe(ELEVATION_MAX);
+    expect(maxElevationFor('island')).toBe(ELEVATION_MAX);
   }, 30_000);
 
   it('lowers the ceiling on the maze, where a taller wall has nothing to stand on', async () => {
@@ -926,19 +1068,47 @@ describe('the sliders', () => {
     expect(maxElevationFor('maze')).toBeLessThan(ELEVATION_MAX);
   }, 30_000);
 
-  it('swaps naturalness for corridor width, since one of the two is meaningless per kind', async () => {
+  it('swaps richness for corridor width, since one of the two is meaningless per kind', async () => {
     installKit();
     mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Land' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
     await settle();
-    expect(screen.queryByRole('slider', { name: 'Naturalness' })).not.toBeNull();
+    expect(screen.queryByRole('slider', { name: 'Scenery richness' })).not.toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
     await settle();
-    expect(screen.queryByRole('slider', { name: 'Naturalness' })).toBeNull();
+    expect(screen.queryByRole('slider', { name: 'Scenery richness' })).toBeNull();
     expect(screen.queryByRole('slider', { name: 'Corridor' })).not.toBeNull();
     // Both knobs draw on the one track the design gives them.
     expect(SLIDERS.upper.track.y).toBeLessThan(SLIDERS.maxLayer.track.y);
+  }, 30_000);
+
+  /**
+   * A TRACK IS AS LONG AS ITS OWN ROW CAN SPARE, and only the picture's row is crowded: it carries
+   * six material segments beside its two knobs, where the island carries two knobs alone. Every
+   * other kind draws the design's own track, since a shorter one is a coarser setting under the
+   * same hand and nothing on those rows was asking for the width.
+   */
+  it('draws the design\'s own track on every kind but the crowded picture row', async () => {
+    installKit();
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    await settle();
+    const drawn = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    await settle();
+    const tight = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
+
+    expect(drawn).toBeGreaterThan(tight);
+    expect(slidersFor('island')).toBe(SLIDERS);
+    expect(slidersFor('maze')).toBe(SLIDERS);
+    expect(slidersFor('image')).toBe(SLIDERS_TIGHT);
+    // Whatever the length, the knob travels between marks INSIDE the track it is drawn on.
+    for (const shape of [SLIDERS.upper, SLIDERS.maxLayer, SLIDERS_TIGHT.upper, SLIDERS_TIGHT.maxLayer]) {
+      expect(shape.first).toBeGreaterThanOrEqual(shape.track.x);
+      expect(shape.last).toBeLessThanOrEqual(shape.track.x + shape.track.w);
+    }
   }, 30_000);
 
   /** They stand INSIDE the plate now, so the two of them plus the strip's other contents are one
@@ -967,6 +1137,41 @@ function fakeCandidate(): Candidate {
 }
 
 describe('clicking a card', () => {
+  /**
+   * A CARD IS ITS OWN ANSWER. The batch is asked for all at once and each picture lands as its own
+   * run comes back, so a card showing a picture is a finished offer whatever the four beside it are
+   * still building. It was refused while ANY of them was in flight, which on a full map is most of a
+   * minute of a finished card doing nothing when it was pressed.
+   */
+  it('lands a finished card while the rest of the batch is still being built', async () => {
+    installKit();
+    // A picture per candidate, so a finished card is one that has an image standing in it.
+    setMapRenderer({
+      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
+    } as unknown as MapRenderer);
+    const made = fakeCandidate();
+    let asked = 0;
+    vi.mocked(barrelCandidate).mockImplementation(async () => {
+      asked += 1;
+      // The first card's run comes back; every other one is still out.
+      return asked === 1 ? made : new Promise<Candidate | null>(() => {});
+    });
+    vi.mocked(barrelGenerateMap).mockResolvedValue(made.outcome);
+    mount();
+    await act(async () => { await new Promise((r) => setTimeout(r, 420)); });
+
+    const first = (): HTMLElement => screen.getAllByRole('button', { name: /^Recipe/ })[0]!;
+    await waitFor(() => expect(first().querySelector('img[src^="data:image/png"]')).not.toBeNull());
+    expect(
+      screen.getByTestId('shell-gen-batch').getAttribute('aria-disabled'),
+      'the batch itself is still building',
+    ).toBe('true');
+
+    await act(async () => { fireEvent.click(first()); });
+    await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
+    expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBe(made);
+  }, 30_000);
+
   it('hands over the run the card already made, so the recipe is not built twice', async () => {
     installKit();
     const made = fakeCandidate();
@@ -986,7 +1191,7 @@ describe('clicking a card', () => {
     mount();
     await settle();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Isles' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
     expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBeNull();
   }, 30_000);
@@ -1078,6 +1283,324 @@ describe('a click that does not reach the map', () => {
       vi.useRealTimers();
     }
   }, 30_000);
+});
+
+/**
+ * THE PICTURE KINDS' OWN STRIP. A letter stands one layer on the ground it is written on, so it has
+ * no tallest layer to choose and the knob is gone from that kind entirely; the picture's heights ARE
+ * its colours, so the knob it inherited is the depth of the terrain ramp and it goes with the ramp
+ * when the picture is tiled with items instead.
+ */
+describe('what a picture is built from', () => {
+  const knobs = (): string[] =>
+    screen.queryAllByRole('slider').map((s) => s.getAttribute('aria-label') ?? '');
+  const segments = (testId: string): string[] =>
+    within(screen.getByTestId(testId)).getAllByRole('button').map((b) => b.textContent ?? '');
+  const segment = (testId: string, name: string): HTMLElement =>
+    within(screen.getByTestId(testId)).getByRole('button', { name });
+
+  /**
+   * WHAT STANDS IN THE STRIP, IN ORDER, and nothing about what state it is in: each control by its
+   * own name, so a knob that went missing, arrived, or changed places between two materials shows up
+   * as a different shape.
+   */
+  const stripShape = (): string[] =>
+    [...screen.getByTestId('shell-gen-strip').children].map((c) => {
+      const own = c.getAttribute('data-testid') ?? c.querySelector('[data-testid]')?.getAttribute('data-testid');
+      if (own) return own;
+      const slider = c.querySelector('[role="slider"]');
+      if (slider) return `slider:${slider.getAttribute('aria-label')}`;
+      return c.textContent?.trim() ? `text:${c.textContent.trim().slice(0, 12)}` : 'spacer';
+    });
+
+  async function open(tab: string): Promise<void> {
+    installKit();
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: tab }));
+    await settle();
+  }
+
+  it('gives a letter no tallest layer at all, since it stands one layer on its own ground', async () => {
+    await open('Letter');
+    expect(knobs()).not.toContain('Tallest layer');
+    // And the material is still there: what a letter is made of is the whole of its settings now.
+    expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Objects']);
+  }, 30_000);
+
+  /**
+   * NOTHING IN A ROW COMES AND GOES. A knob that appears when its neighbour is pressed shoves every
+   * control beside it and the visitor's aim with them, so a knob that cannot act in the current
+   * state stands dimmed and refusing instead. This walks every material of both modes and asserts
+   * the strip is the same shape in all of them.
+   */
+  /** Arm the letter's item, so that choosing Objects is a material change rather than a trip
+   *  through the item shelf. That trip is the declared screen idiom and not what is under test. */
+  async function armItem(): Promise<void> {
+    await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Objects')); });
+    const name = localizedName(getCatalogByCategory(ItemCategory.Flora)[0]!.name, 'en');
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: name } });
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name })[0]!); });
+    await settle();
+  }
+
+  it.each([
+    ['Letter', ['Mountain', 'Water', 'Objects']],
+    ['Picture', ['Mountain', 'Water', 'Mixed', 'Flowers', 'Trees', 'Paths']],
+  ])('keeps every knob standing through every material of %s', async (tab, materials) => {
+    await open(tab);
+    if (tab === 'Letter') await armItem();
+    const shape = stripShape();
+    for (const material of materials) {
+      await act(async () => { fireEvent.click(segment('shell-gen-fill', material)); });
+      expect({ material, shape: stripShape() }).toEqual({ material, shape });
+    }
+  }, 60_000);
+
+  it('dims the knob that cannot act rather than taking it away', async () => {
+    await open('Picture');
+    const layer = () => screen.getByRole('slider', { name: 'Tallest layer' });
+    expect(layer().getAttribute('aria-disabled')).toBeNull();
+
+    // MIXED IS TERRAIN with objects at its anchor points, so the ramp is still its ground and the
+    // knob still means something.
+    await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Mixed')); });
+    expect(layer().getAttribute('aria-disabled')).toBeNull();
+
+    await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Flowers')); });
+    // Tiled with items, a picture has no ramp to be deep. The knob stays where it was, refusing.
+    expect(layer().getAttribute('aria-disabled')).toBe('true');
+    expect(layer().getAttribute('aria-valuetext')).toBe('n/a');
+
+    cleanup();
+    await open('Letter');
+    // The letter's own standing knob is the item its shape is tiled with.
+    const chip = () => screen.getByTestId('shell-gen-item');
+    expect(chip().getAttribute('aria-disabled')).toBe('true');
+    await armItem();
+    expect(chip().getAttribute('aria-disabled')).toBe('false');
+  }, 60_000);
+
+  /** Roads are a PALETTE of nine and twenty surfaces and the object split is three readings of the
+   *  catalogue, so both are a picture's. A letter is tiled with one item, which the item shelf
+   *  chooses. */
+  it('offers the object split and the path surfaces to a picture, and neither to a letter', async () => {
+    await open('Picture');
+    expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Mixed', 'Flowers', 'Trees', 'Paths']);
+    cleanup();
+    await open('Letter');
+    expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Objects']);
+  }, 30_000);
+
+  /** The accent switch is GONE: mixed absorbed the idea, so a picture's decoration follows from the
+   *  material rather than from a knob standing beside it. */
+  it('offers no accent switch on either picture kind', async () => {
+    await open('Picture');
+    expect(screen.queryByRole('switch', { name: 'Accent' })).toBeNull();
+    cleanup();
+    await open('Letter');
+    expect(screen.queryByRole('switch', { name: 'Accent' })).toBeNull();
+  }, 30_000);
+
+  /**
+   * THE RAMP IS AS DEEP AS THE KIND ALLOWS, not as deep as the last kind left it.
+   *
+   * The shelf opens on the maze, whose walls stop at layer 3, and one shared value carried that
+   * ceiling into the picture: every picture was told in three greens by default, which is the flat,
+   * sparse result that was reported. Each kind keeps its own.
+   */
+  it('gives a picture the whole ramp even after the maze, which caps at three', async () => {
+    await open('Maze');
+    const layer = () => screen.getByRole('slider', { name: 'Tallest layer' });
+    expect(layer().getAttribute('aria-valuemax')).toBe('3');
+    expect(layer().getAttribute('aria-valuenow')).toBe('3');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    await settle();
+    expect(layer().getAttribute('aria-valuemax')).toBe(String(ELEVATION_MAX));
+    expect(layer().getAttribute('aria-valuenow')).toBe(String(ELEVATION_MAX));
+  }, 30_000);
+
+  /**
+   * THE ARMED ITEM IS SWITCHABLE AT ANY TIME. Choosing objects for a letter opened the item shelf
+   * once, on the way in, and then there was nothing on screen that said which item had been chosen
+   * or offered another: the chip is both.
+   */
+  it('keeps a letter\'s chosen item on the strip, and reopens the shelf that changes it', async () => {
+    await open('Letter');
+    await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Objects')); });
+    // The shelf that chooses one stands in for this one, exactly as the scope screen does.
+    expect(screen.queryByTestId('shell-gen-strip')).toBeNull();
+
+    const item = getCatalogByCategory(ItemCategory.Flora)[0]!;
+    const name = localizedName(item.name, 'en');
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: name } });
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name })[0]!); });
+    await settle();
+
+    const chip = screen.getByTestId('shell-gen-item');
+    expect(chip.textContent).toContain(name);
+    // And it is the way back: the whole point of the chip over a one-time trip through the shelf.
+    fireEvent.click(chip);
+    expect(screen.queryByTestId('shell-gen-strip')).toBeNull();
+  }, 30_000);
+});
+
+/**
+ * A WORD REFUSED BEFORE IT IS BUILT. The region gate answers for one glyph; a row of them divides
+ * the region's width between themselves, so the floor scales with the word and the card says which
+ * to change rather than photographing a row of smudges.
+ */
+describe('a word too long for its region', () => {
+  it('says so on the card, and generates nothing for it', async () => {
+    installKit();
+    useEditorStore.setState({ region: rect(2, 2, 15, 15) });    // 14 wide: one glyph fits, three do not
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await settle();
+    vi.mocked(barrelCandidate).mockClear();
+
+    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
+    await settle();
+
+    expect(screen.getByText(new RegExp(`region ${textNeedsWidth('ABC')} cells across`))).toBeTruthy();
+    expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(0);
+  }, 30_000);
+
+  it('takes the same word where the region has the room for it', async () => {
+    installKit();
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await settle();
+
+    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
+    await settle();
+    expect(screen.queryByText(/cells across/)).toBeNull();
+  }, 30_000);
+});
+
+/**
+ * WHAT A TEXT RUN DID WITH THE GROUND IT WAS GIVEN. The three buckets are separate things and each
+ * count is only true of its own, so the toast names the largest rather than adding them up — and a
+ * run that wrote nothing because the ground is already at the top speaks whatever the counts say,
+ * being otherwise indistinguishable from a run with nothing to write.
+ */
+describe('the outcome of a letter', () => {
+  const outcome = (stencil: { offBase: number; unsupported: number; atCeiling: number }, placed: number) => ({
+    cells: [], placed, removedCells: 0, removedObjects: 0, violations: [], cancelled: false,
+    stencil: { base: 0, ...stencil },
+  });
+
+  it.each([
+    [{ offBase: 6, unsupported: 1, atCeiling: 0 }, 20, /6 cells were left out: they stand on different ground/],
+    [{ offBase: 0, unsupported: 4, atCeiling: 0 }, 20, /4 cells .* edge of the ground below/],
+    [{ offBase: 3, unsupported: 0, atCeiling: 9 }, 0, /9 cells .* already at the tallest layer/],
+    // One cell is an ORDINARY outcome here: a word clips a step by a single cell all the time, so
+    // the singular is a reading the app ships rather than an edge case.
+    [{ offBase: 1, unsupported: 0, atCeiling: 0 }, 20, /^1 cell was left out: it stands on different ground\.$/],
+  ])('says the largest reason a word came up short (%#)', async (counts, placed, said) => {
+    installKit();
+    vi.mocked(barrelGenerateMap).mockResolvedValue(outcome(counts, placed));
+    const heard: string[] = [];
+    const stop = setToastPresenter((text) => heard.push(text));
+    try {
+      mount();
+      fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+      await settle();
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^[A-Za-z&@?★☀❤♪]/ })[0]!); });
+      await waitFor(() => expect(heard.length).toBe(1));
+      expect(heard[0]).toMatch(said);
+    } finally { stop(); }
+  }, 30_000);
+
+  it('says so when a run laid none of it, where nothing else can', async () => {
+    // THE SILENT PRESS. A run whose glyph had no ink to lay never reaches the ground, so it reports
+    // no base tier at all and every bucket above is empty. Left unsaid, that leaves the map and the
+    // screen unchanged, which reads as a broken button.
+    installKit();
+    vi.mocked(barrelGenerateMap).mockResolvedValue({
+      cells: [], placed: 0, removedCells: 0, removedObjects: 0, violations: [], cancelled: false,
+    });
+    const heard: string[] = [];
+    const stop = setToastPresenter((text) => heard.push(text));
+    try {
+      mount();
+      fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+      await settle();
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^[A-Za-z&@?★☀❤♪]/ })[0]!); });
+      await waitFor(() => expect(heard.length).toBe(1));
+      expect(heard[0]).toMatch(/None of that word fit the region as painted/);
+    } finally { stop(); }
+  }, 30_000);
+
+  it('says nothing about a word that was written whole', async () => {
+    installKit();
+    vi.mocked(barrelGenerateMap).mockResolvedValue(outcome({ offBase: 0, unsupported: 0, atCeiling: 0 }, 30));
+    const heard: string[] = [];
+    const stop = setToastPresenter((text) => heard.push(text));
+    try {
+      mount();
+      fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+      await settle();
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^[A-Za-z&@?★☀❤♪]/ })[0]!); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(heard).toEqual([]);
+    } finally { stop(); }
+  }, 30_000);
+});
+
+/**
+ * The two things a run that laid NOTHING has to get right, held directly rather than through a mount:
+ * that it says something at all, and that it says the right kind's line.
+ */
+describe('a run that laid nothing', () => {
+  it('names the kind it was building, since a picture is not a word', () => {
+    // The buckets stencilNote reads are a LETTER's — the ground's answer to a glyph standing one
+    // layer on it — and a picture's run never reports them, so a picture only ever reaches the
+    // nothing-laid line. Sharing the letter's copy told someone building a picture that none of
+    // their WORD fit.
+    expect(stencilNote('text', undefined, 0)).toEqual({ key: 'gen.text_nothing_laid', n: 0 });
+    expect(stencilNote('image', undefined, 0)).toEqual({ key: 'gen.picture_nothing_laid', n: 0 });
+    expect(stencilNote('text', { base: 0, offBase: 0, unsupported: 0, atCeiling: 0 }, 0))
+      .toEqual({ key: 'gen.text_nothing_laid', n: 0 });
+    expect(stencilNote('image', { base: 0, offBase: 0, unsupported: 0, atCeiling: 0 }, 0))
+      .toEqual({ key: 'gen.picture_nothing_laid', n: 0 });
+  });
+
+  it('says nothing at all when something was laid and nothing was left out', () => {
+    expect(stencilNote('text', undefined, 12)).toBeNull();
+    expect(stencilNote('text', { base: 0, offBase: 0, unsupported: 0, atCeiling: 0 }, 12)).toBeNull();
+  });
+});
+
+/** The examples a picture is offered: the game's fourteen neighbours and the app's own mark, all
+ *  art this app already ships, each carrying a name a card can show instead of a filename. */
+describe('the picture examples', () => {
+  it('are the logo and the fourteen neighbours, every one of them resolved', () => {
+    expect(IMAGE_POOL.length).toBeGreaterThanOrEqual(CANDIDATES);
+    expect(IMAGE_POOL.map((s) => s.id)).toEqual([
+      'logo', 'dorjelang', 'elsasani', 'frostia', 'glenn', 'harpeno', 'isaki', 'medowlyn',
+      'mobai', 'mors', 'msafiri', 'nerina', 'rebella', 'trixie', 'yunguo',
+    ]);
+    for (const sample of IMAGE_POOL) {
+      expect({ id: sample.id, src: Boolean(sample.src) }).toEqual({ id: sample.id, src: true });
+      for (const locale of ['en', 'zh'] as const) {
+        expect(sampleName(sample, locale)).not.toBe(sample.id);
+      }
+    }
+  });
+
+  it('names the logo after the app, in each locale it is asked in', () => {
+    const logo = IMAGE_POOL.find((s) => s.id === 'logo')!;
+    expect(sampleName(logo, 'en')).toBe(APP_NAME);
+    expect(sampleName(logo, 'zh')).toBe(brandName('zh'));
+  });
+
+  it('falls back to English where the game has no name in that locale', () => {
+    const yunguo = IMAGE_POOL.find((s) => s.id === 'yunguo')!;
+    expect([sampleName(yunguo, 'zh'), sampleName(yunguo, 'fr')]).toEqual(['云果', 'Yunguo']);
+  });
 });
 
 describe('the batch', () => {

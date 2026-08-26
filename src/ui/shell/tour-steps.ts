@@ -12,6 +12,14 @@
  * step about the tools selects one, and the last step clears it so the run ends with the interface
  * at rest. Generate is deliberately never selected — its bar photographs
  * three candidate maps the moment it appears, which is not something a tour should set running.
+ *
+ * `view` is the second host action, and the THREE 3D STEPS sit in the middle of the run rather than
+ * in a tour of their own: the 3D editor is the same map and the same tools, so it belongs where the
+ * tools were just shown, not behind a second first-launch offer nobody would meet twice. The flip
+ * rides `view3d`, the step that points AT the toggle — its card is anchored to a rail button, which
+ * stands over either canvas, so the scene can build and fly in behind a bubble that is never
+ * measured against it. The step AFTER the block lays the map flat again, the way the last step
+ * clears the build mode: a novice should end the run in the view the editor opens in.
  */
 import type { TourStep } from '../chrome/tour/steps';
 
@@ -20,7 +28,10 @@ export const SHELL_TOUR_STEPS: readonly TourStep[] = [
   { id: 'camera',       titleKey: 'tour.camera_title',       bodyKey: 'tour.camera_body',                                   side: 'below' },
   { id: 'modes',     titleKey: 'tour.modes_title',         bodyKey: 'tour.modes_body',         target: 'modes',         side: 'below' },
   { id: 'bar',       titleKey: 'tour.tools_title',       bodyKey: 'tour.tools_body',       target: 'bar',           side: 'above', mode: 'mountain' },
-  { id: 'assistant', titleKey: 'tour.assistant_title', bodyKey: 'tour.assistant_body', target: 'assistant',     side: 'below' },
+  { id: 'view3d',    titleKey: 'tour.view3d_title',    bodyKey: 'tour.view3d_body',    target: 'view3d',        side: 'left', view: '3d' },
+  { id: 'orbit',     titleKey: 'tour.orbit_title',     bodyKey: 'tour.orbit_body',                              side: 'below' },
+  { id: 'build3d',   titleKey: 'tour.build3d_title',   bodyKey: 'tour.build3d_body',                             side: 'below' },
+  { id: 'assistant', titleKey: 'tour.assistant_title', bodyKey: 'tour.assistant_body', target: 'assistant',     side: 'below', view: '2d' },
   { id: 'share',     titleKey: 'tour.share_title',     bodyKey: 'tour.share_body',     target: 'share',         side: 'below' },
   { id: 'menu',      titleKey: 'tour.menu_title',      bodyKey: 'tour.menu_body',      target: 'menu',          side: 'below', mode: null },
 ];

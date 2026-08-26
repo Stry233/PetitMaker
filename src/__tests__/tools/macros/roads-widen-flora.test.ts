@@ -2,7 +2,7 @@
  * The `roads` macro widened, over a planting already standing in the widened corridor.
  *
  * `widenRoads` dilates each road tile the router laid into a `width`-sized block by placing new
- * road objects directly — unlike `tryDecorate`/`tryPlace` in `tools/generation/placement/object.ts`,
+ * road objects directly — unlike `tryDecorate`/`tryPlace` in `tools/placement/object.ts`,
  * it never goes through the populator's own overlap/authorship gates. A tree or flower is not a
  * coating, so V-PLACE-OVERLAP refuses the road tile outright and an unguarded place would just fail
  * there: a hole in the pavement with the plant standing in the middle of a wide street.
@@ -27,7 +27,7 @@ import { MacroTool } from '../../../tools/macros/macro-tool';
 import { __resetRouteSession } from '../../../tools/macros/route-session';
 import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import type { MacroContext } from '../../../tools/macros/context';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { createDefaultRegistry } from '../../../rules/index';

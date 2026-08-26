@@ -38,10 +38,10 @@ const OUTLINE_SCALE = 3.2;
 /** How far the noise may push the rim in or out, as a fraction of the radius. */
 const OUTLINE_AMOUNT = 0.55;
 
-/** How wide a step is, in cells of inset per tier. The two the generator distinguishes: a landing
- *  deep enough for the ramp rule's 4-deep approach (`TUNING.crownNavInset`), and a spire's own
- *  (`TUNING.crownInset`). Named here rather than imported, because these are the MACRO's steps and
- *  a change to the generator's massifs must not silently re-shape a user's press. */
+/** How wide a step is, in cells of inset per tier. Two kinds: a landing deep enough for the ramp
+ *  rule's 4-deep approach, and a scenic spire's narrower one. Named here rather than shared with the
+ *  generator, because these are the MACRO's steps and a change to how an island is composed must not
+ *  silently re-shape a user's press. */
 export const WIDE_INSET = 4;
 export const STEEP_INSET = 2;
 
@@ -81,8 +81,8 @@ export interface RaiseResult {
   /** The tier this ground could carry, at or below the rung asked for. The ghost reports it and the
    *  hold stops climbing at it. */
   peak: number;
-  /** Cells the mass wanted and the map refused: an object's footprint, a locked layer, ground the
-   *  zone will not take. What the old peel took away without saying. */
+  /** Cells the mass wanted and the map refused: an object's footprint, a locked layer, ground the zone
+   *  will not take. Reported rather than taken silently. */
   blocked: MacroCoord[];
 }
 

@@ -15,7 +15,7 @@ import { roadLookup } from '../../../state/object-index';
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
 const addRoad = (state: any, x: number, y: number, id = `road-${x}-${y}`) =>
-  state.objects.set(id, { id, catalogId: 'road-dirt', position: { x, y }, rotation: 0, elevation: 0 });
+  state.objects.set(id, { id, catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0 });
 const addStall = (state: any, x: number, y: number, id = `blocker-${x}-${y}`) =>
   state.objects.set(id, { id, catalogId: 'building-stall', position: { x, y }, rotation: 0, elevation: 0 });
 
@@ -33,12 +33,12 @@ describe('ObjectPlacerTool: placing over a road', () => {
 
     tool.onPointerDown(m(5, 5), m(5, 5), ctx);
 
-    expect(objectsByCatalog(state, 'road-dirt'), 'road coated over').toHaveLength(0);
+    expect(objectsByCatalog(state, 'path-overgrown-dirt'), 'road coated over').toHaveLength(0);
     expect(objectsByCatalog(state, 'building-stall'), 'building placed').toHaveLength(1);
     expect(ex.getUndoStackSize(), 'road removal + placement = ONE undo entry').toBe(before + 1);
 
     ex.undo();
-    expect(objectsByCatalog(state, 'road-dirt'), 'undo restores the road').toHaveLength(1);
+    expect(objectsByCatalog(state, 'path-overgrown-dirt'), 'undo restores the road').toHaveLength(1);
     expect(objectsByCatalog(state, 'building-stall'), 'undo removes the building').toHaveLength(0);
   });
 
@@ -53,7 +53,7 @@ describe('ObjectPlacerTool: placing over a road', () => {
 
     tool.onPointerDown(m(5, 5), m(5, 5), ctx);
 
-    expect(objectsByCatalog(state, 'road-dirt'), 'road survives a rejected placement').toHaveLength(1);
+    expect(objectsByCatalog(state, 'path-overgrown-dirt'), 'road survives a rejected placement').toHaveLength(1);
     expect(objectsByCatalog(state, 'building-stall'), 'only the pre-existing blocker remains').toHaveLength(1);
     expect(ex.getUndoStackSize(), 'nothing committed').toBe(before);
   });

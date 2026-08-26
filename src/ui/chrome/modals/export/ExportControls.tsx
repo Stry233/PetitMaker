@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { font, radii, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
 import { applyPreset, hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
@@ -37,7 +38,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples }: 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.preset')}</div>
         <SegmentedControl idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyPreset(options, p))} />
-        <div style={{ fontSize: 12, fontWeight: 600, color: skin.muted, lineHeight: 1.4 }}>{t(`export.preset_${options.preset}_desc`)}</div>
+        <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(`export.preset_${options.preset}_desc`)}</div>
       </div>
 
       {/* Title + description */}
@@ -51,7 +52,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples }: 
       {/* Size */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.sec_size')}</div>
-        <SegmentedControl idPrefix="size" value={options.resolution} options={RES_KEYS} fontSize={12} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
+        <SegmentedControl idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
 
       {/* Importability — labels + help bubbles, no paragraphs */}
@@ -110,8 +111,8 @@ export function ExportControls({ options, setOptions, summary, footerSamples }: 
   );
 }
 
-const inputStyle: CSSProperties = { fontFamily: font.family, fontSize: 13.5, fontWeight: 600, color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const capStyle: CSSProperties = { fontSize: 12.5, fontWeight: 800, color: skin.muted };
+const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 // Attention note (amber, calm — not an error): the chosen size can't carry the share code.
 /** The amber note this modal says share-code trouble with. Shared with the preview, which reports
  *  the other way a code goes missing (the encoder refused the map). */
@@ -130,19 +131,19 @@ export function CodeWarn({ text }: { text: string }) {
 
 const WARN_INK = '#B5701F';
 const codeWarn: CSSProperties = {
-  display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 12, fontWeight: 600, lineHeight: 1.4,
+  display: 'flex', gap: 7, alignItems: 'flex-start', ...roleFont('caption'), lineHeight: 1.4,
   color: skin.ink, background: 'rgba(255,179,71,0.26)',
   borderRadius: radii.sm, padding: '7px 9px',
 };
-const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: cursors.clickable, fontFamily: font.family, fontSize: 12.5, fontWeight: 800, color: skin.muted, padding: 0 };
-const rowLabel: CSSProperties = { fontSize: 14, fontWeight: 700, color: skin.ink };
+const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: skin.muted, padding: 0 };
+const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ fontSize: 12.5, fontWeight: 700, color: skin.ink }}>{label}</span>{children}</label>;
+  return <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ ...roleFont('caption'), color: skin.ink }}>{label}</span>{children}</label>;
 }
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>{children}</div>;
 }
 function Label({ text, help }: { text: string; help?: string }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: skin.ink }}>{text}{help && <HelpBubble text={help} />}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...roleFont('label'), color: skin.ink }}>{text}{help && <HelpBubble text={help} />}</span>;
 }

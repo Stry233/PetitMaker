@@ -59,8 +59,8 @@ describe('a dev build says so', () => {
 
   it('centres the notice through framer, not a CSS transform it would overwrite', async () => {
     // motion writes `transform` to animate `y`, so a `translateX(-50%)` in the style is
-    // silently dropped and the card sits half its own width off centre (measured at +190px
-    // across every viewport width before this fix). The offset has to travel in framer's `x`.
+    // silently dropped and the card sits half its own width off centre (measured at +190px across
+    // every viewport width). The offset has to travel in framer's `x`.
     await mountAs('0.1.1492-dev');
     const notice = screen.getByTestId('dev-notice');
     expect(notice.style.left).toBe('50%');

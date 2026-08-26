@@ -1,9 +1,9 @@
-// TOUR-INFRASTRUCTURE: placeBubble names no v1 target and is card-agnostic pure geometry; it may
-// survive a reskin unchanged.
 /**
- * Where the tour bubble lands beside the thing it is describing. The property that matters is that
- * the two boxes never intersect: a bubble clamped back into the viewport used to land ON the
- * control the step was pointing at.
+ * Where the tour bubble lands beside the thing it is describing. `placeBubble` names no target of its
+ * own and is card-agnostic pure geometry, so a reskin does not reach it.
+ *
+ * The property that matters is that the two boxes never intersect: a bubble clamped back into the
+ * viewport otherwise lands ON the control the step is pointing at.
  */
 import { describe, it, expect } from 'vitest';
 import { placeBubble, type Box } from '../../../ui/chrome/tour/place-bubble';
@@ -30,8 +30,8 @@ describe('placeBubble', () => {
   });
 
   it('places a bubble to the LEFT of a target near the right edge, clear of the spotlight', () => {
-    // The layer panel's buttons sit here: preferring 'right' leaves 21px, so the old clamp pushed
-    // the bubble back over the button it was describing.
+    // The layer panel's buttons sit here: preferring 'right' leaves 21px, so a clamp back into the
+    // viewport would push the bubble over the button it is describing.
     const spot: Box = { left: 1521, top: 34, width: 62, height: 55 };
     const placed = placeBubble(spot, SIZE, 'right', GAP, VIEWPORT);
     expect(placed.side).toBe('left');

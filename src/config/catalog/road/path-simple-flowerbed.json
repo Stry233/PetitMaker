@@ -1,0 +1,28 @@
+{
+  "id": "path-simple-flowerbed",
+  "category": "road",
+  "icon": "path-simple-flowerbed",
+  "name": {
+    "en": "Simple Flowerbed Path",
+    "zh": "简约花圃路",
+    "ja": "シンプル花壇の道",
+    "ru": "Простая дорожка с клумбами",
+    "th": "ทางแปลงดอกไม้เรียบง่าย",
+    "id": "Jalan Petak Bunga Sederhana",
+    "fr": "Chemin de parterre simple"
+  },
+  "color": "#7c4639",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

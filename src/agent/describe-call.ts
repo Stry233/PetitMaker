@@ -2,18 +2,19 @@
  * Human-readable one-line descriptions of agent tool calls, for the approval
  * prompt and other user-facing surfaces. Non-professional users cannot parse
  * `place_object {"catalogId":"building-myhouse","x":3,…}` — this renders the
- * same call as `place_object · building-myhouse at (3,4)`.
+ * same call as `place_object: building-myhouse at (3,4)`.
  *
  * Read by HUMANS only (`feed.ts` → the ticket sub-line and the blueprint's
  * running line), so every connecting word goes through the caller's `t`. The
  * English the MODEL reads — rule text, `REVERTED: …`, the (system) nudges —
- * is produced elsewhere and stays English on purpose.
+ * is produced elsewhere and stays English.
  *
  * Coordinates, arrows, counts and catalog/object ids carry no per-locale form
  * and are printed as-is; enum tokens the model sends (terrain, trim style,
  * algorithm, zone theme) are words on screen, so they get keys.
  */
-import type { ToolCall } from './types';
+import type { ToolCall } from './tools/types';
+import { normalizeGeometry, rectInput, type FlatDefault } from './tools/geometry';
 
 type In = Record<string, unknown>;
 
@@ -46,7 +47,7 @@ const TRIM_KEY: Record<string, string> = {
   empty: 'agent2.dc_cs_empty',
 };
 const ALGO_KEY: Record<string, string> = {
-  random: 'agent2.dc_alg_random',
+  designed: 'agent2.dc_alg_designed',
   maze: 'agent2.dc_alg_maze',
 };
 
@@ -57,8 +58,9 @@ const word = (map: Record<string, string>, v: unknown, t: Translate): string => 
   return key ? t(key) : String(v);
 };
 
-/** Compact area phrase for the shared rect/circle/line/cells shape input. */
-function shape(input: In, t: Translate): string {
+/** Compact area phrase for the shared rect/circle/line/cells shape input, either spelling. */
+function shape(rawInput: In, t: Translate, flatDefault: FlatDefault = 'rect'): string {
+  const input = normalizeGeometry(rawInput, flatDefault);
   const rect = input.rect as In | undefined;
   const circle = input.circle as In | undefined;
   const line = input.line as In | undefined;
@@ -99,14 +101,15 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
     at: at(i),
     style: word(TRIM_KEY, i.style, t),
   }),
-  build_road: (i, t) => t('agent2.dc_along', { what: String(i.catalogId ?? 'road-dirt'), area: shape(i, t) }),
+  build_road: (i, t) => t('agent2.dc_along', { what: String(i.catalogId ?? 'path-overgrown-dirt'), area: shape(i, t, 'line') }),
   scatter_objects: (i, t) => {
     const ids = (i.catalogIds as string[] | undefined) ?? [];
     const pool = ids.length > 2 ? `${ids.slice(0, 2).join(', ')} +${ids.length - 2}` : ids.join(', ');
+    const rect = rectInput(i);
     return t('agent2.dc_scatter', {
       n: n(i.count),
       pool,
-      where: i.rect ? shape({ rect: i.rect }, t) : t('agent2.dc_selection'),
+      where: rect ? shape({ rect }, t) : t('agent2.dc_selection'),
     });
   },
   sculpt_terrace: (i, t) => t('agent2.dc_terrace', {
@@ -120,11 +123,14 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
     if (pts.length < 2) return course;
     return `${course} (${n(pts[0]!.x)},${n(pts[0]!.y)})→(${n(pts[pts.length - 1]!.x)},${n(pts[pts.length - 1]!.y)})`;
   },
-  run_generator: (i, t) => [
-    word(ALGO_KEY, i.algorithm ?? 'random', t),
-    i.seed !== undefined ? t('agent2.dc_seed', { n: n(i.seed) }) : '',
-    i.rect ? t('agent2.dc_in', { area: shape({ rect: i.rect }, t) }) : '',
-  ].filter(Boolean).join(' '),
+  run_generator: (i, t) => {
+    const rect = rectInput(i);
+    return [
+      word(ALGO_KEY, i.algorithm ?? 'designed', t),
+      i.seed !== undefined ? t('agent2.dc_seed', { n: n(i.seed) }) : '',
+      rect ? t('agent2.dc_in', { area: shape({ rect }, t) }) : '',
+    ].filter(Boolean).join(' ');
+  },
   decorate_zone: (i, t) => t('agent2.dc_zone', {
     theme: t(THEME_KEY[String(i.theme ?? '')] ?? 'agent2.theme_zone'),
     area: box(i),
@@ -135,15 +141,25 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
   build_road_network: (_i, t) => t('agent2.dc_connect'),
   frame_crossing: (i, t) => t('agent2.dc_crossing', { at: at(i) }),
   undo: (i, t) => t('agent2.dc_steps', { n: n(i.steps) || 1 }),
-  delegate_task: (i) => String(i.task ?? '').slice(0, 90),
+  delegate_task: (i) => String(i.label ?? i.task ?? '').slice(0, 90),
+  update_plan: (i, t) => {
+    const stages = Array.isArray(i.stages) ? (i.stages as In[]) : undefined;
+    if (!stages || stages.length === 0) return '';
+    const labels = stages.map((s) => String(s.label ?? '')).filter(Boolean);
+    const list = labels.slice(0, 3).join(', ') + (labels.length > 3 ? ` +${labels.length - 3}` : '');
+    return t('agent2.dc_plan', { n: labels.length, list });
+  },
 };
 
-export function describeToolCall(call: Pick<ToolCall, 'name' | 'input'>, t: Translate): string {
+/** What the call is ABOUT, without the tool's own name: the half a ticket shows as its sub-line.
+ *  Undefined when there is nothing to say beyond the name. Read directly rather than split back out
+ *  of the line below, so the two can never disagree about where one half ends. */
+export function describeToolArgs(call: Pick<ToolCall, 'name' | 'input'>, t: Translate): string | undefined {
   const input = call.input ?? {};
   const d = DESCRIBERS[call.name];
   if (d) {
     try {
-      return `${call.name} · ${d(input, t)}`;
+      return d(input, t);
     } catch {
       /* fall through to the generic form */
     }
@@ -152,5 +168,10 @@ export function describeToolCall(call: Pick<ToolCall, 'name' | 'input'>, t: Tran
     .filter(([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v))
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(' ');
-  return pairs ? `${call.name} · ${pairs}` : call.name;
+  return pairs || undefined;
+}
+
+export function describeToolCall(call: Pick<ToolCall, 'name' | 'input'>, t: Translate): string {
+  const args = describeToolArgs(call, t);
+  return args ? `${call.name}: ${args}` : call.name;
 }

@@ -63,7 +63,7 @@ describe('sizing a glyph by what it reads as', () => {
   });
 
   it('is the improvement over drawing each glyph to its own box', () => {
-    // What the rail used to do: every glyph scaled so its BOX was one height.
+    // The alternative: every glyph scaled so its BOX is one height.
     const byBox = (ink: GlyphInk, boxH: number) => {
       const k = RAIL.glyph / boxH;
       return Math.hypot(ink.w * k, ink.h * k);

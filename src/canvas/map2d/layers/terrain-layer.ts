@@ -6,6 +6,7 @@ import { HALF_TILE } from '../../../core/model/grid-model';
 import { TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord, TerrainCell } from '../../../core/model/types';
 import { drawTrimmedBlock, QUADRANT_OFFSETS } from '../draw/trim-shapes';
+import { FillGraphics } from '../draw/fill-graphics';
 import { waterfallFaceMap, touchesWaterfallDependency } from '../../../core/model/waterfall-geometry';
 import { requestRender } from '../render-scheduler';
 import { ChunkGrid, type CullRect } from './chunk-grid';
@@ -90,7 +91,7 @@ export class TerrainLayer {
     for (let cy = 0; cy * CHUNK_SIZE < height; cy++) {
       for (let cx = 0; cx * CHUNK_SIZE < width; cx++) this.dirtyChunks.add(chunkKey(cx, cy));
     }
-    this.flushDirty(state); // initial build is synchronous, like before
+    this.flushDirty(state); // the initial build is synchronous
 
     this.drawWaterfallIndicators(state);
     this.container.addChild(this.waterfallContainer);
@@ -147,7 +148,7 @@ export class TerrainLayer {
         if (!hasTerrainGraphic(getCell(state.cells, x, y)?.terrain)) continue;
         if (!g) {
           // Created on the first paintable cell, so terrain-less chunks carry no node.
-          g = new PIXI.Graphics();
+          g = new FillGraphics();
           this.chunkGfx.set(key, g);
           this.chunks.bucketFor(x0 * TILE_SIZE, y0 * TILE_SIZE).addChild(g);
         }
@@ -265,7 +266,7 @@ export class TerrainLayer {
 
   // Layer-number raster overlay — delegated to NumberOverlay (its own texture /
   // dirty / visibility lifecycle). numberContainer (above) exposes its display
-  // object so MapRenderer mounts it at the same z-order as before.
+  // object for MapRenderer to mount.
   setShowNumbers(show: boolean): void { this.numbers.setShowNumbers(show); }
   isShowingNumbers(): boolean { return this.numbers.isShowingNumbers(); }
   setNumberZoom(zoom: number): void { this.numbers.setNumberZoom(zoom); }

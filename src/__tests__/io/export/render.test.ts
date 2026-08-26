@@ -4,7 +4,8 @@ import { renderExport } from '../../../io/export/render';
 import { ProvenanceTracker } from '../../../core/provenance/tracker';
 import { ProvSource } from '../../../core/provenance/types';
 
-function fakeBuffer() { return { data: new Uint8ClampedArray(64 * 64 * 4).fill(128), width: 64, height: 64 }; }
+/** A painted composition, as the browser hands one over: a canvas, not a pixel copy of one. */
+function fakeCanvas(w = 64, h = 64) { return { width: w, height: h } as HTMLCanvasElement; }
 
 const baseArgs = (over: any = {}) => {
   const t = new ProvenanceTracker(4, 4, { now: () => 0 });
@@ -13,7 +14,7 @@ const baseArgs = (over: any = {}) => {
     summary: t.getSummary(),
     options: { title: '', description: '', preset: 'plain' as const, importable: false, showBadge: true, layerPreview: false, card3d: false, grid: true, footer: true, resolution: 'compact' as const },
     mapAspect: 1.2,
-    capture: vi.fn(async (comp: { width: number; height: number }) => ({ ...fakeBuffer(), width: comp.width, height: comp.height })),
+    capture: vi.fn(async (comp: { width: number; height: number }) => fakeCanvas(comp.width, comp.height)),
     encode: vi.fn(async () => new Blob(['x'])),
     ...over,
   };
@@ -28,13 +29,19 @@ describe('renderExport (no watermark — compose/capture/encode only)', () => {
     expect(r.blob).toBeInstanceOf(Blob);
     expect(r.composition.width).toBeGreaterThan(0);
   });
-  it('does not modify the buffer itself (no pixel watermarking in render)', async () => {
+  it('does not modify the painted pixels (no pixel watermarking in render)', async () => {
     const args = baseArgs();
     await renderExport(args as any);
-    // encode is the only buffer consumer; render adds no embed step.
+    // encode is the only consumer of the painted canvas; render adds no embed step.
     expect(args.encode).toHaveBeenCalled();
   });
-  it('returns blob=null when capture yields no buffer, still returns a composition', async () => {
+  it('hands the encoder the very canvas the capture painted — nothing copies the pixels between', async () => {
+    const painted = fakeCanvas(120, 90);
+    const args = baseArgs({ capture: vi.fn(async () => painted), encode: vi.fn(async () => new Blob(['x'])) });
+    await renderExport(args as any);
+    expect(args.encode.mock.calls[0][0]).toBe(painted);
+  });
+  it('returns blob=null when capture yields nothing, still returns a composition', async () => {
     const r = await renderExport(baseArgs({ capture: async () => null }) as any);
     expect(r.blob).toBeNull();
     expect(r.composition).toBeTruthy();

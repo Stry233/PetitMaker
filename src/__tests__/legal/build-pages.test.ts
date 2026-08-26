@@ -137,7 +137,7 @@ describe('pageHtml', () => {
 
   it('shows effective date + policy version for privacy/terms, not for docs without that schema flag', () => {
     const privacy = pageHtml('privacy', 'en', cfg);
-    expect(privacy).toContain('Effective 2026-01-01 · 1.0');
+    expect(privacy).toContain('Effective 2026-01-01, version 1.0');
 
     const about = pageHtml('about', 'en', cfg);
     expect(about).not.toContain('class="updated"');

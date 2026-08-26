@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
     // `scripts/**` covers the release-tooling tests, which are internal (see
     // docs/internal/deployment/public-repo-manifest.md) — the public snapshot ships no
     // such files, so the pattern simply matches nothing there.

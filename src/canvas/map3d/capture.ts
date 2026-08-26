@@ -9,10 +9,8 @@ import { clamp as clampN, lerp } from '../../core/model/math';
  * ANY failure (no WebGL, build error, capture error) — export must never be
  * blocked by 3D.
  *
- * ThreeScene constructor: ThreeScene(container: HTMLElement, state: GridState)
- * It creates its own canvas and appends it to container. capture(), dispose(), and
- * skipIntroAndRender() are the relevant method names. The scene starts a RAF loop +
- * window listeners; dispose() shuts them all down.
+ * The scene creates its own canvas inside `container` and starts a rAF loop plus window
+ * listeners; dispose() shuts all of them down.
  *
  * CAVEATS:
  * - Callers must NOT invoke this while a live Preview3D scene is open, because

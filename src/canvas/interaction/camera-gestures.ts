@@ -7,8 +7,8 @@
  * rest of the pointer machine. What it deliberately does NOT own is the DECISION to arm a left
  * pan: in the editor that decision is entangled with selection and the active tool, so the caller
  * makes it and calls `panFrom`. Everything downstream of the decision — delta signs, the drag
- * threshold, verb dispatch, the reported drag state — lives here, because that is what the two
- * callers were duplicating.
+ * threshold, verb dispatch, the reported drag state — lives here, so both callers answer a drag the
+ * same way.
  *
  * Drag state is REPORTED, never written to the cursor controller from here: a caller that is not
  * the visible surface must not move the app's cursor.

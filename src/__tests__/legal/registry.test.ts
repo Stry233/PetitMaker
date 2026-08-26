@@ -392,10 +392,10 @@ describe('privacy — required substance tokens', () => {
   });
 });
 
-// Round 3 — the "Where Your Data Goes" deployment-facts disclosure (former
-// {deployment-facts} token, now authored inline). Pins the real, human-verified
-// hosting facts so the location disclosure cannot be silently softened, and the
-// plain "operated by {operator}" statement, with no qualifier on the doc surface.
+// The "Where Your Data Goes" deployment-facts disclosure, authored inline in the privacy body
+// rather than deferred to a token. Pins the human-verified hosting facts so the location
+// disclosure cannot be silently softened, and the plain "operated by {operator}" statement,
+// with no qualifier on the doc surface.
 describe('privacy — deployment-facts disclosure (§8)', () => {
   // Tokens chosen to sit on a single source line (the raw markdown hard-wraps,
   // so a phrase that crosses a line break is not a contiguous substring).
@@ -511,7 +511,7 @@ describe('terms — required substance tokens', () => {
       for (const id of PROVIDER_IDS) {
         if (id === 'custom') continue;
         expect(body, `terms.${lang} must not name provider "${id}"`).not.toContain(
-          PROVIDER_META[id].label,
+          PROVIDER_META[id].name,
         );
       }
     }
@@ -636,8 +636,8 @@ describe('providerDisclosureList — no drift from the agent registry', () => {
         ).toBe(true);
       } else {
         expect(
-          list.some((entry) => entry.includes(PROVIDER_META[id].label)),
-          `provider "${id}" (${PROVIDER_META[id].label}) must be disclosed`,
+          list.some((entry) => entry.includes(PROVIDER_META[id].name)),
+          `provider "${id}" (${PROVIDER_META[id].name}) must be disclosed`,
         ).toBe(true);
       }
     }
@@ -656,13 +656,10 @@ describe('providerDisclosureList — no drift from the agent registry', () => {
   });
 });
 
-// Regression guard: the authored docs use GitHub-style in-doc
-// anchors ([Share Images](#share-images)), so both emitters must emit a
-// heading `id` — without one, every such link is DEAD (clicking it does nothing). This
-// probes ALL doc-id × language pairs generically so it also catches a future
-// doc that adds an internal link without a matching heading, not just
-// privacy. Before headingSlug()/the emitter id wiring existed, this failed:
-// zero headings carried an id, so every '#...' href had nothing to match.
+// The authored docs use GitHub-style in-doc anchors ([Share Images](#share-images)), so both
+// emitters must emit a heading `id` — without one, every such link is DEAD (clicking it does
+// nothing). This probes ALL doc-id × language pairs generically, so it also catches a future doc
+// that adds an internal link with no matching heading.
 function internalFragmentHrefs(html: string): string[] {
   const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
   return Array.from(doc.querySelectorAll('a[href^="#"]')).map((a) => (a.getAttribute('href') ?? '').slice(1));
@@ -707,16 +704,13 @@ describe('internal anchor links resolve to a real heading id (every doc x langua
   }
 });
 
-// Link-hygiene guard (link-hygiene sweep): every web link must be clickable
-// and every email address must carry a mailto: link wherever it appears in a
-// rendered doc. Scans the PLAIN-TEXT content of every doc x language for a
-// bare `http(s)://` URL or a bare email address — i.e. one that survived
-// OUTSIDE any `<a>` element, so it rendered as dead, unclickable text. A URL
-// or email that is itself a link's visible label (e.g. the Bilibili
-// "space.bilibili.com/…" links in contact.*.md, or an `{email}`/
-// `{securityEmail}` token — both now substituted as `[addr](mailto:addr)`,
-// see registry.ts `tokensFor`) is NOT bare: its whole subtree is excluded
-// from the scan by skipping `<a>` nodes entirely (their label AND href).
+// Every web link must be clickable and every email address must carry a mailto: link wherever it
+// appears in a rendered doc. Scans the PLAIN-TEXT content of every doc x language for a bare
+// `http(s)://` URL or a bare email address — one that survives OUTSIDE any `<a>` element, and so
+// renders as dead, unclickable text. A URL or email that is itself a link's visible label (the
+// Bilibili "space.bilibili.com/…" links in contact.*.md, or an `{email}`/`{securityEmail}` token,
+// substituted as `[addr](mailto:addr)` by registry.ts `tokensFor`) is NOT bare: its whole subtree
+// is excluded by skipping `<a>` nodes entirely (their label AND href).
 describe('link hygiene: no bare URL or bare email outside a link (every doc x language)', () => {
   const BARE_URL_RE = /https?:\/\/[^\s<>]+/g;
   // A conservative bare-email matcher (local@domain.tld) — good enough to
@@ -724,8 +718,7 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
   // strings or file paths, which never contain '@'.
   const BARE_EMAIL_RE = /[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 
-  // Concatenates every text node's content EXCEPT text inside an <a> (an
-  // anchor's own label is exempt — see the describe-level comment above).
+  // Concatenates every text node's content EXCEPT text inside an <a>.
   function nonLinkText(html: string): string {
     const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
     const parts: string[] = [];
@@ -741,22 +734,18 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
     return parts.join('\n');
   }
 
-  // Deliberate exceptions, both justified:
+  // Two exceptions, neither of them prose this project authors:
   //   - 'license': LICENSE is the Apache-2.0 text reproduced BYTE-EXACT
-  //     (pinned by license-files.test.ts — 201 lines / 11,357 bytes). Its two
-  //     `http://www.apache.org/licenses/...` occurrences are the verbatim
-  //     official license text; altering them into markdown link syntax would
-  //     break the byte-exact pin and is not a "doc we author" in the first
-  //     place. A bare URL here is genuinely correct.
+  //     (pinned by license-files.test.ts — 201 lines / 11,357 bytes), so its two
+  //     `http://www.apache.org/licenses/...` occurrences are the official
+  //     license text and markdown link syntax would break the byte-exact pin.
   //   - 'third-party': the npm-dependency audit table (one big markdown
   //     `<table>`, ~100 rows) is MACHINE-GENERATED from package-lock.json +
   //     each package's own package.json metadata by
-  //     scripts/license-audit-core.mts (`npm run legal:licenses`), not
-  //     hand-authored prose — linkifying its homepage/author-URL cells is out
-  //     of this sweep's scope. The hand-authored Fonts section below that
-  //     table (the part scripts/license-audit-core.mts hand-codes as
-  //     `FONT_ENTRIES`) WAS linkified and is still scanned: only the
-  //     `<table>` is excised here.
+  //     scripts/license-audit-core.mts (`npm run legal:licenses`), so only the
+  //     `<table>` is excised. The hand-authored Fonts section below it (the
+  //     part scripts/license-audit-core.mts hand-codes as `FONT_ENTRIES`) is
+  //     linkified and still scanned.
   function scannableText(id: DocId, lang: 'en' | 'zh'): string {
     const html = renderHtml(parseLegalMarkdown(docBody(id, lang, LEGAL)));
     if (id === 'license') return '';

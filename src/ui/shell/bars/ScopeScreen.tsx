@@ -23,7 +23,7 @@
  */
 import { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { clearRegionSelection, selectWholeRegion } from '../../../core/runtime/region-brush';
+import { clearRegionSelection } from '../../../core/runtime/region-brush';
 import { useT } from '../../../i18n/context';
 import { host } from '../../../kit/host';
 import { useEditorStore } from '../../../state/store';
@@ -170,7 +170,8 @@ export function ScopeScreen({ onDone, tools, minSide }: {
           ))}
 
           <span style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}>
-            <Action label={t('gen.select_all')} onPress={selectWholeRegion} />
+            {/* No select-all beside it: an empty region already means the whole island, so taking
+                every cell and clearing are the same scope said two ways. */}
             <Action label={t('generate.clear')} onPress={clearRegionSelection} />
             {/* DONE, AND NOTHING ELSE. A button says what pressing it does; the count belongs to the
                 scope chip in the strip, which keeps saying it once the cards are back. That is what

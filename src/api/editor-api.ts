@@ -15,8 +15,8 @@ import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { CommandExecutor } from '../core/commands/command-executor';
 import { ProvSource } from '../core/provenance/types';
 import { getMapStats } from '../state/map-stats';
-import { objectPlacementCommand, removeObjectCommand } from '../tools/objects/object-placer';
-import { generateObjectId } from '../tools/utils';
+import { objectPlacementCommand, removeObjectCommand } from '../tools/objects';
+import { generateObjectId } from '../core/model/object-id';
 import { serialize, deserialize } from '../io/json-codec';
 
 /**

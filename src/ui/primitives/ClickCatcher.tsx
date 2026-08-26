@@ -6,7 +6,9 @@ import type { CSSProperties } from 'react';
 /** Invisible fixed full-viewport div that calls `onDismiss` on any click. Render it BEHIND the
  *  popover it guards (the popover needs a higher zIndex, typically `zIndex + 1`). */
 export function ClickCatcher({ onDismiss, zIndex = 300 }: { onDismiss(): void; zIndex?: number }) {
-  const style: CSSProperties = { position: 'fixed', inset: 0, zIndex };
+  // `pointerEvents` explicitly, because a catcher inside the shell's frame stands on a plane that is
+  // deaf by rule (`shell/Shell.tsx`) and would otherwise inherit that and catch nothing.
+  const style: CSSProperties = { position: 'fixed', inset: 0, zIndex, pointerEvents: 'auto' };
   return <div onClick={onDismiss} style={style} />;
 }
 

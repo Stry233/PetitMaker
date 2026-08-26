@@ -1,0 +1,28 @@
+{
+  "id": "path-wavy-terracotta",
+  "category": "road",
+  "icon": "path-wavy-terracotta",
+  "name": {
+    "en": "Wavy Terracotta Path",
+    "zh": "波纹陶土路",
+    "ja": "波模様テラコッタの道",
+    "ru": "Волнистая терракотовая дорожка",
+    "th": "ทางดินเผาลายคลื่น",
+    "id": "Jalan Terakota Bergelombang",
+    "fr": "Chemin de terre cuite ondulé"
+  },
+  "color": "#af654c",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

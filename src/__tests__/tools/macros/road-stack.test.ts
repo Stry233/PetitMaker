@@ -16,7 +16,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { categoryOf } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { applyMacro } from '../../../tools/macros';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 
 /** Every road cell's occupant count, keyed "x,y" — >1 anywhere is the corruption this guards. */
 function roadCountsByCell(state: GridState): Map<string, number> {
@@ -52,8 +52,8 @@ describe('roads macro: paving strips the coating it covers', () => {
     place('building-stall', 55, 48);
 
     // A width wider than the router's own 1-cell gauge dilates every fresh road tile into its
-    // neighbours — the dilation of one tile routinely overlaps another's, and that overlap is
-    // exactly where an unguarded place used to stack.
+    // neighbours — the dilation of one tile routinely overlaps another's, and that overlap is exactly
+    // where an unguarded place stacks two coatings on one cell.
     const outcome = applyMacro(ctx, 'roads', { seed: 3, width: 3 });
     expect(outcome.changes, outcome.reason ?? '').toBeGreaterThan(0);
     expect(stackedCells(state)).toEqual([]);

@@ -32,8 +32,8 @@ function markup(node: React.ReactNode): string {
 describe('scaled labels are blockified', () => {
   it('FitText wraps its label in a flex box, which blockifies it whatever its own display says', () => {
     const html = markup(<FitText cx={10} cy={10} maxW={100} size={30}>label</FitText>);
-    // A flex item is blockified by its container, so the inner span's own
-    // inline-flex is harmless — what matters is that the parent IS flex.
+    // A flex item is blockified by its container whatever the inner span's own display says, so what
+    // the markup has to show is that the parent IS flex.
     expect(html).toMatch(/<span style="[^"]*display:\s*flex[^"]*"><span[^>]*font-size/);
   });
 });

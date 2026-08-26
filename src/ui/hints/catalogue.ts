@@ -32,7 +32,7 @@ export interface HintRow {
 export type ResolvedToken =
   | { kind: 'cap'; label: string; x2?: boolean }
   /** The two move caps as ONE token: the letters over the fixed arrow aliases, stacked by the
-   *  renderer. Side by side they were the widest thing in the panel and wrapped the map rows. */
+   *  renderer. Side by side they are the widest thing in the panel and wrap the map rows. */
   | { kind: 'pan-stack'; letters: string }
   | { kind: 'mouse'; button: MouseButton; mark?: MouseMark; x2?: boolean }
   | { kind: 'sep'; sep: Sep };

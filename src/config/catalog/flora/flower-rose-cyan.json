@@ -16,6 +16,7 @@
     "玫瑰"
   ],
   "icon": "flower-rose-cyan",
+  "iconColor": "#73bcc5",
   "width": 1,
   "height": 1,
   "loadValue": 10,

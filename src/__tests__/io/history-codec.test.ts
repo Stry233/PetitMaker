@@ -63,10 +63,10 @@ describe('history codec', () => {
     // Place an object and collapse it into a single undo entry via commitStrokeGroup
     const startSize = originalExec.getUndoStackSize();
     const obj = {
-      id: 'test-obj-1', catalogId: 'road-dirt',
+      id: 'test-obj-1', catalogId: 'path-overgrown-dirt',
       position: { x: 5, y: 5 }, rotation: 0, elevation: 0,
     };
-    const item = getCatalogItem('road-dirt');
+    const item = getCatalogItem('path-overgrown-dirt');
     const placeResult = originalExec.execute({
       type: CommandType.PlaceObject, timestamp: 0,
       object: obj, loadValue: item?.loadValue ?? 0,
@@ -100,7 +100,8 @@ describe('history codec', () => {
   it('keeps a step that placed a half-anchored ramp, drops one that placed a half-anchored tree', () => {
     // Undo replays this data verbatim, so the gate is the same one the map loader applies: a
     // halfStep item may stand on the half grid, nothing else may. One bad object drops the whole
-    // section, so a ramp at 5.5 used to cost the user their entire step history on re-import.
+    // section, so a gate that refused a ramp at 5.5 would cost the user their entire step history
+    // on re-import.
     const section = (catalogId: string, x: number) => ({
       v: HISTORY_SCHEMA_VERSION,
       totalSteps: 1,

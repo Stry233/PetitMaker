@@ -4,7 +4,7 @@ import { CommandType, type PlacedObject, type PlaceObjectCommand } from '../../c
 import { getCatalogItem } from '../../state/catalog';
 import { makeState } from './_helpers';
 
-function obj(id: string, x: number, y: number, catalogId = 'road-dirt'): PlacedObject {
+function obj(id: string, x: number, y: number, catalogId = 'path-overgrown-dirt'): PlacedObject {
   return { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 };
 }
 
@@ -20,8 +20,8 @@ describe('chunkLoadViolations (footprint-aware enforcement logic)', () => {
 
   it('sums load from objects already in the same chunk', () => {
     const state = makeState(20, 20);
-    state.objects.set('e', obj('e', 0, 0)); // catalog road-dirt has a non-zero load
-    expect(getCatalogItem('road-dirt')!.loadValue).toBeGreaterThan(0);
+    state.objects.set('e', obj('e', 0, 0)); // the dirt path has a non-zero load
+    expect(getCatalogItem('path-overgrown-dirt')!.loadValue).toBeGreaterThan(0);
     // existing load + a candidate at the limit (same chunk 0,0) exceeds the limit
     expect(chunkLoadViolations(state, obj('c', 1, 1), 10_000)).toHaveLength(1);
   });

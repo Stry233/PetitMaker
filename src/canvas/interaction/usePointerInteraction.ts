@@ -7,9 +7,11 @@ import { ToolType, CommandType } from '../../core/model/types';
 import type { MacroCoord, GridState, PlacedObject } from '../../core/model/types';
 import type { BlockRef } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
-import { groupMembers, moveGroup, previewGroupMove } from '../../tools/objects/group-actions';
 import { getCell, getFootprint } from '../../core/model/grid-model';
-import { planObjectMove, stripCoatingsFor, GHOST_VALID, GHOST_INVALID } from '../../tools/objects/object-placer';
+import {
+  groupMembers, moveGroup, planObjectMove, previewGroupMove, stripCoatingsFor,
+  GHOST_INVALID, GHOST_VALID,
+} from '../../tools/objects';
 import { getPlacedObjectSize, hasHalfStep, resolveAnchor, snapsOwnPlacement } from '../../state/object-geometry';
 import { getCatalogItem } from '../../state/catalog';
 import { arcMotion, arcOffset, type GroupRotation } from '../group-arc';
@@ -92,9 +94,9 @@ function paintOneBlock(
  * `members` carries each ring's live CENTRE offset in cell units (zero for a single spin, which never
  * moves; the group arc's own `arcOffset` for a group turn). The ring's SHAPE always uses the CURRENT
  * (already-committed, post-turn) footprint size: the command applies instantly, so the object's own
- * rendered box is already at that shape by the time any tween frame runs (verified: `objects-changed`
- * rebuilds it synchronously before the animation is even started) — drawing a ring at any other shape
- * would disagree with what is already on screen. Only the CENTRE travels.
+ * rendered box is already at that shape by the time any tween frame runs (`objects-changed` rebuilds
+ * it synchronously, before the animation is even started) — drawing a ring at any other shape would
+ * disagree with what is already on screen. Only the CENTRE travels.
  *
  * At `eased >= 1` this instead repaints through the normal `paintSelection` path: a view with a
  * body-bound box (3D's `showObjectSelection`) gets that back, rather than staying on the plain
@@ -160,8 +162,8 @@ export function paintGroupRotationArc(
  * store besides: the canvas writes the ToolManager's tool and the DrawingTool's shape and surface in
  * an effect, which runs after the store has already told its subscribers. A probe run on the store
  * change alone therefore asks the tool the user has just left, and caches that answer under the new
- * inputs, so the badge kept the old tool's verdict until the pointer crossed into another cell. The
- * `tool-synced` bump is what asks again once the tool being asked is the one the store names, and
+ * inputs, so the badge keeps the departed tool's verdict until the pointer crosses into another cell.
+ * The `tool-synced` bump is what asks again once the tool being asked is the one the store names, and
  * it is the only input covering a change of SURFACE or SHAPE, which move no store field named here.
  *
  * `autoEdgeCut` and `tileMaterial` are here because the GHOST is drawn from them: the trim decides
@@ -271,10 +273,10 @@ export function usePointerInteraction(
      * The pointer offset the SOLO drag resolves its anchor with. A snapping item (bridge/ramp) has
      * no grab to preserve: the trait DETECTS a gap/cliff near the position it is handed, so what
      * the pointer names is a probe anchor and what the object carries is the snapped footprint's
-     * top-left (`snapsOwnPlacement`). Tracking the top-left rigidly therefore handed the judge a
-     * cell a whole span away from the ghost the user was aiming — the ghost sat on the cliff and
-     * was refused until the cursor had travelled another span past it. Zeroed, the pointer names
-     * the cliff directly, exactly as a fresh placement's does, and the snap RANGE around it decides.
+     * top-left (`snapsOwnPlacement`). Tracking the top-left rigidly therefore hands the judge a cell
+     * a whole span away from the ghost being aimed: the ghost sits on the cliff and is refused until
+     * the cursor has travelled another span past it. Zeroed, the pointer names the cliff directly,
+     * exactly as a fresh placement's does, and the snap RANGE around it decides.
      *
      * The GROUP branch keeps the real offset: its delta arithmetic (`macro + grabOffset −
      * obj.position`) is a pure pointer delta only because the two obj.position terms cancel.
@@ -718,8 +720,8 @@ export function usePointerInteraction(
             // GROUP DRAG STAYS WHOLE-DELTA, DELIBERATELY: a mixed selection stepping by halves
             // would push every non-halfStep member off its own grid, and V-PLACE-TRAIT's
             // off-grid guard would then refuse the WHOLE move every time (all-or-nothing) — so a
-            // group can never actually move. A whole-cell delta instead preserves each member's
-            // own half-ness untouched, same as today.
+            // group can never actually move. A whole-cell delta leaves each member's own half-ness
+            // untouched.
             const macro = dragView.projection.screenToMacro(e.clientX, e.clientY);
             const baseX = macro.x + grabOffsetX;
             const baseY = macro.y + grabOffsetY;
@@ -837,8 +839,8 @@ export function usePointerInteraction(
      *  drag-to-move arms). Only the instance whose canvas is under the pointer may touch the
      *  hover state — both canvases run this hook, and the hidden one must not clear what the
      *  visible one draws (its own pointerleave handles departures). Takes a PointerSample rather than
-     *  a PointerEvent so the resampler can call it with the last known position (real PointerEvents
-     *  satisfy PointerSample structurally, so every live call site is unaffected). */
+     *  a PointerEvent so the resampler can call it with the last known position; a real PointerEvent
+     *  satisfies PointerSample structurally. */
     const updateSelectionHover = (e: PointerSample) => {
       if (!isCanvasTarget(e)) return;
       const hoverView = view();
@@ -955,9 +957,8 @@ export function usePointerInteraction(
 
         const groupIds = groupDragIds(useEditorStore.getState().selection, movedId);
         if (groupIds) {
-          // GROUP DRAG STAYS WHOLE-DELTA, DELIBERATELY — see the identical comment in `dragMove`:
-          // a mixed selection stepping by halves would push every non-halfStep member off-grid
-          // and refuse the whole move, all-or-nothing, every time.
+          // GROUP DRAG STAYS WHOLE-DELTA — see `dragMove` for why a half-cell step refuses the
+          // whole move.
           const macro = dropView.projection.screenToMacro(e.clientX, e.clientY);
           const newX = macro.x + grabOffsetX;
           const newY = macro.y + grabOffsetY;

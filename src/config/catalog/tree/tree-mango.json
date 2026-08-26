@@ -15,6 +15,7 @@
     "yellow"
   ],
   "icon": "tree-mango",
+  "iconColor": "#95a05c",
   "width": 1,
   "height": 1,
   "loadValue": 50,

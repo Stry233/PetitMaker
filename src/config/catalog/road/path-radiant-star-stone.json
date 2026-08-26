@@ -1,0 +1,28 @@
+{
+  "id": "path-radiant-star-stone",
+  "category": "road",
+  "icon": "path-radiant-star-stone",
+  "name": {
+    "en": "Radiant Star Stone Path",
+    "zh": "星芒石路",
+    "ja": "星模様の石の道",
+    "ru": "Каменная дорожка «звезда»",
+    "th": "ทางหินลายดาว",
+    "id": "Jalan Batu Bintang",
+    "fr": "Chemin de pierres étoilé"
+  },
+  "color": "#699787",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

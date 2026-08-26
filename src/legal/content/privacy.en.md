@@ -33,7 +33,7 @@ Almost everything the application remembers is held within your browser as **loc
 
 This information consists of the following. Each entry states what the datum contains, the point at which it is written, and how you can remove it.
 
-- **The autosaved map.** *What it contains:* the current map project you are editing, encoded compactly, together with the small amount of editor state needed to restore it. *When it is written:* automatically, shortly after you change the map, and only once a map has content, so a fresh, empty map never overwrites a saved one. *How to remove it:* start a new project, clear your browser's site data, or use Settings then Local data ([Section 5](#5-local-data--clear-local-data)).
+- **The autosaved map.** *What it contains:* the current map project you are editing, encoded compactly, together with the small amount of editor state needed to restore it. *When it is written:* automatically, shortly after you change the map, and only once a map has content, so a fresh, empty map never overwrites a saved one. *How to remove it:* change to another planet, clear your browser's site data, or use Settings then Local data ([Section 5](#5-local-data--clear-local-data)).
 - **Your preferences.** *What it contains:* interface settings such as your chosen language, the UI zoom level, and the settings of the AI Agent (but not the API key itself, covered below). *When it is written:* when you change the corresponding setting. *How to remove it:* clear your browser's site data or use Settings then Local data.
 - **API keys.** *What it contains:* the API key or keys you enter for the AI Agent, and the endpoint address for a custom provider. *When it is written:* only if you use the AI Agent and choose to have a key retained, so that you need not re-enter it. Where the browser supports it, a key is sealed at rest in a browser-only IndexedDB key vault; the protections and limits of this are described in [Sections 7](#7-api-keys) and [8](#8-security-measures). *How to remove it:* remove the key in the AI Agent's settings, or use Settings then Local data, which also clears the key vault.
 
@@ -125,8 +125,8 @@ The tool and these pages link to third-party services, including the team's Bili
 
 The following locations are disclosed separately because they are distinct: the location of the legal operator; the location at which the site is hosted; the location at which edge and CDN processing occurs; the AI-provider destinations that you select; and your own location.
 
-- **The site's files.** {app} is served as static files from Cloudflare's network (Workers static asset hosting). We operate no servers of our own: there is no application backend that receives, processes, or stores your map projects.
-- **Edge delivery.** Those static files are delivered from whichever of Cloudflare's edge locations is nearest to you. That network has no locations in mainland China, so a request made from mainland China is served from outside it. This edge processing serves the files and protects the service; it does not receive the map projects that remain in your browser.
+- **The site's files.** {app} is served as static files from {hostNetwork}. We operate no servers of our own: there is no application backend that receives, processes, or stores your map projects.
+- **Edge delivery.** {edgeDelivery} This edge processing serves the files and protects the service; it does not receive the map projects that remain in your browser.
 - **Correspondence.** Email that you send to us is hosted on Microsoft Outlook infrastructure and handled under Microsoft's terms.
 - **AI-provider requests.** When you use the AI Agent, requests go directly from your browser to the provider you select, are processed in that provider's own regions, and are governed by that provider's terms, as described in [Section 6](#6-ai-providers-byok).
 - **Your own location.** Your requests originate from wherever you use {app}.

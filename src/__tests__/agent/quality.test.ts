@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TerrainType, type Corners } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
-import { evaluateMap, renderScorecard, renderScoreDelta } from '../../agent/quality';
+import { evaluateMap, renderScorecard } from '../../agent/quality';
 
 describe('evaluateMap: connectivity', () => {
   it('scores a fully open map 10', () => {
@@ -123,15 +123,5 @@ describe('scorecard trends (the feedback signal)', () => {
     const after = evaluateMap(state);
     const text = renderScorecard(after, before);
     expect(text).toMatch(/water: \d+\/10 \(was 0, improved\)/);
-  });
-
-  it('renderScoreDelta names the overall trend and the weakest dimension', () => {
-    const state = makeState(20, 20);
-    const before = evaluateMap(state);
-    for (let y = 5; y <= 8; y++) for (let x = 5; x <= 12; x++) setTerrain(state, x, y, TerrainType.Water, 0);
-    const after = evaluateMap(state);
-    const line = renderScoreDelta(before, after);
-    expect(line).toMatch(/Scorecard: overall \d+(\.\d+)?\/10 \(was \d+(\.\d+)?; .*water 0->\d+/);
-    expect(line).toMatch(/Weakest: \w+/);
   });
 });

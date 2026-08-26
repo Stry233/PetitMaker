@@ -23,10 +23,10 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../state/store';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { type GridState, type MacroCoord } from '../../core/model/types';
-import { rectCells, circleCells, lineCells, curveCells, snapShapeEnd } from '../../tools/paint/shapes';
+import { rectCells, circleCells, lineCells, curveCells, snapShapeEnd } from '../../tools/paint';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { host } from '../../kit/host';
-import { isRegionSingle, regionMinSide, setRegionBrushHandler } from '../../core/runtime/region-brush';
+import { clampCentre, isRegionSingle, regionMinSide, setRegionBrushHandler, slideOnMap } from '../../core/runtime/region-brush';
 
 /** Whether a cell may be part of a region: buildable ground, placements included — a scoped
  *  generation replaces what stands in its region, so a cell under an object is as scopeable as a
@@ -99,26 +99,6 @@ export function useRegionBrush(selectingRegion: boolean) {
     brushSeenRef.current.clear();
     resetInFlightGesture();
     host.buildableRegion.clear();
-  }, [region, setRegion, resetInFlightGesture]);
-
-  /** Take the whole map, which is every cell a region may hold. One undo entry, the same as a
-   *  stroke, and it seeds the buffer the next stroke edits rather than only the store. */
-  const selectAll = useCallback(() => {
-    const gs = useEditorStore.getState().gridState;
-    if (!gs) return;
-    const cells: MacroCoord[] = [];
-    for (let y = 0; y < gs.template.height; y++) {
-      for (let x = 0; x < gs.template.width; x++) if (holdsRegion(gs, x, y)) cells.push({ x, y });
-    }
-    if (region.length > 0 || cells.length > 0) {
-      regionUndoStackRef.current.push([...region]);
-      regionRedoStackRef.current = [];
-    }
-    brushCoordsRef.current = cells;
-    brushSeenRef.current = new Set(cells.map((c) => `${c.x},${c.y}`));
-    resetInFlightGesture();
-    setRegion(cells);
-    host.buildableRegion.show(cells);
   }, [region, setRegion, resetInFlightGesture]);
 
   useEffect(() => {
@@ -258,7 +238,7 @@ export function useRegionBrush(selectingRegion: boolean) {
           regionAnchorRef.current = coord;
         }
         let shapeCells: MacroCoord[] = [];
-        const anchor = regionAnchorRef.current;
+        let anchor = regionAnchorRef.current;
         let end = isConstrainHeld() && (tool === 'rect' || tool === 'circle' || tool === 'line')
           ? snapShapeEnd(anchor, coord, tool)
           : coord;
@@ -267,6 +247,12 @@ export function useRegionBrush(selectingRegion: boolean) {
          * picture generators), the extent clamps to it in the drag's own direction, so a figure
          * below the floor cannot be drawn at all — the preview never shrinks past it, which says
          * the limit without a refusal to read.
+         *
+         * AND IT GROWS THE OTHER WAY AT A MARGIN. Growing in the drag's own direction alone runs a
+         * figure started near an edge off the map, where the cells are dropped and the region comes
+         * back SHORT of the very floor that pushed it there — a drag that cannot reach the minimum
+         * however far it is pulled. There is only one direction left at an edge, so the whole figure
+         * slides back onto the map instead, keeping the size the floor asked for.
          */
         const floor = regionMinSide();
         if (floor !== null && (tool === 'rect' || tool === 'circle')) {
@@ -276,7 +262,21 @@ export function useRegionBrush(selectingRegion: boolean) {
             if (Math.abs(d) >= least) return to;
             return from + (d < 0 ? -least : least);
           };
-          end = { x: grow(anchor.x, end.x), y: grow(anchor.y, end.y) };
+          const grown = { x: grow(anchor.x, end.x), y: grow(anchor.y, end.y) };
+          const limit = gs ? { w: gs.template.width, h: gs.template.height } : null;
+          if (!limit) {
+            end = grown;
+          } else if (tool === 'rect') {
+            const slid = slideOnMap(anchor, grown, limit);
+            anchor = slid.anchor;
+            end = slid.end;
+          } else {
+            // A circle is drawn from its CENTRE, so what moves is the centre: far enough in that a
+            // radius fits on both sides, or as far as the map allows when it cannot.
+            const rx = Math.abs(grown.x - anchor.x), ry = Math.abs(grown.y - anchor.y);
+            anchor = { x: clampCentre(anchor.x, rx, limit.w), y: clampCentre(anchor.y, ry, limit.h) };
+            end = { x: anchor.x + rx, y: anchor.y + ry };
+          }
         }
         switch (tool) {
           case 'rect':
@@ -357,8 +357,8 @@ export function useRegionBrush(selectingRegion: boolean) {
       }
     };
 
-    return setRegionBrushHandler({ paint, done, clear: clearRegion, selectAll });
-  }, [selectingRegion, region, setRegion, beginRegionStroke, resetInFlightGesture, clearRegion, selectAll]);
+    return setRegionBrushHandler({ paint, done, clear: clearRegion });
+  }, [selectingRegion, region, setRegion, beginRegionStroke, resetInFlightGesture, clearRegion]);
 
   /**
    * Pop the region's own undo stack — see the file banner for why this is separate from

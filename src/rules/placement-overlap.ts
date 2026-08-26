@@ -10,24 +10,22 @@ import {
   CommandType,
   type Command,
   type GridState,
-  type MacroCoord,
   type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
-import { cellKey, rectsOverlap, type Rect } from '../core/model/grid-model';
+import { bodyEvidence, rectsOverlap, type Rect } from '../core/model/grid-model';
+import { isCoating, standsOnCoating } from '../core/model/traits';
+import { getCatalogItem } from '../state/catalog';
 import { objectRect } from '../state/object-geometry';
-import { entriesNear, getObjectIndex } from '../state/object-index';
+import { entriesCovering, getObjectIndex } from '../state/object-index';
 
-/** The macro cells covered by the intersection of two overlapping rects — the
- *  evidence for an overlap error. floor/ceil handles fractional rects (the plaza). */
-function intersectionCells(a: Rect, b: Rect): MacroCoord[] {
-  const x0 = Math.floor(Math.max(a.x, b.x)), x1 = Math.ceil(Math.min(a.x + a.w, b.x + b.w));
-  const y0 = Math.floor(Math.max(a.y, b.y)), y1 = Math.ceil(Math.min(a.y + a.h, b.y + b.h));
-  const cells: MacroCoord[] = [];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++)
-      cells.push({ x, y });
-  return cells;
+/** The overlap of two rects, as a rect. Fractional by construction wherever either body is (the
+ *  plaza's x.5 origin, a ramp/bridge anchor) — `bodyEvidence` turns it into both the drawn shade
+ *  and the whole cells reported alongside it. */
+function intersectionRect(a: Rect, b: Rect): Rect {
+  const x0 = Math.max(a.x, b.x), x1 = Math.min(a.x + a.w, b.x + b.w);
+  const y0 = Math.max(a.y, b.y), y1 = Math.min(a.y + a.h, b.y + b.h);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 export const placementOverlapRule: PreCommandRule = {
@@ -39,31 +37,36 @@ export const placementOverlapRule: PreCommandRule = {
   validate(cmd: Command, state: GridState): ValidationError[] {
     if (cmd.type !== CommandType.PlaceObject) return [];
     const newRect = objectRect(cmd.object);
+    const candidate = getCatalogItem(cmd.object.catalogId);
 
-    // Evidence = the cells where the new footprint intersects each blocker,
-    // accumulated across ALL blockers (one error; deduped for shared cells).
-    // Candidates come from the spatial index: a placement asks this once per
-    // attempt, and generation makes thousands of attempts on a decorated map.
-    const evidence: MacroCoord[] = [];
-    const seen = new Set<string>();
-    for (const e of entriesNear(getObjectIndex(state), newRect)) {
+    // Evidence = the region where the new footprint intersects each blocker,
+    // accumulated across ALL blockers (one error, one rect per blocker).
+    // Candidates come from the spatial index, by CELL rather than by chunk: a
+    // placement asks this once per attempt, generation makes thousands of
+    // attempts on a decorated map, and a chunk bucket of a paved region holds
+    // every road in it.
+    const evidence: Rect[] = [];
+    for (const e of entriesCovering(getObjectIndex(state), newRect)) {
       if (e.obj.id === cmd.object.id) continue; // skip self (a move/rotate re-place)
-      // A surface coating (road/path) is meant to be coated OVER — the placer removes any coating the new
-      // footprint covers — so it never blocks placement. (Without this, hovering a building over a road
-      // flagged the ghost red and the placer had to strip the road BEFORE validating, which left the road
-      // gone even when the placement was then rejected. See ObjectPlacerTool.onPointerDown.)
-      if (e.coating) continue;
+      // A surface coating (road/path) is meant to be coated OVER — the placer strips any coating the new
+      // footprint covers — so it never blocks a SOLID's placement. That is what lets a building's ghost
+      // read green over a road and the strip happen AFTER validation: stripping first would leave the road
+      // gone whenever the placement is then rejected (see ObjectPlacerTool.onPointerDown).
+      // A coating CANDIDATE gets no such pass: every legitimate re-coat strips first, so two coatings on
+      // one cell is a state nothing may create — whichever is asked about later answers for both.
+      if (e.coating && !(candidate && isCoating(candidate))) continue;
+      // The other direction of the plantable pair: a plantable road painted UNDER standing flora
+      // coexists with it — which is also what lets the road-follow reconcile re-seat a planted
+      // dirt path when the ground under the pair changes.
+      if (candidate && standsOnCoating(getCatalogItem(e.obj.catalogId), candidate)) continue;
       if (!rectsOverlap(newRect, e.rect)) continue;
-      for (const c of intersectionCells(newRect, e.rect)) {
-        const key = cellKey(c.x, c.y);
-        if (!seen.has(key)) { seen.add(key); evidence.push(c); }
-      }
+      evidence.push(intersectionRect(newRect, e.rect));
     }
     if (evidence.length > 0) {
       return [{
         ruleId: 'V-PLACE-OVERLAP',
         message: 'error.object_overlap',
-        cells: evidence,
+        ...bodyEvidence(evidence),
         grid: 'macro',
         severity: 'error',
       }];

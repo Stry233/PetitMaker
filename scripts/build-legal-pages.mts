@@ -8,23 +8,21 @@
 // the bottom — it is never imported for its exports. The pure/testable core
 // (pageHtml, sitemapXml, securityTxt, writeAll, …) lives in
 // ./legal-pages-core.mts, which src/__tests__/legal/build-pages.test.ts
-// imports directly instead of this file. See that file's doc comment for why
-// a main-module guard doesn't work under `vite-node` (the same trap
-// scripts/license-audit.mts documents and works around).
+// imports directly instead of this file. scripts/license-audit.mts's doc
+// comment says why a main-module guard cannot host both under `vite-node`.
 //
 // Usage (see package.json):
 //   vite-node scripts/build-legal-pages.mts     (run after `vite build`)
 //
 // Mode: PETIT_RELEASE=1 in the environment selects 'release' (any config
 // problem or unresolved token throws); otherwise 'dev' (warnings only, except
-// a genuinely unresolved non-deferred token, which is always a bug). NOTE:
-// package.json's `build:release` chain sets PETIT_RELEASE=1 only for the
-// immediately-following `npm run legal:validate` step (POSIX inline env-var
-// scoping does not carry across `&&`) — that step already hard-fails
-// (`process.exitCode = 1`, halting the `&&` chain) on a release-invalid
-// config, so by the time this script runs in the real release pipeline the
-// config has ALREADY been proven release-ready; this script's own `mode`
-// detection is a defense-in-depth re-check, not the primary gate.
+// an unresolved token, which is always a bug). package.json's `build:release`
+// chain sets PETIT_RELEASE=1 only for the immediately-following
+// `npm run legal:validate` step — POSIX inline env-var scoping does not carry
+// across `&&` — and that step hard-fails (`process.exitCode = 1`, halting the
+// chain) on a release-invalid config. So in the real release pipeline the config
+// is already proven release-ready and this script's own `mode` detection is a
+// second check rather than the gate.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';

@@ -1,184 +1,164 @@
 /*
- * scale.tsx — the design canvas, and how it is mapped onto a viewport.
+ * scale.tsx — the design canvas, and how it is mapped onto a window.
  *
- * TWO factors leave this file and they are not the same number. `useScale`/`usePx` convert design px
- * to css px at whatever the surrounding `ScaleProvider` holds, and every live provider holds a FIXED
- * value: `shell/units.ts:SCALE` for the frame, `SHELF_SCALE` inside the two shelves. That is what
- * makes a button one size at every window size, with the extra room going to the map. `useChromeScale`
- * is the viewport-derived one — the canvas mapped onto viewport height, renormalized — and it is what
- * the modals, the toasts, the hint panel and the corner controls ride, applied as css `zoom`.
+ * TWO factors leave this file and they are not the same number, but they are the same number times a
+ * CONSTANT, which is the rule this file exists to hold. `useScale`/`usePx` convert design px to css
+ * px at whatever the surrounding `ScaleProvider` holds, and every live provider holds a FIXED value:
+ * `shell/units.ts:SCALE` for the frame, `SHELF_SCALE` inside the two shelves. That is what makes a
+ * button one size at every window size, with the extra room going to the map. `useChromeScale` is
+ * the window-derived one — `frameFit` times the user's UI zoom — and it is what the modals, the
+ * toasts, the hint panel and the corner controls ride, applied as css `zoom`. The frame draws at
+ * `ZOOM × frameFit`, so the two stand in one ratio whatever shape the window is.
  *
- * So a surface authored on the design canvas does not thereby track the viewport: which of the two it
+ * THEY DRIFT APART ON THE WINDOW'S SHAPE ALONE if either is derived some other way. Mapping the
+ * chrome onto viewport HEIGHT is the case to know: a maximized, non-fullscreen Chrome on a 1080p
+ * screen leaves an 869 css px viewport, where the frame stands at full size and a height-mapped
+ * chrome at 0.80 — Settings and the export sheet at ~9 px beside 35 px shelf names. Anything added
+ * here that keys on the viewport must key on `frameFit` too.
+ *
+ * So a surface authored on the design canvas does not thereby track the window: which of the two it
  * tracks is decided by whether it reads `usePx` or `useChromeScale`.
  */
-import { createContext, useContext, useEffect, useState } from 'react';
-import { pageZoom } from '../../core/runtime/page-zoom';
-import { readMatch } from '../../core/runtime/portrait-signals';
+import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
+import { useEditorStore } from '../../state/store';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
+import { isDenseScript, readableWeight, textDevicePx, weightVars } from './text-weight';
 
 /** The design canvas, in design pixels: the surface every coordinate here is measured against. */
 export const CANVAS = { w: 3754, h: 1918 } as const;
 
 /**
- * The lowest design-canvas y the UI is laid out to reach.
+ * The window the fixed layout was judged in, and below which the whole interface scales DOWN
+ * proportionally to the tighter axis. `FIT_FLOOR` keeps a control tappable where that factor would
+ * take it under a fingertip — which is also what a touch device gets in place of a size boost, since
+ * a boost the chrome takes and the frame does not is the drift above in another form. One trade the
+ * floor makes plainly: a 768×1024 portrait tablet lands at the floor's 0.60 — a real shrink, but one
+ * standing behind a dismissible `PortraitGuard`, which is what makes it a trade rather than a fault.
  *
- * The canvas maps onto viewport HEIGHT, so at the plain mapping everything fits by construction and
- * this is the only number that says how much room is left over. Anything that draws the UI larger
- * than that mapping — the touch boost — may only spend the gap between here and CANVAS.h.
+ * Browser page zoom needs no term of its own: it divides the css viewport and multiplies
+ * `devicePixelRatio` by the same factor. At or above the reference `frameFit` is pinned at 1, so zoom
+ * passes straight through and magnifies the chrome exactly as it already magnifies the frame; below
+ * the reference `frameFit` falls by the same factor zoom rose by, so the two cancel and the chrome's
+ * physical size holds still under further zooming, at whatever size a genuinely smaller window would
+ * already show.
  */
-export const CONTENT_BOTTOM_Y = 1724;
-
-/** The design-canvas y the UI zoom scales about: this height holds still while Ctrl +/- is worked.
- *  Near the canvas's vertical middle, so a surface anchored anywhere on it grows symmetrically. */
-const UI_ZOOM_ANCHOR_Y = 847.5;
+export const FIT_REF = { w: 1280, h: 800 } as const;
+export const FIT_FLOOR = 0.6;
 
 /**
- * Map the design canvas onto the viewport by matching canvas height to viewport
- * height, so a design coordinate × scale lands at its exact canvas fraction.
- * Uniform → no distortion.
+ * 1 at or above `FIT_REF`, the tighter axis's share below it, never under `FIT_FLOOR`.
  *
- * `chromeScaleOf` renormalizes that factor to 1 at a 1080-tall viewport, and
- * that is the form the mapping reaches the screen in: the two CANVAS.h terms
- * cancel, leaving a chrome length simply proportional to viewport height. The
- * Settings card, authored `width={380}`, is 380 css px wide on a 1080-tall
- * window and 507 on a 1440-tall one.
- *
- * The mapped height is CAPPED: beyond DESIGN_VH_CAP the UI stops growing with
- * the viewport. Pure vh-proportional scaling holds a surface at a fixed share of
- * screen height on ANY monitor, which reads comically large on a 4K/100%-scaled
- * desktop (the same card is physically ~2x its laptop size). Up to ~1440p-css
- * the linear mapping matches the design intent; past it the extra room goes to
- * the map, not to bigger chrome. Per-device taste stays on uiZoom (Ctrl +/-),
- * which is persisted.
+ * `refWiden` WIDENS THE REFERENCE WINDOW, which is how a surface that takes a strip of the viewport
+ * for itself is paid for: the interface then fits into what is LEFT of the window at one factor,
+ * itself included. It is the strip's width at fit 1, and the solved form of the circular
+ * definition — the strip is drawn at the fit, so the room left for the reference window is
+ * `vw - strip x fit`, which is `fit = vw / (FIT_REF.w + refWiden)` — so the answer needs no
+ * iteration and the strip and the interface cannot end up at two different sizes. Today the one
+ * caller is the assistant's DOCKED panel (`shell/panel-frame.ts:PINNED_DOCK_REF_W`), handed in
+ * rather than named here: the dock's width is the frame's own arithmetic, and this file is below it.
  */
-export const DESIGN_VH_CAP = 1440;
-
-/** Live device-pixel-ratio (1 where unavailable). Browser page zoom moves this. */
-function currentDpr(): number {
-  return (typeof window === 'undefined' ? 1 : window.devicePixelRatio) || 1;
+export function frameFit(vw: number, vh: number, refWiden = 0): number {
+  return Math.max(FIT_FLOOR, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
 }
 
 /**
- * The viewport height the scale is derived from, with the cap applied.
+ * How much the reference window is widened by right now, in reference px: the strip some surface
+ * has taken out of the viewport, or 0 while none has.
  *
- * Page zoom multiplies devicePixelRatio and divides the CSS viewport by the same factor, so
- * `vh × dpr` — the viewport in real device pixels — does not move when the user zooms, and the
- * UNCAPPED mapping therefore already draws the UI at one physical size at every zoom level. The cap
- * is the one term that breaks it: a threshold in CSS px, which zoom changes underneath. Zooming out
- * inflates vh past the cap, the scale stops growing, and the UI gets physically smaller the further
- * out you zoom — backwards.
- *
- * So the cap is compared against the UNZOOMED height (`vh × zoom`, which is what vh would be at the
- * page's reference zoom) and then converted back. Both edges of the expression carry the same
- * factor, which is what leaves the on-screen size unmoved.
+ * A CONTEXT rather than a constant, because the number belongs to a layer ABOVE this one and this
+ * one is the floor every scaling answer comes from. The provider stands over the whole app (`App`),
+ * so the frame and the chrome read one answer — a fit either of them derived on its own is the
+ * drift this file exists to prevent.
  */
-export function cappedVh(vh: number, dpr: number = currentDpr()): number {
-  const zoom = pageZoom(dpr);
-  return Math.min(vh, DESIGN_VH_CAP / zoom);
+const DockRefContext = createContext(0);
+
+export const DockRefProvider = DockRefContext.Provider;
+
+export function useDockRef(): number {
+  return useContext(DockRefContext);
 }
 
-/**
- * How much bigger the UI is drawn on a touch-primary device, at most. A CSS px is a smaller
- * physical thing on a phone than on a desktop (~150 css ppi against ~96), so mapping the canvas to
- * viewport height — right on a monitor — lands a card at barely an inch and a half tall.
- * The boost buys that back without abandoning the proportional mapping.
- *
- * The ceiling is the room the LAYOUT has, not a taste: the plain mapping fits the whole design
- * canvas in the viewport, so the boost may spend only the part of that canvas the UI leaves empty
- * below itself. Past it the lowest surface hangs off the bottom of the screen, which is worse than
- * a small card on any device.
- */
-/** Design px of air kept under the lowest panel, so a locale whose text wraps a line further than
- *  the measured one does not put its edge on the screen edge. */
-const BOOST_BOTTOM_MARGIN = 24;
-export const TOUCH_BOOST_MAX = CANVAS.h / (CONTENT_BOTTOM_Y + BOOST_BOTTOM_MARGIN);
-/** Full strength at or below a phone's landscape height; nothing at or above a small laptop's. */
-const BOOST_VH_FULL = 380;
-const BOOST_VH_NONE = 700;
-
-/**
- * The touch boost for a viewport, ramped so a big tablet is untouched and a phone gets all of it.
- *
- * Gated on the pointer being COARSE, never on size alone: a small desktop window is a normal thing
- * and must keep desktop proportions. That is the same signal the portrait guard reads, and for the
- * same reason — it describes the device, not the window.
- */
-export function touchBoost(vh: number, coarsePointer: boolean): number {
-  if (!coarsePointer) return 1;
-  const t = Math.min(1, Math.max(0, (BOOST_VH_NONE - vh) / (BOOST_VH_NONE - BOOST_VH_FULL)));
-  return 1 + (TOUCH_BOOST_MAX - 1) * t;
-}
-
-export function computeScale(
-  vh: number,
-  dpr: number = currentDpr(),
-  coarsePointer: boolean = readMatch('(pointer: coarse)'),
-): number {
-  return (cappedVh(vh, dpr) / CANVAS.h) * touchBoost(vh, coarsePointer);
-}
-
-/** Reactive scale derived from the viewport, times the user's UI zoom (Ctrl
- *  +/-, or the Settings slider) — the ANIMATED value, so both paths ease. */
-export function useMenuScale(): number {
-  const [scale, setScale] = useState(() =>
-    typeof window === 'undefined' ? 0.56 : computeScale(window.innerHeight),
-  );
+/** The live window, re-read on resize. Two numbers rather than one object: a drag-resize fires this
+ *  many times a second, and an object would be a new identity (and a re-render) on every one of them
+ *  even where neither axis moved. Exported for the one question that must NOT go through the fit:
+ *  whether there is room to dock, which is what decides the widening the fit reads. */
+export function useViewportSize(): { w: number; h: number } {
+  const [w, setW] = useState(() => (typeof window === 'undefined' ? FIT_REF.w : window.innerWidth));
+  const [h, setH] = useState(() => (typeof window === 'undefined' ? FIT_REF.h : window.innerHeight));
   useEffect(() => {
-    const onResize = () => setScale(computeScale(window.innerHeight));
+    const onResize = () => { setW(window.innerWidth); setH(window.innerHeight); };
     window.addEventListener('resize', onResize);
-    // The touch boost keys off the pointer, which can change under a tablet as a mouse is attached
-    // or removed; a resize does not necessarily follow.
-    const pointerMq = window.matchMedia?.('(pointer: coarse)');
-    pointerMq?.addEventListener('change', onResize);
     onResize();
-    return () => {
-      window.removeEventListener('resize', onResize);
-      pointerMq?.removeEventListener('change', onResize);
-    };
-  }, []);
-  const uiZoom = useAnimatedUiZoom();
-  return scale * uiZoom;
-}
-
-/**
- * Vertical offset that makes the UI zoom (Ctrl +/-) scale a canvas-placed panel
- * about UI_ZOOM_ANCHOR_Y instead of about the canvas's top-left. Positions are
- * `px(y) = y·scale`, so a large uiZoom pushes tall panels off the bottom. Added
- * to a panel's `top`, this keeps the anchor height pinned at its uiZoom-1
- * position, so panels grow symmetrically up+down. Zero at uiZoom = 1 (default
- * layout unchanged).
- */
-export function useMenuCenterOffset(): number {
-  const uiZoom = useAnimatedUiZoom();
-  const [vh, setVh] = useState(() => (typeof window === 'undefined' ? 1080 : window.innerHeight));
-  useEffect(() => {
-    const onResize = () => setVh(window.innerHeight);
-    window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  // The anchor sits at UI_ZOOM_ANCHOR_Y·base in screen px; keep it there regardless of uiZoom:
-  // shift by anchorScreen·(1 − uiZoom). Reads the SAME base scale the layout uses, so the cap and
-  // the touch boost cannot drift out of the anchor.
-  return UI_ZOOM_ANCHOR_Y * computeScale(vh) * (1 - uiZoom);
+  return { w, h };
+}
+
+/** `frameFit` of the live window, re-read on resize, with whatever strip is docked taken off it.
+ *  The widening rides the ANIMATED UI zoom because the strip is drawn at that zoom too, so the fit
+ *  and the strip move together through a Ctrl +/- glide instead of fighting for one frame each. */
+export function useViewportFit(): number {
+  const { w, h } = useViewportSize();
+  const widen = useDockRef() * useAnimatedUiZoom();
+  return frameFit(w, h, widen);
 }
 
 /**
- * Chrome scale: the EXACT menu factor (capped viewport height × uiZoom),
- * renormalized so 1 = a 1080px-tall css viewport, where the chrome's fixed-px
- * designs (modals, corner controls) read right. One scaling logic for the whole
- * UI: chrome tracks the menu 1:1 across monitors and Ctrl +/- — no second curve,
- * no separate clamps (uiZoom is already clamped in the store, the vh cap bounds
- * the top, and a small window shrinks chrome exactly as it shrinks the menu).
- * Applied as css `zoom` (crisp layout scaling; browsers without `zoom` render
- * at 1 — a graceful no-op).
+ * Chrome scale: the window's fit times the user's UI zoom — the frame's own factor without the
+ * frame's page zoom, so 1 means "the size the modals and corner controls were designed at" and the
+ * chrome:frame ratio is a constant. Applied as css `zoom` (crisp layout scaling; browsers without
+ * `zoom` render at 1, a graceful no-op).
  */
-const CHROME_BASE_VH = 1080;
-export function chromeScaleOf(menuScale: number): number {
-  return (menuScale * CANVAS.h) / CHROME_BASE_VH;
+export function useChromeScale(): number {
+  return useViewportFit() * useAnimatedUiZoom();
 }
 
-export function useChromeScale(): number {
-  return chromeScaleOf(useMenuScale());
+/** The display's own pixel multiplier, re-read on the media change that moves it (browser page zoom
+ *  moves `devicePixelRatio`, and a window dragged between screens changes it outright). Without
+ *  `matchMedia` there is no such event to hang off, so the first reading stands. */
+export function useDevicePixelRatio(): number {
+  const [dpr, setDpr] = useState(() => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1));
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    let cancel = () => {};
+    const watch = () => {
+      const ratio = window.devicePixelRatio || 1;
+      setDpr(ratio);
+      // The query matches only at exactly this ratio, so it CHANGES the moment the ratio does —
+      // which is the one event the platform gives for a dpr move. Re-armed at the new ratio each
+      // time, since a single query can only ever report leaving the value it was built for.
+      const mq = window.matchMedia(`(resolution: ${ratio}dppx)`);
+      const onChange = () => { cancel(); watch(); };
+      mq.addEventListener('change', onChange);
+      cancel = () => mq.removeEventListener('change', onChange);
+    };
+    watch();
+    return () => cancel();
+  }, []);
+  return dpr;
+}
+
+/** Whether the live locale is written in a script that fills its em (the dense weight floors). */
+export function useDenseScript(): boolean {
+  return isDenseScript(useEditorStore((s) => s.locale));
+}
+
+/**
+ * `(nominalWeight, cssPx) => weight` for a surface standing under the CHROME zoom — a modal, a
+ * window, a floating popover. Reach for it where a site's size is its own rather than a role's;
+ * anything on the role table inherits its answer from `useWeightVars` instead.
+ */
+export function useReadableWeight(): (nominal: number, cssPx: number) => number {
+  const zoom = useChromeScale();
+  const dpr = useDevicePixelRatio();
+  const dense = useDenseScript();
+  return (nominal, cssPx) => readableWeight(nominal, textDevicePx(cssPx, zoom, dpr), dense);
+}
+
+/** Every role's weight resolved for the CHROME zoom, as the custom properties a surface publishes.
+ *  Spread onto the element carrying the surface's own `zoom`. */
+export function useWeightVars(): CSSProperties {
+  return weightVars(useChromeScale(), useDevicePixelRatio(), useDenseScript());
 }
 
 const ScaleContext = createContext<number>(0.56);
@@ -193,8 +173,9 @@ export function useScale(): number {
  *  fuse dense CJK strokes when glyphs rasterize small (1080p at DPR 1: design
  *  40px → ~22 physical px). Below the threshold, heavy weights drop to 600
  *  (user-validated); lighter weights and high-res displays are untouched.
- *  Threshold: 1080p → 0.563×1 = 0.56 < 0.7 → cap; 1440p → 0.75 ≥ 0.7 → keep
- *  (user reports 2K fine); 1080p at DPR ≥ 1.25 → ≥ 0.70 → keep. */
+ *
+ *  Keyed on the design SCALE rather than on the size the text ends up at, which is what
+ *  `text-weight.ts` answers instead and what every surface outside the agent panel reads. */
 export function effectiveWeight(w: number, scale: number, dpr: number): number {
   return w >= 800 && scale * Math.min(dpr, 2) < 0.7 ? 600 : w;
 }

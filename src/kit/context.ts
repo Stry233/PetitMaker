@@ -14,7 +14,7 @@
  */
 import type { GridState, MapTemplate } from '../core/model/types';
 import type { RuleRegistry } from '../rules/registry';
-import type { MacroContext } from '../tools/macros/context';
+import type { MacroContext } from '../tools/macros';
 import { useEditorStore } from '../state/store';
 
 /** The `{state, executor, registry}` triple, defined once in `tools/macros/context.ts` — the

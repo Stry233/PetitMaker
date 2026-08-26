@@ -1,5 +1,5 @@
 // src/io/share/import.ts — raster-first import: locate + decode the visible code band, gate on
-// SHA-256, then feed the EXISTING save pipeline (no parallel loader).
+// SHA-256, then feed the save pipeline itself — never a parallel loader.
 import type { GridState } from '../../core/model/types';
 import { migrateToCurrent, type RawSave } from '../save-format';
 import { deserialize } from '../json-codec';

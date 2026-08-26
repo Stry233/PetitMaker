@@ -109,11 +109,11 @@ describe('chunkLoadViolations cost shape', () => {
     getMapStats(large);
 
     // grid-model.ts documents this as SAFE ("omitting [the delta] is safe... only slower"),
-    // and real call sites take it — the reviewer traced drag/rotate ghost updates on every
-    // pointer-move frame, road-reconcile.ts, generator clearance sweeps and agent
-    // strip-placements as flows that desync the cache this way. It is not this rule's
-    // mistake to fix: chunkLoadViolations only calls getMapStats(state), and map-stats
-    // itself is the thing deciding whether it can trust a patch or must rebuild.
+    // and real call sites take it: drag/rotate ghost updates on every pointer-move frame,
+    // road-reconcile.ts, generator clearance sweeps and agent strip-placements all desync
+    // the cache this way. It is not this rule's mistake to fix: chunkLoadViolations only
+    // calls getMapStats(state), and map-stats itself is the thing deciding whether it can
+    // trust a patch or must rebuild.
     const addedSmall = obj('added-small', 1, 1);
     const addedLarge = obj('added-large', 1, 1);
     small.objects.set(addedSmall.id, addedSmall);

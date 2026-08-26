@@ -123,9 +123,9 @@ describe('the focus ring', () => {
  *
  * A browser matches `:focus-visible` on the element that is already focused as soon as any key goes
  * down, and a control in this frame is focused by the click that chose it and then stays focused. So
- * pressing Enter, or that control's own shortcut, used to draw the rust ring around a control the
- * yellow plate already marks as chosen: two boxes, the outer one earned by a key press that had
- * nothing to do with the control under it. Reproduced in a browser at 4x before this was written.
+ * without a guard, pressing Enter or that control's own shortcut draws the rust ring around a control
+ * the yellow plate already marks as chosen: two boxes, the outer one earned by a key press that had
+ * nothing to do with the control under it. Reproduced in a browser at 4x.
  *
  * jsdom neither lays out nor matches `:focus-visible`, so the guard is in two halves and each states
  * what it can prove: the SEQUENCE below is the whole of the module's behaviour, and the stylesheet
@@ -161,6 +161,20 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
   });
 
+  it('a focus that no input put there is the page\'s own, and wears no ring', () => {
+    // The first-launch tour card (and every modal) takes focus on mount, before any pointer or key
+    // event exists to arm a source. That focus was moved by the page itself: 'program', which the
+    // stylesheet suppresses like a pointer's. A key pressed at that standing focus restamps
+    // nothing, exactly as at a pointer-placed one.
+    focus();
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('program');
+    press('keydown');
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('program');
+    // A Tab after it is still the keyboard's.
+    focus();
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('keyboard');
+  });
+
   it('leaves the document as it found it', () => {
     press('pointerdown');
     focus();
@@ -174,13 +188,15 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     expect(root.hasAttribute(FOCUS_SOURCE_ATTR)).toBe(false);
   });
 
-  it('has a rule that draws nothing for a pointer-placed focus, and the shell mounts the tracking', () => {
-    const rule = css.match(/\[data-focus-source='pointer'\] \*:focus-visible \{([^}]*)\}/);
-    expect(rule, 'animations.css must suppress the ring for a pointer-placed focus').not.toBeNull();
-    // Both halves of the ring: the outline, whose own declaration is `!important` against the
-    // controls' inline styles, and the halo outside it.
-    expect(rule![1]).toMatch(/outline:\s*none\s*!important;/);
-    expect(rule![1]).toMatch(/box-shadow:\s*none;/);
+  it('has a rule that draws nothing for a pointer- or page-placed focus, and the shell mounts the tracking', () => {
+    for (const source of ['pointer', 'program']) {
+      const rule = css.match(new RegExp(`\\[data-focus-source='${source}'\\][^{]*\\{([^}]*)\\}`));
+      expect(rule, `animations.css must suppress the ring for a ${source}-placed focus`).not.toBeNull();
+      // Both halves of the ring: the outline, whose own declaration is `!important` against the
+      // controls' inline styles, and the halo outside it.
+      expect(rule![1]).toMatch(/outline:\s*none\s*!important;/);
+      expect(rule![1]).toMatch(/box-shadow:\s*none;/);
+    }
     expect(shell).toContain('useFocusSource()');
   });
 });

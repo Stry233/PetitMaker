@@ -2,8 +2,11 @@
  * Soft scroll edges: a scroller that can still travel toward an end wears a fade there, so a hard
  * clip reads as "the row continues" instead of a drawing error; an end it cannot reach meets the
  * edge squarely because it is the end. The fade is a mask on the scroller itself, recomputed from
- * plain scroll geometry on scroll and resize. The widths are css px: the ambient `zoom` a surface
- * rides (frame or chrome) scales them with it.
+ * plain scroll geometry on scroll, resize and content mutation — the third because scrollHeight is
+ * a fact about the CHILDREN: an exit animation removing its tiles, a streamed row, a late image all
+ * change it with no scroll event, no box resize and no host re-render, and a shade nothing
+ * re-measures stands over a stack that is all showing. The widths are css px: the ambient `zoom` a
+ * surface rides (frame or chrome) scales them with it.
  *
  * THE MASK ITSELF CANNOT BE TRANSITIONED — `mask-image` gradients are not animatable CSS — so what
  * animates is the FADE WIDTH that goes into it. `useTravel` keeps two numbers per edge: the
@@ -24,34 +27,62 @@ export const SCROLL_FADE = 24;
  *  the same tolerance at the start keeps the rule one rule. */
 export const STOP_EPS = 3;
 
-export interface EdgeTravel { start: number; end: number }
+export interface EdgeTravel {
+  start: number;
+  end: number;
+  /**
+   * A band at the START edge the shade may NOT cover, in px.
+   *
+   * IT IS FOR A STICKY HEAD, and the assistant panel's job zone is the case: a ticket's order line
+   * stays put on its own opaque backing while the rest of the ticket scrolls under it, so the top of
+   * the scroller is not the top of what scrolls — it is the top of the STICKY, which is standing
+   * still and has nothing to fade for. A shade over it dims the one line that is meant to stay
+   * readable AND wastes its ramp on a band nothing passes through. So the ramp starts where the
+   * sticky ends, which is also where content genuinely disappears from view.
+   *
+   * OPTIONAL because most scrollers have no sticky anything: absent reads as no band at all.
+   */
+  offset?: number;
+}
 
 /** Fade width per end of `axis`, 0 where the box cannot travel that way. */
 export function measureFade(
   el: HTMLElement, axis: FadeAxis,
   fadeAt?: (el: HTMLElement, edge: number, atEnd: boolean) => number,
+  offsetAt?: (el: HTMLElement) => number,
 ): EdgeTravel {
   const pos = axis === 'x' ? el.scrollLeft : el.scrollTop;
   const client = axis === 'x' ? el.clientWidth : el.clientHeight;
   const room = (axis === 'x' ? el.scrollWidth : el.scrollHeight) - client;
   const at = (edge: number, atEnd: boolean) => (fadeAt ? fadeAt(el, edge, atEnd) : SCROLL_FADE);
+  const start = pos > STOP_EPS ? at(pos, false) : 0;
   return {
-    start: pos > STOP_EPS ? at(pos, false) : 0,
+    start,
     end: room - pos > STOP_EPS ? at(pos + client, true) : 0,
+    // Asked for only where there is a shade to push down; a scroller at its start has none.
+    offset: start > 0 && offsetAt ? Math.max(0, offsetAt(el)) : 0,
   };
 }
 
 /** The mask for whichever ends have travel, or none, in which case the element is not masked. */
 export function fadeMask(axis: FadeAxis, travel: EdgeTravel): string | undefined {
   if (!travel.start && !travel.end) return undefined;
+  // The offset band is HARD opaque and the ramp begins at its edge: what emerges from under a sticky
+  // head has to appear out of nothing, so the transparent end of the ramp sits against the head.
+  const band = travel.offset ?? 0;
+  const head = travel.start
+    ? band > 0
+      ? `#000 0, #000 ${band}px, transparent ${band}px, #000 ${band + travel.start}px`
+      : `transparent 0, #000 ${travel.start}px`
+    : '#000 0';
   const stops = [
-    travel.start ? `transparent 0, #000 ${travel.start}px` : '#000 0',
+    head,
     travel.end ? `#000 calc(100% - ${travel.end}px), transparent 100%` : '#000 100%',
   ];
   return `linear-gradient(${axis === 'x' ? 'to right' : 'to bottom'}, ${stops.join(', ')})`;
 }
 
-const same = (a: EdgeTravel, b: EdgeTravel) => a.start === b.start && a.end === b.end;
+const same = (a: EdgeTravel, b: EdgeTravel) => a.start === b.start && a.end === b.end && a.offset === b.offset;
 
 /** How fast the shown width chases its measured target: the ms to close ~63% of the remaining gap
  *  on one exponential step. This file is `ui/primitives`, which keeps its own timings the way
@@ -63,14 +94,15 @@ const SETTLE_MS = 60;
  *  never reaches its target on its own, so the loop needs a stop condition to actually stop. */
 const SETTLE_EPS = 0.5;
 
-interface Binding { el: HTMLElement; ro: ResizeObserver | null; measure: () => void }
+interface Binding { el: HTMLElement; ro: ResizeObserver | null; mo: MutationObserver | null; measure: () => void }
 
 function useTravel(
   ref: RefObject<HTMLElement | null>, axes: readonly FadeAxis[],
   fadeAt?: (el: HTMLElement, edge: number, atEnd: boolean) => number,
+  offsetAt?: (el: HTMLElement) => number,
 ): EdgeTravel[] {
   const reduced = useReducedMotionConfig() ?? false;
-  const [shown, setShown] = useState<EdgeTravel[]>(() => axes.map(() => ({ start: 0, end: 0 })));
+  const [shown, setShown] = useState<EdgeTravel[]>(() => axes.map(() => ({ start: 0, end: 0, offset: 0 })));
   // The authoritative shown/target values the rAF loop reads and writes: React state alone would
   // make `tick` read a value one batched render behind the one it just committed.
   const shownRef = useRef<EdgeTravel[]>(shown);
@@ -79,6 +111,8 @@ function useTravel(
   axesRef.current = axes;
   const fadeAtRef = useRef(fadeAt);
   fadeAtRef.current = fadeAt;
+  const offsetAtRef = useRef(offsetAt);
+  offsetAtRef.current = offsetAt;
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
   const bound = useRef<Binding | null>(null);
@@ -111,7 +145,9 @@ function useTravel(
       const start = close(s.start, t.start) ? t.start : s.start + (t.start - s.start) * factor;
       const end = close(s.end, t.end) ? t.end : s.end + (t.end - s.end) * factor;
       if (start !== t.start || end !== t.end) settled = false;
-      return { start, end };
+      // The offset is a PLACE, not a travel: a ramp that slid down into position would read as the
+      // shade drifting rather than as a head standing still, so it lands where it is measured.
+      return { start, end, offset: t.offset };
     });
     commit(next);
     if (settled) { raf.current = null; return; }
@@ -137,12 +173,13 @@ function useTravel(
     if (bound.current) {
       bound.current.el.removeEventListener('scroll', bound.current.measure);
       bound.current.ro?.disconnect();
+      bound.current.mo?.disconnect();
       bound.current = null;
       cancelLoop();
     }
     if (!el) return;
     const measure = () => {
-      const next = axesRef.current.map((axis) => measureFade(el, axis, fadeAtRef.current));
+      const next = axesRef.current.map((axis) => measureFade(el, axis, fadeAtRef.current, offsetAtRef.current));
       targetRef.current = next;
       if (reducedRef.current) {
         // The transition is ambient decoration, so reduced motion drops it whole: shown becomes
@@ -158,7 +195,11 @@ function useTravel(
     el.addEventListener('scroll', measure, { passive: true });
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
-    bound.current = { el, ro, measure };
+    // The mask's own style writes land here too and re-run `measure`; that cycle terminates
+    // because a measure that moves nothing commits nothing.
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(measure) : null;
+    mo?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    bound.current = { el, ro, mo, measure };
     measure();
   });
   useLayoutEffect(() => () => {
@@ -166,6 +207,7 @@ function useTravel(
     if (!bound.current) return;
     bound.current.el.removeEventListener('scroll', bound.current.measure);
     bound.current.ro?.disconnect();
+    bound.current.mo?.disconnect();
     bound.current = null;
   }, []);
   return shown;
@@ -174,10 +216,15 @@ function useTravel(
 /** Mask style for a one-axis scroller. Spread into the scroller's own `style`. */
 export function useScrollFade(
   ref: RefObject<HTMLElement | null>, axis: FadeAxis,
-  opts?: { fadeAt?: (el: HTMLElement, edge: number, atEnd: boolean) => number },
+  opts?: {
+    fadeAt?: (el: HTMLElement, edge: number, atEnd: boolean) => number;
+    /** The band at the START edge a sticky head owns, which the shade may not cover — see
+     *  `EdgeTravel.offset`. Read on the same beats the fade itself is measured on. */
+    offsetAt?: (el: HTMLElement) => number;
+  },
 ): CSSProperties {
   // useTravel is called with one axis, so its result always holds exactly one entry.
-  const [travel] = useTravel(ref, [axis], opts?.fadeAt);
+  const [travel] = useTravel(ref, [axis], opts?.fadeAt, opts?.offsetAt);
   const mask = fadeMask(axis, travel!);
   return mask ? { maskImage: mask, WebkitMaskImage: mask } : {};
 }

@@ -1,15 +1,16 @@
 /**
  * What a generation confined to a painted REGION may touch, and what taking it back may take.
  *
- * Both were reported as one symptom — "generating in a new region deletes the placements in the old
- * one, and Clear wipes the map". They are two faults:
+ * Both show up as one symptom — "generating in a new region deletes the placements in the old one, and
+ * Clear wipes the map" — and they are two separate faults:
  *
- *   1. Generated objects were named `gen-<seed>-<n>`, and the panel's seed does not change between
- *      clicks, so the second run reissued the first run's ids. `state.objects` is keyed by id, so
- *      every reissue REPLACED an object elsewhere on the map, and the 2D layer (which only adds ids
- *      it has never seen) kept the old sprite — the new region looked empty and the old one emptied.
- *   2. Clear read the CURRENT painted region, which a finished run has already dropped, so it fell
- *      back to the whole map — and it took the person's own work with it.
+ *   1. AN ID DERIVED FROM THE SEED (`gen-<seed>-<n>`) is not unique across runs: the panel's seed does
+ *      not change between clicks, so a second run reissues the first run's ids. `state.objects` is keyed
+ *      by id, so a reissue REPLACES an object elsewhere on the map, and the 2D layer (which only adds
+ *      ids it has never seen) keeps the sprite where it was — the new region looks empty and the old one
+ *      empties.
+ *   2. CLEAR READING THE CURRENT PAINTED REGION, which a finished run has already dropped, falls back
+ *      to the whole map and takes the person's own work with it.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
@@ -19,10 +20,8 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
 import { createGrid, createPlazaObject, getCell, isBuildableZone } from '../../../core/model/grid-model';
 import { generateTerrain, clearAllObjects, clearAllTerrain } from '../../../tools/generation/terrain-generator';
-import { toGenConfig } from '../../../tools/generation';
-import { populate } from '../../../tools/generation/placement';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { ProvSource } from '../../../core/provenance/types';
 import type {
   Command, EditorEvents, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject,
@@ -63,20 +62,19 @@ function grassSpot(state: GridState, side: 'w' | 'e'): MacroCoord {
   return { x: best.x, y: best.y };
 }
 
-/** One Generate run, as the panel does it: clear the scope, lay terrain, populate — under the
- *  Procedural source, which is what marks the result as the generator's work. */
+/** One Generate run, as the panel does it: clear the scope, then build — under the Procedural
+ *  source, which is what marks the result as the generator's work. */
 async function generate(state: GridState, exec: CommandExecutor, seed: number, region: MacroCoord[] | null) {
   const config = {
-    algorithm: 'random', mode: 'mixed', maxElevation: 8, naturalness: 1, seed, region,
+    algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 1, seed, region,
   } as GenerateConfig;
   const exe = (c: Command) => exec.execute(c);
-  exec.pushSource({ source: ProvSource.Procedural, tool: 'generate', procedural: { seed, algorithm: 'random', configHash: '' } });
+  exec.pushSource({ source: ProvSource.Procedural, tool: 'generate', procedural: { seed, algorithm: 'designed', configHash: '' } });
   try {
     clearAllObjects(state, exe, region ?? undefined);
     clearAllTerrain(state, exe, region ?? undefined);
     return await exec.runSilentlyAsync(async () => {
-      const t = generateTerrain(config, state, exe);
-      await populate(toGenConfig(config), state, exe, exec.getRegistry(), { cancelled: false }, t.zonePlan);
+      const t = generateTerrain(config, state, exe, exec.getRegistry());
       return t;
     });
   } finally {

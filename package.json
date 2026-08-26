@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.6.28",
+  "version": "0.7.781",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -26,6 +26,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
     "@pixi/unsafe-eval": "^7.4.3",
+    "earcut": "^2.2.4",
     "framer-motion": "^12.40.0",
     "openai": "^6.42.0",
     "pixi.js-legacy": "^7.4.3",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@testing-library/react": "^16.1.0",
+    "@types/earcut": "^3.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.169.0",

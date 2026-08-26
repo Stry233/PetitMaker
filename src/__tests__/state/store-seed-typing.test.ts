@@ -3,9 +3,9 @@
  *
  * `useEditorStore.setState({ … } as never)` type-checks anything. When a store field is renamed,
  * every seed of it keeps compiling and keeps passing while asserting nothing about the field it
- * names — the rename that prompted this guard was caught by `tsc` in ONE test out of seventy and
- * had to be finished by grep. Seeds go through `__tests__/_store.ts:setStoreState`, whose
- * `Partial<EditorStore>` parameter turns a stale field name back into a compile error.
+ * names, so a rename leaves `tsc` silent and grep the only way to finish it. Seeds go through
+ * `__tests__/_store.ts:setStoreState`, whose `Partial<EditorStore>` parameter turns a stale field
+ * name back into a compile error.
  *
  * The scan reads a call to the END of its argument list rather than to the end of the line: a seed
  * spanning several lines is the common shape, and the cast sits on the last of them.

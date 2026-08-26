@@ -1,662 +1,521 @@
-/**
- * atoms.tsx — shared visual atoms for the agent "Site Log" UI, built against the
- * project's normative HTML prototype for that design. Every geometry value is the
- * prototype's css px × 2 (design px) passed through usePx().
+/*
+ * atoms.tsx — the panel's own visual atoms, built against the normative prototype's `.tape`,
+ * `.segs`, `.op .end`/tick, `.wpill` and `.stampline` rules. NOTHING HERE CASTS A SHADOW, matching
+ * the prototype's flat paper: every surface is a fill and a radius.
  *
- * Looping CSS decor (wave travel, stripes, watermark draw) lives in
- * ui/design/animations.css as .pw-* classes with --pw-* custom properties carrying
- * the scale-dependent geometry; discrete motion is Framer Motion, gated on
- * useReducedMotionConfig like the rest of the UI.
+ * Looping decor reuses the shell's existing `.pw-stripes` class + `--pw-stripe-travel` custom
+ * property (`ui/design/animations.css`), already gated on reduced motion at the CSS layer; `TapeBar`
+ * additionally reads `useReducedMotionConfig()` itself so the crawl is testable without touching the
+ * `<html data-reduced-motion>` attribute (the same JS+CSS double gate the rest of the panel wears).
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useAnimationFrame, useMotionValue, useTransform, useReducedMotionConfig } from 'framer-motion';
-import type { Tick, VerbIcon } from '../../agent/session';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { motion, useReducedMotionConfig } from 'framer-motion';
+import { Icon, type IconId } from './icons';
+import { edge, inkTint, tape, tickInk } from './tokens';
+import { ACTIVE, INK, INSET, PLATE, PLATE_INK } from '../design/tokens';
+import { buttonMotion, colors, cursors, font } from '../design/styles';
+import { roleFont } from '../design/text-weight';
+import { windowFooterPrimary, windowPill, type PillVariant, type WindowSurface } from '../design/window-skin';
+import { MOTIONS } from '../shell/motion/registry';
+import { Spinner } from '../primitives/Spinner';
+import { amplitude, cssMotion, framerMotion } from './motion';
 import { useT } from '../../i18n/context';
-import { colors as C, inkTint, font, springs, exitTransition, cursors } from '../design/styles';
-import { usePx } from '../design/scale';
-import { Markdown } from './Markdown';
+import type { OpRow } from '../../agent/core/project-view';
 
-/* ── palette constants (prototype :root tokens without a styles.ts twin) ── */
+/** The crawl's length, read from its declaration rather than typed here — `.pw-stripes` carries the
+ *  keyframes and the reduced-motion gate but its own 1s belongs to the shell's other users of the
+ *  class, so this overrides the duration alone. */
+const CRAWL_SECONDS = MOTIONS['panel.tape.crawl'].duration;
 
-export const OK_GREEN = '#4CA42A';
-export const RUN_GREY = '#8B8678';
-export const REVERT_AMBER = '#E0A32E';
-export const FIELD_DEEP = '#E8E1D2';
-export const CARD_LINE = '#eee2cf';
-export const REVERT_TEXT = '#b07d17';
-export const VITAL_GREEN = '#3a9d6b';
-
-/** Inline style + `--pw-*` custom properties (React's CSSProperties has no
- *  index signature for custom props). */
+/** React's `CSSProperties` has no room for a custom property; this widens it for exactly the
+ *  `--pw-*` ones `animations.css` reads (mirrors `ui/agent/atoms.tsx`'s own `PwStyle`). */
 type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
 
-/* ── verb glyphs (the 8 prototype <symbol id="v-*"> paths, verbatim) ────── */
+/* ── construction tape: the plan's one progress bar ─────────────────────── */
 
-const VERB_PATHS: Record<VerbIcon, { d: string; cap?: 'round'; join?: 'round' }> = {
-  terrain: { d: 'm3 18 5-8 4 5 3-4 6 7z', join: 'round' },
-  water: { d: 'M3 8c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0', cap: 'round' },
-  tree: { d: 'M12 3 5 12h4l-4 6h14l-4-6h4zM12 18v3', join: 'round' },
-  road: { d: 'M7 21 10 3M17 21 14 3M12 6v3m0 3v3', cap: 'round' },
-  build: { d: 'M4 20V9l8-5 8 5v11zM9 20v-6h6v6', join: 'round' },
-  flower: { d: 'M12 8a2 2 0 1 0 0 0M12 8c0-3 4-3 4 0s-4 4-4 0m0 0c0 3-4 3-4 0s4-4 4 0M12 12v9' },
-  eval: { d: 'M4 20V4M4 20h16M8 16v-4m4 4V8m4 8v-6', cap: 'round', join: 'round' },
-  plan: { d: 'M6 4h9l3 3v13H6zM9 12l1.5 1.5L14 10', cap: 'round', join: 'round' },
-};
+export type TapeMode = 'indeterminate' | { fraction: number };
 
-export function VerbGlyph({ icon, size, color }: { icon: VerbIcon; size: number; color?: string }) {
-  const p = VERB_PATHS[icon];
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      aria-hidden
-      data-verb={icon}
-      style={{ display: 'block', flex: '0 0 auto', color }}
-    >
-      <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap={p.cap} strokeLinejoin={p.join} d={p.d} />
-    </svg>
-  );
-}
+/** ONE MEANING FOR A FILLED WIDTH: a measured fraction with a real remainder. Unknown progress is a
+ *  DIFFERENT visual — a short left-anchored pill standing on the track, never the whole of it, so it
+ *  can never be mistaken for a job that finished. */
+const INDETERMINATE_FRACTION = 0.26;
 
-/* ── chrome icons (exact prototype paths; stroke/fill = currentColor) ───── */
+/** A held bar's dimmed opacity: the fill stands exactly where it stopped, read as paused rather
+ *  than as still working. Not a motion (nothing here travels), so it is not a registry entry. */
+const HELD_OPACITY = 0.45;
 
-interface IconProps { size: number; color?: string }
-
-function svgProps(size: number, color?: string) {
-  return {
-    width: size,
-    height: size,
-    viewBox: '0 0 24 24',
-    'aria-hidden': true,
-    style: { display: 'block', flex: '0 0 auto', color } as CSSProperties,
-  } as const;
-}
-
-export function CheckIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-export function GoArrowIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 12h13M13 6l6 6-6 6" />
-    </svg>
-  );
-}
-
-export function PauseIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)}>
-      <rect x="5" y="4" width="4" height="16" rx="1.5" fill="currentColor" />
-      <rect x="15" y="4" width="4" height="16" rx="1.5" fill="currentColor" />
-    </svg>
-  );
-}
-
-export function GearIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 11 3a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17 4.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 9v.1a2 2 0 1 1 0 4H21z" />
-    </svg>
-  );
-}
-
-/** Circular-arrow "start fresh" icon. */
-export function RestartIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 12a9 9 0 1 0 3.2-6.9M3 4v5h5" />
-    </svg>
-  );
-}
-
-/** The region-select frame (header row's region button). */
-export function RegionFrameIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="4" width="16" height="16" rx="3" />
-    </svg>
-  );
-}
-
-export function CaretDownIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
-export function ChevronRightIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 6l6 6-6 6" />
-    </svg>
-  );
-}
-
-/** The card-flip arrows on a build ticket: a two-arrow cycle glyph drawn to
- *  fit the viewBox with its round caps intact (arrowheads flush against the
- *  edge would clip). */
-export function FlipIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21.35 5.2v5.1h-5.1M2.65 18.8v-5.1h5.1" />
-      <path d="M4.78 9.45a7.65 7.65 0 0 1 12.62-2.86l3.95 3.71M19.22 14.55a7.65 7.65 0 0 1-12.62 2.86L2.65 13.7" />
-    </svg>
-  );
-}
-
-/** Expand-to-big-editor arrows (composer). */
-export function ExpandIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.5 3.5h6v6M9.5 20.5h-6v-6M20.5 3.5L14 10M3.5 20.5L10 14" />
-    </svg>
-  );
-}
-
-/** Collapse back to the panel (the expanded editor's close). */
-export function CollapseIcon({ size, color }: IconProps) {
-  return (
-    <svg {...svgProps(size, color)} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.5 3.5v6h-6M14.5 20.5v-6h6M9.5 9.5L3.5 3.5M14.5 14.5l6 6" />
-    </svg>
-  );
-}
-
-/* ── tick rail ──────────────────────────────────────────────────────────── */
-
-const TICK_BG: Record<Tick['s'], string> = { ok: OK_GREEN, run: RUN_GREY, revert: REVERT_AMBER };
-
-/* Hop-queue geometry: every tick derives its motion from the SHARED WALL
- * CLOCK (performance.now), phase-shifted HOP_STEP per index. Ticks mount one
- * by one as tools run, so a per-element loop anchored to mount time cannot
- * keep the spacing even; a shared clock can. */
-const HOP_PERIOD = 1.8; // s per wave
-const HOP_STEP = 0.06;  // s between neighbouring icons
-
-/** Hop height 0..1 over one cycle: a quick ease-out rise, then a FREE DROP
- *  (accelerating, like gravity) straight back to rest — no rebound, no squash,
- *  so the queue reads lively without feeling shaky. */
-function hopY(p: number): number {
-  if (p < 0.08) { const q = p / 0.08; return 1 - (1 - q) * (1 - q); }
-  if (p < 0.19) { const q = (p - 0.08) / 0.11; return 1 - q * q; }
-  return 0;
-}
-
-const PULSE_PERIOD = 1.1; // s (the prototype tickpulse)
-
-/** The one status pulse every "busy" indicator shares (prototype tickpulse):
- *  spread {...pulseProps(active)} onto a motion element. Callers gate `active`
- *  on reduced motion themselves. */
-export function pulseProps(active: boolean): {
-  animate: Record<string, number | number[]>;
-  transition?: { repeat: number; duration: number; ease: 'easeInOut' };
-} {
-  return active
-    ? {
-        animate: { opacity: [1, 0.4, 1], scale: [1, 0.85, 1] },
-        transition: { repeat: Infinity, duration: PULSE_PERIOD, ease: 'easeInOut' },
-      }
-    : { animate: { opacity: 1, scale: 1 } };
-}
-
-/** One 48-design-px rounded tile on a ticket's rail: green ok, pulsing grey
- *  while running, amber for an auto-revert; the verb glyph in white.
+/** The diagonal stripe fill, static at rest. `mode: 'indeterminate'` stands as the short pill above
+ *  and crawls one stripe period (`.pw-stripe-drift`, reduced-motion gated both here and in CSS,
+ *  which carries the reason the crawl travels the LAYER rather than its background-position); a
+ *  determinate fraction sizes the fill and never animates the pattern itself, only its width
+ *  (`panel.tape.fill`; prototype `.tape>i{transition:width .5s var(--punchy)}`).
  *
- *  Motion: the OUTER span owns the one-shot findpop on mount (the prototype's
- *  0.34s bounce tween, never replayed); the INNER span's loop (run pulse /
- *  settled hop queue) is driven off the shared wall clock through motion
- *  values, so every icon keeps an exact HOP_STEP phase offset. */
-export function TickDot({ tick, index = 0, live = true }: { tick: Tick; index?: number; live?: boolean }) {
-  const reduced = useReducedMotionConfig();
-  const { px } = usePx();
-
-  // latest props for the frame-driven transforms (avoids stale closures)
-  const stateRef = useRef({ running: false, still: false, index: 0 });
-  stateRef.current = { running: tick.s === 'run' && !reduced, still: !!reduced || !live, index };
-
-  const clock = useMotionValue(0);
-  useAnimationFrame(() => {
-    if (!stateRef.current.still) clock.set(performance.now() / 1000);
-  });
-  const phase = (t: number) => {
-    const s = stateRef.current;
-    return (((t - s.index * HOP_STEP) % HOP_PERIOD) + HOP_PERIOD) % HOP_PERIOD / HOP_PERIOD;
+ *  `held` (a pause, a stop, a retry wait) freezes the fill in place and dims it: the crawl stops
+ *  even where motion is otherwise allowed, and a determinate fraction keeps the width it already
+ *  had — a hold reports that work is not moving, never how much of it is done. */
+export function TapeBar({ mode, held = false }: { mode: TapeMode; held?: boolean }) {
+  const reduced = useReducedMotionConfig() === true;
+  const indeterminate = mode === 'indeterminate';
+  const fraction = indeterminate ? INDETERMINATE_FRACTION : Math.max(0, Math.min(1, mode.fraction));
+  const crawling = indeterminate && !reduced && !held;
+  const fill: CSSProperties = {
+    display: 'block',
+    position: 'relative',
+    height: '100%',
+    borderRadius: 999,
+    width: `${fraction * 100}%`,
+    opacity: held ? HELD_OPACITY : undefined,
+    transition: cssMotion('panel.tape.fill', ['width'], reduced),
+    // The drifting layer is one stripe period wider than this box, and its own rounded cap is what
+    // the fill's right end is: without the clip the stripes would paint a square edge over it.
+    overflow: 'hidden',
   };
-  const y = useTransform(clock, (t) => {
-    const s = stateRef.current;
-    return s.still || s.running ? 0 : px(-8) * hopY(phase(t));
-  });
-  const scale = useTransform(clock, (t) => {
-    const s = stateRef.current;
-    if (s.still || !s.running) return 1;
-    return 0.925 + 0.075 * Math.cos((2 * Math.PI * (t % PULSE_PERIOD)) / PULSE_PERIOD);
-  });
-  const opacity = useTransform(clock, (t) => {
-    const s = stateRef.current;
-    if (!s.running) return 1;
-    return 0.7 + 0.3 * Math.cos((2 * Math.PI * (t % PULSE_PERIOD)) / PULSE_PERIOD);
-  });
-
+  const stripes: PwStyle = {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    // The layer starts one period LEFT of the fill and travels one period right, so the band it
+    // vacates was already covered and the pattern lands exactly on itself.
+    left: `-${tape.stripeSize}px`,
+    right: 0,
+    backgroundImage: `repeating-linear-gradient(45deg, ${tape.stripeLight} 0 4px, ${tape.stripeDark} 4px 8px)`,
+    backgroundSize: `${tape.stripeSize}px 100%`,
+    '--pw-stripe-travel': `${tape.stripeSize}px`,
+  };
+  if (crawling) stripes.animationDuration = `${CRAWL_SECONDS}s`;
   return (
-    <motion.span
-      data-testid="tick"
-      data-status={tick.s}
-      title={tick.t}
-      initial={reduced ? false : { opacity: 0, y: px(10), scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.34, ease: [0.34, 1.56, 0.64, 1] }}
-      style={{ display: 'flex', flex: '0 0 auto' }}
+    <div
+      data-testid="tape-bar"
+      // `flex: 0 0 auto` because the band is a FIXED height in a flex column: a card whose content
+      // wants more room than the box has shrinks every item with a default `flex-shrink`, and a 10px
+      // band with `min-height: auto` resolving to 0 is the first thing to vanish entirely.
+      style={{
+        height: 10, flex: '0 0 auto', borderRadius: 999,
+        background: tape.track, overflow: 'hidden', boxShadow: 'none',
+      }}
     >
-      <motion.span
-        style={{
-          y,
-          scale,
-          opacity,
-          width: px(48),
-          height: px(48),
-          borderRadius: px(16),
-          background: TICK_BG[tick.s],
-          color: C.white,
-          display: 'grid',
-          placeItems: 'center',
-        }}
-      >
-        <VerbGlyph icon={tick.i} size={px(26)} />
-      </motion.span>
-    </motion.span>
-  );
-}
-
-/** `live` = the round is still in progress; a finished card's ticks hold still. */
-export function Rail({ rail, live = true }: { rail: Tick[]; live?: boolean }) {
-  const { px } = usePx();
-  return (
-    <div data-testid="rail" style={{ display: 'flex', flexWrap: 'wrap', gap: px(12), flex: 1 }}>
-      {rail.map((tk, i) => (
-        <TickDot key={i} tick={tk} index={i} live={live} />
-      ))}
+      <span data-testid="tape-fill" style={fill}>
+        <span data-testid="tape-stripes" className={crawling ? 'pw-stripe-drift' : undefined} style={stripes} />
+      </span>
     </div>
   );
 }
 
-/* ── chip button (dock chips, gate rows) ────────────────────────────────── */
+/* ── op outcome tick ─────────────────────────────────────────────────────── */
 
-export type GBtnKind = 'yes' | '' | 'no';
+interface TickSpec {
+  icon: IconId;
+  ink: string;
+}
 
-/** White / green-white / rose pill chip with the prototype's pop-in and press
- *  feedback. `delay` staggers the pop (seconds). */
-/** Small dark label bubble above a control on hover/focus — the affordance
- *  hint for icon-only buttons (header row) and the roster's platform names. */
-export function HoverTip({ label, children, style }: { label: string; children: ReactNode; style?: CSSProperties }) {
-  const reduced = useReducedMotionConfig();
-  const { px, pxf, fw } = usePx();
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  // The bubble renders through a PORTAL at a fixed position measured from the
-  // anchor: an inline-absolute tip gets clipped by panel overflow and buried
-  // under later stacking contexts (the mode row); document.body has neither.
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  const show = () => {
-    const r = anchorRef.current?.getBoundingClientRect();
-    if (r) setAt({ x: r.left + r.width / 2, y: r.top });
-  };
-  const hide = () => setAt(null);
+/** How large the running spinner and each mark are drawn, in px. The spinner is the house
+ *  tight-space loader at the mark's own size, so a row's right edge does not move as it settles. */
+const MARK_SIZE = 13;
+
+/**
+ * THE END-MARK VOCABULARY, and `Record` rather than a `switch` so a status the union grows fails
+ * `tsc` on the missing key before it can fail silently at runtime. Seven marks (the artifact's own
+ * `ENDS`), and `run` alone is not a mark at all — a call still working wears the house Spinner,
+ * because which phase it is in belongs to the words on the row rather than to a second loader.
+ *
+ * WHAT TAKES A HUE IS WHAT THE USER MUST ACT ON, and nothing else. `ok` is the QUIET CHECK in plain
+ * ink: a call that did what it was asked has nothing to report but that it is done. `revert` and
+ * `error` carry the two outcome inks; `blocked` is HELD BACK rather than refused, so it draws the
+ * OUTLINE shield in the revert ink — nothing was applied and nothing is wrong with the map. The
+ * three that never ran recede into the muted brown: a QUIET cross for the call the user declined
+ * (never the refusal red — a decision of theirs is not a fault), a stop mark for one the end of the
+ * job cut short, and the reply bubble for a proposal that turned into conversation, whether it is
+ * still awaiting an answer (`pending-gate`) or was answered in words.
+ */
+const TICK_SPEC: Record<OpRow['status'], TickSpec | 'spin'> = {
+  ok: { icon: 'pw-check', ink: tickInk.ok },
+  run: 'spin',
+  revert: { icon: 'pw-undo-arrow', ink: tickInk.revert },
+  error: { icon: 'pw-cross', ink: tickInk.error },
+  blocked: { icon: 'pw-shield-hold', ink: tickInk.revert },
+  skipped: { icon: 'pw-cross', ink: colors.brownText },
+  cut: { icon: 'pw-stop', ink: colors.brownText },
+  words: { icon: 'pw-reply-bubble', ink: colors.brownText },
+  'pending-gate': { icon: 'pw-reply-bubble', ink: colors.brownText },
+};
+
+/** The statuses a row is still IN rather than finished at: a tick only pulses on the way OUT of
+ *  one of these, so a row drawn already settled (history, any re-render) reports nothing. */
+const UNSETTLED: ReadonlySet<OpRow['status']> = new Set<OpRow['status']>(['run', 'pending-gate']);
+
+/** An op row's outcome mark: one glyph, coloured (and for `pending-gate`, papered) by status.
+ *
+ *  It SWELLS AND COMES BACK when the row settles (`panel.tick.settle`) — the mark is already in
+ *  place, so what changes is the mark rather than where it is. Framer diffs keyframe targets by
+ *  VALUE, so a value-identical array would not replay; the pulse is keyed to a counter bumped only
+ *  on the transition out of a running state, and never on mount. */
+export function TickDot({ status }: { status: OpRow['status'] }) {
+  const spec = TICK_SPEC[status];
+  const reduced = useReducedMotionConfig() === true;
+  const wasUnsettled = useRef(UNSETTLED.has(status));
+  const [pulses, setPulses] = useState(0);
+
+  useEffect(() => {
+    const unsettled = UNSETTLED.has(status);
+    if (wasUnsettled.current && !unsettled) setPulses((n) => n + 1);
+    wasUnsettled.current = unsettled;
+  }, [status]);
+
+  const peak = 1 + (amplitude('panel.tick.settle') ?? 0);
   return (
-    <span
-      ref={anchorRef}
-      style={{ position: 'relative', display: 'inline-flex', ...style }}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
+    <motion.span
+      data-testid="tick-dot"
+      data-status={status}
+      data-pulses={pulses}
+      animate={pulses > 0 && !reduced ? { scale: [1, peak, 1] } : { scale: 1 }}
+      transition={framerMotion('panel.tick.settle')}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 16,
+        height: 16,
+        background: 'transparent',
+        color: spec === 'spin' ? INK : spec.ink,
+      }}
+    >
+      {spec === 'spin'
+        ? <Spinner size={MARK_SIZE} color={INK} />
+        : <Icon id={spec.icon} size={MARK_SIZE} />}
+    </motion.span>
+  );
+}
+
+/* ── the window pill, ported into the panel's own paper ─────────────────── */
+
+/**
+ * `windowPill`'s three fills, worn by a panel control (`.wpill` in the prototype). `on` names the
+ * surface the pill itself stands on, exactly as `windowPill` reads it: a `quiet` pill flips fill to
+ * stay legible on either cream level, `active`/`danger` bring their own colour regardless.
+ *
+ * IT PRESSES LIKE EVERY OTHER BUTTON IN THE HOUSE (`buttonMotion`), and the prototype's own
+ * `.gpill2` hover/active pair is that same 1.03/0.95. `animations.css` states outright that there
+ * are no global button rules — components own their hover and tap — so a plain `<button>` here was
+ * motionless while the retry pill beside it, being a `TimedButton`, sprang: two press idioms on one
+ * card. A DISABLED pill takes none of it: a control that refuses must not answer the pointer.
+ */
+export function Pill({
+  variant = 'quiet',
+  on = 'plate',
+  disabled = false,
+  hoverFill,
+  onClick,
+  children,
+  style,
+  'data-testid': testId = 'pill',
+  'data-demoted': demoted,
+}: {
+  variant?: PillVariant;
+  on?: WindowSurface;
+  disabled?: boolean;
+  /** Added AFTER the pill's own, for a wrapper that has something to say about the box rather than
+   *  about the pill: `primitives/InlineConfirm` hands its trigger the beat the fill crosses on and the
+   *  clip the growth is revealed behind. Not a way to restyle a pill. */
+  style?: CSSProperties;
+  /** A fill the pill takes under the pointer, on top of the house press. The gate family's own
+   *  idiom: a quiet pill inside a gate card answers a hover with the ask colour, which is the one
+   *  place that colour appears below the dock. */
+  hoverFill?: string;
+  onClick?: () => void;
+  children?: ReactNode;
+  /** Overrides the generic `pill` id: a screen with several of these needs to name each one, and a
+   *  caller wrapping every pill in a labelled box just to select it would move the layout. */
+  'data-testid'?: string;
+  /** Whether this pill has stepped down for a control that now owns the press (`AskPrimary`'s own
+   *  demotion, said in the same attribute so one reader answers for the whole gate family). */
+  'data-demoted'?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const lit = hoverFill !== undefined && hovered && !disabled;
+  return (
+    <motion.button
+      type="button"
+      data-testid={testId}
+      {...(demoted !== undefined ? { 'data-demoted': demoted } : {})}
+      disabled={disabled}
+      onClick={onClick}
+      onPointerEnter={hoverFill === undefined ? undefined : () => setHovered(true)}
+      onPointerLeave={hoverFill === undefined ? undefined : () => setHovered(false)}
+      whileHover={disabled ? undefined : buttonMotion.whileHover}
+      whileTap={disabled ? undefined : buttonMotion.whileTap}
+      transition={buttonMotion.transition}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        boxShadow: 'none',
+        ...windowPill(variant, disabled, on),
+        ...(lit ? { background: hoverFill } : {}),
+        ...style,
+      }}
     >
       {children}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <AnimatePresence>
-            {at && (
-              <motion.span
-                initial={reduced ? { opacity: 0, x: '-50%', y: '-100%' } : { opacity: 0, x: '-50%', y: `calc(-100% + ${px(6)}px)`, scale: 0.85 }}
-                animate={{ opacity: 1, x: '-50%', y: '-100%', scale: 1 }}
-                exit={{ opacity: 0, x: '-50%', transition: exitTransition }}
-                transition={springs.stiff}
-                role="tooltip"
-                style={{
-                  position: 'fixed', left: at.x, top: at.y - px(10),
-                  background: C.frameDark, color: C.white, borderRadius: px(14),
-                  padding: `${px(8)}px ${px(16)}px`, fontFamily: font.family,
-                  fontWeight: fw(800), fontSize: pxf(23), lineHeight: 1.2,
-                  whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 500,
-                  boxShadow: `0 ${px(4)}px ${px(12)}px ${inkTint(0.28)}`,
-                }}
-              >
-                {label}
-              </motion.span>
-            )}
-          </AnimatePresence>,
-          document.body,
-        )}
+    </motion.button>
+  );
+}
+
+/* ── the hold's own primary ──────────────────────────────────────────────── */
+
+/**
+ * RESUME, WHEREVER IT STANDS (prototype `.tact.primary`): the ink fill, never the ask's amber, since
+ * lifting a hold is an action on a held job rather than a "this needs you" gate.
+ *
+ * IT IS ONE CONSTANT BECAUSE THE VERB HAS THREE SEATS — the paused ticket's foot, the hold row under
+ * the ask that produced it, and the offer card — and a copy of these four properties per seat drifts
+ * onto the amber pill one seat at a time, so a correction lands only where someone happened to be
+ * looking. `Fix key` shares it: the blocked offer's repair takes the seat Resume would have had.
+ *
+ * THE BASE IS THE FOOTER PRIMARY, NOT `windowPrimary`, AND THE RADIUS IS THE WHOLE REASON. The house
+ * has two ink primaries and they are two SHAPES: `windowPrimary` is the centred confirm, whose 14 is
+ * authored for that shape, and `windowFooterPrimary` is the one that STRETCHES across the foot of a
+ * column at the house radius. Every primary in this panel is the stretched one — each of them
+ * overrode `flex` and `padding` and kept the centred shape's radius by accident, which is how the
+ * panel came to draw its gate cards and its ticket feet at 14 while the setup foot and the manage
+ * Done, taking the footer token honestly, drew at 12. One shape, one radius, and it is a token.
+ */
+export const RESUME_PRIMARY: CSSProperties = {
+  ...windowFooterPrimary, flex: 1, padding: '10px 0', boxShadow: 'none',
+};
+
+/* ── single-line stamp ───────────────────────────────────────────────────── */
+
+/** One icon + a muted line of text (prototype `.stampline`): a job's side notes (compaction, a
+ *  damper, an interruption, a note the user sent) read this way, never as their own card.
+ *
+ *  IT MAY TAKE A SECOND LINE rather than truncating at one (`.stampline .tx`): a stamp carries the
+ *  user's own words as often as the panel's, and a note cut off at the panel's width is a note the
+ *  record does not hold. Two lines is the cap either way. */
+export function Stamp({ icon, children }: { icon: IconId; children: ReactNode }) {
+  return (
+    <div
+      data-testid="stamp"
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 8,
+        padding: '2px 6px',
+        ...roleFont('caption'),
+        fontFamily: font.family,
+        color: colors.brownText,
+        boxShadow: 'none',
+      }}
+    >
+      <span style={{ flex: '0 0 auto', display: 'inline-flex', marginTop: 1 }}>
+        <Icon id={icon} size={13} />
+      </span>
+      <span
+        data-testid="stamp-text"
+        style={{
+          minWidth: 0,
+          overflow: 'hidden',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          lineHeight: 1.35,
+          // A steer note rides this seat verbatim, and a pasted token has no space to break at.
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {children}
+      </span>
+    </div>
+  );
+}
+
+/* ── the record's own two small parts: a count and a result ──────────────── */
+
+/**
+ * The pill that stands for the op rows a list is not showing (prototype `.countpill`).
+ *
+ * IT NAMES THE TAIL IT LEFT VISIBLE, not just the total: "9 steps" alone beside three rows reads as
+ * a claim that nine of them are drawn below. `shown` is what the caller kept.
+ */
+export function CountPill({ total, shown, onClick }: { total: number; shown?: number; onClick?: () => void }) {
+  const t = useT();
+  const partial = shown !== undefined && shown < total;
+  return (
+    <button
+      type="button"
+      data-testid="ops-count-pill"
+      onClick={onClick}
+      style={{
+        alignSelf: 'flex-start',
+        margin: '0 0 2px 6px',
+        ...roleFont('small'),
+        fontFamily: font.family,
+        color: PLATE_INK,
+        background: INSET,
+        border: 'none',
+        borderRadius: 999,
+        padding: '3px 10px',
+        cursor: onClick ? cursors.clickable : cursors.default,
+        boxShadow: 'none',
+      }}
+    >
+      {partial
+        ? t('agent3.steps_count_last', { n: total, shown })
+        : t(total === 1 ? 'agent3.steps_count_one' : 'agent3.steps_count', { n: total })}
+    </button>
+  );
+}
+
+/** How wide a chip may run before it ellipsizes, in px (prototype `.op .rchip`). A chip is a short
+ *  phrase beside a row; past this it would push the row's own words out. */
+const CHIP_MAX = 150;
+
+/**
+ * A row's outcome said in a word or two (prototype `.op .rchip`): what came of the call, where the
+ * mark alone cannot say it. `warn` is the revert ink and `bad` the danger one — the same two hues
+ * the marks carry, so a chip and the mark beside it never disagree about how bad a thing is.
+ */
+export function ResultChip({ tone, children }: { tone?: 'warn' | 'bad'; children: ReactNode }) {
+  const ink = tone === 'warn' ? tickInk.revert : tone === 'bad' ? tickInk.error : PLATE_INK;
+  return (
+    <span
+      data-testid="op-chip"
+      data-tone={tone ?? 'plain'}
+      style={{
+        flex: '0 0 auto',
+        marginLeft: 'auto',
+        maxWidth: CHIP_MAX,
+        ...roleFont('small'),
+        fontFamily: font.family,
+        fontWeight: 800,
+        color: ink,
+        background: INSET,
+        borderRadius: 999,
+        padding: '2px 6px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
     </span>
   );
 }
 
-export function GBtn({
-  label,
-  kind = '',
-  onClick,
-  delay = 0,
-}: {
-  label: string;
-  kind?: GBtnKind;
-  onClick: () => void;
-  delay?: number;
-}) {
-  const reduced = useReducedMotionConfig();
-  const { px, pxf, fw } = usePx();
-  const bg = kind === 'yes' ? C.tileGreen : kind === 'no' ? '#E8B4B4' : 'rgba(255,255,255,.85)';
-  const color = kind === 'yes' ? C.white : kind === 'no' ? '#5a2b2b' : C.inkText;
-  return (
-    <motion.button
-      data-testid="gbtn"
-      data-kind={kind}
-      initial={reduced ? false : { y: px(16), scale: 0.9, opacity: 0 }}
-      animate={{ y: 0, scale: 1, opacity: 1, transition: { ...springs.bouncy, delay: reduced ? 0 : delay } }}
-      whileHover={{ scale: 1.06 }}
-      whileTap={{ scale: 0.93 }}
-      onClick={onClick}
-      style={{
-        border: 'none',
-        appearance: 'none',
-        cursor: cursors.clickable,
-        borderRadius: 999,
-        padding: `${px(14)}px ${px(28)}px`,
-        fontFamily: font.family,
-        fontWeight: fw(900),
-        fontSize: pxf(27),
-        color,
-        background: bg,
-        boxShadow: `0 ${px(2)}px ${px(8)}px ${inkTint(0.14)}`,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </motion.button>
-  );
-}
-
-/* ── determinate / indeterminate dock progress ──────────────────────────── */
-
-/** Flat segment pills — the dock's determinate progress (never a % meter). */
-export function Segs({ done, total }: { done: number; total: number }) {
-  const { px } = usePx();
-  return (
-    <div data-testid="segs" style={{ display: 'flex', gap: px(10), marginTop: px(16) }}>
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          data-testid="seg"
-          data-done={i < done}
-          style={{
-            flex: 1,
-            height: px(12),
-            borderRadius: px(8),
-            background: i < done ? OK_GREEN : 'rgba(255,255,255,.6)',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Indeterminate 45° yellow/ink stripe bar (thinking / small-job work). */
-export function StripeBar() {
-  const { px } = usePx();
-  const style: PwStyle = {
-    height: px(16),
-    borderRadius: px(10),
-    marginTop: px(16),
-    overflow: 'hidden',
-    opacity: 0.88,
-    backgroundImage: `repeating-linear-gradient(45deg, ${C.tileYellow} 0 ${px(20)}px, ${C.inkText} ${px(20)}px ${px(40)}px)`,
-    backgroundSize: `${px(56)}px ${px(56)}px`,
-    '--pw-stripe-travel': `${px(56)}px`,
-  };
-  return <div className="pw-stripes" data-testid="stripebar" style={style} />;
-}
-
-/* ── undo affordances ───────────────────────────────────────────────────── */
-
-/** The small field-deep undo chip on tickets and blueprint recaps. */
-export function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
-  const { px, pxf, fw } = usePx();
-  return (
-    <motion.button
-      data-testid="undochip"
-      whileTap={{ scale: 0.94 }}
-      onClick={onClick}
-      style={{
-        marginLeft: 'auto',
-        border: 'none',
-        appearance: 'none',
-        background: FIELD_DEEP,
-        borderRadius: px(20),
-        padding: `${px(10)}px ${px(20)}px`,
-        fontFamily: font.family,
-        fontWeight: fw(800),
-        fontSize: pxf(24),
-        cursor: cursors.clickable,
-        color: C.inkText,
-        flex: '0 0 auto',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </motion.button>
-  );
-}
-
-/** Rotated amber "UNDONE" stamp, popping in at scale 1.6→1. The host entry is
- *  position:relative and dims its own content to 45%. */
-export function UndoneStamp() {
-  const t = useT();
-  const reduced = useReducedMotionConfig();
-  const { px, pxf, fw } = usePx();
-  return (
-    <motion.span
-      data-testid="undone-stamp"
-      initial={reduced ? false : { scale: 1.6, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1, transition: springs.bouncy }}
-      style={{
-        position: 'absolute',
-        top: '50%',
-        right: px(28),
-        y: '-50%',
-        rotate: -9,
-        border: `${pxf(5)}px solid ${REVERT_AMBER}`,
-        color: REVERT_AMBER,
-        fontFamily: font.family,
-        fontWeight: fw(900),
-        fontSize: pxf(23),
-        letterSpacing: '.08em',
-        textTransform: 'uppercase',
-        padding: `${px(6)}px ${px(18)}px`,
-        borderRadius: px(14),
-        background: 'rgba(255,255,255,.9)',
-        whiteSpace: 'nowrap',
-        zIndex: 2,
-      }}
-    >
-      {t('agent2.undone')}
-    </motion.span>
-  );
-}
-
-/* ── summary fold — the model's closing prose inside a card ─────────────── */
-
-/** Collapsible closing note under a card's content: expanded while the card is
- *  the latest entry, folded to one toggle row once the log moves on; the user
- *  can reopen it any time. Height animates; reduced motion snaps. */
-export function SummaryFold({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
-  const t = useT();
-  const reduced = useReducedMotionConfig();
-  const { px, pxf, fw } = usePx();
-  if (!text.trim()) return null;
-  return (
-    <div style={{ borderTop: `${Math.max(1, px(2))}px solid ${CARD_LINE}`, marginTop: px(4), paddingTop: px(12) }}>
-      <button
-        type="button"
-        data-testid="summary-toggle"
-        aria-expanded={open}
-        onClick={onToggle}
-        style={{
-          display: 'flex', alignItems: 'center', gap: px(10), width: '100%',
-          border: 'none', appearance: 'none', background: 'transparent', padding: 0,
-          cursor: cursors.clickable, fontFamily: font.family, fontWeight: fw(800),
-          fontSize: pxf(22), color: C.textSecondary, textAlign: 'left',
-        }}
-      >
-        <span style={{ display: 'flex', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
-          <CaretDownIcon size={px(24)} color={C.textSecondary} />
-        </span>
-        {t('agent2.card_note')}
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            data-testid="summary-body"
-            initial={reduced ? false : { height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0, transition: { duration: 0.22, ease: exitTransition.ease } }}
-            transition={springs.gentle}
-            style={{ overflow: 'hidden' }}
-          >
-            <div style={{ paddingTop: px(10), fontSize: pxf(27), fontWeight: fw(700), color: C.inkText, lineHeight: 1.45, fontFamily: font.family }}>
-              <Markdown text={text} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ── entry shell — shared enter animation + undone treatment ────────────── */
-
-/** Wraps every log entry: translateY+fade enter (spec §UI.4), and when
- *  `undone` dims the content to 45% and overlays the UNDONE stamp. */
-export function EntryShell({
-  undone,
-  children,
-  style,
-  testId,
-}: {
-  undone?: boolean;
-  children: ReactNode;
-  style?: CSSProperties;
-  testId?: string;
-}) {
-  const reduced = useReducedMotionConfig();
-  const { px } = usePx();
-  return (
-    <motion.div
-      data-testid={testId}
-      data-undone={undone ? 'true' : undefined}
-      initial={reduced ? false : { opacity: 0, y: px(14) }}
-      animate={{ opacity: 1, y: 0, transition: springs.bouncy }}
-      style={{ position: 'relative', flex: '0 0 auto', ...style }}
-    >
-      <div style={{ opacity: undone ? 0.45 : 1 }}>{children}</div>
-      {undone && <UndoneStamp />}
-    </motion.div>
-  );
-}
-
-/* ── prettyModel ────────────────────────────────────────────────────────── */
-
-/** Friendly model name: "claude-opus-4-8" → "Claude Opus 4 8",
- *  "gpt-5.5" → "GPT 5 5", "glm-4.6" → "GLM 4 6", "kimi-k2-…" → "Kimi K2 …"
- *  (K2 title-cases naturally; GPT/GLM need the acronym fixups). */
-/** Fixed casings for tokens that Title Case would mangle. Derived from a
- *  cross-platform corpus (OpenAI, OpenRouter catalog, ollama gateways). */
-const BRAND_CASE: Record<string, string> = {
-  gpt: 'GPT', chatgpt: 'ChatGPT', oss: 'OSS', glm: 'GLM', vl: 'VL', ai: 'AI',
-  tts: 'TTS', it: 'IT', moe: 'MoE', qwq: 'QwQ', deepseek: 'DeepSeek',
-  openrouter: 'OpenRouter', llava: 'LLaVA', medgemma: 'MedGemma',
-  codellama: 'CodeLlama', minimax: 'MiniMax', k2: 'K2',
-};
-/** Families whose glued version splits off: llama3.1 → llama 3.1. */
-const GLUE_SPLIT = /^([a-z]{3,})(\d+(?:\.\d+)?)$/i;
-const SIZE = /^\d+(?:\.\d+)?[bkm]$/i;          // 70b, 1.5b, 32k
-const QUANT = /^(q\d+|fp\d+|int\d+|a\d+b)$/i;  // q4, fp16, int8, a4b (MoE actives)
-const DATE_LONG = /^\d{6,}$/;                  // -20251001
-const DATE_MMDD = /^(0[1-9]|1[0-2])\d{2}$/;    // -0125 / -1106 trailing snapshots
-const VNUM = /^[vmr]\d+(?:\.\d+)?$/i;          // v1, m2.1, r1
-const OSERIES = /^o\d$/;                       // OpenAI o1/o3/o4 stay lowercase-o
-const INT12 = /^\d{1,2}$/;                     // dash-version parts (4-8 → 4.8)
-
 /**
- * Friendly model name from any id shape the nine platforms emit. The mono id
- * always renders alongside it in menus, so this favors readability: vendor
- * prefixes and date snapshots drop, versions keep their dots (and dash
- * versions regain them), sizes/quants uppercase, brands keep their casing.
+ * THE FREE PANEL'S DOCK CONTROL: a disc standing ON the panel's top-right corner, in the frame's px.
+ * It is one press with nothing to choose between, so it is a whole round button rather than a control
+ * in a row of them.
+ *
+ * IT IS CENTRED ON THE PANEL'S RIGHT EDGE, which halves it: the outer half floats over the map and the
+ * inner half lies on the plate. That inner half reaches exactly the plate's own PADDING, which is the
+ * gutter every one of the plate's children begins after, so it cannot touch the character's seat or the
+ * dock card whatever either of them holds — and the same reasoning holds at the top, where its own
+ * radius is the padding.
+ *
+ * IT HANGS FROM THE PLATE'S OWN CORNER RATHER THAN FROM ITS TOP EDGE, and both bounds are measured. It
+ * cannot go HIGHER than the corner's radius: above that its inner half stands over the curve, where
+ * there is no paper behind it and the map shows through the join. And it cannot cross the panel's top
+ * edge at all, because what stands immediately above the panel is the selected block's caption, whose
+ * box the column's own top clearance is measured against (`shell/panel-frame.ts:PANEL_TOP`) — a control
+ * reaching into that clearance would touch the one word saying what the map is armed with.
  */
-export function prettyModel(id: string): string {
-  const seg = id.split('/').pop() ?? id;
-  // ollama/openrouter ":tag" folds into the token stream; ":latest" is noise
-  const rawTokens = seg
-    .split(/[:\-_]/)
-    .map((s) => s.trim())
-    .filter((s) => s && s.toLowerCase() !== 'latest');
+export const PIN_KNOB = { size: 28 } as const;
 
-  // drop date snapshots: one long token, or a split year + trailing pairs
-  const tokens: string[] = [];
-  for (let i = 0; i < rawTokens.length; i++) {
-    const tk = rawTokens[i]!;
-    if (DATE_LONG.test(tk)) continue;
-    if (/^(19|20)\d{2}$/.test(tk) && rawTokens.slice(i + 1).every((r) => /^\d{1,2}$/.test(r))) break;
-    if (i === rawTokens.length - 1 && tokens.length > 0 && DATE_MMDD.test(tk)) continue;
-    tokens.push(tk);
-  }
+/** How far the disc hangs past the panel's right edge: half of itself, which is what puts its centre on
+ *  the edge. Read by the placement, so the two cannot disagree about which edge it is centred on. */
+export const PIN_KNOB_OUT = PIN_KNOB.size / 2;
 
-  // split glued family+version (llama3.1 → llama, 3.1)
-  const split: string[] = [];
-  for (const tk of tokens) {
-    const m = !SIZE.test(tk) && !QUANT.test(tk) ? GLUE_SPLIT.exec(tk) : null;
-    if (m && !BRAND_CASE[tk.toLowerCase()]) split.push(m[1]!, m[2]!);
-    else split.push(tk);
-  }
+/** The paper the disc is drawn on and the outline it wears, both the plate's own: it is a piece of the
+ *  panel's own stock lying across the corner, not a chrome button borrowed from elsewhere. */
+export function PinKnob({
+  testId, icon, label, disabled = false, onClick, ...rest
+}: Omit<IconButtonProps, 'lit' | 'door'>) {
+  return (
+    <motion.button
+      type="button"
+      data-testid={testId}
+      data-icon={icon}
+      data-act={rest['data-act']}
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      whileHover={disabled ? undefined : { ...buttonMotion.whileHover, backgroundColor: ACTIVE }}
+      whileTap={disabled ? undefined : buttonMotion.whileTap}
+      transition={buttonMotion.transition}
+      style={{
+        width: PIN_KNOB.size,
+        height: PIN_KNOB.size,
+        background: PLATE,
+        border: edge,
+        borderRadius: '50%',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: 'none',
+        color: INK,
+        opacity: disabled ? 0.38 : 1,
+        ...(disabled ? { cursor: cursors.default } : {}),
+      }}
+    >
+      <Icon id={icon} size={16} />
+    </motion.button>
+  );
+}
 
-  // join runs of small integers into dotted versions (opus, 4, 8 → opus, 4.8)
-  const joined: string[] = [];
-  for (const tk of split) {
-    const prev = joined[joined.length - 1];
-    if (INT12.test(tk) && prev !== undefined && /^\d{1,2}(\.\d{1,2})*$/.test(prev)) {
-      joined[joined.length - 1] = `${prev}.${tk}`;
-    } else {
-      joined.push(tk);
-    }
-  }
+export interface IconButtonProps {
+  testId: string;
+  icon: IconId;
+  label: string;
+  'data-act'?: string;
+  disabled?: boolean;
+  lit?: boolean;
+  /** The gear ALONE recedes to the muted door tone at rest (artifact `.ib.door`); every other glyph
+   *  on the card, the seat control included, stands at the house ink like the rest of the card's own
+   *  words. A lit door reads as ink again (`.ib.door.lit`), the surface it opens standing open. */
+  door?: boolean;
+  onClick?: () => void;
+}
 
-  const words = joined.map((tk) => {
-    const lo = tk.toLowerCase();
-    if (BRAND_CASE[lo]) return BRAND_CASE[lo];
-    if (OSERIES.test(lo)) return lo;                       // o3 stays o3
-    if (SIZE.test(lo)) return lo.toUpperCase();            // 70B / 32K
-    if (QUANT.test(lo)) return lo.toUpperCase();           // Q4 → uppercase family
-    if (VNUM.test(lo)) return lo.toUpperCase();            // V1 / R1 / M2.1
-    if (/^\d/.test(lo)) return lo;                         // bare versions: 4.8, 4o
-    return lo.charAt(0).toUpperCase() + lo.slice(1);
-  });
-
-  const name = words.join(' ').replace(/\s+/g, ' ').trim();
-  return name || seg || id;
+/** One pressable glyph on the ink-wash square (the plate policy), with the house yellow as the
+ *  press rather than as a resting state. A lit one is the surface it opens, standing open. */
+export function IconButton({
+  testId, icon, label, disabled = false, lit = false, door = false, onClick, ...rest
+}: IconButtonProps) {
+  return (
+    <motion.button
+      type="button"
+      data-testid={testId}
+      data-icon={icon}
+      data-act={rest['data-act']}
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      whileHover={disabled ? undefined : { ...buttonMotion.whileHover, backgroundColor: ACTIVE }}
+      whileTap={disabled ? undefined : buttonMotion.whileTap}
+      transition={buttonMotion.transition}
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        flex: '0 0 auto',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: 'none',
+        boxShadow: 'none',
+        opacity: disabled ? 0.38 : 1,
+        // A SEAT THAT ONLY REPORTS IS NOT A SEAT THAT REFUSES. `cursors.css` gives every disabled
+        // button the blocked badge, which is right for a control the state forbids and wrong for
+        // this one: the seat stands numbed for a beat so the column does not move under the hand
+        // that is still reaching for it, and a badge there reads as a rejection of a press nobody
+        // made. Named only in the disabled branch, so the sheet still gives the live seat its hand.
+        ...(disabled ? { cursor: cursors.default } : {}),
+        color: door && !lit ? colors.brownText : INK,
+        background: lit ? ACTIVE : inkTint.chip,
+      }}
+    >
+      <Icon id={icon} size={16} />
+    </motion.button>
+  );
 }

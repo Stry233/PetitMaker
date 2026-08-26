@@ -4,10 +4,9 @@
  * BOTH ARE THERE FROM THE MOMENT A MAZE IS ON THE MAP, on a default that already makes sense: in
  * from the edge, out at the plaza. So the feature teaches itself by being visible, and most people
  * will never move one — which is the goal rather than a failure. There is no arming button, no
- * two-click sequence and no mode; the old one asked for a click on a boundary that did not exist
- * yet and then silently waited for a second one.
+ * two-click sequence and no mode.
  *
- * WHERE AN END IS DROPPED DECIDES WHAT IT IS (`tools/generation/maze-endpoints.ts`): on the maze's
+ * WHERE AN END IS DROPPED DECIDES WHAT IT IS (`tools/generation/maze/maze-endpoints.ts`): on the maze's
  * own wall it is a hole you pass through, anywhere else it is a place inside to reach. The marker
  * says which it became — that is feedback, not a question, and there is no control for it.
  *
@@ -25,7 +24,7 @@ import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import type { MazeEnd } from '../../../tools/generation/maze-endpoints';
+import type { MazeEnd } from '../../../tools/generation/maze';
 import { cursors, font } from '../../design/styles';
 import { ACTIVE, PLATE_INK } from '../../design/tokens';
 
@@ -140,8 +139,8 @@ function Marker({ end, text, testId, onMove }: {
         position: 'fixed', left: 0, top: 0, display: 'none',
         alignItems: 'center', justifyContent: 'center',
         background: ACTIVE, color: PLATE_INK,
-        // The interface's own face. It was falling back to the browser's default, which is why the
-        // marks read as foreign to everything around them.
+        // The interface's own face, named explicitly: unset, the mark falls back to the browser's
+        // default and reads as foreign to everything around it.
         fontFamily: font.family,
         fontWeight: 900, lineHeight: 1, whiteSpace: 'nowrap', zIndex: 2,
         cursor: cursors.clickable, touchAction: 'none',

@@ -36,7 +36,7 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
 
   function addRoad(state: any, x: number, y: number, corners?: Corners): PlacedObject {
     const road: PlacedObject = {
-      id: `r-${x}-${y}`, catalogId: 'road-dirt',
+      id: `r-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
       ...(corners ? { corners } : {}),
     } as PlacedObject;

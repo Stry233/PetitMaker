@@ -19,8 +19,8 @@
  *
  * A HOLD IS TIME, AND ONLY WHERE THE POINTER RESTS. Each burst at the spot the hand is holding
  * advances that stand one succession step (`succession.ts`): the heart matures while the rim keeps
- * its pioneers. DRAGGING is the other idiom and keeps the old one — travel far enough from the
- * anchor and the burst starts a NEW young stand there, so a dragged hold lays a band of fresh
+ * its pioneers. DRAGGING is the other idiom: travel far enough from the anchor and the burst starts a
+ * NEW young stand there, so a dragged hold lays a band of fresh
  * plantings rather than a smear of old growth. Releasing simply stops the clock; nothing freezes
  * the age but the absence of another burst.
  *
@@ -65,16 +65,17 @@ import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { ItemCategory, ToolType } from '../../core/model/types';
 import { isBuildableZone } from '../../core/model/grid-model';
 import type { CursorId } from '../../core/runtime/cursor-spec';
+import type { PreviewCell } from '../../core/runtime/preview-cell';
 import { showToast } from '../../core/runtime/toast-bus';
 import { categoryOf } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import { getObjectIndex, objectAt } from '../../state/object-index';
-import type { RouteProfile } from '../generation/placement/route';
-import type { Tool, ToolContext } from '../types';
+import type { RouteProfile } from '../placement/route';
+import type { Tool, ToolContext } from '../runtime/types';
 import {
   applyMacro, applyMacroAsync, EMPTY_KEY, hasMacroBuildRunner, MACRO_IDS, patchScope,
   type MacroId, type MacroOpts, type MacroOutcome,
-} from './index';
+} from './run';
 import { previewMacroAsync } from './preview';
 import { closeRouteMarks, keepRouteMarks, openRouteMarks, resetRouteMarks } from './route-session';
 
@@ -108,9 +109,10 @@ const COMMIT_OFFER = 0;
 const SPRAY_MS = 350;
 const SPRAY_STEP = 3;
 
-/** The ghost's tint: the green the placement ghost uses for an allowed placement, so one wash
- *  means one thing across the interface. */
-const GHOST_TINT = 0x59c85f;
+/** SMART BUILD SHOWS THE CARD WITHOUT A GLYPH: the build brushes name the ONE surface they lay, and
+ *  a macro lays a composition — a stand of trees over a flora floor, a lane with its verges. There is
+ *  no glyph that would be true, so the preview keeps the frame and drops the icon. */
+const GHOST_CARD: PreviewCell = { icon: null, valid: true };
 
 /** The context's armed macro, narrowed to the ids the engine implements — the arming carries a
  *  plain string because `core` cannot know the macro catalogue. */
@@ -160,10 +162,9 @@ function laidCells(state: ToolContext['gridState'], before: ReadonlySet<string>)
   return cells;
 }
 
-/** The armed macro's working radius, from the bar's own size slider: sizes 1..5 land radii 4..8, so
- *  the smallest setting is still a recognisable hill and the largest grows the old default by a
- *  third. ONE function, so the burst, the ghost's cache key and the ghost's own preview ask the SAME
- *  radius by construction rather than by three literals agreeing. */
+/** The armed macro's working radius, from the bar's own size slider: sizes 1..5 land radii 4..8, so the
+ *  smallest setting is still a recognisable hill. ONE function, so the burst, the ghost's cache key and
+ *  the ghost's own preview ask the SAME radius by construction rather than by three literals agreeing. */
 export function macroRadius(ctx: ToolContext): number {
   return ctx.brushSize + 3;
 }
@@ -211,7 +212,8 @@ export class MacroTool implements Tool {
     timer: ReturnType<typeof setInterval>;
   } | null = null;
   /** Presses and bursts land IN ORDER: each off-thread build starts from the map the previous
-   *  landing left, so a burst can never build against ground an earlier burst has since planted. */
+   *  landing left, so a burst can never build against ground an earlier burst has since planted.
+   *  An ORDER, never an outcome — see `chain`. */
   private applying: Promise<void> = Promise.resolve();
 
   /**
@@ -288,6 +290,31 @@ export class MacroTool implements Tool {
     return !!cell && isBuildableZone(cell.zone);
   }
 
+  /**
+   * Queue one landing behind those already in flight, and never hand a thrown one on to the next
+   * press.
+   *
+   * `landMacroRun` rolls its own work back and RETHROWS on purpose, so a rule or executor fault is
+   * not read as a broken worker. It arrives here as a rejection, and a rejected promise is SKIPPED
+   * by every `.then` chained onto it afterwards: unguarded, one faulted landing stops this tool
+   * building for the rest of the session and hangs a held planting with it, since `pending` never
+   * falls and the clock only sprays at zero.
+   *
+   * Nothing reached the map, so `nothing` is the caller's own "this press built nothing" path — the
+   * same one an empty run takes, which is what keeps the fault's bookkeeping and its report the
+   * ordinary ones rather than a second set to maintain.
+   */
+  private chain(work: () => Promise<void>, nothing: (outcome: MacroOutcome) => void): void {
+    this.applying = this.applying.then(async () => {
+      try {
+        await work();
+      } catch (err) {
+        console.error('[macro] the landing failed', err);
+        nothing({ changes: 0 });
+      }
+    });
+  }
+
   /** Land one macro at `cell` — synchronously without a build runner (tests, headless), else on
    *  the ordered off-thread chain — and hand the outcome back either way. A tool with a context has
    *  a map, so `ctx.macroContext` needs no null guard. */
@@ -310,9 +337,9 @@ export class MacroTool implements Tool {
       after(applyMacro(ctx.macroContext, id, opts));
       return;
     }
-    this.applying = this.applying.then(async () => {
+    this.chain(async () => {
       after(await applyMacroAsync(ctx.macroContext, id, opts));
-    });
+    }, after);
   }
 
   onPointerDown(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
@@ -415,10 +442,14 @@ export class MacroTool implements Tool {
       after(applyMacro(ctx.macroContext, 'road-link', opts), watermark, before);
       return;
     }
-    this.applying = this.applying.then(async () => {
+    this.chain(async () => {
       const watermark = ctx.getUndoStackSize();
       const before = new Set(ctx.gridState.objects.keys());
       after(await applyMacroAsync(ctx.macroContext, 'road-link', opts), watermark, before);
+    }, (outcome) => {
+      // Read AFTER the run took its own work back: the depth and the objects standing are the ones
+      // the caller's refusal path has to re-lay the standing route over.
+      after(outcome, ctx.getUndoStackSize(), new Set(ctx.gridState.objects.keys()));
     });
   }
 
@@ -473,7 +504,7 @@ export class MacroTool implements Tool {
       if (token !== this.ghostToken) return;
       const losses = [...preview.removed, ...preview.blocked];
       if (preview.added.length === 0 && losses.length === 0) ctx.overlay.clearGhost();
-      else ctx.overlay.showGhost(preview.added, GHOST_TINT, true, undefined, losses);
+      else ctx.overlay.showGhost(preview.added, GHOST_CARD, true, undefined, losses);
     });
   }
 
@@ -689,7 +720,7 @@ export class MacroTool implements Tool {
       // still has something to show as a LOSS (a run that only strips a coating).
       const losses = [...preview.removed, ...preview.blocked];
       if (preview.added.length === 0 && losses.length === 0) ctx.overlay.clearGhost();
-      else ctx.overlay.showGhost(preview.added, GHOST_TINT, true, undefined, losses);
+      else ctx.overlay.showGhost(preview.added, GHOST_CARD, true, undefined, losses);
       this.pumpGhost(ctx, id);
     });
   }

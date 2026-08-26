@@ -1,18 +1,17 @@
 // Pure core of the headers-policy generator: the index.html CSP <meta> rewrite
 // (string in, string out) plus small helpers for JSON-stringifying vercel.json
 // the way this repo commits it. No file I/O, no process access — everything
-// here is safe to unit-test directly and is imported by both
+// here is unit-testable directly and is imported by both
 // src/__tests__/legal/headers-policy.test.ts and scripts/generate-headers.mts
 // (the CLI, which owns all fs reads/writes and unconditionally runs `main()`;
-// see that file's doc comment for why a main-module guard doesn't work under
-// `vite-node` — the same trap scripts/license-audit.mts documents).
+// scripts/license-audit.mts's doc comment says why a main-module guard cannot
+// do that job under `vite-node`).
 
 import { CSP_META_MARKER, toCspMeta, type HeadersPolicy, type VercelJsonLike } from '../security/headers-policy';
 
 /** Matches the CSP-explanation HTML comment immediately followed by the CSP
- *  `<meta http-equiv="Content-Security-Policy" ...>` tag — the exact two
- *  things the generator is allowed to touch in index.html (brief: "nothing
- *  else in index.html"). */
+ *  `<meta http-equiv="Content-Security-Policy" ...>` tag — the only two things
+ *  the generator may touch in index.html; nothing else there is generated. */
 const CSP_BLOCK_PATTERN = /[ \t]*<!--[\s\S]*?-->\s*\n[ \t]*<meta http-equiv="Content-Security-Policy"[^>]*\/>/;
 
 /**

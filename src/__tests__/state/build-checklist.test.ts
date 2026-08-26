@@ -20,8 +20,6 @@ import { buildChecklist } from '../../state/build-checklist';
 import { getRoadMaterials } from '../../state/catalog';
 import { getMapStats } from '../../state/map-stats';
 import { getObjectIndex, roadLookup } from '../../state/object-index';
-import { toGenConfig } from '../../tools/generation';
-import { populate } from '../../tools/generation/placement';
 import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation/terrain-generator';
 
 function realState(file: string): GridState {
@@ -34,20 +32,18 @@ function realState(file: string): GridState {
 }
 
 /** A generated island on a shipped map: real terrain at several layers, real water, and the whole
- *  populator's output (buildings, trees, flora, facilities, crossings, roads). */
+ *  island generator's output (buildings, trees, flora, facilities, crossings, roads). */
 function generated(): { state: GridState; exec: CommandExecutor } {
   const state = realState('hexia.json');
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const config: GenerateConfig = {
-    algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed: 7, region: null,
-    relief: 0.6, waterAmount: 0.5, settlement: 0.5, nature: 0.5,
+    algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed: 7, region: null,
   };
   const run = (c: Command) => exec.execute(c);
   const start = exec.getUndoStackSize();
   clearAllObjects(state, run);
   clearAllTerrain(state, run);
-  generateTerrain(config, state, run);
-  populate(toGenConfig(config), state, run, exec.getRegistry());
+  generateTerrain(config, state, run, exec.getRegistry());
   exec.commitStrokeGroup(start);
   return { state, exec };
 }
@@ -157,7 +153,7 @@ describe('build checklist against a real generated map', () => {
 });
 
 describe('road surfaces', () => {
-  it('all four materials are listed, by material, when all four are laid', () => {
+  it('every material is listed, by material, when every one is laid', () => {
     const { state } = generated();
     const before = buildChecklist(state);
     // Somewhere off the island: the assertion is about the checklist reading the index, so the
@@ -178,9 +174,9 @@ describe('road surfaces', () => {
     // what a checklist read must survive.
     const after = buildChecklist(state);
     expect(after.roads.map((r) => r.catalogId)).toEqual(
-      expect.arrayContaining(['road-dirt', 'road-stone', 'road-brick', 'road-slate']),
+      expect.arrayContaining(getRoadMaterials().map((m) => m.id)),
     );
-    expect(after.roadTotal).toBe(before.roadTotal + 4);
+    expect(after.roadTotal).toBe(before.roadTotal + getRoadMaterials().length);
     for (const material of getRoadMaterials()) {
       const row = after.roads.find((r) => r.catalogId === material.id);
       expect(row, `${material.id} missing`).toBeDefined();

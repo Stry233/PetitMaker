@@ -17,7 +17,7 @@ import { applyMacro, type MacroId } from '../../../tools/macros';
 import { delightIds, delightRoll, layDelight } from '../../../tools/macros/delights';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { circleCells } from '../../../tools/paint/shapes';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import type { KitContext } from '../../../kit/context';
 import { makeState, setTerrain } from '../../rules/_helpers';
 

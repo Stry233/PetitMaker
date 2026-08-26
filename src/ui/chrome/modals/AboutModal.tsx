@@ -42,13 +42,15 @@
  * `pointerEvents:'none'` so it can't steal a click while it fades.
  */
 
-import { useState, useRef, useEffect, useLayoutEffect, Suspense, lazy, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, Suspense, lazy, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { font, colors, radii, springs, shadows, exitTransition, modalRow, buttonMotion, btnReset, cursors } from '../../design/styles';
 import { skin, windowCard, windowPrimary } from '../../design/window-skin';
+import { roleFont, roleWeight } from '../../design/text-weight';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../version';
+import { glQuality, glRendererName } from '../../../core/runtime/device-quality';
 import { ModalShell } from '../../primitives/ModalShell';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { BrandLockup } from '../BrandLockup';
@@ -71,15 +73,10 @@ export interface AboutModalProps {
 
 type View = { kind: 'about' } | { kind: 'doc'; id: DocId };
 
-// WIDTH-ONLY MORPH. View A (About) and View B (doc) each want their own
-// width: the composed About surface reads best in a narrower column, the doc
-// reader in a wider one. Rather than freeze ONE width (which flattened the
-// proportions) or SNAP between two (an unanimated jump that desynced from the
-// content crossfade), the card MORPHS its width between the two views while
-// the content cross-fades inside, everything clipped to the card
-// (`overflow:hidden`). HEIGHT DOES NOT MORPH — it stays constant at View A's
-// measured height (capped at ABOUT_MAX_VH via `ModalShell`'s maxVh
-// mechanics); the doc view fills that fixed height and scrolls internally.
+// The two widths the header's width-only morph runs between: the composed
+// About surface reads best in a narrower column, the doc reader in a wider
+// one. Freezing ONE width flattens the proportions; snapping between two is an
+// unanimated jump that desyncs from the content crossfade.
 const ABOUT_WIDTH = 440;
 const DOC_WIDTH = 640;
 const ABOUT_MAX_VH = 88;
@@ -190,8 +187,7 @@ const brandBlock: CSSProperties = {
 // `colors.textSecondary`: the latter fails WCAG AA at this size (see the a11y contrast describe block).
 const versionLine: CSSProperties = {
   fontFamily: font.family,
-  fontSize: 11.5,
-  fontWeight: 600,
+  ...roleFont('caption'),
   color: colors.brownText,
   textAlign: 'center',
   marginTop: 3,
@@ -210,6 +206,22 @@ const versionButton: CSSProperties = {
   marginTop: 3,
   display: 'inline-block',
 };
+
+// The graphics diagnostic, a step quieter than the version line above it. Same `colors.brownText`
+// ink (see the a11y contrast describe block) at the same small-print rung; the opacity is what
+// recedes, since the rung is already the floor.
+const diagLine: CSSProperties = {
+  ...versionLine,
+  opacity: 0.72,
+  marginTop: 1,
+  maxWidth: 300,
+  lineHeight: 1.35,
+  overflowWrap: 'anywhere',
+};
+
+/** The renderer string is a device identifier of unbounded length (ANGLE names a driver, a
+ *  Direct3D level and a shader model). One line's worth is what a report needs. */
+const RENDERER_CHARS = 46;
 
 // Wraps the button so the confirmation bubble has a positioning root without
 // disturbing the button's own centered layout in `brandBlock`.
@@ -236,15 +248,14 @@ const copiedBubble: CSSProperties = {
   borderRadius: radii.md,
   padding: '5px 11px',
   fontFamily: font.family,
-  fontSize: 12,
-  fontWeight: 700,
+  ...roleFont('caption'),
   whiteSpace: 'nowrap',
   boxShadow: shadows.float,
   pointerEvents: 'none',
 };
 
-// A tiny caret tail pointing down at the row — a bordered square rotated 45°
-// (CSS `transform` is fine here: it's a static child, never Framer-animated).
+// A tiny caret tail pointing down at the row — a bordered square rotated 45°. A static child,
+// never Framer-animated, so its CSS `transform` has no motion value to fight over.
 const copiedBubbleTail: CSSProperties = {
   position: 'absolute',
   left: '50%',
@@ -262,8 +273,7 @@ const copiedBubbleTail: CSSProperties = {
 /* ── Quiet section label (aids scanning without competing with the brand) ── */
 // Small, sentence-case, muted — deliberately NOT a bold uppercase header.
 const sectionLabel: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: colors.brownText,
   fontFamily: font.family,
   letterSpacing: '0.04em',
@@ -307,8 +317,7 @@ const gridIcon: CSSProperties = {
 // instead. The grid stretches both columns of a row to the taller one, so the pair stays even.
 const gridLabel: CSSProperties = {
   flex: 1,
-  fontSize: 13,
-  fontWeight: 700,
+  ...roleFont('chip'),
   lineHeight: 1.3,
   color: skin.ink,
   fontFamily: font.family,
@@ -330,8 +339,7 @@ const chevron: CSSProperties = {
 // because it sits under a section label rather than centred in the footer.
 const teamNote: CSSProperties = {
   fontFamily: font.family,
-  fontSize: 11,
-  fontWeight: 500,
+  ...roleFont('caption'),
   color: colors.brownText,
   lineHeight: 1.4,
   marginTop: -4,
@@ -399,15 +407,13 @@ const avatarBadge: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: 10,
-  fontWeight: 700,
+  ...roleFont('caption'),
   lineHeight: 1,
   color: colors.brownText,
 };
 
 const memberName: CSSProperties = {
-  fontSize: 11.5,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: skin.ink,
   fontFamily: font.family,
   textAlign: 'center',
@@ -424,8 +430,7 @@ const filingRow: CSSProperties = {
 };
 
 const filingLabel: CSSProperties = {
-  fontSize: 13,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: skin.ink,
   fontFamily: font.family,
 };
@@ -433,8 +438,7 @@ const filingLabel: CSSProperties = {
 // `colors.brownText` over `colors.textSecondary` (see the a11y contrast describe block) — these
 // render the legally-mandated ICP/PSB filing numbers.
 const filingLink: CSSProperties = {
-  fontSize: 12.5,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: colors.brownText,
   fontFamily: font.family,
   textDecoration: 'none',
@@ -445,8 +449,7 @@ const filingLink: CSSProperties = {
 // `colors.brownText` passes AA at this small size where `textSecondary` would
 // not — see the a11y contrast describe block. Do not revert to textSecondary.
 const disclaimerStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 500,
+  ...roleFont('caption'),
   color: colors.brownText,
   fontFamily: font.family,
   lineHeight: 1.5,
@@ -458,8 +461,7 @@ const footerRow: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 10,
-  fontSize: 11.5,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: colors.brownText,
   fontFamily: font.family,
   flexWrap: 'wrap',
@@ -468,7 +470,7 @@ const footerRow: CSSProperties = {
 const footerLink: CSSProperties = {
   color: skin.ink,
   textDecoration: 'none',
-  fontWeight: 700,
+  fontWeight: roleWeight('caption'),
 };
 
 const suspenseFallback: CSSProperties = {
@@ -605,10 +607,20 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     }
   }, [view]);
 
-  // Fresh start each time the modal opens (the component stays mounted between
-  // opens now, so reset the drill-in view here rather than relying on unmount).
+  // Fresh start each time the modal opens: the component stays mounted between
+  // opens, so the drill-in view resets here rather than on unmount.
   useEffect(() => {
     if (open) setView({ kind: 'about' });
+  }, [open]);
+
+  // Re-read on each open: the Settings quality choice can change between two of them. The probe is
+  // memoized in device-quality, so a reopen costs a property read.
+  const gl = useMemo(() => {
+    const name = glRendererName();
+    return {
+      quality: glQuality(),
+      name: name.length > RENDERER_CHARS ? `${name.slice(0, RENDERER_CHARS).trimEnd()}…` : name,
+    };
   }, [open]);
 
   const hasIcp = !!(LEGAL.icpNumber && LEGAL.icpUrl);
@@ -713,7 +725,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                     BUILD_DATE,
                   ]
                     .filter(Boolean)
-                    .join(' · ')}
+                    .join(', ')}
                 </motion.button>
                 {/* Confirmation bubble — the row's own text never changes; this
                     floats above it and auto-dismisses (see copyBuildInfo). */}
@@ -734,6 +746,13 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
+              {/* Which renderer class this machine is on, and what that renderer calls itself:
+                  the two facts a slowness report needs and cannot otherwise reach. */}
+              <div style={diagLine} data-gl-diagnostic>
+                {[t(gl.quality === 'lite' ? 'about.renderer_lite' : 'about.renderer_full'), gl.name]
+                  .filter(Boolean)
+                  .join(', ')}
               </div>
             </div>
 
@@ -827,7 +846,6 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                 <a style={footerLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer">
                   GitHub ↗
                 </a>
-                <span aria-hidden>·</span>
                 <span>{`© 2026 ${LEGAL.productName} contributors`}</span>
               </div>
             </div>

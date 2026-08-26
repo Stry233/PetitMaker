@@ -1,10 +1,12 @@
 /**
  * What the app downloads before anyone asks for anything.
  *
- * `agent/providers` carries the two LLM SDKs, and most visitors never open the assistant. Keeping
- * that weight off the first load is not a property of any one component: it holds only while NO
- * module in the app's static import graph names it, and a single ordinary-looking `import` anywhere
- * in that graph puts it back. The same is true of the 3D scene, which carries three.js.
+ * `agent/providers/anthropic.ts` + `openai.ts` each carry one LLM SDK (the metadata in
+ * `defaults.ts` stays SDK-free and reachable), and most visitors never open the assistant.
+ * Keeping that weight off the first load is not a property of any one component: it holds only
+ * while NO module in the app's static import graph names it, and a single ordinary-looking
+ * `import` anywhere in that graph puts it back. The same is true of the 3D scene, which carries
+ * three.js, and of the panel's own column, which is what reaches the tool layer and the adapters.
  *
  * So this walks the graph the way a bundler does — from `main.tsx`, following STATIC specifiers only
  * — and names what it must not reach. A `import('…')` is what a lazy chunk is, so it is where the
@@ -22,7 +24,9 @@ const SRC = resolve(__dirname, '../..');
 
 /** Modules no first load may reach, with what makes each one heavy. */
 const MUST_STAY_LAZY: ReadonlyArray<readonly [string, string]> = [
-  ['agent/providers/index.ts', 'the Anthropic and OpenAI SDKs'],
+  ['agent/providers/anthropic.ts', 'the Anthropic SDK'],
+  ['agent/providers/openai.ts', 'the OpenAI SDK'],
+  ['ui/agent/PanelColumn.tsx', 'the tool layer and the provider adapters, behind the panel'],
   ['canvas/map3d/scene/scene.ts', 'three.js'],
 ];
 
@@ -74,7 +78,11 @@ describe('the first load', () => {
   it('walks a graph that is really there, so a rename cannot quietly pass it', () => {
     const graph = eagerGraph();
     expect(graph.has('ui/shell/Shell.tsx')).toBe(true);
-    // The card that offers the key field is eager on purpose: the assistant is drawn open.
-    expect(graph.has('ui/shell/assistant/IntroCard.tsx')).toBe(true);
+    // The character is eager: it stands on the entrance plate before anyone opens anything, so the
+    // walk reaching it is what proves the walk is really following the shell's own imports.
+    expect(graph.has('ui/agent/character/CharacterHost.tsx')).toBe(true);
+    expect(graph.has('ui/agent/character/Character.tsx')).toBe(true);
+    // And the panel it opens is NOT: one lazy import stands between the two.
+    expect(graph.has('ui/agent/PanelShell.tsx')).toBe(false);
   });
 });

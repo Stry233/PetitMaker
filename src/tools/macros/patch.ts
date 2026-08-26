@@ -6,15 +6,15 @@
  * and has no extent of its own, so confining the placeable mask is what confines the planting.
  *
  * The body runs INSIDE the caller's stroke group and pushes no provenance of its own. Its two
- * callers commit differently on purpose: `applyMacro` attributes the planting to the generator,
+ * callers commit differently: `applyMacro` attributes the planting to the generator,
  * the agent's `plant_forest` attributes it to the model that asked for it.
  */
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { getCell } from '../../core/model/grid-model';
 import { ItemCategory, TerrainType, type MacroCoord } from '../../core/model/types';
-import { analyzeTerrain } from '../generation/placement/analysis';
-import { placeNature } from '../generation/placement/nature';
-import { makeCtx } from '../generation/placement/object';
+import { analyzeTerrain } from '../placement/analysis';
+import { placeNature } from '../placement/nature';
+import { makeCtx } from '../placement/object';
 import { removeObjectCommand } from '../objects/object-placer';
 import type { MacroContext } from './context';
 import { layDelight } from './delights';

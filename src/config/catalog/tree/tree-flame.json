@@ -17,6 +17,7 @@
     "orange"
   ],
   "icon": "tree-flame",
+  "iconColor": "#d37f3d",
   "width": 1,
   "height": 1,
   "loadValue": 50,

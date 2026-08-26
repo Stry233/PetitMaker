@@ -5,7 +5,7 @@
  * same corner and the same 660:450, drawn at `CARD_SCALE` and standing up out of the shelf's plate
  * the way the five candidates do, only further. The plate is the plinth. That aspect IS the design:
  * the map is roughly square, so a photograph asked for at a band's 5:1 is mostly sea with an island
- * in the middle of it, and the offer read flat because the only picture on it was a sliver.
+ * in the middle of it, and an offer whose only picture is a sliver reads flat.
  *
  * A CLICK IS THE ANSWER, with no confirm step, exactly as a click on a candidate is. Restoring can
  * be taken back by asking for a new map, with the old one already returned if the visitor changes
@@ -17,12 +17,13 @@
  *
  * THE CARD PRESSES ITSELF, and its clock is the mark a shelf's row of names puts under the chosen
  * name — a yellow stadium under the picture, spent rather than filled. The default falls toward the
- * RECOVERABLE option, which is the whole argument for having one. What that inverts is "offered
- * rather than applied", and knowingly: that phrasing was protecting against a SILENT default, and a
- * mark shortening under the picture is not silent. All four ways of saying no already unmount this
- * offer, so the clock dies with it and needs no path of its own; the one case that is not an
- * unmount is the offer ON ITS WAY OUT, which is still mounted for the length of its exit and is
- * held by `useIsPresent`.
+ * RECOVERABLE option, which is the whole argument for having one: the rule against a default that
+ * takes itself is a rule against a SILENT one, and a mark shortening under the picture is not
+ * silent. All four ways of saying no already unmount this offer, so the clock dies with it and
+ * needs no path of its own; the two cases that are not an unmount are the offer ON ITS WAY OUT,
+ * which is still mounted for the length of its exit and is held by `useIsPresent`, and the offer
+ * standing BEHIND THE BOOT SPLASH, which is drawn but not yet seen and is held by `splashActive`.
+ * The mark measures reading time, so it may only run over time the card was on screen for.
  *
  * THE ANSWERS ARE PILLS ON THE MAP, under the words rather than in a strip: a strip is where a
  * setting lives, and these two answer the sentence above them. Resume repeats what the card already
@@ -52,7 +53,7 @@ import { BAR, CARD, CARD_H, GAP, PAD, STRIP } from './generate-shelf';
  *
  * A candidate is one of six and is read by comparing it with the others; this is the only picture
  * on the screen, so it is drawn bigger. It is the offer's ILLUSTRATION rather than the offer: drawn
- * at nearly twice a candidate it became the whole body of the surface, and the words that say what
+ * at nearly twice a candidate it becomes the whole body of the surface, and the words that say what
  * it is and the answers that act on it read as captions under a poster.
  *
  * It is a SCALE on the shelf's own card height rather than a size of its own, so everything that
@@ -142,6 +143,10 @@ export const RESTORE_AFTER_S = 12;
 export interface RestoreShelfProps {
   /** The saved map, for its photograph. */
   state: GridState;
+  /** The boot splash still covers the app. The offer is drawn behind it, so its clock has not
+   *  started: a countdown that ran while nobody could see the card would hand a visitor whatever
+   *  was left of it at the moment the splash cleared. */
+  splashActive?: boolean;
   onRestore: () => void;
   onDismiss: () => void;
 }
@@ -154,7 +159,7 @@ export function RestoreShelf(props: RestoreShelfProps) {
   );
 }
 
-function RestoreShelfBody({ state, onRestore, onDismiss }: RestoreShelfProps) {
+function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }: RestoreShelfProps) {
   const t = useT();
   const present = useIsPresent();
   const [shot, setShot] = useState<string | null | undefined>(undefined);
@@ -195,11 +200,14 @@ function RestoreShelfBody({ state, onRestore, onDismiss }: RestoreShelfProps) {
         {/* The plinth: the shelves' own backing band, drawn exactly as they draw it. The card
             stands up out of it and nothing else is in it. */}
         <div
+          data-testid="bar-plate"
           style={{
             position: 'absolute',
             left: -PLATE_BAND.overhang, right: -PLATE_BAND.overhang,
             bottom: -PLATE_BAND.radius, height: PLATE_BAND.top + PLATE_BAND.radius,
             borderRadius: PLATE_BAND.radius, background: BAR.fill,
+            // Solid: input over the visible dock belongs to the dock, never to the map under it.
+            pointerEvents: 'auto',
           }}
         />
 
@@ -222,7 +230,7 @@ function RestoreShelfBody({ state, onRestore, onDismiss }: RestoreShelfProps) {
           >
             <TimedButton
               after={RESTORE_AFTER_S}
-              paused={!present || overAnswer}
+              paused={!present || overAnswer || splashActive}
               onPress={onRestore}
               ring={ACTIVE}
               clock="stadium"

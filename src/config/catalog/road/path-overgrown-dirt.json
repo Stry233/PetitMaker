@@ -1,0 +1,31 @@
+{
+  "id": "path-overgrown-dirt",
+  "category": "road",
+  "icon": "path-overgrown-dirt",
+  "name": {
+    "en": "Overgrown Dirt Path",
+    "zh": "杂草土路",
+    "ja": "草生した土の道",
+    "ru": "Заросшая грунтовая дорожка",
+    "th": "ทางดินหญ้าขึ้น",
+    "id": "Jalan Tanah Berumput",
+    "fr": "Chemin de terre envahi"
+  },
+  "color": "#aa885c",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    },
+    {
+      "type": "plantable"
+    }
+  ]
+}

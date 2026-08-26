@@ -41,4 +41,12 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('find_flat_areas');
     expect(prompt).toContain('scatter_objects');
   });
+
+  it('tells the model that measuring is what moves the plan rail, the loop half being pinned in loop.test.ts', () => {
+    expect(prompt).toContain('MOVES the plan rail');
+  });
+
+  it('tells the model an imperfect premise is delivered through, never an exit, the loop half being the delivery nudge', () => {
+    expect(prompt).toContain('a premise gap is never by itself a reason to stop');
+  });
 });

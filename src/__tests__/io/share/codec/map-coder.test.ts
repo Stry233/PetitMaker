@@ -77,7 +77,7 @@ describe('map coder', () => {
     const template = getMapTemplate('hexia');
     const cells: (CellFields | null)[] = new Array(template.width * template.height).fill(null);
     const objects: SaveObject[] = [
-      { id: 'o0', catalogId: 'road-stone', x: 10, y: 10, rotation: 0 },
+      { id: 'o0', catalogId: 'path-garden-stone', x: 10, y: 10, rotation: 0 },
       { id: 'o1', catalogId: 'bridge-plank', x: 10, y: 10, rotation: 90, spanLength: 4 },
     ];
     const { got } = roundTrip(template, cells, objects);

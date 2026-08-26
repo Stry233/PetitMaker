@@ -1,8 +1,9 @@
 /**
- * Task 2 of the half-step span items feature (issue #4): detection on the half
- * grid. The reported cases are (a) a ramp that only fits flush at a half anchor
- * beside a mountain edge and (b) the 0.5 + 1 + 0.5 gap — half a block of mountain
- * either side of a one-block gap — which the whole-cell grid cannot express.
+ * The half-step span items (issue #4) at the DETECTION level: bridge-span and
+ * heightDrop walking the half grid. The reported cases are (a) a ramp that only
+ * fits flush at a half anchor beside a mountain edge and (b) the 0.5 + 1 + 0.5
+ * gap — half a block of mountain either side of a one-block gap — which the
+ * whole-cell grid cannot express.
  *
  * Terrain renders at -HALF_TILE, so a terrain cell's visual extent is
  * [c - 0.5, c + 0.5): a footprint anchored on a WHOLE coordinate straddles one

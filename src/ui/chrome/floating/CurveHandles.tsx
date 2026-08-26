@@ -20,9 +20,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import {
-  getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
-} from '../../../tools/paint/curve-session';
-import { anchorHandles } from '../../../tools/paint/shapes';
+  anchorHandles, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
+} from '../../../tools/paint';
 import { isBreakHandleHeld } from '../../../core/runtime/modifier-state';
 import { useEditorStore } from '../../../state/store';
 import { useChromeScale } from '../../design/scale';

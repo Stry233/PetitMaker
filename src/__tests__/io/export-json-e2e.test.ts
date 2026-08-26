@@ -42,7 +42,7 @@ describe('export-json e2e: build → export all sections → import → undo', (
 
     state.notes = { title: 'E2E Island', description: 'built by the e2e test', author: 'yue' };
     state.generation = {
-      algorithm: 'random', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 123, region: null,
+      algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 123, region: null,
     } as GenerateConfig;
 
     // 2. Export with EVERY optional section on.

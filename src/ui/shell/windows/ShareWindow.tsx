@@ -105,7 +105,6 @@ export function ShareWindow() {
           idPrefix="share-section"
           value={section}
           options={SECTIONS}
-          fontSize={13}
           render={(s) => t(LABEL[s])}
           onChange={show}
         />

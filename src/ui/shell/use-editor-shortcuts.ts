@@ -8,7 +8,7 @@
  * shortcuts (held-key rAF loops, a different concern); their key sets are disjoint from the registry.
  */
 import { useEffect } from 'react';
-import { ShortcutManager } from '../../tools/shortcut-manager';
+import { ShortcutManager } from '../../core/runtime/shortcut-manager';
 import { COMMANDS, COMMAND_BY_ID, type CommandContext } from '../../kit/commands';
 import { effectiveCombo, useKeybinds, ALIASES } from '../../core/runtime/keybindings';
 import { setBreakHandleKey, setConstrainKey, setMultiSelectKey, setPanDragKey } from '../../core/runtime/modifier-state';

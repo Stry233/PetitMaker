@@ -1,0 +1,28 @@
+{
+  "id": "path-garden-stone",
+  "category": "road",
+  "icon": "path-garden-stone",
+  "name": {
+    "en": "Garden Stone Path",
+    "zh": "庭园石路",
+    "ja": "庭石の道",
+    "ru": "Садовая каменная дорожка",
+    "th": "ทางหินสวน",
+    "id": "Jalan Batu Kebun",
+    "fr": "Chemin de pierres de jardin"
+  },
+  "color": "#bd8f78",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -271,11 +271,10 @@ describe('DropImportOverlay', () => {
     expect(importFileMock).not.toHaveBeenCalled();
   });
 
-  // CRITICAL regression: the overlay's `ModalShell` used to join `shellStack` for its whole `open`
-  // span, including the passive `hover`/`importing` phases — so dragging a file over the window
-  // while some OTHER modal was open made the overlay topmost and silently ate that modal's Escape
-  // for as long as the drag lasted. `passive` (see ModalShell.tsx) is the fix: a passive phase
-  // never joins the stack at all.
+  // CRITICAL regression: a `ModalShell` that joins `shellStack` for its whole `open` span, the
+  // passive `hover`/`importing` phases included, makes this overlay topmost as soon as a file is
+  // dragged over the window and silently eats an already-open modal's Escape for as long as the drag
+  // lasts. `passive` (see ModalShell.tsx) keeps a passive phase out of the stack entirely.
   describe('modal stacking (passive phases)', () => {
     it('does not swallow Escape for a modal stacked underneath during the passive hover phase', () => {
       const onCloseUnderlying = vi.fn();

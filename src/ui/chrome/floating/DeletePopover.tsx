@@ -1,12 +1,13 @@
 import { useEffect, useRef, type CSSProperties, type ReactElement } from 'react';
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useWeightVars } from '../../design/scale';
+import { roleFont } from '../../design/text-weight';
 import { getActiveView } from '../../../canvas/active-view';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { getCell } from '../../../core/model/grid-model';
-import { peelTerrain } from '../../../tools/objects/actions';
+import { peelTerrain } from '../../../tools/objects';
 import { deleteSelection } from '../../../kit/group-edit';
 import { useT, localizedName } from '../../../i18n/context';
 import { colors, radii, shadows, font, btnBase, springs, pressable, exitTransition, z } from '../../design/styles';
@@ -34,11 +35,12 @@ const popoverStyle: CSSProperties = {
 };
 
 const btnRow: CSSProperties = { display: 'flex', gap: 8, justifyContent: 'flex-end' };
-const cancelBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, fontSize: 13, fontWeight: 800, background: colors.surfaceSecondary, color: colors.frameDark };
-const deleteBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, fontSize: 13, fontWeight: 800, background: colors.statusError, color: colors.textInverse };
+const cancelBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.surfaceSecondary, color: colors.frameDark };
+const deleteBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.statusError, color: colors.textInverse };
 
 export function DeletePopover() {
   const chrome = useChromeScale();
+  const weights = useWeightVars();
   const t = useT();
   const sel = useEditorStore((s) => s.deletePopover);
   const gridState = useEditorStore((s) => s.gridState);
@@ -121,7 +123,7 @@ export function DeletePopover() {
           key="popover"
           initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
           transition={springs.bouncy}
-          style={{ ...popoverStyle, zoom: chrome, left: screenX / chrome, top: screenY / chrome, x: '-50%' }}
+          style={{ ...popoverStyle, zoom: chrome, ...weights, left: screenX / chrome, top: screenY / chrome, x: '-50%' }}
         >
           <span>{title}</span>
           <div style={btnRow}>

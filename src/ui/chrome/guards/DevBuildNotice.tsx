@@ -29,28 +29,31 @@ import { APP_VERSION, IS_DEV_BUILD } from '../../../version';
 import { LEGAL } from '../../../legal/config';
 import { TimedButton } from '../../primitives/TimedButton';
 import { colors, font, radii, springs, z, cursors } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { MAP_LABEL, PANEL_EDGE } from '../../design/tokens';
+import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP } from '../floating/toast-band';
 import { useChromeScale } from '../../design/scale';
 
 /**
- * How far down the notice hangs, in real css px of the window.
+ * How far down the notice hangs: the toast band's third row, below the refusal toasts and the
+ * arrival greeting (both appear at the same boot moment this notice does, and all three stand
+ * top-centre — the shared ledger in `floating/toast-band` is what keeps them stacked instead of
+ * overlapped). Both corners are left to the frame.
  *
- * The top margin is where the interface's own top row is — at any window narrower than about 1600
- * a card there reaches across the build-mode blocks. So it drops below that row and the name under
- * the selected block, and takes the page's own centre line, which is the one band across the
- * window that no control stands in. Both corners are left to the frame.
- *
- * NOT scaled by the chrome zoom, which is why it is divided back out at the use site: the number
- * has to clear a frame laid out in fixed css px, so a top that grew with the viewport would clear
- * it on one monitor and not the next.
+ * IN THE SAME SPACE AS THE OTHER TWO TENANTS, which is INSIDE the chrome zoom: what this number has
+ * to clear is the toasts and the greeting, and those grow and shrink with that zoom. Divided back
+ * out it would be a real-px constant chasing two scaled surfaces: at a 1440-tall viewport (zoom
+ * ~1.33) the greeting's foot reaches real 249, where a 199 constant stands above it — covered
+ * again, which is the arrangement the ledger exists to prevent. Riding the same zoom makes the ledger's
+ * arithmetic exact at every scale: the greeting's foot is at 187 and this at 199, so the 12px of
+ * air between them is 16 real px at 1.33 and 8 at 0.7, never nothing.
  */
-const NOTICE_TOP = 180;
+const NOTICE_TOP = TOAST_BAND_TOP + TOAST_BAND_ROW + ARRIVAL_ROW;
 
 // Centring lives in framer's `x`, NOT in a `transform` here: motion writes the element's
-// transform to animate `y`, which silently drops a `translateX(-50%)` set in CSS. That put the
-// card half its own width off centre at every viewport size (the watermark, which is not a
-// motion element, was unaffected). Both `initial` and `animate` carry the same x so nothing
-// slides sideways on entry.
+// transform to animate `y`, which silently drops a `translateX(-50%)` set in CSS and leaves the
+// card half its own width off centre at every viewport size. Both `initial` and `animate` carry
+// the same x so nothing slides sideways on entry.
 const noticeWrap: CSSProperties = {
   position: 'fixed',
   left: '50%',
@@ -65,8 +68,7 @@ const noticeWrap: CSSProperties = {
   background: colors.panelCream,
   color: colors.frameDark,
   fontFamily: font.family,
-  fontSize: 12.5,
-  fontWeight: 700,
+  ...roleFont('caption'),
   lineHeight: 1.35,
   boxShadow: 'none',
 };
@@ -95,8 +97,7 @@ const dismissStyle: CSSProperties = {
   background: colors.surfaceSecondary,
   color: colors.frameDark,
   fontFamily: font.family,
-  fontWeight: 800,
-  fontSize: 11.5,
+  ...roleFont('small'),
   padding: '6px 10px',
   // A stadium, so the countdown's outline runs round a pill rather than round a box with soft
   // corners: `TimedButton` takes its own shape from whatever this says.
@@ -137,8 +138,7 @@ const watermarkStyle: CSSProperties = {
   pointerEvents: 'none',
   userSelect: 'none',
   fontFamily: font.family,
-  fontWeight: 900,
-  fontSize: 11,
+  ...roleFont('small'),
   letterSpacing: '0.12em',
   ...MAP_LABEL,
   opacity: 0.62,
@@ -154,8 +154,7 @@ export function DevBuildNotice() {
   if (!IS_DEV_BUILD) return null;
 
   // The chrome zoom goes on each FIXED element, never on a wrapper around them: an ancestor
-  // with `zoom` skews what `left: 50%` resolves against, which is what pushed the notice off
-  // centre. Same shape as ToastContainer, which centres correctly for the same reason.
+  // with `zoom` skews what `left: 50%` resolves against. Same shape as ToastContainer.
   return (
     <>
       <AnimatePresence>
@@ -163,7 +162,7 @@ export function DevBuildNotice() {
           <motion.div
             role="status"
             data-testid="dev-notice"
-            style={{ ...noticeWrap, top: NOTICE_TOP / chromeScale, zoom: chromeScale }}
+            style={{ ...noticeWrap, top: NOTICE_TOP, zoom: chromeScale }}
             initial={{ opacity: 0, x: '-50%', y: -12 }}
             animate={{ opacity: 1, x: '-50%', y: 0 }}
             exit={{ opacity: 0, x: '-50%', y: -8 }}
@@ -192,7 +191,7 @@ export function DevBuildNotice() {
         )}
       </AnimatePresence>
       <div style={{ ...watermarkStyle, zoom: chromeScale }} data-testid="dev-watermark" aria-hidden>
-        {t('dev.watermark')} · {APP_VERSION}
+        {t('dev.watermark')} {APP_VERSION}
       </div>
     </>
   );

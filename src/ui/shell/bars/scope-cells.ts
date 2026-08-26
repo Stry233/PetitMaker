@@ -34,17 +34,19 @@ function from(id: string): { labelKey: string; commandId: string; glyph: Glyph }
 /**
  * Which region figures a generate kind can actually work in.
  *
- * A PICTURE is fitted to the region's bounding box and read cell for cell, so anything but a
- * rectangle leaves it part-drawn: the box is bigger than the region, and every cell of the picture
- * outside the painted shape is simply dropped. A LETTER survives a rounded region -- its own shape is
- * bold and mostly central -- so a circle is offered there too. Everything else takes any figure,
- * because a landform is designed for whatever it is given.
+ * A PICTURE and a LETTER are both fitted to the region's BOUNDING BOX and read cell for cell, so a
+ * figure whose box is bigger than itself loses whatever falls outside the painted shape. For the two
+ * figures a drag produces whole — a rectangle, and a circle inscribed in its own box — that is a
+ * vignette rather than damage: the picture keeps its middle and gives up its corners, which is a
+ * composition somebody may well want and was offered here before. What neither can use is a figure
+ * with no interior to speak of (a brushed blob, a line, a curve), where the box is mostly empty and
+ * the result is a picture with holes through it.
  *
  * Offered rather than validated: a brush that cannot produce a usable region should not be on the
  * row, since the alternative is a stroke that is accepted and then quietly ignored.
  */
 export const SCOPE_TOOLS_FOR: Readonly<Record<string, readonly RegionTool[] | undefined>> = {
-  image: ['rect'],
+  image: ['rect', 'circle'],
   text: ['rect', 'circle'],
 };
 

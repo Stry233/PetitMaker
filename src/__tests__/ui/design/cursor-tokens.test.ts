@@ -169,8 +169,8 @@ describe('cursors come from the tokens, never from a keyword', () => {
     expect(files.length).toBeGreaterThan(40);
     expect(files.filter((f) => readFileSync(`${REPO}/${f}`, 'utf8').includes('cursor:')).length)
       .toBeGreaterThan(20);
-    // The two roots the scan used to miss, named so a future narrowing of ROOTS fails here
-    // rather than silently shrinking the sweep.
+    // Two files outside the obvious roots, named so a future narrowing of ROOTS fails here rather
+    // than silently shrinking the sweep.
     expect(files).toContain('src/ui/design/styles.ts');
     expect(files).toContain('src/canvas/map2d/PixiCanvas.tsx');
   });

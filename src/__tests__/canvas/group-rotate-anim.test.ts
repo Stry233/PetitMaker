@@ -1,7 +1,7 @@
 /**
  * The group-rotation ANIMATION must depict the operation that actually ran: ONE rigid body turning
- * about ONE point. The first implementation spun every member in place while their positions jumped
- * to the new arrangement, which is the operation the spec says this explicitly is NOT.
+ * about ONE point. Spinning every member in place while their positions jump to the new arrangement
+ * depicts a different operation: each object turning on its own axis, which is not what ran.
  *
  * Two facts decide whether it reads as one body, and both are asserted on the tween's inputs rather
  * than on pixels: every member travels an ARC about the centre (interpolating positions linearly

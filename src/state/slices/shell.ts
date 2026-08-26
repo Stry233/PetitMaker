@@ -12,7 +12,7 @@ import type { StateCreator } from 'zustand';
 import type { BlockRef } from '../../core/model/types';
 import type { CameraAngle } from '../../canvas/map3d/capture';
 import { detectPortraitBlocked } from '../../core/runtime/portrait-signals';
-import { readPref, writePref } from '../../core/runtime/prefs';
+import { readPref, writePref, type DockSide } from '../../core/runtime/prefs';
 
 /** Every overlay the editor can open. Adding a modal is one member here plus its component. */
 export type ModalId =
@@ -40,10 +40,24 @@ export interface ShellSlice {
    *  other, and because Settings and the startup check both open it from outside a React tree. */
   tourRunning: boolean;
   setTourRunning: (running: boolean) => void;
-  /** Whether the assistant's panel is open. Its block in the mode row is the one toggle, and
-   *  the choice is remembered across visits. */
+  /** Whether the assistant's panel is open. Its block in the mode row is the one toggle. */
   assistantOpen: boolean;
   setAssistantOpen: (open: boolean) => void;
+  /**
+   * Whether the panel is DOCKED to a side edge of the window, with the rest of the interface standing
+   * in what is left of the window (`ui/shell/panel-frame.ts`'s docked half).
+   *
+   * IT IS AN INTENT, and the layout is derived from it rather than equal to it: the dock needs a
+   * window wide enough for the interface beside it (`hasPinRoom`), so a narrow window stands the
+   * panel free without forgetting that it was asked to dock. Persisted, unlike `assistantOpen`.
+   */
+  assistantPinned: boolean;
+  setAssistantPinned: (pinned: boolean) => void;
+  /** WHICH END OF THE WINDOW it docks at, which is part of the same intent and remembered with it:
+   *  the dock's own switch control writes this, and the next session opens at the side it was left
+   *  at. Read while the panel is free too, since that is the side the next dock takes. */
+  assistantDockSide: DockSide;
+  setAssistantDockSide: (side: DockSide) => void;
   /** Export "3D shots" menu: the session's chosen camera angles (1..5). Seeded lazily. */
   export3dShots: CameraAngle[];
   setExport3dShots: (next: CameraAngle[]) => void;
@@ -70,11 +84,26 @@ export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (s
   setPortraitBlocked: (v) => set((st) => (st.portraitBlocked === v ? st : { portraitBlocked: v })),
   tourRunning: false,
   setTourRunning: (running) => set({ tourRunning: running }),
-  assistantOpen: readPref('assistantOpen'),
-  setAssistantOpen: (open) => set((st) => {
-    if (st.assistantOpen === open) return st;
-    writePref('assistantOpen', open);
-    return { assistantOpen: open };
+  // EVERY SESSION BOOTS COLLAPSED, DOCK REMEMBERED OR NOT. The editor opens on the map
+  // and nothing else, so the open state is never persisted: a panel standing on arrival is a surface
+  // the visitor has to deal with before they can build, and that is as true of a docked one, which
+  // takes a fifth of the window with it. What the pin remembers is the SHAPE the panel opens in —
+  // pressing her in a remembered-pinned session goes to the dock rather than to the floating card, by
+  // the plain arithmetic of `useAssistantDocked` (asked for AND open AND room). The SESSION is a
+  // different fact and does come back (`agent/session/persist.ts`).
+  assistantOpen: false,
+  setAssistantOpen: (open) => set((st) => (st.assistantOpen === open ? st : { assistantOpen: open })),
+  assistantPinned: readPref('assistantPinned'),
+  setAssistantPinned: (pinned) => set((st) => {
+    if (st.assistantPinned === pinned) return st;
+    writePref('assistantPinned', pinned);
+    return { assistantPinned: pinned };
+  }),
+  assistantDockSide: readPref('assistantDockSide'),
+  setAssistantDockSide: (side) => set((st) => {
+    if (st.assistantDockSide === side) return st;
+    writePref('assistantDockSide', side);
+    return { assistantDockSide: side };
   }),
   export3dShots: [],
   setExport3dShots: (next) => set({ export3dShots: next }),

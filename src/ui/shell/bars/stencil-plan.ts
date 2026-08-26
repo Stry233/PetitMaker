@@ -9,12 +9,11 @@
  * all of them, so decoding per plan would re-fetch the same picture dozens of times; the cache is
  * keyed by source and holds the decoded bitmap.
  */
-import { TerrainType, type CatalogItem, type MacroCoord, type StencilPlan } from '../../../core/model/types';
-import { getAllItems } from '../../../state/catalog';
+import { TerrainType, type MacroCoord, type StencilPlan, type StencilWaterRole } from '../../../core/model/types';
+import { declaredColorPalette, materialDeclaresColors, paletteItems, type ColorEntry, type StencilMaterial } from '../../../tools/generation/stencil';
 import { sampleIconRGB } from '../../../canvas/icon-sampling';
 import { iconUrl } from '../../../assets/icon-urls';
-import { tilesAShape } from '../../../tools/generation/stencil-generator';
-import { rasterizeImage, rasterizeText, type StencilBox } from './stencil-raster';
+import { ensureGlyphFonts, rasterizeImage, rasterizeText, type StencilBox } from './stencil-raster';
 import type { StencilSample } from './stencil-samples';
 
 /** How a text plan should be built: the material, or the item to tile it with. */
@@ -28,8 +27,15 @@ export interface PlanInputs {
    *  is only sampled for the former, since sampling eighty icons for a plan that will not use them is
    *  the slowest thing on the shelf. */
   objects?: boolean;
-  /** image kinds only, terrain fills: whether water may join the palette. */
-  water?: boolean;
+  /** image kinds only, object fills: WHICH objects — the catalogue less the trees, the flowers, the
+   *  trees, or the road surfaces. Absent is the catalogue less the trees. */
+  material?: StencilMaterial;
+  /** image kinds only: what stands at the picture's anchor points, over the primary result. Absent
+   *  is none. `species` names the decoration's own material; `density` is a share of the picture's
+   *  cells, capped by the generator. */
+  decor?: { species: StencilMaterial; density?: number };
+  /** image kinds only, terrain fills: what part water plays. */
+  water?: StencilWaterRole;
   /** The cells the run may write to, as flat indices — the region itself, not its box. */
   allow?: ReadonlySet<number>;
   /** text kinds only. */
@@ -59,27 +65,36 @@ function loadImage(src: string): Promise<CanvasImageSource & { width: number; he
 }
 
 /**
- * The objects a picture may be built from, each with the colour its own icon reads as.
+ * The objects a picture may be built from, each with the colour it reads as, for one MATERIAL: the
+ * whole one-cell catalogue, the flowers alone, the trees alone, or the road surfaces. Which items a
+ * material offers is the engine's answer (`tools/generation/stencil/stencil-palette.ts`); what is done here
+ * is the part that needs a browser, which is reading a sprite's dominant colour.
  *
- * ONE CELL EACH. An item with a bigger footprint would overlap its neighbour and be refused for it,
- * so a colour mosaic can only be tiled with 1x1 items — of which the catalogue has plenty, being
- * mostly flowers. Anything the rules cap is out for the same reason a letter cannot use it: the
- * second cell onward would be refused (`tilesAShape`).
- *
- * Sampled ONCE and kept. Every card of every batch matches against the same palette, and decoding 80
- * icons per press would be the slowest thing on the shelf; the sampler skips outline and highlight
- * pixels, so what comes back is the colour the item reads as rather than its average.
+ * Sampled ONCE PER MATERIAL and kept. Every card of every batch matches against the same palette, and
+ * decoding 80 icons per press would be the slowest thing on the shelf; the sampler skips outline and
+ * highlight pixels, so what comes back is the colour the item reads as rather than its average.
  */
-let palette: Promise<readonly { catalogId: string; rgb: number }[]> | null = null;
+const palettes = new Map<StencilMaterial, Promise<readonly ColorEntry[]>>();
 
-export function objectColorPalette(): Promise<readonly { catalogId: string; rgb: number }[]> {
-  if (palette) return palette;
-  palette = (async () => {
-    const usable = getAllItems().filter((i: CatalogItem) => tilesAShape(i) && i.width === 1 && i.height === 1);
-    const out: { catalogId: string; rgb: number }[] = [];
+export function objectColorPalette(material: StencilMaterial = 'mixed'): Promise<readonly ColorEntry[]> {
+  const cached = palettes.get(material);
+  if (cached) return cached;
+  // A material whose items carry their own colour (the road surfaces) needs no sampling at all —
+  // the catalog already says what each one draws in.
+  const pending = materialDeclaresColors(material)
+    ? Promise.resolve(declaredColorPalette(material))
+    : samplePalette(material);
+  palettes.set(material, pending);
+  return pending;
+}
+
+function samplePalette(material: StencilMaterial): Promise<readonly ColorEntry[]> {
+  return (async () => {
+    const usable = paletteItems(material);
+    const out: ColorEntry[] = [];
     await Promise.all(usable.map(async (item) => {
-      // The item's own sprite. A colour-only item (a road) has none, and `tilesAShape` has already
-      // excluded those, so anything left here that lacks one is simply skipped.
+      // The item's own sprite. An item with no sprite has its colour declared instead, and that
+      // material never reaches this path, so anything here that lacks one is simply skipped.
       const url = item.icon ? iconUrl(item.icon) : undefined;
       if (!url) return;
       try {
@@ -90,7 +105,6 @@ export function objectColorPalette(): Promise<readonly { catalogId: string; rgb:
     }));
     return out;
   })();
-  return palette;
 }
 
 /** Forget a decoded picture — for a file the visitor replaces, whose object URL is about to die. */
@@ -110,6 +124,9 @@ export async function buildStencilPlan(sample: StencilSample, inputs: PlanInputs
   const origin: MacroCoord = box.origin;
 
   if (sample.text) {
+    // The faces first. A canvas does not wait for a font: name one that has not arrived and the text
+    // is drawn in the platform fallback and read back as a different letter, with nothing to say so.
+    await ensureGlyphFonts(sample.text);
     const stencil = rasterizeText(sample.text, box);
     if (!stencil) return null;
     const fill = inputs.fill ?? { kind: 'terrain' as const, terrain: TerrainType.Mountain };
@@ -125,12 +142,16 @@ export async function buildStencilPlan(sample: StencilSample, inputs: PlanInputs
       // that is the mode that reproduces rather than paraphrases -- but it is the visitor's choice,
       // and asking for terrain has to GET terrain. An empty palette (no canvas, nothing decoded)
       // falls back to terrain colouring on its own.
-      const objectPalette = inputs.objects ? await objectColorPalette() : [];
+      const objectPalette = inputs.objects ? await objectColorPalette(inputs.material ?? 'mixed') : [];
+      const decorPalette = inputs.decor ? await objectColorPalette(inputs.decor.species) : [];
       return {
         read: 'color', stencil, origin, contrast: inputs.contrast ?? 1,
-        water: inputs.water ?? false,
+        water: inputs.water ?? 'none',
         ...(inputs.allow ? { allow: inputs.allow } : {}),
         ...(objectPalette.length ? { objectPalette } : {}),
+        ...(decorPalette.length
+          ? { decor: { palette: decorPalette, ...(inputs.decor?.density !== undefined ? { density: inputs.decor.density } : {}) } }
+          : {}),
       };
     } catch {
       return null;   // an unreadable picture is one blank card, never a broken shelf

@@ -1,0 +1,28 @@
+{
+  "id": "path-lattice-red-brick",
+  "category": "road",
+  "icon": "path-lattice-red-brick",
+  "name": {
+    "en": "Lattice Red Brick Path",
+    "zh": "网格红砖路",
+    "ja": "格子赤レンガの道",
+    "ru": "Красная кирпичная дорожка «решётка»",
+    "th": "ทางอิฐแดงลายตาราง",
+    "id": "Jalan Bata Merah Kisi",
+    "fr": "Chemin de briques rouges en treillis"
+  },
+  "color": "#a85e3f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

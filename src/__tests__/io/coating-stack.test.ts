@@ -23,7 +23,7 @@ import type { SaveFile, SaveObject } from '../../io/save-format';
 const META = { appVersion: 'stack-test', saveVersion: 1 };
 
 const road = (x: number, y: number, i: number): SaveObject =>
-  ({ id: `r${x}-${y}-${i}`, catalogId: 'road-dirt', x, y, rotation: 0, elevation: 0 });
+  ({ id: `r${x}-${y}-${i}`, catalogId: 'path-overgrown-dirt', x, y, rotation: 0, elevation: 0 });
 
 /** The owner's worst neighbourhood as a save file: three cells carrying 10, 9 and 8 dirt roads. */
 function stackedSave(extra: SaveObject[] = []): string {
@@ -49,8 +49,8 @@ describe('loading a map repairs stacked coatings', () => {
 
   it('keeps the LAST tile written, which is what coating over means', () => {
     // A stone road laid over the dirt is the one that survives, not the pile beneath it.
-    const objects = loaded(stackedSave([{ id: 'stone', catalogId: 'road-stone', x: 29, y: 108, rotation: 0, elevation: 0 }]));
-    expect(objects.find((o) => o.position.x === 29 && o.position.y === 108)?.catalogId).toBe('road-stone');
+    const objects = loaded(stackedSave([{ id: 'stone', catalogId: 'path-garden-stone', x: 29, y: 108, rotation: 0, elevation: 0 }]));
+    expect(objects.find((o) => o.position.x === 29 && o.position.y === 108)?.catalogId).toBe('path-garden-stone');
   });
 
   it('leaves coatings on cells of their own alone', () => {
@@ -74,7 +74,7 @@ describe('a stacked map is what the share code refused', () => {
   it('refuses to code a cell carrying ten tiles, and codes the loaded map fine', async () => {
     const state = createBlankGridState('hexia');
     for (let i = 0; i < 10; i++) {
-      state.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'road-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
+      state.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'path-overgrown-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
     }
     // The encoder verifies its own frame by decoding it; the plausibility guard is what fires.
     await expect(encodeMapPayload(state, null, META)).rejects.toThrow(/implausible/);

@@ -53,8 +53,8 @@ describe('V-ZONE-01: Zone Restriction', () => {
     const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x1', 9, 5)), state);
     expect(errors.length).toBeGreaterThan(0);
   });
-  // (Plaza no-build moved to V-PLACE-BLOCK / V-PLACE-OVERLAP — the plaza is an
-  // immutable object now, not a zone. See regression-user-bugs "User Bug 5".)
+  // (The plaza is an immutable OBJECT, not a zone, so its no-build is V-PLACE-BLOCK /
+  // V-PLACE-OVERLAP rather than this rule. See regression-user-bugs "User Bug 5".)
   it('rejects terrain that bleeds onto a non-buildable UP/LEFT neighbour (-HALF render); allows DOWN/RIGHT', () => {
     const paint = (state: ReturnType<typeof makeState>) => zoneRestrictionRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, 1), state);
     const up = makeState(); setZone(up, 5, 4, CellZone.Boundary);     // border above → terrain block bleeds up onto it

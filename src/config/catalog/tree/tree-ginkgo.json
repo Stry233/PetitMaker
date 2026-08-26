@@ -16,6 +16,7 @@
     "yellow"
   ],
   "icon": "tree-ginkgo",
+  "iconColor": "#db9f56",
   "width": 1,
   "height": 1,
   "loadValue": 50,

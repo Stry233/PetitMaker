@@ -45,8 +45,8 @@ export class ProvenanceTracker {
 
   constructor(width: number, height: number, opts: { now?: () => number; appVersion?: string; schemaVersion?: number; adopt?: ProvenanceState } = {}) {
     this.now = opts.now ?? Date.now;
-    // APP_VERSION, never a literal: a hardcoded default silently stamps provenance records
-    // with a version the build is not (it read 0.1.0 for every build after 0.1.0 shipped).
+    // APP_VERSION, never a literal: a hardcoded default silently stamps every later build's
+    // provenance records with a version that build is not.
     this.appVersion = opts.appVersion ?? APP_VERSION;
     this.schemaVersion = opts.schemaVersion ?? 1;
     if (opts.adopt) {

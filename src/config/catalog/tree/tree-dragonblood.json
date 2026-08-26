@@ -14,6 +14,7 @@
     "dracaena"
   ],
   "icon": "tree-dragonblood",
+  "iconColor": "#938961",
   "width": 1,
   "height": 1,
   "loadValue": 50,

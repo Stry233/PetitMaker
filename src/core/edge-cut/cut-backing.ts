@@ -35,11 +35,10 @@ export function cutBackingByCorner(
   if (!corners) return out;
 
   if (terrain.patchOnly) {
-    // A Γ patch is a COSMETIC fillet — it backs only the REAL support it sits on (`patchBase`): a from-
-    // empty gamma (patchBase 0) shows NO base at all (the previously-empty notch stays open); a gamma that
-    // rounds a genuinely real lower block backs that full block under every quadrant. Compatibility:
-    // patches saved before `patchBase` existed default to elevation-1. So an edge cut never paints a base
-    // that wasn't real.
+    // A Γ patch is a COSMETIC fillet — it backs only the REAL support it sits on (`patchBase`), so a cut
+    // never paints a base that was not there: a from-empty gamma (patchBase 0) shows NO base at all and
+    // the notch it fillets stays open, while a gamma rounding a genuinely real lower block backs that
+    // full block under every quadrant. Patches saved before `patchBase` existed default to elevation-1.
     const support = terrain.patchBase ?? (renderElevation - 1);
     if (support >= 1) {
       const base: CutBacking = { type: terrain.type, elevation: support };
@@ -48,8 +47,8 @@ export function cutBackingByCorner(
     return out;
   }
 
-  // A GROUND-island cut (a cell of type None carrying corners — see Edge-Cut: ground is a cuttable surface,
-  // the inverse of a water pond). The kept shape draws grass; behind the rounded-away part shows the WATER
+  // A GROUND-island cut (a cell of type None carrying corners — ground is a cuttable surface, the inverse
+  // of a water pond). The kept shape draws grass; behind the rounded-away part shows the WATER
   // the island sits in — the EDGE-adjacent water at that corner.
   if (terrain.type === TerrainType.None) {
     for (let i = 0; i < 4; i++) {
@@ -74,7 +73,7 @@ export function cutBackingByCorner(
       // The case the waterline rule cannot answer: mountain FLANKING BOTH EDGES of this corner meets itself
       // here, so the rounded-away quadrant opens onto that mountain — not onto the ground buried under it.
       // Water at layer 0 can never have a bank AT its own layer (mass starts at layer 1), so without this
-      // every mountain/water junction showed a wedge of ground: down the steps of a Γ notch, and at the
+      // every mountain/water junction shows a wedge of ground: down the steps of a Γ notch, and at the
       // point where two diagonally-attached shores meet. Both are one figure and get one answer, at the
       // LOWER of the two flanking tiers — the tier at which the shores actually meet.
       // ONE mountain edge is a river running ALONG a cliff, not a corner it turns: that keeps its ground bank.

@@ -5,7 +5,7 @@ import { cornerWrappedAt, enclosedGap, surfaceElevation } from './terrain-silhou
 import { CORNER_INDEX, type CornerPos } from './corner-index';
 import type { RoadLookup } from '../model/road-lookup';
 import {
-  detectRoadConn, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
+  detectRoadConn, isRoadNeighbor, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
 } from './road-cut-states';
 
 type Side = 'N' | 'E' | 'S' | 'W';
@@ -149,7 +149,10 @@ export function validateCut(
         hasNeighbor = true;
       }
     } else {
-      hasNeighbor = roads(nx, ny) !== null;
+      // Same-material only, exactly like the terrain branch's same-type-and-elevation test: a
+      // road of another material is separated by a hairline of ground and constrains nothing.
+      const cand = roads(x, y);
+      hasNeighbor = !!cand && isRoadNeighbor(roads, cand, nx, ny);
     }
 
     if (hasNeighbor) {
@@ -157,13 +160,13 @@ export function validateCut(
       if (layer === 'road') {
         // GEOMETRY-FAITHFUL road contact. Road corner arrays are SYMBOLIC canonical-state tokens (stored
         // canonical; validated in the actual frame via canonicalToActual), NOT quadrant-faithful geometry —
-        // drawRoadShape pattern-matches them. Judging the seam by token coverage both misread the frame
-        // (a neighbour's stored canonical tokens were compared as actual-frame quadrants) and misread the
-        // shape (triangle tokens under-claim the connected edge that the drawn diagonal fully keeps, while
-        // fan tokens over-claim their cut edges) — so a fan could validate where its same-direction
-        // triangle twin was refused, and some trimmed neighbours dead-locked a cell entirely. Judge both
-        // sides of the seam from the drawn geometry's kept-edge table instead; corner arrays that match no
-        // canonical state fall back to the token-coverage check.
+        // drawRoadShape pattern-matches them. Token coverage is therefore the wrong measure of a seam
+        // twice over: it reads a neighbour's stored canonical tokens as actual-frame quadrants, and
+        // triangle tokens under-claim the connected edge the drawn diagonal fully keeps while fan tokens
+        // over-claim their cut edges — a fan then validates where its same-direction triangle twin is
+        // refused, and some trimmed neighbours dead-lock a cell entirely. Both sides of the seam are
+        // judged from the drawn geometry's kept-edge table instead; corner arrays that match no canonical
+        // state fall back to the token-coverage check.
         const cand = roads(x, y);
         const nbr = roads(nx, ny);
         const cConn = cand ? detectRoadConn(roads, cand) : 'left';
@@ -212,10 +215,12 @@ export function validateCut(
  * strictly below the reference tier (empty, a patch, or a hidden lower block) — a cell at/above the
  * tier is part of the structure, not a notch.
  *
- * And only where the fillet would REST on something: it adds no mass of its own, so it has to sit
- * one tier above the cell's own support. Rounding a tier-3 corner over a notch floored at 1 hangs a
- * quarter block in the air with a layer of nothing under it — plain to see in the 3D view, and a
- * corner painted the wrong tier's colour in the 2D one.
+ * A fillet is a grounded COLUMN, not a floating wedge: both renderers wall it from its tier down
+ * to the cell's own support, so a notch in a wall STACKED SEVERAL TIERS HIGH rounds with one fillet
+ * spanning them — the concave mirror of an outer cut, which bevels the whole column.
+ * What a fillet can never do is sit at or below the surface it decorates (it would add nothing),
+ * or fill a PIT the surface has closed all the way round (see `enclosedGap`) — a pit is a hole in
+ * the mass, and a fillet across its corner reads as terrain while holding no support.
  */
 export function isInnerCorner(
   state: GridState,
@@ -226,8 +231,7 @@ export function isInnerCorner(
 ): boolean {
   const t = getCell(state.cells, cellX, cellY)?.terrain;
   if (t && t.type !== TerrainType.None && !t.patchOnly && t.elevation >= elevation) return false;
-  if (elevation !== surfaceElevation(t) + 1) return false;
-  // A pit the surface has closed all the way round is not a notch — see `enclosedGap`.
+  if (elevation <= surfaceElevation(t)) return false;
   if (enclosedGap(state, cellX, cellY)) return false;
   return cornerWrappedAt(state, cellX, cellY, cornerIdx, terrainType, elevation);
 }

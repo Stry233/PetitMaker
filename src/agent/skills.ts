@@ -27,9 +27,13 @@ import designReview from './skills/design-review.md?raw';
 import terrainShaping from './skills/terrain-shaping.md?raw';
 import settlementDesign from './skills/settlement-design.md?raw';
 import ecologyPlanting from './skills/ecology-planting.md?raw';
+import streetGrammar from './skills/street-grammar.md?raw';
 
 export interface AgentSkill {
   kind: 'method' | 'style';
+  /** A proper noun like a catalog item name, for the panel to show (the chip, the dock's playbook
+   *  line, the record line) — no per-locale key, same as an item's own `name` map is not one. */
+  title: string;
   description: string;
   body: string;
 }
@@ -38,68 +42,87 @@ export const SKILLS: Record<string, AgentSkill> = {
   // --- METHOD skills: transferable craft, compose with any request ---
   'site-analysis': {
     kind: 'method',
-    description: 'Read the site before building: inspect anchors, constraints, and connections; write a site brief before any edit.',
+    title: 'Site Analysis',
+    description: 'Read the map before building: scale, plaza, anchors, levels; decide the subject, the back/front axis and the routes, then plan.',
     body: siteAnalysis,
   },
   'composition': {
     kind: 'method',
-    description: 'Arrange any scene like a designer: one focal point, asymmetric balance, framing lines, and deliberate negative space.',
+    title: 'Composition',
+    description: 'Arrange any scene: one primary set piece, views out front with backing behind, local mirrors, pinch-and-release, nothing stamped twice.',
     body: composition,
   },
   'terrain-shaping': {
     kind: 'method',
-    description: 'Landform first, any style: macro silhouette before micro detail, tier rhythm, drainage logic, and edge treatment.',
+    title: 'Terrain Shaping',
+    description: 'Build the landform: near-low-far-high grading, terraces as walkable floors, a water shape vocabulary, legal ponds and waterfall lips.',
     body: terrainShaping,
   },
   'settlement-design': {
     kind: 'method',
-    description: 'Any inhabited area: hierarchy from a single heart, density gradient, roads before/after buildings, mixed scale.',
+    title: 'Settlement Design',
+    description: 'Place buildings as homes: one themed district each, doors facing the view with backing behind, the plaza ring populated near and far.',
     body: settlementDesign,
   },
   'ecology-planting': {
     kind: 'method',
-    description: 'Plant like nature works: elevation bands, drifts not confetti, ecotones, clearings, and thinning toward settlements.',
+    title: 'Ecology Planting',
+    description: 'Plant at two grains only: solid one-species beds and orchards plus lone specimens, one palette per place, no mid-size confetti.',
     body: ecologyPlanting,
+  },
+  'street-grammar': {
+    kind: 'method',
+    title: 'Street Grammar',
+    description: 'Roads as streets: a 3-wide trunk through the destinations, 2-wide lanes, T and offset junctions, spurs that arrive, ramps stitched inline.',
+    body: streetGrammar,
   },
   'design-review': {
     kind: 'method',
-    description: 'The finishing crit before calling a build done: trend check, silhouette/focal/balance review from view_map, symptom→tool fix playbook.',
+    title: 'Design Review',
+    description: 'The finishing crit: evaluate_map trend first, then view_map against the expert tells (subject, climb, arrival, stamps, grain), symptom-to-tool fixes.',
     body: designReview,
+  },
+  'pro-terraforming': {
+    kind: 'method',
+    title: 'Pro Terraforming',
+    description: 'Advanced terrain moves: backing walls above 3 tiers, terraced cascades, sunk ponds, coves, and the waterfall patterns that pass validation.',
+    body: proTerraforming,
   },
   // --- STYLE set pieces: reference layouts for specific aesthetics ---
   'cozy-village': {
     kind: 'style',
-    description: 'A small believable village: staggered houses around a green, a road spine with spurs, hedged farm plots, layered planting.',
+    title: 'Cozy Village',
+    description: 'A small village district: one-of-each cabins with themed yards around a half-open green, a 3-wide spine with lanes, a farm band.',
     body: cozyVillage,
   },
   'terraced-hill-park': {
     kind: 'style',
-    description: 'A scenic terraced hill with a lookout, ramps between levels, and an elevated pond or waterfall.',
+    title: 'Terraced Hill Park',
+    description: 'A walkable park hill: organic benches with a paved switchback climb, a lookout court on top, a sunk pond on the way up.',
     body: terracedHillPark,
-  },
-  'pro-terraforming': {
-    kind: 'method',
-    description: 'Professional cozy island-builder landscaping: organic terraced cliffs, meandering rivers, elevated ponds and waterfalls, coastline shaping.',
-    body: proTerraforming,
   },
   'river-crossing': {
     kind: 'style',
-    description: 'A clean river through the map with a road crossing it on a bridge — the reliable bridge recipe.',
+    title: 'River Crossing',
+    description: 'A meandering river with a straight crossing waist, a bridge on a found anchor, and roads that arrive at both banks.',
     body: riverCrossing,
   },
   'alpine-cascade': {
     kind: 'style',
-    description: 'A dramatic multi-tier mountain with a summit pool, chained waterfalls, switchback ramps, conifer forest slopes, and a peak lookout.',
+    title: 'Alpine Cascade',
+    description: 'A summit massif with a crown pool, chained offset falls, a paved switchback ascent, forest slopes and a bare summit court.',
     body: alpineCascade,
   },
   'zen-garden': {
     kind: 'style',
-    description: 'A restrained enclosed garden: hedge rows, a single focal specimen tree, asymmetric flower beds, and an intentional open ground.',
+    title: 'Zen Garden',
+    description: 'A quiet garden: one specimen tree off-center, same-species hedges on two sides, a single stepping-stone path, ground kept empty.',
     body: zenGarden,
   },
   'rice-terraces': {
     kind: 'style',
-    description: 'Stepped cultivation terraces each holding a contained pond, with farm fields, a hamlet at the foot, and ramp bench links.',
+    title: 'Rice Terraces',
+    description: 'Farm benches climbing a slope, each with a sunk pond and a dry field strip, a zigzag ramp path, and a hamlet at the foot.',
     body: riceTerraces,
   },
 };

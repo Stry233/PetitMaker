@@ -11,6 +11,7 @@ import { getCatalogItem } from '../state/catalog';
 import { hasHalfStep } from '../state/object-geometry';
 import { onHalfGrid } from '../core/model/grid-model';
 import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
+import { currentCatalogId } from './legacy-catalog';
 
 export const HISTORY_SCHEMA_VERSION = 1;
 
@@ -46,6 +47,15 @@ function validObject(o: unknown, b: HistoryBounds | undefined): boolean {
   if (!isValidRotation(obj.rotation)) return false;
   if (!isValidElevation(obj.elevation)) return false;
   return true;
+}
+
+/** Read a retired catalog id (the four plain colour roads) as its replacement, so a section written
+ *  before the retirement replays instead of being dropped whole for naming an unknown item. In
+ *  place, since `decodeHistory` hands these very objects back for the executor to replay. */
+function adoptRetiredId(o: unknown): void {
+  if (!o || typeof o !== 'object') return;
+  const obj = o as { catalogId?: unknown };
+  if (typeof obj.catalogId === 'string') obj.catalogId = currentCatalogId(obj.catalogId);
 }
 
 function validSnapshot(s: unknown, b: HistoryBounds | undefined): boolean {
@@ -89,6 +99,7 @@ export function decodeHistory(raw: unknown, bounds?: HistoryBounds): HistoryEntr
     }
     const ops = entry.objectOps ? [...entry.objectOps.removed, ...entry.objectOps.added] : [];
     for (const obj of [...ops, ...commandObjects(entry.cmd as HistoryEntry['cmd'])]) {
+      adoptRetiredId(obj);
       if (!validObject(obj, bounds)) return null;
     }
   }

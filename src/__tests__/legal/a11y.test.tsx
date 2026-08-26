@@ -117,10 +117,8 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
   });
 
   it('the raw textSecondary token FAILS at 4.5:1 against panelCream (why it cannot be used for small body text)', () => {
-    // This is the reason the About footer (11px disclaimer) does not use
-    // `colors.textSecondary` directly — documented here so a future change
-    // that swaps the footer back to textSecondary trips this file, not a
-    // silent regression.
+    // The About footer's small-print disclaimer therefore takes `colors.brownText` instead;
+    // putting textSecondary back there trips this file rather than failing AA silently.
     expect(contrastRatio(colors.textSecondary, colors.panelCream)).toBeLessThan(AA_BODY_TEXT);
   });
 
@@ -170,10 +168,9 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     expect(style).not.toContain(colors.textSecondary);
   });
 
-  // Four more small-text `textSecondary` usages in the About view (tagline,
-  // version card, both section titles, and the ICP/PSB filing link) were swapped to
-  // `colors.brownText` for the same reason as the disclaimer above — pinned here so a
-  // regression trips this file, not a silent AA failure.
+  // Four more small-text spots in the About view (tagline, version card, both section titles, and
+  // the ICP/PSB filing link) take `colors.brownText` for the same reason as the disclaimer above,
+  // pinned here so a regression trips this file rather than failing AA silently.
   it('the tagline is NOT set in the failing textSecondary color', () => {
     renderModal();
     const tagline = screen.getByText('Map Editor');

@@ -1,39 +1,68 @@
+/**
+ * THE GENERATION FACADE, and the only file at this module's root: a recipe in, a built map out.
+ *
+ * It dispatches `config.algorithm` to one of the three generators beside it, each behind its own
+ * door — `designer/` (the island: the methodology pipeline, and the only island generator),
+ * `maze/` (a labyrinth carved into the buildable region), `stencil/` (a picture read as terrain) —
+ * and all three stand on `core/`, the floor: what a terrain plan is, how it is repaired into a
+ * legal one, and how it becomes commands. Putting objects on ground that already exists is
+ * `tools/placement/`, a module of its own beside this one: the designer reaches one file of it, and
+ * the macros and the agent's director tools reach it without going through any generator at all.
+ *
+ * A caller wants this file. The shelf and `kit/operations/generate.ts` run a recipe through it, and
+ * the evaluation harness runs the same call the app does rather than a private path.
+ */
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { Command, Corners, GridState, MacroCoord, PlacedObject, ResolvedMazeGates, ValidationResult } from '../../core/model/types';
-import { runLandform, toGenConfig } from './index';
-import type { ZonePlan } from './types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { buildObjectOccupancy, objectRect } from '../../state/object-geometry';
-import { generateMaze } from './maze-generator';
-import { runStencilPlan } from './stencil-generator';
+import { generateMaze } from './maze/maze-generator';
+import { runStencilPlan } from './stencil/stencil-generator';
 import { edgeCutGeneratedTerrain, edgeCutTerrainWith } from '../edge-cut/auto-edge-cut';
-import { stencilChooser } from './stencil-trim';
-import { generationCutMode } from './style';
+import { stencilChooser } from './stencil/stencil-trim';
 import type { GenerateConfig } from '../../core/model/types';
+import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
+import { generateDesigned, type DesignedOutcome } from './designer';
 import { removeObjectCommand } from '../objects/object-placer';
 
 const SQUARE: Corners = ['square', 'square', 'square', 'square'];
+
+/** The refusals a designed run collected. Zero on flat ground; a caller reports them. */
+const refusedTotal = (out: DesignedOutcome): number =>
+  out.refused.roads + out.refused.anchors + out.refused.lanes;
 
 export interface GenerateResult {
   placed: number;
   skipped: number;
   overwritten: number;
-  /** The designed-island plan ('random' algorithm only) — populate() decorates per zone theme. */
-  zonePlan?: ZonePlan;
+  /** The methodology run's plan and its refusal counts ('designed' algorithm only). */
+  designed?: DesignedOutcome;
   /** Where the maze opened ('maze' algorithm only). The requested coordinates are snapped to the
    *  border ring, so a caller that marks the gates must read them back from here. */
   mazeGates?: ResolvedMazeGates;
-  /** The one walk between the gates, over the run's own carved corridors ('maze' only). */
+  /** The one walk between the gates, over the run's own carved corridors and at their own width
+   *  ('maze' only). */
   mazeWalk?: MacroCoord[];
+  /** Where a TEXT run landed ('stencil' with a shape read): the surface tier the glyph stands one
+   *  layer above, and the three ways a covered cell can be left alone — crossing a step or a pond,
+   *  reaching the edge of the ground the word stands on, or standing on the tallest layer the grid
+   *  has. A caller reports them rather than letting a word arrive quietly shorter than it was typed. */
+  stencil?: { base: number; offBase: number; unsupported: number; atCeiling: number };
 }
 
 /**
  * Dispatch to the appropriate generator based on config.algorithm.
+ *
+ * `reg` is the live rule set. Only the `designed` algorithm needs it — its own placement stage
+ * commits objects through `tryPlace`, which carries the registry in its context — and it is the
+ * caller's registry rather than a fresh one so a designed run is judged by exactly the rules the
+ * map is otherwise edited under.
  */
 export function generateTerrain(
   config: GenerateConfig,
   state: GridState,
   executeCommand: (cmd: Command) => ValidationResult,
+  reg?: RuleDispatcher,
 ): GenerateResult {
   switch (config.algorithm) {
     case 'maze': {
@@ -44,7 +73,7 @@ export function generateTerrain(
       // A picture the shell rasterized. Nothing here reaches for a canvas, which is what lets this
       // run in the candidate worker alongside every other kind.
       if (!config.stencilPlan) return { placed: 0, skipped: 0, overwritten: 0 };
-      const { placed, skipped } = runStencilPlan(state, config.stencilPlan, config.maxElevation, executeCommand);
+      const { placed, skipped, base, offBase, unsupported, atCeiling } = runStencilPlan(state, config.stencilPlan, config.maxElevation, executeCommand);
       // TRIM IS PART OF THE APPROXIMATION. A stencil is quantised to whole cells, so its outline is
       // a staircase; the cut pass recovers the diagonal the letter's stroke or the picture's edge
       // had. Each corner's shape comes from the source's sub-cell coverage (`stencil-trim.ts`); a
@@ -63,24 +92,26 @@ export function generateTerrain(
         if (pick) edgeCutTerrainWith({ gridState: state, executeCommand }, touched, pick);
         else edgeCutGeneratedTerrain({ gridState: state, executeCommand }, touched, 'round');
       }
-      return { placed, skipped, overwritten: 0 };
+      return {
+        placed, skipped, overwritten: 0,
+        ...(base !== undefined
+          ? { stencil: { base, offBase: offBase ?? 0, unsupported: unsupported ?? 0, atCeiling: atCeiling ?? 0 } }
+          : {}),
+      };
     }
-    case 'random':
+    case 'designed':
     default: {
-      const gen = toGenConfig(config);
-      const result = runLandform(gen, state, executeCommand);
-      // Soften the generated terrain's jagged bits: round only the convex tips/steps (interiors + straight
-      // edges stay square), so cliffs/coastlines read less blocky without everything being rounded.
-      // The cut style comes from the shared naturalness mapping ('off' in the rectilinear style —
-      // cuts are the only true diagonals); the populator cuts its roads with the same mode.
-      const inRegion = config.region && config.region.length ? new Set(config.region.map((c) => `${c.x},${c.y}`)) : null;
-      const cells: MacroCoord[] = [];
-      for (let y = 0; y < state.template.height; y++) for (let x = 0; x < state.template.width; x++) {
-        const t = getCell(state.cells, x, y)?.terrain;
-        if (t && (t.type === TerrainType.Mountain || t.type === TerrainType.Water) && (!inRegion || inRegion.has(`${x},${y}`))) cells.push({ x, y });
-      }
-      edgeCutGeneratedTerrain({ gridState: state, executeCommand }, cells, generationCutMode(gen.seed, gen.naturalness));
-      return { placed: result.placed, zonePlan: result.zonePlan, skipped: 0, overwritten: 0 };
+      if (!reg) throw new Error('generateTerrain: the designed algorithm needs the rule registry');
+      // The fallback matches the shelf's own default, so a recipe that names no richness gets the
+      // style the interface would have offered.
+      const out = generateDesigned({
+        state, execute: executeCommand, reg, seed: config.seed,
+        richness: config.richness ?? 0.7,
+        maxElevation: config.maxElevation,
+        mode: config.mode,
+        region: config.region,
+      });
+      return { placed: out.placed, skipped: refusedTotal(out), overwritten: 0, designed: out };
     }
   }
 }
@@ -91,11 +122,11 @@ export function generateTerrain(
  * TWO COMMANDS, BECAUSE TWO KINDS OF CELL. An erase is refused outside the buildable zone
  * (V-ZONE-01) — nothing may be built on the boundary ring, so nothing there needs erasing — but an
  * auto edge-cut writes COSMETIC Γ patches wherever the island's silhouette turns a corner, and a
- * corner of the island can sit on a boundary cell. Those patches are terrain the erase cannot take,
- * so they used to survive every clear: a generated map cleared to a blank map plus a scatter of
- * quarter blocks along the rim, and the next generation started from ground that still remembered
- * the last one. A patch is cycled off through the door it came in by, a corner edit, which the zone
- * rule does not gate because it adds no mass.
+ * corner of the island can sit on a boundary cell. Those patches are terrain a plain erase cannot take,
+ * and left behind they survive every clear: a blank map plus a scatter of quarter blocks along the rim,
+ * so the next generation starts from ground that still remembers the last one. A patch is cycled off
+ * through the door it came in by, a corner edit, which the zone rule does not gate because it adds no
+ * mass.
  */
 export function clearAllTerrain(
   state: GridState,

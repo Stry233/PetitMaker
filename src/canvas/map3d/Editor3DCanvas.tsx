@@ -17,15 +17,21 @@ import { usePointerInteraction, paintSelection } from '../interaction/usePointer
 import { useCursor } from '../interaction/use-cursor';
 import { takePendingCameraAngle } from './scene/pending-camera';
 import { setScene3D } from './scene/camera-registry';
+import { showToast } from '../../core/runtime/toast-bus';
+import { translate } from '../../i18n/context';
 
 export function Editor3DCanvas() {
   const viewMode = useEditorStore((s) => s.viewMode);
   const gridState = useEditorStore((s) => s.gridState);
+  // The Settings 3D-quality choice: the scene bakes it at construction (shadow map, MSAA target,
+  // pixel ratio), so a change rebuilds the scene rather than leaving the toggle silently inert.
+  const quality3d = useEditorStore((s) => s.quality3d);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<ThreeScene | null>(null);
   const builtFor = useRef<GridState | null>(null);
+  const builtQuality = useRef<string | null>(null);
   // The crossfade follows the MODE, not the scene's readiness. Holding the 2D map up until the
-  // scene had drawn read as a misclick — the press did nothing, then the view swapped by itself a
+  // scene has drawn reads as a misclick: the press does nothing, then the view swaps by itself a
   // moment later. An empty view during the build reads as loading, which is what it is; the cost of
   // that build is attacked by `preloadScene3D` instead.
   const active = viewMode === '3d';
@@ -43,22 +49,39 @@ export function Editor3DCanvas() {
       return;
     }
     if (!host || !gridState) return;
-    if (sceneRef.current && builtFor.current === gridState) {
+    if (sceneRef.current && builtFor.current === gridState && builtQuality.current === quality3d) {
       sceneRef.current.resume();
       setActiveView(sceneRef.current.asEditorView());
       return;
     }
     let cancelled = false;
+    // A browser that cannot start the scene (no WebGL context, a chunk that fails to fetch or
+    // parse) must not strand the user on a blank view: the 2D canvas has already faded out, so
+    // without this the click on 3D is a white screen with no way back. Say why, and return to the
+    // view that works.
+    const fail = (e: unknown): void => {
+      if (cancelled) return;
+      console.error('[3d] scene build failed', e);
+      showToast(translate('view3d.unavailable'), 'error');
+      useEditorStore.getState().setViewMode('2d');
+    };
     void import('./scene/scene').then(({ ThreeScene: Scene }) => {
       if (cancelled || !hostRef.current) return;
       sceneRef.current?.dispose();
-      // The event bus makes this a LIVE view: edits remesh their dirty chunks.
-      sceneRef.current = new Scene(hostRef.current, gridState, useEditorStore.getState().eventBus);
+      try {
+        // The event bus makes this a LIVE view: edits remesh their dirty chunks.
+        sceneRef.current = new Scene(hostRef.current, gridState, useEditorStore.getState().eventBus);
+      } catch (e) {
+        sceneRef.current = null;
+        fail(e);
+        return;
+      }
       sceneRef.current.setLayerVisibility(hiddenSetFrom(useEditorStore.getState().layerVisibility));
       const st = useEditorStore.getState();
       sceneRef.current.setPassiveOverlays({ grid: st.showGrid, numbers: st.showLayerNumbers, chunks: st.showChunkBounds });
       sceneRef.current.setEditorInput(true);
       builtFor.current = gridState;
+      builtQuality.current = quality3d;
       setScene3D(sceneRef.current, builtFor.current);
       // A camera restored (io/autosave "resume from last") before this scene existed — or before
       // the user ever opened 3D this session — is waiting here. Apply it now instead of running
@@ -66,9 +89,9 @@ export function Editor3DCanvas() {
       const restored = takePendingCameraAngle();
       if (restored) sceneRef.current.applyCameraAngle(restored);
       if (useEditorStore.getState().viewMode === '3d') setActiveView(sceneRef.current.asEditorView());
-    });
+    }, fail);
     return () => { cancelled = true; };
-  }, [active, gridState]);
+  }, [active, gridState, quality3d]);
 
   // Layer visibility follows the panel in both views; the scene peels terrain,
   // zero-scales hidden-layer objects, and filters the trimmed-road mesh.
@@ -112,7 +135,9 @@ export function Editor3DCanvas() {
       ref={hostRef}
       data-testid="editor3d-canvas"
       style={{
-        position: 'fixed',
+        // The whole of the plane it stands in, which is the window less whatever the interface has
+        // taken out of it (`ui/shell/Shell.tsx`'s map plane).
+        position: 'absolute',
         inset: 0,
         // Crossfades with the 2D canvas; visibility flips after the fade so the
         // hidden view neither paints nor takes pointer events, while client

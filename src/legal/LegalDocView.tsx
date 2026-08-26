@@ -134,7 +134,7 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
   const effLang: 'en' | 'zh' = hasZh ? lang : 'en';
   // `docNodes` (not the raw parser) so a doc whose source carries no markdown
   // heading at all (LICENSE — pinned byte-exact) still gets a synthetic h1
-  // for the accessibility heading-hierarchy contract (spec §14).
+  // for the accessibility heading-hierarchy contract.
   const nodes = docNodes(id, effLang, LEGAL, t(meta.titleKey));
 
   const dated = meta.schema.requiresEffectiveDate;

@@ -3,8 +3,9 @@
  *
  * Whatever is collecting a painted region registers here, and everything that edits that region as
  * a WHOLE goes through the same handle: the pointer machine reports the cells a stroke covers, and
- * the screen that arms it asks for the two edits a stroke cannot make — empty it, or take every
- * buildable cell. With nothing registered the calls are no-ops.
+ * the screen that arms it asks for the one edit a stroke cannot make — emptying it. An empty
+ * region already means the whole island, so there is no take-everything edit beside it. With
+ * nothing registered the calls are no-ops.
  *
  * They belong together because the collector owns the buffer AND its own undo stack: a UI that
  * wrote the store directly would leave that buffer stale and the stroke it took back unrecoverable.
@@ -19,8 +20,6 @@ export interface RegionBrushHandler {
   done(): void;
   /** Empty the region, as one entry on its own undo stack. */
   clear(): void;
-  /** Take every cell a region may hold, which is every buildable one on the map. */
-  selectAll(): void;
 }
 
 let handler: RegionBrushHandler | null = null;
@@ -35,7 +34,6 @@ export function setRegionBrushHandler(next: RegionBrushHandler | null): () => vo
 export function paintRegionCell(coord: MacroCoord): void { handler?.paint(coord); }
 export function finishRegionStroke(): void { handler?.done(); }
 export function clearRegionSelection(): void { handler?.clear(); }
-export function selectWholeRegion(): void { handler?.selectAll(); }
 
 /**
  * Whether a region is ONE figure or a collection of them.
@@ -65,3 +63,39 @@ let minSide: number | null = null;
 
 export function setRegionMinSide(next: number | null): void { minSide = next; }
 export function regionMinSide(): number | null { return minSide; }
+
+/** How big the map is, for the two helpers below. */
+export interface MapExtent { w: number; h: number }
+
+/**
+ * A dragged BOX slid back onto the map, keeping the size it was grown to.
+ *
+ * WHY IT SLIDES RATHER THAN CLIPS. A figure with a minimum side is grown in the drag's own
+ * direction, and a drag that starts near an edge grows straight off the map: the cells beyond it are
+ * dropped and the region arrives SHORT of the floor that pushed it there, so the drag can never
+ * satisfy its own minimum however far it is pulled. At an edge there is only one direction left, so
+ * the whole figure moves that way instead. A box wider than the map has nowhere to go and sits at
+ * its edge, clipped — which is the one case where the floor genuinely cannot be met.
+ */
+export function slideOnMap(
+  anchor: { x: number; y: number }, end: { x: number; y: number }, map: MapExtent,
+): { anchor: { x: number; y: number }; end: { x: number; y: number } } {
+  const shift = (a: number, b: number, size: number): number => {
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    const back = hi > size - 1 ? size - 1 - hi : 0;
+    return lo + back < 0 ? -lo : back;
+  };
+  const dx = shift(anchor.x, end.x, map.w), dy = shift(anchor.y, end.y, map.h);
+  return {
+    anchor: { x: anchor.x + dx, y: anchor.y + dy },
+    end: { x: end.x + dx, y: end.y + dy },
+  };
+}
+
+/** The same for a figure drawn from its CENTRE: the centre moved in far enough that a radius fits
+ *  either side of it, or held at the middle where the figure is wider than the map. */
+export function clampCentre(centre: number, radius: number, size: number): number {
+  const lo = radius, hi = size - 1 - radius;
+  if (hi < lo) return (size - 1) >> 1;
+  return Math.min(hi, Math.max(lo, centre));
+}

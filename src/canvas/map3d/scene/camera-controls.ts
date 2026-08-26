@@ -46,10 +46,10 @@ export function makeControls(camera: THREE.PerspectiveCamera, dom: HTMLElement):
  *  A cell's column is world X and its row is world Z (`core/coords`), so the yaw that reproduces the
  *  2D layout puts the camera on +Z looking toward the origin: +X falls to the right of the screen
  *  and +Z toward the bottom, which is the letters down the left and the numbers along the bottom.
- *  It is a yaw and nothing else — the whole horizontal reach moves onto Z rather than being split
- *  between X and Z, so the framing distance and the tilt are the ones this always had. Both matter
- *  beyond the look: the fly-in starts from a multiple of the resting offset, and every export shot's
- *  `dist` is a multiple of the resting radius. */
+ *  It is a yaw and nothing else: the whole horizontal reach sits on Z, and the framing distance and
+ *  the tilt are untouched by it. Both matter beyond the look, since the fly-in starts from a
+ *  multiple of the resting offset and every export shot's `dist` is a multiple of the resting
+ *  radius. */
 export function frameBounds(camera: THREE.PerspectiveCamera, controls: OrbitControls, b: MapBounds): void {
   // Aim a little above the ground so the eye rests on the landscape, not the sky.
   const centerY = Math.max(b.maxY * 0.3, 0.4);
@@ -60,8 +60,8 @@ export function frameBounds(camera: THREE.PerspectiveCamera, controls: OrbitCont
   const dist = (radius / Math.tan(fov / 2)) * 1.02 + b.maxY * 0.4;
   controls.minDistance = dist * 0.10;  // close enough for detail work (readable labels)
   controls.maxDistance = dist * 1.9;
-  // Low hero angle: height well under the horizontal reach → ~65° from vertical. The reach is the
-  // one the split pose had (0.72 on each of two axes), now spent entirely on Z.
+  // Low hero angle: height well under the horizontal reach → ~65° from vertical. The reach is 0.72
+  // of the framing distance on each of two horizontal axes (hence √2), placed entirely on Z.
   const horiz = dist * 0.72 * Math.SQRT2;
   camera.position.set(0, dist * 0.46 + centerY, horiz);
   controls.update();

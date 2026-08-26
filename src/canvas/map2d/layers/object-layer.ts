@@ -1,19 +1,21 @@
 import * as PIXI from 'pixi.js-legacy';
 import { maxRenderScale } from '../../../core/runtime/device-quality';
 import { TILE_SIZE } from '../../../core/model/constants';
-import { drawRoadShape } from '../draw/trim-shapes';
 import type { GridState, PlacedObject, CatalogItem } from '../../../core/model/types';
 import { ItemCategory } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import { hasTrait } from '../../../core/model/traits';
-import { detectRoadConn } from '../../../core/edge-cut/road-cut-states';
+import { ROAD_FEATHER, roadBodyPoints, roadCutFeeds, type RoadPt } from '../../../core/edge-cut/road-shape';
+import { buildRoadRegions, type RoadRegion } from '../../../core/edge-cut/road-region';
 import { roadLookup } from '../../../state/object-index';
+import { isMotionReduced } from '../motion-state';
 import { objectElevation, getPlacedObjectSize } from '../../../state/object-geometry';
 import { hexStringToNumber } from '../../../core/model/colors';
 import { useEditorStore } from '../../../state/store';
 import { iconUrl } from '../../../assets/icon-urls';
 import { animConfig } from '../../../core/runtime/anim-config';
 import { requestRender } from '../render-scheduler';
+import { roadTileCanvas, ROAD_TEXTURE_SIZE } from '../../road-tile-texture';
 import { spawnPuff } from '../draw/particles';
 import { getIconTexture, iconColor, iconLodVersion } from '../draw/icon-color';
 import { fitSpriteToTexture, footprintFit, SPRITE_FILL } from '../draw/sprite-fit';
@@ -55,6 +57,131 @@ function spriteTurns(item: CatalogItem | undefined): boolean {
 export function objectSpriteUrl(obj: PlacedObject, item: CatalogItem | undefined): string | undefined {
   const name = obj.icon ?? (isRampItem(item) || !item?.color ? item?.icon : undefined);
   return name ? iconUrl(name) : undefined;
+}
+
+/** Feather steps: the fade is drawn as this many stepped alpha bands between the outline and the
+ *  fully-opaque core. At ROAD_FEATHER of a 64px tile each band is ~1.3px — the steps disappear
+ *  into the gradient at rest zoom, straight edges and the fans' concentric arcs alike. */
+const FEATHER_STEPS = 12;
+
+/** One texture per path material, keyed by icon url. A fill REFERENCES its texture rather than
+ *  copying it, so a per-region texture would upload the same canvas once per surface on the map. */
+const roadFillTextures = new Map<string, PIXI.Texture>();
+
+/**
+ * The repeating fill for a path material's tile art, or nothing while that art is still decoding —
+ * `onReady` fires once it lands, and is where the surfaces already drawn get their redraw.
+ */
+function roadFillTexture(url: string, onReady: () => void): PIXI.Texture | undefined {
+  const hit = roadFillTextures.get(url);
+  if (hit) return hit;
+  const canvas = roadTileCanvas(url, onReady);
+  if (!canvas) return undefined;
+  const tex = PIXI.Texture.from(canvas);
+  // The fill must TILE, and the crop is power-of-two, which is what makes REPEAT legal on WebGL1
+  // (an npot texture wraps to black there). Set at creation, so it holds from the first fill on.
+  tex.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+  roadFillTextures.set(url, tex);
+  return tex;
+}
+
+/** Texture space → world px: the 128px tile art covers exactly one macro block. Region points are
+ *  world px and a region's Graphics sits at the world origin, so the pattern is anchored to the
+ *  GRID — two surfaces of one material can never disagree on phase where they meet. Shared: Pixi
+ *  clones this on `beginTextureFill`. */
+const ROAD_FILL_MATRIX = new PIXI.Matrix(
+  TILE_SIZE / ROAD_TEXTURE_SIZE, 0, 0, TILE_SIZE / ROAD_TEXTURE_SIZE, 0, 0,
+);
+
+/**
+ * One connected road SURFACE, feathered as a whole (core/edge-cut/road-region — the same
+ * derivation the 3D mesher blends with vertex colours): each band is one closed contour with the
+ * next contour as its hole, so no radial edge exists anywhere for anti-aliasing to trace — band
+ * seams only ever follow the outline. A region's boundary fades EVERYWHERE (interior cell lines
+ * are cancelled out of it), so a band's hole never touches its outer path and the triangulation
+ * stays sound. Ring signed area tells outer rings (positive, in this y-down frame) from holes.
+ *
+ * `texture` is the material's tile art where it has any: the GEOMETRY is identical either way —
+ * same outlines, same bands, same stepped alpha — only what fills them changes.
+ */
+function drawRegion(
+  g: PIXI.Graphics, region: RoadRegion, color: number, alpha: number, texture?: PIXI.Texture,
+): void {
+  const fill = (a: number): void => {
+    if (texture) g.beginTextureFill({ texture, alpha: a, matrix: ROAD_FILL_MATRIX });
+    else g.beginFill(color, a);
+  };
+  const ringSets = region.rings.map((ring) => ({
+    at: (t: number) => ring.points(t).map(([px, py]) => [px * TILE_SIZE, py * TILE_SIZE] as RoadPt),
+    outer: ringArea(ring.points(0)) > 0,
+  }));
+  for (let i = 0; i <= FEATHER_STEPS; i++) {
+    const solid = i === FEATHER_STEPS;
+    const t0 = ROAD_FEATHER * (i / FEATHER_STEPS);
+    const t1 = ROAD_FEATHER * ((i + 1) / FEATHER_STEPS);
+    fill(solid ? alpha : alpha * ((i + 0.5) / FEATHER_STEPS));
+    for (const ring of ringSets) {
+      if (!ring.outer) continue;
+      g.drawPolygon(ring.at(t0).flat());
+      g.beginHole();
+      if (solid) {
+        // The core: the outer contour at full inset, holes at theirs.
+        for (const hole of ringSets) if (!hole.outer) g.drawPolygon(hole.at(ROAD_FEATHER).flat());
+      } else {
+        g.drawPolygon(ring.at(t1).flat());
+      }
+      g.endHole();
+    }
+    if (!solid) {
+      // A hole's band grows outward from the gap: contour at t1 with the t0 contour cut out.
+      for (const ring of ringSets) {
+        if (ring.outer) continue;
+        g.drawPolygon(ring.at(t1).flat());
+        g.beginHole();
+        g.drawPolygon(ring.at(t0).flat());
+        g.endHole();
+      }
+    }
+    g.endFill();
+  }
+}
+
+function ringArea(pts: RoadPt[]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i]!, [x2, y2] = pts[(i + 1) % pts.length]!;
+    a += x1 * y2 - x2 * y1;
+  }
+  return a;
+}
+
+/**
+ * A SINGLE tile's body with a feathered outline — the in-flight stand-in a group tween draws into
+ * a road's wrapper while its surface region cannot travel (members on different arcs), matching
+ * the 3D mesher's per-tile fallback. `outlineAt(t)` is the tile outline inset by `t` cells
+ * (road-shape.ts, same point count at every `t`); quad bands, never ring-with-hole paths, because
+ * a lone tile's outline has sides that do not fade and a hole sharing an edge with its outer path
+ * breaks the triangulation.
+ */
+function drawFeathered(
+  g: PIXI.Graphics, outlineAt: (t: number) => RoadPt[], color: number, alpha: number,
+): void {
+  let outer = outlineAt(0);
+  for (let i = 0; i < FEATHER_STEPS; i++) {
+    const inner = outlineAt(ROAD_FEATHER * ((i + 1) / FEATHER_STEPS));
+    g.beginFill(color, alpha * ((i + 0.5) / FEATHER_STEPS));
+    for (let k = 0; k < outer.length; k++) {
+      const k2 = (k + 1) % outer.length;
+      const [a, b, c, d] = [outer[k]!, outer[k2]!, inner[k2]!, inner[k]!];
+      if ((a[0] === d[0] && a[1] === d[1]) && (b[0] === c[0] && b[1] === c[1])) continue; // no fade here
+      g.drawPolygon([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]);
+    }
+    g.endFill();
+    outer = inner;
+  }
+  g.beginFill(color, alpha);
+  g.drawPolygon(outer.flat());
+  g.endFill();
 }
 
 /**
@@ -101,9 +228,113 @@ export class ObjectLayer {
    *  pure texture memory + node count on a full map). */
   private labelMeta = new Map<string, { text: string; y: number }>();
 
+  /** The drawn road surfaces, one Graphics per region, keyed by the region's content (members,
+   *  corners, cells) so an unchanged surface is never redrawn. Region graphics sit at index 0 of
+   *  their elevation container — under every wrapper, since nothing stands under a coating —
+   *  and skip chunk bucketing (a surface spans chunks; a handful of Graphics needs no cull). */
+  private roadRegionGfx = new Map<string, { g: PIXI.Graphics; members: Set<string>; material: string }>();
+  private roadIds = new Set<string>();
+  private roadRefreshQueued = false;
+  private roadState: GridState | null = null;
+  /** Road member ids currently carried by a group tween: their regions stay hidden and their
+   *  wrappers wear per-tile flight bodies until the tween lands. */
+  private roadsInFlight = new Set<string>();
+
   constructor() {
     this.container = new PIXI.Container();
     this.container.sortableChildren = true; // layer containers sort by zIndex = elevation
+  }
+
+  /** Queue a road-surface rebuild, coalesced to one per frame; a stroke announces several
+   *  objects per command and every one lands here. */
+  private scheduleRoadRefresh(forState?: GridState): void {
+    this.roadState = forState ?? null; // a capture's foreign state must not outlive its capture
+    if (this.roadRefreshQueued) return;
+    this.roadRefreshQueued = true;
+    requestAnimationFrame(() => this.flushRoadRegions());
+    requestRender();
+  }
+
+  /** Rebuild the road surfaces NOW (captures call this; everything else goes through the
+   *  scheduler). Unchanged regions keep their Graphics; changed ones redraw; gone ones drop. */
+  flushRoadRegions(): void {
+    this.roadRefreshQueued = false;
+    // A capture flushes synchronously and throws its world away; the frame its sync had queued
+    // still arrives, with nothing left to draw into (`repaintMaterial` guards the same way).
+    if (this.container.destroyed) return;
+    const gridState = this.roadState ?? useEditorStore.getState().gridState;
+    if (!gridState) return;
+    const roadObjs: PlacedObject[] = [];
+    for (const obj of gridState.objects.values()) {
+      if (getCatalogItem(obj.catalogId)?.category === ItemCategory.Road) roadObjs.push(obj);
+    }
+    const regions = roadObjs.length > 0 ? buildRoadRegions(roadObjs, roadLookup(gridState)) : [];
+    const seen = new Set<string>();
+    for (const region of regions) {
+      const key = region.signature;
+      seen.add(key);
+      const existing = this.roadRegionGfx.get(key);
+      const inFlight = region.members.some((m) => this.roadsInFlight.has(m.id));
+      if (existing) {
+        existing.g.visible = !inFlight;
+        continue;
+      }
+      const item = getCatalogItem(region.material);
+      const color = item?.color ? hexStringToNumber(item.color) : OBJECT_COLOR;
+      const material = region.material;
+      // A path surface fills with its own tile art; the colour is the fill until that art has
+      // decoded, and stays the fill for a surface that carries no art at all.
+      const tileUrl = item?.icon ? iconUrl(item.icon) : undefined;
+      const texture = tileUrl ? roadFillTexture(tileUrl, () => this.repaintMaterial(material)) : undefined;
+      const g = new PIXI.Graphics();
+      drawRegion(g, region, color, 0.85, texture);
+      g.visible = !inFlight;
+      const elev = objectElevation(gridState, region.members[0]!);
+      this.layerContainerFor(elev).addChildAt(g, 0);
+      this.roadRegionGfx.set(key, { g, members: new Set(region.members.map((m) => m.id)), material });
+    }
+    for (const key of [...this.roadRegionGfx.keys()]) {
+      if (!seen.has(key)) this.dropRegion(key);
+    }
+    requestRender();
+  }
+
+  /**
+   * Forget one drawn surface, destroying its Graphics unless something else already has.
+   *
+   * A teardown destroys the nodes from ABOVE — the renderer's `app.destroy(false, { children: true
+   * })`, a finished capture's `world.destroy({ children: true })` — and leaves this map holding
+   * destroyed Graphics. Pixi's second destroy dereferences a geometry the first one nulled, and
+   * this drop can run from a texture-arrival callback, where a throw would take every later
+   * subscriber on that url down with it.
+   */
+  private dropRegion(key: string): void {
+    const entry = this.roadRegionGfx.get(key);
+    if (!entry) return;
+    if (!entry.g.destroyed) {
+      entry.g.parent?.removeChild(entry.g);
+      entry.g.destroy();
+    }
+    this.roadRegionGfx.delete(key);
+  }
+
+  /**
+   * Throw away every drawn surface of one material so the next rebuild redraws it.
+   *
+   * This is how a path's tile art reaches the surfaces already standing: the art loads after the
+   * first paint, and a region whose Graphics is cached by signature is otherwise never redrawn
+   * (nothing about the map changed — only what we can now draw with). Dropping the entries is the
+   * invalidation the rebuild already understands; the scheduler coalesces the redraw to one frame,
+   * however many regions and however many arrivals land together.
+   */
+  private repaintMaterial(material: string): void {
+    // Nothing to repaint into: this layer's world was destroyed under it (renderer teardown, or a
+    // capture layer whose detached container has been thrown away) while its art was still loading.
+    if (this.container.destroyed) return;
+    for (const [key, entry] of this.roadRegionGfx) {
+      if (entry.material === material) this.dropRegion(key);
+    }
+    this.scheduleRoadRefresh();
   }
 
   /** The per-elevation sub-container for `elev`, created (z-ordered, and honoring
@@ -275,14 +506,13 @@ export class ObjectLayer {
    *
    * That last case is why this compares `drawnAs` rather than only the id set. A road's corner cut
    * edits its object IN PLACE — same id, new corners/rotation/patchOnly — so a pass that asks only
-   * "which ids exist" agrees with state and leaves the stale sprite standing. Under the old id-only
-   * test this reconcile was strictly weaker than the per-object events it exists to back up.
+   * "which ids exist" agrees with state and leaves the stale sprite standing.
    */
   sync(objects: Map<string, PlacedObject>, forState?: GridState): void {
-    // Defensive only: every ordinary removal path (removeObjects, below) drops its own id from
-    // this map already. This bulk pass is a backstop for an id that left objectMap some OTHER
-    // way (see animateRemove, which detaches from objectMap immediately but destroys the sprite
-    // later) — sync() runs only at bulk moments (load/undo/generate), never per stroke.
+    // Every ordinary removal path (removeObjects, below) drops its own id from this map already;
+    // this bulk pass catches an id that left objectMap some OTHER way (see animateRemove, which
+    // detaches from objectMap immediately but destroys the sprite later). sync() runs only at bulk
+    // moments (load/undo/generate), never per stroke.
     for (const [id, e] of this.lodSprites) if (e.sprite.destroyed) this.lodSprites.delete(id);
     requestRender();
     const toRemove: string[] = [];
@@ -302,19 +532,22 @@ export class ObjectLayer {
       }
     }
     this.addObjects(toAdd, forState);
+    // The road surfaces always follow the map THIS sync drew (a capture's foreign state included),
+    // not whichever map the per-id passes above happened to touch last.
+    this.scheduleRoadRefresh(forState);
   }
 
   /**
-   * Add visual placeholders for the given objects.
-   * Each is a colored rounded rectangle with a 3-char label.
+   * Draw the given objects: the item's icon sprite where it has one, else a coloured rounded rect
+   * carrying the first three characters of its catalog id (a road draws as its surface region).
+   *
+   * `forState` is the map these objects belong to, for the questions a placement's drawing asks of
+   * its surroundings (the road-surface regions, the live elevation under an object). It defaults to
+   * the LIVE map, which is what every editing path wants; a capture of some other map must pass its
+   * own or its roads are drawn the way the live map's are.
    */
-  /** `forState` is the map these objects belong to, for the questions a placement's drawing asks of
-   *  its surroundings (which way a trimmed road is cut). It defaults to the LIVE map, which is what
-   *  every editing path wants; a capture of some other map must pass its own or the roads on it are
-   *  cut the way the live map's are. */
   addObjects(objects: PlacedObject[], forState?: GridState): void {
     const gridState = forState ?? useEditorStore.getState().gridState;
-    const roads = gridState ? roadLookup(gridState) : null;
     for (const obj of objects) {
       if (this.objectMap.has(obj.id)) this.removeObjects([obj.id]); // idempotent: re-adding an id replaces, never orphans the old sprite
       const item = getCatalogItem(obj.catalogId);
@@ -376,18 +609,19 @@ export class ObjectLayer {
         } else {
           const fillColor = bgColor ? hexStringToNumber(bgColor) : OBJECT_COLOR;
           const fillAlpha = bgColor ? 0.85 : OBJECT_ALPHA;
-          const g = new PIXI.Graphics();
           if (item?.category === ItemCategory.Road) {
-            // Roads always go through drawRoadShape: uncut → square full tile
-            // (continuous), cut → the canonical trimmed state.
-            const connSide = roads ? detectRoadConn(roads, obj) : 'left';
-            drawRoadShape(g, obj.corners, connSide, 0, 0, size.w * TILE_SIZE, size.h * TILE_SIZE, fillColor, fillAlpha);
+            // A road's SURFACE is drawn by its region (flushRoadRegions): the connected
+            // same-material run feathers as one whole, so no per-tile geometry exists to draw
+            // here. The wrapper stays for what is per-tile — the elevation label, and the
+            // in-flight body a group tween lends it.
+            this.roadIds.add(obj.id);
           } else {
+            const g = new PIXI.Graphics();
             g.beginFill(fillColor, fillAlpha);
             g.drawRoundedRect(0, 0, size.w * TILE_SIZE, size.h * TILE_SIZE, CORNER_RADIUS);
             g.endFill();
+            wrapper.addChild(g);
           }
-          wrapper.addChild(g);
 
           if (!item?.color) {
             const fontSize = Math.min(size.w, size.h) * TILE_SIZE * 0.6;
@@ -458,6 +692,7 @@ export class ObjectLayer {
         );
       }
     }
+    if (objects.some((o) => this.roadIds.has(o.id))) this.scheduleRoadRefresh(forState);
   }
 
   /**
@@ -465,6 +700,7 @@ export class ObjectLayer {
    */
   removeObjects(ids: string[]): void {
     for (const id of ids) {
+      if (this.roadIds.delete(id)) this.scheduleRoadRefresh();
       const wrapper = this.objectMap.get(id);
       if (wrapper) {
         this.unculledWrappers.delete(wrapper);
@@ -500,9 +736,47 @@ export class ObjectLayer {
     animateRotation(this.objectMap, id, fromDeg, toDeg, onFrame);
   }
 
-  /** Delegates to object-animations.ts animateGroupRotation — see there for the design notes. */
+  /** Delegates to object-animations.ts animateGroupRotation — see there for the design notes.
+   *  Road members need a body to fly: their surface region cannot travel (members ride different
+   *  arcs), so each carried road's wrapper wears a per-tile stand-in for the sweep — the same
+   *  fallback the 3D mesher makes — while the region graphics hide; landing rebuilds the
+   *  surfaces at rest. */
   animateGroupRotation(turn: GroupRotation, onFrame?: (eased: number) => void): void {
-    animateGroupRotation(this.objectMap, turn, onFrame);
+    const roadMembers = turn.members.filter((m) => this.roadIds.has(m.id));
+    if (roadMembers.length === 0 || isMotionReduced()) {
+      animateGroupRotation(this.objectMap, turn, onFrame);
+      return;
+    }
+    const gridState = useEditorStore.getState().gridState;
+    const roads = gridState ? roadLookup(gridState) : null;
+    const flightGfx: PIXI.Graphics[] = [];
+    for (const m of roadMembers) {
+      const wrapper = this.objectMap.get(m.id);
+      const obj = gridState?.objects.get(m.id);
+      if (!wrapper || !obj || !roads) continue;
+      const item = getCatalogItem(obj.catalogId);
+      const color = item?.color ? hexStringToNumber(item.color) : OBJECT_COLOR;
+      const g = new PIXI.Graphics();
+      drawFeathered(g, (t) => roadBodyPoints(roads, obj, 0, 0, TILE_SIZE, TILE_SIZE, t), color, 0.85);
+      for (const feed of roadCutFeeds(roads, obj)) {
+        const feedColor = getCatalogItem(feed.feeders[0]!.catalogId)?.color;
+        drawFeathered(g, (t) => feed.points(0, 0, TILE_SIZE, TILE_SIZE, t), feedColor ? hexStringToNumber(feedColor) : OBJECT_COLOR, 0.85);
+      }
+      wrapper.addChildAt(g, 0);
+      flightGfx.push(g);
+      this.roadsInFlight.add(m.id);
+    }
+    for (const entry of this.roadRegionGfx.values()) {
+      if ([...entry.members].some((id) => this.roadsInFlight.has(id))) entry.g.visible = false;
+    }
+    animateGroupRotation(this.objectMap, turn, (eased) => {
+      onFrame?.(eased);
+      if (eased !== 1) return;
+      for (const g of flightGfx) { g.parent?.removeChild(g); g.destroy(); }
+      for (const m of roadMembers) this.roadsInFlight.delete(m.id);
+      for (const entry of this.roadRegionGfx.values()) entry.g.visible = true;
+      this.scheduleRoadRefresh();
+    });
   }
 
   /** Delegates to object-animations.ts animateRemove — see there for the design notes.

@@ -21,6 +21,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import type { RuleRegistry } from '../../rules/registry';
 import { roadLookup } from '../object-index';
+import { catalogLoadValue } from '../catalog';
 import { sameRef } from '../selection';
 import type { EditSlice } from './edit';
 
@@ -67,7 +68,7 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       lockedLayers: new Set(),
     };
     const { eventBus } = get();
-    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState));
+    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
     set({
       gridState,
       commandExecutor: executor,
@@ -84,7 +85,7 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
 
   loadMap: (gridState, registry) => {
     const { eventBus } = get();
-    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState));
+    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
     set({
       gridState,
       commandExecutor: executor,

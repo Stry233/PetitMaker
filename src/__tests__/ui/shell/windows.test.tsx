@@ -42,7 +42,7 @@ afterEach(() => {
 
 /** Each menu row, by the window title it carries, and the overlay it is expected to open. */
 const ROWS: readonly [label: string, modal: ModalId][] = [
-  ['New Project', 'newProject'],
+  ['Change a planet', 'newProject'],
   ['Import map', 'import'],
   ['Settings', 'settings'],
   ['Keyboard Shortcuts', 'help'],
@@ -56,7 +56,7 @@ const ROWS: readonly [label: string, modal: ModalId][] = [
  * Nobody undoing a generation hunts for it under a menu beside Settings. It stands beside the batch
  * tile in the generate shelf now, where the other thing you do to a whole batch already is. */
 const SHEET: readonly string[] = [
-  'New Project', 'Import map', 'Settings', 'Keyboard Shortcuts', 'About',
+  'Change a planet', 'Import map', 'Settings', 'Keyboard Shortcuts', 'About',
 ];
 
 describe('the menu', () => {
@@ -71,8 +71,8 @@ describe('the menu', () => {
     expect(items.map((el) => el.textContent)).toEqual(SHEET);
   });
 
-  /** Every row here OPENS something. The sheet used to carry one row that acted on the map instead,
-   *  and that row has moved to the shelf it acts on. */
+  /** Every row here OPENS something: a row that acts on the map belongs to the shelf it acts on,
+   *  not to this sheet. */
   it('offers nothing that acts on the map', async () => {
     await mountShell();
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));

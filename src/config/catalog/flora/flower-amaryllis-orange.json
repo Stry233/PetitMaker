@@ -11,6 +11,7 @@
     "fr": "Amaryllis orange"
   },
   "icon": "flower-amaryllis-orange",
+  "iconColor": "#df6b3f",
   "width": 1,
   "height": 1,
   "loadValue": 10,

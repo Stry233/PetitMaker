@@ -35,9 +35,8 @@ export const zoneRestrictionRule: PreCommandRule = {
   id: 'V-ZONE-01',
   agentHint: 'Build only on grass zone (token "."). Sea/beach/plaza/boundary reject all edits.',
   phase: 'pre-command',
-  // NOT RemoveObject: removing an object is always allowed regardless of the zone under it. (Gating
-  // removal by zone trapped an object that ended up on non-grass — e.g. a bug-placed one — so it could
-  // never be cleared, leaving it stuck in state + rendered. Removal must always succeed.)
+  // NOT RemoveObject: removal must always succeed, whatever the zone under the object. Gated by zone,
+  // an object standing on non-grass could never be cleared — stuck in state and rendered forever.
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain, CommandType.PlaceObject],
   validate(cmd: Command, state: GridState): ValidationError[] {
     const errors: ValidationError[] = [];

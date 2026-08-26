@@ -5,7 +5,9 @@ import { useT } from '../../../i18n/context';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
 import { usePortraitGuard } from './portrait-guard';
 import { useEditorStore } from '../../../state/store';
+import { Icon } from '../../primitives/icons';
 import { colors, cozyOverlay, font, springs, exitTransition, z } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { cozyPanel } from '../../design/window-skin';
 
 /**
@@ -33,11 +35,6 @@ const panel: CSSProperties = {
   gap: 14,
 };
 
-// The panel's own ink. `accentPrimary` reaches 1.7:1 on this cream and the icon read as a smudge.
-const iconWrap: CSSProperties = {
-  color: colors.frameDark,
-};
-
 const title: CSSProperties = {
   ...font.h1,
   color: colors.frameDark,
@@ -54,39 +51,13 @@ const continueBtn: CSSProperties = {
   padding: '4px 8px',
   marginTop: 4,
   fontFamily: font.family,
-  fontSize: 12.5,
-  fontWeight: 600,
+  ...roleFont('caption'),
   color: colors.textSecondary,
   opacity: 0.75,
 };
 
-/**
- * The turn itself: ONE phone, caught mid-rotation, with an arc sweeping it toward landscape.
- *
- * One device that is visibly turning says "rotate" on its own; two phones and an arrow between them
- * read as a before/after diagram, which needs the caption to explain it. The body is tilted a third
- * of the way through the quarter turn — enough to be unmistakably in motion, not so far that it
- * stops reading as upright. Stroke icon in `currentColor`, matching `shell/glyph-icons.tsx`.
- */
-function RotateIcon() {
-  return (
-    <svg width={76} height={76} viewBox="0 0 48 48" fill="none" stroke="currentColor"
-      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {/* The sweep, struck around the phone's own centre so the motion belongs to the device
-          rather than floating beside it. Open at the bottom, where the hand is. */}
-      <path d="M11.2 31.5A15 15 0 0 1 18.6 9.9" opacity={0.55} />
-      <path d="M18.6 9.9 15.1 9.2M18.6 9.9 18.2 13.5" opacity={0.55} />
-      <path d="M36.8 16.5a15 15 0 0 1-7.4 21.6" opacity={0.55} />
-      <path d="M29.4 38.1l3.5.7M29.4 38.1l.4-3.6" opacity={0.55} />
-      {/* The device, a third of the way through the quarter turn. */}
-      <g transform="rotate(-30 24 24)">
-        <rect x="17.5" y="13" width="13" height="22" rx="3" />
-        <path d="M21.8 16.4h4.4" />
-        <path d="M22.6 31.3h2.8" opacity={0.5} />
-      </g>
-    </svg>
-  );
-}
+/** The design source's own drawing: one phone caught mid-turn between two arrows. */
+const ICON_SIZE = 76;
 
 export function PortraitGuard() {
   const t = useT();
@@ -121,7 +92,7 @@ export function PortraitGuard() {
             exit={{ scale: 0.92, y: 10, transition: exitTransition }}
             transition={springs.stiff}
           >
-            <div style={iconWrap}><RotateIcon /></div>
+            <Icon name="portrait-rotate" size={ICON_SIZE} />
             <div id="portrait-guard-title" style={title}>{t('portrait.title')}</div>
             <div id="portrait-guard-body" style={body}>{t('portrait.body')}</div>
             <button type="button" style={continueBtn} onClick={dismiss}>

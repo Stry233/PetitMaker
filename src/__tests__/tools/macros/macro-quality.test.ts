@@ -24,10 +24,10 @@ import {
 } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { applyMacro, type MacroId, type MacroOpts } from '../../../tools/macros';
 import { MacroTool } from '../../../tools/macros/macro-tool';
-import type { ToolContext } from '../../../tools/types';
+import type { ToolContext } from '../../../tools/runtime/types';
 import type { KitContext } from '../../../kit/context';
 import { createDefaultRegistry } from '../../../rules';
 import { makeState } from '../../rules/_helpers';

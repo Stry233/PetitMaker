@@ -142,9 +142,9 @@ export function paintLayer(
       const { w: fw, h: fh } = getPlacedObjectSize(obj);
       ctx.fillStyle = objectColor(obj.catalogId);
       ctx.fillRect(
-        // The EXACT position, not `ox` (a half-anchored deck's rounded cell) — a halfStep
-        // ramp/bridge anchors between cells, and rounding drew it a half cell off from where
-        // the 2D view actually places it.
+        // The EXACT position, not `ox` (a half-anchored deck's rounded cell): a halfStep
+        // ramp/bridge anchors between cells, so rounding draws it a half cell off from where
+        // the 2D view places it.
         fit.x + obj.position.x * cellW,
         fit.y + obj.position.y * cellH,
         Math.ceil(Math.min(fw, cols - ox) * cellW),

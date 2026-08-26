@@ -26,10 +26,10 @@ import { cellKey, NEIGHBORS4 } from '../../../core/model/grid-model';
 import { getObjectIndex, roadLookup } from '../../../state/object-index';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { applyMacro } from '../../../tools/macros';
-import { buildingGate } from '../../../tools/generation/placement/object';
-import { gateTerminalCells } from '../../../tools/generation/placement/route';
+import { buildingGate } from '../../../tools/placement/object';
+import { gateTerminalCells } from '../../../tools/placement/route';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import {
   CellZone, TerrainType,
@@ -80,7 +80,7 @@ const name = (o: PlacedObject): string => `${o.catalogId}@${o.position.x},${o.po
 
 /** What the rules say about a road tile at one cell, without placing one. */
 function roadRefusals(kit: Kit, c: MacroCoord): string[] {
-  const obj: PlacedObject = { id: generateObjectId(), catalogId: 'road-dirt', position: c, rotation: 0, elevation: 0 };
+  const obj: PlacedObject = { id: generateObjectId(), catalogId: 'path-overgrown-dirt', position: c, rotation: 0, elevation: 0 };
   return kit.registry.validatePreCommand(objectPlacementCommand(obj), kit.state).map((e) => e.ruleId);
 }
 
@@ -150,7 +150,7 @@ describe('a doorstep on a terrace edge', () => {
   it('a door the rules WILL pave gets its street, joined to the network', () => {
     const { kit, inland } = shoreBench();
     const before = kit.executor.getUndoStackSize();
-    applyMacro(kit, 'roads', { seed: 1, material: 'road-dirt', width: 1, trim: 'off' });
+    applyMacro(kit, 'roads', { seed: 1, material: 'path-overgrown-dirt', width: 1, trim: 'off' });
     expect(kit.executor.getUndoStackSize(), 'one gesture, one undo entry').toBe(before + 1);
 
     const comp = pavementComponents(kit.state);
@@ -170,7 +170,7 @@ describe('a doorstep on a terrace edge', () => {
 
   it('a door the rules will NOT pave gets the street beside it, and is named', () => {
     const { kit, seaward } = shoreBench();
-    const out = applyMacro(kit, 'roads', { seed: 1, material: 'road-dirt', width: 1, trim: 'off' });
+    const out = applyMacro(kit, 'roads', { seed: 1, material: 'path-overgrown-dirt', width: 1, trim: 'off' });
     for (const h of seaward) {
       expect(doorPaved(kit.state, h), `${name(h)}: its doorstep is over water, nothing may pave it`).toBe(false);
       // 3 is the geometric floor here: the cabin is 4 deep, its own footprint refuses a coating and
@@ -184,7 +184,7 @@ describe('a doorstep on a terrace edge', () => {
   it('the press removes nothing that was standing', () => {
     const { kit } = shoreBench();
     const before = [...kit.state.objects.values()].map((o) => o.id);
-    applyMacro(kit, 'roads', { seed: 1, material: 'road-dirt', width: 1, trim: 'off' });
+    applyMacro(kit, 'roads', { seed: 1, material: 'path-overgrown-dirt', width: 1, trim: 'off' });
     for (const id of before) expect(kit.state.objects.has(id), `${id} was removed by the press`).toBe(true);
   });
 });

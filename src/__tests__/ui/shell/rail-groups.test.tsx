@@ -18,11 +18,12 @@ import type { EditorEvents } from '../../../core/model/types';
 import { setReducedMotion, __resetMotionState } from '../../../canvas/map2d/motion-state';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { HISTORY_BUTTONS, KIT_BUTTONS, planRail, railCellStart, railStack } from '../../../ui/shell/frame';
+import { HISTORY_BUTTONS, KIT_BUTTONS, planRail, railCell, railStack } from '../../../ui/shell/frame';
 import { plateDepth } from '../../../ui/shell/windows/LayerPanel';
 import { Rail } from '../../../ui/shell/Rail';
 import { __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
-import { RAIL, ZOOM, frameFit } from '../../../ui/shell/units';
+import { RAIL, ZOOM } from '../../../ui/shell/units';
+import { frameFit } from '../../../ui/design/scale';
 
 function mountAt(windowHeight: number) {
   window.innerHeight = windowHeight;
@@ -188,8 +189,9 @@ describe('a rail button that can be rearranged', () => {
  * THE NAME PILL, which is the group's answer to a pointer resting on one of its buttons.
  *
  * jsdom lays nothing out, so the WIDTH is not testable here: what is, is which end the plate is
- * anchored at (that is the whole of "grows into the map"), whether the name is in the plate at all,
- * and that a folded group offers none of it.
+ * anchored at (that is the whole of "grows into the map"), and that the name is in the plate in
+ * EVERY arrangement — a folded group's buttons keep their names, since the pill is the one place a
+ * button says what it does and folding is the shape most windows put these groups in.
  */
 describe('a button gives its name', () => {
   /** The plate inside a button: the shape that opens, and the only span the button holds directly. */
@@ -204,13 +206,14 @@ describe('a button gives its name', () => {
     }
   });
 
-  /** The pill is the name, so the browser's own tooltip would be the same word said twice. */
-  it('drops the native tooltip exactly where the pill replaces it', () => {
+  /** The pill is the name, so the browser's own tooltip would be the same word said twice — in any
+   *  arrangement, since the pill opens in all of them. */
+  it('never offers the native tooltip', () => {
     mountAt(1200);
     expect(screen.getByLabelText('Zoom in').getAttribute('title')).toBeNull();
     cleanup();
     mountAt(660);
-    expect(screen.getByLabelText('Zoom in').getAttribute('title')).toBe('Zoom in');
+    expect(screen.getByLabelText('Zoom in').getAttribute('title')).toBeNull();
   });
 
   /**
@@ -231,13 +234,42 @@ describe('a button gives its name', () => {
     expect({ w: button.style.width, h: button.style.height }, 'the box the pointer is in').toEqual(square);
   });
 
-  /** A folded group has a second file where the pill would go, so there is nothing to grow into. */
-  it('says nothing at all once its group has folded into two files', () => {
+  /**
+   * A GROUP'S BOX IS WIDER AND TALLER THAN ITS BUTTONS, and it does not own the difference.
+   *
+   * Each group is a grid sized for its files, so a folded kit with an odd count carries an empty cell
+   * and every group is roughly two buttons wide either way. At `z.column` that emptiness took every
+   * press that landed in it: presses between two buttons never reached the map, and at uiZoom 1.8 on
+   * a 1280x800 window the kit's box reached x 930 while the assistant panel's send button stood at
+   * 889..970, so `elementFromPoint` at the send's own centre answered the group and the composer
+   * could not be sent. The air is deaf and each control claims itself back.
+   */
+  it('lets a press through the air between its buttons, and takes one on each button', () => {
+    mountAt(1200);
+    for (const g of [kit(), pair(), screen.getByLabelText('Layers').parentElement as HTMLElement]) {
+      expect(g.style.pointerEvents, 'the group is deaf').toBe('none');
+    }
+    for (const label of ['Undo', 'Redo', 'Zoom in', 'Switch view', 'Hide interface', 'Layers']) {
+      expect((screen.getByLabelText(label) as HTMLElement).style.pointerEvents, label).toBe('auto');
+    }
+  });
+
+  /**
+   * A FOLDED GROUP STILL GIVES ITS NAMES. Folding is not a corner case: a 900 css px window already
+   * runs the kit in two files, so a pill withheld from a folded group is a pill most visitors never
+   * see and a button that grows on hover without ever saying what it is for. A right-file pill
+   * passes over its left neighbour while it is open, which is safe for pressing because the pill
+   * only exists while the pointer is inside its own button's square: by the time the pointer
+   * reaches where the word was, the hover that showed it has ended and the neighbour is answering
+   * for itself.
+   */
+  it('keeps giving names once its group has folded into two files', () => {
     mountAt(396);
     expect(files(kit())).toBe(2);
     expect(files(pair())).toBe(2);
-    for (const label of ['Undo', 'Zoom in', 'Hide interface']) {
-      expect(plate(label).textContent, `${label} keeps its name to itself`).not.toContain(label);
+    for (const label of ['Undo', 'Redo', 'Zoom in', 'Hide interface']) {
+      expect(plate(label).textContent, `${label} still carries its name`).toContain(label);
+      expect(plate(label).style.right, `${label} still opens leftward from its glyph`).toBe('0px');
     }
   });
 
@@ -291,24 +323,103 @@ describe('the hide toggle', () => {
  */
 describe('a folded group fills from the right', () => {
   it('puts the hole on the inside, whatever the count is', () => {
-    // Nothing to place while a group runs in one file, or while its count divides evenly.
-    expect(railCellStart(0, 5, 1)).toBeUndefined();
-    expect(railCellStart(1, 2, 2)).toBeUndefined();
+    // One file is a straight column: one button per row, all in the only cell there is.
+    expect(railCell(0, 5, 1)).toEqual({ column: 1, row: 1 });
+    expect(railCell(4, 5, 1)).toEqual({ column: 1, row: 5 });
+    // A count that divides evenly fills both cells of every row.
+    expect(railCell(1, 2, 2)).toEqual({ column: 2, row: 1 });
     // Five in two files: four fill two full rows and the fifth takes the right cell of the third.
-    expect(railCellStart(4, 5, 2)).toBe(2);
-    for (const i of [0, 1, 2, 3]) expect(railCellStart(i, 5, 2)).toBeUndefined();
+    expect(railCell(3, 5, 2)).toEqual({ column: 2, row: 2 });
+    expect(railCell(4, 5, 2)).toEqual({ column: 2, row: 3 });
     // And it is the ARRANGEMENT: one more button and the orphan is a different one.
-    expect(railCellStart(4, 7, 2)).toBeUndefined();
-    expect(railCellStart(6, 7, 2)).toBe(2);
+    expect(railCell(4, 7, 2)).toEqual({ column: 1, row: 3 });
+    expect(railCell(6, 7, 2)).toEqual({ column: 2, row: 4 });
   });
+
+  /** The cell of the button, not of the ones around it: a button on its way out is still mounted,
+   *  and auto-placement counted it. Every button therefore names both of its coordinates. */
+  const at = (label: string) => {
+    const el = screen.getByLabelText(label);
+    return `${el.style.gridColumnStart}/${el.style.gridRowStart}`;
+  };
 
   it('right-aligns the kit\'s odd last button when the window folds it', () => {
     mountAt(660);
     expect(files(kit())).toBe(2);
-    // 2D shows five of the seven, so zoom-out is the one alone, and it takes the right cell.
-    expect(screen.getByLabelText('Zoom out').style.gridColumnStart).toBe('2');
-    for (const label of ['Switch view', 'Hide interface', 'Fit to view', 'Zoom in']) {
-      expect(screen.getByLabelText(label).style.gridColumnStart, label).toBe('');
+    // 2D shows five of the seven: two full rows, and zoom-out alone in the RIGHT cell of the third.
+    expect(at('Switch view')).toBe('1/1');
+    expect(at('Hide interface')).toBe('2/1');
+    expect(at('Fit to view')).toBe('1/2');
+    expect(at('Zoom in')).toBe('2/2');
+    expect(at('Zoom out')).toBe('2/3');
+  });
+
+  /**
+   * THE TURNS ARRIVING CHANGES WHICH BUTTON IS THE ODD ONE, so one button moves and the rest do
+   * not. That move is what `layout` on a rail button is for; keyed on the file count alone it never
+   * ran, and the zoom-out button changed columns in a single frame.
+   */
+  it('moves the one button the new arrangement moved, and no other', () => {
+    mountAt(660);
+    expect(at('Zoom out')).toBe('2/3');
+
+    act(() => { useEditorStore.getState().setViewMode('3d'); });
+    // Seven now: three full rows, and the second turn alone on the fourth. Zoom-out is no longer
+    // the odd one, so it crosses to the left cell of its row.
+    expect(at('Zoom out')).toBe('1/3');
+    expect(at('Rotate left')).toBe('2/3');
+    expect(at('Rotate right')).toBe('2/4');
+    for (const [label, cell] of [['Switch view', '1/1'], ['Hide interface', '2/1'], ['Fit to view', '1/2'], ['Zoom in', '2/2']] as const) {
+      expect(at(label), label).toBe(cell);
     }
+  });
+
+  /**
+   * AND A BUTTON ON ITS WAY OUT KEEPS THE CELL IT WAS DRAWN IN. The pair is mounted for the length
+   * of its exit, so grid auto-placement counted it and re-placed it as the count fell: a turn
+   * mid-fade dropped a row and jumped a column on its way off the kit.
+   */
+  it('leaves a departing turn exactly where it stood while it fades', () => {
+    mountAt(660);
+    act(() => { useEditorStore.getState().setViewMode('3d'); });
+    act(() => { useEditorStore.getState().setViewMode('2d'); });
+    expect(turns(), 'still mounted, because they leave through an exit animation').toHaveLength(2);
+    expect(at('Rotate left')).toBe('2/3');
+    expect(at('Rotate right')).toBe('2/4');
+    // Zoom-out travels into the cell the first turn is fading out of, which is what one button
+    // leaving as another arrives in its place should look like.
+    expect(at('Zoom out')).toBe('2/3');
+  });
+});
+
+/**
+ * ONE PROPERTY, ONE CLOCK.
+ *
+ * A turn fades itself through Framer, which writes an opacity per frame. A CSS transition on opacity
+ * on the same element gives a second clock chasing every one of those writes: the turns blink as they
+ * arrive and pop off screen still half drawn as they leave. The fade lives on the drawing instead,
+ * which is every pixel a rail button has.
+ */
+describe('the veil and the arrival do not share a property', () => {
+  const plate = (label: string) => screen.getByLabelText(label).firstElementChild as HTMLElement;
+
+  it('leaves the button\'s own opacity to Framer and fades the drawing under it', () => {
+    mountAt(1200);
+    const button = screen.getByLabelText('Zoom in');
+    expect(button.style.opacity, 'nothing here writes an opacity Framer is animating').toBe('');
+    expect(button.style.transition).not.toContain('opacity');
+    // `visibility` is discrete, Framer never touches it, and it is the half of the veil that takes
+    // a button out of hit-testing.
+    expect(button.style.transition).toContain('visibility');
+    expect(plate('Zoom in').style.opacity).toBe('1');
+    expect(plate('Zoom in').style.transition).toContain('opacity');
+  });
+
+  it('still draws the whole column away when the interface goes', () => {
+    render(<I18nProvider><Rail hidden onHide={() => {}} /></I18nProvider>);
+    expect(plate('Zoom in').style.opacity).toBe('0');
+    expect(screen.getByLabelText('Zoom in').style.visibility).toBe('hidden');
+    // The way back stays lit, and holds back until it is reached for.
+    expect(plate('Show interface').style.opacity).toBe('0.45');
   });
 });

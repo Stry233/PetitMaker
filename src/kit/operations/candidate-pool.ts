@@ -5,21 +5,21 @@
  * size — and jumps the queue, since a preview answers a pointer that is waiting right now while a
  * card can arrive a moment later.
  *
- * The pool is deliberately small — `min(3, cores - 2)` — because the main thread still has the
+ * The pool is small — `min(3, cores - 2)` — because the main thread still has the
  * map to draw and each worker holds a whole grid. Jobs queue when every worker is busy; a job
  * whose signal is cancelled before it is dispatched resolves null without being sent, and one
  * cancelled mid-run finishes in its worker (a worker cannot be interrupted) with the result
  * delivered to a caller that has already decided to drop it.
  *
  * BREAKAGE IS A FALLBACK, NOT AN ERROR. A worker that fails to boot (an exotic embedder, a CSP
- * someone tightened) marks the pool broken and rejects what it holds; the callers catch that and
- * run on the main thread as they always could. `typeof Worker` gates the whole thing, so tests
- * and headless runs never construct one.
+ * someone tightened), or a job one will not take, marks the pool broken and rejects what it holds
+ * along with everything that arrives after; the callers catch that and run the same closure on the
+ * main thread. `typeof Worker` gates the whole thing, so tests and headless runs never construct
+ * one.
  */
 import { decodeCells, encodeCells, type WireCells } from '../../core/model/grid-wire';
 import type { Command, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject } from '../../core/model/types';
-import type { MacroBuild, MacroId, MacroOpts } from '../../tools/macros';
-import type { MacroPreview } from '../../tools/macros/preview';
+import type { MacroBuild, MacroId, MacroOpts, MacroPreview } from '../../tools/macros';
 import type { Outcome } from './outcome';
 
 /**
@@ -90,6 +90,8 @@ function poolSize(): number {
   return Math.min(3, Math.max(1, cores - 2));
 }
 
+const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+
 function breakPool(err: Error): void {
   broken = true;
   for (const slot of slots ?? []) {
@@ -122,44 +124,57 @@ function ensureSlots(): Slot[] {
   return slots;
 }
 
+/** DISPATCH NEVER THROWS: it runs inside a worker's own message handler as well as inside
+ *  `enqueue`, and an exception escaping that handler leaves the job that failed to post, and
+ *  everything queued behind it, unsettled — an await that never returns where every caller has a
+ *  main-thread fallback behind a `catch`. A slot that cannot be booted or a payload a worker
+ *  refuses therefore breaks the pool, which settles what it holds. */
 function dispatch(): void {
   if (broken) return;
-  for (const slot of ensureSlots()) {
+  let ready: Slot[];
+  try { ready = ensureSlots(); } catch (err) { breakPool(asError(err)); return; }
+  for (const slot of ready) {
     if (slot.job) continue;
     let job = queue.shift();
     // Drop cancelled jobs before they cost a worker: the caller has already moved on.
     while (job && job.signal?.cancelled) { job.resolve(null); job = queue.shift(); }
     if (!job) return;
     slot.job = job;
-    const { state } = job;
-    const grid: WireGrid = {
-      wire: encodeCells(state.cells, state.template.width, state.template.height),
-      objects: [...state.objects.values()],
-      lockedLayers: [...state.lockedLayers],
-      cellsVersion: state.cellsVersion ?? 0,
-      objectsVersion: state.objectsVersion ?? 0,
-      templateId: state.template.id,
-      ...(slot.templates.has(state.template.id) ? {} : { template: state.template }),
-    };
-    slot.templates.add(state.template.id);
-    slot.worker.postMessage({ id: job.id, grid, ...job.payload }, [grid.wire.buffer]);
+    try { post(slot, job); } catch (err) { breakPool(asError(err)); return; }
   }
+}
+
+function post(slot: Slot, job: Job): void {
+  const { state } = job;
+  const grid: WireGrid = {
+    wire: encodeCells(state.cells, state.template.width, state.template.height),
+    objects: [...state.objects.values()],
+    lockedLayers: [...state.lockedLayers],
+    cellsVersion: state.cellsVersion ?? 0,
+    objectsVersion: state.objectsVersion ?? 0,
+    templateId: state.template.id,
+    ...(slot.templates.has(state.template.id) ? {} : { template: state.template }),
+  };
+  slot.templates.add(state.template.id);
+  slot.worker.postMessage({ id: job.id, grid, ...job.payload }, [grid.wire.buffer]);
 }
 
 function enqueue(state: GridState, payload: Record<string, unknown>, opts: { signal?: { cancelled: boolean }; front?: boolean }): Promise<unknown> {
   return new Promise<unknown>((resolve, reject) => {
+    // A broken pool takes no jobs: `dispatch` returns at the door, so a job queued here would wait
+    // for a worker that is gone. The macro runners are installed once and retire on a rejection,
+    // so this rejection is also how they learn.
+    if (broken) { reject(new Error('generation pool is broken')); return; }
     const job: Job = { id: nextId++, state, payload, signal: opts.signal, resolve, reject };
     if (opts.front) queue.unshift(job);
     else queue.push(job);
-    try { dispatch(); } catch (err) {
-      breakPool(err instanceof Error ? err : new Error(String(err)));
-    }
+    dispatch();
   });
 }
 
 /** Boot the workers now, while nothing is waiting on them: a worker's first job otherwise pays
- *  the module load, which is the one hitch the pool exists to remove. Safe to call anywhere —
- *  a no-op without Worker or once broken. */
+ *  the module load, which is the one hitch the pool exists to remove. A no-op without Worker or
+ *  once the pool is broken. */
 export function warmPool(): void {
   if (!poolAvailable()) return;
   try { ensureSlots(); } catch (err) {

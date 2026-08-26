@@ -1,5 +1,4 @@
-// V1 PRESENTATION: pins TourDoneModal's confetti visuals and copy; expected to be removed with
-// the v1 tour.
+// TourDoneModal's confetti visuals and its copy.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MotionConfig } from 'framer-motion';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';

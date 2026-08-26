@@ -2,13 +2,13 @@
  * Build identity (build number, commit sha, date). ONE source of truth: the
  * committed `build-info.json`, stamped from THIS repository's history.
  *
- * It used to be `git rev-list --count HEAD` read at build time, which is right only
- * inside the full-history private repo. Everywhere else it was wrong, and quietly
- * so: a shallow clone (CI's default checkout) counts the fetch depth, a source
- * tarball or Docker `COPY` without `.git` fails and fell back to 0, and the
- * public-repo export carries a FRESH history that starts over at 1. The date had the
- * same problem from the other side: it was whenever the build ran, so two people
- * building identical source disagreed about which build they had.
+ * Deriving it per build (`git rev-list --count HEAD`) is right only inside the
+ * full-history private repo, and quietly wrong everywhere else: a shallow clone (CI's
+ * default checkout) counts the fetch depth, a source tarball or Docker `COPY` without
+ * `.git` has no count at all, and the public-repo export carries a FRESH history that
+ * starts over at 1. A build-time date has the same problem from the other side: it is
+ * whenever the build ran, so two people building identical source disagree about which
+ * build they have.
  *
  * So a BUILD never derives the identity — it only reads the stamp. Nothing else may
  * supply a number: no deploy-host environment variable, no local git, no default.

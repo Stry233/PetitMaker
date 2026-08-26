@@ -8,24 +8,24 @@
  * column is taller than that neighbor's mountain mass).
  */
 import { CHUNK_SIZE } from '../../../core/model/constants';
-import { CellZone, ItemCategory, TerrainType, type GridState, type CornerTrim, type Corners, type TerrainCell } from '../../../core/model/types';
+import { CellZone, ItemCategory, TerrainType, type GridState, type CornerTrim, type Corners, type PlacedObject, type TerrainCell } from '../../../core/model/types';
 import { getCell } from '../../../core/model/grid-model';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import type { CornerPos } from '../../../core/edge-cut/corner-index';
 import { patchCornerSplit } from '../../../core/edge-cut/patch-corners';
-import { detectRoadConn } from '../../../core/edge-cut/road-cut-states';
-import { roadShapePoints } from '../../../core/edge-cut/road-shape';
+import earcut from 'earcut';
+import { ROAD_FEATHER, roadBodyPoints } from '../../../core/edge-cut/road-shape';
+import { buildRoadRegions } from '../../../core/edge-cut/road-region';
 import { objectElevation } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { cutBackingByCorner } from '../../../core/edge-cut/cut-backing';
-import { cornerPolygon, fanPoly, type Pt } from './quadrant-poly';
-import { GROUND_SLAB_Y, cellCornerWorld, layerToY, mapCenterOffset, surfaceY, TERRAIN_OFFSET } from '../core/coords';
+import { cornerComplement, cornerPolygon, type Pt } from './quadrant-poly';
+import { GROUND_SLAB_Y, SEA_Y, cellCornerWorld, layerToY, surfaceY, waterSurfaceY, TERRAIN_OFFSET } from '../core/coords';
 import { terrainColor, zoneColor, waterColor, hexToRgb01, objectColor, type Rgb } from '../core/palette';
 import type { MeshData, TerrainMeshes } from '../core/types';
 
 const SLAB = GROUND_SLAB_Y; // land-slab top height (shared: object placement stands on it)
-const SEA_Y = 0.05;         // sea waterline height for void cells
 const GROUND_BOTTOM = -0.4; // shoreline skirt depth — gives the coast underground body
 const FALL_MIN = 0.5;       // water faces taller than this are cascades (animated), not rims
 const SEA_FLOOR = -0.28;    // opaque deep-sea floor → the sea reads as having volume/thickness
@@ -57,28 +57,23 @@ function quad(m: MeshData, a: Vec3, b: Vec3, c: Vec3, d: Vec3, col: Rgb): void {
 
 function empty(): MeshData { return { positions: [], colors: [], index: [] }; }
 
-/** The CUT-AWAY region of a quadrant — the complement of the kept `cornerPolygon`. This is what an
- *  edge cut REVEALS (2D's drawBacking region, minus the kept shape drawn over it): the rounded corner
- *  cap of a fan, the opposite triangle of a tri, the whole quadrant of an empty, nothing for a square.
- *  A ground island draws its water reveal in this shape so the grass/water seam is the arc, not a square. */
-function revealPolygon(trim: CornerTrim, ox: number, oz: number, s: number, pos: CornerPos): Pt[] | null {
-  const near: Pt = pos === 'TL' ? [ox, oz] : pos === 'TR' ? [ox + s, oz] : pos === 'BL' ? [ox, oz + s] : [ox + s, oz + s];
-  switch (trim) {
-    case 'square': return null;
-    case 'empty': return [[ox, oz], [ox + s, oz], [ox + s, oz + s], [ox, oz + s]];
-    case 'fan': return [near, ...fanPoly(pos, ox, oz, s, false).slice(1)]; // near corner + the fan arc
-    case 'tri-NW': return [[ox + s, oz], [ox + s, oz + s], [ox, oz + s]];
-    case 'tri-NE': return [[ox, oz], [ox + s, oz + s], [ox, oz + s]];
-    case 'tri-SW': return [[ox, oz], [ox + s, oz], [ox + s, oz + s]];
-    case 'tri-SE': return [[ox, oz], [ox + s, oz], [ox, oz + s]];
-  }
+/** Twice the signed XZ area of a triangle — 0 means it cannot draw. A zero-area triangle is
+ *  never EMITTED here: the rasterizer's edge tests can disagree about one and leak lone samples
+ *  (collinear slivers rendered as isolated bright pixels). */
+function area2(a: Pt, b: Pt, c: Pt): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
 }
 
-/** Fan-triangulate a top polygon (XZ points) at world height `y`. */
+/** Fan-triangulate a top polygon (XZ points) at world height `y`. The polygon must be visible
+ *  whole from its FIRST vertex (convex, or star-shaped from there — `RoadFeed` polygons lead
+ *  with their star vertex for exactly this): a fan across a concave stretch overdraws it. */
 function pushPolyTop(m: MeshData, pts: Pt[], y: number, col: Rgb): void {
   const base = m.positions.length / 3;
   for (const [px, pz] of pts) { m.positions.push(px, y, pz); m.colors.push(col[0], col[1], col[2]); }
-  for (let i = 1; i < pts.length - 1; i++) m.index.push(base, base + i, base + i + 1);
+  for (let i = 1; i < pts.length - 1; i++) {
+    if (area2(pts[0]!, pts[i]!, pts[i + 1]!) === 0) continue;
+    m.index.push(base, base + i, base + i + 1);
+  }
 }
 
 /** A vertical wall from a top edge (p1→p2 at `yTop`) down to the ground. */
@@ -86,7 +81,7 @@ function pushWall(m: MeshData, p1: Pt, p2: Pt, yTop: number, col: Rgb): void {
   quad(m, [p1[0], 0, p1[1]], [p2[0], 0, p2[1]], [p2[0], yTop, p2[1]], [p1[0], yTop, p1[1]], col);
 }
 
-/** Per-corner cut backing SHAPED to the cut-away region (revealPolygon) — the ONE 3D mirror of the 2D
+/** Per-corner cut backing SHAPED to the cut-away region (`cornerComplement`) — the ONE 3D mirror of the 2D
  *  drawCell backing (`cutBackingByCorner`). A cut reveals the lower tier / water / patch base behind the
  *  trimmed corner; drawing it only in the rounded-off region (not a full quadrant) is what keeps a
  *  translucent WATER reveal from showing through and covering the kept fan as a whole block, and matches
@@ -109,7 +104,7 @@ function pushRevealBacking(
     const b = backs[i];
     if (!b) continue;
     const [trim, ox, oz, pos] = quads[i]!;
-    const poly = revealPolygon(trim, ox, oz, 0.5, pos);
+    const poly = cornerComplement(trim, ox, oz, 0.5, pos, false);
     if (!poly) continue;
     if (b.type === TerrainType.Mountain) {
       const y = layerToY(b.elevation);
@@ -118,7 +113,7 @@ function pushRevealBacking(
     } else {
       const wc = waterColor();
       const foam: Rgb = [wc[0] + (1 - wc[0]) * 0.5, wc[1] + (1 - wc[1]) * 0.5, wc[2] + (1 - wc[2]) * 0.5];
-      const y = Math.max(layerToY(b.elevation) + SEA_Y, SLAB + 0.02);
+      const y = waterSurfaceY(b.elevation);
       pushPolyTop(water, poly, y, wc);
       for (let k = 0; k < poly.length; k++) {
         const p1 = poly[k]!, p2 = poly[(k + 1) % poly.length]!;
@@ -159,72 +154,6 @@ function mtnTop(state: GridState, x: number, y: number): number {
 function waterTop(state: GridState, x: number, y: number): number {
   const t = getCell(state.cells, x, y)?.terrain;
   return t && t.type === TerrainType.Water ? solidTopOf(t, TerrainType.Water) : 0;
-}
-
-/**
- * Per-vertex swell amplitude for the water mesh (parallel to its positions):
- * 1 for vertices strictly INTERIOR to a same-height water surface, 0 for every
- * vertex on the body's outline — shoreline corners, rims/side walls, trimmed or
- * fillet cells, sea edges against land or the map border.
- *
- * The swell animation multiplies by this, so the waterline geometry never
- * moves: an animated outline shifts the water/land silhouette by a subpixel
- * every vertex update, which anti-aliases differently each frame and reads as
- * flickering borders around shoreline objects. Interior vertices keep the full
- * swell, so the water still visibly breathes.
- */
-export function waterSwellWeights(state: GridState, positions: readonly number[]): Float32Array {
-  const { width, height } = state.template;
-  const off = mapCenterOffset(width, height);
-  const eps = 1e-4;
-
-  // The grid columns/rows whose cells touch 1-D cell-space coordinate c: both
-  // sides of a grid line, the single containing cell otherwise (a mid-cell
-  // vertex belongs to a trimmed cell's fan, which pins it below anyway).
-  const touching = (c: number): [number] | [number, number] => {
-    const r = Math.round(c);
-    return Math.abs(c - r) < eps ? [r - 1, r] : [Math.floor(c)];
-  };
-
-  const seaAt = (x: number, y: number): boolean => {
-    const cell = getCell(state.cells, x, y);
-    return !!cell && cell.zone === CellZone.Void;
-  };
-  // The swell-eligible surface height of the water body at (x, y), or null when
-  // the cell can't host interior swell: no water, a Γ fillet, or a trimmed cell
-  // (a trim IS the body outline, so everything it touches stays pinned).
-  const swellTopAt = (x: number, y: number): number | null => {
-    const t = getCell(state.cells, x, y)?.terrain;
-    if (!t || t.type !== TerrainType.Water || t.patchOnly) return null;
-    if (t.corners && t.corners.some((c) => c !== 'square')) return null;
-    return Math.max(layerToY(solidTopOf(t, TerrainType.Water)) + SEA_Y, SLAB + 0.02);
-  };
-
-  const n = positions.length / 3;
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const px = positions[i * 3]!, py = positions[i * 3 + 1]!, pz = positions[i * 3 + 2]!;
-    let interior = true;
-    if (Math.abs(py - SEA_Y) < eps) {
-      // Sea surface (MACRO grid): interior iff every touching cell is sea. Map
-      // border and shoreline vertices fail this, as do sea-wall tops at the edge.
-      for (const x of touching(px + off.x)) {
-        for (const y of touching(pz + off.z)) interior = interior && seaAt(x, y);
-      }
-    } else {
-      // Lake/river surface (MICRO grid): interior iff every touching cell holds
-      // untrimmed water whose surface sits exactly at this vertex's height. Wall
-      // and floor vertices sit below every surface, so they always pin.
-      for (const x of touching(px + off.x - TERRAIN_OFFSET)) {
-        for (const y of touching(pz + off.z - TERRAIN_OFFSET)) {
-          const top = swellTopAt(x, y);
-          interior = interior && top !== null && Math.abs(top - py) < eps;
-        }
-      }
-    }
-    out[i] = interior ? 1 : 0;
-  }
-  return out;
 }
 
 export function buildTerrainMeshes(state: GridState): TerrainMeshes {
@@ -274,8 +203,8 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
         const zc = zoneColor(cell.zone);
         quad(ground, [gx0, SLAB, gz0], [gx0, SLAB, gz1], [gx1, SLAB, gz1], [gx1, SLAB, gz0], zc);
         // Underground SKIRT where land meets the sea (or the map edge): a solid
-        // wall down to GROUND_BOTTOM so the shoreline has body and the water never
-        // shows a gap under it as it swells. Only the exposed (void-facing) sides.
+        // wall down to GROUND_BOTTOM so the shoreline has body and the transition
+        // to void hides the edge at grazing camera angles. Only the exposed (void-facing) sides.
         const voidSide = (nx: number, ny: number) => {
           const c = getCell(state.cells, nx, ny);
           return !c || c.zone === CellZone.Void;
@@ -304,7 +233,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
 
       // ── GROUND ISLAND cut (type None + corners): the macro grass floor above already fills the cell;
       //    the cut only OPENS its trimmed corner onto the water it sits in. The reveal is drawn in the
-      //    CUT-AWAY shape (revealPolygon), on the MICRO terrain grid (x0/z0) the pool uses — so the
+      //    CUT-AWAY shape (`cornerComplement`), on the MICRO terrain grid (x0/z0) the pool uses — so the
       //    grass/water seam is the rounded fan arc that meets the pool, exactly as 2D drawCell paints the
       //    kept grass fan over the square backing (here the opaque grass floor plays the kept-fan role and
       //    the reveal fills only the rounded corner). ──
@@ -375,7 +304,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
         /** A full-square water body at `tier`: surface + the 4 cell-side rims,
          *  each culled against that side's water neighbour. */
         const emitSquareWater = (tier: number) => {
-          const yTop = Math.max(layerToY(tier) + SEA_Y, SLAB + 0.02);
+          const yTop = waterSurfaceY(tier);
           const fallMode = yTop >= FALL_MIN;
           const sideMesh = fallMode ? fall : water;
           quad(water, [x0, yTop, z0], [x0, yTop, z1], [x1, yTop, z1], [x1, yTop, z0], wc); // surface
@@ -406,7 +335,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
               emitSquareWater(baseTier);
             }
           }
-          const baseY = hasBase ? Math.max(layerToY(baseTier) + SEA_Y, SLAB + 0.02) : 0;
+          const baseY = hasBase ? waterSurfaceY(baseTier) : 0;
           emitTrimmedWater(t.elevation, filletCorners, true, baseY);
           continue;
         }
@@ -439,7 +368,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
          *  overlap; cell-side rims cull against that side's water. Inner fans
          *  for a fillet, outer fans for a real cut. */
         function emitTrimmedWater(tier: number, corners: Corners, innerFans: boolean, yBottom: number): void {
-          const yTop = Math.max(layerToY(tier) + SEA_Y, SLAB + 0.02);
+          const yTop = waterSurfaceY(tier);
           const fallMode = yTop >= FALL_MIN;
           const sideMesh = fallMode ? fall : water;
           const quads: ReadonlyArray<readonly [CornerTrim, number, number, CornerPos]> = [
@@ -484,57 +413,172 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
   return { solid, ground, water, fall };
 }
 
-// The instanced road decal's vertical band above its VISIBLE surface (surfaceY, not
-// layerToY — at layer 0 the surface is the ground slab top): lifted ROAD_LIFT
-// (0.05, object-meshes) and ROAD_SLAB_H thick (0.05, object-archetypes
-// ARCHETYPE_TUNING.road.h). Keep in sync with those — the trimmed tiles meshed
-// here must occupy the same band as their instanced neighbours or the paved
-// path reads as disconnected steps.
-const ROAD_BAND_BOTTOM = 0.05; // = ROAD_LIFT
-const ROAD_TOP = 0.1;          // = ROAD_LIFT + ROAD_SLAB_H
+// Above the coated VISIBLE surface (surfaceY, not layerToY — at layer 0 the surface is the
+// ground slab top) only far enough that the depth test keeps the decal over it.
+const ROAD_DECAL_LIFT = 0.02;
+
+/** A flat ring between two same-count outlines at height `y`, one colour, alpha running from 0 at
+ *  the outer ring to 1 at the inner — the mesh form of the 2D painter's alpha bands, compositing
+ *  over the real terrain beneath rather than over a guessed ground tint (two fades meeting at a
+ *  seam must SHOW the ground, and only alpha can show the ground as it is actually shaded).
+ *  Coincident pairs (an edge that does not fade) emit zero-area quads, which draw nothing. */
+function pushFeatherRing(m: MeshData, outer: Pt[], inner: Pt[], y: number, col: Rgb): void {
+  for (let k = 0; k < outer.length; k++) {
+    const k2 = (k + 1) % outer.length;
+    const [o1, o2, i2, i1] = [outer[k]!, outer[k2]!, inner[k2]!, inner[k]!];
+    const t1 = area2(o1, o2, i2) !== 0, t2 = area2(o1, i2, i1) !== 0;
+    if (!t1 && !t2) continue;
+    const base = m.positions.length / 3;
+    for (const [p, a] of [[o1, 0], [o2, 0], [i2, 1], [i1, 1]] as const) {
+      m.positions.push(p[0], y, p[1]);
+      m.colors.push(col[0], col[1], col[2]);
+      m.alpha!.push(a);
+    }
+    if (t1) m.index.push(base, base + 1, base + 2);
+    if (t2) m.index.push(base, base + 2, base + 3);
+  }
+}
+
+/** The alpha-1 interior of a region: its rings at full inset, triangulated with holes. */
+function pushRegionCore(m: MeshData, rings: Pt[][], y: number, col: Rgb): void {
+  // One connected surface has one outer ring; every other ring is a hole in it.
+  let outerIdx = 0, outerArea = 0;
+  const areas = rings.map((ring, i) => {
+    let a = 0;
+    for (let k = 0; k < ring.length; k++) {
+      const [x1, y1] = ring[k]!, [x2, y2] = ring[(k + 1) % ring.length]!;
+      a += x1 * y2 - x2 * y1;
+    }
+    if (Math.abs(a) > outerArea) { outerArea = Math.abs(a); outerIdx = i; }
+    return a;
+  });
+  void areas;
+  const ordered = [rings[outerIdx]!, ...rings.filter((_, i) => i !== outerIdx)];
+  const flat: number[] = [];
+  const holes: number[] = [];
+  for (const [i, ring] of ordered.entries()) {
+    if (i > 0) holes.push(flat.length / 2);
+    for (const [px, pz] of ring) flat.push(px, pz);
+  }
+  const tris = earcut(flat, holes, 2);
+  const base = m.positions.length / 3;
+  for (let i = 0; i < flat.length; i += 2) {
+    m.positions.push(flat[i]!, y, flat[i + 1]!);
+    m.colors.push(col[0], col[1], col[2]);
+    m.alpha!.push(1);
+  }
+  for (const i of tris) m.index.push(base + i);
+}
+
+/** One road material's surfaces as a mesh, plus the tile art (if any) that paves them. */
+export interface RoadTrimPart {
+  /** The catalog id every surface in this mesh is paved with. */
+  material: string;
+  /** The material's tile-art icon basename, absent for a colour-only surface. */
+  icon?: string;
+  mesh: MeshData;
+}
+
+/** Texture space for a road decal: 1 unit = 1 macro cell, phased on the map corner, so the pattern
+ *  is anchored to the GRID (an integer cell line falls on an integer UV) and two surfaces of one
+ *  material can never disagree where they meet. Derived from the finished positions rather than
+ *  pushed beside each vertex: the UV IS the world XZ, and one derivation cannot drift from it.
+ *  Matches the 2D painter's fill matrix, which anchors the same pattern at the world origin. */
+function fillGridUvs(m: MeshData, origin: { x: number; z: number }): void {
+  const uv: number[] = [];
+  for (let i = 0; i < m.positions.length; i += 3) uv.push(m.positions[i]! - origin.x, m.positions[i + 2]! - origin.z);
+  m.uv = uv;
+}
 
 /**
- * Trimmed road tiles as a flat custom mesh. Untrimmed roads stay instanced (object-meshes); a road whose
- * edge-cut gave it non-square corners can't ride the shared full-square instance geometry, so its cut top
- * face is meshed here. The shape comes from `core/edge-cut/road-shape`, the one polygon 2D's
- * `drawRoadShape` fills too — so the cut direction matches the 2D view by construction. Roads use the
- * macro grid (no TERRAIN_OFFSET); a unit cell means half-extents of 0.5.
+ * EVERY road surface as flat custom meshes, feather and all: connected same-material tiles
+ * (plus the fills they feed into foreign cut cells) trace one region outline
+ * (`core/edge-cut/road-region`, the same derivation the 2D painter fills), and the surface fades
+ * from nothing at that outline to full colour over ROAD_FEATHER of a cell — corners wrapping as
+ * the whole surface's distance field does, never per tile. Roads use the macro grid (no
+ * TERRAIN_OFFSET); a unit cell means half-extents of 0.5.
  *
- * `offsets` displaces named roads on the ground plane (cell units = world units). A trim-meshed road has
- * no instance matrix to back-date, so this is how the group-rotation tween carries one along its arc; the
- * SHAPE always comes from the live (destination) state, exactly as an instanced member's does.
+ * ONE MESH PER MATERIAL, because a path material paves with its own tile art and a texture belongs
+ * to a mesh: the split is what lets the materials on one map wear different tiles. A textured
+ * material's vertex colours are WHITE — the art carries the colour, and the item's hex multiplied
+ * over it would darken the map twice; a colour-only road keeps its hex as the vertex colour.
+ *
+ * `offsets` displaces named roads on the ground plane (cell units = world units) for the
+ * group-move/rotation tweens. A region whose members all carry one offset travels whole; a region
+ * only partly in flight falls back to per-tile bodies until the tween lands, since a surface
+ * cannot stretch between its moving and standing halves.
  */
-export function buildRoadTrimMesh(
+export function buildRoadTrimMeshes(
   state: GridState,
   hiddenLayers?: ReadonlySet<number>,
   offsets?: ReadonlyMap<string, { dx: number; dz: number }>,
-): MeshData {
-  const m = empty();
+): RoadTrimPart[] {
   const { width, height } = state.template;
   const roads = roadLookup(state);
+  const roadObjs: PlacedObject[] = [];
   for (const obj of state.objects.values()) {
-    const item = getCatalogItem(obj.catalogId);
-    if (item?.category !== ItemCategory.Road) continue;
-    const elev = objectElevation(state, obj);
-    if (hiddenLayers?.has(elev)) continue; // hides with its layer, like the instanced decals
-    const corners = obj.corners;
-    if (!corners || corners.every((c) => c === 'square')) continue; // untrimmed → handled by the instanced decal
-    const side = detectRoadConn(roads, obj);
-    const corner = cellCornerWorld(obj.position.x, obj.position.y, width, height);
-    const off = offsets?.get(obj.id);
-    const cx = corner.x + (off?.dx ?? 0), cz = corner.z + (off?.dz ?? 0);
-    const pts = roadShapePoints(corners, side, cx, cz, 1, 1);
-    if (!pts) continue;
-    const yTop = surfaceY(elev) + ROAD_TOP;
-    const yBase = surfaceY(elev) + ROAD_BAND_BOTTOM;
-    const col = objectColor(obj, item);
-    pushPolyTop(m, pts, yTop, col);
-    // Side walls down to the lift base — the tile gets the same thickness as the
-    // instanced boxes around it, so the seam shows no gap at grazing angles.
-    for (let k = 0; k < pts.length; k++) {
-      const p1 = pts[k]!, p2 = pts[(k + 1) % pts.length]!;
-      quad(m, [p1[0], yBase, p1[1]], [p2[0], yBase, p2[1]], [p2[0], yTop, p2[1]], [p1[0], yTop, p1[1]], col);
-    }
+    if (getCatalogItem(obj.catalogId)?.category === ItemCategory.Road) roadObjs.push(obj);
   }
-  return m;
+  if (roadObjs.length === 0) return [];
+  const origin = cellCornerWorld(0, 0, width, height);
+
+  const parts = new Map<string, RoadTrimPart>();
+  const partFor = (material: string): RoadTrimPart => {
+    let part = parts.get(material);
+    if (!part) {
+      const icon = getCatalogItem(material)?.icon;
+      part = { material, ...(icon ? { icon } : {}), mesh: { ...empty(), alpha: [] } };
+      parts.set(material, part);
+    }
+    return part;
+  };
+
+  const perTile = (m: MeshData, obj: PlacedObject, y: number, col: Rgb): void => {
+    const off = offsets?.get(obj.id);
+    const cx = obj.position.x + origin.x + (off?.dx ?? 0), cz = obj.position.y + origin.z + (off?.dz ?? 0);
+    pushFeatherRing(m, roadBodyPoints(roads, obj, cx, cz, 1, 1, 0), roadBodyPoints(roads, obj, cx, cz, 1, 1, ROAD_FEATHER), y, col);
+    const core = roadBodyPoints(roads, obj, cx, cz, 1, 1, ROAD_FEATHER);
+    const base = m.positions.length / 3;
+    for (const [px, pz] of core) { m.positions.push(px, y, pz); m.colors.push(col[0], col[1], col[2]); m.alpha!.push(1); }
+    for (const i of earcut(core.flat(), [], 2)) m.index.push(base + i);
+  };
+
+  for (const region of buildRoadRegions(roadObjs, roads)) {
+    const first = region.members[0]!;
+    const elev = objectElevation(state, first);
+    if (hiddenLayers?.has(elev)) continue; // hides with its layer
+    // A road is a FLAT decal: one face a hair above the surface it coats, no walls and no
+    // thickness of its own.
+    const y = surfaceY(elev) + ROAD_DECAL_LIFT;
+    const item = getCatalogItem(region.material);
+    const part = partFor(region.material);
+    const m = part.mesh;
+    const col: Rgb = part.icon ? [1, 1, 1] : objectColor(first, item);
+    // A landed tween hands back offsets that are only float dust — treat those as rest.
+    const memberOffsets = region.members.map((o) => {
+      const v = offsets?.get(o.id);
+      return v && Math.abs(v.dx) + Math.abs(v.dz) > 1e-9 ? v : undefined;
+    });
+    const off = memberOffsets.find((o) => o !== undefined);
+    const together = off !== undefined && memberOffsets.every((o) =>
+      o !== undefined && o.dx === off.dx && o.dz === off.dz);
+    if (off !== undefined && !together) {
+      for (const obj of region.members) perTile(m, obj, y, col);
+      continue;
+    }
+    const dx = origin.x + (off?.dx ?? 0), dz = origin.z + (off?.dz ?? 0);
+    const place = (pts: readonly (readonly [number, number])[]): Pt[] =>
+      pts.map(([px, pz]) => [px + dx, pz + dz] as Pt);
+    const cores: Pt[][] = [];
+    for (const ring of region.rings) {
+      const outer = place(ring.points(0));
+      const core = place(ring.points(ROAD_FEATHER));
+      pushFeatherRing(m, outer, core, y, col);
+      cores.push(core);
+    }
+    pushRegionCore(m, cores, y, col);
+  }
+  const out = [...parts.values()].filter((p) => p.mesh.positions.length > 0);
+  for (const p of out) fillGridUvs(p.mesh, origin);
+  return out;
 }

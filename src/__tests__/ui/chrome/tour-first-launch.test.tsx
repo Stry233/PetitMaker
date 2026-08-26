@@ -1,5 +1,4 @@
-// V1-PINNED BEHAVIOUR: useFirstLaunchTour's gating logic lives only in this v1 tour hook and is
-// expected to be removed with it.
+// The whole first-launch gate lives in `useFirstLaunchTour`, so this is the one place it is pinned.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { TOUR_SEEN_KEY, useFirstLaunchTour } from '../../../ui/chrome/tour/use-tour';

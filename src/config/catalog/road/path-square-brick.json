@@ -1,0 +1,28 @@
+{
+  "id": "path-square-brick",
+  "category": "road",
+  "icon": "path-square-brick",
+  "name": {
+    "en": "Square Brick Path",
+    "zh": "方砖路",
+    "ja": "四角レンガの道",
+    "ru": "Квадратная кирпичная дорожка",
+    "th": "ทางอิฐสี่เหลี่ยม",
+    "id": "Jalan Bata Persegi",
+    "fr": "Chemin de briques carrées"
+  },
+  "color": "#877177",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

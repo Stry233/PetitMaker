@@ -184,7 +184,7 @@ describe('computeLockedCorners — terrain', () => {
 describe('computeLockedCorners — road', () => {
   function addRoad(state: any, x: number, y: number) {
     state.objects.set(`road-${x}-${y}`, {
-      id: `road-${x}-${y}`, catalogId: 'road-dirt',
+      id: `road-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
     });
   }

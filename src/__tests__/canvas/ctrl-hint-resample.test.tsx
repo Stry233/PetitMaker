@@ -1,7 +1,7 @@
 /**
  * The cursor answers a question with several inputs, and only one of them is where the pointer is.
  * A modifier going down, a selection changing, a tool switch, an object appearing — each changes
- * the answer at a standing cursor, and each used to wait for the user to jiggle the mouse.
+ * the answer at a standing cursor, and none of them may wait for the user to jiggle the mouse.
  *
  * `hoverInputs` is the one list of those inputs; the subscription that re-samples and the gate
  * that decides whether to recompute both read it. These drive the real handlers with NO pointer
@@ -18,7 +18,7 @@ import { registerToolManager, setActiveView } from '../../canvas/active-view';
 import type { ActiveView } from '../../canvas/view-projection';
 import { TerrainType, ToolType, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import type { ToolManager } from '../../tools/tool-manager';
+import type { ToolManager } from '../../tools/runtime/tool-manager';
 import type { DrawingTool } from '../../tools/paint/drawing-tool';
 import { useEditorStore } from '../../state/store';
 import { makeTestToolManager } from '../tools/_tool-manager';

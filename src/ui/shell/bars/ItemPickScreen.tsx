@@ -17,7 +17,7 @@
  * addition is offered or excluded on its own terms — and the categories left holding nothing are
  * dropped from the row of names with it.
  */
-import { tilesAShape } from '../../../tools/generation/stencil-generator';
+import { tilesAShape } from '../../../tools/generation/stencil';
 import { ObjectShelf } from './ObjectShelf';
 
 export function ItemPickScreen({ current, onPicked }: {

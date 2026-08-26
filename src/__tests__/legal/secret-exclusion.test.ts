@@ -7,7 +7,7 @@
 // (a codec silently reading storage), not a test to "fix".
 //
 // Storage seeding matches the REAL at-rest shapes:
-//   - 'petit-agent-settings-v1' (src/agent/key-storage.ts) — keys are obfuscated with
+//   - 'petit-agent-settings-v1' (src/agent/security/key-storage.ts) — keys are obfuscated with
 //     btoa(unescape(encodeURIComponent(secret))) in the no-vault fallback path (jsdom has no
 //     WebCrypto vault, so this is the exact path a real browser without IndexedDB would take).
 //   - 'petit-planet-locale' / 'petit-planet-ui-zoom' / 'petit-planet-autosave' (src/state/store.ts,
@@ -38,7 +38,7 @@ import {
 import { roadLookup } from '../../state/object-index';
 
 // jsdom's built-in localStorage is unreliable under this node version (see
-// src/__tests__/agent/key-storage.test.ts) — back it with a real Map-based stub.
+// src/__tests__/agent/security/key-storage.test.ts) — back it with a real Map-based stub.
 const backing = new Map<string, string>();
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => backing.get(k) ?? null,
@@ -223,7 +223,7 @@ describe('secret exclusion (spec §18.3) — codecs never touch storage', () => 
 //       codec is a pure function of GridState content (canonicalize() re-derives object ids from
 //       position/catalogId/etc, not the raw id string — see canonical.ts:objKey — and neither
 //       candidate here sets `state.generation`, so the P_EMPTY predictor is the only candidate:
-//       fully deterministic, no MDL-competition variance to worry about).
+//       fully deterministic, with no MDL-competition variance).
 //   (b) decoding the payload back recovers ONLY the live final values at the history-touched
 //       cells, never the superseded/undone ones — a concrete behavioral demonstration, not just
 //       an architectural one.

@@ -59,3 +59,27 @@ export function cornerPolygon(trim: CornerTrim, x: number, z: number, s: number,
     case 'tri-SE': return [[x + s, z], [x + s, z + s], [x, z + s]];
   }
 }
+
+/**
+ * The quadrant MINUS its kept polygon — the region a trim rounds away, which is what the cut opens
+ * onto: 2D's backing region, the mesher's shaped reveal, and the height a surface drape has to take
+ * there. null = 'square' (nothing is cut away). `patchOnly` picks the same winding `cornerPolygon`
+ * took, so the pair always partitions the quadrant.
+ *
+ * Fan-triangulable from its FIRST vertex: the corner the fan's centre is NOT on sees the whole
+ * region (an outer fan is centred on the far corner and leaves the near one, an inner fillet the
+ * reverse), which the arc's own curvature makes true of no other vertex.
+ */
+export function cornerComplement(trim: CornerTrim, x: number, z: number, s: number, pos: CornerPos, patchOnly: boolean): Pt[] | null {
+  const near: Pt = pos === 'TL' ? [x, z] : pos === 'TR' ? [x + s, z] : pos === 'BL' ? [x, z + s] : [x + s, z + s];
+  const far: Pt = pos === 'TL' ? [x + s, z + s] : pos === 'TR' ? [x, z + s] : pos === 'BL' ? [x + s, z] : [x, z];
+  switch (trim) {
+    case 'square': return null;
+    case 'empty': return [[x, z], [x + s, z], [x + s, z + s], [x, z + s]];
+    case 'fan': return [patchOnly ? far : near, ...fanPoly(pos, x, z, s, patchOnly).slice(1)];
+    case 'tri-NW': return [[x + s, z], [x + s, z + s], [x, z + s]];
+    case 'tri-NE': return [[x, z], [x + s, z + s], [x, z + s]];
+    case 'tri-SW': return [[x, z], [x + s, z], [x + s, z + s]];
+    case 'tri-SE': return [[x, z], [x + s, z], [x, z + s]];
+  }
+}

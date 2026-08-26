@@ -24,7 +24,7 @@ import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
-import { ToolManager } from '../../tools/tool-manager';
+import { ToolManager } from '../../tools/runtime/tool-manager';
 import { makeStubRenderer } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
@@ -184,8 +184,8 @@ describe('dragging a plural selection', () => {
   });
 
   it('a halfStep member of a group reads its OWN planned elevation, not the ground under a half index', () => {
-    // Finding 2 (final review, half-step span items): the group ghost duplicated the same broken
-    // inline lookup (`gs.cells[y]?.[x]` with a fractional x is undefined) the solo drag ghost had.
+    // The group ghost reaches the same trap as the solo one: an inline `gs.cells[y]?.[x]` with a
+    // fractional x is undefined, so the elevation reads 0.
     // A mountain band at y <= 9, a shoulder at x = 7 and a water bank at x = 4 for y in [10, 14]
     // leave a lane only the HALF anchor at x = 4.5 clears — a real ramp sitting there already
     // (elevation 1, the mountain's own height) is what a group slide must keep reporting, not 0.

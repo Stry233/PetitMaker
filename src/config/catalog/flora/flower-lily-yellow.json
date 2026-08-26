@@ -11,6 +11,7 @@
     "fr": "Lys jaune"
   },
   "icon": "flower-lily-yellow",
+  "iconColor": "#e4b044",
   "width": 1,
   "height": 1,
   "loadValue": 10,

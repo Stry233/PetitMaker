@@ -7,11 +7,11 @@
 // lives in ./license-audit-core.mts, which src/__tests__/legal/license-audit.test.ts imports
 // directly instead of this file.
 //
-// (A main-module guard — `import.meta.url === file://${process.argv[1]}` — was tried first to
-// let this file host both the exports and the CLI, but does NOT work under `vite-node`:
-// vite-node invokes the target script without rewriting `process.argv[1]` to the script's own
-// path, so the guard never matches and the CLI silently no-ops. Splitting into a pure core +
-// this always-executing CLI file avoids that trap entirely.)
+// (A main-module guard — `import.meta.url === file://${process.argv[1]}` — cannot host both
+// the exports and the CLI in one file: `vite-node` invokes the target script without rewriting
+// `process.argv[1]` to the script's own path (argv[1] stays the vite-node binary), so the guard
+// never matches and the CLI silently no-ops. Hence a pure core plus this always-executing CLI
+// file, the split every generator script in this directory uses.)
 //
 // Usage:
 //   vite-node scripts/license-audit.mts            generate THIRD_PARTY_NOTICES.md + license tree
@@ -36,9 +36,8 @@ import {
   type LockJson,
 } from './license-audit-core.mts';
 
-// Minimal ambient shape for the pieces of `process` this script uses — matches this repo's
-// existing convention (see src/__tests__/agent/bench.live.test.ts) of a local declaration
-// instead of adding an @types/node dependency.
+// Minimal ambient shape for the pieces of `process` this script uses — this repo declares the node
+// globals it uses locally, per file, rather than adding an @types/node dependency.
 declare const process: { argv: string[]; cwd(): string; exitCode?: number };
 
 async function main(): Promise<void> {

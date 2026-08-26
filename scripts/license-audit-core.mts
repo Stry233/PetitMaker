@@ -2,14 +2,11 @@
 // per-package metadata/license-file discovery, and Markdown/tree rendering.
 //
 // Split from scripts/license-audit.mts (the CLI entry point) SPECIFICALLY so tests can import
-// this module's exports (computeClosure, auditPackages, …) with zero CLI side effects. A
-// main-module guard (`import.meta.url === file://${process.argv[1]}`) was tried first but does
-// NOT work under `vite-node`: vite-node invokes the target script without rewriting
-// `process.argv[1]` to the script's own path (argv[1] stays the vite-node binary itself), so the
-// guard never matches and the CLI silently does nothing. This file therefore has NO CLI/`main()`
-// logic and NO top-level side effects at all — every function here is pure or explicitly scoped
-// I/O (auditPackages/writeLicenseTree read/copy real files, by design, but never write
-// THIRD_PARTY_NOTICES.md or exit the process). See scripts/license-audit.mts for the CLI.
+// this module's exports (computeClosure, auditPackages, …) with zero CLI side effects — a
+// main-module guard cannot do that job under `vite-node`, for the reason that file's doc
+// comment gives. So there is NO CLI/`main()` logic and NO top-level side effect here: every
+// function is pure or explicitly scoped I/O (auditPackages/writeLicenseTree read/copy real
+// files, but never write THIRD_PARTY_NOTICES.md or exit the process).
 //
 // auditPackages/writeLicenseTree never print license file CONTENTS — only paths — and
 // writeLicenseTree copies bytes via fs.copyFile rather than reading+re-writing text.
@@ -21,9 +18,8 @@ import { copyFile } from 'node:fs/promises';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
-// Minimal ambient shape for the pieces of `process` this module uses — matches this repo's
-// existing convention (see src/__tests__/agent/bench.live.test.ts) of a local declaration
-// instead of adding an @types/node dependency.
+// Minimal ambient shape for the pieces of `process` this module uses — this repo declares the node
+// globals it uses locally, per file, rather than adding an @types/node dependency.
 declare const process: { cwd(): string };
 
 // ---------------------------------------------------------------------------
@@ -139,9 +135,8 @@ export function computeClosure(lock: LockJson): ClosureEntry[] {
 }
 
 // ---------------------------------------------------------------------------
-// auditPackages — reads node_modules/<path>/package.json + first LICENSE*-like
-// file per closure entry. Reads the filesystem (this repo's own node_modules);
-// never prints license file CONTENTS, only records file paths for copying.
+// auditPackages — reads node_modules/<path>/package.json + the first LICENSE*-like
+// file per closure entry, off this repo's own node_modules.
 // ---------------------------------------------------------------------------
 
 function normalizeLicense(raw: unknown): string {

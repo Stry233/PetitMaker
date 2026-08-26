@@ -4,11 +4,11 @@ import { useEditorStore } from '../../state/store';
 describe('store: tile surface', () => {
   beforeEach(() => {
     useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'brush' });
-    useEditorStore.getState().setTileMaterial('road-dirt');
+    useEditorStore.getState().setTileMaterial('path-overgrown-dirt');
   });
 
-  it('defaults tileMaterial to the dirt road catalog id', () => {
-    expect(useEditorStore.getState().tileMaterial).toBe('road-dirt');
+  it('defaults tileMaterial to the dirt path catalog id', () => {
+    expect(useEditorStore.getState().tileMaterial).toBe('path-overgrown-dirt');
   });
 
   it('accepts tile as a content type', () => {
@@ -17,7 +17,7 @@ describe('store: tile surface', () => {
   });
 
   it('switches tile material', () => {
-    useEditorStore.getState().setTileMaterial('road-stone');
-    expect(useEditorStore.getState().tileMaterial).toBe('road-stone');
+    useEditorStore.getState().setTileMaterial('path-garden-stone');
+    expect(useEditorStore.getState().tileMaterial).toBe('path-garden-stone');
   });
 });

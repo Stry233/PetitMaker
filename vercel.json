@@ -7,7 +7,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.deepseek.com https://generativelanguage.googleapis.com https://openrouter.ai https://open.bigmodel.cn https://api.z.ai https://dashscope-intl.aliyuncs.com https://dashscope.aliyuncs.com https://api.moonshot.cn https://api.moonshot.ai https: http://localhost:* http://127.0.0.1:*"
+          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.deepseek.com https://generativelanguage.googleapis.com https://openrouter.ai https://open.bigmodel.cn https://api.z.ai https://dashscope-intl.aliyuncs.com https://dashscope.aliyuncs.com https://api.moonshot.cn https://api.moonshot.ai https://api.perplexity.ai https: http://localhost:* http://127.0.0.1:*"
         },
         {
           "key": "X-Frame-Options",

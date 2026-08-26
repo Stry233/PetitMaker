@@ -2,9 +2,9 @@
  * A GROUND-ISLAND cut (the inner concave corner of an L-shaped water pool, and
  * any grass corner poking into water) must render on the SAME micro grid as the
  * water it sits in — mirroring 2D, where the None+corners cut draws at the
- * −HALF_TILE terrain offset over the full macro zone floor. The old mesher drew
- * it a half-cell off (macro grid) as a skirted island, so it floated detached
- * from the pool. Here we pin: the macro grass slab stays (no tiling gap) and the
+ * −HALF_TILE terrain offset over the full macro zone floor. Drawn a half-cell off
+ * (macro grid) as a skirted island, it floats detached from the pool instead.
+ * Here we pin: the macro grass slab stays (no tiling gap) and the
  * revealed water lands on the micro grid, not the macro grid.
  */
 import { describe, it, expect } from 'vitest';
@@ -44,8 +44,8 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
       if (Math.abs(m.ground.positions[i]! - (c.x + 1)) < 1e-4 && Math.abs(m.ground.positions[i + 2]! - (c.z + 1)) < 1e-4) topAtCorner.push(m.ground.positions[i + 1]!);
     }
     expect(topAtCorner.some((y) => Math.abs(y - GROUND_SLAB_Y) < 1e-4), 'grass floor at the cut cell BR corner').toBe(true);
-    // The old skirted island drove grass walls to GROUND_BOTTOM even on edges shared
-    // with solid grass — a false detached cliff. A connected cut cell (no void/sea
+    // A skirted island drives grass walls to GROUND_BOTTOM even on edges shared with
+    // solid grass — a false detached cliff. A connected cut cell (no void/sea
     // neighbour) must produce none.
     let deep = 0;
     for (let i = 0; i < m.ground.positions.length; i += 3) {
@@ -59,10 +59,10 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
     const s = lPoolState();
     const c = cellCornerWorld(2, 2, 4, 4);
     const m = buildChunkTerrain(s, 0, 0);
-    // The old macro backing put a reveal quadrant at [c.x, c.x+0.5]×[c.z, c.z+0.5],
+    // A macro-aligned backing puts a reveal quadrant at [c.x, c.x+0.5]×[c.z, c.z+0.5],
     // leaving a water vertex at the macro mid-cell corner. The micro-aligned reveal
-    // (offset −0.5) never does. That vertex is unique to the buggy macro placement
-    // (no pool cell reaches the island cell's +x/+z half).
+    // (offset −0.5) never does, and no pool cell reaches the island cell's +x/+z half,
+    // so that vertex can only come from a macro placement.
     expect(has(m.water.positions, c.x + 0.5, c.z + 0.5), 'no water reveal on the macro grid').toBe(false);
     // The reveal lands at the micro TL corner of the cut cell (aligned with the pool).
     expect(has(m.water.positions, c.x - 0.5, c.z - 0.5), 'water reveal on the micro grid').toBe(true);
@@ -71,8 +71,8 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
   it('a cosmetic water Γ fillet (generator gamma, no real base) draws ONLY the fillet, not a full square', () => {
     // The generator emits patchOnly water fillets like [empty,empty,empty,fan] with patchBase
     // undefined → baseTier -1 (a cosmetic round over ground, no elevated pool beneath). 2D draws
-    // no base body, just the wrapped corner's fillet over the grass floor. The old mesher flooded
-    // the whole cell (emitSquareWater at the degenerate tier), inverting fill and empty.
+    // no base body, just the wrapped corner's fillet over the grass floor. Flooding the whole cell
+    // (emitSquareWater at the degenerate tier) inverts fill and empty.
     const s = makeState(6, 6) as GridState;
     // Water wrapping the BR corner of the patch cell, so patchCornerSplit sees it wrapped.
     setTerrain(s, 3, 2, TerrainType.Water, 0); // +x edge

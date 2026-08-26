@@ -13,7 +13,7 @@
  *
  * THE SLIDER IS A MEMBER OF THE TOOL ROW, not a control parked in the corner. It is one flex line
  * with the cells, so the two keep their relation when the row wraps and cannot run into each other
- * at a narrow window; held apart by a `bottom` of its own the slider was 35 px low. Where on that
+ * at a narrow window; held apart by a `bottom` of its own the slider lands 35 px low. Where on that
  * line it sits is `SLIDER_LIFT`, which centres it on the cells rather than hanging it off their
  * bottom edge, and its right edge is the frame's own margin, which is where the view kit's column
  * stands: a slider in this interface is at the right, on that line.

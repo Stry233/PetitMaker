@@ -78,7 +78,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       // rotation 0 (occupies 1 wide x 3 tall): the block is clear of the footprint → allowed.
       expect(traitPlacementRule.validate(placeItemRot('test-bench', 5, 5, 0), state)).toHaveLength(0);
       // rotation 90 (occupies 3 wide x 1 tall): the block is now under the footprint → rejected.
-      // (Before the fix this passed, because the check used the unrotated 1x3 box.)
+      // A check against the unrotated 1x3 box accepts it instead.
       expect(traitPlacementRule.validate(placeItemRot('test-bench', 5, 5, 90), state).length).toBeGreaterThan(0);
     });
 
@@ -322,7 +322,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
   describe('surfaceCoating trait', () => {
     it('allows road on ground (no terrain)', () => {
       const state = makeState();
-      expect(traitPlacementRule.validate(placeItem('road-dirt', 5, 5), state)).toHaveLength(0);
+      expect(traitPlacementRule.validate(placeItem('path-overgrown-dirt', 5, 5), state)).toHaveLength(0);
     });
 
     it('allows road on flat mountain terrain', () => {
@@ -331,13 +331,13 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       for (let y = 5; y <= 6; y++)
         for (let x = 5; x <= 6; x++)
           setTerrain(state, x, y, TerrainType.Mountain, 1);
-      expect(traitPlacementRule.validate(placeItem('road-dirt', 5, 5), state)).toHaveLength(0);
+      expect(traitPlacementRule.validate(placeItem('path-overgrown-dirt', 5, 5), state)).toHaveLength(0);
     });
 
     it('rejects road on water', () => {
       const state = makeState();
       setTerrain(state, 5, 5, TerrainType.Water, 1);
-      expect(traitPlacementRule.validate(placeItem('road-dirt', 5, 5), state).length).toBeGreaterThan(0);
+      expect(traitPlacementRule.validate(placeItem('path-overgrown-dirt', 5, 5), state).length).toBeGreaterThan(0);
     });
   });
 
@@ -350,7 +350,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
 describe('V-PLACE-BLOCK: mountain over roads', () => {
   function addRoad(state: any, x: number, y: number) {
     state.objects.set(`road-${x}-${y}`, {
-      id: `road-${x}-${y}`, catalogId: 'road-dirt',
+      id: `road-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
     });
   }
@@ -380,9 +380,15 @@ describe('V-PLACE-BLOCK: mountain over roads', () => {
     expect(objectBlocksTerrainRule.validate(paint(5, 5, TerrainType.Water), state).length).toBeGreaterThan(0);
   });
 
-  it('blocks erase on a road cell', () => {
+  it('allows erase on a road cell — the road follows its surface down or is removed at commit', () => {
     const state = makeState();
     addRoad(state, 5, 5);
+    expect(objectBlocksTerrainRule.validate(erase(5, 5), state)).toHaveLength(0);
+  });
+
+  it('blocks erase on a house cell (solid object)', () => {
+    const state = makeState();
+    addHouse(state, 5, 5);
     expect(objectBlocksTerrainRule.validate(erase(5, 5), state).length).toBeGreaterThan(0);
   });
 

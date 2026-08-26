@@ -12,3 +12,7 @@ import type { PlacedObject } from './types';
  * and `rotation` to derive a connection side.
  */
 export type RoadLookup = (x: number, y: number) => PlacedObject | null;
+
+/** An item's chunk-load cost, asked the same way: the road-follow pass re-places a road it moved,
+ *  and the PlaceObject command carries the load the chunk-load rule accounts with. */
+export type LoadValueLookup = (catalogId: string) => number;

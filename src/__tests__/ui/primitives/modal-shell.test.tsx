@@ -179,10 +179,10 @@ describe('ModalShell — focus trap', () => {
   });
 });
 
-// A `motionSize` morph (ShareWindow's mode switch, among others) used to spring the card's whole
-// width/height by up to +420px — a fixed-damping spring's overshoot scales with travel, so a
-// morph that size visibly pumped even though the same spring is imperceptible on a small control.
-// The default morph transition is now a TWEEN, which has no overshoot term to scale.
+// A `motionSize` morph (ShareWindow's mode switch, among others) travels up to +420px of card
+// width/height. A fixed-damping spring's overshoot scales with travel, so a spring imperceptible on a
+// small control visibly pumps over that distance; the default morph transition is a TWEEN, which has
+// no overshoot term to scale.
 describe('ModalShell — the default size-morph transition does not spring', () => {
   it('is a tween, not a spring', () => {
     expect(SIZE_MORPH_TWEEN.type).toBe('tween');

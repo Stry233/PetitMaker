@@ -21,7 +21,7 @@ const FIXTURE: BuildChecklist = {
     { category: ItemCategory.Bridge, items: [], total: 0 },
     { category: ItemCategory.Ramp, items: [], total: 0 },
   ],
-  roads: [{ catalogId: 'road-dirt', name: name('Dirt'), count: 5, color: '#c4a882' }],
+  roads: [{ catalogId: 'path-overgrown-dirt', name: name('Dirt'), count: 5, color: '#aa885c' }],
   roadTotal: 5,
   layers: [
     { layer: 0, blocks: 0, water: 2 },
@@ -33,7 +33,7 @@ const FIXTURE: BuildChecklist = {
 };
 
 describe('buildChecklistText', () => {
-  it('prints the exact shape: header, per-category sections, roads with cells, terrain as one line', () => {
+  it('prints the exact shape: header, per-category sections, roads with cells, terrain a line per layer', () => {
     expect(buildChecklistText(FIXTURE, 'en', t)).toBe(
       [
         'Into the game: 15 in total',
@@ -49,7 +49,9 @@ describe('buildChecklistText', () => {
         'Road surfaces (5 cells)',
         '  Dirt: 5 cells',
         '',
-        'Terrain, layer by layer: Ground water 2 · Layer 1 10 cells',
+        'Terrain, layer by layer:',
+        '  Ground water 2',
+        '  Layer 1 10 cells',
       ].join('\n'),
     );
   });

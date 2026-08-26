@@ -22,3 +22,8 @@ for (const path in modules) {
 export function iconUrl(name: string): string | undefined {
   return ICON_URLS[name];
 }
+
+/** Every icon URL the glob resolved — the boot splash preloads the lot. */
+export function allIconUrls(): string[] {
+  return Object.values(ICON_URLS);
+}

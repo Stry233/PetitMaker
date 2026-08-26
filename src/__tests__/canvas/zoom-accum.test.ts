@@ -64,7 +64,7 @@ describe('accumulation invariant (the bug)', () => {
 
 describe('follow-loop convergence invariants', () => {
   it('unrounded follow converges and snaps (no round-trip stall)', () => {
-    // The fix: loop owns an unrounded accumulator, never reads the store back.
+    // The loop owns an unrounded accumulator and never reads the store back.
     // From 1.0 toward 1.5, 120 frames is more than enough (60 already suffices).
     let live = 1.0; const target = 1.5;
     for (let i = 0; i < 120 && Math.abs(target - live) >= 0.005; i++) live = followStep(live, target);
@@ -72,11 +72,11 @@ describe('follow-loop convergence invariants', () => {
   });
 
   it('round-tripping through clampUiZoom each frame STALLS (documents why the loop must stay unrounded)', () => {
-    // The old broken pattern: read rounded store value as cur every frame.
-    // At cur=1.48, target=1.50 → next=1.484 → clampUiZoom rounds to 1.48 → no progress.
+    // Reading the rounded store value back as `cur` every frame: at cur=1.48, target=1.50 →
+    // next=1.484 → clampUiZoom rounds to 1.48 → no progress.
     let cur = 1.0; const target = 1.5;
     for (let i = 0; i < 200; i++) cur = clampUiZoom(followStep(cur, target));
-    // The rounded round-trip stalls before reaching target — the bug we now avoid.
+    // The rounded round-trip stalls short of the target, which is why the loop stays unrounded.
     expect(cur).toBeLessThan(target);
   });
 });

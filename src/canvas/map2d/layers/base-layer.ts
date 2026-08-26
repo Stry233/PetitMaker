@@ -3,6 +3,7 @@ import { TILE_SIZE } from '../../../core/model/constants';
 import { getCell } from '../../../core/model/grid-model';
 import { getZoneColor } from '../../../core/model/colors';
 import { requestRender } from '../render-scheduler';
+import { FillGraphics } from '../draw/fill-graphics';
 import type { GridState } from '../../../core/model/types';
 
 export class BaseLayer {
@@ -11,7 +12,7 @@ export class BaseLayer {
 
   constructor() {
     this.container = new PIXI.Container();
-    this.graphics = new PIXI.Graphics();
+    this.graphics = new FillGraphics();
     this.container.addChild(this.graphics);
   }
 

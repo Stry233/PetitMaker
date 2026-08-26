@@ -150,10 +150,10 @@ describe('commitStroke — cut reconciliation', () => {
 describe('undo/redo — objects map', () => {
   function placeRoad(executor: CommandExecutor, x: number, y: number): PlacedObject {
     const obj: PlacedObject = {
-      id: `r-${x}-${y}`, catalogId: 'road-dirt',
+      id: `r-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
     };
-    const item = getCatalogItem('road-dirt');
+    const item = getCatalogItem('path-overgrown-dirt');
     const res = executor.execute({
       type: CommandType.PlaceObject, timestamp: 0,
       object: obj, loadValue: item?.loadValue ?? 0,
@@ -231,9 +231,9 @@ describe('commitStrokeGroup — batch undo', () => {
   it('collapses an in-place rotate (remove + re-add same id) into one undo that restores the original', () => {
     const state = makeState(10, 10);
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const item = getCatalogItem('road-dirt');
+    const item = getCatalogItem('path-overgrown-dirt');
     const obj: PlacedObject = {
-      id: 'rot-1', catalogId: 'road-dirt',
+      id: 'rot-1', catalogId: 'path-overgrown-dirt',
       position: { x: 4, y: 4 }, rotation: 0, elevation: 0,
     };
     executor.execute({ type: CommandType.PlaceObject, timestamp: 0, object: obj, loadValue: item?.loadValue ?? 0 } as PlaceObjectCommand);
@@ -310,10 +310,10 @@ describe('runSilently', () => {
 describe('collapsed strokes and auto-revert', () => {
   function placeRoadAt(executor: CommandExecutor, x: number, y: number): PlacedObject {
     const obj: PlacedObject = {
-      id: `r-${x}-${y}`, catalogId: 'road-dirt',
+      id: `r-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
     };
-    const item = getCatalogItem('road-dirt');
+    const item = getCatalogItem('path-overgrown-dirt');
     const res = executor.execute({
       type: CommandType.PlaceObject, timestamp: 0,
       object: obj, loadValue: item?.loadValue ?? 0,

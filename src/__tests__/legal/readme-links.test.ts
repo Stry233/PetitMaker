@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { LEGAL } from '../../legal/config';
 
-// SINGLE-SOURCE URL drift guard (round 3 amendment). README.md and
+// SINGLE-SOURCE URL drift guard. README.md and
 // README.zh-CN.md are plain GitHub markdown — they cannot be token-processed
 // like the src/legal/content/* docs (which use the `{origin}` token) or read
 // `cfg.canonicalOrigin` like the static-page generator. To keep

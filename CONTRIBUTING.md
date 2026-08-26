@@ -26,7 +26,7 @@ This appends a line to the commit message using your real (or usual) name and em
 Signed-off-by: Your Name <you@example.com>
 ```
 
-Commits without a valid `Signed-off-by:` line cannot be merged. If you forget, amend with `git commit --amend -s` (or rebase with sign-off) and force-push the branch.
+Commits without a valid `Signed-off-by:` line will not be merged; maintainers check for it during review. If you forget, amend with `git commit --amend -s` (or rebase with sign-off) and force-push the branch.
 
 <details>
 <summary>Developer Certificate of Origin 1.1 (full text)</summary>
@@ -87,11 +87,15 @@ We only publish a contributor's name (in credits, the About screen, release note
 
 ## Development setup
 
+Requires [Node.js](https://nodejs.org) 24 or newer.
+
 ```bash
 npm install
-npm run dev          # Vite dev server
-npm run test:run     # run the test suite (Vitest)
-npm run lint         # TypeScript type-check (tsc --noEmit)
+npm run hooks:install   # once per clone: the pre-commit hook that stamps build-info.json
+npm run dev             # Vite dev server
+npm run test:run        # run the test suite (Vitest)
+npm run lint            # TypeScript type-check (tsc --noEmit)
+npm run build           # production build
 ```
 
 Please run `npm run test:run` and `npm run lint` before opening a pull request, and keep changes focused. For architecture and conventions, see `docs/ARCHITECTURE.md`.

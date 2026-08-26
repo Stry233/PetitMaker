@@ -11,6 +11,7 @@
     "fr": "Amaryllis rouge"
   },
   "icon": "flower-amaryllis",
+  "iconColor": "#c45553",
   "width": 1,
   "height": 1,
   "loadValue": 10,

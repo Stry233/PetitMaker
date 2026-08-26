@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { motion, animate, useMotionValue, useTransform, useReducedMotionConfig } from 'framer-motion';
 import { font, radii, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
+import { roleFont } from '../../../design/text-weight';
 import { useT, translate } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import type { GridState, MapNotes } from '../../../../core/model/types';
@@ -73,7 +74,7 @@ function AnimatedTotal({ bytes, label }: { bytes: number | null; label: string }
 
   const tint = dir === 1 ? SIZE_UP : dir === -1 ? SIZE_DOWN : skin.plateInk;
   return (
-    <span style={{ fontSize: 12.5, fontWeight: 800, color: skin.plateInk, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>
+    <span style={{ ...roleFont('small'), color: skin.plateInk, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>
       <span>{label}:</span>
       <motion.span
         // Colour eases INTO the tint (quick, ~30% of the curve) then drifts back over the rest,
@@ -107,11 +108,11 @@ function trimNotes(n: MapNotes): MapNotes | undefined {
   return out.title || out.description || out.author ? out : undefined;
 }
 
-const rowLabel: CSSProperties = { fontSize: 14, fontWeight: 700, color: skin.ink };
-const rowDesc: CSSProperties = { fontSize: 12, fontWeight: 600, color: skin.plateInk, opacity: 0.8, lineHeight: 1.35 };
-const chipStyle: CSSProperties = { fontFamily: font.family, fontSize: 11.5, fontWeight: 800, color: skin.plateInk, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-const inputStyle: CSSProperties = { fontFamily: font.family, fontSize: 13, fontWeight: 600, color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 10px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const fieldCaption: CSSProperties = { fontSize: 11.5, fontWeight: 800, color: skin.plateInk, marginBottom: 3, display: 'block' };
+const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
+const rowDesc: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.35 };
+const chipStyle: CSSProperties = { fontFamily: font.family, ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 10px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const fieldCaption: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, marginBottom: 3, display: 'block' };
 const fieldWrap: CSSProperties = { display: 'block' };
 
 function SectionRow({ name, desc, hint, checked, disabled, onToggle, bytes }: {
@@ -375,7 +376,6 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
               idPrefix="history-depth"
               value={historyDepthKey}
               options={['all', 'last100']}
-              fontSize={12}
               render={(k) => (k === 'all' ? t('exportjson.depth_all') : t('exportjson.depth_last'))}
               onChange={setHistoryDepthKey}
             />
@@ -411,14 +411,14 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16, paddingTop: 12, borderTop: `1.5px solid ${skin.line}`, flex: '0 0 auto' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: skin.ink }}>{t('exportjson.pretty')}</span>
+          <span style={{ ...roleFont('caption'), color: skin.ink }}>{t('exportjson.pretty')}</span>
           <HelpBubble text={t('exportjson.pretty_help')} />
         </span>
         <Switch on={pretty} onClick={() => setPretty((v) => !v)} label={t('exportjson.pretty')} />
         <span style={{ flex: 1 }} />
         {computing || total == null
           ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: skin.plateInk }}>{t('exportjson.total')}:</span>
+              <span style={{ ...roleFont('small'), color: skin.plateInk }}>{t('exportjson.total')}:</span>
               <Spinner size={13} />
             </span>
           : <AnimatedTotal bytes={total} label={t('exportjson.total')} />}

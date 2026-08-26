@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTerrainMeshes, waterSwellWeights } from '../../canvas/map3d/build/terrain-geometry';
+import { buildTerrainMeshes } from '../../canvas/map3d/build/terrain-geometry';
 import { TERRAIN_OFFSET, layerToY, cellCornerWorld } from '../../canvas/map3d/core/coords';
 import { CellZone, TerrainType } from '../../core/model/types';
 
@@ -135,8 +135,8 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('a trimmed water cell honours the edge-cut: the water surface follows the cut, unlike the full square', () => {
-    // Before the fix the water branch ignored t.corners, so a cut produced the SAME full-square
-    // surface as no cut. A real cut must reshape the translucent water footprint.
+    // A water branch that ignores t.corners produces the SAME full-square surface for a cut cell
+    // as for an uncut one. A real cut must reshape the translucent water footprint.
     const square = buildTerrainMeshes(gridFrom([[water(0, ['square', 'square', 'square', 'square'])]]));
     const cut = buildTerrainMeshes(gridFrom([[water(0, ['fan', 'square', 'square', 'square'])]]));
     expect(cut.water.positions.length).not.toBe(square.water.positions.length);
@@ -199,90 +199,5 @@ describe('preview3d/terrain-geometry', () => {
     const m = buildTerrainMeshes(gridFrom([[void_]]));
     expect(m.water.positions.length).toBeGreaterThan(0);  // surface + map-edge depth walls
     expect(m.ground.positions.length).toBeGreaterThan(0); // opaque deep-sea floor
-  });
-});
-
-describe('waterSwellWeights', () => {
-  const water = (e = 0): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: e } });
-  const void_ = (): MacroCell => ({ zone: CellZone.Void, terrain: null });
-  const EPS = 1e-4;
-
-  /** Cell-space (micro-grid) coords of water-mesh vertex i. */
-  const microCoord = (positions: number[], i: number, width: number, height: number) => {
-    const off = { x: width / 2, z: height / 2 };
-    return {
-      cx: positions[i * 3]! + off.x - TERRAIN_OFFSET,
-      py: positions[i * 3 + 1]!,
-      cz: positions[i * 3 + 2]! + off.z - TERRAIN_OFFSET,
-    };
-  };
-
-  it('a lake surface sways only strictly inside its outline — the waterline stays pinned', () => {
-    // 5×5 grass with a 3×3 ground-level lake at cells (1..3, 1..3). The lake's
-    // surface spans [1,4]×[1,4] in cell space; the only interior grid corners
-    // (shared by four water cells) are at 2 and 3 on each axis.
-    const rows = Array.from({ length: 5 }, (_, y) =>
-      Array.from({ length: 5 }, (_, x) => (x >= 1 && x <= 3 && y >= 1 && y <= 3 ? water() : grass())));
-    const state = gridFrom(rows);
-    const m = buildTerrainMeshes(state);
-    const w = waterSwellWeights(state, m.water.positions);
-    expect(w.length).toBe(m.water.positions.length / 3);
-
-    const top = Math.max(layerToY(0) + 0.05, 0.08 + 0.02); // ground-level lake surface height
-    let interior = 0;
-    for (let i = 0; i < w.length; i++) {
-      const { cx, py, cz } = microCoord(m.water.positions, i, 5, 5);
-      const inside = Math.abs(py - top) < EPS
-        && cx > 1 + EPS && cx < 4 - EPS && cz > 1 + EPS && cz < 4 - EPS;
-      expect(w[i]).toBe(inside ? 1 : 0);
-      if (inside) interior++;
-    }
-    expect(interior).toBeGreaterThan(0); // the interior corners exist and sway
-  });
-
-  it('pins every vertex that touches a trimmed water cell (its outline is the body boundary)', () => {
-    const rows = Array.from({ length: 5 }, (_, y) =>
-      Array.from({ length: 5 }, (_, x) => (x >= 1 && x <= 3 && y >= 1 && y <= 3 ? water() : grass())));
-    const trims: [CornerTrim, CornerTrim, CornerTrim, CornerTrim] = ['fan', 'square', 'square', 'square'];
-    rows[1]![1] = { zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 0, corners: trims } };
-    const state = gridFrom(rows);
-    const m = buildTerrainMeshes(state);
-    const w = waterSwellWeights(state, m.water.positions);
-
-    let stillSwaying = 0;
-    for (let i = 0; i < w.length; i++) {
-      const { cx, cz } = microCoord(m.water.positions, i, 5, 5);
-      // corner (2,2) touches the trimmed cell (1,1) → pinned; (3,3)/(2,3)/(3,2) still sway
-      if (Math.abs(cx - 2) < EPS && Math.abs(cz - 2) < EPS) expect(w[i]).toBe(0);
-      if (w[i] === 1) stillSwaying++;
-    }
-    expect(stillSwaying).toBeGreaterThan(0);
-  });
-
-  it('the sea sways only where all four touching cells are sea — shorelines and map edges stay pinned', () => {
-    // 4×4 all-Void except one grass cell at (0,0). Sea quads sit on the MACRO grid.
-    const rows = Array.from({ length: 4 }, (_, y) =>
-      Array.from({ length: 4 }, (_, x) => (x === 0 && y === 0 ? grass() : void_())));
-    const state = gridFrom(rows);
-    const m = buildTerrainMeshes(state);
-    const w = waterSwellWeights(state, m.water.positions);
-
-    const off = 2; // 4/2 — macro grid, no terrain offset
-    const at = (i: number) => ({
-      gx: m.water.positions[i * 3]! + off,
-      py: m.water.positions[i * 3 + 1]!,
-      gz: m.water.positions[i * 3 + 2]! + off,
-    });
-    let interior = 0;
-    for (let i = 0; i < w.length; i++) {
-      const { gx, py, gz } = at(i);
-      // Interior corners: strictly inside the map AND not touching the grass cell.
-      const insideMap = gx > EPS && gx < 4 - EPS && gz > EPS && gz < 4 - EPS;
-      const touchesGrass = gx < 1 + EPS && gz < 1 + EPS;
-      const inside = Math.abs(py - 0.05) < EPS && insideMap && !touchesGrass;
-      expect(w[i]).toBe(inside ? 1 : 0);
-      if (inside) interior++;
-    }
-    expect(interior).toBeGreaterThan(0);
   });
 });

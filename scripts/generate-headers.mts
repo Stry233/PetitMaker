@@ -10,9 +10,8 @@
 // per-platform string/object generators (toNetlifyHeaders, toVercelJson,
 // toEsaDoc, toCspMeta) live in ../security/headers-policy.ts — both are
 // imported directly by src/__tests__/legal/headers-policy.test.ts instead of
-// this file. See scripts/license-audit.mts's doc comment for why a
-// main-module guard doesn't work under `vite-node` (the same trap this file
-// avoids by never being imported for anything but its CLI side effect).
+// this file. scripts/license-audit.mts's doc comment says why a main-module
+// guard cannot host both under `vite-node`.
 //
 // Usage (see package.json):
 //   vite-node scripts/generate-headers.mts            regenerate all outputs

@@ -1,9 +1,10 @@
 /**
- * Task 1 of the half-step span items feature (issue #4): the trait itself, the
- * covered-cell fixes in V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid
- * guard. Detection (bridge-span / heightDrop walking the half grid) is Task 2 —
- * these fixtures carry `halfStep` paired with `noFloat`/no other trait, never
- * `waterSpan`/`heightDrop`, so they exercise Task 1 in isolation.
+ * The half-step span items (issue #4) at the TRAIT level: the trait itself, the
+ * covered-cell expansion in V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid
+ * guard. Detection (bridge-span / heightDrop walking the half grid) belongs to
+ * `half-step-detection.test.ts` — these fixtures carry `halfStep` paired with
+ * `noFloat`/no other trait, never `waterSpan`/`heightDrop`, so the trait is
+ * exercised in isolation.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';

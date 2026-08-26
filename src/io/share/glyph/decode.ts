@@ -74,11 +74,10 @@ function sampleStripLuma(rgba: Uint8Array, width: number, height: number, x0: nu
   return vals.length ? median(vals) : null;
 }
 
-/** Connected-component dark-blob scan → fixed-geometry finder-pair candidates, best first.
- *  Ported from petitglyph/poster.ts findFinders, with the module search replaced by the fixed
- *  132-col span geometry. */
+/** Connected-component dark-blob scan → fixed-geometry finder-pair candidates, best first. The band
+ *  spans GRID_COLS by construction, so a pair fixes the module pitch with no per-module search. */
 function findFinders(rgba: Uint8Array, width: number, height: number): Geo[] {
-  // Threshold is deliberately tighter than "any dark-ish pixel": the darkest DATA/calibration
+  // The threshold is tighter than "any dark-ish pixel": the darkest DATA/calibration
   // palette colors (luma-band-0) are intentionally dark for contrast but must NOT flood-fill-merge
   // with a finder square that happens to sit directly adjacent to one of them (finders and data
   // share a border with no reserved gap row/col on that side) — a merge corrupts the finder's

@@ -89,6 +89,31 @@ img {
   to { background-position: var(--pw-stripe-travel) 0; }
 }
 
+/* The construction tape's crawl (TapeBar): the striped layer TRAVELS one stripe
+   period behind the fill's clip, and it is a transform because
+   `background-position` is not a composited property. Blink repaints and
+   pixel-snaps a background every frame, and one 11.31px period per 1.6s is a
+   0.06px step — which snaps to nothing for a dozen frames and then jumps a
+   whole device pixel, so the stripes read as shaking rather than crawling.
+   A transform interpolates in the compositor at sub-pixel precision. The layer
+   is one period wider than the fill so the band it vacates is always covered,
+   and travelling exactly one period lands the pattern on itself. */
+.pw-stripe-drift { animation: pw-stripedrift 1.6s linear infinite; }
+@keyframes pw-stripedrift {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--pw-stripe-travel)); }
+}
+
+/* The sleeper's plume: the three z marks light in sequence and go out together. */
+.pw-zzz-mark { opacity: 0; animation: pw-zzzfade 2.1s linear infinite; }
+.pw-zzz-mark-2 { animation-delay: 0.35s; }
+.pw-zzz-mark-3 { animation-delay: 0.7s; }
+@keyframes pw-zzzfade {
+  0%, 8% { opacity: 0; }
+  22%, 82% { opacity: 1; }
+  96%, 100% { opacity: 0; }
+}
+
 /* Blueprint done watermark: the big soft check draws itself once. */
 .pw-drawcheck path {
   stroke-dasharray: 26;
@@ -120,8 +145,20 @@ img {
 .pw-noscroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* A placeholder takes its colour from a pseudo-element, which an inline style cannot reach; the
-   field passes the ink in as --pw-placeholder. Full opacity: Firefox dims placeholders by default. */
-.pw-search-field::placeholder { color: var(--pw-placeholder, #747474); opacity: 1; }
+   field passes the ink in as --pw-placeholder. Full opacity: Firefox dims placeholders by default.
+
+   ONE LINE, ALWAYS. A placeholder in a TEXTAREA wraps like any other text, and a wrapped one is part
+   of the element's scrollHeight in Blink — so a field that sizes itself to its content grew to hold
+   a line nobody typed and came back down at the first keystroke. Clamped to one line with an
+   ellipsis, the grey text obeys the field's own line rules instead of rewriting them. Harmless on a
+   single-line input, which never wrapped. */
+.pw-search-field::placeholder {
+  color: var(--pw-placeholder, #747474);
+  opacity: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* The search input's own clear button is a platform control drawn in the platform's colours. */
 .pw-search-field::-webkit-search-cancel-button { display: none; }
 
@@ -145,15 +182,21 @@ img {
   :root:not([data-reduced-motion='0']) .pw-wavy,
   :root:not([data-reduced-motion='0']) .pw-stripes,
   :root:not([data-reduced-motion='0']) .pw-blankdrift,
+  :root:not([data-reduced-motion='0']) .pw-stripe-drift,
   :root:not([data-reduced-motion='0']) .pw-caret-blink { animation: none; }
   :root:not([data-reduced-motion='0']) .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
+  /* The three marks stand LIT rather than at the first keyframe's nothing: the plume is what says
+     she is asleep, and a still frame of it has to say that too. */
+  :root:not([data-reduced-motion='0']) .pw-zzz-mark { animation: none; opacity: 1; }
 }
 
 [data-reduced-motion='1'] .pw-wavy,
 [data-reduced-motion='1'] .pw-stripes,
+[data-reduced-motion='1'] .pw-stripe-drift,
 [data-reduced-motion='1'] .pw-blankdrift,
 [data-reduced-motion='1'] .pw-caret-blink { animation: none; }
 [data-reduced-motion='1'] .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
+[data-reduced-motion='1'] .pw-zzz-mark { animation: none !important; opacity: 1; }
 
 /* Catch-all. Components own a lot of plain CSS transitions inline (hover tints,
    rotating chevrons, panel fades); those are invisible to Framer's MotionConfig,
@@ -201,14 +244,17 @@ img {
 }
 
 /* THE RING SAYS WHERE THE KEYBOARD IS, so it is drawn only where the keyboard
-   put it. A browser also matches `:focus-visible` on the element that is
-   already focused as soon as any key goes down, and a control here is focused
-   by the click that chose it: pressing Enter, or that control's own shortcut,
-   then rings a control the yellow plate already marks as chosen. `design/
-   focus-source.ts` stamps what put the focus there, and this is the value that
-   draws nothing. `!important` to beat the ring's own, which needs it against
-   the inline styles the controls carry. */
-[data-focus-source='pointer'] *:focus-visible {
+   put it. A browser also matches `:focus-visible` in two other cases: on the
+   element that is already focused as soon as any key goes down (a control here
+   is focused by the click that chose it, so Enter or a shortcut would ring a
+   control the yellow plate already marks as chosen), and on an element a
+   SCRIPT focused before any input existed (the tour's welcome card and the
+   modals take focus on mount). `design/focus-source.ts` stamps what put the
+   focus there, and these are the two values that draw nothing. `!important`
+   to beat the ring's own, which needs it against the inline styles the
+   controls carry. */
+[data-focus-source='pointer'] *:focus-visible,
+[data-focus-source='program'] *:focus-visible {
   outline: none !important;
   box-shadow: none;
 }

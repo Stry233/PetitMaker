@@ -15,6 +15,7 @@
     "pink"
   ],
   "icon": "plant-shrub",
+  "iconColor": "#92aa64",
   "width": 1,
   "height": 1,
   "loadValue": 15,

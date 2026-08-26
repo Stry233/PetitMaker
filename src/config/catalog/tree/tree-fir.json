@@ -11,6 +11,7 @@
     "fr": "Sapin"
   },
   "icon": "tree-fir",
+  "iconColor": "#5f6b4e",
   "width": 1,
   "height": 1,
   "loadValue": 50,

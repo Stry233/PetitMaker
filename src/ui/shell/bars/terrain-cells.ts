@@ -226,8 +226,8 @@ export const CELL = { y: 1729, w: 166, h: 115 } as const;
  *
  * Near the size the design's own eleven drawings average, so the row keeps the weight the document
  * gives it and only the SPREAD goes: the mountain mass reads at 91 where the trim scissors read at
- * 51, and a row whose members differ that far is what the owner saw when 山体 and 路面 drew the same
- * tool at plainly different sizes. It stays at 62 rather than tracking that average, which drawing
+ * 51, and a row whose members differ that far draws the same tool at plainly different sizes on 山体
+ * and 路面. It stays at 62 rather than tracking that average, which drawing
  * the line and curve handles lifted to 67: following it would grow the nine cells nobody asked about.
  */
 export const GLYPH = 62;
@@ -290,7 +290,7 @@ export function plateShape(active: boolean, grown: boolean): Record<string, numb
  * width and a wider combo grows into the plate rather than off it. There is no inset: measured in
  * the browser, a badge whose right edge lands on the plate's own leaves its bottom-right corner 4 px
  * past the cap arc, which is the overlap that reads as attached. The two nearby numbers are both
- * wrong and were both tried. The design's is 19 design px PAST the cell's right edge, and a cell
+ * wrong. The design's is 19 design px PAST the cell's right edge, and a cell
  * plate is a stadium: by the badge's row the surface has curved away, so the badge floats clear of
  * the shape it belongs to. Pulling it back to where the arc reaches the badge's bottom edge — the
  * furthest right it can stand and still only TOUCH the plate — stops it short of the corner instead.

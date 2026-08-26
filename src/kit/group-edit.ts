@@ -11,8 +11,10 @@ import type { EditorEvents, GridState, PlacedObject } from '../core/model/types'
 import { useEditorStore } from '../state/store';
 import { getActiveView } from '../canvas/active-view';
 import { paintGroupRotationArc } from '../canvas/interaction/usePointerInteraction';
-import { rotateObject, type RotateResult } from '../tools/objects/actions';
-import { rotateGroup, deleteGroup, type DeleteGroupResult, type QuarterTurn } from '../tools/objects/group-actions';
+import {
+  deleteGroup, rotateGroup, rotateObject,
+  type DeleteGroupResult, type QuarterTurn, type RotateResult,
+} from '../tools/objects';
 import { showToast } from '../core/runtime/toast-bus';
 import { host } from './host';
 

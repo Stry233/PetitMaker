@@ -37,7 +37,7 @@ import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { showToast } from '../../core/runtime/toast-bus';
 import { useEditorStore } from '../../state/store';
 import { useKeybinds } from '../../core/runtime/keybindings';
-import { isCurveSessionOpen, subscribeCurveSession } from '../../tools/paint/curve-session';
+import { isCurveSessionOpen, subscribeCurveSession } from '../../tools/paint';
 import { getActiveView, onActiveViewChange } from '../../canvas/active-view';
 import { capsOf } from '../../canvas/interaction/camera-gestures';
 import type { CameraCaps } from '../../core/interaction/camera-verbs';

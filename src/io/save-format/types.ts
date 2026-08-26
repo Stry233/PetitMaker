@@ -49,9 +49,9 @@ export interface SaveFile {
   metadata: { savedAt: string };
   provenance?: SerializedProvenance;
   /** Optional export-json sections (additive, no version bump — old builds ignore unknown
-   *  keys, so old files load in new builds and new-section files load in old builds). Loose
-   *  `unknown` on purpose: json-codec must not gain a dependency on generation/history/etc
-   *  types — only io/export-json (write) and io/import-sections (read, future task) parse them. */
+   *  keys, so old files load in new builds and new-section files load in old builds). Typed
+   *  `unknown` because json-codec must not gain a dependency on generation/history/etc types —
+   *  only io/export-json (write) and io/import-sections (read) parse them. */
   notes?: MapNotes;
   generation?: unknown;
   session?: unknown;
@@ -66,9 +66,9 @@ export interface SaveFile {
 }
 
 /**
- * An untrusted plain-JSON save of *some* version. Deliberately loose: migrations
- * operate on this structural shape and MUST NOT import domain types, so a migration
- * written today keeps running unchanged after the in-memory model evolves.
+ * An untrusted plain-JSON save of *some* version, kept structural: migrations operate on this
+ * shape and MUST NOT import domain types, so a migration written today keeps running unchanged
+ * after the in-memory model evolves.
  */
 export type RawSave = Record<string, unknown> & { version?: number };
 

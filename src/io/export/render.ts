@@ -5,7 +5,6 @@ import type { Badge, ExportComposition, ExportOptions } from './types';
 import type { PixelSize } from './sizing';
 import type { GridState } from '../../core/model/types';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
-import type { PixelBuffer } from './paint-types';
 
 export interface RenderArgs {
   summary: MapProvenanceSummary;
@@ -14,12 +13,14 @@ export interface RenderArgs {
   options: ExportOptions; mapAspect: number;
   /** Actual captured map pixel size (loaded base image dims). Drives Original 1:1 layout. */
   mapPx?: PixelSize;
-  /** Paint the composition into an offscreen canvas and return its pixel buffer (or null). */
-  capture: (comp: ExportComposition) => Promise<PixelBuffer | null>;
-  /** Encode the final buffer to an image Blob (browser: canvas.toBlob → PNG). Plain encoding —
+  /** Paint the composition into an offscreen canvas and return it (or null). */
+  capture: (comp: ExportComposition) => Promise<HTMLCanvasElement | null>;
+  /** Encode the painted canvas to an image Blob (browser: canvas.toBlob → PNG). Plain encoding —
    *  the share code (if any) was already painted into the composition as a visible band by
-   *  `capture`, so there is no pixel-level embedding step here. */
-  encode: (buf: PixelBuffer) => Promise<Blob>;
+   *  `capture`, so there is no pixel-level embedding step here. The canvas is handed over as it
+   *  is: an encode reads the pixels once, and any buffer between the two would copy the whole
+   *  image out of the canvas and back into another. */
+  encode: (canvas: HTMLCanvasElement) => Promise<Blob>;
 }
 
 export interface RenderResult { blob: Blob | null; composition: ExportComposition }
@@ -31,8 +32,8 @@ export async function renderExport(args: RenderArgs): Promise<RenderResult> {
   const badges = badgesFor(args.summary);
   const layerCount = args.gridState ? layersFor(args.gridState).length : 1;
   const composition = computeComposition(args.options, args.mapAspect, badges, { layerCount, mapPx: args.mapPx });
-  const buf = await args.capture(composition);
-  const blob = buf ? await args.encode(buf) : null;
+  const canvas = await args.capture(composition);
+  const blob = canvas ? await args.encode(canvas) : null;
   return { blob, composition };
 }
 

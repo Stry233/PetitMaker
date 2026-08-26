@@ -21,14 +21,15 @@ import {
 import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../tools/utils';
+import { generateObjectId } from '../../../core/model/object-id';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { ObjectShelf } from '../../../ui/shell/bars/ObjectShelf';
 import { CARD, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, shelfItems } from '../../../ui/shell/bars/object-shelf';
 import { wheelPush } from '../../../ui/shell/bars/row-scroll';
 import { ShelfScrollbar } from '../../../ui/shell/bars/ShelfScrollbar';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
-import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT, ZOOM, frameFit, standsInNameRow } from '../../../ui/shell/units';
+import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT, ZOOM, standsInNameRow } from '../../../ui/shell/units';
+import { frameFit } from '../../../ui/design/scale';
 import { makeState } from '../../rules/_helpers';
 
 function mount(itemId: string | null = null) {
@@ -118,9 +119,9 @@ describe('the shelf tabs', () => {
   });
 
   /**
-   * The mark carries the choice on its own, exactly as the game's category row does. The chosen
-   * WORD used to take the active yellow too, which put the one name the eye is looking for in the
-   * lightest colour the interface has, over an island bordered in sand of nearly that colour.
+   * The mark carries the choice on its own, exactly as the game's category row does. Giving the
+   * chosen WORD the active yellow too puts the one name the eye is looking for in the lightest
+   * colour the interface has, over an island bordered in sand of nearly that colour.
    */
   it('marks the chosen one by the bar alone: every name is one colour on one outline', () => {
     mount();
@@ -826,9 +827,9 @@ describe('the item card against the band it stands out of', () => {
 });
 
 /**
- * Picking another name used to swap the whole row between two frames, which is the one place in
- * this shelf where something changes and nothing says so. The row of cards is one reel now, keyed,
- * so it is destroyed and remade — which is what plays the motion.
+ * Swapping the whole row between two frames is the one change in this shelf that nothing says. The
+ * row of cards is one keyed reel, so picking another name destroys it and remakes it, which is what
+ * plays the motion.
  */
 describe('the row of cards arrives', () => {
   const reel = () => row().firstElementChild as HTMLElement;

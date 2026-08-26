@@ -47,14 +47,17 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(baseSupportRule.validate(state).length).toBeGreaterThan(0);
   });
 
-  it('rejects when water cell breaks the 3x3 base', () => {
+  it('a water cell in the 3x3 window supports like the block it replaced', () => {
+    // The game forms waterfalls by CONVERTING a mountain block to water among its standing
+    // neighbours (游戏内建造规则 rule 8), so the conversion must be support-neutral: water at N
+    // fills its cell to N in a neighbour's window, even though nothing may be built ON it.
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 1);
     setTerrain(state, 4, 4, TerrainType.Water, 1);
     setTerrain(state, 5, 5, TerrainType.Mountain, 4);
-    expect(baseSupportRule.validate(state).length).toBeGreaterThan(0);
+    expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
   it('layer 7 passes with 3x3 base at layer 4 (which has 5x5 at layer 1)', () => {
@@ -133,36 +136,53 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
-  it('does not count the water block itself as support at its own level', () => {
-    // mountain at 5 needs a 3x3 at E >= 2. Water at 2 holds mass only to 1 → refused;
-    // water at 3 holds mass to 2 → allowed. That step is the whole depth semantics.
+  it('counts a water cell to its surface, and no further', () => {
+    // mountain at 6 needs a 3x3 at E >= 3. Water at 2 fills its cell to 2 → refused;
+    // water at 3 fills to 3 → allowed. The surface is where the credit stops.
     const build = (waterElev: number) => {
       const state = makeState();
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++)
-          setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 2);
+          setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 3);
       setTerrain(state, 4, 4, TerrainType.Water, waterElev);
-      setTerrain(state, 5, 5, TerrainType.Mountain, 5);
+      setTerrain(state, 5, 5, TerrainType.Mountain, 6);
       return baseSupportRule.validate(state);
     };
     expect(build(2).length).toBeGreaterThan(0);
     expect(build(3)).toHaveLength(0);
   });
 
-  it('still refuses a mountain sunk more than 3 layers above a river (RULES.md §7 reg. 2)', () => {
-    // A river can't sink too much: mass under water at N reaches N-1, so a neighbouring
-    // mountain may stand at most N+2 before its 3x3 window (E >= M-3) clears the riverbed.
+  it('still refuses a mountain more than 3 layers above a neighbouring river', () => {
+    // Water at N credits the window at N, so a neighbouring mountain may stand at most N+3
+    // before its 3x3 window (E >= M-3) clears the water's surface. A full wedding cake, so
+    // the water cell is the only thing the window can be short of.
     const rim = (mountainElev: number) => {
       const state = makeState();
-      for (let dy = -2; dy <= 2; dy++)
-        for (let dx = -2; dx <= 2; dx++)
-          setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 3);
+      for (let e = 1; e <= 4; e++) {
+        const r = 5 - e;
+        for (let dy = -r; dy <= r; dy++)
+          for (let dx = -r; dx <= r; dx++)
+            setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, e);
+      }
       setTerrain(state, 4, 4, TerrainType.Water, 3);
       setTerrain(state, 5, 5, TerrainType.Mountain, mountainElev);
       return baseSupportRule.validate(state);
     };
-    expect(rim(5)).toHaveLength(0);          // needs E >= 2, riverbed reaches 2 ✓
-    expect(rim(6).length).toBeGreaterThan(0); // needs E >= 3, riverbed reaches only 2 ✗
+    expect(rim(6)).toHaveLength(0);          // needs E >= 3, the water fills to 3 ✓
+    expect(rim(7).length).toBeGreaterThan(0); // needs E >= 4, the water stops at 3 ✗
+  });
+
+  it('a plunge pool may be dug at the foot of a tall waterfall (issue #19)', () => {
+    // A steep wall to 4 on a tier-1 skirt, a water channel at 4 between caps at 4: converting the
+    // skirt cell at the fall's foot to water must not collapse the caps — the conversion is
+    // support-neutral, and the pool is the shape the game expects at a fall's foot.
+    const state = makeState();
+    for (let y = 2; y <= 8; y++) for (let x = 2; x <= 8; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
+    for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Mountain, 4);
+    setTerrain(state, 5, 6, TerrainType.Water, 4);
+    expect(baseSupportRule.validate(state)).toHaveLength(0);
+    setTerrain(state, 5, 7, TerrainType.Water, 1);
+    expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
   it('does not require a 3x3 base for a cosmetic fillet whose structural top is below 4', () => {

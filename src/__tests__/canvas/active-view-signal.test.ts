@@ -1,10 +1,11 @@
 /**
  * The active-view SIGNAL and the selection sync that rides it.
  *
- * A 2D↔3D switch used to be an implicit consequence of a setter: `setActiveView` re-pointed the
- * ToolManager and told nobody, so the selection ring stayed in the overlay of the view that just
- * went hidden (the visible one showed none) and anything that had to follow the projection guessed
- * at the moment of the swap from `viewMode` instead. These pin the signal and its listener: it fires
+ * A 2D↔3D switch is an explicit SIGNAL, never an implicit consequence of a setter. A `setActiveView`
+ * that re-points the ToolManager and tells nobody leaves the selection ring in the overlay of the
+ * view that just went hidden (the visible one shows none) and leaves anything that has to follow the
+ * projection guessing at the moment of the swap from `viewMode`. These pin the signal and its
+ * listener: it fires
  * in BOTH directions, it fires when the lazily-built 3D scene registers itself (after the store flip,
  * so `viewMode` cannot stand in for it), the newly active overlay gets the rings, and the outgoing
  * one keeps none.

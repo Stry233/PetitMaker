@@ -1,50 +1,30 @@
-SETTLEMENT DESIGN — any inhabited area; the craft of making a place feel lived-in.
+SETTLEMENT DESIGN — every building is somebody's home, and the expert maps treat each one as its own small composed place.
 
-WHEN TO USE: any time you are placing buildings and roads together, regardless of style
-(cozy hamlet, farming village, mountain town, waterfront port).
+WHEN TO USE: whenever you place buildings, regardless of style — hamlet, hillside town, waterfront.
 
-PRINCIPLES
-1. Hierarchy: every settlement has one heart (plaza, well, market, pavilion). Homes orbit
-   it at varying distances; public buildings sit nearest.
-2. Density gradient: tight near the heart, loose at the edges. The outermost buildings
-   should feel like they are "drifting" away from the cluster.
-3. Doors face roads: build_road_network after placement, OR lay roads first and place
-   buildings along them. A building with no road adjacent reads as inaccessible.
-4. Public vs private: front face = toward road or plaza; back face = toward garden/farm.
-   Use decorate_zone garden or farm on the back side of building clusters.
-5. Mixed scale: no two identical-style neighbors. Vary rotation (0 / 90 / 270), building
-   type, and footprint. Maximum two instances of any one building style in adjacent cells.
-6. Edges matter: transition from built area to wild terrain with hedges or flora drifts
-   (scatter_objects trees or shrubs as a soft boundary) so buildings don't float in grass.
+WHO LIVES HERE
+- The catalog's buildings are one-of-each (max=1): eight neighbor cabins (~5x4), building-myhouse (7x4), building-stall, plus facility-shop (7x7) and facility-pavilion (6x5). A settlement mixes DISTINCT buildings; there is no repeating a house style.
+- ONE DISTRICT PER BUILDING: give each cabin its own small yard (a composed place is roughly 7x7 to 10x10 cells) with a theme of its own — a crop patch, a bamboo corner, a flower dooryard, a jetty. Never butt two cabins wall to wall; 4-8 cells of themed ground between neighbors.
+- The plaza (the locked structure near map center) is the neighbor center. Populate its WHOLE ring: on the reference island building distances from the plaza run from 13 to 69 cells — a few close, a few far, none bunched.
+- facility-shop and facility-pavilion are daily destinations: put them ON the trunk road. One or two homes may instead be deliberately secluded — reached only by a bridge or a dead-end spur — and those become the most memorable places on the map.
+
+FACING AND BACKING (what makes it look inhabited)
+- The door faces the view: open low ground, water, beds, the sea. The back gets the backing: higher terrain, a fall, or a tree stand 2-8 cells behind. Rotate the building (place_object rotation 0/90/180/270) to aim the front at the scenery, and only then build the backing behind it.
+- Beside a building, plant FEW species repeated: 1-3 species within reach of the door, ideally as a mirrored pair flanking the entrance (4 trees each side is the reference's habit). A dooryard bed is one species, solid.
+- Buildings sit happily on terraces: find_flat_areas with elevation=N finds bench spots, and a home one bench up with a view over the lower ground beats another home on the plain.
 
 METHOD
-1. Site: find_flat_areas with the planned settlement footprint. Identify the heart location
-   (favor proximity to water or an existing plaza) and note the circulation entry point.
-2. Heart first: place the landmark (facility-pavilion, well, or largest building) at the
-   heart. This is the focal point — see the composition skill.
-3. Orbiting buildings: place 3-6 homes in a loose ring 4-8 cells from the heart.
-   Stagger — no two on the same row or column. Vary rotation.
-4. Roads: build_road_network (or build_road for manual runs) connecting all building
-   fronts to the heart and to the map's wider circulation. Extend the spine beyond the
-   settlement so it reads as part of the world.
-5. Back-side decoration: decorate_zone hamlet covers the bulk of the settlement interior;
-   add decorate_zone garden or farm on back-side plots. Refine with scatter_objects for
-   individual beds.
-6. Edge softening: scatter_objects a loose tree/shrub band around the settlement perimeter.
-   Leave the road approach open (no trees blocking the entrance view).
+1. Site: find_flat_areas for each footprint (it includes the flat trait's +1 margin, so returned anchors place cleanly). Choose spots at varied plaza distances and varied elevations.
+2. Landmark first: the primary public building (shop or pavilion) at the heart, on flat open ground the trunk can reach.
+3. Homes: place cabins one by one, each rotated toward its view, each with its yard theme decided. A rejection names the blocker — shift a few cells, never brute-force the same spot.
+4. Roads: build_road_network to connect everything through validated crossings, then re-grade by hand (see the street-grammar skill): trunk 3 wide past shop/pavilion/plaza, 2-wide lanes to doors, and make at least two routes END at a door.
+5. Yards: decorate_zone hamlet over the settlement body; garden or farm behind the back sides; then per-door species-pure beds and the mirrored entrance pairs with scatter_objects.
+6. Edges: a loose tree band (spacing 2-3) where the settlement meets wild ground; leave every road approach open.
 
-FAILURE MODES TO AVOID
-- Grid barracks: houses in a perfect row with equal spacing. Stagger positions and vary
-  rotations before placing — aligned rows read as a military camp.
-- Doors to nowhere: place buildings after road layout or verify road adjacency after
-  build_road_network; evaluate_map roads and connectivity will show orphaned buildings.
-- Floating settlement: a cluster with no road connection to the wider map loses
-  evaluate_map connectivity (must stay >= 8 for a well-connected map).
-- Single-type hamlet: using only one building style throughout; mix at least 3 different
-  building catalog IDs per settlement.
+FAILURE MODES
+- Grid barracks: equal spacing on shared rows reads as a camp. Stagger positions, vary rotations and plaza distances.
+- Doors to nowhere: pavement should arrive within ~3 cells of most doors (the reference: 9 of 12 buildings). The exceptions must be deliberate seclusion, not oversight.
+- Backing forgotten: a house with mass in FRONT of its door and open ground behind is composed backwards — rotate it or move the mass.
+- Species soup at every door: one palette per place; the mixture belongs at region boundaries, not in a dooryard.
 
-DONE CHECK
-- evaluate_map connectivity >= 8 (settlement linked to map road network).
-- evaluate_map buildings >= 6 (sufficient variety and count).
-- Every building has a road within 2 cells of its front face.
-- At least one decorate_zone garden or farm behind a building cluster.
+DONE CHECK: evaluate_map buildings and connectivity >= 6; every building either road-adjacent or deliberately spur-served; each home names its yard theme; at least one mirrored entrance pair on the map.

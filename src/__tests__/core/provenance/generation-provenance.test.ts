@@ -14,7 +14,7 @@ describe('generation provenance', () => {
     const s = makeState(8, 8);
     const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry(), roadLookup(s));
     const start = e.getUndoStackSize();
-    e.withSource({ source: ProvSource.Procedural, procedural: { seed: 42, algorithm: 'random', configHash: 'abc' } }, () => {
+    e.withSource({ source: ProvSource.Procedural, procedural: { seed: 42, algorithm: 'designed', configHash: 'abc' } }, () => {
       e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command);
     });
     e.commitStrokeGroup(start);

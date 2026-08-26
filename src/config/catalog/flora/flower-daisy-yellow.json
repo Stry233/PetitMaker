@@ -11,6 +11,7 @@
     "fr": "Marguerite jaune"
   },
   "icon": "flower-daisy-yellow",
+  "iconColor": "#a28967",
   "width": 1,
   "height": 1,
   "loadValue": 10,

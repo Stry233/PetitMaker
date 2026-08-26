@@ -14,6 +14,7 @@ import { getMapRenderer } from '../canvas/map2d/renderer-registry';
 import { get3DCamera, set3DCamera } from '../canvas/map3d/scene/camera-registry';
 import type { CameraAngle } from '../canvas/map3d/capture';
 import { paintSpinRing } from '../canvas/interaction/usePointerInteraction';
+import { resolveCellsFlash } from '../canvas/map2d/layers/error-flash';
 import { singleSelection } from '../state/selection';
 import { useEditorStore } from '../state/store';
 import type { MacroCoord } from '../core/model/types';
@@ -23,7 +24,7 @@ const screenCentre = (): [number, number] => [window.innerWidth / 2, window.inne
 
 /** The slice of the 2D viewport a macro-to-screen projection needs. React chrome anchors through
  *  `getActiveView().projection` instead (it works in both 2D and 3D); this is for a caller outside
- *  the view seam that specifically wants the 2D viewport, such as the README-figures script. */
+ *  the view seam that specifically wants the 2D viewport, such as a script framing a capture. */
 export interface ViewportLike {
   macroToScreen: (c: MacroCoord) => { x: number; y: number };
   getZoom: () => number;
@@ -69,8 +70,17 @@ export const host = {
     set3d(c: CameraAngle): void { set3DCamera(c); },
   },
   feedback: {
+    /**
+     * A caller that does not name a grid gets one derived per cell from what stands there
+     * (`resolveCellsFlash`) rather than a blanket default. The agent's write acknowledgement is
+     * that caller, and its one list mixes terrain cells with the objects a place/scatter just
+     * landed — so no single boolean is right for it, in either view.
+     */
     flash(cells: MacroCoord[], opts?: { color?: number; terrainMode?: boolean }): void {
-      getActiveView()?.overlay.flashCommit(cells, opts);
+      const view = getActiveView();
+      if (!view) return;
+      const gs = opts?.terrainMode === undefined ? useEditorStore.getState().gridState : null;
+      view.overlay.flashCommit(gs ? resolveCellsFlash(gs, cells) : cells, opts);
     },
     plop(id: string): void { getActiveView()?.plopObject?.(id); },
     spin(id: string, from: number, to: number): void {
@@ -93,6 +103,11 @@ export const host = {
   buildableRegion: {
     show(cells: MacroCoord[]): void { getActiveView()?.overlay.showBuildableRegion(cells, true); },
     clear(): void { getActiveView()?.overlay.clearBuildableRegion(); },
+    /** The standing region breathing once, as its own answer to "why was that refused": the caller
+     *  brings the numbers, since a duration is declared in the motion registry and nowhere else. */
+    pulse(durationMs: number, dip: number): void {
+      getActiveView()?.overlay.pulseBuildableRegion?.(durationMs, dip);
+    },
   },
   route: {
     show(cells: MacroCoord[]): void { getActiveView()?.overlay.showRoute(cells); },

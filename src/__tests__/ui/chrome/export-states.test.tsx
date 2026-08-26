@@ -33,7 +33,7 @@ describe('export modal — provenance states', () => {
   });
 
   it('procedural map shows the badge toggle ENABLED', () => {
-    openWith((e) => { const s = e.getUndoStackSize(); e.withSource({ source: ProvSource.Procedural, procedural: { seed: 1, algorithm: 'random', configHash: 'h' } }, () => e.execute(paint(1, 1))); e.commitStrokeGroup(s); });
+    openWith((e) => { const s = e.getUndoStackSize(); e.withSource({ source: ProvSource.Procedural, procedural: { seed: 1, algorithm: 'designed', configHash: 'h' } }, () => e.execute(paint(1, 1))); e.commitStrokeGroup(s); });
     render(<ExportModal />, { wrapper: Wrapper });
     expect(screen.getByRole('switch', { name: 'Show provenance badge' }).getAttribute('aria-disabled')).not.toBe('true');
   });

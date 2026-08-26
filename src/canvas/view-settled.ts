@@ -20,7 +20,7 @@
  * and one more boundary is what makes it visible before the caller acts.
  *
  * A view that cannot report either fact (a synthetic view in a test, a future renderer) falls back
- * to a single frame, which is the old behavior: this can be early, never a hang.
+ * to a single frame: this can be early, never a hang.
  */
 import type { GridState } from '../core/model/types';
 import type { ActiveView } from './view-projection';

@@ -1,6 +1,6 @@
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { TerrainType, type Command } from '../../core/model/types';
-import type { ToolContext } from '../../tools/types';
+import type { ToolContext } from '../../tools/runtime/types';
 
 /** ToolContext over a test gridState + executor; overlay is a no-op stub so ghost-drawing tools
  *  run headless. Arming fields get sane headless defaults (nothing armed, everything visible);
@@ -31,7 +31,7 @@ export function makeToolCtx(
     layerVisibility: {},
     autoEdgeCut: 'off',
     eraserShape: 'dot',
-    tileMaterial: 'road-dirt',
+    tileMaterial: 'path-overgrown-dirt',
     // A test that names a material means it — the store's own default is `false`, and the road
     // macros read the MAP's surface under it.
     tileMaterialPicked: true,

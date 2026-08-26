@@ -1,0 +1,28 @@
+{
+  "id": "path-blue-board",
+  "category": "road",
+  "icon": "path-blue-board",
+  "name": {
+    "en": "Blue Board Path",
+    "zh": "蓝色木板路",
+    "ja": "青い板の道",
+    "ru": "Синяя дощатая дорожка",
+    "th": "ทางไม้กระดานสีน้ำเงิน",
+    "id": "Jalan Papan Biru",
+    "fr": "Chemin de planches bleu"
+  },
+  "color": "#5f81a5",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -10,7 +10,8 @@
  * screen-anchored React chrome (SelectionHandles / ContextMenu / popovers).
  */
 import type { GridState, MacroCoord } from '../core/model/types';
-import type { TrimmedCell } from '../tools/edge-cut/trim-preview';
+import type { GhostPaint } from '../core/runtime/preview-cell';
+import type { TrimmedCell } from '../tools/edge-cut';
 import type { RowSpan } from './map2d/layers/ghost-geometry';
 import type { MacroRect } from './interaction/marquee';
 import type { GroupRotation } from './group-arc';
@@ -55,8 +56,10 @@ export interface ToolOverlay {
   /** `losses` is what the shape would COST: cells whose coating this lay would replace, and cells a
    *  hand-placed planting holds that the run will refuse rather than take. Drawn in the warning
    *  tint beside the gain wash, so a ghost shows both halves of the press. */
-  showGhost(cells: MacroCoord[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void;
-  showGhostSpans(spans: RowSpan[], color: number, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
+  /** `paint` is either a plain tint (a placement wash) or the PREVIEW CARD the build tools draw —
+   *  see `core/runtime/preview-cell` for the card's geometry and its two palettes. */
+  showGhost(cells: MacroCoord[], paint: GhostPaint, terrainGrid?: boolean, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void;
+  showGhostSpans(spans: RowSpan[], paint: GhostPaint, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
   clearGhost(): void;
   /** `append` draws this ring alongside whatever is already on screen instead of replacing it
    *  (a GROUP selection paints one ring per member). Omit or false replaces. */
@@ -64,9 +67,21 @@ export interface ToolOverlay {
   clearSelection(): void;
   showHover(x: number, y: number, w?: number, h?: number, terrainMode?: boolean): void;
   clearHover(): void;
-  flashCommit(cells: MacroCoord[], opts?: { color?: number; terrainMode?: boolean }): void;
+  /** A cell may name its OWN grid (`micro`), overriding `terrainMode` for itself: one undo step can
+   *  hold a terrain change and an object change, and the two render half a cell apart. With
+   *  neither stated, both views fall back to the TERRAIN grid — a bare cell list names grid cells. */
+  flashCommit(cells: readonly (MacroCoord & { micro?: boolean })[], opts?: { color?: number; terrainMode?: boolean }): void;
   showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void;
   clearBuildableRegion(): void;
+  /**
+   * The standing region breathing once: it dips to `1 - dip` of its own opacity and comes back,
+   * over `durationMs`. Nothing new arrives beside it, because what it says is "this line, the one
+   * already on your map, is the reason the last edit was refused".
+   *
+   * OPTIONAL FOR THE DOUBLES ONLY: both live views implement it. A caller reaches it through
+   * `kit/host.ts`, which owns the numbers (they are declared in the motion registry).
+   */
+  pulseBuildableRegion?(durationMs: number, dip: number): void;
   /** The maze's answer, draped over the corridor floor: its own drape, so it can stand at the same
    *  time as the buildable-region one. Drawn on the TERRAIN grid (−HALF_TILE): walls render
    *  shifted up-left, so the visible corridor between two walls is the corridor cell's

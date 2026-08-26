@@ -1,7 +1,7 @@
 /*
  * Wavy — the app's ONE emphasis underline: a yellow wave travelling under a word.
  *
- * It lives here rather than in `agent/atoms.tsx` (its first home) because the whole Site Log UI is
+ * It lives here rather than in `agent/atoms.tsx` because the whole Site Log UI is
  * a lazy chunk, and the first-launch tour is in the main bundle: importing it from atoms would pull
  * that chunk's atoms + markdown renderer into the main bundle for one underline.
  *

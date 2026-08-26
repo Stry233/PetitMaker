@@ -11,6 +11,7 @@
     "fr": "Protéa rouge"
   },
   "icon": "flower-protea-red",
+  "iconColor": "#ca7a91",
   "width": 1,
   "height": 1,
   "loadValue": 10,

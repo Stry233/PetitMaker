@@ -11,6 +11,7 @@
     "fr": "Tournesol vert"
   },
   "icon": "flower-sunflower-green",
+  "iconColor": "#8e9c53",
   "width": 1,
   "height": 1,
   "loadValue": 10,
