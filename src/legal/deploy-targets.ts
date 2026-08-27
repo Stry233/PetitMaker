@@ -45,6 +45,10 @@ export interface DeployTarget {
   /** The boot loader's and splash's masthead file (under `public/`). The zh art carries the
    *  Chinese wordmark; the mainland deployment leads with it the way its title does. */
   bootBanner: string;
+  /** Search-engine ownership proofs, written into the static head as `<meta name content>` pairs.
+   *  Per deployment because each console verifies its own origin, and the proof must STAY in the
+   *  page after verification or the console revokes it. */
+  verificationMetas: readonly { name: string; content: string }[];
 }
 
 // The zh description also names the game in Latin: the title speaks one language per site, and the
@@ -83,6 +87,7 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
       zh: '上述静态文件由距离你最近的 Cloudflare 边缘节点分发。该网络在中国大陆没有节点，因此来自中国大陆的请求会由中国大陆以外的节点处理。',
     },
     bootBanner: 'banner.svg',
+    verificationMetas: [],
   },
   // Aliyun, for mainland users. Chinese leads, and the filing rows are the legal requirement for
   // serving from there at all. The PSB pair stays null until that filing is granted, and the
@@ -108,6 +113,8 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
       zh: '上述静态文件由距离你最近的阿里云边缘节点分发，其中包括位于中国大陆境内的节点，因此来自中国大陆的请求通常在境内处理。',
     },
     bootBanner: 'banner-zh.svg',
+    // Baidu search console ownership proof (百度搜索资源平台, HTML 标签验证).
+    verificationMetas: [{ name: 'baidu-site-verification', content: 'codeva-LFo4rScSrF' }],
   },
 };
 

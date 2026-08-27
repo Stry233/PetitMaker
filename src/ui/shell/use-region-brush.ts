@@ -4,8 +4,7 @@
  * (core/runtime/region-brush) the pointer machine reports painted cells
  * through, accumulating buildable cells (brush/eraser/rect/circle/line/curve
  * over grass, skipping plaza/non-grass) into a mutable buffer and committing
- * to the store's `region` on pointer-up. Extracted from App.tsx so
- * the orchestrator stays an orchestrator.
+ * to the store's `region` on pointer-up.
  *
  * OWNS THE REGION'S OWN UNDO/REDO too (`regionUndo`/`regionRedo`), a stack
  * separate from the map's command history: a painted region is a SCOPE for a
@@ -190,7 +189,7 @@ export function useRegionBrush(selectingRegion: boolean) {
 
         if (tool === 'eraser') {
           // Gather the dab's keys, drop them from the seen-set, then filter the
-          // coord list ONCE (was an O(N) filter per erased cell).
+          // coord list ONCE rather than once per erased cell.
           const toDelete = new Set<string>();
           for (let dy = 0; dy < size; dy++) {
             for (let dx = 0; dx < size; dx++) {
@@ -206,7 +205,7 @@ export function useRegionBrush(selectingRegion: boolean) {
             for (let dx = 0; dx < size; dx++) {
               const cx = coord.x - half + dx;
               const cy = coord.y - half + dy;
-              if (!buildable(cx, cy)) continue; // skip illegal cells
+              if (!buildable(cx, cy)) continue;
               const key = `${cx},${cy}`;
               if (brushSeenRef.current.has(key)) continue;
               brushSeenRef.current.add(key);
@@ -292,7 +291,6 @@ export function useRegionBrush(selectingRegion: boolean) {
             shapeCells = lineCells(anchor, end, size);
             break;
         }
-        // Filter out illegal cells (non-grass, plaza, beach)
         if (gs) shapeCells = shapeCells.filter(c => buildable(c.x, c.y));
         regionShapeCellsRef.current = shapeCells;
         host.buildableRegion.show([...brushCoordsRef.current, ...shapeCells]);

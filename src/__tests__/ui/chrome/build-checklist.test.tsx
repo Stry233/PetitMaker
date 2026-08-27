@@ -1,5 +1,5 @@
 /*
- * BuildChecklist — the "supply shelves" rewrite: full-width category cards with a multi-column
+ * BuildChecklist — the "supply shelves" layout: full-width category cards with a multi-column
  * item grid inside, a roads card, a compact terrain-chip card, and a copy-as-text button.
  *
  * Assertions use plain DOM checks (getAttribute / toBeTruthy / textContent), matching the sibling
@@ -100,7 +100,7 @@ describe('BuildChecklist — supply shelves', () => {
     expect(img).toBeTruthy();
     expect(img.getAttribute('src')).toBeTruthy();
 
-    // Every road surface is an in-game path with tile art of its own (#37), so a road row shows
+    // Every road surface is an in-game path with tile art of its own, so a road row shows
     // that tile. The colour swatch behind it stays for an item that arrives without an icon.
     const roadCard = screen.getByTestId('checklist-card-roads');
     const roadRow = within(roadCard).getByTestId('checklist-item-path-overgrown-dirt');
@@ -144,7 +144,7 @@ describe('BuildChecklist — supply shelves', () => {
     expect(terrainCard.children).toHaveLength(2);
   });
 
-  it('the two old instructional sentences are gone — the headings alone carry the meaning', () => {
+  it('carries no instructional sentences — the headings alone carry the meaning', () => {
     renderChecklist();
     expect(screen.queryByText(/rebuild it again by hand/i)).toBeNull();
     expect(screen.queryByText(/a block needs something under it/i)).toBeNull();

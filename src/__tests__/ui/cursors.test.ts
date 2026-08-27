@@ -171,8 +171,8 @@ describe('cursor art', () => {
     const svg = svgOf('text');
     expect(svg).not.toContain('<image');
     expect(svg).not.toContain('<path');
-    // The dark glyph's rectangles: bbox height is the ink height (22) on the 2x canvas, and it no
-    // longer towers over the arrow (whose box is 26): an upright reads taller than anything else
+    // The dark glyph's rectangles: bbox height is the ink height (22) on the 2x canvas, kept
+    // under the arrow's box (26): an upright reads taller than anything else
     // of its height.
     const inks = [...svg.matchAll(/<rect x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)" fill="#634b49"/g)]
       .map((m) => m.slice(1, 5).map(Number) as [number, number, number, number]);

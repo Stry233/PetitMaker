@@ -99,7 +99,7 @@ afterEach(() => {
   useEditorStore.setState({ gridState: null, commandExecutor: null, selection: [], deletePopover: null, viewMode: '2d' });
 });
 
-describe('SelectionHandles: single selection (unchanged)', () => {
+describe('SelectionHandles: single selection', () => {
   it('shows only delete for a non-rotatable, unlocked object', () => {
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
     expect(screen.getByTestId('handle-delete')).toBeTruthy();
@@ -245,7 +245,7 @@ describe('SelectionHandles: the group row is anchored to a POINT, not a projecte
   });
 });
 
-describe('SelectionHandles: single selection layout (unchanged)', () => {
+describe('SelectionHandles: single selection layout', () => {
   it('keeps its exact box-derived position, never clamped, even pushed off-screen', () => {
     // Pushed 5000px left/up of the origin — any clamp would pull this back toward 0; the
     // single-selection path must not, so left/top stay strongly negative.
@@ -321,7 +321,7 @@ describe('SelectionHandles: what triggers a re-track', () => {
 
   it('follows the REGISTERED view, not the mode: a cold 3D scene registers after the flip', () => {
     // The switch to 3D flips the store first and registers the scene a lazy import later. Keying the
-    // re-track on `viewMode` projected through the outgoing 2D view and stranded the buttons at its
+    // re-track on `viewMode` would project through the outgoing 2D view and strand the buttons at its
     // coordinates; the signal is what says the projection is 3D's now.
     setActiveView(makeView(0, 0, 10));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);

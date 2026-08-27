@@ -276,7 +276,7 @@ describe('a candidate', () => {
 
 describe('the maze ends', () => {
   /** An end asked for INSIDE the maze is a destination: it stays inside, on a cell a walker can
-   *  stand on. The old model could not express one and moved it to the map's edge instead. */
+   *  stand on, never moved out to the map's edge as if every end were a hole in the wall. */
   it('reports an interior request as a place inside, not as a hole in the wall', async () => {
     const kit = makeKit();
     const asked = { entrance: { x: 12, y: 14 }, exit: null };
@@ -478,7 +478,8 @@ describe('the maze ends', () => {
    * THE WALK BELONGS TO THE MAP, NOT TO THE CARD. Choosing the ends re-photographs the batch, and
    * the shelf lets go of the card it landed when it does — but the maze standing on the map is
    * untouched by a setting moving, so its walk is still the answer. Dropped with the card, the way's
-   * first press did nothing at all and the drape only appeared once another candidate was clicked.
+   * first press would do nothing at all, with the drape only appearing once another candidate was
+   * clicked.
    */
   it('shows the way of the maze already standing, on the first press', async () => {
     const kit = installKit();
@@ -640,8 +641,8 @@ describe('the three bands', () => {
 });
 
 describe('the row of names', () => {
-  /** The kinds ARE the names. A three-way toggle for the same question stood in the block below and
-   *  the row named "Island" over it, which is a heading that says nothing. */
+  /** The kinds ARE the names: a row reading "Island" over a three-way toggle asking the same
+   *  question below it is a heading that says nothing. */
   it('offers every kind of island and nothing else', async () => {
     installKit();
     mount();
@@ -654,8 +655,8 @@ describe('the row of names', () => {
     expect(screen.queryByRole('radio')).toBeNull();
   }, 30_000);
 
-  /** Clear is the one destructive action the shelf offered, and it is undo's job by another name.
-   *  It is in the menu now; nothing about what it does changed. */
+  /** Clear is undo's job by another name, and the one destructive action that has no place on the
+   *  shelf. The menu carries it. */
   it('offers no Clear, which the menu carries instead', async () => {
     installKit();
     mount();
@@ -721,8 +722,8 @@ describe('the scope chip', () => {
    * A CARD WITH NO PICTURE HAS NOTHING TO LAND.
    *
    * Painting a region too small for the picture kind blanks the cards and says why on them — but the
-   * PLAN behind each card survived, so a click on the blank card still built the picture the last
-   * region was fitted for. The card stands (nothing on this shelf vanishes), and it refuses.
+   * PLAN behind each card survives, so a click on the blank card would still build the picture the
+   * last region was fitted for. The card stands (nothing on this shelf vanishes), and it refuses.
    */
   it('refuses a card whose region no longer fits, rather than landing the last one', async () => {
     installKit();
@@ -748,8 +749,8 @@ describe('the scope chip', () => {
 });
 
 describe('the batch tile', () => {
-  /** New batch stood in the row of names, at the other end of the shelf from the pictures it
-   *  replaces. It is a tile after the last card now, which is where the eye already is once every
+  /** New batch belongs beside the pictures it replaces, not in the row of names at the other end
+   *  of the shelf. It is a tile after the last card, which is where the eye already is once every
    *  card has been turned down. */
   it('stands at the end of the cards, drawn as a mark', async () => {
     installKit();
@@ -800,9 +801,9 @@ describe('the batch tile', () => {
   }, 60_000);
 
   /**
-   * A CLICK IS THE ANSWER, so there is no second button to give it. Keep finalised what a click had
-   * provisionally applied, which made the click mean less than it looked like it meant and put the
-   * difference nowhere a person could read.
+   * A CLICK IS THE ANSWER, so there is no second button to give it. A Keep that finalises what a
+   * click provisionally applied makes the click mean less than it looks like it means and puts the
+   * difference nowhere a person can read.
    */
   it('offers nothing that confirms a click, because the click was the confirmation', async () => {
     installKit();
@@ -1000,9 +1001,10 @@ describe('a candidate that has been clicked', () => {
 });
 
 /**
- * ONE ISLAND KIND. Land, Isles and Lakes were three biases of one generator, and the split made the
- * thing being tuned three things where the references describe one style. What is left in the
- * config is the FIELD, which the engine still reads and every saved recipe still carries.
+ * ONE ISLAND KIND. Land, Isles and Lakes are three biases of one generator, and a split into three
+ * kinds makes the thing being tuned three things where the references describe one style. What
+ * remains in the config is the FIELD, which the engine still reads and every saved recipe still
+ * carries.
  */
 describe('the island kind', () => {
   it('records the one bias the interface still means, whatever the kind', () => {
@@ -1111,7 +1113,7 @@ describe('the sliders', () => {
     }
   }, 30_000);
 
-  /** They stand INSIDE the plate now, so the two of them plus the strip's other contents are one
+  /** They stand INSIDE the plate, so the two of them plus the strip's other contents are one
    *  row rather than a column bolted beside the cards. */
   it('stands in the strip inside the plate', async () => {
     installKit();
@@ -1140,8 +1142,8 @@ describe('clicking a card', () => {
   /**
    * A CARD IS ITS OWN ANSWER. The batch is asked for all at once and each picture lands as its own
    * run comes back, so a card showing a picture is a finished offer whatever the four beside it are
-   * still building. It was refused while ANY of them was in flight, which on a full map is most of a
-   * minute of a finished card doing nothing when it was pressed.
+   * still building. Refused while ANY of them is in flight, it would spend most of a minute on a
+   * full map as a finished card doing nothing when pressed.
    */
   it('lands a finished card while the rest of the batch is still being built', async () => {
     installKit();
@@ -1234,8 +1236,8 @@ describe('a click on its way to the map', () => {
   /**
    * LANDING IS NOT INSTANT AND THE CARD SAYS SO. A replay is about a tenth of a second; a card
    * landing on a map that already carries an island runs the recipe for real, which is most of a
-   * second on a full map. Nothing said so and the app simply stopped, which is what "freezes with no
-   * loading animation" was. The waiting is drawn on the card that was clicked, where the eye is.
+   * second on a full map. With nothing saying so the app simply stops, which reads as a freeze.
+   * The waiting is drawn on the card that was clicked, where the eye is.
    */
   it('says so on the card that was clicked, until it has landed', async () => {
     installKit();
@@ -1391,7 +1393,7 @@ describe('what a picture is built from', () => {
     expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Objects']);
   }, 30_000);
 
-  /** The accent switch is GONE: mixed absorbed the idea, so a picture's decoration follows from the
+  /** There is no accent switch: mixed carries the idea, so a picture's decoration follows from the
    *  material rather than from a knob standing beside it. */
   it('offers no accent switch on either picture kind', async () => {
     await open('Picture');
@@ -1404,9 +1406,9 @@ describe('what a picture is built from', () => {
   /**
    * THE RAMP IS AS DEEP AS THE KIND ALLOWS, not as deep as the last kind left it.
    *
-   * The shelf opens on the maze, whose walls stop at layer 3, and one shared value carried that
-   * ceiling into the picture: every picture was told in three greens by default, which is the flat,
-   * sparse result that was reported. Each kind keeps its own.
+   * The shelf opens on the maze, whose walls stop at layer 3, and one shared value would carry that
+   * ceiling into the picture: every picture told in three greens by default, a flat,
+   * sparse result. Each kind keeps its own.
    */
   it('gives a picture the whole ramp even after the maze, which caps at three', async () => {
     await open('Maze');
@@ -1421,9 +1423,9 @@ describe('what a picture is built from', () => {
   }, 30_000);
 
   /**
-   * THE ARMED ITEM IS SWITCHABLE AT ANY TIME. Choosing objects for a letter opened the item shelf
-   * once, on the way in, and then there was nothing on screen that said which item had been chosen
-   * or offered another: the chip is both.
+   * THE ARMED ITEM IS SWITCHABLE AT ANY TIME. Choosing objects for a letter opens the item shelf
+   * once, on the way in; without the chip nothing on screen would say which item was chosen or
+   * offer another: the chip is both.
    */
   it('keeps a letter\'s chosen item on the strip, and reopens the shelf that changes it', async () => {
     await open('Letter');
@@ -1558,8 +1560,8 @@ describe('a run that laid nothing', () => {
   it('names the kind it was building, since a picture is not a word', () => {
     // The buckets stencilNote reads are a LETTER's — the ground's answer to a glyph standing one
     // layer on it — and a picture's run never reports them, so a picture only ever reaches the
-    // nothing-laid line. Sharing the letter's copy told someone building a picture that none of
-    // their WORD fit.
+    // nothing-laid line. Sharing the letter's copy would tell someone building a picture that none
+    // of their WORD fit.
     expect(stencilNote('text', undefined, 0)).toEqual({ key: 'gen.text_nothing_laid', n: 0 });
     expect(stencilNote('image', undefined, 0)).toEqual({ key: 'gen.picture_nothing_laid', n: 0 });
     expect(stencilNote('text', { base: 0, offBase: 0, unsupported: 0, atCeiling: 0 }, 0))

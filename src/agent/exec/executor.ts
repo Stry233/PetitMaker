@@ -216,8 +216,8 @@ async function delegateTask(
 }
 
 /** Tools whose blast radius can reach far beyond what the model named in its own args (a
- *  generator run, a region clear, a whole road network) — carried from the legacy feed.ts,
- *  gated as "wide" regardless of the oversight tier's ordinary write gate.
+ *  generator run, a region clear, a whole road network) — gated as "wide" regardless of the
+ *  oversight tier's ordinary write gate.
  *
  *  `delegate_task` is the widest of them: the helper it spawns runs its own writes ungated in a
  *  fresh context, so this one approval covers that whole burst and is the only place a user in

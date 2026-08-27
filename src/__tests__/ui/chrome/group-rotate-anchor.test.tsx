@@ -2,7 +2,7 @@
  * The group control row's anchor must hold STILL across repeated rotations: a quarter turn returns
  * every member to the same footprint bounds, but the half-cell lattice snap `rotationPivot` applies
  * flips direction with the box's aspect (see group-rotate.test.ts's "off the lattice" case), so
- * recomputing the anchor from the live bounds on every `objects-changed` made the row creep. It must
+ * recomputing the anchor from the live bounds on every `objects-changed` makes the row creep. It must
  * still follow a genuine group MOVE, and still recompute when the membership itself changes.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';

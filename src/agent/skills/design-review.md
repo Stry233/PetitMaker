@@ -8,10 +8,10 @@ PASS 1 — MEASURE (cheap, first)
 PASS 2 — LOOK (view_map), against the expert tells, in this order:
 1. THE SUBJECT: can you name what the island is about — one primary set piece, clearly bigger than everything else, with clear ground around it? Two rivals = demote one; no answer = crown something (raise the main mass, give it a fall or a court).
 2. THE CLIMB: on a map with terrain, does the walk change level, or does all pavement sit on one floor with the mass beside it? Pavement belongs ON the benches; ramps are route events, not fire escapes.
-3. ARRIVAL: do any streets END at something (a door, a lookout, a jetty), or does every route only pass through? A network of through-streets arrives nowhere.
+3. ARRIVAL: do any streets END at something (a door, a lookout, a waterside platform), or does every route only pass through? A network of through-streets arrives nowhere.
 4. FRONT AND BACK: pick 2-3 buildings — open low scenery out the door, mass behind? A building composed backwards (wall in front, void behind) is a two-call fix: rotate it or move the planting.
-5. STAMPS: is any shape repeated congruently — identical ponds, twin hills, the same bed along every edge? Delete or vary the copies; one thing happens once.
-6. GRAIN: does planting read as beds + specimens, or as uniform speckle outlining every block? Speckle: clear_area the worst patch, replant as one solid one-species bed and one specimen.
+5. STAMPS: judge repetition by the map's dialect. Scattered congruent shapes (identical ponds, twin hills) are stamps everywhere; ALIGNED repetition in the formal dialect (an edging ribbon, an orchard grid, twin courts, crop plots) is the style working. A copy that is neither aligned nor mirrored gets deleted or varied.
+6. GRAIN: run find_speckle — it names every patch that is neither bed, row, lattice nor specimen, and every mixed one, as a rect. Clear each named rect back to lawn or replant it as ONE species in a fill/grid; the sweep is done when find_speckle answers clean.
 7. SILHOUETTE: raw straight cliff walls and dead-straight coasts longer than ~10 cells need a bend, an inset, or smooth:'round' repainting.
 
 PASS 3 — WALK IT: follow the trunk from the plaza in your head. Every destination needs a route, every route a destination; name the 2-3 scenes a visitor would remember (the bridge over the fall, the lane between hedges, the lookout over the roofs). If you cannot name them, make one.

@@ -80,8 +80,8 @@ describe('wheelGlider', () => {
   it('survives a first frame whose timestamp precedes the run start, on a row still at 0', () => {
     // requestAnimationFrame's timestamp is the FRAME's start; a wheel handler runs mid-frame, so
     // the run's performance.now() stamp can sit AFTER the first callback's time. A negative dt
-    // stepped backward, could not stick at 0, and read as the clamped-edge stop: the first notch
-    // on a fresh row did nothing until something else had scrolled it.
+    // taken as-is steps backward, cannot stick at 0, and reads as the clamped-edge stop: the first
+    // notch on a fresh row would do nothing until something else had scrolled it.
     const row = clampedRow(200);
     const glide = wheelGlider();
     now = 100;

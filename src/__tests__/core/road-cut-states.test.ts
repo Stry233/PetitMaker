@@ -30,7 +30,7 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
   // bottom; state 2 (TR fan) and state 3 (diagonal \) both keep the connected edge + the S lateral edge,
   // cutting toward the far top. Every canonical state keeps its FULL connected edge (all five shapes in
   // drawRoadShape contain the whole u=0 edge), so wherever the fan of a pair validates, its triangle twin
-  // must too — the user-visible bug was triangles being refused where the same-direction fan passed.
+  // must too — refusing a triangle where its same-direction fan passes is the user-visible failure.
   const PAIRS: [number, number][] = [[1, 4], [2, 3]];
   const DIRS: Record<string, [number, number]> = { L: [-1, 0], R: [1, 0], T: [0, -1], B: [0, 1] };
 

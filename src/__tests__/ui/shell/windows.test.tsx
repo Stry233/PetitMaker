@@ -51,10 +51,10 @@ const ROWS: readonly [label: string, modal: ModalId][] = [
 
 /** The whole sheet, in order, and it is FIVE WINDOWS AND NOTHING ELSE.
  *
- * Clear was here once and does not belong: this menu holds actions about the SESSION, and clearing
+ * Clear does not belong here: this menu holds actions about the SESSION, and clearing
  * takes back the last generation, bounded by that run's region and by the map's own authorship.
  * Nobody undoing a generation hunts for it under a menu beside Settings. It stands beside the batch
- * tile in the generate shelf now, where the other thing you do to a whole batch already is. */
+ * tile in the generate shelf, where the other thing you do to a whole batch already is. */
 const SHEET: readonly string[] = [
   'Change a planet', 'Import map', 'Settings', 'Keyboard Shortcuts', 'About',
 ];

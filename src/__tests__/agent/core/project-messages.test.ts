@@ -222,7 +222,7 @@ describe('deriveMessages', () => {
       append(log, { kind: 'toolResult', callId, name: 'place_object', content: 'placed', isError: false });
     }
 
-    it('shape B: a delivered steer opens the retained group, so the evicted body returns right behind the summary', () => {
+    it('a delivered steer opens the retained group, so the evicted body returns right behind the summary', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
       loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
@@ -243,7 +243,7 @@ describe('deriveMessages', () => {
       expect(JSON.stringify(out).split('ring it with houses')).toHaveLength(2);
     });
 
-    it('shape C: a follow-up order opens the retained group, and the body returns the same way', () => {
+    it('a follow-up order opens the retained group, and the body returns the same way', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
       loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
@@ -259,7 +259,7 @@ describe('deriveMessages', () => {
       expect(out[2]).toEqual({ role: 'user', text: orderText('ctx', 'now add the pines') });
     });
 
-    it('shape D: two playbooks either side of the cut, and only the evicted one is re-issued', () => {
+    it('two playbooks either side of the cut, and only the evicted one is re-issued', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
       loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
@@ -417,8 +417,8 @@ describe('deriveMessages', () => {
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
     // No toolResult was ever recorded for the first gated call, but it carries a 'words' answer,
-    // so it gets the synthesized skip result rather than the generic orphan message (behavior 5
-    // is for calls with NO gate pair at all); the trailing words-message still follows it.
+    // so it gets the synthesized skip result rather than the generic orphan message (which is for
+    // calls with NO gate pair at all); the trailing words-message still follows it.
     expect(out[2]).toEqual({
       role: 'tool',
       results: [{

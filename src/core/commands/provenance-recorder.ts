@@ -15,8 +15,8 @@ import type { OpKind } from '../provenance/policy';
  * commands), per-command taint capture, group merge, and revert/reapply taint
  * lockstep. The executor keeps its public pass-throughs but forwards them here.
  *
- * ORDER CONTRACT — the executor must call these AROUND state mutation exactly as
- * it did inline: capture AFTER apply (reads before/after); revert/reapply taint
+ * ORDER CONTRACT — the executor must call these AROUND state mutation in a fixed
+ * order: capture AFTER apply (reads before/after); revert/reapply taint
  * BEFORE the state restore; deriveScope wraps the reconcile pass so its nested
  * commands record as derived.
  */

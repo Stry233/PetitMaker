@@ -249,10 +249,10 @@ export const SET_PIECE_MIN = 120;
 /**
  * THE ONE BIG THING: the panel a full-richness island is asked for FIRST, and the shape of the ask.
  *
- * The judge's worst dimension is `hierarchy` at a 75% loss, and its words are the whole of this
- * number: "the reference has a one-off centerpiece clearly larger and more elaborate than anything
- * else; ours has modest scattered ponds of similar size". Measured on ten full-richness seeds of both
- * templates, our biggest composed figure read 118 to 524 water cells against the terraced reference's
+ * WHAT THE NUMBER ANSWERS is hierarchy: the reference maps carry a one-off centerpiece clearly
+ * larger and more elaborate than anything else, where modest scattered ponds of similar size read
+ * as no centerpiece at all. Measured on ten full-richness seeds of both
+ * templates, the biggest composed figure read 118 to 524 water cells against the terraced reference's
  * 1010 and the garden town's 1427 — and the panel that carried it was drawn at one of `COURT_SIZES`,
  * whose largest entry is 544 cells before the pattern takes its share.
  *
@@ -466,9 +466,10 @@ function planBanner(phrase: Phrase, cache: TierSearches): Found | null {
  * The banner's per-tier searches, and the field's per-clearance ones: built once per map and read by
  * every phrase the bank offers.
  *
- * A search is two summed-area tables over the whole map. They were built inside the placement functions,
- * which the bank calls once per phrase and the size ladder calls twice — up to ten times for the banner
- * alone, and measured at about 600 ms of the second on `hexia/12345` at richness 0.5.
+ * A search is two summed-area tables over the whole map. Built inside the placement functions they
+ * would be rebuilt on every call — the bank calls once per phrase and the size ladder calls twice, up to
+ * ten times for the banner alone, measured at about 600 ms of the second on `hexia/12345` at
+ * richness 0.5.
  */
 interface TierSearches {
   keys: readonly number[];

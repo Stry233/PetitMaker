@@ -111,7 +111,7 @@ function countAssistantTurns(log: SessionLog): number {
  *
  *  Silence is not idleness, and the two get different notes: a turn that thought at length and
  *  emitted nothing did work, and telling it that it "produced no text and no tool calls" is false
- *  about the half that happened (#29). The BOUND is shared, since either way nothing reached the
+ *  about the half that happened. The BOUND is shared, since either way nothing reached the
  *  user and a third such turn ends the job.
  *
  *  A turn the provider truncated (`stop === 'length'`) is not silent at all, however little of it
@@ -169,7 +169,7 @@ function isCallResolved(events: readonly SessionEvent[], callId: string): boolea
 
 /** This call OCCURRENCE's own `gateAsked`, answered or not: scoped to events strictly after
  *  `assistantSeq`, the seq of the assistant event that carries this occurrence — never the whole
- *  job, since a repeated callId (a synthesized one before the openai.ts fix, or a real one a
+ *  job, since a repeated callId (a synthesized one from an older log, or a real one a
  *  buggy provider reissues) would otherwise re-enter a DIFFERENT call's gate. `undefined` means
  *  this occurrence has never been gated at all. Used instead of `pendingGate` because `pendingGate`
  *  only sees an UNANSWERED gate: a reload landing between the user's approval and the call
@@ -318,12 +318,30 @@ function resultStamp(deps: LoopDeps, name: string, assistantSeq: number): { writ
  *  projection would read the call as an unanswered orphan and report it to the model as a plain
  *  error. A malformed `stages` argument is rejected before any gate is asked: there is no reason
  *  to interrupt the user for a plan the loop already knows it cannot log. */
+/** How many plans a job may file before a refile is churn the loop answers itself: the first is
+ *  the plan, the second a legitimate revision, the third onward is the dissatisfaction spiral a
+ *  live run burned 80 turns in (plan refiled four times around an inspect-and-remove loop). */
+const MAX_PLAN_FILINGS = 2;
+
 async function handleUpdatePlan(log: SessionLog, deps: LoopDeps, part: ToolPart, assistantSeq: number): Promise<ReissueSignal> {
   const stages = parseStages(part.input.stages);
   if (!stages) {
     append(log, {
       kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
       content: '(system) update_plan needs a non-empty "stages" array of objects, each with a label. Example: stages: [{"label":"terrace the north hills"}]. Reissue the call with a valid plan.',
+      ...resultStamp(deps, part.name, assistantSeq),
+    });
+    return 'continue';
+  }
+  // THE CHURN BRAKE, before the gate for the repeat-refusal's reason: a refile that will not be
+  // accepted must not cost the user an approval. The stage list is a commitment the user reads.
+  if (jobEvents(log).filter((e) => e.kind === 'plan').length >= MAX_PLAN_FILINGS) {
+    append(log, {
+      kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
+      detail: { damper: true },
+      content: '(system) The plan has already been revised once; the stage list is a commitment the '
+        + 'user is reading, not a scratchpad. Keep building the current plan\'s remaining stages, and '
+        + 'put any leftover ideas in your closing summary instead of a new plan.',
       ...resultStamp(deps, part.name, assistantSeq),
     });
     return 'continue';

@@ -2,8 +2,8 @@
  * PlanGate.tsx — the plan as the thing being approved (normative prototype `.plangate`).
  *
  * A PLAN ASK IS AN ASK CARD LIKE ANY OTHER, on the panel's plate under the same retiring spine
- * (`GateBlock.tsx:AskCard`): the artifact's earlier plan tint is gone with the G1 ruling, so a
- * proposed plan reads as a question the record is holding rather than as a surface of its own.
+ * (`GateBlock.tsx:AskCard`), with no plan tint of its own: a proposed plan reads as a question the
+ * record is holding rather than as a surface of its own.
  *
  * IT LISTS THE STAGES IT IS ASKING ABOUT, which the gate's own sentence cannot: the describer folds
  * a plan down to "4 stages: a, b, c +1" for the dock, and a checkpoint flag survives neither the

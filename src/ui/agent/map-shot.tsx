@@ -172,7 +172,7 @@ const MARK_HALO = withAlpha(INK, 0.5);
 
 /**
  * THE WHOLE ISLAND WITH A RECT MARKED ON IT — the picture this file's header describes and the one
- * every card that is ABOUT a place on the map now draws.
+ * every card that is ABOUT a place on the map draws.
  *
  * A CROP SAYS NOTHING ABOUT WHERE. That is the reading the region vignette was written to, and the
  * gate family had the other half of it: `MapShot box=…` frames ON the rect, so the cells fill the

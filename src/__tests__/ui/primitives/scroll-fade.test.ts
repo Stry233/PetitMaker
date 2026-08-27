@@ -259,8 +259,8 @@ describe('useScrollFade on a scroller that mounts on a later render', () => {
 });
 
 /**
- * THE MID-TWEEN TRAP, which is what "the shade covers the content" turned out to be in the
- * prototype: the surface a scroller lives in TWEENS its own height (the panel does, to its new
+ * THE MID-TWEEN TRAP, which is what a shade standing over content that is all showing comes
+ * from: the surface a scroller lives in TWEENS its own height (the panel does, to its new
  * content height), so for the length of that tween the box is shorter than it is about to be and the
  * metrics say the content scrolls. A reading LATCHED there leaves a shade standing over a record
  * that is all showing, with nothing left to scroll — which is why the answer is re-derived on every

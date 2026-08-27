@@ -28,18 +28,18 @@ import { validateCut } from '../../core/edge-cut/cut-validator';
 import { roadLookup } from '../../state/object-index';
 import { CORNER_POS, CORNER_COMPASS, type CornerPos } from '../../core/edge-cut/corner-index';
 import { objectRect, coatingsUnder } from '../../state/object-geometry';
-import { isCoating, hasTrait } from '../../core/model/traits';
+import { isCoating, hasTrait, standsOnCoating } from '../../core/model/traits';
 import type { GenerateConfig } from '../../core/model/types';
 import type { KitContext } from '../../kit/context';
 import { generateMap } from '../../kit/operations';
 import { mapOverview, mapSummary, objectLine, regionTokens, selectionContext, REGION_CAP } from '../serialize';
 import { decorateZoneHandler, plantForestHandler, buildRoadNetworkHandler, frameCrossingHandler, THEMES } from './tools-director';
 import { SKILLS, listSkills } from '../skills';
-import { evaluateMap, renderScorecard, type QualityReport } from '../quality';
+import { evaluateMap, renderScorecard, speckleFindings, type QualityReport } from '../quality';
 import type { ToolCall, ToolResult, ToolSchema } from './types';
 import { type AgentToolDeps, type ToolResultBody, argError, clamp, dedupe, formatErrors, geometryError, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
 import { rectInput } from './geometry';
-import { sculptTerrace, carveRiver } from './tools-terraform';
+import { sculptTerrace, carveRiver, sculptWall, sinkPool } from './tools-terraform';
 import { findFlatAreas, findBridgeSites, findRampSites, scanBridgeSites } from './tools-search';
 import { objectPlacementCommand, removeObjectCommand } from '../../tools/objects';
 
@@ -195,9 +195,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     // and a stage label (which wraps), characters past the end are LOST. Measured from the shipped
     // faces at the real box — 378px of panel less its padding, the well's own inset, and the send
     // and stop buttons at 36px each — the field holds about 30 Latin characters and about 15 CJK,
-    // where a glyph is a full em. The number was 60, which is roughly twice the room in English and
-    // three and a half times it in Chinese, on the same line that also asks for the user's own
-    // language.
+    // where a glyph is a full em.
     description:
       "When your closing message leaves ONE obvious next step (a yes/no offer, a single natural follow-up), call this with the short reply the user would most likely send, in the user's own language. It appears as a one-tap suggestion inside their reply box, which shows about 30 characters in a Latin script and about 15 in Chinese, Japanese or Korean and simply cuts off what does not fit — so keep it to a few words. Skip it whenever the next step is genuinely open.",
     inputSchema: {
@@ -215,7 +213,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   // in this file calls `askGate` with either populated, so the wire shape stands ready with no
   // producer (a future "ask the user a multiple-choice question" tool is where one would go, right
   // here beside suggest_reply, the other tool that shapes the closing message). When it lands, state
-  // its lengths as plainly as suggest_reply states its own 60: a `quickAnswers` entry is one pill
+  // its lengths as plainly as suggest_reply states its own 30/15: a `quickAnswers` entry is one pill
   // that wraps onto its own row with its siblings (`GateBlock.tsx:QuickRow`, no hard per-pill cap,
   // but a handful of short words reads as a choice, a sentence reads as an essay) — call it 20
   // characters; a `GateOption.cap` is ONE ellipsized line beside an 88x62 thumbnail in a card sized
@@ -306,15 +304,17 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'scatter_objects',
     description:
-      'Place many items at once with natural randomness (forests, flower meadows). Random positions inside the rect (or the user selection if no rect), validated per placement (illegal spots are skipped). One undo step. Returns how many landed.',
+      'Place many items at once. pattern "scatter" (default) = natural randomness for forests and meadows; "fill" = every cell of the rect in row order, for solid one-species beds, crop plots and 1-wide edging ribbons; "grid" = every step-th cell, for orchard lattices and islet parterres. Positions inside the rect (or the user selection if no rect), validated per placement (illegal spots are skipped). One undo step. Returns how many landed.',
     inputSchema: {
       type: 'object',
       properties: {
-        catalogIds: { type: 'array', items: { type: 'string' }, description: 'Pool to sample from (mix species for natural looks).' },
+        catalogIds: { type: 'array', items: { type: 'string' }, description: 'Pool to sample from (ONE id for ordered patterns; mix species only for natural scatter).' },
         count: { type: 'integer', minimum: 1, maximum: 200 },
         ...coordProps,
         rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Scatter area; the flat corners x1,y1,x2,y2 mean the same.' },
-        spacing: { type: 'integer', minimum: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius).' },
+        pattern: { type: 'string', enum: ['scatter', 'fill', 'grid'], description: 'scatter = random (default); fill = solid row-major fill; grid = a lattice of every step-th cell.' },
+        step: { type: 'integer', minimum: 2, maximum: 6, description: 'Grid pitch for pattern "grid" (default 2: an open lattice).' },
+        spacing: { type: 'integer', minimum: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid.' },
       },
       required: ['catalogIds', 'count'],
     },
@@ -334,6 +334,55 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         seed: { type: 'integer', description: 'Shape seed (random if omitted).' },
       },
       required: ['cx', 'cy', 'baseRadius'],
+    },
+  },
+  {
+    name: 'sculpt_wall',
+    description:
+      'Raise a BANDED BACKING WALL in one call: the expert maps\' primary form. Bands step up +3 per inset ring (legal by construction), the crest stays flat and pavable, and flood:true sinks a crest pool inside its own rim. Use for the map\'s far-side wall or any tall plateau; sculpt_terrace stays the tool for small organic hills.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...coordProps,
+        edge: { type: 'string', enum: ['N', 'S', 'E', 'W'], description: 'Site the wall AS the map\'s boundary: abutting this edge of the buildable grass, spanning it, depth rows deep (overrides the corners). A backing wall is a boundary condition, not a centerpiece.' },
+        depth: { type: 'integer', minimum: 7, maximum: 30, description: 'Rows deep when edge is given (default 14).' },
+        crest: { type: 'integer', minimum: 2, maximum: 8, description: 'Crest elevation (default 6; lowered automatically if the rect is too shallow for the insets).' },
+        flood: { type: 'boolean', description: 'Sink a crest pool (water at crest elevation inside a 1-cell rim).' },
+        smooth: { type: 'string', enum: ['round', 'rect'], description: 'round (default) trims the outer cliffs organically; rect keeps them crisp.' },
+      },
+      required: ['x1', 'y1', 'x2', 'y2'],
+    },
+  },
+  {
+    name: 'sink_pool',
+    description:
+      'Sink a POOL COURT in one legal stroke: a 1-cell bench rim (mountain at `elevation`) holding water at the bench\'s own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves a step-3 lattice of bench islets inside the water (the parterre grid; plant it with scatter_objects pattern "grid" step 3). For terraced pool courts; ground-level lakes stay paint_terrain/draw_figure work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x1: { type: 'integer' }, y1: { type: 'integer' }, x2: { type: 'integer' }, y2: { type: 'integer' },
+        elevation: { type: 'integer', minimum: 1, maximum: 3, description: 'Bench and water height (default 1).' },
+        islets: { type: 'boolean', description: 'Leave the step-3 islet lattice inside the water.' },
+        smooth: { type: 'string', enum: ['round', 'rect'], description: 'round (default) trims the bench corners; rect keeps them crisp.' },
+      },
+      required: ['x1', 'y1', 'x2', 'y2'],
+    },
+  },
+  {
+    name: 'draw_figure',
+    description:
+      'Paint an ICONIC ground-water figure with true symmetry: heart, ring or crescent, centered at cx,cy, size cells across. Optional ringId places a single-species ring of trees/flowers around the outline (the classic peach ring). For lettering and custom figures, compose cells yourself with paint_terrain (the figure-landscape skill has the rules).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shape: { type: 'string', enum: ['heart', 'ring', 'crescent'] },
+        cx: { type: 'integer' },
+        cy: { type: 'integer' },
+        size: { type: 'integer', minimum: 8, maximum: 48, description: 'Width in cells.' },
+        ringId: { type: 'string', description: 'Catalog id planted in a ring around the figure (one species; omit for bare water).' },
+        islandFor: { type: 'string', description: 'A building id to stand on a dry island at the figure\'s heart (the house-in-a-pond set piece); the island is sized for its footprint and margin, and a bridge reaches it via find_bridge_sites.' },
+      },
+      required: ['shape', 'cx', 'cy', 'size'],
     },
   },
   {
@@ -359,8 +408,14 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'clear_area',
     description:
-      'Make room: in ONE step, remove every (non-locked) object touching the given cells AND erase the terrain there back to flat grass. Use before reshaping an area instead of removing objects one by one.',
-    inputSchema: { type: 'object', properties: { ...cellsOrRect } },
+      'Make room: in ONE step, remove every (non-locked) object touching the given cells AND erase the terrain there back to flat grass. Use before reshaping an area instead of removing objects one by one. NEVER answer a refused placement by clearing a district you built — fix the exact cells instead. A clear removing more than 25 objects or covering more than 400 cells refuses unless demolish:true acknowledges the scale.',
+    inputSchema: { type: 'object', properties: { ...cellsOrRect, demolish: { type: 'boolean', description: 'Acknowledge a large demolition (over 25 objects or 400 cells).' } } },
+  },
+  {
+    name: 'find_speckle',
+    description:
+      'Sweep the planting for NOISE: patches that are neither a bed, row, lattice nor specimen, or that mix 3+ species. Returns each noisy patch as a rect to clear_area or replant as one species. Free; run it before declaring a build done — disorder is invisible in the token grid.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'find_bridge_sites',
@@ -606,6 +661,18 @@ function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolRes
     }
   }
   const removed = commands.length;
+  // THE RAGE-CLEAR GUARD. A refused bed or a blocked road answered by bulldozing the district is
+  // the observed failure (two live runs cleared ~900 cells of their OWN nearly-finished work and
+  // ran out of turns rebuilding). Demolition at this scale must be a conscious choice: the refusal
+  // names the cost, and `demolish: true` is the acknowledgment.
+  if ((removed > 25 || cells.length > 400) && input.demolish !== true) {
+    return {
+      isError: true,
+      content: `STOP: this would remove ${removed} object(s) over ${cells.length} cell(s) — likely work already built. `
+        + 'A refusal is fixed at its own cells, never by clearing the district. If the order genuinely asks for '
+        + 'demolition at this scale, call again with demolish: true; otherwise clear only the exact cells you need.',
+    };
+  }
   commands.push({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells });
   return runStroke(deps, commands, () => `Cleared ${cells.length} cell(s): removed ${removed} object(s), terrain reset to flat grass.`, cells);
 }
@@ -671,20 +738,40 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   if (pool.length === 0) {
     return argError('no area to scatter over, pass the rect corners or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
   }
-  const spacing = Math.max(0, Number(input.spacing) || 0);
-  // shuffle (Fisher-Yates), unseeded: nothing replays a scatter
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  const pattern = input.pattern === 'fill' || input.pattern === 'grid' ? input.pattern : 'scatter';
+  const spacing = pattern === 'scatter' ? Math.max(0, Number(input.spacing) || 0) : 0;
+  if (pattern === 'grid') {
+    // A lattice anchored at the pool's own top-left, so two adjacent grid calls with the same
+    // step line up. The clamp mirrors the schema; a malformed step falls to the open default.
+    const step = clamp(Number(input.step) || 2, 2, 6);
+    let minX = Infinity, minY = Infinity;
+    for (const c of pool) { if (c.x < minX) minX = c.x; if (c.y < minY) minY = c.y; }
+    const kept = pool.filter((c) => (c.x - minX) % step === 0 && (c.y - minY) % step === 0);
+    pool.length = 0;
+    pool.push(...kept);
   }
+  if (pattern === 'scatter') {
+    // shuffle (Fisher-Yates), unseeded: nothing replays a scatter
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+  }
+  // fill and grid keep resolveCells' row-major order: an ordered pattern lands as drawn.
   const exec = deps.getExecutor();
   const placedAt: MacroCoord[] = [];
   const failures: string[] = [];
+  // Coated cells are skipped up front rather than placed onto: V-PLACE-COATED is a POST-STROKE
+  // rule, so one edging cell clipping a road would otherwise revert the whole scatter.
+  const roadAt = roadLookup(deps.getState());
+  let onRoad = 0;
   const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     for (const cell of pool) {
       if (placedAt.length >= count) break;
       if (spacing > 0 && placedAt.some((p) => Math.abs(p.x - cell.x) <= spacing && Math.abs(p.y - cell.y) <= spacing)) continue;
       const id = ids[Math.floor(Math.random() * ids.length)]!;
+      const road = roadAt(cell.x, cell.y);
+      if (road && !standsOnCoating(getCatalogItem(id), getCatalogItem(road.catalogId)!)) { onRoad++; continue; }
       const cmd = buildPlaceCmd(deps, id, cell.x, cell.y, 0);
       if (typeof cmd === 'string') continue;
       const r = exec.execute(cmd);
@@ -696,14 +783,201 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
   if (placedAt.length > 0) deps.onFlash?.(placedAt);
   let why = placedAt.length < count && failures.length > 0 ? ` Most common rejections:\n${dedupe(failures).slice(0, 3).join('\n')}` : '';
+  if (onRoad > 0) why += `\n${onRoad} cell(s) skipped: they carry a road, and objects cannot stand on one. Edging runs BESIDE a street, so offset the rect off the pavement.`;
   if (placedAt.length === 0) {
     why += '\nNothing placed. Most items need flat grass clear of water, slopes, and other objects. Fixes: pick a flatter/emptier area (find_flat_areas), lower the spacing, or clear_area first. Flora/trees will not sit on water or mountains.';
+  }
+  // Said at the moment of the mistake, because a budget-capped run may never reach the
+  // find_speckle sweep that would otherwise name it.
+  if (pattern === 'fill' && rect && placedAt.length > 0 && ids.every((id) => getCatalogItem(id)?.category === ItemCategory.Flora)) {
+    const w = Math.abs(rect.x2 - rect.x1) + 1, h = Math.abs(rect.y2 - rect.y1) + 1;
+    if (Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h)) {
+      why += `\nNote: a ${w}x${h} solid flower band reads as a FILL, not edging — street and bank edging is 1-2 cells wide in the reference style. Keep this only if a broad bed is truly intended.`;
+    }
   }
   return {
     isError: placedAt.length === 0,
     content: `Scattered ${placedAt.length}/${count} object(s) over ${pool.length} candidate cell(s).${why}`,
     detail,
   };
+}
+
+/* ── the speckle finder: names the planting noise a token grid cannot show ── */
+
+/**
+ * find_speckle: the planting clusters that read as NOISE — scattered (no row, grid or solid fill)
+ * or species-mixed — each named as a rect the model can clear_area or replant as one bed. Five
+ * rounds of live judging showed models cannot SEE this defect in tokens ('o' says occupied, not
+ * disordered), so the close-out sweep fixes what this names instead of guessing.
+ */
+function findSpeckle(deps: AgentToolDeps): ToolResultBody {
+  const state = deps.getState();
+  const { findings, plantCount } = speckleFindings(state);
+  if (plantCount === 0) return { isError: false, content: 'No planting on the map yet; nothing to sweep.' };
+  if (findings.length === 0) {
+    return { isError: false, content: 'Planting sweep clean: every patch reads as a bed, row, lattice or specimen, species-pure.' };
+  }
+  const lines = findings.slice(0, 8).map((f) => `- ${f.rect}: ${f.n} plants, ${f.why}`);
+  return {
+    isError: false,
+    content: `${findings.length} noisy planting patch(es) — clear_area the rect and leave it empty, replant it as ONE species in a fill/grid, or narrow a wide band to a 1-2 cell ribbon:\n${lines.join('\n')}`,
+  };
+}
+
+/* ── figures: iconic ground shapes, symmetric by construction ─────────── */
+
+/** The figure's cells, mirror-symmetric where the shape is (heart, ring): the right half is the
+ *  left half reflected, so no freehand lobe can bulge. All shapes are centered on (cx,cy). */
+function figureCells(shape: 'heart' | 'ring' | 'crescent', cx: number, cy: number, size: number): MacroCoord[] {
+  const r = size / 2;
+  const out: MacroCoord[] = [];
+  const push = (dx: number, dy: number) => { out.push({ x: cx + dx, y: cy + dy }); };
+  if (shape === 'heart') {
+    // The classic implicit heart, sampled on the half-plane and mirrored. v points UP (screen -dy);
+    // the curve spans u in [-1.15,1.15], v in [-1,1.25], so the scale maps size to the lobes' width.
+    const s = r / 1.15;
+    for (let dy = -Math.ceil(r * 1.15); dy <= Math.ceil(r * 1.15); dy++) {
+      for (let dx = 0; dx <= Math.ceil(r); dx++) {
+        const u = dx / s;
+        const v = (-dy + r * 0.12) / s;
+        const a = u * u + v * v - 1;
+        if (a * a * a - u * u * v * v * v <= 0) { push(dx, dy); if (dx > 0) push(-dx, dy); }
+      }
+    }
+  } else if (shape === 'ring') {
+    const band = Math.max(2, Math.round(size / 6));
+    for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+      for (let dx = 0; dx <= Math.ceil(r); dx++) {
+        const d = Math.hypot(dx, dy);
+        if (d <= r && d > r - band) { push(dx, dy); if (dx > 0) push(-dx, dy); }
+      }
+    }
+  } else {
+    // Crescent: the disc minus a same-size disc shifted toward the opening (east).
+    for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+      for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+        const d0 = Math.hypot(dx, dy);
+        const d1 = Math.hypot(dx - r * 0.55, dy);
+        if (d0 <= r && d1 > r * 0.85) push(dx, dy);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * draw_figure: the reference maps' iconic marks (a heart lake, a ring pond, a crescent) painted as
+ * ground water with true symmetry, plus an optional single-species ring of trees or flowers around
+ * the outline — the peach ring around the expert island's heart pond, as one deterministic call.
+ */
+async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
+  const shape = input.shape === 'ring' || input.shape === 'crescent' ? input.shape : input.shape === 'heart' ? 'heart' : null;
+  if (!shape) return argError('shape must be "heart", "ring" or "crescent".', 'shape: "heart", cx: 110, cy: 70, size: 22');
+  const cx = Number(input.cx);
+  const cy = Number(input.cy);
+  const size = clamp(Number(input.size) || 0, 8, 48);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || size < 8) {
+    return argError('draw_figure needs cx, cy and size (8-48 cells across).', 'shape: "heart", cx: 110, cy: 70, size: 22');
+  }
+  const state = deps.getState();
+  const { width: mw, height: mh } = state.template;
+  const region = deps.getRegion();
+  const clip = region.length > 0 ? new Set(region.map((c) => `${c.x},${c.y}`)) : null;
+  // The spread is the tool's own, so it clips to an armed region like the organic terraformers do.
+  const cells = figureCells(shape, Math.round(cx), Math.round(cy), size)
+    .filter((c) => c.x >= 1 && c.y >= 1 && c.x < mw - 1 && c.y < mh - 1)
+    .filter((c) => !clip || clip.has(`${c.x},${c.y}`));
+  if (cells.length === 0) return argError('the figure lies off the map or outside the selected region, move cx,cy.');
+
+  const ringId = typeof input.ringId === 'string' ? input.ringId : undefined;
+  if (ringId && !getCatalogItem(ringId)) return argError(`unknown ringId "${ringId}", use a tree or flora id from the CATALOG section.`);
+  // islandFor: keep a DRY island at the figure's heart sized for the item plus the flat trait's
+  // margin, and stand the item on it in the same stroke — the reference's house-in-a-pond set
+  // piece, which hand composition kept missing because the dry margin is invisible arithmetic.
+  const islandFor = typeof input.islandFor === 'string' ? input.islandFor : undefined;
+  const islandItem = islandFor ? getCatalogItem(islandFor) : undefined;
+  if (islandFor && !islandItem) return argError(`unknown islandFor "${islandFor}", use a building id from the CATALOG section.`);
+  let waterCells = cells;
+  let islandPlace: { x: number; y: number } | null = null;
+  if (islandItem) {
+    const iw = islandItem.width + 2, ih = islandItem.height + 2;
+    if (size < Math.max(iw, ih) + 8) {
+      return argError(`a ${islandItem.width}x${islandItem.height} island home needs the figure at least ${Math.max(iw, ih) + 8} across (island + margin + a real water ring); raise size.`);
+    }
+    let mx = 0, my = 0;
+    for (const c of cells) { mx += c.x; my += c.y; }
+    const icx = Math.round(mx / cells.length), icy = Math.round(my / cells.length);
+    const ix1 = icx - Math.floor(iw / 2), iy1 = icy - Math.floor(ih / 2);
+    const island = new Set<string>();
+    for (let y = iy1; y < iy1 + ih; y++) for (let x = ix1; x < ix1 + iw; x++) island.add(`${x},${y}`);
+    waterCells = cells.filter((c) => !island.has(`${c.x},${c.y}`));
+    islandPlace = { x: ix1 + 1, y: iy1 + 1 };
+  }
+  const commands: Command[] = [{ type: CommandType.PaintTerrain, timestamp: Date.now(), cells: waterCells, terrainType: TerrainType.Water, elevation: 0 }];
+  if (islandPlace && islandFor) {
+    const cmd = buildPlaceCmd(deps, islandFor, islandPlace.x, islandPlace.y, 0);
+    if (typeof cmd !== 'string') commands.push(cmd);
+  }
+  let ringWanted = 0;
+  if (ringId) {
+    // The ring stands 2 cells off the outline, one placement every ~3 cells of arc, radially from
+    // the centroid so a heart's ring follows the lobes rather than a circle.
+    const inside = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const outline = cells.filter((c) =>
+      !inside.has(`${c.x + 1},${c.y}`) || !inside.has(`${c.x - 1},${c.y}`) || !inside.has(`${c.x},${c.y + 1}`) || !inside.has(`${c.x},${c.y - 1}`));
+    let mx = 0, my = 0;
+    for (const c of cells) { mx += c.x; my += c.y; }
+    mx /= cells.length; my /= cells.length;
+    // Walked by ARC LENGTH, not by angle: equal-angle sampling starves the stretches far from the
+    // centroid (a heart lobe's long flank got a 20-cell bare run), while equal-arc spaces the ring
+    // evenly along the shore. And for the mirror-symmetric shapes the ring is PLACED symmetrically:
+    // the left half's placements are reflected across the figure's own axis, so the ring cannot be
+    // lopsided whatever the walk order — the local mirror the doctrine asks of a composed view.
+    const byAngle = outline
+      .map((c) => ({ c, a: Math.atan2(c.y - my, c.x - mx) }))
+      .sort((p, q) => p.a - q.a);
+    const ringPos: MacroCoord[] = [];
+    // Trees ring a figure at intervals (the reference's peach ring breathes); a FLOWER ring is
+    // EDGING and must trace the shore continuously, or it reads as a speckle halo.
+    const gap = getCatalogItem(ringId)?.category === ItemCategory.Flora ? 1.2 : 3.2; // cells of shoreline per placement
+    let walked = gap; // place at the first outline cell too
+    for (let i = 0; i < byAngle.length; i++) {
+      const { c } = byAngle[i]!;
+      const prev = byAngle[(i - 1 + byAngle.length) % byAngle.length]!.c;
+      walked += Math.hypot(c.x - prev.x, c.y - prev.y);
+      if (walked < gap) continue;
+      walked = 0;
+      const d = Math.hypot(c.x - mx, c.y - my) || 1;
+      ringPos.push({
+        x: Math.round(mx + (c.x - mx) * (1 + 2.2 / d) + (c.x - mx) / d * 2),
+        y: Math.round(my + (c.y - my) * (1 + 2.2 / d) + (c.y - my) / d * 2),
+      });
+    }
+    const axis = Math.round(cx);
+    const mirrored = shape === 'crescent' ? ringPos : [
+      ...ringPos.filter((p) => p.x <= axis),
+      ...ringPos.filter((p) => p.x <= axis).map((p) => ({ x: 2 * axis - p.x, y: p.y })),
+    ];
+    const seen = new Set<string>();
+    for (const p of mirrored) {
+      const key = `${p.x},${p.y}`;
+      if (seen.has(key) || inside.has(key)) continue;
+      if (p.x < 0 || p.y < 0 || p.x >= mw || p.y >= mh) continue;
+      if (clip && !clip.has(key)) continue;
+      seen.add(key);
+      ringWanted++;
+      const cmd = buildPlaceCmd(deps, ringId, p.x, p.y, 0);
+      if (typeof cmd !== 'string') commands.push(cmd);
+    }
+  }
+  return runStroke(
+    deps,
+    commands,
+    (ok) => `Drew a ${shape} of ${waterCells.length} water cells at (${Math.round(cx)},${Math.round(cy)})`
+      + `${islandPlace ? `; ${islandFor} stands on a dry island at (${islandPlace.x},${islandPlace.y}) — find_bridge_sites near it for the way across` : ''}`
+      + `${ringId ? `; ring: ${ringWanted} ${ringId} positions around it (${Math.max(0, ok - 1 - (islandPlace ? 1 : 0))} landed)` : ''}. The shape is symmetric by construction.`,
+    waterCells,
+  );
 }
 
 /* ── the procedural generator as a tool ──────────────────────────────── */
@@ -964,7 +1238,7 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   inspect_region: { handler: (deps, input) => {
     const x1 = Number(input.x1), y1 = Number(input.y1), x2 = Number(input.x2), y2 = Number(input.y2);
     // A missing corner must refuse, not read: NaN corners yield an empty grid that reads as a
-    // successful blank answer, which is how a misnamed argument once went unnoticed for a whole turn.
+    // successful blank answer, so a misnamed argument would go unnoticed for a whole turn.
     if ([x1, y1, x2, y2].some(Number.isNaN)) {
       return argError('inspect_region needs all four corners as numbers, x1 y1 x2 y2.', '{"x1":40,"y1":30,"x2":60,"y2":45}');
     }
@@ -997,7 +1271,14 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   } },
   evaluate_map: { handler: (deps) => {
     const { report, prev } = evaluateWithTrend(deps.getState());
-    return { isError: false, content: renderScorecard(report, prev) };
+    // The scorecard grades the WHOLE map. Said explicitly on a region-locked job, because a
+    // bounded build read against whole-map absolutes looks like it moved nothing and the model
+    // then spends turns chasing dimensions its region cannot reach.
+    const region = deps.getRegion();
+    const note = region.length > 0
+      ? `\nNote: these scores grade the WHOLE map, and your work is confined to the ${region.length}-cell selected region. Read the TRENDS ("was N") for what your edits moved; do not chase whole-map absolutes a bounded build cannot reach.`
+      : '';
+    return { isError: false, content: renderScorecard(report, prev) + note };
   } },
   export_map: { handler: (deps, input) => {
     const kind = input.kind === 'json' ? 'json' as const : 'image' as const;
@@ -1020,11 +1301,15 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   load_skill: { handler: (_deps, input) => {
     const name = String(input.name);
     const skill = SKILLS[name];
+    // Live runs planned their own paraphrase and dropped the stages the skill calls not optional,
+    // so the program rides with the playbook: file the stages, then a skipped one shows as an
+    // unfinished plan item instead of vanishing.
     return skill
-      ? { isError: false, content: skill.body, detail: { skill: { name, kind: skill.kind, title: skill.title } } }
+      ? { isError: false, content: `${skill.body}\n\n(system) These stages are the program: file them as your update_plan stages by name and finish each before the next. A stage the playbook calls "not optional" is a commitment, not a suggestion.`, detail: { skill: { name, kind: skill.kind, title: skill.title } } }
       : { isError: true, content: `Unknown skill "${name}". Call list_skills for the catalogue.` };
   } },
   find_flat_areas: { handler: findFlatAreas },
+  find_speckle: { handler: findSpeckle },
   find_bridge_sites: { handler: findBridgeSites },
   find_ramp_sites: { handler: findRampSites },
 
@@ -1038,6 +1323,9 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   clear_area: { write: true, handler: clearArea },
   sculpt_terrace: { write: true, handler: sculptTerrace },
   carve_river: { write: true, handler: carveRiver },
+  sculpt_wall: { write: true, handler: sculptWall },
+  sink_pool: { write: true, handler: sinkPool },
+  draw_figure: { write: true, handler: drawFigure },
   build_road: { write: true, handler: buildRoad },
   scatter_objects: { write: true, handler: scatterObjects },
   run_generator: { write: true, handler: runGenerator },
@@ -1110,5 +1398,11 @@ function selectedBlockContext(deps: AgentToolDeps): string {
  *  cached system prefix). */
 export function buildMapContext(state: GridState, region: MacroCoord[], deps?: AgentToolDeps): string {
   const sel = deps ? `\n${selectedBlockContext(deps)}` : '';
-  return `${mapSummary(state)}\n${selectionContext(region)}${sel}\n${mapOverview(state)}`;
+  // Which of view_map's two answers this connection gets is a wiring fact the model cannot
+  // otherwise learn until it calls: told up front, a sighted seat reaches for the picture at its
+  // review step and a text seat never budgets a turn hoping for one.
+  const eyes = deps?.snapshot
+    ? '\nThis connection has VISION: view_map returns a rendered picture of the map, and view_map with x1,y1,x2,y2 returns a close-up crop of that region. Look before declaring a build done.'
+    : '';
+  return `${mapSummary(state)}\n${selectionContext(region)}${sel}${eyes}\n${mapOverview(state)}`;
 }

@@ -3,7 +3,7 @@ STREET GRAMMAR — roads are a settlement's streets, with grades, junctions and 
 WHEN TO USE: any road work beyond a single doorstep path — connecting a settlement, gridding a town, paving a climb; also when evaluate_map roads or connectivity is weak.
 
 THE GRADE LADDER (measured from the expert maps)
-- TRUNK: 3 wide (build_road line with width 3), ONE continuous route that passes the daily destinations — the plaza (neighbor center), facility-shop, facility-pavilion — and keeps going, widening to 4-6 only at approaches and squares.
+- TRUNK: 3 wide (build_road line with width 3), ONE continuous route that passes the daily destinations — the plaza (neighbor center), facility-shop, facility-station, facility-pavilion — and keeps going, widening to 4-6 only at approaches and squares.
 - BRANCH: 2 wide, leaving the trunk toward each district and most doors. Trunk and branch carry roughly equal length overall.
 - PATH: 1 wide is RARE (about 5% of pavement) and means one thing: a stepping-stone garden walk (path-garden-stone through a garden). Never build the network out of 1-wide paths.
 - MATERIAL: one material carries ~90% of the network (path-overgrown-dirt is the humble default); other materials are accents AT places — a brick forecourt at the shop, a stone square at the plaza, slate stones in the garden.
@@ -14,7 +14,7 @@ JUNCTIONS AND LINE
 - A road cell needs its right and bottom neighbors level and dry (the flat trait checks a +1 margin), so pavement stops one cell short of a south/east cliff lip or waterline — end the road there and let the crossing take over.
 
 ARRIVAL (what makes a network feel designed)
-- Streets must ARRIVE, not only pass: give the map ~6 terminal spurs, each ENDING within a couple of cells of something — a door, a lookout, a jetty, a composed pond. A dead end at nothing is a bug; a dead end at a destination is a place.
+- Streets must ARRIVE, not only pass: give the map ~6 terminal spurs, each ENDING within a couple of cells of something — a door, a lookout, a waterside platform, a composed pond. A dead end at nothing is a bug; a dead end at a destination is a place.
 - Make 1-2 destinations reachable ONLY by their spur (a peninsula over one bridge, a summit court up one ramp line). Seclusion is a feature the through-grid cannot fake.
 
 THE WALK MUST CLIMB

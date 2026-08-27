@@ -26,6 +26,9 @@ export interface OpRow {
   stageIndex?: number;
   /** A successful `load_skill`'s identity, for the op row's skill chip. */
   skill?: { name: string; kind: 'method' | 'style'; title: string };
+  /** The rendered picture this call's result carried (a sighted view_map): what the model SAW,
+   *  as a data URL. Live sessions only — persistence strips images, so a rehydrated row has none. */
+  image?: string;
 }
 
 /**
@@ -381,8 +384,12 @@ function buildOps(
     const stage = job.stageByCall.get(callId);
     if (stage !== undefined && job.plan) row.stageIndex = stage;
     if (result?.detail) row.detail = result.detail;
+    // The picture the MODEL was shown, carried so the record can show the reader the same thing.
+    // Live sessions only by construction: persistence strips images, so a rehydrated row falls
+    // back to its summary line ("Rendered view … attached"), which still says a look happened.
+    if (result?.image !== undefined) row.image = result.image;
     // The ALL-CAPS em-dashed body first-line never reaches a 7-locale detail well; the chip
-    // carries the title instead (B6), so a loaded skill's summary is blanked here. Guarded like
+    // carries the title instead, so a loaded skill's summary is blanked here. Guarded like
     // the JobView.skills fold: an error result carries no loaded skill to show.
     if (result?.detail?.skill && !result.isError) { row.skill = result.detail.skill; row.summary = ''; }
     return row;

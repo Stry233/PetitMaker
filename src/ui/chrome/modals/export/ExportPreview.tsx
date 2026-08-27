@@ -81,15 +81,28 @@ export function ExportPreview({ open, options, summary, codeImg, codePending, co
   }, [open, state, options.card3d, shotsKey]);
 
   // CHEAP: re-paint from cached assets on any option/text change (debounced); never recaptures.
-  // codeImg is the REAL share-code band (built async by the modal). There is NO placeholder:
-  // while a code is still building (codePending) the preview simply stays in its loading state
-  // and paints only once the actual modules exist.
+  // The title/description arrive SETTLED (the modal holds them until typing stops), so a keystroke
+  // never lands here. codeImg is the REAL share-code band (built async by the modal). There is NO
+  // placeholder: while a code is still building (codePending) the preview holds the last complete
+  // picture it drew, and shows its loading state only when there is none to hold — a rebuild for a
+  // retyped title must not blink an already-standing picture away.
+  const hasPicture = useRef(false);
+  // The provenance summary is a fresh object on every store read, and it only changes while
+  // editing, which the modal blocks — read it through a ref (the same move use-share-code.ts
+  // makes) so a parent re-render alone never reschedules the paint.
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
   useEffect(() => {
     if (!baseMap || !state) return;
-    if (codePending) { setLoading(true); return; }
-    const id = setTimeout(() => { setDataUrl(paintPreview({ options, summary: summary ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null })); setLoading(false); }, 50);
+    if (codePending) { if (!hasPicture.current) setLoading(true); return; }
+    const id = setTimeout(() => {
+      setDataUrl(paintPreview({ options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null }));
+      hasPicture.current = true;
+      setLoading(false);
+    }, 50);
     return () => clearTimeout(id);
-  }, [options, summary, state, locale, baseMap, card3d, codeImg, codePending]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summary rides in a ref, see above
+  }, [options, state, locale, baseMap, card3d, codeImg, codePending]);
 
   useEffect(() => { setView({ tx: 0, ty: 0, scale: 1 }); setShowResetHint(false); }, [open, baseMap]);
 

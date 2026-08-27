@@ -173,6 +173,18 @@ describe('revertNudge', () => {
     expect(nudge).not.toMatch(/coordinate/);
   });
 
+  it('escalates to the STOP register from the 4th revert of one tool', () => {
+    const log = createLog();
+    seedOrder(log);
+    for (let i = 1; i <= 4; i++) {
+      seedCall(log, `call-${i}`, 'place_object', { x: i });
+      seedResult(log, `call-${i}`, 'place_object', { reverted: true });
+    }
+    const nudge = revertNudge(log, 'place_object');
+    expect(nudge).toMatch(/STOP: 4 place_object/);
+    expect(nudge).toMatch(/inspect_region or view_map/);
+  });
+
   it('a plain error (not reverted) never counts toward the revert damper', () => {
     const log = createLog();
     seedOrder(log);

@@ -3,13 +3,8 @@
  * import-free by design: everything an adapter or the settings UI needs to know
  * about a provider BEFORE any network call or SDK construction lives here, so
  * neither the lazy agent chunk nor a test needs to pull in @anthropic-ai/sdk or
- * openai to read a name, an accent color or a base URL. Facts (names, base
- * URLs, accents, vision heuristics) are carried verbatim from the retired harness's metadata
- * table this supersedes; `keyUrl` comes from `ui/agent/SetupScreen.tsx`, which held it instead.
- * Two deliberate deviations
- * from the legacy tables: the zhipu and moonshot host orders are normalized to
- * `[global, cn]` (the legacy table listed them inconsistently), and
- * `mayOmitToolIds` was dropped from the quirks table entirely (see below).
+ * openai to read a name, an accent color or a base URL. Region-split platforms
+ * list their hosts `[global, cn]`, every one in the same order.
  */
 
 export type ProviderId =
@@ -108,7 +103,9 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     name: 'Perplexity',
     keyUrl: 'https://console.perplexity.ai/project/keys',
     accent: '#20808D',
-    vision: () => false, // the Router's catalog is open-weight text models
+    // The Router fronts frontier models under creator/model slugs, multimodal ones included; this
+    // is the PRIOR read off the slug, and the session's vision probe settles each connection.
+    vision: (model) => /claude|gemini|gpt-|grok/.test(lower(model)),
   },
   custom: {
     id: 'custom',
@@ -117,8 +114,11 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     // gateway…) — there is no signup page, the user already holds a key.
     keyUrl: '',
     accent: '#5F7A8A',
-    // Self-hosted gateways host arbitrary models — recognize the common multimodal families.
-    vision: (model) => /vl|llava|vision|omni|pixtral|gemma3|llama4/.test(lower(model)),
+    // Self-hosted gateways host arbitrary models — recognize the common multimodal families, the
+    // frontier ones included (a gateway fronting a routed Claude/GPT/Gemini names it in the slug).
+    // This is the PRIOR; the session's vision probe confirms it per connection before a job sends
+    // an image, so a proxy that strips image parts still reads as text-only.
+    vision: (model) => /vl|llava|vision|omni|pixtral|gemma3|llama4|claude|gemini|gpt-|grok/.test(lower(model)),
   },
 };
 

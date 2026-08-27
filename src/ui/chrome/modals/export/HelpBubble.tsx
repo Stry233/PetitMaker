@@ -6,12 +6,14 @@ import { motion } from 'framer-motion';
 import { font, springs, inkTint, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
+import { useT } from '../../../../i18n/context';
 import { useChromeScale } from '../../../design/scale';
 import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
 
 const WIDTH = 230;
 
 export function HelpBubble({ text }: { text: string }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -28,7 +30,7 @@ export function HelpBubble({ text }: { text: string }) {
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}>
-      <motion.button ref={btnRef} type="button" aria-label="help" onClick={() => setOpen((v) => !v)} whileTap={{ scale: 0.9 }}
+      <motion.button ref={btnRef} type="button" aria-label={t('a11y.help')} onClick={() => setOpen((v) => !v)} whileTap={{ scale: 0.9 }}
         style={{ ...dot, background: open ? skin.ink : skin.line, color: open ? skin.onDark : skin.ink }}>?</motion.button>
       {open && pos && (
         <>

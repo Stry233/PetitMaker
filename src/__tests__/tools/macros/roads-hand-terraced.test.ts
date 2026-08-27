@@ -1,6 +1,6 @@
 /**
- * THE ROADS PRESS ON A HAND-BUILT TERRACED MAP, which is the map this feature was reported broken
- * on and the one shape none of its other fixtures had. Every earlier road pin builds its island
+ * THE ROADS PRESS ON A HAND-BUILT TERRACED MAP, the one shape none of its other fixtures had.
+ * Every earlier road pin builds its island
  * with the GENERATOR, and a generated island has a handful of broad rooms with the plaza sitting in
  * the middle of the largest of them. A person terraces instead: many small rectangular plateaus with
  * sharp edges, houses standing on raised ground, and a plaza in a court of its own.
@@ -110,7 +110,7 @@ function componentsAround(comp: Map<number, number>, rect: { x: number; y: numbe
   return out;
 }
 
-describe('the fixture is the map that broke: a hand-terraced island', () => {
+describe('the fixture, a hand-terraced island', () => {
   it('is many small plateaus, houses on raised ground, and a plaza its own court', () => {
     const kit = loadMap();
     const a = analyzeTerrain(kit.state, null);
@@ -157,7 +157,7 @@ describe('one whole-map roads press on a hand-terraced island', () => {
     }
 
     // NO ORPHAN CROSSING: a ramp or bridge with no pavement at either end is a staircase in a
-    // field. All twelve of them were exactly that before the hub knew its own region.
+    // field. A hub blind to its own region leaves all twelve exactly that.
     const orphans = crossings.filter((c) => !pavedNear(kit.state, c, 1)).map(name);
     expect(orphans).toEqual([]);
 

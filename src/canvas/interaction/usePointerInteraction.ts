@@ -685,7 +685,6 @@ export function usePointerInteraction(
         }
         return true;
       }
-      // Region brushing drag
       return false;
     };
 
@@ -701,7 +700,6 @@ export function usePointerInteraction(
 
     /** Drag-to-move: arm past the threshold, then draw the drop ghost for the object or the group. */
     const dragMove = (e: PointerEvent): boolean => {
-      // Drag-to-move
       if (dragObjId && !dragging) {
         const ddx = e.clientX - dragStartX;
         const ddy = e.clientY - dragStartY;

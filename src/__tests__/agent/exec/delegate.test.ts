@@ -355,7 +355,7 @@ describe('exec/executor: delegate_task', () => {
     expect(result?.content).toBe('Helper report: the village already stood; nothing needed building.');
   });
 
-  it('with no opts.delegate, delegate_task still reports itself unwired (pre-T4 behavior preserved)', async () => {
+  it('with no opts.delegate, delegate_task still reports itself unwired', async () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const r = await executor.execute({ callId: 'd7', name: 'delegate_task', args: { task: 'x' } });

@@ -1416,12 +1416,13 @@ describe('the flip keys on state identity alone, never on the repaint', () => {
 });
 
 /**
- * THE OFFLINE WAIT IS A FACE OF ITS OWN, and it was unreachable.
+ * THE OFFLINE WAIT IS A FACE OF ITS OWN, and it has to stay reachable.
  *
  * The prototype tells "no connection, retries on return" apart from "the provider asked us to wait
- * N seconds": the first draws a plain press because there is nothing to count down. The branch was
- * on `delayMs > 0`, and a ladder always computes a delay, so the untimed side was dead code and the
- * offline card counted down to an attempt that would fail again, then counted again.
+ * N seconds": the first draws a plain press because there is nothing to count down. A branch on
+ * `delayMs > 0` cannot reach it — a ladder always computes a delay, so the untimed side would be
+ * dead code and the offline card would count down to an attempt that would fail again, then count
+ * again.
  */
 describe('the retry face branches on the CAUSE, not on whether a delay was computed', () => {
   const offline = (delayMs: number) => makeView({
@@ -1625,8 +1626,8 @@ describe('a numbed seat reports rather than refuses', () => {
 
 /**
  * THE CONFIRM IS A FACE, so the card TURNS into the question and turns back out of it — the
- * prototype keys it as its own face for exactly that. It swapped in place, which is the calmer
- * choice and not the declared one.
+ * prototype keys it as its own face for exactly that. A swap in place is the calmer choice and
+ * not the declared one.
  */
 describe('the stop confirm turns the card', () => {
   function NeverWrapper({ children }: { children: React.ReactNode }) {

@@ -143,7 +143,7 @@ describe('applyMacro', () => {
     expect([...state.objects.values()].some((o) => categoryOf(o) === ItemCategory.Road)).toBe(true);
   });
 
-  // Relief in the middle of the map is the shape that broke this: the open ground wrapping a hill is
+  // Relief in the middle of the map is the hard shape: the open ground wrapping a hill is
   // a RING, whose centroid sits on the hilltop rather than in it. The router seeds its whole network
   // on the hub node, so a hub left on that summit strands every route on a cell nothing can reach and
   // the run lays nothing at all — on the one macro the shell offers a reroll for.

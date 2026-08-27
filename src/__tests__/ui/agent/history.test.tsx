@@ -2,7 +2,7 @@
  * history.test.tsx — THE PAST-JOBS STRIP: its grouping, its rows, and the two things a row may and
  * may not offer.
  *
- * The terminal family's own cards moved to `fin-ticket.test.tsx`; what is left here is the LIST —
+ * The terminal family's own cards are pinned in `fin-ticket.test.tsx`; this file holds the LIST —
  * the day headers the artifact's own builder produces, the rows' glyph/name/stat, the reveal that
  * may not move the row, and the ROLLBACK GUARD: a record built on a map that is not open reads but
  * cannot be rolled back, and the panel stands the notice over the list.
@@ -490,8 +490,8 @@ describe('PanelShell: a cleared record leaves the list', () => {
 
 /**
  * THE ROW'S ROLL BACK IS DESTRUCTIVE, so it asks first and NAMES THE SIZE (artifact: "destructive:
- * first press asks, naming the size; the row it would kill dims"). It was the one destructive press
- * in the whole panel that fired on the first click.
+ * first press asks, naming the size; the row it would kill dims"). Fired on the first click it
+ * would be the one destructive press in the whole panel that does.
  */
 describe('HistoryStrip: the roll back asks before it fires', () => {
   function jobAt(over: Partial<JobView> = {}): JobView {
@@ -573,8 +573,9 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
  * THE STANDING RECEIPT READS THE SAME GUARD THE ROWS DO.
  *
  * The session is not cleared by a map change, so a job run on map A leaves its receipt standing over
- * map B with a live take-back aimed at B's undo stack. The rows refused that one surface down; the
- * card the user is actually looking at offered it with no mark, no dim and no notice.
+ * map B with a live take-back aimed at B's undo stack. Were the guard read one surface down only,
+ * the rows would refuse it while the card the user is actually looking at offered it with no mark,
+ * no dim and no notice.
  */
 describe('PanelShell: the settled card and the rollback guard', () => {
   const built = makeJob({

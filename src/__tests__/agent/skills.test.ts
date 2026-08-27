@@ -73,6 +73,16 @@ describe('skill bodies name only real things', () => {
     }
   });
 
+  it('no body names set dressing the catalog cannot build', () => {
+    // These nouns have no catalog item and no legal construction, so a body that names one sends
+    // the model hunting for a thing it can never place ("jetty" cost real turns in live runs).
+    const ghost = /\b(jetty|jetties|pier|piers|fountain|lantern|fence|statue|gazebo|dock)\b/i;
+    for (const [name, s] of Object.entries(SKILLS)) {
+      const hit = `${s.description}\n${s.body}`.match(ghost);
+      expect(hit, `${name} names "${hit?.[0]}"`).toBeNull();
+    }
+  });
+
   it('every decorate_zone theme a body suggests is a real theme', () => {
     const themeRe = /decorate_zone ([a-z]+)\b/g;
     for (const [name, s] of Object.entries(SKILLS)) {

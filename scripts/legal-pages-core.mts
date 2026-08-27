@@ -30,11 +30,6 @@ declare const process: { cwd(): string };
 
 export type Lang = 'en' | 'zh';
 
-/**
- * Pure helper to resolve the build mode from the environment.
- * Returns 'release' if PETIT_RELEASE env var is '1', otherwise 'dev'.
- * Exported for testability.
- */
 export function resolveMode(env: Record<string, string | undefined>): 'release' | 'dev' {
   return env.PETIT_RELEASE === '1' ? 'release' : 'dev';
 }

@@ -293,15 +293,15 @@ describe('writeAll', () => {
     expect(() => writeAll(dir, LEGAL, 'dev', new Date('2026-07-15T00:00:00.000Z'))).not.toThrow();
   });
 
-  it('release mode builds a release-valid fixture cleanly now that no token is deferred', () => {
-    // Round 3 retired the {deployment-facts} deferral (the facts are authored
-    // directly into privacy.*.md). A release-valid fixture therefore resolves
-    // every token, so writeAll must NOT throw in release mode.
+  it('release mode builds a release-valid fixture cleanly, no token deferred', () => {
+    // No token is deferred: the deployment facts are authored directly into
+    // privacy.*.md. A release-valid fixture therefore resolves every token,
+    // so writeAll must NOT throw in release mode.
     const cfg = fixtureCfg();
     expect(() => writeAll(dir, cfg, 'release')).not.toThrow();
   });
 
-  it('privacy pages no longer carry the retired {deployment-facts} token', () => {
+  it('the retired {deployment-facts} token appears on no privacy page', () => {
     const cfg = fixtureCfg();
     expect(pageHtml('privacy', 'en', cfg)).not.toContain('{deployment-facts}');
     expect(pageHtml('privacy', 'zh', cfg)).not.toContain('{deployment-facts}');

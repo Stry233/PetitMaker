@@ -3,9 +3,9 @@
 // LEGAL config: the filing/origin fields are mutated in-place per test (the export
 // is a plain, non-frozen object; the component reads LEGAL at render). We snapshot
 // the launch-default values once and restore them in afterEach so tests stay
-// order-independent and never leak the placeholder state into other suites. This
-// is the smallest-footprint way to exercise the "row count / filing rows follow
-// config" matrix without mocking a module the registry + docBody also read.
+// order-independent and never leak the placeholder state into other suites. The
+// registry + docBody read the same module, so the "row count / filing rows follow
+// config" matrix is exercised by mutation rather than by a mock they would both lose.
 //
 // Assertions use plain DOM checks (getAttribute / toBeTruthy / toBeNull) — this
 // repo does not register @testing-library/jest-dom, matching sibling UI tests.
@@ -87,7 +87,7 @@ describe('AboutModal — view A (About)', () => {
     expect(screen.queryByTestId('filing-psb')).toBeNull();
   });
 
-  it('renders the ICP filing row with a link only when the complete pair is set (spec §18.9)', () => {
+  it('renders the ICP filing row with a link only when the complete pair is set', () => {
     LEGAL.icpNumber = '京ICP备2026000000号-1';
     LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
     renderModal();
@@ -215,7 +215,7 @@ describe('AboutModal — drill-in to the doc view', () => {
     });
   });
 
-  it('never renders a doc-view open-page link, even when origin is set (in-modal affordance removed)', async () => {
+  it('never renders a doc-view open-page link, even when origin is set', async () => {
     LEGAL.canonicalOrigin = 'https://petit-maker.example';
     renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));

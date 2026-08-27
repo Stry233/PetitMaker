@@ -396,7 +396,6 @@ export function filesEqual(a: string, b: string): boolean {
   }
 }
 
-/** Thin wrapper kept here so the CLI doesn't need its own fs import for this one call. */
 export function writeTextFile(path: string, contents: string): void {
   writeFileSync(path, contents, 'utf8');
 }

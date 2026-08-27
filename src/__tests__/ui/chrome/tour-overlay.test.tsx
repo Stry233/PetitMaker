@@ -36,11 +36,11 @@ function rectAt(left: number, top: number): DOMRect {
  * Resolve `document.querySelector('[data-tour-target="id"]')` per target id, the way the real DOM
  * would: an id in `absent` reads as unmeasurable (same as the element being missing from the
  * page), and every present id gets a FRESH rect object on every call, since a real
- * `getBoundingClientRect` never returns the same object twice — a frozen shared rect hid the
- * focus-stealing bug (Finding 2) because `setRect` bailed out on an unchanged value.
+ * `getBoundingClientRect` never returns the same object twice — a frozen shared rect would mask
+ * focus-stealing, because `setRect` bails out on an unchanged value.
  *
  * Returns the (live) `absent` set so a test can `delete` from it mid-run — that's how a test
- * simulates `menu: 'expand'` making a target exist only once its step has been announced (Finding 7).
+ * simulates `menu: 'expand'` making a target exist only once its step has been announced.
  * `rectFor` overrides the rect a present target reports, so a test can make one move between reads.
  */
 function stubTargets(absent: Iterable<TourTargetId> = [], rectFor?: (id: TourTargetId) => DOMRect): Set<TourTargetId> {
@@ -416,7 +416,7 @@ describe('TourOverlay', () => {
     ]);
   });
 
-  it('announces a step even though its target starts absent, so the host can bring it into being (Finding 7)', async () => {
+  it('announces a step even though its target starts absent, so the host can bring it into being', async () => {
     // The app's only hook for a step's `mode` IS onStepEnter, so onStepEnter must fire before the
     // target exists — this simulates the shell selecting the mode from inside that callback.
     const absent = stubTargets(['bar']);
@@ -591,8 +591,8 @@ describe('TourOverlay', () => {
   });
 
   it('puts the bubble on the far side of a target near the viewport edge, never over it', async () => {
-    // The reported defect: `side` only clamped, so a bubble that did not fit on its preferred side
-    // was pushed back INTO the control the step was describing.
+    // A `side` that only clamps pushes a bubble that does not fit on its preferred side
+    // back INTO the control the step is describing.
     // The first targeted step prefers 'below', so the target is put where 'below' has no room.
     stubTargets([], () => rectAt(200, window.innerHeight - 140));
     expect(FIRST_TARGETED.side).toBe('below');
@@ -813,7 +813,7 @@ describe('TourOverlay', () => {
   });
 
   it('blocks the app under the dim, without claiming a modality the keyboard can escape', () => {
-    // The dim takes the pointer (#30), or a first-launch visitor can edit the map and press controls
+    // The dim takes the pointer, or a first-launch visitor can edit the map and press controls
     // straight through the tour. aria-modal stays off, because there is no focus trap and Tab can
     // still leave the card.
     startTour();

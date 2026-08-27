@@ -13,10 +13,10 @@
  * legally stand plus a report naming the door.
  *
  * INLAND — the door faces an upland step three cells off. The approach row is perfectly legal, and
- * the press still left it bare: `analysis.open` closes the whole ring of dual-grid margin around a
- * standing house, `openDoorsteps` reopens the approach ALONE, and the walkability flood cannot enter
- * a one-cell island. Reading reach AT the doorstep therefore answered "not connected" for a house the
- * street was four cells from, so the terminal pass skipped it and the street stopped in bare grass.
+ * the press can still leave it bare: `analysis.open` closes the whole ring of dual-grid margin around
+ * a standing house, `openDoorsteps` reopens the approach ALONE, and the walkability flood cannot enter
+ * a one-cell island. Reading reach AT the doorstep therefore answers "not connected" for a house the
+ * street is four cells from, so the terminal pass skips it and the street stops in bare grass.
  */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';

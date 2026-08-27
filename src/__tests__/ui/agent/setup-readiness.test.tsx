@@ -146,16 +146,16 @@ const IDLE_VIEW: PanelView = {
 };
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-/* ── the reported walk ─────────────────────────────────────── */
+/* ── the custom-provider walk ──────────────────────────────── */
 
 /**
- * THE REPORTED WALK, END TO END. The settings card's provider row names `custom`, which arms a
+ * THE WALK, END TO END. The settings card's provider row names `custom`, which arms a
  * provider with no address anywhere behind it; the panel drops back to the connection screen; the
  * gateway key goes in. The walk must end at the connection screen asking for the address, never at
  * idle: a pin read as the answer files the key against a server nobody has named, sends the model
  * request to whatever host the SDK defaults to, and offers Done over three quarters of a connection.
  */
-describe('the walk that reached idle with no endpoint and no model', () => {
+describe('the walk must not reach idle with no endpoint and no model', () => {
   it('arms custom from the settings card with no address behind it', () => {
     store().connectKey('claude', KEY.claude);
     store().setModel('claude-sonnet-4-5');
@@ -164,7 +164,7 @@ describe('the walk that reached idle with no endpoint and no model', () => {
     fireEvent.click(screen.getByTestId('manage-prov-row'));
     fireEvent.click(screen.getByText(PROVIDER_META.custom.name));
 
-    // The trap this round exists for: a pinned provider whose address is nowhere on this card.
+    // The trap: a pinned provider whose address is nowhere on this card.
     expect(store().provider).toBe('custom');
     expect(store().providerPinned).toBe(true);
     expect(store().customBaseUrl).toBe('');

@@ -87,9 +87,9 @@ describe('placeControlRow', () => {
   });
 
   it('an anchor ON screen is never hidden, however extreme the framing that produced it', () => {
-    // The old box path hid whenever the projected box degenerated — a collapsed sliver under an
-    // end-on orbit, or a box bigger than the screen from a close camera. A point has no extent, so no
-    // framing is left that can hide a selection the user can see.
+    // Placement read off a projected BOX hides whenever that box degenerates — a collapsed sliver
+    // under an end-on orbit, or a box bigger than the screen from a close camera. A point has no
+    // extent, so no framing is left that can hide a selection the user can see.
     for (const anchor of [{ x: 0, y: 0 }, { x: VIEWPORT.width, y: VIEWPORT.height }, { x: 1, y: 767 }]) {
       expect(placeControlRow(anchor, m, VIEWPORT, 1).visible).toBe(true);
     }

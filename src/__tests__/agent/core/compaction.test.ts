@@ -85,9 +85,9 @@ describe('compact', () => {
   });
 
   it('folds INSIDE a single exchange at an assistant boundary when no group boundary can be used', async () => {
-    // Shape A of the compaction audit: one order, no steer, so the whole job is ONE group and the
-    // group walk can only return the order's own seq. Before the emergency boundary this bailed and
-    // the caller settled the job as an overflow incident - skill kept, job lost.
+    // One order, no steer, so the whole job is ONE group and the group walk can only return the
+    // order's own seq. Without the emergency boundary this would bail and the caller would settle
+    // the job as an overflow incident - skill kept, job lost.
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'one enormous job', mapContext: '' });
     const assistantSeqs: number[] = [];

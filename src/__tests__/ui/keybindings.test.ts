@@ -180,7 +180,7 @@ describe('keyboard layout', () => {
     }
   });
 
-  it('the nav + numpad clusters expose the requested bindable keys', () => {
+  it('the nav + numpad clusters expose their bindable keys', () => {
     const navTokens = new Set(NAV.map((k) => k.base));
     for (const t of ['printscreen', 'pause', 'insert', 'home', 'pageup', 'pagedown', 'end', 'delete',
       'arrowup', 'arrowdown', 'arrowleft', 'arrowright']) {

@@ -150,7 +150,7 @@ describe('TapeBar', () => {
     expect(stripes.style.right).toBe('0px');
     // The fill CLIPS it, which is what keeps the fill's own rounded cap.
     expect(fillOf(container).style.overflow).toBe('hidden');
-    // Nothing on either box animates a background any more.
+    // Nothing on either box animates a background.
     expect(stripes.className).not.toContain('pw-stripes');
   });
 });
@@ -207,7 +207,7 @@ describe('TickDot: the end-mark vocabulary', () => {
     expect(asColor(tickInk.ok)).toBe(asColor(INK));
   });
 
-  /** The ask PAPER is the dock's alone (G1). A mark on its own coloured pill inside an op row read
+  /** The ask PAPER is the dock's alone. A mark on its own coloured pill inside an op row reads
    *  as a second card in the middle of the record. */
   it('no status paints a background of its own', () => {
     for (const [status] of END_MARKS) {

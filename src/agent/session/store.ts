@@ -26,7 +26,7 @@ export interface AgentSessionState {
    *  to show, and this field must never make it into anything a reload could replay. */
   childLive: { task: string; opName?: string; ops: number; label?: string } | null;
   setChildLive(p: { task: string; opName?: string; ops: number; label?: string } | null): void;
-  /** The storage banner's producer (#8): `'pruned'`/`'lost'` come from a debounced/flushed
+  /** The storage banner's producer: `'pruned'`/`'lost'` come from a debounced/flushed
    *  `saveLog` that had to prune or gave up entirely; `'corrupt'` comes from `hydrate` finding
    *  bytes that existed but did not deserialize. A later `'saved'` clears a pruned/lost notice
    *  automatically (the very next save proves storage works again), but `'corrupt'` does NOT

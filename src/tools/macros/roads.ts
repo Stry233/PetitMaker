@@ -315,9 +315,9 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   const changed = laid();
   if (changed > 0) {
     // A BUILDING THE NETWORK NEVER REACHED IS NAMED TOO, and named FIRST: it is the larger fact.
-    // `door-unreachable` is a house the run DID connect whose gate strip takes no tile, so only the
-    // connected houses were ever asked about and a building on ground nothing routes to was dropped
-    // in silence while the press reported a few hundred tiles of success.
+    // `door-unreachable` is a house the run DID connect whose gate strip takes no tile, so it only
+    // ever speaks of connected houses — without this a building on ground nothing routes to would be
+    // dropped in silence while the press reports a few hundred tiles of success.
     const stranded = nodes.find((n) => n.kind === 'hamlet' && reach[n.pos.y * W + n.pos.x] !== 1);
     const report: Pick<RoadNetworkResult, 'code' | 'at'> = stranded ? { code: 'stranded', at: stranded.pos } : door;
     return { laid: changed, ownedIds: [...kept, ...fresh], ...report, ...(narrowedByPlanting > 0 ? { narrowedByPlanting } : {}) };

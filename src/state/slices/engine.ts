@@ -1,7 +1,7 @@
 /**
  * The engine's own handles: the live `GridState`, its `CommandExecutor`, the shared `EventBus`,
- * the selection set, and the export/undo-stack bookkeeping that reads the executor. Everything a
- * A shell must never reach around — a shell field that needs one of these is the engine-coupling
+ * the selection set, and the export/undo-stack bookkeeping that reads the executor. Everything
+ * a shell must never reach around — a shell field that needs one of these is the engine-coupling
  * the slice split exists to catch.
  *
  * `initMap`/`loadMap` reset the edit slice's per-map layer state (a fresh or loaded map carries no

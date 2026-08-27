@@ -236,7 +236,7 @@ describe('Composer: the stop square, geometry held stable', () => {
     expect(onStop).not.toHaveBeenCalled();
   });
 
-  it('REGRESSION: the well and the send circle keep the exact same box across idle <-> running — the stop button never displaces them', () => {
+  it('the well and the send circle keep the exact same box across idle <-> running — the stop button never displaces them', () => {
     const { getByTestId, rerender } = renderWithI18n(
       <Composer route="order" running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} />,
     );

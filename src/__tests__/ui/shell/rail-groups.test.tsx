@@ -43,9 +43,9 @@ const kit = () => screen.getByLabelText('Switch view').parentElement as HTMLElem
 const pair = () => screen.getByTestId('shell-rail-history');
 /** How many files a group is running in, read off the grid it lays its buttons out in. */
 const files = (el: HTMLElement) => Number(/repeat\((\d+)/.exec(el.style.gridTemplateColumns)![1]);
-/** The pair differs in nothing but direction, so each names its own: a label they SHARED told a
- *  visitor nothing on the one pair the naming pill exists for. Matched by the two names rather than
- *  by a stem, which is what fails again if they are ever collapsed back into one word. */
+/** The pair differs in nothing but direction, so each names its own: a label they SHARED would tell
+ *  a visitor nothing on the one pair the naming pill exists for. Matched by the two names rather than
+ *  by a stem, which is what fails if they are ever collapsed into one word. */
 const turns = () => [
   ...screen.queryAllByLabelText('Rotate left'),
   ...screen.queryAllByLabelText('Rotate right'),
@@ -68,8 +68,8 @@ afterEach(() => {
 
 describe('the view kit', () => {
   /**
-   * THE TWO TURNS ARRIVE AND LEAVE rather than blinking with the view, and what makes that safe is
-   * that the kit is planned for six buttons whichever view is showing. The pair stands in the last
+   * THE TWO TURNS ARRIVE AND LEAVE rather than blinking with the view: the kit is planned for the
+   * full complement whichever view is showing. The pair stands in the last
    * row, so a button still leaving holds the cell it had and nothing above it moves — which matters
    * because the kit hangs off the shelf's floor and a wobble there reads as the whole column moving.
    */
@@ -222,8 +222,7 @@ describe('a button gives its name', () => {
    * Everything a button does to answer a pointer — opening the pill, growing to acknowledge it —
    * happens on the plate, and the plate takes no pointer events, so the square underneath is the
    * whole of the hit region in every state. A hover decided against a box that GROWS moves the edge
-   * the pointer is being tested against, which fires the event that moves it back: the pump the
-   * auto-trim chip was reported as.
+   * the pointer is being tested against, which fires the event that moves it back: a pump.
    */
   it('answers the pointer on a shape that hit-testing cannot see', () => {
     mountAt(1200);
@@ -258,8 +257,8 @@ describe('a button gives its name', () => {
    * A FOLDED GROUP STILL GIVES ITS NAMES. Folding is not a corner case: a 900 css px window already
    * runs the kit in two files, so a pill withheld from a folded group is a pill most visitors never
    * see and a button that grows on hover without ever saying what it is for. A right-file pill
-   * passes over its left neighbour while it is open, which is safe for pressing because the pill
-   * only exists while the pointer is inside its own button's square: by the time the pointer
+   * passes over its left neighbour while it is open, and the neighbour stays pressable: the pill
+   * only exists while the pointer is inside its own button's square, so by the time the pointer
    * reaches where the word was, the hover that showed it has ended and the neighbour is answering
    * for itself.
    */
@@ -276,8 +275,8 @@ describe('a button gives its name', () => {
   /**
    * A NAME IS ONLY A NAME IF IT TELLS ITS BUTTON FROM THE ONE BESIDE IT.
    *
-   * The two turns shared one word until someone used them: the pair that differs in nothing but
-   * direction is exactly the pair the pill is for, and it was the pair it said nothing to. Read in
+   * A pair that differs in nothing but direction is exactly the pair the pill is for, and one
+   * word shared between the two says nothing to it. Read in
    * 3D, which is the complement that has them, and over the whole column rather than that one
    * group, since the fault costs the same anywhere in it.
    */
@@ -292,7 +291,7 @@ describe('a button gives its name', () => {
 });
 
 /**
- * THE HIDE TOGGLE joined the kit rather than being bolted beside it, which is a claim about its
+ * THE HIDE TOGGLE IS A KIT MEMBER rather than a bolt-on beside it, which is a claim about its
  * size, its plate, its fold and its pill. Those are the kit's, so what is left to hold here is that
  * it is IN the kit and that it is the one thing that does not go away with everything else.
  */
@@ -356,8 +355,8 @@ describe('a folded group fills from the right', () => {
 
   /**
    * THE TURNS ARRIVING CHANGES WHICH BUTTON IS THE ODD ONE, so one button moves and the rest do
-   * not. That move is what `layout` on a rail button is for; keyed on the file count alone it never
-   * ran, and the zoom-out button changed columns in a single frame.
+   * not. That move is what `layout` on a rail button is for; keyed on the file count alone it
+   * would never run, and the zoom-out button would change columns in a single frame.
    */
   it('moves the one button the new arrangement moved, and no other', () => {
     mountAt(660);

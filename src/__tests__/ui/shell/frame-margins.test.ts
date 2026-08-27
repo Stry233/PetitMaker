@@ -107,9 +107,9 @@ describe('the frame\'s margins', () => {
 
   it('are measured to the ink, so choosing a mode cannot eat the top one', () => {
     // The row's box is exactly as deep as the tallest drawing it holds, which is a SELECTED mode, so
-    // the box top IS that drawing's ink top. Placed on the RESTING drawings instead, as it was,
-    // choosing a mode grew its art up out of the row and left 9 px over it: the tightest gap in the
-    // frame, and one that only appeared once somebody used the thing.
+    // the box top IS that drawing's ink top. Placed on the RESTING drawings instead,
+    // choosing a mode grows its art up out of the row and leaves 9 px over it: the tightest gap in
+    // the frame, and one that only appears once somebody uses the thing.
     expect(MODE_ROW_TOP).toBe(EDGE_TOP);
     expect(MODE.height).toBe(Math.round(Math.max(...MODES.map((a) => a.selected.h)) * MODE_SCALE));
   });
@@ -126,7 +126,7 @@ describe('the frame\'s margins', () => {
 /**
  * The two rows' separation is DERIVED, and from the state where they are tightest.
  *
- * Set as a constant to the BOX it was 31, which is 47 px of seen air at rest and 15 in the tight
+ * Set as a constant to the BOX, 31 is 47 px of seen air at rest and 15 in the tight
  * state, because a box carries slack over the drawing standing in it and the row above hangs a name
  * into the gap only sometimes. One number cannot be judged in two states at once, so the only thing
  * chosen here is the clearance and the rest falls out of the drawings' own sizes.
@@ -156,8 +156,10 @@ describe('nothing in the frame casts a shadow', () => {
   it('except the screen\'s own vignette and the edge a drawing wears on the map', () => {
     const offender = /box-?[Ss]hadow|text-?[Ss]hadow|drop-shadow/;
     // The vignette is a gradient rather than a shadow, since a shadow cannot be given to a single
-    // edge, so the only name exempt here is the hairline every drawing wears.
-    const exempt = ['MAP_SHAPE_EDGE'];
+    // edge, so the only names exempt here are the hairline every drawing wears: the dilation
+    // (`MAP_SHAPE_EDGE`) and the spread-only ring a radius-box plate carries instead
+    // (`plateShapeEdge` — zero offset, zero blur, so an outline and not a shadow).
+    const exempt = ['MAP_SHAPE_EDGE', 'plateShapeEdge'];
     // A line is allowed if it NAMES one of the two (a place that applies the treatment) or if it is
     // written inside one's declaration (the treatment's own body, which is built out of a list, so
     // the name is not on the line the property is on).
@@ -229,7 +231,7 @@ describe('the top of the window is one band', () => {
   /**
    * THE TWO SIDES SHARE A LINE THROUGH THE MIDDLE OF WHAT IS DRAWN, and neither box edge.
    *
-   * Both edges were tried and both read wrong. Hung off the row's BASELINE the corner is 44 of ink
+   * Either box edge reads wrong. Hung off the row's BASELINE the corner is 44 of ink
    * against a block's 55 to 64, so its top falls far below theirs and it reads low. Centred in
    * `MODE.height` it reads HIGH, because that band is sized for the SELECTED drawing and no resting
    * block fills it — the five rest with their ink centres at 67 to 71 while the corner's landed at
@@ -237,9 +239,9 @@ describe('the top of the window is one band', () => {
    *
    * So the assertion is on the CENTRES, which is the alignment a person actually reads across the
    * top of the window. A consequence worth stating, since it looks wrong in isolation: the corner's
-   * top now sits BELOW every resting block's top and its bottom above their baseline. That is what
-   * centring a shorter shape on a taller one does, and chasing either edge back is how this got
-   * misaligned twice.
+   * top sits BELOW every resting block's top and its bottom above their baseline. That is what
+   * centring a shorter shape on a taller one does, and chasing either edge back would misalign it
+   * again.
    */
   it('centres the corner ON THE INK it faces, not in the box behind it', () => {
     const restingCentres = MODES.map((art) => MODE_ROW_BASE - (art.h * MODE_SCALE) / 2);
@@ -266,18 +268,18 @@ describe('the top of the window is one band', () => {
   });
 
   /**
-   * The corner's three and the rail's ten are ONE family of utilities, and they were two sizes: 58
-   * against 44, on the argument that a corner control is a whole drawing where a rail one is a glyph
-   * on a plate. A rail control IS its plate, so the two were being compared at different parts of
-   * themselves.
+   * The corner's three and the rail's ten are ONE family of utilities, and sized apart they read as
+   * two: 58 against 44, on the argument that a corner control is a whole drawing where a rail one is
+   * a glyph on a plate, compares the two at different parts of themselves — a rail control IS its
+   * plate.
    *
-   * Within the corner they were three sizes as well. At one box height a filled circle, a shape that
-   * is mostly a notch and a square filled corner to corner read 62, 54 and 65, which is the same
-   * mistake box-height sizing made in the rail before `apparentSize` was brought in.
+   * Within the corner, box-height sizing makes three sizes as well: at one box height a filled
+   * circle, a shape that is mostly a notch and a square filled corner to corner read 62, 54 and 65,
+   * the same mistake box-height sizing makes in the rail without `apparentSize`.
    *
-   * `apparentSize` then made the opposite one. Normalising all three onto its own number rendered
+   * `apparentSize` alone makes the opposite one. Normalising all three onto its own number renders
    * the share anchor 53 css tall against 44 for the two discs, because the formula discounts area
-   * and an open shape is mostly not there — and the corner read as one big control and two small
+   * and an open shape is mostly not there — and the corner reads as one big control and two small
    * ones. So each carries a `trim` judged by eye at rendered size, and this holds the SHAPE of that
    * answer: three unequal corrections that land the three drawings within a pixel of the family's
    * own size. Setting the trims equal fails the second assertion, which is the point of it.
@@ -525,9 +527,8 @@ describe('the right-hand column', () => {
     });
 
     it('breaks the kit into files only where one file will not fit', () => {
-      // SEVEN buttons now, since the hide toggle joined the kit, so the fold bites higher than it
-      // did at six: a single file is 362 css px against 309, and the run only reaches that from
-      // about 965 device px of window height.
+      // SEVEN buttons, the hide toggle included: a single file is 362 css px against 309, and the
+      // run only reaches that from about 965 device px of window height.
       expect(plan(720, false).kitFiles, 'a laptop cannot hold the seven in one').toBe(2);
       expect(plan(900, false).kitFiles, 'nor can a 900px window').toBe(2);
       expect(plan(965, false).kitFiles, 'and just above the fold').toBe(1);

@@ -1,8 +1,8 @@
 /**
  * Smart construction is a TOOL, and these are the facts that make it one rather than a gimmick.
  *
- * The complaint it answers was specific: every macro the engine implements should be reachable, and
- * arming one should not open a negotiation. Both are properties of data rather than of a rendered
+ * The facts: every macro the engine implements is reachable, and
+ * arming one does not open a negotiation. Both are properties of data rather than of a rendered
  * frame, which is why they can be held here cheaply and exactly.
  */
 import { describe, expect, it } from 'vitest';
@@ -30,8 +30,8 @@ const offered = (): MacroId[] => Object.values(SMART_MENU).flat().map((a) => a.i
 
 describe('smart construction', () => {
   /**
-   * A macro that exists with no way to reach it is a feature nobody can use, and that is exactly
-   * what had happened: `patch` was implemented and absent from every surface's list. Holding the
+   * A macro that exists with no way to reach it is a feature nobody can use: implemented and
+   * absent from every surface's list, it is written, validated and invisible. Holding the
    * two sets equal means a sixth macro cannot be written and left stranded.
    */
   it('offers every macro the engine implements, and invents none', () => {
@@ -40,8 +40,8 @@ describe('smart construction', () => {
 
   /**
    * BEING IN THIS TABLE IS NOT THE SAME AS BEING REACHABLE, and the test above cannot tell the
-   * difference: `patch` sat under `object` for a while with nothing mounting `SmartBuild` on the
-   * object shelf, so it was written, validated and invisible.
+   * difference: an entry under `object` with nothing mounting `SmartBuild` on the
+   * object shelf is offered by the table and drawn by nobody.
    *
    * Every surface that offers a macro must therefore be a surface that draws the cell.
    */
@@ -185,7 +185,8 @@ describe('smart construction', () => {
     expect(count(ItemCategory.Bridge) + count(ItemCategory.Ramp)).toBe(crossingsBefore);
 
     // AND NOTHING THE PRESS BUILT STANDS ALONE: every crossing on the map has pavement within reach
-    // of one of its ends. An orphan ramp in bare grass is what the accumulation looked like.
+    // of one of its ends — an orphan ramp in bare grass is what repeated presses would otherwise
+    // accumulate.
     const { roadByCell } = getObjectIndex(state);
     for (const o of state.objects.values()) {
       const cat = categoryOf(o);

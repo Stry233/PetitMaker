@@ -224,7 +224,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
     ],
     static: 'translateY(7px) rotate(-4deg) scaleY(.94)',
   },
-  // THE KEY-ENTRY PAIR. Since B-below the provider ROW under the field carries the verdict; these
+  // THE KEY-ENTRY PAIR. The provider ROW under the field carries the verdict; these
   // DOUBLE it as reaction garnish and never carry it alone, which is why the reading one wears no
   // badge at all. A REFUSED KEY IS `trouble`: the hop back and the worried tremble is the one face
   // the panel has for something going wrong, and a second droop with the same exclaim beside it was

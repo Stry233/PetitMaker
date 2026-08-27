@@ -15,11 +15,11 @@ import { makeToolCtx } from '../_tool-ctx';
 import { roadLookup } from '../../../state/object-index';
 
 /**
- * The cursor's refusal badge and the click must answer the same question, and twice they have not:
- * the probe once asked a mountain question for a tile click (and validated water as mountain), and
- * once validated the TOP of an auto-stack while the click only issues its first step, which badged
- * every fresh cell as forbidden under a build floor of 2 or more. Both drifts were invisible to
- * tests that exercised one side at a time.
+ * The cursor's refusal badge and the click must answer the same question, and two drifts show how
+ * they part: a probe that asks a mountain question for a tile click (validating water as mountain),
+ * and one that validates the TOP of an auto-stack while the click only issues its first step, which
+ * badges every fresh cell as forbidden under a build floor of 2 or more. Either drift is invisible
+ * to a test that exercises one side at a time.
  *
  * So this test never inspects a plan. It reads the probe's verdict, then RUNS the click through the
  * real CommandExecutor and compares outcomes:

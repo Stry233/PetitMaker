@@ -2,9 +2,7 @@
  * Key-format detection and the probe that resolves an ambiguous bare `sk-…` key
  * by asking. SDK-free: the probe calls `fetch` directly against `<base>/models`
  * (a read-only, free endpoint on every OpenAI-dialect platform here) rather than
- * building an adapter, so this module never imports an SDK. Rules and probe
- * candidates are carried verbatim from the retired harness's metadata table and detection logic
- * this supersedes.
+ * building an adapter, so this module never imports an SDK.
  */
 
 import { OPENAI_DEFAULT_BASE, type ProviderId, QUIRKS } from './defaults';

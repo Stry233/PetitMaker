@@ -475,14 +475,28 @@ export class MapRenderer {
    *  fills the image — unlike captureFullMap, whose world-local bounds can include
    *  chrome that extends past the map and leaves it tiny in a corner. Long side
    *  capped at maxPx. Used by the export preview/compose pipeline. */
-  captureMapImage(maxPx = 1024, includeGrid = false): string | null {
+  captureMapImage(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }): string | null {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
     try {
       this.flushNumbers();
       const { width, height } = this.currentState.template;
       const half = TILE_SIZE / 2;
-      const region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      // A `rect` narrows the frame to those macro cells (inclusive, clamped to the template), in
+      // the same half-tile-padded framing the whole-template capture uses, so a crop and the full
+      // picture agree about where a cell's terrain bleed ends. The assistant's region'd view_map
+      // is the caller.
+      let region: PIXI.Rectangle;
+      if (rect) {
+        const x1 = Math.max(0, Math.min(rect.x1, rect.x2));
+        const y1 = Math.max(0, Math.min(rect.y1, rect.y2));
+        const x2 = Math.min(width - 1, Math.max(rect.x1, rect.x2));
+        const y2 = Math.min(height - 1, Math.max(rect.y1, rect.y2));
+        if (x2 < x1 || y2 < y1) return null;
+        region = new PIXI.Rectangle(x1 * TILE_SIZE - half, y1 * TILE_SIZE - half, (x2 - x1 + 1) * TILE_SIZE + half, (y2 - y1 + 1) * TILE_SIZE + half);
+      } else {
+        region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      }
       if (region.width <= 0 || region.height <= 0) return null;
       // With grid ON, bake the SAME grid the editor draws (sub + cell + chunk lines) into the
       // capture so the export reuses the real 2D rendering. Chunk LABELS stay hidden — the export

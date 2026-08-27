@@ -166,13 +166,36 @@ describe('ExportModal', () => {
       mountStateWith();
       const { container } = render(<ExportModal />, { wrapper: Wrapper });
       // Before the debounced build resolves the preview must stay in its loading state — the
-      // composition (with any stand-in band) is never shown.
-      await new Promise((r) => setTimeout(r, 250));
+      // composition (with any stand-in band) is never shown. Sampled inside the debounce window.
+      await new Promise((r) => setTimeout(r, 120));
       expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
       expect(container.querySelector('img')).toBeNull();
       // Once the real code exists, the preview paints and the image appears.
       await waitFor(() => expect(container.querySelector('img')).toBeTruthy(), { timeout: 3000 });
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
+    });
+
+    it('typing in the title leaves the picture standing, and rebuilds once the text settles', async () => {
+      mountStateWith();
+      const { container } = render(<ExportModal />, { wrapper: Wrapper });
+      await waitFor(() => expect(container.querySelector('img')).toBeTruthy(), { timeout: 3000 });
+      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
+      const paintsBefore = vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length;
+
+      // An IME hands the field a new value on every composition step.
+      const input = screen.getByLabelText('Title');
+      for (const value of ['山', '山下', '山下的家']) fireEvent.change(input, { target: { value } });
+
+      // Inside the settle window nothing moves: no rebuild, no repaint, the picture stays up.
+      await new Promise((r) => setTimeout(r, 400));
+      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length).toBe(paintsBefore);
+      expect(container.querySelector('img')).toBeTruthy();
+
+      // Settled: one rebuild carrying the final text, then the repaint.
+      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(2), { timeout: 3000 });
+      expect(vi.mocked(buildShareCode).mock.calls[1]![2]).toMatchObject({ title: '山下的家' });
+      await waitFor(() => expect(container.querySelector('img')).toBeTruthy());
     });
 
     it('the preview builds the REAL code once (debounced) and the export reuses it — one encode total', async () => {

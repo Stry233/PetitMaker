@@ -141,14 +141,42 @@ export function geometryError(input: Record<string, unknown>, shapes: 'area' | '
 }
 
 export function formatErrors(errors: ValidationError[]): string {
-  return errors
-    .map((e) => {
+  // One line per DISTINCT refusal (rule + sentence), with the evidence merged across errors: a
+  // region-sized stroke over a forbidden zone comes back as one error per cell, and quoting each
+  // would put thousands of identical lines in front of the model (a real run overflowed the
+  // provider's context doing exactly that).
+  const groups = new Map<string, { e: ValidationError; rects: NonNullable<ValidationError['rects']>; cells: ValidationError['cells'] }>();
+  for (const e of errors) {
+    const text = translateFor('en', e.message, e.messageParams);
+    const key = `${e.ruleId}|${text}`;
+    const g = groups.get(key) ?? { e, rects: [], cells: [] };
+    if (e.rects) g.rects.push(...e.rects);
+    g.cells.push(...e.cells);
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .map(({ e, rects, cells }) => {
       const text = translateFor('en', e.message, e.messageParams);
-      const at = e.cells.slice(0, 4).map((c) => `(${c.x},${c.y})`).join(' ');
+      // Rect evidence (an object's drawn body) is quoted WHOLE: a 4-cell sample of a 6x5 footprint
+      // reads as a thin bar, and the model then probes "free" cells that are inside the same
+      // blocker. Cell evidence keeps the sample but names how much of it is unshown.
+      const at = rects.length > 0
+        ? rects.slice(0, 4).map((r) => `footprint (${r.x},${r.y})-(${r.x + r.w},${r.y + r.h})`).join(' ')
+          + (rects.length > 4 ? ` and ${rects.length - 4} more` : '')
+        : cells.slice(0, 4).map((c) => `(${c.x},${c.y})`).join(' ')
+          + (cells.length > 4 ? ` and ${cells.length - 4} more cells` : '');
       const hint = RULE_HINTS[e.ruleId] ? ` Hint: ${RULE_HINTS[e.ruleId]}` : '';
       return `[${e.ruleId}] ${text}${at ? ` at ${at}` : ''}.${hint}`;
     })
     .join('\n');
+}
+
+// A batch rejects per command, so even grouped lines multiply by the command count. The model acts
+// on the first few refusals; past that the list is weight, not information.
+export function capLines(lines: string[], max = 12): string[] {
+  return lines.length <= max
+    ? lines
+    : [...lines.slice(0, max), `…and ${lines.length - max} more rejections like these.`];
 }
 
 /**
@@ -233,9 +261,9 @@ export function commandCells(cmd: Command): MacroCoord[] {
 }
 
 /**
- * The ONE count + min/max-bounds derivation, re-exported from where it now lives.
+ * The ONE count + min/max-bounds derivation, re-exported from its home in `state/`.
  *
- * IT MOVED DOWN TO `state/` because a THIRD surface needs it: the composer's region chip says what
+ * IT LIVES DOWN IN `state/` because a THIRD surface needs it: the composer's region chip says what
  * the user has marked, and a chip that recomputed the box would be free to disagree with the
  * refusal this file quotes back to the model. UI cannot import the agent layer (imports point
  * down), so the shared floor is `state/`. Kept exported here because this module is where the two
@@ -376,12 +404,12 @@ export function runStroke(
     return {
       isError: true,
       ...(rejected.length > 0 ? { detail: { ...withViolations(detailViolations(rejected)) } } : {}),
-      content: `All commands rejected:\n${dedupe(failures).join('\n')}`,
+      content: `All commands rejected:\n${capLines(dedupe(failures)).join('\n')}`,
     };
   }
   let msg = okMessage(ok);
   if (failures.length > 0) {
-    msg += `\nPartially applied — ${failures.length} command(s) rejected:\n${dedupe(failures).join('\n')}`;
+    msg += `\nPartially applied — ${failures.length} command(s) rejected:\n${capLines(dedupe(failures)).join('\n')}`;
   }
   if (snapshotCells) {
     msg += bboxSnapshot(deps, snapshotCells);

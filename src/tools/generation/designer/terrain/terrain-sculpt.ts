@@ -839,9 +839,9 @@ function raiseRings(
     if (!ground.get(region.id)?.ring) continue;
     const lot = region.lot[0];
     if (!lot || lot.w < 6 || lot.h < 6) continue;
-    // A RING IS RAISED WHOLE OR NOT AT ALL. Skipping the cells another pass had already raised left a
-    // border standing at two levels, and the ground the shop's own doorstep needs level then was not:
-    // measured on `hexia/39596`, the facility the ring was cut for could no longer be placed at all.
+    // A RING IS RAISED WHOLE OR NOT AT ALL. Skipping the cells another pass already raised would leave
+    // a border standing at two levels, and the ground the shop's own doorstep needs level would not be:
+    // measured on `hexia/39596`, the facility the ring was cut for could not be placed at all.
     const border: number[] = [];
     let clear = true;
     for (let y = lot.y; y < lot.y + lot.h && clear; y++) {

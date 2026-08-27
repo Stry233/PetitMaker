@@ -2,7 +2,7 @@
  * gates.test.tsx — the gate FAMILY under the dock-wears-the-ask-paper rule (the ask card, the plan gate, the
  * question's quick row, the option pick), and one banner for every trouble class.
  *
- * WHAT G1 MADE TESTABLE, and what this file holds to: only the DOCK wears the ask paper, so every
+ * WHAT THIS FILE HOLDS TO: only the DOCK wears the ask paper, so every
  * card here stands on the panel's plate with a 5px `ACTIVE` spine that RETIRES to the hairline once
  * the ask is answered; the answered card goes on standing in the record with its verdict; the verdict
  * chip is inset-filled with plate ink (the contrast ruling: muted-on-inset is 4.57, plate ink 7.20);
@@ -83,7 +83,7 @@ function makeAsk(over: Partial<AskRecord> = {}): AskRecord {
 
 /* ── the ask card's spine ─────────────────────────────────────────────────── */
 
-describe('the ask card stands on the plate under a retiring spine (G1)', () => {
+describe('the ask card stands on the plate under a retiring spine', () => {
   it('renders nothing when the ask is undefined (a settled job leaves no stale gate)', () => {
     const { container } = renderWithI18n(<GateBlock ask={undefined} onAnswer={() => {}} />);
     expect(container.firstChild).toBeNull();
@@ -743,7 +743,7 @@ describe('the cells a gated call is about', () => {
   });
 });
 
-/* ── the banner family (unchanged) ────────────────────────────────────────── */
+/* ── the banner family ────────────────────────────────────────────────────── */
 
 describe('Banner: one banner for every trouble class', () => {
   // Guards against a table that silently drops a class: every entry BANNER_CLASSES lists must
@@ -821,8 +821,8 @@ describe('Banner: one banner for every trouble class', () => {
     expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-cloud-off');
   });
 
-  /** THREE READINGS, THREE SENTENCES. They shipped as one key carrying the middle one, so a pruned
-   *  save claimed the session was lost and a corrupt one blamed a full disk. */
+  /** THREE READINGS, THREE SENTENCES. One key carrying the middle one for all three would have a
+   *  pruned save claim the session was lost and a corrupt one blame a full disk. */
   it('gives each storage reading the warning icon and a sentence of its own', () => {
     const said = new Set<string>();
     for (const cls of ['storage-pruned', 'storage-full', 'storage-corrupt'] as const) {

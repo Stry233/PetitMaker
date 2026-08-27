@@ -4,7 +4,8 @@
  *
  * The floors themselves come from rendered specimens (see `ui/design/text-weight.ts`); what is
  * pinned here is that the answer is driven by the SIZE ON THE GLASS rather than by any one of the
- * factors that produce it, since that is the property the previous scale-keyed answer lacked.
+ * factors that produce it, since an answer keyed on one factor misreads every device where the
+ * others differ.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -70,7 +71,7 @@ describe('readableWeight', () => {
     }
   });
 
-  it('answers the reported window: a modal keeps its title and drops a CJK chip', () => {
+  it('at 1918x869: a modal keeps its title and drops a CJK chip', () => {
     // 1918x869 maximized on a 1080p screen: frameFit 1 and dpr 1, so a chrome size IS its device
     // size and the table's px can be passed straight in.
     expect(readableWeight(900, TEXT_ROLES.title.px, true)).toBe(900);

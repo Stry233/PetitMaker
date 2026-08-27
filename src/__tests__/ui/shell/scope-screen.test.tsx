@@ -105,10 +105,9 @@ describe('the scope screen wears the terrain bar', () => {
 /**
  * THE HIGHLIGHT IS IMPERATIVE, SO IT HAS TO BE TAKEN DOWN BY WHOEVER PUT IT UP.
  *
- * Left standing on Done it survived into the run that followed, and in 3D it is a DECAL draped at
- * the surface heights it was drawn against: the generation raises terrain under it, so part ends up
- * buried in the new mass and part still pokes out. That is what "the highlight is not removed
- * completely" was.
+ * Left standing on Done it would survive into the run that follows, and in 3D it is a DECAL draped
+ * at the surface heights it was drawn against: the generation raises terrain under it, so part ends
+ * up buried in the new mass and part still pokes out, a highlight that reads as never fully removed.
  */
 describe('the painted highlight', () => {
   it('survives Done, and goes only when the region itself does', () => {
@@ -146,7 +145,7 @@ describe('what the screen offers', () => {
   /**
    * DONE SAYS DONE. A button says what pressing it does, and the count already has a permanent home:
    * the scope chip in the strip keeps saying it once the cards are back, which is what makes it a
-   * chip rather than a tab. Carried here as well it was said twice, once on a control that
+   * chip rather than a tab. Carried here as well it would be said twice, once on a control that
    * disappears.
    */
   it('offers a Done that says only what pressing it does', () => {
@@ -181,8 +180,8 @@ describe('what the screen offers', () => {
     expect(screen.queryByLabelText(en('design.line_brush'))).toBeNull();
   });
 
-  /** The refusal has WORDS. `gen.scope_min` was called from here and defined in no locale, so the
-   *  button read as its own key until a region was big enough to make it go away. */
+  /** The refusal has WORDS. A `gen.scope_min` called from here and defined in no locale would have
+   *  the button read as its own key until a region was big enough to make it go away. */
   it('says the minimum in words while the region is too short', () => {
     useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
     render(

@@ -11,7 +11,7 @@
 // i.e. AFTER `buildEnd` fires — so a file written there is silently wiped by that
 // empty-then-write step. `writeBundle` runs after every output file is on disk.
 //
-// Cheap: runs only in `build` mode (never during `vite dev`), and only re-walks the already-
+// Runs only in `build` mode (never during `vite dev`), and only re-walks the already-
 // resolved module id list Rollup hands to `buildEnd` — no extra I/O beyond one JSON write.
 import type { Plugin, ResolvedConfig } from 'vite';
 import { mkdirSync, writeFileSync } from 'node:fs';

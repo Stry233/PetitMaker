@@ -174,8 +174,10 @@ export function deliveryNudge(): string {
   return '(system) You are closing this job with no edit landed on the map. If the order asked for '
     + 'something to be built or repaired, deliver it now: where the map differs from what the order '
     + 'assumes, name the difference plainly and build the order\'s intent on the ground as it is. '
-    + 'If it truly cannot be done, say so plainly and why. Your next message stands as the final '
-    + 'outcome either way.';
+    + 'If it truly cannot be done, say so plainly and why. If instead you were ASKING the user '
+    + 'something (an empty order, a choice only they can make), you owe no edit and this is not a '
+    + 'criticism: restate your question in one short sentence ending with a question mark, and stop. '
+    + 'Your next message stands as the final outcome either way.';
 }
 
 /** The answer a landed build's first closing turn gets INSTEAD of settling (`loop.ts:runJob`): one
@@ -216,6 +218,13 @@ export function revertNudge(log: SessionLog, toolName: string): string | undefin
     if (ev.kind === 'toolResult' && ev.name === toolName && ev.detail?.reverted) reverts++;
   }
   if (reverts < 1) return undefined;
+  // Past a handful the polite form has demonstrably failed (a live run pushed the same tool
+  // through eighteen reverts), so the register changes to an instruction with a precondition.
+  if (reverts >= 4) {
+    return `(system) STOP: ${reverts} ${toolName} edits have reverted in this job. Do not call it `
+      + 'again until you have LOOKED — inspect_region or view_map the exact target — and are acting '
+      + 'on ground the look confirmed clear. Repeating the probe builds nothing.';
+  }
   return `(system) ${toolName}'s edits keep reverting, which points at the approach rather than `
     + 'where it is aimed. Change strategy: look at the map with a find_* tool, load_skill for the '
     + 'relevant technique, or ask the user before trying again.';

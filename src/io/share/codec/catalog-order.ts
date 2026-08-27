@@ -69,8 +69,8 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'ramp-plank',
   'ramp-retro-steps',
   'ramp-teak-stair',
-  'road-dirt',   // retired (#37)
-  'road-stone',  // retired (#37)
+  'road-dirt',   // retired
+  'road-stone',  // retired
   'shrub',
   'tree-apple',
   'tree-avocado',
@@ -104,7 +104,7 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'flower-agapanthus-blue',
   'flower-rose-cyan',
   'flower-rose-blue',
-  // — road surfaces added after that release, all four retired since (#37) —
+  // — road surfaces added after that release, all four road ids retired since —
   'road-brick',
   'road-slate',
   // — the 25 in-game path surfaces, in the road barrel's authored order —

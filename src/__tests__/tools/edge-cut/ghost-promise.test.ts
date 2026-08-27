@@ -90,8 +90,8 @@ describe('a curve laid at a higher layer on an existing plain', () => {
       if (actual !== 'none' && actual !== promise) wrong.push(`${c.x},${c.y}: promised ${promise}, got ${actual}`);
     }
     // And what the OUTLINE makes of that data: every rounded corner it was told about has to reach
-    // the drawing. The ghost once promised square steps for exactly this curve while the map came
-    // out scalloped, because the outline was dropping cuts it judged to be inside the shape.
+    // the drawing. An outline that drops cuts it judges to be inside the shape promises square
+    // steps for exactly this curve while the map comes out scalloped.
     const edges = trimmedOutline(promised.cells, promised.trim);
     const arcSteps = edges.filter((e) => Math.abs(e.ax - e.bx) > 1e-9 && Math.abs(e.ay - e.by) > 1e-9).length;
     const rounded = promised.trim.reduce((n, t) => n + t.corners.filter((k) => k === 'fan').length, 0);

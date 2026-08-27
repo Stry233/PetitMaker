@@ -78,9 +78,9 @@ describe('stretch mode (the default)', () => {
     expect(pillOf(container).style.width).toBe(widthOf(3));
   });
 
-  it('REGRESSION: a track width change does not move the animate target', () => {
-    // The bug this control shipped with re-measured the active button's `offsetLeft`/`offsetWidth`
-    // on every resize. Stretch mode now reads neither: stub them to prove the pill's target is
+  it('a track width change does not move the animate target', () => {
+    // A pill aimed at the active button's `offsetLeft`/`offsetWidth` re-measures
+    // on every resize. Stretch mode reads neither: stub them to prove the pill's target is
     // computed purely from index/count and cannot see a DOM box at all.
     Object.defineProperty(HTMLElement.prototype, 'offsetLeft', { configurable: true, value: 999 });
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 999 });

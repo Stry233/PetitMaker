@@ -504,7 +504,7 @@ describe('providers/openai: streaming', () => {
    * Unnormalized, that turn is an ANSWER whose text is the JSON — a well-formed turn with a call in
    * the wrong channel, which no error shape covers.
    *
-   * Every test here uses its OWN base URL: the endpoint memory behind the second fix is module-wide
+   * Every test here uses its OWN base URL: the endpoint memory is module-wide
    * (deliberately, so a per-job adapter does not relearn it), so a shared URL would let one test's
    * lesson decide another test's transport.
    */

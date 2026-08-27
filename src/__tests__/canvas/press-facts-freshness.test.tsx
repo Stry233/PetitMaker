@@ -1,5 +1,5 @@
 /**
- * final-review.md finding 1: `usePointerInteraction`'s press path builds `PressFacts` from
+ * `usePointerInteraction`'s press path builds `PressFacts` from
  * `ToolManager.getContext()`. A plain getter would be fine for a mouse click,
  * which is almost always preceded by a `pointermove` that refreshes the mirror via
  * `handlePointerMove`, but NOT for a touch tap: `onPointerDown` deliberately never sets

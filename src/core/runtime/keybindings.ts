@@ -158,8 +158,6 @@ export const RESERVED_COMBO_EXTRAS: readonly string[] = ['ctrl+shift+=', 'ctrl+_
 
 export type Overrides = Record<string, string | null>;
 
-/** Canonical combo string: modifiers in a fixed order (ctrl, alt, shift), then the key, lowercase.
- *  So "Shift+G", "shift+g", "G+Shift" all normalize to "shift+g". */
 /** `normalizeCombo`'s output rendered for a reader: "ctrl+shift+z" → "Ctrl Shift Z". Lives beside
  *  the grammar it reads, so the keyboard page, the bars and the hint panel all format one way. */
 export function prettyCombo(combo: string | null): string {
@@ -188,6 +186,8 @@ export function prettyCombo(combo: string | null): string {
   }).join(' ');
 }
 
+/** Canonical combo string: modifiers in a fixed order (ctrl, alt, shift), then the key, lowercase.
+ *  So "Shift+G", "shift+g", "G+Shift" all normalize to "shift+g". */
 export function normalizeCombo(combo: string): string {
   let ctrl = false, alt = false, shift = false, key = '';
   for (const raw of combo.toLowerCase().split('+')) {

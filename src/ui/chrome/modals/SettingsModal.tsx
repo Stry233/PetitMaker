@@ -199,7 +199,10 @@ type MotionPref = 'system' | 'reduced' | 'full';
 
 /** The demo pinwheel: the plain "motion" mark, nothing a visitor could misread as map content. */
 const PINWHEEL = (
-  <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden>
+  // display: block, or the inline svg sits on the text baseline and its wrapper keeps descender
+  // room under it — the rotation origin (50% of the wrapper) then lands below the hub, and the
+  // wheel orbits that point instead of spinning on its own centre (measured: 1.75px low).
+  <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden style={{ display: 'block' }}>
     <g fill={skin.ink}>
       <path d="M12 12 L12 2 A10 10 0 0 1 19 5 Z" />
       <path d="M12 12 L22 12 A10 10 0 0 1 19 19 Z" />

@@ -328,8 +328,9 @@ describe('the restore offer', () => {
    * A COUNTDOWN MAY ONLY RUN OVER TIME THE CARD WAS ON SCREEN FOR.
    *
    * The frame is drawn behind the boot splash, so the offer is standing (and counting) while a
-   * visitor is still watching the island being built. Whatever was left of the twelve seconds when
-   * the splash cleared is what they got, which on a cold boot was most of the offer spent.
+   * visitor is still watching the island being built. A clock running under the splash hands them
+   * whatever is left of the twelve seconds when it clears, which on a cold boot is most of the
+   * offer spent.
    */
   it('does not spend its clock while the boot splash still covers it', async () => {
     vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });

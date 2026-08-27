@@ -7,7 +7,7 @@ import { ZOOM } from '../../../ui/shell/units';
  * toasts, corner controls) at `fit`, so the icons and the words cannot disagree about how big the
  * window is. Mapping the chrome's design canvas onto viewport HEIGHT instead draws the frame at full
  * size and Settings at 0.80 on a maximized-but-not-fullscreen 1080p Chrome, whose viewport is 869 css
- * px tall (issue #23).
+ * px tall.
  */
 describe('frameFit', () => {
   it('is 1 at and above the reference window', () => {

@@ -43,6 +43,7 @@ import { host } from '../../kit/host';
 import { localizedName, useT } from '../../i18n/context';
 import { regionBounds, type RegionBounds } from '../../state/region-bounds';
 import { useEditorStore } from '../../state/store';
+import { ensureVisionVerdict, knownVision, visionKey } from './vision-verdict';
 import { z } from '../design/styles';
 import { ScopeScreen } from '../shell/bars/ScopeScreen';
 import {
@@ -233,7 +234,20 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
 
   const armed = runnerSettings(settings);
   const forgetKey = settings.forgetKey;
-  const vision = PROVIDER_META[armed.providerId].vision(model);
+  // Vision is the PROBED verdict where one has landed, the model-id prior until then: a gateway
+  // can strip images from a model whose name promises them, so an id-opaque connection whose prior
+  // says vision is confirmed once per session before any job relies on it. The probe only ever
+  // takes vision away (a tokens-only prior is safe unprobed and costs no request); a landed
+  // verdict re-renders this component through the state bump so the NEXT job's deps carry the fact.
+  const probeKey = visionKey(armed.providerId, armed.customBaseUrl, model);
+  const [, setVerdictEpoch] = useState(0);
+  const keyed = armed.apiKey !== '';
+  useEffect(() => {
+    ensureVisionVerdict({ ...armed, model }, () => setVerdictEpoch((n) => n + 1));
+    // The key itself must not be a dependency (a rotated secret is the same connection); whether
+    // ONE exists must be, or a probe skipped keyless never fires when the key arrives.
+  }, [probeKey, keyed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vision = knownVision(probeKey) ?? PROVIDER_META[armed.providerId].vision(model);
   const deps = useCallback(() => makePanelToolDeps({ vision }), [vision]);
 
   // The one config object the runner reads at every job start, kept current rather than replaced —
@@ -550,7 +564,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
    * marked on it, and its three option cards are three visibly different sketches. The shipped three
    * were three near-identical crops of the same green field, so the picture that exists to
    * distinguish the choices distinguished none of them. `MarkedShot` is the region vignette's own
-   * reading (whole island, rect drawn over it), which is why it now lives beside the photograph.
+   * reading (whole island, rect drawn over it), which is why it lives beside the photograph.
    */
   const gateThumb = useCallback((ask: AskRecord) => {
     const box = ask.callId === undefined ? undefined : callFootprint(callInputs.get(ask.callId));

@@ -46,7 +46,8 @@ import type { MacroId } from '../../../tools/macros';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { ScaleProvider, usePx } from '../../design/scale';
 import { btnReset, cursors, pressable, z } from '../../design/styles';
-import { MAP_SHAPE_EDGE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
+import { MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
+import { ShapeEdge } from '../../design/shape-edge';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
 import { PLATE_BAND, SHELF_SCALE, TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
@@ -94,10 +95,13 @@ interface Reach {
   contentW: number;
 }
 
-/** The category the shelf opens on: the armed item's own, so leaving 物品 mode and coming back
- *  reopens where the user was. */
-function initialCategory(itemId: string | null): ItemCategory {
-  const armed = itemId ? getCatalogItem(itemId)?.category : undefined;
+/** The category the shelf opens on: the armed card's own, so leaving 物品 mode and coming back
+ *  reopens where the user was. An item names its category; a planting macro stands in the tab
+ *  that leads it (`patchIdFor`). */
+function initialCategory(itemId: string | null, macro: string | null): ItemCategory {
+  const armed = itemId
+    ? getCatalogItem(itemId)?.category
+    : macro ? TABS.find((tab) => patchIdFor(tab.category) === macro)?.category : undefined;
   return TABS.find((tab) => tab.category === armed)?.category ?? TABS[0]!.category;
 }
 
@@ -150,7 +154,7 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
   const gridState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
 
-  const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId));
+  const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId, armedMacro));
   const [query, setQuery] = useState('');
   const [reached, setReached] = useState<{ name: string; centre: number } | null>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -324,12 +328,11 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
           }}
         >
           {/* The plate wears the hairline every drawing standing on the map wears
-              (`tokens.ts:MAP_SHAPE_EDGE`), on the art itself rather than on the box, so what is
+              (`shape-edge.tsx:ShapeEdge`), on the art itself rather than on the box, so what is
               outlined is the capsule's own silhouette and not the rectangle around it. */}
-          <Plate
-            src={searchArt}
-            style={{ inset: 0, width: '100%', height: '100%', filter: MAP_SHAPE_EDGE }}
-          />
+          <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
+            <Plate src={searchArt} style={{ inset: 0, width: '100%', height: '100%' }} />
+          </ShapeEdge>
           <input
             type="search"
             className={`pw-search-field ${FIELD_INPUT_CLASS}`}

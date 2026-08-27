@@ -169,7 +169,6 @@ export class Viewport {
     const idealZoom = Math.min(scaleX, scaleY);
     this.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, idealZoom));
 
-    // Center the map in the canvas
     const renderedWidth = worldWidth * this.zoom;
     const renderedHeight = worldHeight * this.zoom;
     this.offsetX = -(this.canvasWidth - renderedWidth) / 2;

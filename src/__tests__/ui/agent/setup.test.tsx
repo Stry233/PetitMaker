@@ -107,8 +107,8 @@ describe('readKeyShape', () => {
 
 /**
  * WHERE A KEY IN THE FIELD IS OWED TO GO, as the one table the quiet and the press both read. Written
- * twice, the two drifted: one branch tested a pin the other could not see, and the shape it tested
- * for could not occur while that pin stood.
+ * twice, the two drift: one branch tests a pin the other cannot see, and the shape it tests
+ * for cannot occur while that pin stands.
  */
 describe('keyDestination', () => {
   const dest = (over: Partial<Parameters<typeof keyDestination>[0]>) => keyDestination({
@@ -139,7 +139,7 @@ describe('keyDestination', () => {
 /* ── the key masks at rest, and reveals on focus ─────────────── */
 
 /**
- * THE ARTIFACT'S OWN DOCUMENTED POLICY (~line 6891): the key is a secret, so it masks when the
+ * THE ARTIFACT'S OWN DOCUMENTED POLICY: the key is a secret, so it masks when the
  * field rests and focusing reveals it, one policy at entry and at the probe screens alike. A real
  * key never contains asterisks, so nothing about typing or pasting changes.
  */
@@ -561,11 +561,11 @@ describe('a check that failed says so on the row it failed at', () => {
   /**
    * A PIN OUTRANKS A READING, on the row and on the card above it alike.
    *
-   * The live route: a bare `sk-` key, an honest failure, then "Pick the provider myself" and the
-   * Custom endpoint. The screen came back to the endpoint step still wearing the crossed row and the
-   * desk still saying "No provider answered" about a question the user had just answered themselves
-   * — and the cross rode the Custom row itself, marking the step they had chosen as failed before it
-   * had been tried.
+   * The route: a bare `sk-` key, an honest failure, then "Pick the provider myself" and the
+   * Custom endpoint. A probe verdict that outlived the pick would leave the endpoint step wearing
+   * the crossed row and the desk saying "No provider answered" about a question the user had just
+   * answered themselves — with the cross riding the Custom row itself, marking the step they chose
+   * as failed before it had been tried.
    */
   it('retires the failed probe when the user picks a provider, on the endpoint step and after it', async () => {
     const seen: (string | null)[] = [];
@@ -892,8 +892,8 @@ describe('one leave verb per screen', () => {
   });
 
   /** AND IT SAYS BACK, on every step that draws it. The form is walked into from the keyless rest, so
-   *  a prior step always exists and no step of this screen is a mouth: "Not now" belonged to the flow
-   *  when its first screen was the panel's own, and the word is retired with that reading. */
+   *  a prior step always exists and no step of this screen is a mouth: a decline ("Not now")
+   *  presumes a first screen of the flow's own, which this screen is not. */
   it('says Back wherever it stands, never a decline', async () => {
     const steps: [string, () => Promise<void> | void][] = [
       ['mouth', () => {}],

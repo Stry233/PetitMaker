@@ -15,7 +15,7 @@ let live = 0;
 
 export interface PuffOpts {
   count: number;
-  color: number;          // tinted core hue (a white rim is baked on for visibility)
+  color: number;          // particle fill hue
   spreadPx: number;       // travel distance at end of life
   lifetimeMs: number;
   maxRadiusPx: number;
@@ -55,10 +55,10 @@ export function spawnPuff(container: PIXI.Container, cx: number, cy: number, opt
     const r2 = jitter(i * 3.3 + 7);
     const r3 = jitter(i * 5.7 + 2);
     const r4 = jitter(i * 2.1 + 5);
-    // Scatter the launch angle randomly across the arc (not an even fan), spread
-    // distance + lifetime wider, and give each particle a tangential `curl` so its
-    // path bends over its life instead of shooting straight out — a livelier, less
-    // mechanical burst. Still deterministic per index (replay-stable).
+    // Scatter the launch angle randomly across the arc (not an even fan), vary
+    // spread distance + lifetime per particle, and give each a tangential `curl` so
+    // its path bends over its life instead of shooting straight out — a livelier,
+    // less mechanical burst. Still deterministic per index (replay-stable).
     return {
       ang: arcCenter + (r1 - 0.5) * arcSpread,
       life: opts.lifetimeMs * (0.65 + 0.7 * r2),
@@ -93,7 +93,7 @@ export function spawnPuff(container: PIXI.Container, cx: number, cy: number, opt
       const pulse = Math.sin(pp * Math.PI);                 // 0 → 1 → 0
       const r = Math.min(opts.maxRadiusPx, baseRadius * (0.5 + 0.8 * pulse));
       const alpha = 1 - pp * pp;
-      g.beginFill(opts.color, 0.9 * alpha); g.drawCircle(x, y, r); g.endFill(); // solid tinted puff (no rim)
+      g.beginFill(opts.color, 0.9 * alpha); g.drawCircle(x, y, r); g.endFill();
     }
     if (alive) {
       requestAnimationFrame(tick);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
@@ -30,6 +30,10 @@ const DEFAULT_OPTIONS: ExportOptions = { title: '', description: '', preset: 'sh
 
 /** Minimum dimension (px) to consider a 3D still usable. */
 const MIN_3D_PX = 32;
+
+/** How long the title/description must be STILL before the preview redraws with them. Long enough
+ *  to outlast an IME's per-keystroke composition updates, short enough to read as "done typing". */
+const TEXT_SETTLE_MS = 1000;
 
 /** Illustrative dims for the footer editor's reference menu (the real footer is resolved at paint
  *  time from the actual composition). */
@@ -63,10 +67,37 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const [createdAt, setCreatedAt] = useState('');
   useEffect(() => { if (open) setCreatedAt(new Date().toISOString()); }, [open]);
 
+  // TYPING SETTLES BEFORE THE PICTURE MOVES. The inputs stay live, but the preview (and the
+  // share-code build, whose band carries the title) reads the text only once it has been still
+  // for a moment. Keyed on stillness rather than per change because an IME hands the field a new
+  // value on every composition step, so "repaint per change" is a picture that reloads on every
+  // keystroke of a Chinese title. The export itself always reads the LIVE options: what is typed
+  // at the moment of the click is what ships, settled or not.
+  const [settledText, setSettledText] = useState({ title: options.title, description: options.description });
+  useEffect(() => {
+    const { title, description } = options;
+    const id = setTimeout(() => {
+      setSettledText((was) => (was.title === title && was.description === description ? was : { title, description }));
+    }, TEXT_SETTLE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the two text fields are the timer's subject
+  }, [options.title, options.description]);
+  // Rebuilt only when a NON-TEXT option or the settled text changes. Keyed on the rest's CONTENT,
+  // not on `options` identity: the live title and description ride through every keystroke, and a
+  // fresh object per keystroke would repaint the very picture the settle exists to hold still.
+  const { title: _liveTitle, description: _liveDescription, ...optionRest } = options;
+  const optionRestKey = JSON.stringify(optionRest);
+  const previewOptions = useMemo(
+    () => ({ ...optionRest, title: settledText.title, description: settledText.description }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- optionRest rides under its content key
+    [optionRestKey, settledText],
+  );
+
   // The real share-code band, built async + debounced — never on the open animation frame and
   // never per keystroke, because a synchronous build is heavy enough to freeze the modal's
-  // entrance. While it builds, the preview stays in its loading state (no placeholder band).
-  const code = useShareCode(open, gridState ?? null, summary ?? null, options.importable, options.title, options.resolution, createdAt);
+  // entrance. While it builds, the preview keeps its last picture (or its loading state when
+  // there is none yet — no placeholder band).
+  const code = useShareCode(open, gridState ?? null, summary ?? null, options.importable, settledText.title, options.resolution, createdAt);
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
@@ -265,7 +296,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           </div>
         </div>
         <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <ExportPreview open={open} options={options} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} />
+          <ExportPreview open={open} options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} />
         </div>
       </div>
     </div>

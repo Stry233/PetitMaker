@@ -25,7 +25,7 @@ const META = { appVersion: 'stack-test', saveVersion: 1 };
 const road = (x: number, y: number, i: number): SaveObject =>
   ({ id: `r${x}-${y}-${i}`, catalogId: 'path-overgrown-dirt', x, y, rotation: 0, elevation: 0 });
 
-/** The owner's worst neighbourhood as a save file: three cells carrying 10, 9 and 8 dirt roads. */
+/** A real map's worst neighbourhood as a save file: three cells carrying 10, 9 and 8 dirt roads. */
 function stackedSave(extra: SaveObject[] = []): string {
   const save = JSON.parse(serialize(createBlankGridState('hexia'))) as SaveFile;
   save.objects = [

@@ -97,7 +97,7 @@ describe('exec/executor', () => {
     expect(names).toEqual(TOOL_SCHEMAS.map((s) => s.name).sort());
   });
 
-  it("delegate_task execution reports 'not wired yet' ahead of T4", async () => {
+  it("delegate_task execution reports 'not wired yet' when no delegate is wired", async () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const r = await executor.execute({ callId: 't4', name: 'delegate_task', args: { task: 'x' } });

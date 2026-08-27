@@ -12,8 +12,8 @@
  * plate's top edge, and the settings sit INSIDE the plate under them — the plate runs to the bottom
  * of the window and only the object shelf was using that room, for its scrollbar. The shelf had
  * eleven controls in two of the bands and a settings column bolted beside the cards; what is left
- * after the kinds became the names, the batch became a tile and Clear went to the menu is one row
- * per band.
+ * after the kinds became the names and the batch and Clear became tiles at the cards' end is one
+ * row per band.
  *
  * The RANGES come from the engine, never from the drawing: a slider that hardcoded its ceiling
  * would keep showing eight after the grid learned a ninth layer.

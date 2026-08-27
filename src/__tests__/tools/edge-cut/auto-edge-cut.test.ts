@@ -262,7 +262,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('RIVER stroke: every auto-written cut is MODIFIABLE by the manual EdgeCutTool (cyclable site)', () => {
-    // The user's key complaint: auto-trimmed river cells were dead to the manual tool. After a river
+    // Auto-trimmed river cells must not be dead to the manual tool: after a river
     // stroke's auto-trim, clicking the bend intersection must find a cut site and change state.
     const state = makeState(12, 12);
     const RIVER: [number, number][] = [[3, 3], [4, 3], [3, 4], [3, 5]];

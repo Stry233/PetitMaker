@@ -262,7 +262,7 @@ describe('the nudge, through the tool that owns the route', () => {
 
   it('a nudge refuses rather than roll back a hand placement made AFTER the route', () => {
     // The rollback aims at a KNOWN depth, so anything laid on top of the route would go with it. The
-    // depth having moved at all is the evidence, and this is the plan's own "nothing a hand placed is
+    // depth having moved at all is the evidence, and this is the rule "nothing a hand placed is
     // deleted by a gesture" reaching the one line that enforces it.
     paint();
     const { state, executor } = laidRoute();

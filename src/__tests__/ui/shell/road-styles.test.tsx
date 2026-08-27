@@ -67,7 +67,7 @@ describe('the road picker', () => {
   });
 
   it('offers the in-game paths and nothing else, every swatch wearing its own tile', () => {
-    // The four plain colour surfaces were retired (#37), so a swatch with no art is now a swatch
+    // The plain colour surfaces are retired, so a swatch with no art is a swatch
     // for an item the catalog should not be holding.
     render(<Providers><RoadStyles /></Providers>);
     const swatches = screen.getAllByRole('button');

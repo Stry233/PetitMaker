@@ -65,6 +65,13 @@ describe('filing rows', () => {
   });
 });
 
+describe('search verification metas', () => {
+  it('the mainland build carries the Baidu ownership proof; the global build claims none', () => {
+    expect(DEPLOY_TARGETS.cn.verificationMetas).toContainEqual({ name: 'baidu-site-verification', content: 'codeva-LFo4rScSrF' });
+    expect(DEPLOY_TARGETS.global.verificationMetas).toEqual([]);
+  });
+});
+
 describe('targetById', () => {
   it('resolves the two ids', () => {
     expect(targetById('cn').id).toBe('cn');

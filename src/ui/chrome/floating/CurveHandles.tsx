@@ -25,6 +25,7 @@ import {
 import { isBreakHandleHeld } from '../../../core/runtime/modifier-state';
 import { useEditorStore } from '../../../state/store';
 import { useChromeScale } from '../../design/scale';
+import { useT } from '../../../i18n/context';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { colors, cursors, shadows, springs, z } from '../../design/styles';
 
@@ -99,6 +100,7 @@ const face = (size: number, fill: string): CSSProperties => ({
 });
 
 export function CurveHandles() {
+  const t = useT();
   const chrome = useChromeScale();
   const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
@@ -243,7 +245,7 @@ export function CurveHandles() {
             return (
               <div key={i}>
                 <motion.button
-                  type="button" aria-label={`curve anchor ${i + 1}`}
+                  type="button" aria-label={t('a11y.curve_anchor', { n: i + 1 })}
                   onPointerDown={start(i, 'anchor')}
                   whileHover={{ scale: 1.12 }}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(0)}

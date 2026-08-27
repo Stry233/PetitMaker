@@ -17,10 +17,9 @@
 import cozyVillage from './skills/cozy-village.md?raw';
 import terracedHillPark from './skills/terraced-hill-park.md?raw';
 import proTerraforming from './skills/pro-terraforming.md?raw';
-import riverCrossing from './skills/river-crossing.md?raw';
-import alpineCascade from './skills/alpine-cascade.md?raw';
-import zenGarden from './skills/zen-garden.md?raw';
-import riceTerraces from './skills/rice-terraces.md?raw';
+import gardenTown from './skills/garden-town.md?raw';
+import waterGarden from './skills/water-garden.md?raw';
+import figureLandscape from './skills/figure-landscape.md?raw';
 import siteAnalysis from './skills/site-analysis.md?raw';
 import composition from './skills/composition.md?raw';
 import designReview from './skills/design-review.md?raw';
@@ -88,7 +87,25 @@ export const SKILLS: Record<string, AgentSkill> = {
     description: 'Advanced terrain moves: backing walls above 3 tiers, terraced cascades, sunk ponds, coves, and the waterfall patterns that pass validation.',
     body: proTerraforming,
   },
-  // --- STYLE set pieces: reference layouts for specific aesthetics ---
+  // --- STYLE set pieces: reference layouts, each grounded in a hand-built expert map ---
+  'garden-town': {
+    kind: 'style',
+    title: 'Garden Town',
+    description: 'The flat formal dialect: a street partition with flower edging on every walk, walled courts, orchard grids, one iconic water figure.',
+    body: gardenTown,
+  },
+  'water-garden': {
+    kind: 'style',
+    title: 'Water Garden',
+    description: 'The terraced water-court dialect: a flooded backing wall, formal pools sunk in benches, an islet-grid parterre, crop plots in color blocks.',
+    body: waterGarden,
+  },
+  'figure-landscape': {
+    kind: 'style',
+    title: 'Figure Landscape',
+    description: 'A picture or word drawn into the ground: water hearts and rings, a flooded terrace banner with dry-bench lettering, flower marks.',
+    body: figureLandscape,
+  },
   'cozy-village': {
     kind: 'style',
     title: 'Cozy Village',
@@ -100,30 +117,6 @@ export const SKILLS: Record<string, AgentSkill> = {
     title: 'Terraced Hill Park',
     description: 'A walkable park hill: organic benches with a paved switchback climb, a lookout court on top, a sunk pond on the way up.',
     body: terracedHillPark,
-  },
-  'river-crossing': {
-    kind: 'style',
-    title: 'River Crossing',
-    description: 'A meandering river with a straight crossing waist, a bridge on a found anchor, and roads that arrive at both banks.',
-    body: riverCrossing,
-  },
-  'alpine-cascade': {
-    kind: 'style',
-    title: 'Alpine Cascade',
-    description: 'A summit massif with a crown pool, chained offset falls, a paved switchback ascent, forest slopes and a bare summit court.',
-    body: alpineCascade,
-  },
-  'zen-garden': {
-    kind: 'style',
-    title: 'Zen Garden',
-    description: 'A quiet garden: one specimen tree off-center, same-species hedges on two sides, a single stepping-stone path, ground kept empty.',
-    body: zenGarden,
-  },
-  'rice-terraces': {
-    kind: 'style',
-    title: 'Rice Terraces',
-    description: 'Farm benches climbing a slope, each with a sunk pond and a dry field strip, a zigzag ramp path, and a hamlet at the foot.',
-    body: riceTerraces,
   },
 };
 

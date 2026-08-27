@@ -1,10 +1,10 @@
 /**
  * The registry and the panel say the same thing.
  *
- * A declaration nothing runs and a motion nothing declared are the SAME defect from two sides, and
- * the panel had both: eleven entries with no call site, and two animations (a ticket turning, a tape
- * filling) with numbers of their own. Neither is visible from inside one file, which is why this is a
- * test rather than a review note.
+ * A declaration nothing runs and a motion nothing declared are the SAME defect from two sides:
+ * without this scan the registry accumulates entries with no call site while animations (a ticket
+ * turning, a tape filling) grow numbers of their own. Neither side is visible from inside one file,
+ * which is why this is a test.
  *
  * Modelled on `__tests__/ui/shell/motion-registry.test.ts`'s own call-site scan. Scope is the
  * `panel.*` ids: the `character.*` entries name motions the character makes BESIDE a pose (the
@@ -50,8 +50,8 @@ const panelIds = Object.keys(MOTIONS).filter((id) => id.startsWith('panel.'));
  * DECLARED AHEAD OF THE FAMILY TASK THAT CONSUMES THEM.
  *
  * The vocabulary in `registry.ts` is the whole panel's, fixed against the normative artifact
- * before every card it describes has been built. It is EMPTY: every declared panel motion now has a
- * runner, and the last member (`panel.steer.deliver`) left it the commit its queue was built.
+ * before every card it describes has been built. It is EMPTY: every declared panel motion has a
+ * runner.
  * Naming a motion before the card is honest as long as the gap is named here rather than passing
  * silently: an id LEAVES this set the same commit that gives it a call site, never before.
  */

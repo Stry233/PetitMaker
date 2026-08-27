@@ -34,15 +34,24 @@ const CARDINAL_OFFSETS: readonly MacroCoord[] = [
 const RAMP_PROBES: readonly { dx: number; dy: number; dist: number }[] =
   CARDINAL_OFFSETS.flatMap((off) => [0.5, 1].map((dist) => ({ dx: off.x, dy: off.y, dist })));
 
-/** Min-support surface elevation over every cell (x, y) straddles, or null when any of
- *  them is off the map: a probe that reaches the void has no cliff to report, and support
- *  counts only where EVERY straddled cell holds it. */
-function straddleElevation(state: GridState, x: number, y: number): number | null {
-  const xs = straddledCells(x), ys = straddledCells(y);
+/** Min-support surface elevation over the ramp's ACROSS span at the cells `along` straddles, or
+ *  null when any of them is off the map: a probe that reaches the void has no cliff to report,
+ *  and support counts only where EVERY read cell holds it.
+ *
+ *  The across extent is the RAMP'S OWN (`terrainSpan` of the anchor's perpendicular coordinate),
+ *  not the anchor point's half-cell straddle: those two read different columns for a half anchor,
+ *  whose footprint starts half a cell PAST it. Read at the point, a ramp hugging a cliff's
+ *  left/top end straddles the ground beside the plateau, the min goes low, and no cliff is ever
+ *  detected there — while the right/bottom end, straddling two plateau cells, works. Reading the
+ *  cells the support sweep itself will read is what makes the four ends agree. */
+function spanElevation(
+  state: GridState, vertical: boolean, along: number, across: { lo: number; hi: number },
+): number | null {
+  const alongCells = straddledCells(along);
   let elev = Infinity;
-  for (let cy = ys.lo; cy <= ys.hi; cy++) {
-    for (let cx = xs.lo; cx <= xs.hi; cx++) {
-      const cell = getCell(state.cells, cx, cy);
+  for (let a = alongCells.lo; a <= alongCells.hi; a++) {
+    for (let p = across.lo; p <= across.hi; p++) {
+      const cell = getCell(state.cells, vertical ? p : a, vertical ? a : p);
       if (!cell) return null;
       elev = Math.min(elev, surfaceElevation(cell.terrain));
     }
@@ -140,13 +149,19 @@ function validateTrait(
     }
 
     case 'heightDrop': {
-      const anchorElev = straddleElevation(state, pos.x, pos.y) ?? 0;
       const item = getCatalogItem(cmd.object.catalogId);
       const spanLen = item?.height ?? 4;
       const perpWidth = item?.width ?? 2;
+      const acrossX = terrainSpan(pos.x, perpWidth);
+      const acrossY = terrainSpan(pos.y, perpWidth);
 
       for (const probe of RAMP_PROBES) {
-        const neighborElev = straddleElevation(state, pos.x + probe.dx * probe.dist, pos.y + probe.dy * probe.dist);
+        const vertical = probe.dy !== 0;
+        const across = vertical ? acrossX : acrossY;
+        const anchorAlong = vertical ? pos.y : pos.x;
+        const anchorElev = spanElevation(state, vertical, anchorAlong, across) ?? 0;
+        const step = vertical ? probe.dy : probe.dx;
+        const neighborElev = spanElevation(state, vertical, anchorAlong + step * probe.dist, across);
         if (neighborElev === null) continue;   // off-map: no cliff to read
         if (Math.abs(anchorElev - neighborElev) !== trait.layers) continue;
 
@@ -168,13 +183,20 @@ function validateTrait(
         // along value directly. Rounded here: `terrainSpan` below reads the SAME cell via
         // floor(v+0.5), so this aligns the stored position with what the sweep actually validated.
         // The ACROSS slot (whichever of px/py this branch does NOT round) keeps its half freedom.
+        //
+        // A TIE ROUNDS TOWARD THE SLOPE. A half `high` coordinate sits between the cliff row and
+        // the plateau's next row in; the cliff row is the one on the DOWNHILL side. Math.round's
+        // half-up picks that row for rot 0/90 (downhill is +) but the plateau's interior for
+        // rot 180/270 (downhill is −), where the sweep then finds high ground in the run and
+        // refuses — every half hover approached from inside a north or west cliff died there.
+        const halfDown = (v: number) => Math.ceil(v - 0.5);
         let rot: 0 | 90 | 180 | 270;
         let px: number, py: number;
         let highAtStart: boolean;
         if (slopeDy > 0) { rot = 0; px = highX; py = Math.round(highY); highAtStart = true; }
         else if (slopeDx > 0) { rot = 90; px = Math.round(highX); py = highY; highAtStart = true; }
-        else if (slopeDy < 0) { rot = 180; px = highX; py = Math.round(highY) - spanLen; highAtStart = false; }
-        else { rot = 270; px = Math.round(highX) - spanLen; py = highY; highAtStart = false; }
+        else if (slopeDy < 0) { rot = 180; px = highX; py = halfDown(highY) - spanLen; highAtStart = false; }
+        else { rot = 270; px = halfDown(highX) - spanLen; py = highY; highAtStart = false; }
 
         const isVert = rot === 0 || rot === 180;
 

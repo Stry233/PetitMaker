@@ -26,6 +26,114 @@ export interface QualityReport {
 
 const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
 
+export interface SpeckleFinding { rect: string; n: number; why: string }
+
+/**
+ * The planting clusters that read as NOISE — scattered (no row, grid or solid fill),
+ * species-mixed, an elongated flower band, or a lone flower dot — each named as a rect
+ * to clear or replant as one bed. Live judging showed models cannot SEE this defect in
+ * tokens ('o' says occupied, not disordered), so both the find_speckle sweep and the
+ * evaluator's decoration grade read from this one detector.
+ */
+export function speckleFindings(state: GridState): { findings: SpeckleFinding[]; plantCount: number } {
+  const plants = [...state.objects.values()].filter((o) => {
+    if (o.locked) return false;
+    const cat = categoryOf(o);
+    return cat === ItemCategory.Flora || cat === ItemCategory.Tree;
+  });
+  if (plants.length === 0) return { findings: [], plantCount: 0 };
+  // Chebyshev-2 clustering: near plants belong to one patch.
+  const parent = new Map<number, number>();
+  const find = (a: number): number => { let r = a; while (parent.get(r) !== r) r = parent.get(r)!; parent.set(a, r); return r; };
+  plants.forEach((_, i) => parent.set(i, i));
+  for (let i = 0; i < plants.length; i++) {
+    for (let j = i + 1; j < plants.length; j++) {
+      const dx = Math.abs(plants[i]!.position.x - plants[j]!.position.x);
+      const dy = Math.abs(plants[i]!.position.y - plants[j]!.position.y);
+      if (Math.max(dx, dy) <= 2) { const ri = find(i), rj = find(j); if (ri !== rj) parent.set(ri, rj); }
+    }
+  }
+  const groups = new Map<number, number[]>();
+  plants.forEach((_, i) => { const r = find(i); (groups.get(r) ?? groups.set(r, []).get(r)!).push(i); });
+  const findings: SpeckleFinding[] = [];
+  for (const members of groups.values()) {
+    if (members.length < 4) {
+      // A lone, paired or tripled TREE is a specimen moment; flowers that small are strays — a
+      // flower reads as part of a bed or ribbon, and a detached pink pair floats as noise.
+      if (members.some((i) => categoryOf(plants[i]!) === ItemCategory.Flora)) {
+        const p = plants[members[0]!]!.position;
+        findings.push({
+          rect: members.length === 1 ? `(${p.x},${p.y})` : `(${Math.min(...members.map((i) => plants[i]!.position.x))},${Math.min(...members.map((i) => plants[i]!.position.y))})-(${Math.max(...members.map((i) => plants[i]!.position.x))},${Math.max(...members.map((i) => plants[i]!.position.y))})`,
+          n: members.length,
+          why: members.length === 1
+            ? 'a lone flower dot — a specimen is a tree; give it a bed or remove it'
+            : `${members.length} stray dot(s) with no parent bed — fold them into a bed or ribbon, or remove them`,
+        });
+      }
+      continue;
+    }
+    const xs = members.map((i) => plants[i]!.position.x);
+    const ys = members.map((i) => plants[i]!.position.y);
+    const x1 = Math.min(...xs), x2 = Math.max(...xs), y1 = Math.min(...ys), y2 = Math.max(...ys);
+    const w = x2 - x1 + 1, h = y2 - y1 + 1;
+    const area = w * h;
+    const counts = new Map<string, number>();
+    for (const i of members) { const id = plants[i]!.catalogId; counts.set(id, (counts.get(id) ?? 0) + 1); }
+    const solid = members.length / area >= 0.5;
+    const oneLine = x1 === x2 || y1 === y2;
+    // A lattice: some pitch 2-3 puts nearly every member on its grid points.
+    const onGrid = [2, 3].some((p) => members.every((i) => (plants[i]!.position.x - x1) % p === 0 && (plants[i]!.position.y - y1) % p === 0));
+    const ordered = solid || oneLine || onGrid;
+    // Two species is legal as a GRAIN (one dominant, a sparse accent); interleaved near-parity
+    // reads as confetti in both dialects, and three or more always does.
+    const minority = members.length - Math.max(...counts.values());
+    const mixed = counts.size > 2 || (counts.size === 2 && members.length >= 8 && minority / members.length >= 0.35);
+    // An ELONGATED flower band wider than a ribbon is a fill even when it is perfectly solid:
+    // edging is 1-2 cells wide in the references, and a 4-cell-thick bank strip reads as painted
+    // ground. A broad panel (a flower field) is a legitimate block, so only bands 3x as long as
+    // they are wide count.
+    const allFlora = members.every((i) => categoryOf(plants[i]!) === ItemCategory.Flora);
+    const wideBed = solid && allFlora && Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h);
+    if (ordered && !mixed && !wideBed) continue;
+    const why = [
+      ...(!ordered ? ['scattered (no fill, row or lattice)'] : []),
+      ...(mixed ? [counts.size > 2 ? `${counts.size} species mixed` : 'two species interleaved near-parity'] : []),
+      ...(wideBed ? [`a ${w}x${h} solid flower band — edging is 1-2 cells wide, this reads as a fill`] : []),
+    ].join(', ');
+    findings.push({ rect: `(${x1},${y1})-(${x2},${y2})`, n: members.length, why });
+  }
+  findings.sort((a, b) => b.n - a.n);
+  return { findings, plantCount: plants.length };
+}
+
+/** Connected terrain-water bodies (4-neighbor), each as bbox + cell count. */
+function waterBodies(state: GridState): { x: number; y: number; w: number; h: number; n: number }[] {
+  const { width, height } = state.template;
+  const seen = new Set<number>();
+  const isWater = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < width && y < height && state.cells[y]![x]!.terrain?.type === TerrainType.Water;
+  const out: { x: number; y: number; w: number; h: number; n: number }[] = [];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const k = y * width + x;
+    if (seen.has(k) || !isWater(x, y)) continue;
+    let x1 = x, x2 = x, y1 = y, y2 = y, n = 0;
+    const q = [k];
+    seen.add(k);
+    while (q.length) {
+      const c = q.pop()!;
+      const cx = c % width, cy = Math.floor(c / width);
+      n++;
+      x1 = Math.min(x1, cx); x2 = Math.max(x2, cx); y1 = Math.min(y1, cy); y2 = Math.max(y2, cy);
+      for (const [dx, dy] of NEIGHBORS4) {
+        const nx = cx + dx, ny = cy + dy, nk = ny * width + nx;
+        if (!seen.has(nk) && isWater(nx, ny)) { seen.add(nk); q.push(nk); }
+      }
+    }
+    out.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1, n });
+  }
+  return out;
+}
+
 function connectivity(state: GridState): QualityDimension {
   const { width, height } = state.template;
   // Crossing footprints (+1 apron) let the walk change elevation or cross water.
@@ -152,6 +260,15 @@ function water(state: GridState): QualityDimension {
     if (t.elevation > 0) elevated++;
   }
   const hints: string[] = [];
+  // Congruent pools read as one stamp used twice; experts vary each body (islets, a
+  // different outline, a border) even when the terraces holding them repeat.
+  const pools = waterBodies(state);
+  for (let i = 0; i < pools.length; i++) for (let j = i + 1; j < pools.length; j++) {
+    const a = pools[i]!, b = pools[j]!;
+    if (a.w >= 3 && a.h >= 3 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1 && Math.abs(a.n - b.n) <= Math.ceil(a.n * 0.15)) {
+      hints.push(`Two water bodies are congruent ${a.w}x${a.h} stamps (at (${a.x},${a.y}) and (${b.x},${b.y})) -- vary one: islets, a different outline, or a distinct border.`);
+    }
+  }
   let score = 0;
   if (cells === 0) hints.push('No water anywhere -- a river or lake adds life (carve_river, paint_terrain water).');
   else {
@@ -159,7 +276,7 @@ function water(state: GridState): QualityDimension {
     if (elevated > 0) {
       score += 3;
       if (detectWaterfalls(state).length === 0) {
-        hints.push('Elevated water exists but never falls -- chain it down a cliff face into lower water for a waterfall (see alpine-cascade skill).');
+        hints.push('Elevated water exists but never falls -- chain it down a cliff face into lower water for a waterfall (see the pro-terraforming skill).');
       }
     } else {
       hints.push('All water sits at ground level -- an elevated pool feeding a waterfall reads far more dramatic (see pro-terraforming skill).');
@@ -269,7 +386,30 @@ function decoration(state: GridState): QualityDimension {
   quad.forEach((n, i) => {
     if (n < target / 4) hints.push(`${names[i]} quadrant is barely decorated (${n} flora/trees) -- scatter_objects or plant in drifts.`);
   });
-  return { score: clamp10((Math.min(...quad) / Math.max(target / 4, 1)) * 6 + Math.min(total / Math.max(target, 1), 1) * 4), hints };
+  // Noise costs the grade: what the sweep names as speckle is disorder, not decoration.
+  const { findings } = speckleFindings(state);
+  for (const f of findings.slice(0, 3)) hints.push(`Noisy planting at ${f.rect} (${f.why}) -- clear it or replant as one bed.`);
+  const noisePenalty = Math.min(4, findings.length);
+  // A locked set piece (the plaza) keeps a grass apron on every face; roads may touch it at
+  // discrete points, but planting or buildings pressed against its wall smother the icon.
+  for (const lk of state.objects.values()) {
+    if (!lk.locked) continue;
+    const r = objectRect(lk);
+    let flush = 0;
+    for (const o of state.objects.values()) {
+      if (o.locked) continue;
+      const cat = categoryOf(o);
+      if (cat === ItemCategory.Road || cat === ItemCategory.Bridge || cat === ItemCategory.Ramp) continue;
+      const or = objectRect(o);
+      const gapX = Math.max(r.x - (or.x + or.w), or.x - (r.x + r.w));
+      const gapY = Math.max(r.y - (or.y + or.h), or.y - (r.y + r.h));
+      if (Math.max(gapX, gapY) < 1) flush++;
+    }
+    if (flush > 4) {
+      hints.push(`${flush} object(s) sit flush against the locked structure at (${r.x},${r.y}) -- keep a 1-2 cell grass apron on ALL its faces; pull planting and buildings back.`);
+    }
+  }
+  return { score: clamp10((Math.min(...quad) / Math.max(target / 4, 1)) * 6 + Math.min(total / Math.max(target, 1), 1) * 4 - noisePenalty), hints };
 }
 
 function roads(state: GridState): QualityDimension {

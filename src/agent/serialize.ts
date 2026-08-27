@@ -7,8 +7,11 @@
  * REGION_CAP per axis — the agent subdivides rather than dumping whole maps.
  */
 import { CellZone, TerrainType, type GridState, type MacroCoord, type PlacedObject } from '../core/model/types';
-import { getCell } from '../core/model/grid-model';
+import { cellKey, cellOverlapsRect, getCell } from '../core/model/grid-model';
 import { ELEVATION_MAX } from '../core/model/constants';
+import { isCoating } from '../core/model/traits';
+import { getCatalogItem } from '../state/catalog';
+import { objectRect } from '../state/object-geometry';
 
 export const REGION_CAP = 45;
 
@@ -25,12 +28,50 @@ const ZONE_GLYPH: Record<CellZone, string> = {
 };
 
 const TOKEN_LEGEND =
-  `Legend: 1-${ELEVATION_MAX} mountain at that elevation; A-${WATER_GLYPH_MAX} water at elevation 0-${ELEVATION_MAX} (A=0); ` +
-  '. grass (buildable); ~ sea; : beach; P plaza; # boundary (all unbuildable).';
+  `Legend: o object footprint (occupied: painting or placing there is refused; get_objects names them); ` +
+  `P plaza or locked structure (permanent); 1-${ELEVATION_MAX} mountain at that elevation; ` +
+  `A-${WATER_GLYPH_MAX} water at elevation 0-${ELEVATION_MAX} (A=0); ` +
+  '. grass (buildable); ~ sea; : beach; # boundary (unbuildable).';
 
-function cellToken(state: GridState, x: number, y: number): string {
+/**
+ * The solid objects' cells, locked and unlocked apart, built ONCE per grid render and handed into
+ * the per-cell tokenizer (a per-cell scan of state.objects is the cost the object index exists to
+ * avoid). Cells are collected with the same −0.5 terrain shift V-PLACE-BLOCK tests, so a cell
+ * marked here is one where a paint would be refused. Coatings (roads) mark nothing: they follow a
+ * surface change rather than blocking it, and an 'o' over every paved cell would hide the terrain
+ * the road lies on.
+ */
+interface ObjectMarks { solid: Set<string>; locked: Set<string> }
+
+function objectMarks(state: GridState): ObjectMarks {
+  const solid = new Set<string>();
+  const locked = new Set<string>();
+  for (const obj of state.objects.values()) {
+    const item = getCatalogItem(obj.catalogId);
+    if (item && isCoating(item)) continue;
+    const r = objectRect(obj);
+    const x0 = Math.floor(r.x - 0.5), x1 = Math.ceil(r.x + r.w + 0.5);
+    const y0 = Math.floor(r.y - 0.5), y1 = Math.ceil(r.y + r.h + 0.5);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (!cellOverlapsRect(r, x, y, -0.5)) continue;
+        solid.add(cellKey(x, y));
+        if (obj.locked) locked.add(cellKey(x, y));
+      }
+    }
+  }
+  return { solid, locked };
+}
+
+/** Objects OVER terrain in the glyph order, because occupancy is the question an exact grid gets
+ *  asked (where can I paint or place): an invisible footprint was the one thing the grid could not
+ *  answer, and the terrain under an object is still readable from the cells around it. */
+function cellToken(state: GridState, x: number, y: number, marks: ObjectMarks): string {
   const cell = getCell(state.cells, x, y);
   if (!cell) return ' ';
+  const key = cellKey(x, y);
+  if (marks.locked.has(key)) return 'P';
+  if (marks.solid.has(key)) return 'o';
   const t = cell.terrain;
   if (t?.type === TerrainType.Mountain) return String(Math.min(t.elevation, ELEVATION_MAX));
   if (t?.type === TerrainType.Water) return String.fromCharCode(65 + Math.min(t.elevation, ELEVATION_MAX));
@@ -56,9 +97,10 @@ export function regionTokens(state: GridState, r: { x1: number; y1: number; x2: 
     units += String(x % 10);
   }
   lines.push(tens, units);
+  const marks = objectMarks(state);
   for (let y = y1; y <= y2; y++) {
     let row = `${String(y).padStart(4)} `;
-    for (let x = x1; x <= x2; x++) row += cellToken(state, x, y);
+    for (let x = x1; x <= x2; x++) row += cellToken(state, x, y, marks);
     lines.push(row);
   }
   lines.push(TOKEN_LEGEND);
@@ -131,7 +173,7 @@ export function mapOverview(state: GridState): string {
   }
   const k = Math.ceil(Math.max(width, height) / 40);
   const lines: string[] = [
-    `Whole-map overview — 1 char summarizes a ${k}x${k} block (dominant feature; use inspect_region for exact cells):`,
+    `Whole-map overview — 1 char summarizes a ${k}x${k} block (dominant terrain only; object footprints show in exact grids, so inspect_region before painting or placing near objects):`,
   ];
   for (let by = 0; by < height; by += k) {
     let row = `${String(by).padStart(4)} `;

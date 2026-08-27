@@ -85,7 +85,7 @@ describe('the focus ring', () => {
     // Not the yellow that marks a choice: a control can be focused while it is chosen, and the two
     // have to stay separate facts.
     expect(FOCUS_RING).not.toBe(ACTIVE);
-    // Not the ink either, which is the interface's black-reading brown and what this replaced.
+    // Not the ink either, which is the interface's black-reading brown.
     expect(FOCUS_RING).not.toBe(INK);
   });
 
@@ -111,8 +111,8 @@ describe('the focus ring', () => {
 
   it('reads against itself, which is what carries it over the greens in between', () => {
     expect(contrast(FOCUS_RING, FOCUS_HALO)).toBeGreaterThanOrEqual(3);
-    // And why one tone was never going to do: the ink cleared the plate at 8 and was lost on the
-    // tallest mountain, which is the pair of numbers this replaced.
+    // And why one tone will never do: the ink clears the plate yet is lost on the tallest
+    // mountain — the pair of numbers below.
     expect(contrast(INK, PLATE)).toBeGreaterThanOrEqual(3);
     expect(contrast(INK, ELEVATION_COLORS[8]!)).toBeLessThan(3);
   });
@@ -125,7 +125,7 @@ describe('the focus ring', () => {
  * down, and a control in this frame is focused by the click that chose it and then stays focused. So
  * without a guard, pressing Enter or that control's own shortcut draws the rust ring around a control
  * the yellow plate already marks as chosen: two boxes, the outer one earned by a key press that had
- * nothing to do with the control under it. Reproduced in a browser at 4x.
+ * nothing to do with the control under it. Visible in a real browser at 4x zoom.
  *
  * jsdom neither lays out nor matches `:focus-visible`, so the guard is in two halves and each states
  * what it can prove: the SEQUENCE below is the whole of the module's behaviour, and the stylesheet
@@ -145,7 +145,7 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
 
-    // The defect: Enter at a standing pointer-placed focus. The stamp must not move, because the
+    // The trap: Enter at a standing pointer-placed focus. The stamp must not move, because the
     // focus did not.
     press('keydown');
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');

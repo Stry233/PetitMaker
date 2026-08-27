@@ -56,8 +56,8 @@ function cellsSaid(t: (key: string, params?: Record<string, string | number>) =>
  * marked cells fills the frame edge to edge and says nothing about WHERE the mark sits. What the
  * user needs at a glance is the corner of the island they pointed at.
  *
- * THE DRAWING ITSELF NOW LIVES IN `map-shot.tsx`, beside the photograph it stands on: the gate
- * family's own thumbs were the same picture without the mark, and the two ways of saying "here" had
+ * THE DRAWING ITSELF LIVES IN `map-shot.tsx`, beside the photograph it stands on: the gate
+ * family's own thumbs are the same picture without the mark, and the two ways of saying "here" have
  * to be one.
  */
 export function RegionVignette({ bounds, width, height }: {

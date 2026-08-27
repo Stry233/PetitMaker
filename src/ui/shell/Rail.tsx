@@ -5,10 +5,10 @@
  * stepper under the top-right cluster, undo and redo on the screen's middle line where a hand
  * rests, the view kit hanging above the bottom corner. What makes a group a group is PROXIMITY —
  * its buttons sit a few pixels apart and the next group is a screen away — because the drawing has
- * no outline to draw a box with. Nothing here has a border or a shadow: every edge in the design
- * source is a filled shape, so a plate is a fill and a corner radius. What it does wear is the
- * hairline every drawing standing on the map wears (`tokens.ts:MAP_SHAPE_EDGE`), which is an
- * outline of its own silhouette and not a shadow — no blur, no direction.
+ * no outline to draw a box with. Nothing here has a border or casts a shadow: every edge in the
+ * design source is a filled shape, so a plate is a fill and a corner radius. What it does wear is
+ * the hairline every drawing standing on the map wears, as the spread-only ring a radius box can
+ * carry (`tokens.ts:plateShapeEdge`) — an outline of its own silhouette, no blur, no direction.
  *
  * The buttons are the design's own round cream plates with its glyphs on them; the layer stepper is
  * the one dark plate the drawing has, which is what it puts the layer control on.
@@ -73,7 +73,7 @@ import { CSS_CURVES } from './motion/curves';
 import { MOTIONS } from './motion/registry';
 import { cssMotion, useMotion } from './motion/use-motion';
 import { useDockStage } from './use-dock';
-import { ACTIVE, DARK_PLATE, INK, MAP_LABEL, MAP_SHAPE_EDGE, PLATE, PLATE_INK } from '../design/tokens';
+import { ACTIVE, DARK_PLATE, INK, MAP_LABEL, PLATE, PLATE_INK, plateShapeEdge } from '../design/tokens';
 import { PANEL_RIGHT } from './panel-frame';
 import { useFrameZoom, useZoomedLayoutTransform } from './use-frame-zoom';
 import { useViewportHeight } from './use-viewport';
@@ -315,10 +315,12 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
           // Anchored at the glyph's end, so what a closed plate clips off is the name and never the
           // drawing.
           justifyContent: grow === 'left' ? 'flex-end' : 'flex-start',
-          // The same hairline every word and every drawing standing on the map wears
-          // (`tokens.ts:MAP_SHAPE_EDGE`): a plate is a fill with no border, so this is what keeps its
-          // shape against a bright sea.
-          filter: MAP_SHAPE_EDGE,
+          // The hairline every drawing standing on the map wears, as the ring a radius box can
+          // carry (`tokens.ts:plateShapeEdge`): a plate is a fill with no border, so this is what
+          // keeps its shape against a bright sea. Not the dilation filter: WebKit smears that
+          // filter's edge along the pill's path while the width animates, and draws it soft at any
+          // density besides.
+          boxShadow: plateShapeEdge(),
         }}
       >
         {grow === 'left' ? name : null}

@@ -5,7 +5,7 @@
  * stylesheet declares a cursor ITSELF, because a UA declaration on the element beats any value
  * inherited from an ancestor. Those elements are the entire coverage problem, and the list of them
  * cannot be reasoned out: it is whatever two shipping engines happen to declare, it differs between
- * them, and reading a sheet by eye is how `label` (Firefox: `label { cursor: default }`) stayed OS-
+ * them, and a sheet read by eye lets `label` (Firefox: `label { cursor: default }`) stay OS-
  * drawn behind every field caption in the export modals.
  *
  * ── How UA_STYLED was derived, and how to re-derive it ──────────────────────────────────────────
@@ -299,7 +299,7 @@ function probeElement(html: string): Element {
 describe('the elements a UA stylesheet gives a cursor to', () => {
   it('is a derived list, not a handful of guesses', () => {
     // A shrunken table is the regression this file guards. `label` is named because it is the case
-    // inspection missed.
+    // a by-eye reading misses.
     expect(UA_STYLED.length).toBeGreaterThanOrEqual(64);
     expect(UA_STYLED.map((e) => e.probe)).toContain('label');
     expect(new Set(UA_STYLED.map((e) => e.probe)).size).toBe(UA_STYLED.length);

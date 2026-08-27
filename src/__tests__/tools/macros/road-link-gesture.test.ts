@@ -119,7 +119,7 @@ async function settle(): Promise<void> {
 /** A wall of decorations blocks the direct row; a lake sits just above it, so going up and over
  *  hugs the water while going down and under does not — `route-offers.ts`'s own `lakeWorld` shape,
  *  which provably drafts more than one way to go. The one fixture every multi-offer pin below
- *  shares, because a map with a single offer is the only map the broken gesture ever worked on. */
+ *  shares, because a map with a single offer cannot tell a working gesture from a broken one. */
 function multiOffer(): { state: GridState; executor: CommandExecutor } {
   const { state, executor } = makeMap();
   for (let x = 15; x <= 25; x++) place(executor, 'flower-daisy', x, 20);

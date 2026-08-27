@@ -142,6 +142,27 @@ export const SHAPE_EDGE_FILTER = { blur: 0.362, slope: 12 } as const;
 export const MAP_SHAPE_EDGE = `url(#${SHAPE_EDGE_ID})`;
 
 /**
+ * The same hairline for a plate whose silhouette IS its border-radius box, drawn as a spread-only
+ * ring instead of the dilation. No offset and no blur, so it is still an outline and not a shadow;
+ * what it buys is the raster: WebKit draws the reference filter about twice as wide and soft as
+ * the other engines whatever the screen density, while a ring is rasterised at device resolution
+ * by every engine (an arbitrary silhouette has no such out, and goes through
+ * `shape-edge.tsx:ShapeEdge`).
+ *
+ * The width follows the screen. Half a px is one crisp device row on a dense display — measured
+ * pixel-identical to what Blink's filter draws — but on a 1x screen WebKit drops a half-px ring
+ * entirely, so there the ring is a full px carrying half the ink: the same apparent weight, drawn
+ * the way a 1x grid can. Read per call, so a window moved between screens follows on its next
+ * render.
+ */
+export function plateShapeEdge(): string {
+  const dense = (typeof window === 'undefined' ? 2 : window.devicePixelRatio) >= 1.5;
+  return dense
+    ? `0 0 0 0.5px ${LABEL_EDGE}`
+    : `0 0 0 1px ${INK}${Math.round((MAP_EDGE_ALPHA / 2) * 255).toString(16).padStart(2, '0')}`;
+}
+
+/**
  * The edge a PANEL wears: the same family, drawn the way a rectangle can be. A border rather than
  * the dilation, since a rounded rectangle has a radius for a border to follow and running a whole
  * card through an SVG filter to draw a line CSS already draws is cost for nothing.

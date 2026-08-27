@@ -1,7 +1,7 @@
 /*
  * SetupScreen.tsx — the panel with no key in it: paste one, find out whose it is, and go.
  *
- * B-BELOW, AND THE ROW IS THE CONTROL. One key field on top, the PROVIDER ROW under it. Typing
+ * THE VERDICT LANDS BELOW THE FIELD, AND THE ROW IS THE CONTROL. One key field on top, the PROVIDER ROW under it. Typing
  * walks that row's face live — dim "Any provider", then a name "so far", then the name with a
  * spinner while the reading is checked, then a cross where nothing claimed it — and PRESSING the row
  * is the manual chooser. So the answer's slot exists before the answer does, the verdict lands where

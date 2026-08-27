@@ -191,7 +191,8 @@ describe('dragging a snapping item', () => {
       seen.push({ px, green, ghostX });
     }
     // The accepting window is the cliff's own neighbourhood — the snap RANGE, not one exact cell.
-    expect(seen.filter((s) => s.green).map((s) => s.px)).toEqual([110, 115, 120]);
+    // It reaches a whole cell onto the plateau, the same depth the east side accepts.
+    expect(seen.filter((s) => s.green).map((s) => s.px)).toEqual([110, 115, 120, 125]);
     // and every accepted drop is the same placement, whichever cell of the range named it.
     expect(new Set(seen.filter((s) => s.green).map((s) => s.ghostX))).toEqual(new Set([8]));
   });

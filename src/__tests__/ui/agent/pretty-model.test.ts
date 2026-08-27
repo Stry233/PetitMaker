@@ -7,10 +7,6 @@
  * and split -2025-04-14 and MMDD like -0125), sizes/quant uppercase (70b→70B,
  * fp16→FP16), ollama :tags fold in (:latest drops), vendor prefixes drop, and
  * brand casing (GPT/GLM/QwQ/DeepSeek/o3…).
- *
- * Cases carried verbatim from the retired site log's own copy of this suite, against the panel's
- * `pretty-model.ts` — which is where the function lives now that the site log it was written inside
- * of is gone.
  */
 import { describe, it, expect } from 'vitest';
 import { prettyModel, shortModel } from '../../../ui/agent/pretty-model';

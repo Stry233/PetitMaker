@@ -269,7 +269,7 @@ export function roadCutFeeds(roads: RoadLookup, road: PlacedObject): RoadFeed[] 
   }));
 }
 
-/** Fan subdivisions. The curve is a quarter circle; 16 is what both renderers have always drawn it with. */
+/** Fan subdivisions. The curve is a quarter circle; both renderers draw it with 16 steps. */
 export const ROAD_ARC_STEPS = 16;
 
 /**

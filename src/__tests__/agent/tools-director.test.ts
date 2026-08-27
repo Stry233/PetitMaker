@@ -76,12 +76,10 @@ describe('decorate_zone', () => {
   });
 
   it('same seed reproduces the same result', async () => {
-    // First call.
     const { state: s1, deps: d1 } = setup(32, 32);
     await executeToolCall(call('decorate_zone', { x: 2, y: 2, w: 20, h: 20, theme: 'orchard', seed: 12345 }), d1);
     const ids1 = [...s1.objects.values()].map((o) => `${o.catalogId}:${o.position.x},${o.position.y}`).sort().join('|');
 
-    // Second call with same seed on a fresh state.
     const { state: s2, deps: d2 } = setup(32, 32);
     await executeToolCall(call('decorate_zone', { x: 2, y: 2, w: 20, h: 20, theme: 'orchard', seed: 12345 }), d2);
     const ids2 = [...s2.objects.values()].map((o) => `${o.catalogId}:${o.position.x},${o.position.y}`).sort().join('|');

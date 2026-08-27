@@ -274,7 +274,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
         if (t.patchOnly) {
           // PER CORNER (the shared patchCornerSplit derivation, same as 2D drawCell):
           // base block + fillets as two passes — the fillet walls sink into the solid
-          // base, so reusing ground walls is fine.
+          // base, so the overlap with its ordinary ground walls never shows.
           const { baseTier, baseCorners, filletCorners } = patchCornerSplit(state, x, y, t);
           if (baseTier >= 1) {
             pushRevealBacking(solid, water, { ...t, corners: baseCorners, elevation: baseTier, patchOnly: false }, baseTier, neighborAt, x0, z0);

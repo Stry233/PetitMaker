@@ -29,10 +29,10 @@ describe('agent provenance', () => {
     expect(ledger[ledger.length - 1]!.ai?.model).toBe('claude');
   });
 
-  // NOTE: the analysis-only ("noteAnalysisOnly does not taint") case is covered by
-  // core/provenance/executor-provenance.test.ts ('analysis-only never taints content') —
-  // it exercised only the executor directly (no agent path), so it lived there. Kept the
-  // AI-taint case above, which is the genuinely agent-specific coverage (runStroke path).
+  // The analysis-only ("noteAnalysisOnly does not taint") case lives in
+  // core/provenance/executor-provenance.test.ts ('analysis-only never taints content'), which
+  // drives the executor directly; the AI-taint case above is the agent-specific half (the
+  // runStroke path).
 });
 
 /**

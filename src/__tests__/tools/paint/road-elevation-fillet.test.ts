@@ -3,14 +3,14 @@
  *
  * `core/edge-cut/terrain-silhouette.ts` warns that a raw `terrain.elevation` read sees a Γ patch's
  * cosmetic tier as a full block (phantom-block). Both places that assign a tile/road's OWN
- * elevation were reading raw: `paint-plan.ts:planTile` (fresh placement — also the ghost's own
- * preview, since the ghost reuses `planPaint`) and `road-reconcile.ts` (re-elevating an existing
- * road after a nearby terrain paint). A flat plateau with one corner filleted by a taller
+ * elevation must read through the patch: `paint-plan.ts:planTile` (fresh placement — also the
+ * ghost's own preview, since the ghost reuses `planPaint`) and `road-reconcile.ts` (re-elevating an
+ * existing road after a nearby terrain paint). A flat plateau with one corner filleted by a taller
  * neighbour (AUTO-TRIM-IS-COSMETIC: the fillet rests one tier above what it decorates,
  * `patchBase`) is common and entirely legal ground for a road — the flat-trait rule already reads
- * through the structural surface, so placement succeeds; only the STORED elevation was wrong,
- * which is what both 2D and 3D render directly (`object-meshes.ts`: `surfaceY(obj.elevation)`),
- * so the road rendered one tier above the ground around it.
+ * through the structural surface, so placement succeeds; a raw read leaves only the STORED
+ * elevation wrong, which is what both 2D and 3D render directly (`object-meshes.ts`:
+ * `surfaceY(obj.elevation)`), so the road renders one tier above the ground around it.
  */
 import { describe, it, expect } from 'vitest';
 import { applyAutoEdgeCut } from '../../../tools/edge-cut/auto-edge-cut';

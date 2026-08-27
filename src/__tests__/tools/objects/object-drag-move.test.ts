@@ -2,10 +2,11 @@
  * Drag-to-move on a SNAPPING item (bridge/ramp): the drop must re-detect the span at the
  * destination, orientation included — the waterSpan/heightDrop traits MUTATE the command's
  * position/rotation during validation, so planning the drop against the real command and then
- * re-validating it in `executor.execute` snapped twice: the second detection ran from the
- * already-snapped anchor, where there is no cliff or gap to find, and a legal drop was refused
- * with the object already lifted. Same regression the placer had (`object-placer-bridge-ramp`),
- * on the drag path. The sequence here is the pointer machine's own drop sequence.
+ * re-validating it in `executor.execute` snaps twice: the second detection runs from the
+ * already-snapped anchor, where there is no cliff or gap to find, and a legal drop is refused
+ * with the object already lifted. The same double-snap `object-placer-bridge-ramp` pins on the
+ * placement path, here on the drag path. The sequence here is the pointer machine's own drop
+ * sequence.
  */
 import { describe, it, expect } from 'vitest';
 import { planObjectMove, removeObjectCommand, stripCoatingsFor } from '../../../tools/objects/object-placer';

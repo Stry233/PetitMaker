@@ -3,9 +3,9 @@
  *
  * Modelled on `__tests__/core/prefs.test.ts` (a storage key written outside its one table) and
  * `__tests__/ui/shell/motion-registry.test.ts` (a curve chosen at a call site). The same argument
- * carries: a number written into a style object is a decision nobody can find later, and it is how
- * one semantic level came to be set at six different sizes across the windows — a section heading at
- * 12/700, 12.5/800, 13/900, 15/800, 15/900 and 16/700, each defensible where it stood and none of
+ * carries: a number written into a style object is a decision nobody can find later, and it lets
+ * one semantic level drift to six different sizes across the windows — a section heading at
+ * 12/700, 12.5/800, 13/900, 15/800, 15/900 and 16/700, each defensible where it stands and none of
  * them the same rank on the glass as its neighbour.
  *
  * `ui/design/text-weight.ts:TEXT_ROLES` is the inventory. The homes below are the files allowed to
@@ -96,8 +96,8 @@ describe('the type ladder is the only inventory of sizes', () => {
 
 /**
  * The rungs a WINDOW's titled text may stand on. A window title, a section heading and a card header
- * are three ranks and no more: the mandate this ladder answers was that the same rank read at a
- * different size depending on which window it was in.
+ * are three ranks and no more: the same rank must never read at a
+ * different size depending on which window it is in.
  */
 const HEADING_RUNGS: TextRole[] = ['title', 'lead', 'head', 'subhead'];
 
@@ -107,8 +107,8 @@ describe('the heading rungs', () => {
     for (let i = 1; i < sizes.length; i++) {
       expect(sizes[i], `${HEADING_RUNGS[i]} does not sit below ${HEADING_RUNGS[i - 1]}`)
         .toBeLessThan(sizes[i - 1]!);
-      // Under about 2px two headings read as one rank set slightly unevenly, which is the drift
-      // this ladder replaced rather than a hierarchy.
+      // Under about 2px two headings read as one rank set slightly unevenly — drift
+      // rather than a hierarchy.
       expect(sizes[i - 1]! - sizes[i]!, `${HEADING_RUNGS[i]} is too close to ${HEADING_RUNGS[i - 1]}`)
         .toBeGreaterThanOrEqual(2);
     }
@@ -127,10 +127,10 @@ describe('the heading rungs', () => {
 });
 
 /**
- * PROSE IS NOT SMALL PRINT, and for a long time the ladder had no way to say so: with no `note`
- * rung, every sentence a surface said in its own voice landed on `caption` — the rung reserved for a
- * tabular count, and the floor of the whole ladder. The agent panel's most-read text and its
- * smallest figures were drawn at one size and told apart by nothing.
+ * PROSE IS NOT SMALL PRINT, and the `note` rung is how the ladder says so: without it,
+ * every sentence a surface says in its own voice lands on `caption` — the rung reserved for a
+ * tabular count, and the floor of the whole ladder — and the agent panel's most-read text and its
+ * smallest figures are drawn at one size, told apart by nothing.
  */
 describe('the prose rung', () => {
   it('stands above the small print, and below the label it is not', () => {

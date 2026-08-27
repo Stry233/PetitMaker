@@ -5,7 +5,7 @@
  * browser then resolves that percentage against the element's own box, which inside the frame is
  * drawn under a zoom. The two are different units, so the drawn corner comes out `1 / zoom` short
  * for as long as a layout animation runs and returns to its authored size the frame it stops —
- * which is a jump at the end of the move, and it is what the layer plate was reported for.
+ * which is a jump at the end of the move.
  *
  * What is asserted here is the property that makes the jump impossible rather than rare: for a
  * DECLARED element the same authored number describes the same physical corner at every projection

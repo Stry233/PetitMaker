@@ -1190,7 +1190,7 @@ export function planBorrow(
  * There is no second test of how far off the ramp itself is: `BORROW_MIN_GAIN` is that test, and measured
  * over the benchmark an absolute floor on top of it either rejected nothing (a colour the ramp is within
  * two steps of cannot be beaten by a step and a half) or rejected the silver-blue and brown subjects the
- * judged round counted as losses.
+ * beds exist to colour.
  *
  * TWO CELLS, because one is a stray tile and two are a patch. A SIXTEENTH of the figure over at most TWO
  * bodies: the same share the accent spends on features (`stencil-feature.ts:FEATURE_BUDGET_SHARE`), so a
@@ -1224,13 +1224,13 @@ export interface FillGate {
  * WHICH BODIES GET A BED OF BORROWED COLOUR, and in which entry — the answer for a region the paving
  * wanted and the GROUND refused.
  *
- * THE FAILURE THIS IS FOR (T8, and the judged round's `t8-scatter`). A picture has three colour
+ * THE FAILURE THIS IS FOR. A picture has three colour
  * instruments: the ramp, which says lightness; the paving, which says a whole REGION's colour and is
  * taken only where it can COVER one (`BORROW_COVER_MIN` — a scatter of paving over a tier of green reads
  * as neither material); and the accent, which says a FEATURE and is refused a body outright
  * (`FEATURE_MAX_SHARE`). A subject whose own mass is a colour no green can approximate, on ground too
  * broken to hold a paved region, was therefore told entirely in green: measured over the benchmark, a
- * quarter of the pictures at sixteen cells said nothing about their own colour at all. The judges read
+ * quarter of the pictures at sixteen cells said nothing about their own colour at all. A viewer reads
  * the two halves of that apart — a mark whose colour the SUBJECT has reads as the subject's colour
  * arriving, a mark whose colour it does not have reads as speckle — so a bed is laid only where the
  * borrowed material says the region's OWN hue, and a body no instrument can say gets nothing.
@@ -1328,7 +1328,7 @@ export function hueMatched(
  *
  * A BED IS A BLOCK, AND THE GROUND DECIDES HOW MUCH OF ONE. A coating wants flat ground and a region
  * built in terrain is flat only in patches, so the cells that will hold one are scattered through the
- * body — and a spend spread over all of them is the speckle the judged round refused. So the walk starts
+ * body — and a spend spread over all of them reads as speckle rather than a bed. So the walk starts
  * at the DEEPEST cell of the region that will hold a mark (deepest inside the region, which is where the
  * ground is flattest and a block reads as being in the body rather than on its edge) and spends outward
  * from there in breadth-first order through the region, taking the cells that hold: whatever the ground

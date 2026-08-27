@@ -1,10 +1,10 @@
 // use-share-code.ts — the export modal's cached share-code asset. The
 // preview and the final export draw the SAME rendered band: the code is built once per
-// (map, title, size, createdAt) off the modal-open timestamp, debounced against typing, and
+// (map, title, size, createdAt) off the modal-open timestamp, debounced, and
 // handed to both the preview painter and the export capture. Building runs the real encoder
 // (a generated map replays its generator to self-verify), so this must never run per keystroke
-// or on the open animation frame — hence async + debounce. While `pending`, the preview stays in
-// its loading state (no placeholder band is ever drawn).
+// or on the open animation frame — hence async + debounce. While `pending`, the preview holds
+// its last picture, or its loading state when none stands (no placeholder band is ever drawn).
 import { useEffect, useRef, useState } from 'react';
 import { buildShareCode, moduleBaseFor } from '../../../../io/share';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
@@ -51,13 +51,16 @@ function shareCodeBuildWidth(resolution: ExportOptions['resolution']): number {
   return resolution === 'original' ? RESOLUTION_WIDTHS.high : RESOLUTION_WIDTHS[resolution];
 }
 
-const TITLE_DEBOUNCE_MS = 600;
+/** How long a build waits for its inputs to stop moving. The title arrives already SETTLED (the
+ *  modal holds typed text until it has been still for a second), so what this absorbs is the rest:
+ *  a size preset clicked through, the open animation frame, a map swap. */
+const BUILD_DEBOUNCE_MS = 250;
 
 export interface ShareCodeState {
   /** The rendered band, once built. Null while pending/unavailable. */
   asset: ShareCodeAsset | null;
-  /** True while a build is scheduled or running — the preview stays in its loading state
-   *  (there is NO placeholder band; the composition is simply not shown yet). */
+  /** True while a build is scheduled or running — the preview holds its last picture, or its
+   *  loading state when none stands (there is NO placeholder band). */
   pending: boolean;
   /** Set when the encoder REFUSED this map. Distinct from "no code was asked for": the band was
    *  expected and is not coming, which the preview has to say, or an empty band reads as a
@@ -118,7 +121,7 @@ export function useShareCode(
           console.error('[export] share code build failed', e);
           if (alive) setCode({ asset: null, pending: false, issue: shareCodeIssueKey(state) });
         });
-    }, TITLE_DEBOUNCE_MS);
+    }, BUILD_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(id); };
   }, [open, state, importable, title, resolution, createdAt]);
 

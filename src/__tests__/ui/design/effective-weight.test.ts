@@ -20,7 +20,7 @@ describe('effectiveWeight', () => {
     expect(effectiveWeight(700, 0.563, 1)).toBe(700);
   });
 
-  it('leaves 900 unchanged at 1440p DPR 1 (0.75 × 1 = 0.75 ≥ 0.7, user reports fine)', () => {
+  it('leaves 900 unchanged at 1440p DPR 1 (0.75 × 1 = 0.75 ≥ 0.7)', () => {
     expect(effectiveWeight(900, 0.75, 1)).toBe(900);
   });
 

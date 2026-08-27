@@ -142,6 +142,18 @@ describe('OpRow: one line, expandable detail, muted read tools', () => {
     expect(getByTestId('op-detail').textContent).toBe('Looked at the shore.');
   });
 
+  it('a row carrying the picture the model saw says so as a chip, and opens to the picture itself', () => {
+    const op = makeOp({ name: 'view_map', status: 'ok', summary: 'Rendered view attached.', image: 'data:image/png;base64,AAAA', isRead: true });
+    const { getByTestId, queryByTestId, getByText } = renderWithI18n(<OpRow op={op} />);
+    getByText('saw the map');
+    expect(queryByTestId('op-image')).toBeNull();
+    fireEvent.click(getByTestId('op-row'));
+    const img = getByTestId('op-image') as HTMLImageElement;
+    expect(img.src).toBe('data:image/png;base64,AAAA');
+    // The alt is the reader's caption, so it is a localized string rather than a file name.
+    expect(img.alt).not.toBe('');
+  });
+
   it('marks a read tool\'s row muted', () => {
     const readOp = makeOp({ name: 'get_objects', isRead: true });
     const writeOp = makeOp({ name: 'place_object', isRead: false });
@@ -329,9 +341,9 @@ describe('OpRow: a reverted row', () => {
    * A REFUSAL REACHES THE READER IN THEIR OWN LANGUAGE, and the model's copy stays English.
    *
    * `tools-common.ts:formatErrors` writes the tool result FOR the model (`translateFor('en', …)`),
-   * which is right — the model reasons over stable rule feedback. The panel lifted the rule out of
-   * that copy and showed it as-is, so a Russian card carried three lines of English for a sentence
-   * that ships keyed in all seven locales. The refusal now travels as its rule
+   * which is right — the model reasons over stable rule feedback. A panel that lifted the rule out
+   * of that copy and showed it as-is would hand a Russian card three lines of English for a sentence
+   * that ships keyed in all seven locales. The refusal travels as its rule
    * (`ToolResultDetail.violations`) and the well translates it.
    */
   it.each([

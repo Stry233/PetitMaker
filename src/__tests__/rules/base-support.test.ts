@@ -195,11 +195,10 @@ describe('V-MTN-03: 3x3 Base Support', () => {
 });
 
 /**
- * Owner-reported: a river could not be painted above layer 3. The water itself was never the cell
- * the rule flagged — the basin RIM was. A pond's rim stands at the water's own level, so the water
- * sits inside every rim cell's 3x3, and a rim at >= 4 lost its base to a cell that in fact holds
- * riverbed mass one layer down. Driven through the real command path, since the refusal only shows
- * up as a post-stroke revert.
+ * A river painted above layer 3: the water itself is never the cell the rule flags — the basin RIM
+ * is. A pond's rim stands at the water's own level, so the water sits inside every rim cell's 3x3,
+ * and a rim at >= 4 would lose its base to a cell that in fact holds riverbed mass one layer down.
+ * Driven through the real command path, since the refusal only shows up as a post-stroke revert.
  */
 describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () => {
   /** A legal pyramid: a square per layer, each inset 1 from the one below, so every cell's 3x3

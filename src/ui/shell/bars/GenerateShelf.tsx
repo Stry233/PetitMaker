@@ -6,8 +6,8 @@
  * of the backing band (`units.ts:PLATE_BAND`) with the batch tile at their end; the settings sit
  * INSIDE the plate, in the room that runs to the bottom of the window and that only the object
  * shelf was using, for its scrollbar. There is no fourth thing: the names carry the kinds, the last
- * card carries the recipe number, the tile at the cards' end asks for another batch, and Clear is in
- * the menu, where the one destructive action here belongs.
+ * card carries the recipe number, the tile at the cards' end asks for another batch, and Clear
+ * stands beside that tile, taking the last run back.
  *
  * THE SHELF HAS NO TOTAL WIDTH. A control is as wide as its own label at a fixed type size, and the
  * cards give up width to whatever a language needs, which is the only way "Насыщенность" and
@@ -885,9 +885,9 @@ const CUSTOM = CANDIDATES;
     if (appliedIndex !== null) void applyCandidate(appliedIndex, { gates: moved });
   }, [shownEnds, appliedIndex, mazeField, applyCandidate]);
 
-  /** Bounded by the LAST RUN's region and by the map's own authorship, exactly as the menu row was:
-   *  a placement made by hand inside that region survives, which is what makes this safe enough to
-   *  stand in the shelf rather than behind a confirmation. */
+  /** Bounded by the LAST RUN's region and by the map's own authorship: a placement made by hand
+   *  inside that region survives, which is what lets this stand in the shelf rather than behind a
+   *  confirmation. */
   const clearLastRun = useCallback(() => {
     const kit = currentKit();
     if (!kit) return;
@@ -1252,8 +1252,8 @@ const CUSTOM = CANDIDATES;
                 </motion.button>
 
                 {/* CLEAR, beside the batch, because the two are the same kind of thing: what you do
-                    to a generation rather than to one candidate. It was in the app menu first, which
-                    holds actions about the SESSION, and nobody undoing a generation hunts there.
+                    to a generation rather than to one candidate. The app menu holds actions about
+                    the SESSION, and nobody undoing a generation hunts there.
                     Its own gap is wider than the row's, so the pair reads as two targets. */}
                 <motion.button
                   type="button"

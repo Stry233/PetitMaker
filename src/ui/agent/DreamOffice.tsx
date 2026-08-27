@@ -26,22 +26,34 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { useReducedMotionConfig } from 'framer-motion';
 
 import { useT } from '../../i18n/context';
-import { useEditorStore } from '../../state/store';
 import { colors, cursors, font } from '../design/styles';
 import { INK, INSET, PLATE_INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
 import { windowFooterPrimary } from '../design/window-skin';
 import { getCharacterHandle, setDreamBadge } from './character/Character';
 import { Icon, type IconId } from './icons';
-import { MapShot } from './map-shot';
 import { DREAM } from './sketchbook/sketch-motion';
 import { edge } from './tokens';
+
+import thumbVillage from '../../assets/agent/dreams/dream-village.png';
+import thumbForest from '../../assets/agent/dreams/dream-forest.png';
+import thumbRoad from '../../assets/agent/dreams/dream-road.png';
+import thumbPond from '../../assets/agent/dreams/dream-pond.png';
+import thumbHill from '../../assets/agent/dreams/dream-hill.png';
 
 /**
  * THE ORDERS SHE DREAMS OF. Five, so the board's three-row window turns over without a row ever
  * arriving where it just left, and each is a real order this app can carry (the artifact's own
  * seven, less the two whose verbs the panel's tool set says twice).
+ *
+ * Each slip's picture is the REAL outcome: the order was run through the assistant on a fresh map
+ * and the built feature photographed from the live renderer, framed to the work (the capture rig is
+ * scripts/internal/capture-dream-thumbs.mts). A sample order whose picture is the live (empty) map
+ * promised nothing; these show what saying yes gets you.
  */
+const DREAM_THUMBS: Record<string, string> = {
+  village: thumbVillage, forest: thumbForest, road: thumbRoad, pond: thumbPond, hill: thumbHill,
+};
 export const DREAMS: readonly { id: string; icon: IconId; titleKey: string; subKey: string }[] = [
   { id: 'village', icon: 'pw-object-place', titleKey: 'agent3.dream_village', subKey: 'agent3.dream_village_sub' },
   { id: 'forest', icon: 'pw-forest', titleKey: 'agent3.dream_forest', subKey: 'agent3.dream_forest_sub' },
@@ -248,14 +260,6 @@ export function DreamOffice({ onConnect, pinned = false }: {
   const prevBeatRef = useRef(0);
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /**
-   * THE ROWS' PICTURE IS THE OPEN MAP, and the grid is mutated in place: without a version the first
-   * capture would stand for the island's whole life. Read at whatever render happens rather than
-   * subscribed to (nothing here re-renders per command), so an edit reaches the board at the next
-   * beat and a burst of them costs one capture, not one per command.
-   */
-  const grid = useEditorStore((s) => s.gridState);
-  const mapVersion = `${grid?.cellsVersion ?? 0}:${grid?.objectsVersion ?? 0}`;
-  /**
    * EACH SLIP STANDS AT ITS OWN HEIGHT; the board's height does not. `reserve` is the tallest a
    * 3-candidate window of the rotation can ever add up to, so a rotation that brings in a lighter
    * combination leaves the difference as empty room under the rows rather than shrinking the board.
@@ -402,7 +406,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
               </div>
             </div>
           )}
-          {leaving && <DepartingRow order={leaving} mapVersion={mapVersion} />}
+          {leaving && <DepartingRow order={leaving} />}
           {(pinned
             ? DREAMS
             : Array.from({ length: SHOWN }, (_, i) => DREAMS[(beat + i) % DREAMS.length]!)
@@ -411,7 +415,6 @@ export function DreamOffice({ onConnect, pinned = false }: {
               key={order.id}
               order={order}
               reduced={reduced}
-              mapVersion={mapVersion}
               glideRef={glideRef}
             />
           ))}
@@ -439,28 +442,19 @@ type DreamOrder = { id: string; icon: IconId; titleKey: string; subKey: string }
 /** The picture and the two lines, shared by the standing row, the one on its way out and the ones
  *  being measured: they differ only in how they arrive and leave, never in what they show. With no
  *  `mapVersion` the thumb stands as its own empty box, which is the measuring case. */
-function RowContent({ order, mapVersion }: { order: DreamOrder; mapVersion?: string }) {
+function RowContent({ order }: { order: DreamOrder }) {
   const t = useT();
   return (
     <>
       <span style={SHOT_STYLE}>
-        {mapVersion !== undefined && (
-          <MapShot
-            box={undefined}
-            width={THUMB.width}
-            height={THUMB.height}
-            whole
-            version={mapVersion}
-            placeholder={(
-              <span style={{
-                display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: INK,
-              }}
-              >
-                <Icon id={order.icon} size={16} />
-              </span>
-            )}
-          />
-        )}
+        {/* The dreamed order's own built outcome; decorative beside the title that names it. */}
+        <img
+          data-testid="dream-thumb"
+          src={DREAM_THUMBS[order.id]}
+          alt=""
+          aria-hidden
+          style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+        />
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: INK }}>
@@ -483,10 +477,9 @@ function RowContent({ order, mapVersion }: { order: DreamOrder; mapVersion?: str
  * as three things happening at once. `fill: 'backwards'` is what holds it invisible through the
  * delay rather than showing it fully formed and then animating it in.
  */
-function DreamRow({ order, reduced, mapVersion, glideRef }: {
+function DreamRow({ order, reduced, glideRef }: {
   order: DreamOrder;
   reduced: boolean;
-  mapVersion: string;
   /** The board's own FLIP register: it reads every standing row's place, so the ones that survive a
    *  beat can glide from where they were to where they now are. */
   glideRef(id: string, el: HTMLDivElement | null): void;
@@ -515,7 +508,7 @@ function DreamRow({ order, reduced, mapVersion, glideRef }: {
       data-order={order.id}
       style={ROW_STYLE}
     >
-      <RowContent order={order} mapVersion={mapVersion} />
+      <RowContent order={order} />
     </div>
   );
 }
@@ -526,7 +519,7 @@ function DreamRow({ order, reduced, mapVersion, glideRef }: {
  * have already taken their new places beneath it — the same beat the artifact's ghost row plays,
  * minus the live layout re-measurement a fixed three-row window has no need of.
  */
-function DepartingRow({ order, mapVersion }: { order: DreamOrder; mapVersion: string }) {
+function DepartingRow({ order }: { order: DreamOrder }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -545,7 +538,7 @@ function DepartingRow({ order, mapVersion }: { order: DreamOrder; mapVersion: st
       data-order={order.id}
       style={{ ...ROW_STYLE, position: 'absolute', top: 0, left: 0, right: 0 }}
     >
-      <RowContent order={order} mapVersion={mapVersion} />
+      <RowContent order={order} />
     </div>
   );
 }

@@ -1,9 +1,9 @@
 /**
  * The Settings panel's view preferences survive a reload.
  *
- * `motionPref`, `showGrid` and `showChunkBounds` were session-only for a long time, which read
- * as a broken panel: a choice made in Settings was silently gone the next visit, while its
- * neighbours (uiZoom, quality3d, systemCursors) stuck. Each pin here is the same shape: the
+ * A session-only `motionPref`, `showGrid` or `showChunkBounds` reads as a broken panel: a choice
+ * made in Settings is silently gone the next visit, while its neighbours (uiZoom, quality3d,
+ * systemCursors) stick. Each pin here is the same shape: the
  * setter writes through the PREFS table's key, and a freshly-booted slice reads it back.
  */
 import { describe, it, expect, beforeEach } from 'vitest';

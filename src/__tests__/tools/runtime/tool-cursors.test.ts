@@ -328,9 +328,9 @@ describe('tools read from the context, not the store', () => {
   it('the eraser ACTS from the context surface, not the store — the click itself proves it', () => {
     // A canActAt probe cannot discriminate the two readings here: a water cell reads `true` from
     // BOTH a mountain surface (nothing to erase, a no-op) and a water surface (erasable, and
-    // legal) — so a probe-only pin would have passed against the pre-refactor eraser too. Driving
-    // the real click is what tells them apart: pre-refactor, `erasesHere` read
-    // `useEditorStore.getState().contentType` ('mountain' here) and SKIPPED a water cell outright
+    // legal) — so a probe-only pin would pass against a store-reading eraser too. Driving
+    // the real click is what tells them apart: an `erasesHere` reading
+    // `useEditorStore.getState().contentType` ('mountain' here) SKIPS a water cell outright
     // (erasesHere(Water, 'mountain') is false), leaving the water standing. Reading ctx.contentType
     // ('water') instead means erasesHere(Water, 'water') is true, so the click ACTS: the water
     // converts to this layer's mountain (see terrain-peel.ts — water CONVERTS, it is not dug out).

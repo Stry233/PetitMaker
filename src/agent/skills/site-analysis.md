@@ -10,10 +10,10 @@ WHAT TO READ (it is all in <map_context> — call inspect_region only for the ex
 - Connections: where do roads end, where could a route cross water or climb? find_bridge_sites and find_ramp_sites give the legal answers; a plan whose areas cannot be linked is dead on arrival.
 
 THE FOUR DECISIONS (make them before any edit — this is the brief)
-1. SUBJECT: one primary set piece the island is about (a terraced backing wall, a cascade, a lakeside town), then 2-3 secondary places, then ordinary ground. If everything is equally elaborate, nothing is the point.
+1. SUBJECT AND DIALECT: one primary set piece the island is about (a terraced backing wall, a cascade, a water figure, a lakeside town), then 2-3 secondary places, then ordinary ground — and the dialect it is built in, formal order or natural variety (the composition skill defines both). If everything is equally elaborate, nothing is the point.
 2. AXIS: pick the map's back and front. High mass, falls and forest go to the back band; the low open half holds the plaza, buildings and beds. Near low, far high — buildings face the open side and are backed by the mass.
 3. GROUND PLAN: which regions exist and what theme each carries (one theme per region — an orchard, a flower quarter, a waterside terrace, a hamlet). Leave real emptiness around the primary feature so it stands clear.
-4. CIRCULATION: where the trunk road runs (it should pass the plaza, the shop and the pavilion), where it climbs, and which 1-2 places are reached only by their own dead-end spur.
+4. CIRCULATION: where the trunk road runs (it should pass the plaza, the shop, the station and the pavilion), where it climbs, and which 1-2 places are reached only by their own dead-end spur.
 
 THEN: update_plan with 3-6 stages in build order (terrain -> water -> buildings -> roads -> planting is the reliable order), each label a short noun phrase. Only then start stage 1.
 

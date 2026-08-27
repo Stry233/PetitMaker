@@ -81,6 +81,17 @@ function measuredPool(container: HTMLElement): number[] {
     .map((r) => (r as HTMLElement).getBoundingClientRect().height / ZOOM);
 }
 
+describe('every slip carries its own built picture', () => {
+  it('renders a thumbnail image on each visible row, never an empty box', () => {
+    const { container } = mount();
+    const thumbs = container.querySelectorAll('[data-testid="dream-thumb"]');
+    expect(thumbs.length).toBeGreaterThan(0);
+    for (const img of thumbs) {
+      expect((img as HTMLImageElement).getAttribute('src'), 'thumb src').toBeTruthy();
+    }
+  });
+});
+
 describe('the dreaming board reserves one height', () => {
   beforeEach(() => {
     stubLayout();
@@ -183,13 +194,11 @@ describe('the dreaming board reserves one height', () => {
   /**
    * THE POOL'S OWN TEXT IS WHAT SIZES THE RESERVE, so a title or sub line that runs long enough to
    * wrap is what makes it grow. Measured live (panel-harness, `state=disconnected`, 1280x800, the
-   * frame's own 1.25 zoom): before this round village's and forest's SUB line and road's TITLE line
-   * were the three that wrapped in en (39-43 chars) and the same three lines wrapped in ru (33-38
-   * chars), which is what put those three orders in the pool's own tallest trio and set the reserve to
-   * 294.5px in en and 364.5px in ru. Shortened to the lengths below, none of the three wraps in either
-   * locale any more, and the reserve measured 222px in en and 293px in ru: smaller in both, and en
-   * still under ru, since ru's own outliers (village's and forest's title, road's sub) still run one
-   * wrapped line the shortened strings did not touch.
+   * frame's own 1.25 zoom): a SUB or TITLE line wraps at 39-43 chars in en and 33-38 chars in ru,
+   * which puts its order in the pool's own tallest trio and grows the reserve (294.5px in en and
+   * 364.5px in ru with three such lines). At the lengths below none of the three longest lines wraps
+   * in either locale, and the reserve measures 222px in en and 293px in ru: en still under ru, since
+   * ru's own outliers (village's and forest's title, road's sub) still run one wrapped line.
    */
   /**
    * DOCKED, THE BOARD TAKES THE ROOM THAT EXISTS: the zone is the window tall, so a three-row window

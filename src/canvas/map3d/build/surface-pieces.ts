@@ -6,7 +6,7 @@
  * A trimmed cell is not a square at one height. A cut corner is rounded away and what shows in its
  * place is the surface behind it (a lower step, the water it sits in, the ground), and a Γ patch's
  * fillet stands a tier above the base filling the rest of the cell. Reading the cell's top and
- * covering the whole square is what left a region highlight hanging in the air over every trim.
+ * covering the whole square would leave a region highlight hanging in the air over every trim.
  *
  * The split mirrors `terrain-geometry`'s bevel path piece for piece: `cornerPolygon` for what a trim
  * keeps, `cornerComplement` for what it opens, `cutBackingByCorner` for what stands behind that, and

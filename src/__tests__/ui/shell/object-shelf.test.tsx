@@ -183,7 +183,7 @@ describe('the search field belongs to the row of names', () => {
 
   /**
    * An outline follows its OWN element's corner, and the input is a rectangle laid over the drawn
-   * capsule: focused, it was ringed as a rectangle. `pw-field-wrap` + `pw-field-input` is the pair
+   * capsule: focused, it would be ringed as a rectangle. `pw-field-wrap` + `pw-field-input` is the pair
    * `animations.css` moves the ring up with, and the box it lands on wears the plate's own corner,
    * which is half its height because the drawing is a stadium.
    */
@@ -198,9 +198,9 @@ describe('the search field belongs to the row of names', () => {
     expect(field.style.borderRadius).toBe(`${SEARCH.radius}px`);
   });
 
-  /** Russian, Thai and French names are half again as wide as the Chinese, and a wrapping row put
+  /** Russian, Thai and French names are half again as wide as the Chinese, and a wrapping row puts
    *  the field on a line of its own at the shelf's left edge, under the first name. Nothing in this
-   *  row wraps now: the NAMES take the shortfall by scrolling, which is the block below. */
+   *  row wraps: the NAMES take the shortfall by scrolling, which is the block below. */
   it('never wraps onto a line of its own, whatever the names are wide', () => {
     mount();
     const row = screen.getByRole('searchbox').parentElement!.parentElement as HTMLElement;
@@ -262,7 +262,7 @@ describe('the row of names travels sideways', () => {
     const list = overflowing();
     expect(list.style.maskImage).toBe('');   // nothing measured yet: nothing to say
 
-    // The row now shares the item row's settle loop (`useScrollFade`), so a scroll event moves
+    // The row shares the item row's settle loop (`useScrollFade`), so a scroll event moves
     // the TARGET and the mask arrives over several frames rather than on the triggering event.
     fireEvent.scroll(list);
     await waitFor(() => {
@@ -450,7 +450,7 @@ describe('search', () => {
     );
   });
 
-  /** `state/catalog.ts:searchCatalog` now fuzzy-matches rather than requiring a literal substring,
+  /** `state/catalog.ts:searchCatalog` fuzzy-matches rather than requiring a literal substring,
    *  so a query missing one letter of a real word still finds it (the SUBSEQUENCE tier). */
   it('forgives a dropped letter (typo) via the subsequence fallback', () => {
     mount();
@@ -562,7 +562,7 @@ describe('the scrollbar', () => {
 describe('scrolling the row', () => {
   it('turns a wheel that reports downward into travel along the row', () => {
     expect(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1)?.by).toBe(100);
-    // Lines and pages are what a wheel reports in outside Chromium; taken raw, a notch moved the
+    // Lines and pages are what a wheel reports in outside Chromium; taken raw, a notch moves the
     // row three pixels.
     expect(wheelPush({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 800, 1)!.by).toBeGreaterThan(100);
     expect(wheelPush({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 800, 1)!.by).toBe(800);
@@ -571,8 +571,8 @@ describe('scrolling the row', () => {
   /**
    * The row is drawn inside the frame's zoom, so one of its pixels is bigger than one of the
    * page's — and a wheel reports the page's. The browser scrolling this row from a HORIZONTAL wheel
-   * already divides them out; a vertical notch handed straight to `scrollLeft` did not, and
-   * travelled a quarter further at the shipped zoom. Measured over both axes, that was the whole of
+   * already divides them out; a vertical notch handed straight to `scrollLeft` does not, and
+   * travels a quarter further at the shipped zoom. Measured over both axes, that is the whole of
    * the difference between them.
    */
   it('turns the same notch into the same travel as the browser does sideways', () => {
@@ -590,17 +590,17 @@ describe('scrolling the row', () => {
   });
 
   /** A trackpad's near-vertical swipe carries a pixel or two of sideways drift. Standing back from
-   *  the whole gesture for it left the row moving by that drift alone: 2 px where 80 was asked
+   *  the whole gesture for it leaves the row moving by that drift alone: 2 px where 80 was asked
    *  for. The dominant direction decides, and the browser still adds the sideways part itself. */
   it('takes a swipe that is mostly downward, drift and all', () => {
     expect(wheelPush({ deltaX: 3, deltaY: 100, deltaMode: 0 }, 800, 1.25)!.by).toBe(80);
     expect(wheelPush({ deltaX: -3, deltaY: -100, deltaMode: 0 }, 800, 1.25)!.by).toBe(-80);
   });
 
-  /** A wheel says only how far, never how it should get there. Smoothing a notch was measurably
-   *  worse to use than the browser's own direct horizontal scroll of the same row, which is the
-   *  comparison that settled it: the travel time lands between the hand and the row. */
-  it('says how far and nothing about gliding, since the wheel no longer does', () => {
+  /** A wheel says only how far, never how it should get there. Smoothing a notch is measurably
+   *  worse to use than the browser's own direct horizontal scroll of the same row: the travel
+   *  time lands between the hand and the row. */
+  it('says how far and nothing about gliding', () => {
     expect(Object.keys(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1)!))
       .toEqual(['by']);
   });
@@ -696,7 +696,7 @@ describe('switching category puts down a card that does not belong there', () =>
   });
 });
 
-describe('the smart-planting card arms per tab (task #26)', () => {
+describe('the smart-planting card arms per tab', () => {
   it('arms the tree-led planting from Trees and the flora-led one from Flora, never the same id', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
@@ -774,9 +774,9 @@ describe('the card is a picture and a count', () => {
  *
  * The drawing gives the tile 280 design px and the backing band 217, which lands a card barely
  * bigger than the band; against a category name whose size is fixed by this frame's own rule, that
- * read as a row of stamps under a heading, and the item's picture sat half inside the dark bar. A
- * photograph of the game's own shelf (a 1080-tall frame) was measured instead: the card is 119 px,
- * the band shows 97 above the bottom edge, a name's ink is 29, and the numbers below are that.
+ * reads as a row of stamps under a heading, with the item's picture half inside the dark bar. The
+ * numbers below come from a photograph of the game's own shelf (a 1080-tall frame) instead: the
+ * card is 119 px, the band shows 97 above the bottom edge, a name's ink is 29.
  *
  * They are asserted from the LAYOUT the shelf is built from rather than from a rendered box, since
  * jsdom lays nothing out — every one of them is a ratio between two numbers declared here.
@@ -793,15 +793,15 @@ describe('the item card against the band it stands out of', () => {
     expect(card / PLATE_BAND.top).toBeCloseTo(1.227, 3);
   });
 
-  /** The complaint was the text ratio, and this is the same number from the other end: text is
+  /** The text ratio, from the other end: text is
    *  fixed here, so the card's size is the only free term in it. The game's is 0.277. */
   it('carries a category name a little over a quarter of its own height', () => {
     expect(TEXT.shelfTab / card).toBeCloseTo(0.28, 2);
   });
 
   /**
-   * The reported fault, in the terms it was reported in: half of the picture sat inside the dark
-   * bar and in the game it does not. The picture is centred on the card, so where it meets the band
+   * A card proportioned against the design canvas stands half of the picture inside the dark
+   * bar; in the game it does not. The picture is centred on the card, so where it meets the band
    * follows from the card's size and nothing else.
    */
   it('keeps the item\'s picture mostly clear of the band, as the game does', () => {

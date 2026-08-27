@@ -64,15 +64,27 @@ describe('edit mode adoption', () => {
   });
 
   /**
-   * ENTERING OBJECT MODE PUTS A CARRIED ERASER DOWN TOO: every other carried tool resolves to rest
-   * there (hand cursor, selection hover), but the eraser kept answering the map — an armed tool
-   * with no cell anywhere in the object shelf to show it, and a cursor that never reset. It stays
-   * reachable IN object mode by the explicit ask (the keyboard command), which is the next test.
+   * ENTERING OBJECT MODE PUTS A CARRIED ERASER DOWN TOO: the shelf resumes its own last card, never
+   * a surface's tool, and the eraser is the tool that made this worth pinning — carried in, it kept
+   * answering the map with no cell anywhere in the object shelf to show it, and a cursor that never
+   * reset. It stays reachable IN object mode by the explicit ask (the keyboard command), which is
+   * the next test.
    */
   it('rests the map when the eraser rides a switch into object mode', () => {
+    // Empty the shelf's own memory first, so what the return resumes is nothing.
+    s().setEditMode({ mode: 'object', tool: 'none' });
     s().setEditMode({ mode: 'water', tool: 'erase' });
     s().setEditMode({ mode: 'object' });
     expect(s().activeTool).toBe(ToolType.Hand);
+  });
+
+  /** The shelf's memory: a card armed before a trip to a surface is armed again on return. */
+  it('resumes the armed card when the user comes back from sculpting', () => {
+    s().setEditMode({ mode: 'object', itemId: 'bridge-teak' });
+    s().setEditMode({ mode: 'mountain', tool: 'brush' });
+    s().setEditMode({ mode: 'object' });
+    expect(s().activeTool).toBe(ToolType.ObjectPlacer);
+    expect(s().selectedItemId).toBe('bridge-teak');
   });
 
   it('still arms the object eraser when it is asked for inside object mode', () => {

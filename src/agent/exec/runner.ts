@@ -72,7 +72,12 @@ function refusingAdapter(message: string): Adapter {
   };
 }
 
-function buildAdapter(cfg: RunnerConfig): Adapter {
+/** The connection half of `RunnerConfig`: all an adapter is built from. */
+export type AdapterConfig = Pick<RunnerConfig, 'providerId' | 'apiKey' | 'customBaseUrl' | 'region' | 'adapterForTest'>;
+
+/** Exported for the one-shot capability checks (the panel's vision probe): a probe must reach the
+ *  endpoint exactly as a job would, or its verdict is about a different connection. */
+export function buildAdapter(cfg: AdapterConfig): Adapter {
   if (cfg.adapterForTest) return cfg.adapterForTest;
   if (cfg.providerId === 'claude') return createAnthropicAdapter({ apiKey: cfg.apiKey });
   try {

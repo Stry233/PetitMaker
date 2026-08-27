@@ -7,9 +7,8 @@
  * Wire-shape facts (two-pass tool-result mapping, the image-as-follow-up-user-message trick with
  * its `(tool attachment: <name>)` label, tool-call accumulation by chunk `index` (falling back to
  * the call id where a gateway streams whole calls with no index), and the
- * `x-stainless-*` header strip for CORS) are carried verbatim from the retired harness's
- * OpenAI-dialect adapter this supersedes, which proved them in production against real
- * gateways. Two things are new: the generator never throws (mirrors `anthropic.ts`), and a missing
+ * `x-stainless-*` header strip for CORS) are production-proven against real gateways. The
+ * generator never throws (mirrors `anthropic.ts`), and a missing
  * tool-call id is synthesized unconditionally rather than silently dropping the call (a gateway
  * proxying an arbitrary backend sometimes omits ids; synthesizing one for a platform that always
  * sends them is simply a no-op, so there is no per-provider flag gating it).

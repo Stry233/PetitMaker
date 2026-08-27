@@ -162,8 +162,8 @@ describe('PanelShell: the four zones', () => {
    *
    * `store.childLive` is folded into a `LaneView` by the column (pinned there) and `Lane` draws one
    * (pinned in its own file), and between those two the panel has to actually pass it down through
-   * the ticket. It carried the prop for a whole wave with nothing rendering it, so a delegate at work
-   * said nothing at all: this is the seam that fact crosses.
+   * the ticket. A panel that carries the prop with nothing rendering it type-checks all the same,
+   * and a delegate at work then says nothing at all: this is the seam that fact crosses.
    */
   it('carries a live helper lane through to the visible panel', () => {
     const { getByTestId } = renderWithI18n(
@@ -433,10 +433,10 @@ describe('PanelShell: what the job zone shows', () => {
   /**
    * THE COMPOSER NEVER INVITES AN ORDER FROM A FACE THAT CANNOT TAKE ONE.
    *
-   * The manage card was the last of the not-ready family still showing "Give an order": it was
-   * reasoned about as chrome over a live session, which is true of the WIRING and beside the point on
+   * The manage card belongs to the not-ready family. "Chrome over a live session" is true of the
+   * WIRING and beside the point on
    * the glass — the zone is filled with the connection being edited, the provider and the model can
-   * both be mid-change under the pointer, and the field below was inviting work the whole time. An
+   * both be mid-change under the pointer, so a field below would be inviting work the whole time. An
    * invitation the surface above it is contradicting is worse than no invitation. It says which of
    * the three not-ready faces it is (never "connect a provider first", which over a live connection
    * would be a plain falsehood) and it hands the field back on Done.
@@ -513,9 +513,9 @@ describe('PanelShell: what the job zone shows', () => {
   /**
    * THE DOCK AND THE ZONE SAY ONE THING. A filed record is a past-jobs row, and the card that said
    * "All done." over it is the same piece of news put away — so the desk reads its own rest. Pinned
-   * HERE rather than on the dock alone: the fact is the panel's to work out, and the first wiring of
-   * it compared a value that is `undefined` against `null`, so the dock went on reporting a receipt
-   * nobody could see while the dock's own unit tests passed.
+   * HERE rather than on the dock alone: the fact is the panel's to work out, and a wiring that
+   * compares a value that is `undefined` against `null` has the dock go on reporting a receipt
+   * nobody can see while the dock's own unit tests pass.
    */
   it('rests the dock once the settled record is filed, and keeps a capped one\'s reading', () => {
     const done = makeView({ jobs: [makeJob({ outcome: 'done', kind: 'build' })] });
@@ -794,9 +794,9 @@ describe("PanelShell: the rolled-back reading is the shell's own", () => {
  * THE TERMINAL CARD IS KEYED BY ITS OWN RECORD (`key={settled.job.orderSeq}` on each of the three
  * shapes in `PanelShell`). Without it React reuses the same component instance across two different
  * settled jobs and a local confirm (the receipt's rewind-all, the stop card's, the answer paper's)
- * travels with it: a rewind confirm opened on job 1 was still standing, unanswered, over job 2 once
- * job 1 filed itself away and job 2 became the standing record — asking about a job the user was no
- * longer looking at. Mutation-verified: removing the three `key`s leaves the rest of this suite
+ * travels with it: a rewind confirm opened on job 1 would still be standing, unanswered, over job 2
+ * once job 1 files itself away and job 2 becomes the standing record — asking about a job the user
+ * is no longer looking at. Removing the three `key`s leaves the rest of this suite
  * green, so this is the one test that would catch their removal.
  */
 describe('PanelShell: the terminal card is keyed by its own record', () => {
@@ -1995,8 +1995,8 @@ describe('PanelShell: the height tween', () => {
  *
  * `HELD`/`ON_HOLD` and the `streaming`/`thinking` derivations feed `JobTicket` straight off
  * `view.phase`/`view.current.saysStreaming` with no consumer of their own in this suite otherwise —
- * `HELD` emptied, `ON_HOLD` emptied, or `streaming`/`thinking` hard-coded false all left every other
- * test in this file green. `panel-column.test.tsx`'s `lane` fold got exactly this treatment for the
+ * `HELD` emptied, `ON_HOLD` emptied, or `streaming`/`thinking` hard-coded false would all leave
+ * every other test in this file green. `panel-column.test.tsx` pins its `lane` fold for the
  * same reason: a derivation with no test at its own seam is wiring nobody is holding.
  */
 describe('PanelShell: the phase-derived ticket facts', () => {

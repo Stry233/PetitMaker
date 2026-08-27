@@ -8,58 +8,61 @@ import {
   DESIGN_MODE_TOOL, designModeToToolType, designModeToEditInputs,
   type EditModePatch,
 } from '../../core/model/edit-mode';
+
+/** The shelf's memory, which `resolveEditMode` never reads. */
+const NONE = { kind: 'none' } as const;
 import { ToolType, type DesignMode } from '../../core/model/types';
 
 describe('resolveEditMode', () => {
   it('rests with the hand tool and nothing armed', () => {
-    const s = resolveEditMode({ mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free' });
+    const s = resolveEditMode({ mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: NONE });
     expect(s.toolType).toBe(ToolType.Hand);
     expect(s.designMode).toBe('hand');
     expect(s.armedItem).toBeNull();
   });
 
   it('maps a shape tool to its design mode, keeping the content type', () => {
-    const s = resolveEditMode({ mode: 'mountain', arming: { kind: 'shape', shape: 'circle' }, tool: 'shape', shape: 'circle' });
+    const s = resolveEditMode({ mode: 'mountain', arming: { kind: 'shape', shape: 'circle' }, tool: 'shape', shape: 'circle', heldObject: NONE });
     expect(s.toolType).toBe(ToolType.TerrainBrush);
     expect(s.designMode).toBe('circle');
     expect(s.contentType).toBe('mountain');
   });
 
   it('maps the free brush to the brush design mode', () => {
-    expect(resolveEditMode({ mode: 'water', arming: { kind: 'brush' }, tool: 'brush', shape: 'rect' }).designMode).toBe('brush');
+    expect(resolveEditMode({ mode: 'water', arming: { kind: 'brush' }, tool: 'brush', shape: 'rect', heldObject: NONE }).designMode).toBe('brush');
   });
 
   it('routes erase and trim to their own tools whatever the content', () => {
-    expect(resolveEditMode({ mode: 'road', arming: { kind: 'erase' }, tool: 'erase', shape: 'free' }).toolType).toBe(ToolType.Eraser);
-    expect(resolveEditMode({ mode: 'road', arming: { kind: 'trim' }, tool: 'trim', shape: 'free' }).toolType).toBe(ToolType.EdgeCut);
+    expect(resolveEditMode({ mode: 'road', arming: { kind: 'erase' }, tool: 'erase', shape: 'free', heldObject: NONE }).toolType).toBe(ToolType.Eraser);
+    expect(resolveEditMode({ mode: 'road', arming: { kind: 'trim' }, tool: 'trim', shape: 'free', heldObject: NONE }).toolType).toBe(ToolType.EdgeCut);
   });
 
   it('arms an item only in object mode', () => {
-    expect(resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'brush', shape: 'free' }).armedItem).toBe('tree-apple');
-    expect(resolveEditMode({ mode: 'mountain', arming: { kind: 'brush' }, tool: 'brush', shape: 'free' }).armedItem).toBeNull();
+    expect(resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'brush', shape: 'free', heldObject: NONE }).armedItem).toBe('tree-apple');
+    expect(resolveEditMode({ mode: 'mountain', arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: NONE }).armedItem).toBeNull();
   });
 
   it('places objects with the placer tool', () => {
-    expect(resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'brush', shape: 'free' }).toolType).toBe(ToolType.ObjectPlacer);
+    expect(resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'brush', shape: 'free', heldObject: NONE }).toolType).toBe(ToolType.ObjectPlacer);
   });
 
   it('rests in object mode with no item picked: there is nothing to place', () => {
-    expect(resolveEditMode({ mode: 'object', arming: { kind: 'none' }, tool: 'brush', shape: 'free' }).toolType).toBe(ToolType.Hand);
+    expect(resolveEditMode({ mode: 'object', arming: { kind: 'none' }, tool: 'brush', shape: 'free', heldObject: NONE }).toolType).toBe(ToolType.Hand);
   });
 
   it('rests in generate mode: the map is not being painted', () => {
-    expect(resolveEditMode({ mode: 'generate', arming: { kind: 'brush' }, tool: 'brush', shape: 'free' }).toolType).toBe(ToolType.Hand);
+    expect(resolveEditMode({ mode: 'generate', arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: NONE }).toolType).toBe(ToolType.Hand);
   });
 
   it('leaving the brush for a selection keeps the surface', () => {
-    const s = resolveEditMode({ mode: 'water', arming: { kind: 'none' }, tool: 'none', shape: 'free' });
+    const s = resolveEditMode({ mode: 'water', arming: { kind: 'none' }, tool: 'none', shape: 'free', heldObject: NONE });
     expect(s.toolType).toBe(ToolType.Hand);
     expect(s.designMode).toBe('hand');
     expect(s.contentType).toBe('water');
   });
 
   it("'none' is a content-surface concept only: object mode reads itemId, not tool", () => {
-    const s = resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'none', shape: 'free' });
+    const s = resolveEditMode({ mode: 'object', arming: { kind: 'item', itemId: 'tree-apple' }, tool: 'none', shape: 'free', heldObject: NONE });
     expect(s.toolType).toBe(ToolType.ObjectPlacer);
     expect(s.armedItem).toBe('tree-apple');
   });
@@ -81,6 +84,7 @@ describe('the mode→tool mapping has one source', () => {
         arming: contentArming(inputs.tool, inputs.shape ?? 'free'),
         tool: inputs.tool,
         shape: inputs.shape ?? 'free',
+        heldObject: NONE,
       });
       expect(s.designMode).toBe(mode);
     }
@@ -88,11 +92,11 @@ describe('the mode→tool mapping has one source', () => {
 
   it("resolveEditMode's toolType for a shape/erase/trim mode matches designModeToToolType of the designMode it reports", () => {
     const cases: Parameters<typeof resolveEditMode>[0][] = [
-      { mode: 'mountain', arming: { kind: 'shape', shape: 'circle' }, tool: 'shape', shape: 'circle' },
-      { mode: 'water', arming: { kind: 'brush' }, tool: 'brush', shape: 'free' },
-      { mode: 'road', arming: { kind: 'erase' }, tool: 'erase', shape: 'free' },
-      { mode: 'road', arming: { kind: 'trim' }, tool: 'trim', shape: 'free' },
-      { mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free' },
+      { mode: 'mountain', arming: { kind: 'shape', shape: 'circle' }, tool: 'shape', shape: 'circle', heldObject: NONE },
+      { mode: 'water', arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: NONE },
+      { mode: 'road', arming: { kind: 'erase' }, tool: 'erase', shape: 'free', heldObject: NONE },
+      { mode: 'road', arming: { kind: 'trim' }, tool: 'trim', shape: 'free', heldObject: NONE },
+      { mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: NONE },
     ];
     for (const inputs of cases) {
       const s = resolveEditMode(inputs);
@@ -146,5 +150,51 @@ describe('nextEditMode: what this call arms outranks what was carried', () => {
   it('rest is a pause: the surface resumes with what it held', () => {
     const s = arm({ mode: 'mountain', tool: 'trim' }, { mode: null }, { mode: 'mountain' });
     expect(s.arming).toEqual({ kind: 'trim' });
+  });
+});
+
+describe('nextEditMode: the shelf remembers its card across a trip to a surface', () => {
+  const arm = (...patches: EditModePatch[]) => patches.reduce(nextEditMode, REST_INPUTS);
+
+  it('a card armed before sculpting is armed again on return', () => {
+    const s = arm(
+      { mode: 'object', itemId: 'ramp-wood-simple' },
+      { mode: 'mountain', tool: 'brush' },
+      { mode: 'object' },
+    );
+    expect(s.arming).toEqual({ kind: 'item', itemId: 'ramp-wood-simple' });
+  });
+
+  it('the memory survives a trip across several surfaces', () => {
+    const s = arm(
+      { mode: 'object', macro: 'patch-tree' },
+      { mode: 'mountain', tool: 'brush' },
+      { mode: 'water', tool: 'erase' },
+      { mode: 'object' },
+    );
+    expect(s.arming).toEqual({ kind: 'macro', macro: 'patch-tree' });
+  });
+
+  it('the first visit still arms nothing: there is nothing to resume', () => {
+    expect(arm({ mode: 'mountain', tool: 'brush' }, { mode: 'object' }).arming).toEqual({ kind: 'none' });
+  });
+
+  it('an ask on the way in outranks the memory', () => {
+    const s = arm(
+      { mode: 'object', itemId: 'ramp-wood-simple' },
+      { mode: 'water', tool: 'brush' },
+      { mode: 'object', itemId: 'bridge-teak' },
+    );
+    expect(s.arming).toEqual({ kind: 'item', itemId: 'bridge-teak' });
+  });
+
+  it('a card put down before leaving stays down on return', () => {
+    const s = arm(
+      { mode: 'object', itemId: 'ramp-wood-simple' },
+      { itemId: null },
+      { mode: 'road', tool: 'brush' },
+      { mode: 'object' },
+    );
+    expect(s.arming).toEqual({ kind: 'none' });
   });
 });

@@ -1,9 +1,9 @@
 /**
  * trouble.test.tsx — the faults, the holds, and what a user can actually DO about either.
  *
- * THE PILLS WERE DRAWN AND DEAD. `Banner` has offered "Fix key", "Change provider" and "Edit
- * endpoint" since the first pass, and the only caller passed a dismiss handler — so three named
- * repairs answered a press with nothing at all. Most of this file is therefore about the WIRING: a
+ * A PILL DRAWN AND DEAD IS THE FAILURE SHAPE HERE. `Banner` offers "Fix key", "Change provider" and
+ * "Edit endpoint", and a caller that passes only a dismiss handler leaves three named
+ * repairs answering a press with nothing at all. Most of this file is therefore about the WIRING: a
  * pill calls its verb, and a verb that is not wired draws no pill rather than a dead one.
  *
  * A DISMISSED FAULT DEMOTES, IT DOES NOT UNMOUNT (the artifact's `.banner.standing`): the sentence
@@ -839,8 +839,8 @@ describe('PanelShell: the holds keep their verbs', () => {
    * ONE VERB, TWO SITES, ONE PAINT. Resume on a hold is an action on a held job rather than the
    * dock's "this needs you" ask, so it takes the dark ink primary and never the amber `active` pill
    * — the ruling `JobTicket`'s `TICKET_RESUME` and `ResumeCard` already state. The hold AFTER AN ASK
-   * is the commonest hold there is (a skipped gate is what produces most of them) and its copy of
-   * the button was still amber, with no test on either site.
+   * is the commonest hold there is (a skipped gate is what produces most of them), so both sites
+   * are pinned here.
    */
   it.each([
     ['at the ticket\'s foot', 'ticket-resume', makeView({ phase: 'paused', current: makeJob() })],

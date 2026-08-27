@@ -7,7 +7,7 @@
  * decisions to land on, behind `NetworkOptions.variation` so generation (which runs this same router and
  * is hash-pinned) cannot see them.
  *
- * ON THE OWNER'S OWN MAP. `hand-terraced-hexia.json` is a real hand-built island: many small
+ * ON A REAL HAND-BUILT MAP. `hand-terraced-hexia.json` is a person's own island: many small
  * plateaus, houses on raised ground, a river, a plaza in its own court. Every earlier road pin but
  * `roads-hand-terraced.ts` builds its fixture with the GENERATOR, and a generated island's broad
  * rooms hide most of what a person's terracing asks of a router.

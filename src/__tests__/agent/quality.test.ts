@@ -52,6 +52,54 @@ describe('evaluateMap: terrainInterest + water', () => {
   });
 });
 
+describe('evaluateMap: stamped pools + plaza apron', () => {
+  it('two congruent pools are named as stamps; distinct pools pass', () => {
+    const state = makeState(40, 40);
+    for (let y = 4; y < 10; y++) for (let x = 4; x < 12; x++) setTerrain(state, x, y, TerrainType.Water, 0);
+    for (let y = 4; y < 10; y++) for (let x = 20; x < 28; x++) setTerrain(state, x, y, TerrainType.Water, 0);
+    const twin = evaluateMap(state);
+    expect(twin.water.hints.join(' ')).toMatch(/congruent 8x6 stamps/);
+    for (let y = 8; y < 10; y++) for (let x = 20; x < 28; x++) { state.cells[y]![x]!.terrain = null; }
+    const varied = evaluateMap(state);
+    expect(varied.water.hints.join(' ')).not.toMatch(/congruent/);
+  });
+
+  it('a lone flower dot is named; a lone tree is a specimen; noise costs the decoration grade', () => {
+    const state = makeState(40, 40);
+    for (let x = 5; x < 15; x++) for (let y = 5; y < 8; y++) {
+      state.objects.set(`f${x}-${y}`, { id: `f${x}-${y}`, catalogId: 'flower-lily', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+    }
+    state.objects.set('lonetree', { id: 'lonetree', catalogId: 'tree-peach', position: { x: 30, y: 30 }, rotation: 0, elevation: 0, locked: false });
+    const clean = evaluateMap(state);
+    expect(clean.decoration.hints.join(' ')).not.toMatch(/lone flower/);
+    state.objects.set('stray', { id: 'stray', catalogId: 'flower-lily', position: { x: 30, y: 10 }, rotation: 0, elevation: 0, locked: false });
+    const noisy = evaluateMap(state);
+    expect(noisy.decoration.hints.join(' ')).toMatch(/lone flower dot/);
+    expect(noisy.decoration.score).toBeLessThanOrEqual(clean.decoration.score);
+    // A detached flower PAIR is a stray too; a tree pair stays a specimen moment.
+    state.objects.delete('stray');
+    state.objects.set('p1', { id: 'p1', catalogId: 'flower-lily', position: { x: 30, y: 10 }, rotation: 0, elevation: 0, locked: false });
+    state.objects.set('p2', { id: 'p2', catalogId: 'flower-lily', position: { x: 31, y: 10 }, rotation: 0, elevation: 0, locked: false });
+    state.objects.set('t1', { id: 't1', catalogId: 'tree-peach', position: { x: 10, y: 30 }, rotation: 0, elevation: 0, locked: false });
+    state.objects.set('t2', { id: 't2', catalogId: 'tree-peach', position: { x: 11, y: 30 }, rotation: 0, elevation: 0, locked: false });
+    const pairs = evaluateMap(state);
+    expect(pairs.decoration.hints.join(' ')).toMatch(/stray dot/);
+    expect(pairs.decoration.hints.join(' ')).not.toMatch(/\(10,30\)/);
+  });
+
+  it('objects pressed against a locked structure trip the apron hint; roads do not', () => {
+    const state = makeState(40, 40);
+    state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 15, y: 15 }, rotation: 0, elevation: 0, width: 6, height: 6, locked: true });
+    const clean = evaluateMap(state);
+    expect(clean.decoration.hints.join(' ')).not.toMatch(/flush/);
+    for (let i = 0; i < 6; i++) {
+      state.objects.set(`t${i}`, { id: `t${i}`, catalogId: 'tree-peach', position: { x: 15 + i, y: 14 }, rotation: 0, elevation: 0, locked: false });
+    }
+    const flush = evaluateMap(state);
+    expect(flush.decoration.hints.join(' ')).toMatch(/flush against the locked structure/);
+  });
+});
+
 describe('evaluateMap: degenerate maps', () => {
   it('never emits NaN scores, even on a zero-size map', () => {
     const r = evaluateMap(makeState(0, 0));

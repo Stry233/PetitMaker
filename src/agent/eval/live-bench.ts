@@ -266,50 +266,9 @@ export async function probeToolsMode(
   throw new Error('tools-mode probe ended without a final event.');
 }
 
-export interface VisionProbe { vision: boolean; detail: string }
-
-/** A 16x16 solid pure-red PNG (89 bytes): large enough that a resizing gateway cannot lose it,
- *  small enough to cost nothing. */
-export const PROBE_IMAGE = 'data:image/png;base64,'
-  + 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGP8z0AaYCJRPcOoBmIAE1GqkMCoBmIAyRoAQC4BH1m1rqAAAAAASUVORK5CYII=';
-
-/** A failure the image cannot explain: these throw rather than reading as text-only, because the
- *  probe's request differs from the already-accepted tools probe by the image part alone. */
-const NOT_ABOUT_THE_IMAGE = new Set(['auth', 'quota', 'rate-limit', 'overloaded', 'network', 'cors', 'abort']);
-
-export async function probeVision(
-  adapter: Adapter, model: string, signal: AbortSignal = new AbortController().signal,
-): Promise<VisionProbe> {
-  const req: AdapterRequest = {
-    system: 'You are a connectivity probe. Answer in one word.',
-    messages: [{ role: 'user', text: 'What color is the attached image? Answer with one word. Do not call any tool.', images: [PROBE_IMAGE] }],
-    tools: [],
-    model,
-    sameModel: false,
-    maxOutputTokens: 256,
-  };
-  let answer = '';
-  for await (const ev of adapter.stream(req, signal)) {
-    if (ev.t === 'text') answer += ev.delta;
-    if (ev.t === 'error') {
-      const first = ev.error.detail.split('\n')[0] ?? '';
-      if (!NOT_ABOUT_THE_IMAGE.has(ev.error.cls)) {
-        return { vision: false, detail: `image refused (${ev.error.status ?? ev.error.cls}): ${first}` };
-      }
-      throw new Error(
-        `vision probe failed (${ev.error.cls}${ev.error.status !== undefined ? ` ${ev.error.status}` : ''}): ${first}.`,
-      );
-    }
-    if (ev.t === 'done') {
-      if (ev.stop === 'aborted') throw new Error('vision probe aborted before the endpoint answered.');
-      const head = (answer.trim().split('\n')[0] ?? '').slice(0, 60);
-      return /\bred\b/i.test(answer)
-        ? { vision: true, detail: `image read (answered "${head}")` }
-        : { vision: false, detail: `image ignored (answered "${head}")` };
-    }
-  }
-  throw new Error('vision probe ended without a final event.');
-}
+// The vision probe lives with the providers (the app's own capability check reads it there); the
+// bench keeps importing it from here beside its sibling probes.
+export { probeVision, PROBE_IMAGE, type VisionProbe } from '../providers/vision-probe';
 
 /** FNV-1a 32-bit over the payload text, hex — a correlation stamp for telling shots apart, not a
  *  security measure (the key redaction above is the security one). */

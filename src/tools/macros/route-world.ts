@@ -25,9 +25,9 @@
  * moving either version counter — caching it under a key that doesn't carry `near` would answer a
  * second call's different `near` with the first call's material. It is cheap relative to the scan
  * (one pass over `state.objects`, not a portal dry-run), so it is simplest to just never cache it:
- * read fresh off the LIVE `state` every call, hit or miss. That is safe even on a cache HIT — the
- * hit only fires when `state`'s own versions match the cached key, so its objects are, by
- * construction, exactly what they were when the rest of the world was built.
+ * read fresh off the LIVE `state` every call, hit or miss. A fresh read cannot disagree with a
+ * cached world: the hit only fires when `state`'s own versions match the cached key, so its objects
+ * are, by construction, exactly what they were when the rest of the world was built.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';

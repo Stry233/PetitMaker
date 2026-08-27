@@ -9,7 +9,7 @@
  *
  * THE TWO RULES THAT BIND EVERY ONE OF THEM are tested where they are made rather than per card:
  * a zero count renders no stat cell (a printed zero is a count of an absence), and nothing here
- * fabricates a step (`DI#26` — a job with no checkpoint has no story, so no flip is grown).
+ * fabricates a step (a job with no checkpoint has no story, so no flip is grown).
  *
  * The count-up is judged on the two frames that matter: the FIRST one, which must read `0` because
  * a figure that mounted at its total and then dropped to zero would read as the card correcting
@@ -597,7 +597,7 @@ describe('a question opens without moving the card', () => {
 });
 
 describe('the whole family', () => {
-  /** DI#26: nothing here invents a step count. A job with no checkpoint has no story to turn to. */
+  /** Nothing here invents a step count. A job with no checkpoint has no story to turn to. */
   it('grows no flip and no back face for a job that recorded no checkpoint', () => {
     const readOnly = makeJob({ ops: [makeOp({ name: 'view_map', isRead: true })], checkpoints: [] });
     const { queryByTestId, getByTestId } = renderReduced(<FlipTicket job={readOnly} onRewind={() => {}} />);
@@ -654,8 +654,8 @@ describe('the whole family', () => {
 
   /**
    * BOTH FACES STAND IN ONE BOX and the back one paints LAST, so `backface-visibility` is what keeps
-   * the turned-away face off the front. Without it the whole receipt reads MIRRORED (which is what
-   * the fidelity rig photographed once). It only works inside a 3D rendering context, so the dim a
+   * the turned-away face off the front. Without it the whole receipt reads MIRRORED. It only works
+   * inside a 3D rendering context, so the dim a
    * rolled-back record wears may not sit on the `perspective` box above the faces.
    */
   it('hides each face\'s own back, and dims the faces rather than the card', () => {

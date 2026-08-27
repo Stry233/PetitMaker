@@ -42,8 +42,8 @@ const DENSITY = 0.9;
 describe('the tree-led card (patch-tree)', () => {
   /**
    * A 300-seed sweep, not a handful: the mass pass and the floor pass are two independent draws
-   * over independent noise fields, and a small fixed sample (the first version of this test used
-   * five seeds) missed that ~15% of presses let the floor pass outnumber the mass pass. Every seed
+   * over independent noise fields, and a small fixed sample (five seeds) misses that ~15% of
+   * presses let the floor pass outnumber the mass pass. Every seed
    * that plants ANYTHING must plant at least one tree, and trees must outnumber flora strictly —
    * `plantScopedPatch`'s `capFloorToMass` is what makes the second half of that a guarantee rather
    * than an odds-favoured outcome.

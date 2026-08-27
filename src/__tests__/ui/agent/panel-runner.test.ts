@@ -111,12 +111,15 @@ describe('the tool dependencies the panel builds per job', () => {
     expect(deps.getRegion()).toEqual([{ x: 3, y: 4 }]);
   });
 
-  /** The snapshot is the one dependency that is CONDITIONAL: a model that cannot read an image must
-   *  not be sent one, and `view_map` degrades to the token grid instead. */
-  it('wires the snapshotter only for a model that can read one', () => {
+  /** The snapshotters are the pair of dependencies that are CONDITIONAL: a model that cannot read
+   *  an image must not be sent one, and `view_map` degrades to the token grid instead. They travel
+   *  together — the region member is the look-closer half of the same capability. */
+  it('wires both snapshotters only for a model that can read an image', () => {
     installMap();
     expect(makePanelToolDeps({ vision: false }).snapshot).toBeUndefined();
+    expect(makePanelToolDeps({ vision: false }).snapshotRegion).toBeUndefined();
     expect(typeof makePanelToolDeps({ vision: true }).snapshot).toBe('function');
+    expect(typeof makePanelToolDeps({ vision: true }).snapshotRegion).toBe('function');
   });
 
   /**

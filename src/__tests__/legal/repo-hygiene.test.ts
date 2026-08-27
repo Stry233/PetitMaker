@@ -427,11 +427,10 @@ describe('applying a snapshot to the public checkout', () => {
       planPublicSync(exported, existing, published, loadManifest());
 
     it('leaves the public repository its own files, even after we have published over them', () => {
-      // The case that motivated all of this. A publish commit's TREE contains these too,
-      // so "in the previous publish" alone would delete a maintainer's own file on the
-      // NEXT run — which is exactly what happened to a bug-report template in rehearsal.
-      // (Issue templates have since become manifest-public and authored here, so the
-      // maintainer-owned examples are the funding file and a PR template.)
+      // A publish commit's TREE contains these too, so "in the previous publish" alone
+      // would delete a maintainer's own file on the NEXT run.
+      // (Issue templates are manifest-public and authored here, so the maintainer-owned
+      // examples are the funding file and a PR template.)
       const theirs = ['.github/workflows/codeql.yml', '.github/FUNDING.yml', 'CODE_OF_CONDUCT.md'];
       const previousTree = ['README.md', ...theirs]; // the whole repo, as a tree always is
       const { deletions, foreign, orphaned } = plan(['README.md'], ['README.md', ...theirs], previousTree);
@@ -444,7 +443,7 @@ describe('applying a snapshot to the public checkout', () => {
       expect(foreign).not.toContain('.github/workflows/codeql.yml');
     });
 
-    it('retires an issue template we published, now that templates are ours', () => {
+    it('retires an issue template we published, since templates are ours', () => {
       const path = '.github/ISSUE_TEMPLATE/bug_report.yml';
       const { deletions, foreign } = plan(['README.md'], ['README.md', path], ['README.md', path]);
       expect(deletions).toEqual([path]);

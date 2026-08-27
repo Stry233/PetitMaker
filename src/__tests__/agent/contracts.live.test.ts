@@ -2,10 +2,9 @@
 /**
  * THE V3 LIVE HARNESS — one small job through the REAL loop, against a REAL model, env-gated.
  *
- * WHY IT EXISTS. The swap to the v3 loop deleted all three env-gated live tests and put nothing in
- * their place, so the tree had no path by which a real model could be driven at all: the loop, the
- * tool surface, the rules and the six model-copy contracts were verifiable only against scripted
- * output. `llm-actor.test.ts` beside this file is the scripted twin — the same job shape, the same
+ * WHY IT EXISTS. This is the tree's one path by which a real model can be driven: without it the
+ * loop, the tool surface, the rules and the six model-copy contracts are verifiable only against
+ * scripted output. `llm-actor.test.ts` beside this file is the scripted twin — the same job shape, the same
  * assertions, running in CI — and this is the half that confirms them against a model that has not
  * been told what to say.
  *

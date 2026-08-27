@@ -22,14 +22,7 @@ import { MODE_ROW_BASE } from '../frame';
 import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, TEXT } from '../units';
 
-/**
- * A row: a window it opens, or the one thing here that acts on the map instead.
- *
- * CLEAR IS AN ACTION, AND IT IS HERE RATHER THAN IN THE GENERATE SHELF. It is the one destructive
- * thing that bar offered, and it is undo's job by another name, so it does not belong a click away
- * from the candidates it destroys. What it does is unchanged: `kit/operations` bounds it by the last
- * run's own extent and by who authored each cell, so hand-placed work inside that scope survives.
- */
+/** A row: a window it opens, or an action it runs in place of one. */
 type MenuRow = { labelKey: string; rule?: boolean } & (
   | { modal: ModalId }
   | { run: () => void }

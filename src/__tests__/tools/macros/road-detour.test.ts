@@ -1,16 +1,16 @@
 /**
  * A ROUTE CROSSES WHERE THE TWO TAPS ARE, NOT WHERE THE BEST FORD IS.
  *
- * The crossing candidates were scored on their own merits — narrow span, deck square to the travel,
- * a clear run-in on both banks — and the region graph was walked on portal COST alone, so nothing in
- * either decision knew where the road had been asked to go. On real islands that laid 125 cells for
- * an eleven-cell trip: fifteen cells east along the bank, over a bridge, twenty cells back west. Over
- * 75 tap pairs on three generated islands the median route ran 2.2x the straight-line distance
- * between its taps and 28 of them ran past 3x.
- *
- * Two things fixed it and both are pinned here: the candidate POOL now covers a whole seam rather
+ * Two things carry that and both are pinned here: the candidate POOL covers a whole seam rather
  * than the first few sites a row-major scan meets, and the SCORE leads with how far off the line
  * between the two taps a site lies.
+ *
+ * Without them — candidates scored on their own merits alone (narrow span, deck square to the
+ * travel, a clear run-in on both banks) and the region graph walked on portal COST alone — nothing
+ * in either decision knows where the road has been asked to go. On real islands that laid 125 cells
+ * for an eleven-cell trip: fifteen cells east along the bank, over a bridge, twenty cells back west.
+ * Over 75 tap pairs on three generated islands the median such route ran 2.2x the straight-line
+ * distance between its taps and 28 of them ran past 3x.
  */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -90,7 +90,7 @@ const crossingsOf = (state: GridState): PlacedObject[] => [...state.objects.valu
   .filter((o) => categoryOf(o) === ItemCategory.Bridge || categoryOf(o) === ItemCategory.Ramp);
 
 describe('a route crosses near its own taps', () => {
-  it('bridges beside the taps on a seam far longer than the pool used to sample', () => {
+  it('bridges beside the taps on a seam with far more sites than the pool may keep', () => {
     const kit = channelKit();
     const from: MacroCoord = { x: 20, y: 68 }, to: MacroCoord = { x: 60, y: 68 };
 

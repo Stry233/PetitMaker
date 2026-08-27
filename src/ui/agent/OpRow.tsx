@@ -160,6 +160,8 @@ function chipFor(
   if (helper?.error !== undefined) return { text: helper.error, tone: 'bad' };
   if (op.name === DELEGATE && helper === undefined) return laneRollup(op.detail, t);
   if (op.skill) return { text: op.skill.title };
+  // A row that carries the picture the model was shown says so at a glance; the click opens it.
+  if (op.image !== undefined) return { text: t('agent3.op_chip_saw') };
   if (op.status === 'blocked') return { text: t('agent3.op_chip_region') };
   if (op.status === 'revert') return { text: t('agent3.op_chip_put_back'), tone: 'warn' };
   if (op.status === 'skipped') return { text: t('agent3.op_chip_declined') };
@@ -212,7 +214,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
   const helper = op.name === DELEGATE && op.status === 'run' ? lane : undefined;
   const detail = detailFor(op, t);
   const chip = chipFor(op, helper, t);
-  const canOpen = detail !== undefined;
+  const canOpen = detail !== undefined || op.image !== undefined;
   const [open, setOpen] = useState(canOpen && OPENS_ON_ARRIVAL.has(op.status));
   const muted = op.isRead;
   const ghost = GHOST_ROWS.has(op.status);
@@ -272,7 +274,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           >
             {phrase}
           </span>
-          {open && (
+          {open && detail !== undefined && (
             <span
               data-testid="op-detail"
               style={{
@@ -288,6 +290,17 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
             >
               {detail}
             </span>
+          )}
+          {/* WHAT THE MODEL SAW, shown to the reader whole: the record must let a person check the
+              model's eyes against their own map. Live sessions only — persistence strips images, so
+              a rehydrated row keeps its summary line and the chip alone says a look happened. */}
+          {open && op.image !== undefined && (
+            <img
+              data-testid="op-image"
+              src={op.image}
+              alt={t('agent3.op_view_alt')}
+              style={{ display: 'block', width: '100%', marginTop: 6, borderRadius: 8, border: `1px solid ${withAlpha(INK, 0.15)}` }}
+            />
           )}
         </span>
         {/* The detail line carries the whole answer, so the chip yields its space while open. */}

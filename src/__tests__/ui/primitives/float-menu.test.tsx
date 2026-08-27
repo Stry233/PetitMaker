@@ -107,16 +107,16 @@ describe('the open card stands outside the panel', () => {
   /**
    * ALL FOUR CORNERS INSIDE THE BOX THE CARD IS GIVEN.
    *
-   * The placement hands the card the ROW's width and the room the window has left. Its own padding
-   * and border sat OUTSIDE both under content-box: 14px wider than the row, so a card hanging off a
-   * row near the window's right edge stood past the clamp meant to hold it off that edge, and 14px
-   * taller than the room, so its foot was cut off by the window. What reads on the glass is a rounded
-   * card with two square corners.
+   * The placement hands the card the ROW's width and the room the window has left. Under
+   * content-box its own padding and border stand OUTSIDE both: 14px wider than the row, so a card
+   * hanging off a row near the window's right edge stands past the clamp meant to hold it off that
+   * edge, and 14px taller than the room, so its foot is cut off by the window. What reads on the
+   * glass is a rounded card with two square corners.
    */
   it('keeps its own padding and border inside the box it is given', () => {
     const view = render(<Menu zoom={1} />);
     const row = screen.getAllByRole('button')[0]!;
-    // A row hard against the window's right-hand gutter, which is where the overflow showed. Stubbed
+    // A row hard against the window's right-hand gutter, which is where an overflow would show. Stubbed
     // BEFORE the list opens, since the card is placed from the rect read in that layout pass.
     const box = { left: 716, top: 100, width: 300, height: 50, bottom: 150, right: 1016 };
     Object.defineProperty(row, 'getBoundingClientRect', {

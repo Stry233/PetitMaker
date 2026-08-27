@@ -28,8 +28,8 @@ export interface EditSlice {
   contentType: ContentType;
   /** The mode and the ONE arming `setEditMode` resolves into `activeTool`/`designMode`/
    *  `contentType`/`selectedItemId`, so those four cannot disagree with each other. `setEditMode`
-   *  is the ONLY writer of any of the four. `tool`/`shape` are projections for callers not yet
-   *  migrated onto `arming`. */
+   *  is the ONLY writer of any of the four. `tool`/`shape` are compatibility projections for
+   *  callers that do not go through `arming`. */
   editMode: EditModeInputs;
   /** A road catalog id, e.g. 'path-overgrown-dirt'. The tile brush can lay any item in the Road category. */
   tileMaterial: string;

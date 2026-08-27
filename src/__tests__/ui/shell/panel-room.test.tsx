@@ -2,8 +2,8 @@
  * The room the frame gives the assistant's column, RESOLVED — not the string that expresses it.
  *
  * `panelTop`/`panelMaxHeight` answer in css, so jsdom can hold the strings but never lays them out
- * (`_resolve-css.ts` evaluates them). What went wrong twice was arithmetic rather than wiring (a cap
- * that fell below the panel's own furniture, at a zoom a user reaches with Ctrl +/-), so the
+ * (`_resolve-css.ts` evaluates them). The failure shape here is arithmetic rather than wiring (a cap
+ * that falls below the panel's own furniture, at a zoom a user reaches with Ctrl +/-), so the
  * expressions are evaluated here at the windows and zooms the app is actually judged in and the
  * READINGS are what is asserted, against the same table the live-app measurements were taken as.
  *
@@ -57,8 +57,9 @@ describe('the panel keeps the least room it can work in', () => {
 
   /**
    * GENERATE MODE, the tightest overlap. Its shelf reserve leaves ~159 frame px against a 252px
-   * skeleton at every common laptop height, which is what sliced the composer off flush with the
-   * plate's bottom and left the record a 2.5px band. The foot gives way; the head does not have to.
+   * skeleton at every common laptop height — honoured, that would slice the composer off flush with
+   * the plate's bottom and leave the record a 2.5px band. The foot gives way; the head does not have
+   * to.
    */
   it('lets the foot reserve give way rather than clip the composer, at every common height', () => {
     for (const [w, h] of [[1280, 800], [1366, 768], [1440, 810], [1280, 700]] as const) {
@@ -73,9 +74,9 @@ describe('the panel keeps the least room it can work in', () => {
 
   /**
    * THE UI-ZOOM TOP OF RANGE. `uiZoom` is a persisted preference on Ctrl +/- (0.6..1.8), and at 1.8
-   * the reference window holds 355 frame px in total: the head clearance alone was taking 198 of them
-   * and the panel stood as a plate carrying the dock and nothing else. The head yields last, and only
-   * as far as it must.
+   * the reference window holds 355 frame px in total: a standing head clearance alone would take 198
+   * of them and leave the panel a plate carrying the dock and nothing else. The head yields last, and
+   * only as far as it must.
    */
   it('slides the column up rather than empty it, at the top of the uiZoom range', () => {
     const zoom = ZOOM * 1.8;
@@ -109,9 +110,9 @@ describe('the panel keeps the least room it can work in', () => {
  * AN UNANSWERED PLAN GATE BORROWS THE ROOM IT NEEDS.
  *
  * The courtesy to the bottom bar is worth having while the panel is only reporting. It is not worth a
- * question the user cannot read: in Object mode at the reference window the courteous cap left 233
- * frame px against a 180px skeleton, so the plan card had 53px to stand in and what showed was the
- * Approve pair with the plan itself scrolled off above it. So the FOOT gives the room, the head does
+ * question the user cannot read: in Object mode at the reference window the courteous cap leaves 233
+ * frame px against a 180px skeleton, so the plan card would have 53px to stand in — the Approve pair
+ * showing with the plan itself scrolled off above it. So the FOOT gives the room, the head does
  * not move, and the panel paints over the bar for exactly as long as the question stands.
  */
 describe('an unanswered plan gate borrows the room to be read in', () => {

@@ -139,14 +139,14 @@ describe('the layer panel', () => {
     fireEvent.click(document.body);
     expect(screen.getByTestId('shell-layer-panel'), 'still up').toBeTruthy();
 
-    // It has to LOOK like the way out or it is not one: a heading nobody presses is how the panel
-    // came to have no way back at all. The arrow inherits exactly what the count wore for that
+    // It has to LOOK like the way out or it is not one: a way back drawn as a heading nobody
+    // presses is no way back at all. The arrow inherits exactly what the count wears for that
     // reason — the same filled pill every in-force control here wears, carrying a mark.
     //
     // THE WAY BACK IS THE RIGHT-HAND ARROW, and that is a fact about where the panel is rather than
     // about the ladder's index. The plate hangs off the window's right edge and grows leftward, so
     // the arrow pointing into the map opens it and the arrow pointing at the edge puts it away. The
-    // inheritance follows the way back and not a position, so it moved with it.
+    // inheritance follows the way back and not a position.
     const back = screen.getByTestId('shell-layer-smaller');
     const out = screen.getByTestId('shell-layer-bigger');
     const filled = document.createElement('div');
@@ -155,7 +155,7 @@ describe('the layer panel', () => {
     expect(back.querySelector('svg'), 'and it carries a mark saying which way it goes').toBeTruthy();
     expect(out.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
       'and it stands to the right of the way on').toBeTruthy();
-    // The marks point the way the PLATE travels, which is the whole of the correction: a chevron
+    // The marks point the way the PLATE travels: a chevron
     // pointing away from what it does is worse than no chevron.
     expect(back.querySelector('path')!.getAttribute('d'), 'back points at the window\'s edge')
       .toBe(CHEVRON.right);
@@ -425,7 +425,7 @@ describe('the layer panel', () => {
    * says there is more below when there is not, and it takes a lane out of the tiles for nothing.
    * The panel knows which it is before it draws: both the depth and the room are declared.
    *
-   * Which is now a difference between the two SIZES rather than between two windows. The file draws
+   * Which is a difference between the two SIZES rather than between two windows. The file draws
    * five floors of nine, so it has something to scroll to at every window; the square shows the
    * whole stack, so it has one only where the lane cannot hand it its 323.
    */
@@ -446,7 +446,7 @@ describe('the layer panel', () => {
    * (`ui/primitives/scroll-fade.ts`). It coexists with the Framer `layout`/`layoutScroll` props on
    * the same box: a mask is not a transform, so it never fights the size-change projection. jsdom
    * lays nothing out, so what is worth pinning is that the box's own scroll metrics decide the
-   * mask. The mask now arrives and leaves over a settle loop rather than popping, so this reads it
+   * mask. The mask arrives and leaves over a settle loop rather than popping, so this reads it
    * back with `waitFor` against the real `requestAnimationFrame` instead of synchronously against
    * the triggering scroll event.
    */
@@ -473,14 +473,6 @@ describe('the layer panel', () => {
   });
 
   /**
-   * IT MEETS THE MAP WITH A HAIRLINE, NOT A SHADOW. Nothing in this frame casts one — the design
-   * source has no layer effect in it, and `frame-margins.test.ts` fails the build on a shadow
-   * written anywhere under `ui/shell`. What a cream plate standing on the island still needs is one
-   * dark pixel between it and whatever is under it, which is the same thing a word gets from
-   * `MAP_LABEL` and a drawing from `MAP_SHAPE_EDGE`: the same ink at the same alpha, drawn as a
-   * plain border because a panel is a rectangle rather than a silhouette.
-   */
-  /**
    * THE PLATE RE-CLAIMS THE POINTER. It stands in a carrier that is deaf on purpose (the air
    * between rail buttons lets the map through), and a deaf plate hands every press and wheel in
    * its box to the canvas underneath — the head's buttons dead, the floors unscrollable, with only
@@ -492,6 +484,14 @@ describe('the layer panel', () => {
     expect(screen.getByTestId('shell-layer-panel').style.pointerEvents).toBe('auto');
   });
 
+  /**
+   * IT MEETS THE MAP WITH A HAIRLINE, NOT A SHADOW. Nothing in this frame casts one — the design
+   * source has no layer effect in it, and `frame-margins.test.ts` fails the build on a shadow
+   * written anywhere under `ui/shell`. What a cream plate standing on the island still needs is one
+   * dark pixel between it and whatever is under it, which is the same thing a word gets from
+   * `MAP_LABEL` and a drawing from `MAP_SHAPE_EDGE`: the same ink at the same alpha, drawn as a
+   * plain border because a panel is a rectangle rather than a silhouette.
+   */
   it('stands on the island behind a hairline rather than a shadow', () => {
     mount();
     openPanel();
@@ -532,7 +532,7 @@ describe('the layer panel', () => {
    * when a map is generated; the panel's own subscription is what reports it, and that runs only
    * while it is open. Generating with the panel CLOSED therefore has to be picked up by opening it,
    * or the panel reads whatever the map held when the component mounted — one Ground row at zero,
-   * which is what a whole generated island was being reported as.
+   * standing in for a whole generated island.
    */
   it('reads the map as it is on opening, not as it was when the rail mounted', () => {
     useEditorStore.setState({ gridState: makeState(), activeLayer: 0 });
@@ -612,7 +612,7 @@ describe('the layer panel', () => {
    * out of the lane and the column is left exactly as it was.
    *
    * It is the plate that gives because it is the thing that just arrived. Standing it over the
-   * column instead leaves six controls behind an opaque plate, which is what this replaced; moving
+   * column instead leaves six controls behind an opaque plate; moving
    * the column sideways instead would take eight buttons the width of the whole plate across the
    * map to save one from moving 62 px.
    *
@@ -692,8 +692,8 @@ describe('the layer panel', () => {
   /**
    * THE BAR IS ABSOLUTE. It says how much of the island this floor covers, not how this floor
    * compares with the busiest one: a floor's own reading must not change because something was
-   * built somewhere else, which is exactly what the relative bar did — laying a taller storey
-   * rescaled every bar on the plate.
+   * built somewhere else, which is exactly what a relative bar does — laying a taller storey
+   * rescales every bar on the plate.
    */
   it('measures a floor against the map rather than against the busiest floor', async () => {
     mount();
@@ -729,8 +729,8 @@ describe('the layer panel', () => {
   /**
    * A count is cells PLUS the objects standing on them, and an object is one however many cells it
    * covers, so a fully built and fully decorated floor totals more than the island holds. Full is
-   * where the bar stops: a fill running past the end of its own track is a worse reading than the
-   * relative bar it replaced.
+   * where the bar stops: a fill running past the end of its own track is a worse reading than a
+   * relative one.
    */
   it('stops the bar at full rather than letting it run past its track', () => {
     const full = makeState();

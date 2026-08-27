@@ -130,6 +130,11 @@ interface Inputs<M extends BuildMode, A extends Arming> {
   /** WHICH FIGURE THE SHAPE CELL LAYS, remembered across a put-away: it is a property of the shape
    *  tool, not an arming, so putting the tool down must not forget it. */
   readonly shape: BuildShape;
+  /** WHAT THE SHELF LAST HELD, remembered while the user is away on a surface: coming back to 物品
+   *  resumes this card, and with it the tab the shelf opens on, so a trip to sculpt does not cost
+   *  the ramp that was being placed. A property of the shelf, exactly as `shape` is of the shape
+   *  tool. */
+  readonly heldObject: ObjectArming;
 }
 
 export type EditModeInputs =
@@ -151,7 +156,7 @@ export interface EditModePatch {
 
 /** The initial inputs: nothing chosen, the brush waiting on whatever surface opens first. */
 export const REST_INPUTS: EditModeInputs = {
-  mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free',
+  mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: { kind: 'none' },
 };
 
 export function resolveEditMode(inputs: EditModeInputs): EditModeState {
@@ -268,14 +273,15 @@ function objectArmedBy(patch: EditModePatch, held: Arming): ObjectArming | null 
   return null;
 }
 
-/** What object mode INHERITS when the call arms nothing of its own: nothing.
+/** What object mode INHERITS when the call arms nothing of its own: the card the shelf last held.
  *
- *  Entering the shelf arms nothing at all, because every object arming is an ask. The eraser is the
- *  one tool in both families (the three terrain bars share its cell), so carrying it in would put it
- *  ahead of the card just chosen, with no bar cell to show it: a card that keeps erasing, a cursor
- *  that never resets. */
+ *  Returning to the shelf is a return, not a reset: a trip to sculpt a hill comes back to the ramp
+ *  that was being placed, not to a fresh hunt through the tabs. What resumes is the shelf's OWN
+ *  memory (`heldObject`), never the surface's arming: the eraser is the one tool in both families
+ *  (the three terrain bars share its cell), and a surface's eraser carried in would put itself
+ *  ahead of the shelf's card, with no bar cell to show it. */
 function carriedObject(prev: EditModeInputs): ObjectArming {
-  if (prev.mode !== 'object') return { kind: 'none' };
+  if (prev.mode !== 'object') return prev.heldObject;
   return prev.arming;
 }
 
@@ -311,12 +317,18 @@ export function nextEditMode(prev: EditModeInputs, patch: EditModePatch): EditMo
 
   if (mode === null || mode === 'generate') {
     const arming = prev.arming;
-    return { mode, arming, tool: TOOL_OF[arming.kind], shape };
+    return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: heldObjectAfter(prev) };
   }
   if (mode === 'object') {
     const arming = objectArmedBy(patch, prev.arming) ?? carriedObject(prev);
-    return { mode, arming, tool: TOOL_OF[arming.kind], shape };
+    return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: arming };
   }
   const arming = contentArmedBy(patch, shape, prev.arming) ?? carriedContent(prev, mode);
-  return { mode, arming, tool: TOOL_OF[arming.kind], shape };
+  return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: heldObjectAfter(prev) };
+}
+
+/** The shelf's memory after this call: its own arming while the shelf is open, kept as it was
+ *  everywhere else. */
+function heldObjectAfter(prev: EditModeInputs): ObjectArming {
+  return prev.mode === 'object' ? prev.arming : prev.heldObject;
 }

@@ -207,8 +207,9 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
       .toContain(String(CONTRACTS.suggestLatin));
   });
 
-  /** A CJK suggestion spends about twice the room a Latin one does at the same box, which is the
-   *  clause the contract gained: the same tool description asks for the user's own language. */
+  /** A CJK suggestion spends about twice the room a Latin one does at the same box, which is why
+   *  the contract carries a CJK budget of its own: the same tool description asks for the user's
+   *  own language. */
   it('measures a CJK suggestion against the CJK budget', async () => {
     const map = liveMap();
     const log = createLog();

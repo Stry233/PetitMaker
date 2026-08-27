@@ -147,7 +147,7 @@ describe('DropImportOverlay', () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
-  // BUG 1 — reentrancy: a second drop/click while an import is already running (or a decision
+  // Reentrancy: a second drop/click while an import is already running (or a decision
   // already pending) must never start a concurrent second `importFile()`, which would race
   // `loadMap` and let whichever resolves last silently win the grid state.
   describe('reentrancy guard', () => {
@@ -193,7 +193,7 @@ describe('DropImportOverlay', () => {
     });
   });
 
-  // BUG 2 — a drag that leaves the viewport without a matching `dragleave` (over OS chrome,
+  // A drag that leaves the viewport without a matching `dragleave` (over OS chrome,
   // another application, or a second monitor) must not leave the blurred hint stuck forever.
   describe('stuck-overlay reset', () => {
     it('window blur force-clears a stuck hover hint and its depth counter', async () => {
@@ -252,7 +252,7 @@ describe('DropImportOverlay', () => {
     });
   });
 
-  // MINOR — a second drop landing while a decision is already pending must not swap the pending
+  // A second drop landing while a decision is already pending must not swap the pending
   // file out from under the user; the question stays about the file that was already asked about.
   it('ignores a second drop while a confirm is already pending, keeping the original file', () => {
     const withContent = makeState();
@@ -271,7 +271,7 @@ describe('DropImportOverlay', () => {
     expect(importFileMock).not.toHaveBeenCalled();
   });
 
-  // CRITICAL regression: a `ModalShell` that joins `shellStack` for its whole `open` span, the
+  // The regression this pins: a `ModalShell` that joins `shellStack` for its whole `open` span, the
   // passive `hover`/`importing` phases included, makes this overlay topmost as soon as a file is
   // dragged over the window and silently eats an already-open modal's Escape for as long as the drag
   // lasts. `passive` (see ModalShell.tsx) keeps a passive phase out of the stack entirely.

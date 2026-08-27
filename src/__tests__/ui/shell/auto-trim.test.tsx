@@ -86,6 +86,7 @@ describe('the auto-trim control', () => {
           arming: contentArming(cell.edit.tool, cell.edit.shape ?? 'free'),
           tool: cell.edit.tool,
           shape: cell.edit.shape ?? 'free',
+          heldObject: { kind: 'none' },
         });
         expect(cell.autoTrim ?? false).toBe(arms.toolType === ToolType.TerrainBrush);
         expect(trim('off') !== null).toBe(cell.autoTrim ?? false);

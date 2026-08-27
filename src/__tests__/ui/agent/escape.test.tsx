@@ -410,7 +410,7 @@ describe('invariant 3: pointer containment', () => {
 
 /**
  * BACK REOPENS THE LIST, and this is proven through the real seam (`PanelColumn`), not `PanelShell`
- * alone: `openRecord` is held one layer up, and the fix has to survive the strip UNMOUNTING while the
+ * alone: `openRecord` is held one layer up, and has to survive the strip UNMOUNTING while the
  * record it opened covers the job zone (`PanelShell` only ever renders the strip in the branch that
  * is NOT showing an opened record). A flag `HistoryStrip` kept to itself would forget it had been
  * open the instant that press lands, so Back puts the job zone back at rest with the list standing

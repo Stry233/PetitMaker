@@ -474,7 +474,7 @@ export class ThreeScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping; // keep colours vivid, no filmic desaturation
     this.renderer.shadowMap.enabled = !this.lite;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft contact shadows
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(this.renderer.domElement);
     if (!this.lite) this.setupMsaaTarget(w, h);
     // A GPU reset (driver crash, process eviction) LOSES the context mid-session. preventDefault
@@ -1782,7 +1782,7 @@ export class ThreeScene {
         pan: (dx, dy) => this.dragCamera('pan', dx, dy),
         // Both eased through the zoom accumulator, so a notch reads as a short glide rather than a
         // jump and a run of them adds up into one continuous move — the same treatment the orbit
-        // verb gets, which is why horizontal scroll already felt smooth and this did not.
+        // verb gets.
         zoomStep: (dir) => this.dollyEased(dir > 0 ? 1 / 1.15 : 1.15),
         zoomBy: (factor) => this.dollyEased(1 / factor),
         zoomStepAnimated: (dir) => this.animateDolly(dir > 0 ? 0.8 : 1.25), // toolkit button: glide

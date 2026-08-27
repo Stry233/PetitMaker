@@ -207,10 +207,10 @@ describe('the asked height is reached', () => {
 
   for (const template of TEMPLATES) {
     it(`climbs to the cap the caller asked for on ${template.id}`, () => {
-      // The user's own bug: a Max-Height of 8 or 9 came back as a peak of 4 or 5, because a plate
-      // took the MEAN of the archetype's potential over its own cells (a mean over a ramp never
-      // reads 1) and no plate carried the summit's own terraces. Both halves are fixed, so the
-      // asked cap is REACHED rather than merely permitted.
+      // A Max-Height of 8 or 9 coming back as a peak of 4 or 5 has two causes: a plate taking the
+      // MEAN of the archetype's potential over its own cells (a mean over a ramp never reads 1),
+      // and no plate carrying the summit's own terraces. Either way the asked cap must be REACHED
+      // rather than merely permitted.
       for (const cap of [6, 8]) {
         // THREE SEEDS OF TWENTY FALL SHORT AT CAP 8, and the allowance is exactly that count over a
         // batch that is deterministic per seed. Both causes are measured. Seed 7 draws `low-relief`

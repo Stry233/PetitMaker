@@ -129,9 +129,8 @@ export function detectWaterfalls(state: GridState): WaterfallInfo[] {
 }
 
 /** Group every waterfall face by the cell it sits on: `cellKey(x,y)` → the flow directions that
- *  cell emits. Both renderers draw one arrow per direction per cell and rebuilt this identical
- *  grouping by hand; this is the single source (they differ only in the arrow geometry they then
- *  build from it). */
+ *  cell emits. Both renderers draw one arrow per direction per cell from this one grouping — the
+ *  single source; they differ only in the arrow geometry they then build from it. */
 export function waterfallFaceMap(state: GridState): Map<string, Direction[]> {
   const cellFaces = new Map<string, Direction[]>();
   for (const info of detectWaterfalls(state)) {

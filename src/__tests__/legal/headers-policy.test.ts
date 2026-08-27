@@ -369,8 +369,8 @@ describe('Quicksand woff2 name tables — renamed per OFL-1.1 clause 3 (Reserved
   // were rewritten to "PW Rounded Sans". A byte-level check is unreliable (woff2/brotli-compressed,
   // and name-table strings are UTF-16BE for the Windows platform records) — this is a structural
   // assertion on fonts.css (the only thing browsers/CSS actually consult for `url()`-sourced
-  // fonts) rather than a raw-byte scan of the binary. The name-table rewrite itself was verified
-  // via `fontTools.ttLib.TTFont(...)['name']`.
+  // fonts) rather than a raw-byte scan of the binary. The name tables themselves are checkable
+  // with `fontTools.ttLib.TTFont(...)['name']`.
   const css = readFileSync('src/assets/fonts/fonts.css', 'utf8');
 
   it('fonts.css comment documents the OFL-1.1 clause 3 rename', () => {

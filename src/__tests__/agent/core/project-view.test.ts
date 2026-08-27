@@ -63,6 +63,15 @@ describe('deriveView', () => {
     ]);
   });
 
+  it('a toolResult carrying a picture projects it onto the row, so the record can show what the model saw', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    const live: Part[] = [{ kind: 'tool', callId: 'c1', name: 'view_map', input: {}, argsDone: true }];
+    append(log, { kind: 'toolResult', callId: 'c1', name: 'view_map', content: 'Rendered view attached.', isError: false, image: 'data:image/png;base64,AAAA' });
+    const view = deriveView(log, { live, readTools: new Set(['view_map']) });
+    expect(view.current?.ops[0]?.image).toBe('data:image/png;base64,AAAA');
+  });
+
   it('5. a toolResult detail decides revert/blocked/error status', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
@@ -1265,8 +1274,8 @@ describe('deriveView', () => {
     });
   });
 
-  /* A HELD SESSION SAYS ONE THING. Every marker below was published independently of the phase, so
-   * a paused log surfaced live questions and live waits that no loop was left to answer. */
+  /* A HELD SESSION SAYS ONE THING. Published independently of the phase, every marker below would
+   * surface live questions and live waits on a paused log that no loop is left to answer. */
   describe('a hold outranks every open marker', () => {
     /** The tail a reload leaves on an active log: `persist.ts:loadLog` appends the synthetic
      *  `paused` because the loop that was running is gone. */

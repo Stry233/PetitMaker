@@ -151,7 +151,7 @@ describe('the cascade stair, on a staircase island', () => {
     // A STAIR CUT AS TWO POOLS IS NOT A STAIR. On the finished map the reading that says a cascade
     // stands there is a body spanning three surface levels with a capped face, so bands that stand
     // apart with a dry terrace between them are two ordinary ponds however neatly they line up on the
-    // strip. Measured before the crossing was required: 0 of 16 stairs on `hexia` arrived as one body.
+    // strip. Measured without the crossing requirement: 0 of 16 stairs on `hexia` arrive as one body.
     for (const step of STEPS) {
       const { stairs, t } = carve(step);
       for (const stair of stairs) {

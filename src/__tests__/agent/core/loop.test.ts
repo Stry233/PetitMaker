@@ -175,6 +175,29 @@ describe('runJob core flows', () => {
     expect(secondMessages.some((m) => m.role === 'tool' && m.results.some((r) => r.content === 'placed tree'))).toBe(true);
   });
 
+  it('a third plan filing is churn the loop refuses itself, keeping the second plan standing', async () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'build', mapContext: '' });
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'p1', name: 'update_plan', args: { stages: [{ label: 'streets' }] } }]),
+      toolTurn([{ callId: 'p2', name: 'update_plan', args: { stages: [{ label: 'streets' }, { label: 'courts' }] } }]),
+      toolTurn([{ callId: 'p3', name: 'update_plan', args: { stages: [{ label: 'again' }] } }]),
+      textTurn('building on'),
+    ]);
+    const executor = makeExecutor({ result: () => ({ content: 'ok', isError: false }) });
+    const deps = makeDeps({ adapter, executor, oversight: 'yolo' });
+
+    await runJob(log, deps);
+
+    const plans = eventsOf(log).filter((e) => e.kind === 'plan');
+    expect(plans).toHaveLength(2); // the plan and one revision; the third filing landed no event
+    const refusal = eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === 'p3');
+    expect(refusal?.kind === 'toolResult' && refusal.isError).toBe(true);
+    expect(refusal?.kind === 'toolResult' && refusal.content).toContain('commitment');
+    expect(refusal?.kind === 'toolResult' && refusal.detail?.damper).toBe(true);
+    expect(executor.calls).toEqual([]); // no filing ever reached the executor
+  });
+
   it('update_plan gates first under checkpoint oversight; allow approves the plan and a later wide tool does not gate', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a town');
@@ -478,9 +501,9 @@ describe('runJob core flows', () => {
   /**
    * THE ADVERTISED SCHEMA AND THIS PARSER ARE ONE CONTRACT, and nothing else in the tree holds them
    * together: the loop intercepts `update_plan` before the executor, so no handler's own validation
-   * stands between the two. They HAD drifted — the schema demanded `{title, status}` (the retired
-   * harness's shape) while the parser reads `label`, so every plan a well-behaved model sent was
-   * refused and the tool could not succeed once. The stage here is BUILT FROM THE SCHEMA's own
+   * stands between the two. Drifted apart — a schema demanding `{title, status}` while the parser
+   * reads `label` — every plan a well-behaved model sends is refused and the tool cannot succeed
+   * once. The stage here is BUILT FROM THE SCHEMA's own
    * `required` list rather than written out, so moving one without the other fails this.
    */
   it("accepts a stage of exactly the shape update_plan's own schema requires", async () => {
@@ -806,7 +829,7 @@ describe('a result carries its own write-ness and the turn that minted it', () =
 
   /* A GATE SURVIVES A RELOAD, AND THE RESUME IS WHAT RE-RAISES IT. The projection withholds
    * `view.gate` while the phase is paused (nothing is asking), so this is the other half of that
-   * fix: the ask has to come BACK, with a loop behind it, the moment the job is resumed. */
+   * contract: the ask has to come BACK, with a loop behind it, the moment the job is resumed. */
   it('re-enters a gate left unanswered by a reload, and the answer then runs the call', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'raise the ridge');
@@ -1056,8 +1079,8 @@ describe('an identical retry of a just-failed call is refused without running', 
 });
 
 /**
- * THE PLAN RAIL HAS TO MOVE. The rail renders `plan.currentIndex`/`doneCount`, and nothing in the
- * tree emitted the `stage` event they fold from — the rail showed every stage pending for a whole
+ * THE PLAN RAIL HAS TO MOVE. The rail renders `plan.currentIndex`/`doneCount`, which fold from the
+ * `stage` event; with nothing emitting it the rail would show every stage pending for a whole
  * job. The loop is the emitter, at the boundary the workflow prompt already names: "call
  * evaluate_map as you finish each stage". These tests hold that reading against the two calls the
  * SAME prompt asks for that are not boundaries (the baseline before any building, a re-measurement
@@ -1198,9 +1221,8 @@ describe('the plan rail advances at a stage boundary', () => {
 });
 
 /**
- * THE CLOSING WORDS SURVIVE THE SETTLE. The model's last message was assembled, logged as an
- * assistant event, and then thrown away by the settle: `jobEnd` carried an outcome and nothing
- * else, so the answer card had no text to show and every finished job read alike. The settle now
+ * THE CLOSING WORDS SURVIVE THE SETTLE. A `jobEnd` carrying an outcome and nothing else would
+ * leave the answer card no text to show, and every finished job would read alike. The settle
  * carries the closing text as `summary` and marks it when it ENDS IN A QUESTION, which is the fact
  * the done.question state and the celebrate hold both read. A quiet giveup carries neither: no
  * words were said, and inventing some would put a sentence in the model's mouth.

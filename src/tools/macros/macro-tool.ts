@@ -354,7 +354,7 @@ export class MacroTool implements Tool {
     if (patchScope(id)) {
       // The spray: the first burst lands now, the clock and the pointer lay the rest until release.
       // The armed id rides in the spray itself, so a burst replants with whichever of the two
-      // planting cards was pressed rather than always the one this file happened to hardcode.
+      // planting cards was pressed, never a fixed one.
       this.spray = {
         id, at: coord, last: coord, watermark: ctx.getUndoStackSize(), changes: 0,
         pending: 0, done: false, ctx, anchor: coord, stage: 0, anchorSeed: this.seed,

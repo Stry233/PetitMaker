@@ -4,6 +4,24 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.39] - 2026-08-27
+
+### Changed
+
+- **The share picture waits for you to finish typing.** While editing the title or description in the share window, the preview used to redraw on every change, which with an IME meant on every keystroke. It now holds still until the text has stopped changing for a second, then updates once, and it no longer blanks to a loading spinner while the restore strip rebuilds for a new title.
+
+- **The object shelf remembers your selection.** Switching to another mode to sculpt terrain or lay water used to reset the shelf to its first category. Coming back now reopens the category you were in, with the item you had selected still armed and ready to place.
+
+### Fixed
+
+- **Ramps place evenly on every side of a hill.** The edge detection favoured a cliff's right and bottom: a ramp could hug the right end of an edge but not the left, and aiming onto the plateau reached deeper from the south and east than from the north and west. All four faces and both ends now accept the same positions.
+
+- **Safari draws the hairline edges the way other browsers do.** The thin outline on the round buttons, name pills and drawn controls rendered about twice as wide and soft in Safari, and fragments of it could linger on the map while a button's name pill opened and closed. The edge is now crisp and nothing is left behind.
+
+- **Every screen-reader label speaks the interface's language.** Two labels were hardcoded in English whatever the locale: the export help bubble's button and the curve tool's draggable points. Both now translate with the rest of the interface.
+
+- **The motion demo's pinwheel spins on its own centre.** The fan in Settings turned about a point just below its hub, so it wobbled instead of spinning; it now rotates exactly on the hub.
+
 ## [0.7.781] - 2026-08-26
 
 ### Added

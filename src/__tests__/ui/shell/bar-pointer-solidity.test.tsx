@@ -3,9 +3,9 @@
  * stand on, and every row that answers the wheel, all carry `pointerEvents: 'auto'`.
  *
  * The bars' roots are full-width fixed strips with `pointerEvents: 'none'` so the map stays
- * reachable around them, and each control opts back in — which left the DECORATIVE surfaces
- * passing input through to the canvas underneath. A wheel between two road tiles zoomed the map,
- * and a drag across the shelf plate panned the map below the dock (both reported). The plates and
+ * reachable around them, and each control opts back in — which leaves any DECORATIVE surface that
+ * does not passing input through to the canvas underneath: a wheel between two road tiles zooms the
+ * map, and a drag across the shelf plate pans the map below the dock. The plates and
  * the wheel rows are the opt-in sites, and this pins them: jsdom does no hit-testing, so the pin
  * is the property that decides one.
  */

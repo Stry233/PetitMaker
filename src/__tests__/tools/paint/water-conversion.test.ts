@@ -49,7 +49,7 @@ describe('the water eraser converts', () => {
     expect(state.cells[4]![5]!.terrain!.type, 'the remaining water survives, banked by the convert').toBe(TerrainType.Water);
   });
 
-  it('digging the same cell instead is what the containment rule refuses (the old behaviour)', () => {
+  it('digging the same cell instead is what the containment rule refuses', () => {
     const state = pool();
     const ex = exec(state);
     const start = ex.getUndoStackSize();

@@ -108,7 +108,7 @@ describe('exec/runner', () => {
    * THE TURN AS IT ARRIVES REACHES THE STORE. The loop appends nothing until a turn closes, so the
    * live parts are the panel's ONLY evidence that anything is happening: without this wire the
    * phase never leaves `thinking`, a sentence appears only once it is finished, and a tool call
-   * shows no row until its result lands. It was declared (`LoopDeps.onLive`) and unwired.
+   * shows no row until its result lands. `LoopDeps.onLive` is that wire.
    */
   it('publishes the streaming parts to the session store, and clears them at the settle', async () => {
     const adapter = createScriptedAdapter([{
@@ -441,8 +441,7 @@ describe('exec/runner', () => {
 
   /** The editor's display language is the system prompt's `{uiLanguage}` fallback: which language to
    *  open in before the user has typed anything readable. It rides on the config, so a runner that
-   *  is not told falls back to English — which is what the whole app got when the panel stopped
-   *  passing it. */
+   *  is not told falls back to English — for the whole app, not one seam. */
   it('speaks the editor\'s display language into the system prompt, and English when told none', async () => {
     const adapter = createScriptedAdapter([textTurn('好的。')]);
     const runner = createRunner(makeCfg({ adapterForTest: adapter, uiLocale: 'zh' }));

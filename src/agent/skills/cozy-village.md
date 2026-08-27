@@ -12,13 +12,13 @@ STAGE 1 — LAND FIRST (2-4 calls)
 STAGE 2 — BUILDINGS (4-7 calls)
 - Reserve a ~6x5 green near the center — nothing stands there.
 - 3-5 DISTINCT cabins around the green (the catalog's buildings are one-of-each; include building-myhouse). Stagger off shared rows, vary rotation, and rotate each door toward the water or the green.
-- Each home gets a yard THEME you can name — a crop patch, a bamboo corner, a flower dooryard — so no two neighbors read alike.
+- Each home gets a yard THEME you can name — a crop patch, a bamboo corner, a flower dooryard, a waterside platform — so no two neighbors read alike.
 - One landmark at the green's edge or waterfront: facility-shop or facility-pavilion if unplaced, else building-stall as a market corner.
 - A rejection names the blocker: shift a few cells, never retry the same spot.
 
 STAGE 3 — STREETS (3-5 calls)
 - Spine THROUGH the district past the green, 3 wide (build_road, one line per straight run, width 3), both ends extended a few cells beyond the houses — a village has a way in and out. Bend the spine once; a dead-straight run reads engineered.
-- 2-wide lanes to each door; one lane should END at the pond or jetty (an arrival, not a through route).
+- 2-wide lanes to each door; one lane should END at the water on a small paved bank platform (an arrival, not a through route).
 - Bridge only if the stream crosses the spine: find_bridge_sites, then place_object at a returned anchor.
 
 STAGE 4 — PLANTING (4-6 calls)

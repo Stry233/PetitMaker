@@ -325,7 +325,7 @@ export function bridgeDiagonals(s: Stencil, ink: Uint8Array): number {
  * one it walks the ends of the strokes back with it, which is a broken N rather than a light one. A quantised letter has ONE honest way to be lighter, and that is to be
  * drawn lighter (`glyphWeight`); what the face then draws is kept.
  *
- * IT TAKES NO TEXT AND NO BOX, which is the same finding stated in the signature: what a letter
+ * IT TAKES NO TEXT AND NO BOX, which is the same fact stated in the signature: what a letter
  * should weigh is settled before it is drawn, and what arrives here is a picture to repair.
  *
  * ONE PATH, called by the rasterizer and by anything that reads a stored raster (the evaluation

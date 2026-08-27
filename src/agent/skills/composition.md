@@ -2,9 +2,14 @@ COMPOSITION — arrange any scene the way the expert maps are arranged. These ru
 
 WHEN TO USE: before placing any multi-element scene, and whenever view_map shows something "off" that no rule names.
 
+THE TWO DIALECTS (decide before arranging anything)
+- FORMAL ORDER (the garden-town dialect): straight streets with flower edging, walled courts, orchard grids, crop plots, iconic figures. Here ALIGNED repetition is the style working — a run of one species, twin courts, a lattice of trees are pattern, not stamps.
+- NATURAL VARIETY (the terraced dialect): organic masses, meandering water, beds and specimens, no two shapes congruent. Here repetition IS the machine tell.
+- Choose ONE dialect per map (or per district on a huge map) and judge repetition by it: scattered identical blobs are noise in both; aligned rows and grids are order in the formal one.
+
 THE LADDER OF IMPORTANCE
 - Exactly ONE primary set piece per map (or per district on a huge map): plainly larger and more elaborate than anything else, with deliberately empty ground around it so it stands clear. Then 2-3 secondary places, then ordinary ground. Rough ratio: the primary reads ~3x the biggest secondary.
-- One thing happens ONCE. Never stamp a shape twice: two equal hills, a grid of identical ponds, the same flower bed repeated along an edge — congruent repetition is the strongest generated-map tell. Vary size, shape and placement, or build one and move on.
+- One thing happens ONCE at the top of the ladder: whatever the primary is (a figure, a wall, a cascade), nothing else on the map rivals it. In the natural dialect, never stamp a shape twice (two equal hills, a scatter of identical ponds); in the formal dialect, repetition must be ALIGNED into a run, a grid or a mirrored pair — an unaligned copy is still a stamp.
 
 VIEW RELATIONSHIPS (the main line of beauty)
 - Every important spot answers two questions: what do you SEE from it, and what stands BEHIND it? In front: low open scenery (water, lawn, flower beds, the sea). Behind: mass (a terrace wall, a fall, a tree stand). Near low, far high — never wall off the direction a building or lookout faces.

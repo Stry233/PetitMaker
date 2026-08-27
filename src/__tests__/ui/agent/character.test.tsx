@@ -165,8 +165,7 @@ describe('poseForPhase', () => {
 /**
  * THE POSE TABLE AND ITS DOCUMENTATION MUST AGREE, which is the artifact's own assert ported here:
  * its design view renders one tile per pose with these two lines beside it, and a pose added without
- * a row drew "undefined / undefined" under its own portrait — which is exactly what happened when the
- * key-entry trio landed under a lead still counting nine.
+ * a row draws "undefined / undefined" under its own portrait.
  *
  * The table lives HERE rather than in `poses.ts` because it is a build-failing assertion, not a
  * runtime fact: nothing in the app reads these words, and an exported table of English prose that no
@@ -373,7 +372,7 @@ describe('the pose engine under a phase that flaps', () => {
     // how many times that can happen: one per dwell, plus the one in flight.
     const landings = animateCalls.filter((a) => a.iterations === Infinity && a.part === 'body').length;
     expect(landings).toBeLessThanOrEqual(Math.ceil(span / POSE_DWELL) + 1);
-    // And well under the number the old engine reached over this span: 142.
+    // And well under 142, the measured reading this bound exists to rule out over this span.
     expect(landings).toBeLessThan(50);
     expect(landings).toBeGreaterThan(0);
   });

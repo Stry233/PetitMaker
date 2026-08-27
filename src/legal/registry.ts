@@ -67,8 +67,8 @@ export interface DocSchema {
   requiresEffectiveDate: boolean;
   requiresPolicyVersion: boolean;
   // Substantive section/heading markers that must be present in the
-  // resolved body for that language — the durable structural contract a
-  // content stub commits to (and later tasks' prose must keep). Empty for
+  // resolved body for that language — the durable structural contract the
+  // document's prose must keep however it is rewritten. Empty for
   // an en-only doc's `zh` list (there is no zh body to check).
   requiredTokens: { en: string[]; zh: string[] };
 }

@@ -855,16 +855,6 @@ export const MOTIONS = {
     says: 'the wait is shorter than it was a second ago',
   },
   /**
-   * The setup field handing a key back: the box shakes once, in place.
-   *
-   * AMBIENT, AND THAT IS THE HONEST TIER RATHER THAN THE FLATTERING ONE. The refusal is carried by
-   * the field's danger border, the crossed provider row and the note under them, all of which stand
-   * whatever the motion preference is; the shake only makes the same fact land harder. It is also
-   * the tier the mechanism forces: the travel is `x`, and framer disables positional keys outright
-   * under `MotionConfig reducedMotion`, so an `inform` entry here would be a declaration that the
-   * preference silently does not honour.
-   */
-  /**
    * The connection screen's own groups SLIDING as a step changes what stands on the screen.
    *
    * The first character typed retires the line above the field, and the field, the provider row and
@@ -882,6 +872,16 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: PANEL_HEIGHT_S,
     says: 'these are the same controls, standing somewhere else now',
   },
+  /**
+   * The setup field handing a key back: the box shakes once, in place.
+   *
+   * AMBIENT, AND THAT IS THE HONEST TIER RATHER THAN THE FLATTERING ONE. The refusal is carried by
+   * the field's danger border, the crossed provider row and the note under them, all of which stand
+   * whatever the motion preference is; the shake only makes the same fact land harder. It is also
+   * the tier the mechanism forces: the travel is `x`, and framer disables positional keys outright
+   * under `MotionConfig reducedMotion`, so an `inform` entry here would be a declaration that the
+   * preference silently does not honour.
+   */
   'panel.setup.refuse': {
     tier: 'ambient', curve: 'punchy', duration: 0.32, amplitude: 4, amplitudeUnit: 'px',
   },

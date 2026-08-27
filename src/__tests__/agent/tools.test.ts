@@ -319,7 +319,7 @@ describe('clear_area, skills, delegation stub', () => {
     const s = setup();
     const list = await executeToolCall(call('list_skills', {}), s.deps);
     expect(list.content).toContain('cozy-village');
-    const skill = await executeToolCall(call('load_skill', { name: 'river-crossing' }), s.deps);
+    const skill = await executeToolCall(call('load_skill', { name: 'garden-town' }), s.deps);
     expect(skill.isError).toBe(false);
     expect(skill.content).toContain('find_bridge_sites');
     expect((await executeToolCall(call('load_skill', { name: 'nope' }), s.deps)).isError).toBe(true);
@@ -328,9 +328,9 @@ describe('clear_area, skills, delegation stub', () => {
 
   it('load_skill success carries the skill identity in detail, without growing the body', async () => {
     const s = setup();
-    const r = await executeToolCall(call('load_skill', { name: 'river-crossing' }), s.deps);
+    const r = await executeToolCall(call('load_skill', { name: 'garden-town' }), s.deps);
     expect(r.isError).toBe(false);
-    expect(r.detail).toEqual({ skill: { name: 'river-crossing', kind: 'style', title: 'River Crossing' } });
+    expect(r.detail).toEqual({ skill: { name: 'garden-town', kind: 'style', title: 'Garden Town' } });
   });
 
   it('an unknown skill name reports a short error without re-sending the whole catalogue', async () => {
@@ -344,36 +344,212 @@ describe('clear_area, skills, delegation stub', () => {
 
   const DIRECTOR_TOOL_RE = /decorate_zone|plant_forest|build_road_network|frame_crossing/;
 
-  it('list_skills includes alpine-cascade, zen-garden, rice-terraces', async () => {
+  it('list_skills includes the reference-grounded styles', async () => {
     const s = setup();
     const list = await executeToolCall(call('list_skills', {}), s.deps);
-    expect(list.content).toContain('alpine-cascade');
-    expect(list.content).toContain('zen-garden');
-    expect(list.content).toContain('rice-terraces');
+    expect(list.content).toContain('garden-town');
+    expect(list.content).toContain('water-garden');
+    expect(list.content).toContain('figure-landscape');
   });
 
-  it('alpine-cascade body is non-empty and references at least one director tool', async () => {
+  it('water-garden body is non-empty and references at least one director tool', async () => {
     const s = setup();
-    const r = await executeToolCall(call('load_skill', { name: 'alpine-cascade' }), s.deps);
+    const r = await executeToolCall(call('load_skill', { name: 'water-garden' }), s.deps);
     expect(r.isError).toBe(false);
     expect(r.content.length).toBeGreaterThan(100);
     expect(r.content).toMatch(DIRECTOR_TOOL_RE);
   });
 
-  it('zen-garden body is non-empty and references at least one director tool', async () => {
+  it('garden-town body is non-empty and references at least one director tool', async () => {
     const s = setup();
-    const r = await executeToolCall(call('load_skill', { name: 'zen-garden' }), s.deps);
+    const r = await executeToolCall(call('load_skill', { name: 'garden-town' }), s.deps);
     expect(r.isError).toBe(false);
     expect(r.content.length).toBeGreaterThan(100);
     expect(r.content).toMatch(DIRECTOR_TOOL_RE);
   });
 
-  it('rice-terraces body is non-empty and references at least one director tool', async () => {
+  it('scatter_objects pattern fill lands every cell of the rect, and grid lands the lattice', async () => {
+    const s = setup(30, 30);
+    const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
+    const fill = await executeToolCall(
+      call('scatter_objects', { catalogIds: [floraId], count: 24, rect: { x1: 4, y1: 4, x2: 9, y2: 7 }, pattern: 'fill' }), s.deps,
+    );
+    expect(fill.isError).toBe(false);
+    expect(fill.content).toContain('24/24');
+    for (let y = 4; y <= 7; y++) for (let x = 4; x <= 9; x++) {
+      expect([...s.state.objects.values()].some((o) => o.position.x === x && o.position.y === y), `(${x},${y})`).toBe(true);
+    }
+
+    const g = setup(30, 30);
+    const grid = await executeToolCall(
+      call('scatter_objects', { catalogIds: [floraId], count: 20, rect: { x1: 10, y1: 10, x2: 16, y2: 14 }, pattern: 'grid', step: 2 }), g.deps,
+    );
+    expect(grid.isError).toBe(false);
+    const placed = [...g.state.objects.values()].filter((o) => !o.locked);
+    expect(placed.length).toBe(12); // 4 columns x 3 rows on the step-2 lattice of a 7x5 rect
+    for (const o of placed) {
+      expect((o.position.x - 10) % 2, `x ${o.position.x}`).toBe(0);
+      expect((o.position.y - 10) % 2, `y ${o.position.y}`).toBe(0);
+    }
+  });
+
+  it('find_speckle names the scattered mixed patch and passes the ordered bed', async () => {
+    const s = setup(40, 40);
+    const flora = getCatalogByCategory(ItemCategory.Flora);
+    const a = flora[0]!.id, b = flora[1]!.id, c = flora[2]!.id;
+    // An ordered bed: one species, solid fill.
+    await executeToolCall(call('scatter_objects', { catalogIds: [a], count: 24, rect: { x1: 2, y1: 2, x2: 7, y2: 5 }, pattern: 'fill' }), s.deps);
+    // A noisy patch: three species scattered loose.
+    await executeToolCall(call('scatter_objects', { catalogIds: [a, b, c], count: 12, rect: { x1: 20, y1: 20, x2: 30, y2: 30 } }), s.deps);
+    const r = await executeToolCall(call('find_speckle', {}), s.deps);
+    expect(r.isError).toBe(false);
+    expect(r.content).toContain('noisy planting patch');
+    expect(r.content).not.toContain('(2,2)-(7,5)'); // the bed is order, not noise
+  });
+
+  it('scatter fill skips road cells instead of standing objects on them', async () => {
+    const s = setup(30, 30);
+    const road = await executeToolCall(call('build_road', { x1: 10, y1: 12, x2: 19, y2: 12, width: 1, smooth: 'off' }), s.deps);
+    expect(road.isError, road.content).toBe(false);
+    const treeId = getCatalogByCategory(ItemCategory.Tree)[0]!.id;
+    const r = await executeToolCall(call('scatter_objects', { catalogIds: [treeId], count: 30, rect: { x1: 10, y1: 11, x2: 19, y2: 13 }, pattern: 'fill' }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).toContain('skipped: they carry a road');
+    for (const o of [...s.state.objects.values()].filter((x) => x.catalogId === treeId)) {
+      expect(o.position.y, `tree at (${o.position.x},${o.position.y})`).not.toBe(12);
+    }
+  });
+
+  it('find_speckle flags near-parity two-species interleave and over-wide flower bands', async () => {
+    const s = setup(40, 40);
+    const flora = getCatalogByCategory(ItemCategory.Flora);
+    const a = flora[0]!.id, b = flora[1]!.id;
+    // Solid but 50/50 two-species checkerboard: confetti, not a grain.
+    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 7; x++) {
+      await executeToolCall(call('place_object', { catalogId: (x + y) % 2 === 0 ? a : b, x, y }), s.deps);
+    }
+    // A 4-wide, 14-long solid single-species band: a fill pretending to be edging — and the
+    // scatter call itself says so, since a capped run may never reach the sweep.
+    const band = await executeToolCall(call('scatter_objects', { catalogIds: [a], count: 56, rect: { x1: 20, y1: 20, x2: 33, y2: 23 }, pattern: 'fill' }), s.deps);
+    expect(band.content).toContain('reads as a FILL');
+    // A broad 16x8 flower FIELD is a legitimate panel: no warning, and the sweep passes it.
+    const field = await executeToolCall(call('scatter_objects', { catalogIds: [b], count: 128, rect: { x1: 2, y1: 28, x2: 17, y2: 35 }, pattern: 'fill' }), s.deps);
+    expect(field.content).not.toContain('reads as a FILL');
+    const r = await executeToolCall(call('find_speckle', {}), s.deps);
+    expect(r.content).toContain('two species interleaved near-parity');
+    expect(r.content).toContain('solid flower band');
+    expect(r.content).not.toContain('(2,28)');
+    // A dominant grain with a sparse accent stays legal.
+    const g = setup(40, 40);
+    for (let x = 2; x <= 11; x++) await executeToolCall(call('place_object', { catalogId: a, x, y: 2 }), g.deps);
+    await executeToolCall(call('place_object', { catalogId: b, x: 5, y: 3 }), g.deps);
+    await executeToolCall(call('place_object', { catalogId: b, x: 9, y: 3 }), g.deps);
+    const gr = await executeToolCall(call('find_speckle', {}), g.deps);
+    expect(gr.content).not.toContain('near-parity');
+  });
+
+  it('draw_figure islandFor stands the home on a dry island inside the water', async () => {
+    const s = setup(60, 60);
+    const r = await executeToolCall(
+      call('draw_figure', { shape: 'heart', cx: 30, cy: 30, size: 30, islandFor: 'building-bamboo-cabin' }), s.deps,
+    );
+    expect(r.isError, r.content).toBe(false);
+    const home = [...s.state.objects.values()].find((o) => o.catalogId === 'building-bamboo-cabin');
+    expect(home).toBeTruthy();
+    // Ringed by water: some water within 3 cells of the footprint on at least two sides.
+    let waterNear = 0;
+    for (let y = 24; y <= 36; y++) for (let x = 24; x <= 36; x++) {
+      if (s.state.cells[y]![x]!.terrain?.type === TerrainType.Water) waterNear++;
+    }
+    expect(waterNear).toBeGreaterThan(20);
+  });
+
+  it('clear_area refuses a district-scale demolition without the acknowledgment', async () => {
+    const s = setup(30, 30);
+    const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
+    await executeToolCall(call('scatter_objects', { catalogIds: [floraId], count: 30, rect: { x1: 2, y1: 2, x2: 12, y2: 8 }, pattern: 'fill' }), s.deps);
+    const refused = await executeToolCall(call('clear_area', { x1: 0, y1: 0, x2: 20, y2: 12 }), s.deps);
+    expect(refused.isError).toBe(true);
+    expect(refused.content).toContain('demolish: true');
+    expect(s.state.objects.size).toBeGreaterThan(25); // nothing was cleared
+    const allowed = await executeToolCall(call('clear_area', { x1: 0, y1: 0, x2: 20, y2: 12, demolish: true }), s.deps);
+    expect(allowed.isError).toBe(false);
+  });
+
+  it('sculpt_wall raises a banded wall with a flooded crest, legal in one stroke', async () => {
+    const s = setup(50, 50);
+    const r = await executeToolCall(call('sculpt_wall', { x1: 5, y1: 8, x2: 44, y2: 21, crest: 8, flood: true }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    let crest = 0, pool = 0;
+    for (let y = 0; y < 50; y++) for (let x = 0; x < 50; x++) {
+      const t = s.state.cells[y]![x]!.terrain;
+      if (t?.type === TerrainType.Mountain && t.elevation === 8) crest++;
+      if (t?.type === TerrainType.Water && t.elevation === 8) pool++;
+    }
+    expect(crest).toBeGreaterThan(20);
+    expect(pool).toBeGreaterThan(10);
+  });
+
+  it('sculpt_wall lowers a crest the rect cannot hold instead of failing', async () => {
+    const s = setup(30, 30);
+    const r = await executeToolCall(call('sculpt_wall', { x1: 5, y1: 5, x2: 14, y2: 12, crest: 8 }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).toContain('lowered');
+  });
+
+  it('sink_pool sinks a contained pool court, with the islet lattice on demand', async () => {
+    const s = setup(50, 50);
+    const r = await executeToolCall(call('sink_pool', { x1: 10, y1: 10, x2: 24, y2: 22, elevation: 2, islets: true }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).toContain('islet');
+    let water = 0, islets = 0, rim = 0;
+    for (let y = 10; y <= 22; y++) for (let x = 10; x <= 24; x++) {
+      const t = s.state.cells[y]![x]!.terrain;
+      const onRim = x === 10 || x === 24 || y === 10 || y === 22;
+      if (t?.type === TerrainType.Water && t.elevation === 2) { water++; expect(onRim).toBe(false); }
+      if (t?.type === TerrainType.Mountain && t.elevation === 2) { if (onRim) rim++; else islets++; }
+    }
+    expect(water).toBeGreaterThan(80);
+    expect(islets).toBeGreaterThanOrEqual(9); // 15x13 holds a 4x3 step-3 lattice at least
+    expect(rim).toBeGreaterThan(30);
+
+    const tiny = await executeToolCall(call('sink_pool', { x1: 5, y1: 30, x2: 8, y2: 33 }), s.deps);
+    expect(tiny.isError).toBe(true);
+    expect(tiny.content).toContain('at least 5');
+  });
+
+  it('draw_figure lays a mirror-symmetric heart, ringed by one species', async () => {
+    const s = setup(40, 40);
+    const r = await executeToolCall(call('draw_figure', { shape: 'heart', cx: 20, cy: 20, size: 16, ringId: 'tree-peach' }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    const water: { x: number; y: number }[] = [];
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
+      if (s.state.cells[y]![x]!.terrain?.type === TerrainType.Water) water.push({ x, y });
+    }
+    expect(water.length).toBeGreaterThan(60);
+    for (const c of water) {
+      const mirror = water.some((m) => m.x === 40 - c.x && m.y === c.y);
+      expect(mirror, `mirror of (${c.x},${c.y})`).toBe(true);
+    }
+    const ring = [...s.state.objects.values()].filter((o) => !o.locked);
+    expect(ring.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(ring.map((o) => o.catalogId))).toEqual(new Set(['tree-peach']));
+
+    // A FLOWER ring is edging and traces the shore continuously: markedly denser than a tree ring.
+    const f = setup(40, 40);
+    const flowerId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
+    const fr = await executeToolCall(call('draw_figure', { shape: 'ring', cx: 20, cy: 20, size: 12, ringId: flowerId }), f.deps);
+    expect(fr.isError, fr.content).toBe(false);
+    const flowers = [...f.state.objects.values()].filter((o) => !o.locked).length;
+    expect(flowers).toBeGreaterThan(ring.length * 1.5);
+  });
+
+  it('figure-landscape body is non-empty and teaches the flooded-terrace banner', async () => {
     const s = setup();
-    const r = await executeToolCall(call('load_skill', { name: 'rice-terraces' }), s.deps);
+    const r = await executeToolCall(call('load_skill', { name: 'figure-landscape' }), s.deps);
     expect(r.isError).toBe(false);
     expect(r.content.length).toBeGreaterThan(100);
-    expect(r.content).toMatch(DIRECTOR_TOOL_RE);
+    expect(r.content).toContain('paint_terrain');
   });
 
   it('list_skills groups contain both METHOD and STYLE headers', async () => {
@@ -383,13 +559,12 @@ describe('clear_area, skills, delegation stub', () => {
     expect(list.content).toContain('STYLE set pieces');
   });
 
-  it('list_skills contains all 14 skill names', async () => {
+  it('list_skills contains every registered skill name, and the set is the thirteen', async () => {
     const s = setup();
     const list = await executeToolCall(call('list_skills', {}), s.deps);
     const allNames = [
-      'cozy-village', 'terraced-hill-park', 'pro-terraforming',
-      'river-crossing', 'alpine-cascade', 'zen-garden', 'rice-terraces',
-      'site-analysis', 'composition', 'terrain-shaping',
+      'garden-town', 'water-garden', 'figure-landscape', 'cozy-village', 'terraced-hill-park',
+      'pro-terraforming', 'site-analysis', 'composition', 'terrain-shaping',
       'settlement-design', 'ecology-planting', 'street-grammar', 'design-review',
     ];
     expect(Object.keys(SKILLS).sort()).toEqual([...allNames].sort());
@@ -475,6 +650,22 @@ describe('rejection diagnostics', () => {
     expect(typeof ctx).toBe('string');
     const { mapSummary } = await import('../../agent/serialize');
     expect(mapSummary(s.state)).toContain('IMMOVABLE');
+  });
+
+  it('a region-sized refusal stays a few lines, not one per cell', async () => {
+    const { formatErrors, capLines } = await import('../../agent/tools/tools-common');
+    const perCell = Array.from({ length: 6000 }, (_, i) => ({
+      ruleId: 'V-ZONE-01',
+      message: 'errors.zoneNotBuildable',
+      cells: [{ x: 13 + (i % 142), y: 6 + Math.floor(i / 142) }],
+      severity: 'error' as const,
+    }));
+    const out = formatErrors(perCell);
+    expect(out.split('\n')).toHaveLength(1);
+    expect(out).toContain('and 5996 more cells');
+    const capped = capLines(Array.from({ length: 500 }, (_, i) => `line ${i}`));
+    expect(capped).toHaveLength(13);
+    expect(capped[12]).toContain('488 more rejections');
   });
 });
 
@@ -580,6 +771,31 @@ describe('pro terraforming tools', () => {
     expect(water).toBeGreaterThan(80); // a real channel, not a puddle
     expect(s.state.cells[5]![2]!.terrain?.type).toBe(TerrainType.Water);  // source
     expect(s.state.cells[14]![37]!.terrain?.type).toBe(TerrainType.Water); // mouth
+  });
+
+  it('sculpt_terrace and carve_river clip their organic spread to an armed region', async () => {
+    const region: { x: number; y: number }[] = [];
+    for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) region.push({ x, y });
+    const s = setup(30, 30);
+    const deps: AgentToolDeps = { ...s.deps, getRegion: () => region };
+
+    // A terrace centered ON the region edge grows half its blob outside; the tool keeps the
+    // inside half instead of earning a whole-call OUT OF REGION refusal for its own spread.
+    const t = await executeToolCall(call('sculpt_terrace', { cx: 14, cy: 10, baseRadius: 6, tiers: 2, seed: 3 }), deps);
+    expect(t.isError).toBe(false);
+    expect(t.content).toContain('clipped to the selected region');
+
+    const rv = await executeToolCall(
+      call('carve_river', { points: [{ x: 6, y: 7 }, { x: 20, y: 10 }], width: 3 }), deps,
+    );
+    expect(rv.isError).toBe(false);
+    expect(rv.content).toContain('clipped to the selected region');
+
+    for (let y = 0; y < 30; y++) for (let x = 0; x < 30; x++) {
+      if (s.state.cells[y]![x]!.terrain !== null) {
+        expect(x >= 5 && x <= 14 && y >= 5 && y <= 14, `terrain leaked to (${x},${y})`).toBe(true);
+      }
+    }
   });
 
   it('paint_terrain smooth option trims edges', async () => {

@@ -78,3 +78,68 @@ describe('ramp policy robustness', () => {
     expect(createDefaultRegistry().validatePreCommand(cmd, state)).toHaveLength(0);
   });
 });
+
+/**
+ * The four sides of a plateau accept a ramp the SAME way. Two reads used to break that: the cliff
+ * detector read elevations at the anchor point, whose half-cell straddle at a cliff's left/top end
+ * includes the ground beside the plateau (min goes low, no cliff found — while the right/bottom
+ * end, straddling two plateau cells, worked); and a half hover's tie rounded half-up, which is the
+ * cliff row on a south/east cliff but the plateau's interior on a north/west one. A ramp must
+ * place flush with EITHER end of a cliff, and hover the same depth onto the plateau whichever way
+ * the cliff faces.
+ */
+describe('ramp placement is symmetric across the four cliff faces', () => {
+  // 10x10 plateau at elev 1, cells (7..16) on both axes, inside a 24x24 map.
+  function block(): GridState {
+    const state = makeState(24, 24);
+    for (let y = 7; y <= 16; y++) for (let x = 7; x <= 16; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
+    return state;
+  }
+  function tryRamp(x: number, y: number): PlaceObjectCommand & { ok: boolean } {
+    const cmd = {
+      type: CommandType.PlaceObject as const, timestamp: 0,
+      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
+      loadValue: 80,
+    };
+    const ok = createDefaultRegistry().validatePreCommand(cmd, block()).length === 0;
+    return { ...cmd, ok };
+  }
+
+  it('places flush with the LEFT end of a south cliff, exactly as it does with the right', () => {
+    const left = tryRamp(6.5, 16);   // covers columns 7,8: the plateau's first two
+    expect(left.ok).toBe(true);
+    expect(left.object.rotation).toBe(0);
+    expect(left.object.position).toEqual({ x: 6.5, y: 16 });
+    const right = tryRamp(14.5, 16); // covers columns 15,16: the last two
+    expect(right.ok).toBe(true);
+    expect(right.object.position).toEqual({ x: 14.5, y: 16 });
+  });
+
+  it('places at the TOP end of an east cliff, exactly as at the bottom', () => {
+    const top = tryRamp(16.5, 6.5);  // covers rows 7,8
+    expect(top.ok).toBe(true);
+    expect(top.object.rotation).toBe(90);
+    const bottom = tryRamp(16.5, 14.5);
+    expect(bottom.ok).toBe(true);
+  });
+
+  it('a half hover reaches the same depth onto the plateau from every side', () => {
+    // One whole cell in from the visual cliff line, at each face's own tie coordinate.
+    expect(tryRamp(8, 15.5).ok).toBe(true);   // south, rot 0
+    expect(tryRamp(8, 7.5).ok).toBe(true);    // north, rot 180: the tie that used to round inward
+    expect(tryRamp(15.5, 8).ok).toBe(true);   // east, rot 90
+    expect(tryRamp(7.5, 8).ok).toBe(true);    // west, rot 270: same tie, other axis
+    expect(tryRamp(8, 7.5).object.rotation).toBe(180);
+    expect(tryRamp(7.5, 8).object.rotation).toBe(270);
+  });
+
+  it('the four corner placements the report named all stand', () => {
+    expect(tryRamp(6.5, 16).object.rotation).toBe(0);    // vertical, bottom-left
+    expect(tryRamp(6.5, 6.5).object.rotation).toBe(180); // vertical, top-left
+    expect(tryRamp(6, 6.5).object.rotation).toBe(270);   // horizontal, top-left
+    expect(tryRamp(16.5, 6.5).object.rotation).toBe(90); // horizontal, top-right
+    for (const [x, y] of [[6.5, 16], [6.5, 6.5], [6, 6.5], [16.5, 6.5]] as const) {
+      expect(tryRamp(x, y).ok, `anchor (${x}, ${y})`).toBe(true);
+    }
+  });
+});

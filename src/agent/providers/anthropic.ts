@@ -4,14 +4,13 @@
  *
  * Wire-shape facts (tool_result batching into one user message, image nesting inside a
  * tool_result block, the system cache_control breakpoint, adaptive thinking,
- * `dangerouslyAllowBrowser`) are carried verbatim from the retired harness's Anthropic adapter this
- * supersedes, which proved them in production. Three things are new here: the generator
+ * `dangerouslyAllowBrowser`) are production-proven. The generator
  * NEVER throws (every failure, abort included, ends the stream with one terminal event instead
- * of rejecting); the raw content-block echo is now gated on `sameModel` — a Claude turn's
+ * of rejecting); the raw content-block echo is gated on `sameModel` — a Claude turn's
  * raw bytes (thinking signatures, exact tool_use shape) are provider-specific and replaying them
  * against a different provider or model would misreport what actually produced them; and the
- * conversation carries a cache breakpoint of its own (`withConversationBreakpoint`), which the
- * system-only version left uncached.
+ * conversation carries a cache breakpoint of its own (`withConversationBreakpoint`) beside the
+ * system prefix's.
  *
  * The raw-failure/retry-after mapping (`./http-failure`, which redacts the detail through
  * `../security/redact`) is shared verbatim with the OpenAI-dialect adapter, since neither a

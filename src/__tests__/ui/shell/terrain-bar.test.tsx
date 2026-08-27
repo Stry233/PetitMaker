@@ -157,8 +157,8 @@ const SURFACES: TerrainSurface[] = ['mountain', 'water', 'road'];
 
 describe('the row of tool glyphs reads as one set', () => {
   // The bounds are headroom over what the eleven drawings currently measure, so they move when a
-  // drawing does. Drawing the line and curve handles widened both: spans went from 1.15 to 1.22 and
-  // weights from 1.31 to 1.48, because a stroke with a blob at either end covers a lot of box for
+  // drawing does. With the line and curve handles drawn, spans measure 1.22 and weights 1.48,
+  // because a stroke with a blob at either end covers a lot of box for
   // the ink it carries, and the drawing at the other end of the row is a solid mountain mass.
   it('brings every cell within a quarter of one size and half of one weight, on all three surfaces', () => {
     for (const surface of SURFACES) {
@@ -169,18 +169,18 @@ describe('the row of tool glyphs reads as one set', () => {
   });
 
   it('draws the same tool at the same size whichever surface is open', () => {
-    // The reported fault: 绘制山体 is one mass 106 x 81 and 绘制地形 four shapes spanning 85 x 60,
-    // so the mountain bar's brush read a third bigger than the road bar's.
+    // Unnormalized, 绘制山体 is one mass 106 x 81 and 绘制地形 four shapes spanning 85 x 60,
+    // so the mountain bar's brush would read a third bigger than the road bar's.
     for (const cell of TOOL_CELLS) {
       expect(ratio(SURFACES.map((s) => drawn(cell.glyph[s].ink).span))).toBeLessThan(1.15);
     }
   });
 
   it('is the improvement over drawing each glyph at the size the design gave it', () => {
-    // 2.5 while the line cell was a stub: its bar is masked to make room for two handles the
-    // document hides, so the glyph measured the bar minus the two bites and was the smallest thing
-    // here by a wide margin. Drawn whole it is an ordinary member of the row, and the widest and
-    // narrowest of the design's own drawings are now the mountain mass and the trim scissors.
+    // The line cell's bar is masked to make room for two handles the document hides; a glyph
+    // measuring the bar minus the two bites would be the smallest thing here by a wide margin
+    // (a ratio of 2.5). Drawn whole it is an ordinary member of the row, and the widest and
+    // narrowest of the design's own drawings are the mountain mass and the trim scissors.
     const asDrawn = SURFACES.flatMap((s) => TOOL_CELLS.map((c) => Math.hypot(c.glyph[s].ink.w, c.glyph[s].ink.h)));
     expect(ratio(asDrawn)).toBeGreaterThan(1.6);
   });
@@ -235,9 +235,9 @@ describe('the road surfaces', () => {
 
 describe('the brush slider', () => {
   /**
-   * The reported fault, twice: the slider read as the low thing on the bar. Its box shared a bottom
-   * edge with the cells and measured equal there, but a cell plate is 115 design px and the groove
-   * 79, so the knob riding it — a cream disc among cream pills — hung past the line every plate
+   * Bottom-aligned, the slider reads as the low thing on the bar: its box shares a bottom
+   * edge with the cells and measures equal there, but a cell plate is 115 design px and the groove
+   * 79, so the knob riding it — a cream disc among cream pills — hangs past the line every plate
    * stops at. Boxes are not what the eye compares; the two drawings are.
    */
   it('stands its own middle on the middle of the cells, not its bottom on their bottom', () => {
@@ -309,12 +309,12 @@ describe('the brush slider', () => {
     expect(useEditorStore.getState().brushSize).toBe(5);
   });
 
-  /** The reading beside it counts, and one cell is the size the bar opens at, so the singular is
-   *  the FIRST thing anybody reads here. The count carries its own word in every locale, and only
-   *  the two that inflect have a second form of it: the others repeat the one line deliberately,
-   *  since a language with no plural must not be given a fake one. */
-  /** The reading rides the slider's own KNOB now, shown while a hand is on it, so what is asserted is
-   *  the value the slider REPORTS rather than a number standing permanently beside the track. */
+  /** The reading rides the slider's own KNOB, shown while a hand is on it, so what is asserted is
+   *  the value the slider REPORTS rather than a number standing permanently beside the track. One
+   *  cell is the size the bar opens at, so the singular is the FIRST thing anybody reads here. The
+   *  count carries its own word in every locale, and only the two that inflect have a second form
+   *  of it: the others repeat the one line deliberately, since a language with no plural must not
+   *  be given a fake one. */
   it('reads a single cell in the singular, and takes the plural from there', () => {
     mount('mountain');
     expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('1 cell');
@@ -349,8 +349,8 @@ describe('the shortcut badges', () => {
   /**
    * THE BADGE COVERS THE PLATE'S CORNER, which a stadium does not have as a point.
    *
-   * Its right edge is the plate's, and the two numbers either side of that were both tried and both
-   * reported. The design's is 19 design px PAST the cell, and by the badge's row a corner rounded to
+   * Its right edge is the plate's, and either number to its side reads wrong.
+   * The design's is 19 design px PAST the cell, and by the badge's row a corner rounded to
    * half the cell's height has curved well away, so the badge floats clear of the shape it belongs
    * to. Pulling it back to where the arc reaches the badge's bottom edge is the furthest right it
    * can stand and only TOUCH the plate, so it stops short of the corner instead. On the plate's own
@@ -362,14 +362,14 @@ describe('the shortcut badges', () => {
     const bottom = BADGE.h - BADGE.rise;
     /** How far the badge's bottom-right corner is from the cap's centre, for a given right edge. */
     const fromCap = (right: number) => Math.hypot(right - cap.x, bottom - cap.y);
-    /** Where the arc reaches at the badge's bottom edge: the old, tangent-only placement. */
+    /** Where the arc reaches at the badge's bottom edge: a tangent-only placement. */
     const tangent = cap.x + Math.sqrt(r * r - (r - bottom) ** 2);
 
     // On the plate's edge the corner is OUTSIDE the arc, so the badge overlaps the shape.
     expect(fromCap(CELL.w)).toBeGreaterThan(r);
     // Not so far out that it leaves the plate: the drawing's own right edge (141 + 44) does.
     expect(fromCap(185) - r).toBeGreaterThan(3 * (fromCap(CELL.w) - r));
-    // And the tangent placement it replaces stopped short of the plate's own edge.
+    // And a tangent-only placement stops short of the plate's own edge.
     expect(fromCap(tangent)).toBeCloseTo(r, 6);
     expect(tangent).toBeLessThan(CELL.w);
   });
@@ -377,8 +377,8 @@ describe('the shortcut badges', () => {
   /**
    * THE BADGE FOLLOWS THE PLATE'S RIGHT EDGE, and that edge is the one thing about a cell that
    * moves: the plate grows when the cell is chosen and opens into a pill around the auto-trim
-   * setting. Placed from the left at any constant the badge simply stayed where it was as the pill
-   * opened, which is what was reported.
+   * setting. Placed from the left at any constant the badge would simply stay where it was as the
+   * pill opened.
    *
    * The following is css: the badge hangs off the CELL BOX, which is as wide as the cell plus the
    * control it is holding, so a pill of any width carries it along with nothing measured. What is

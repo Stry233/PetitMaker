@@ -4,8 +4,8 @@
  * `place_object {"catalogId":"building-myhouse","x":3,…}` — this renders the
  * same call as `place_object: building-myhouse at (3,4)`.
  *
- * Read by HUMANS only (`feed.ts` → the ticket sub-line and the blueprint's
- * running line), so every connecting word goes through the caller's `t`. The
+ * Read by HUMANS only (the gate summary, the ticket sub-line and the
+ * blueprint's running line), so every connecting word goes through the caller's `t`. The
  * English the MODEL reads — rule text, `REVERTED: …`, the (system) nudges —
  * is produced elsewhere and stays English.
  *
@@ -112,6 +112,18 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
       where: rect ? shape({ rect }, t) : t('agent2.dc_selection'),
     });
   },
+  sculpt_wall: (i, t) => t('agent2.dc_wall', {
+    w: Math.abs(n(i.x2) - n(i.x1)) + 1,
+    h: Math.abs(n(i.y2) - n(i.y1)) + 1,
+    crest: n(i.crest) || 6,
+    flood: i.flood === true ? t('agent2.dc_wall_flood') : '',
+  }),
+  draw_figure: (i, t) => t('agent2.dc_figure', {
+    shape: String(i.shape ?? ''),
+    size: n(i.size),
+    at: `(${n(i.cx)},${n(i.cy)})`,
+    ring: typeof i.ringId === 'string' ? t('agent2.dc_figure_ring', { ring: i.ringId }) : '',
+  }),
   sculpt_terrace: (i, t) => t('agent2.dc_terrace', {
     tiers: n(i.tiers) || 2,
     r: n(i.baseRadius),

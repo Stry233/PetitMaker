@@ -1,10 +1,9 @@
 /**
  * THE KEYBOARD DISPATCH ENGINE: a combo string in, the bound action fired.
  *
- * The third of the three keyboard pieces, and the reason it sits here rather than with the tools it
- * once shipped beside: `keybindings.ts` holds the keymap DATA, `kit/commands.ts` holds what each
- * command DOES, and this holds the match. It knows nothing about tools, so a shell wires whatever
- * it likes to whatever combo.
+ * The third of the three keyboard pieces: `keybindings.ts` holds the keymap DATA, `kit/commands.ts`
+ * holds what each command DOES, and this holds the match. It knows nothing about tools, so a shell
+ * wires whatever it likes to whatever combo.
  */
 
 import { anyOverlayOpen } from './overlay-state';

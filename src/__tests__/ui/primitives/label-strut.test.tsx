@@ -6,7 +6,7 @@
  * INLINE-level inside that box, it is baseline-aligned to the box's strut, which is
  * sized by the unscaled inherited font. The two only agree at one scale, so the
  * label slides away from its anchor as the scale changes: measured in a browser on
- * the deleted menu tiles this rule came from, the gap under a tile grew from 7.3 to 16.3
+ * a menu tile, the gap under it grew from 7.3 to 16.3
  * design px between 100% and 150% page zoom, dropping the label by the whole
  * designed gap. Blockifying the text (block, or a flex item) removes the line box,
  * so the label's top is its own box top at every scale.

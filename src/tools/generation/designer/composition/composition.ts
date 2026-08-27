@@ -890,9 +890,9 @@ function raiseCrown(
     // what the reference island's high ground is — a plateau a visitor walks on, not a peak they look
     // at. The taller lifts are what is left for a mass with no room for a third terrace.
     //
-    // THE COAST'S HEADROOM IS READ PER CELL, not over the candidate as a whole. It was read as the
-    // MINIMUM coast distance over the whole terrace and the candidate was then demoted to what that one
-    // cell could support, which is a terrace's worth of height thrown away for its nearest corner —
+    // THE COAST'S HEADROOM IS READ PER CELL, not over the candidate as a whole. Read as the MINIMUM
+    // coast distance over the whole terrace, the candidate demotes to what its one worst cell can
+    // support, which is a terrace's worth of height thrown away for its nearest corner —
     // and with a one-sided ring the terrace reaches further, so the corner is nearer the shore and the
     // demotion cost six tafa seeds of twenty their asked cap. A cell without the headroom for the tier
     // is simply not ground the crown may stand on.

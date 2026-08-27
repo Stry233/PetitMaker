@@ -348,9 +348,9 @@ export function ImportCard({ name, shot, selected, failed, landing, onPick, onSe
   return (
     <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-import">
       {selected ? <ChosenPlate /> : null}
-      {/* THE SAME FACE EVERY CARD WEARS. It was drawn as a bare button first, which left it the one
-          card on the row with no plate and no picture frame — plainly a different kind of thing on a
-          row whose whole point is that it is not. The empty frame carries the mark instead. */}
+      {/* THE SAME FACE EVERY CARD WEARS. A bare button here would be the one card on the row with
+          no plate and no picture frame — plainly a different kind of thing on a row whose whole
+          point is that it is not. The empty frame carries the mark instead. */}
       <CardFace
         shot={shot}
         waited={waited.current}

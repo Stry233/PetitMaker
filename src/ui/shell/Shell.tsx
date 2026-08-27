@@ -63,7 +63,8 @@ import { cssMotion, useBeat, useMotion, useMotionAllowed } from './motion/use-mo
 import { Rail } from './Rail';
 import { RestoreShelf } from './bars/RestoreShelf';
 import { BarText } from './bars/bar-atoms';
-import { ACTIVE, EDGE_VIGNETTE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, FOCUS_SHAPE_RADIUS, INK, MAP_EDGE_ALPHA, MAP_LABEL, MAP_SHAPE_EDGE, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID, VIGNETTE_DEPTH, mapShape } from '../design/tokens';
+import { ACTIVE, EDGE_VIGNETTE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, FOCUS_SHAPE_RADIUS, INK, MAP_EDGE_ALPHA, MAP_LABEL, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID, VIGNETTE_DEPTH, mapShape } from '../design/tokens';
+import { ShapeEdge } from '../design/shape-edge';
 import {
   captionShift, EDGE_RIGHT, MODE, MODE_SCALE, SCALE, TEXT, TOP_RIGHT_GAP, ZOOM,
 } from './units';
@@ -151,8 +152,8 @@ function ShapeEdgeFilter() {
  *
  * The drawing is used as a SHAPE, not as a picture: the file gives the silhouette and the frame
  * gives it the column's cream and the hairline edge every drawing standing on the map wears
- * (`tokens.ts:mapShape` / `MAP_SHAPE_EDGE`). Two nested boxes, because the edge has to be applied
- * to a parent of the masked one.
+ * (`tokens.ts:mapShape` / `shape-edge.tsx:ShapeEdge`), which is why the masked span stands inside
+ * the edge's own box.
  */
 function Piece({ art, onPress, expanded, tourTarget }: {
   art: FrameArt & { src: string };
@@ -167,9 +168,9 @@ function Piece({ art, onPress, expanded, tourTarget }: {
   // stand on that line by their ink and not by their boxes.
   const line: CSSProperties = { ...box, marginBottom: -topRightSlack(art) };
   const shape = (
-    <span aria-hidden style={{ ...box, display: 'block', filter: MAP_SHAPE_EDGE }}>
+    <ShapeEdge style={box}>
       <span style={{ ...mapShape(art.src), display: 'block', width: '100%', height: '100%' }} />
-    </span>
+    </ShapeEdge>
   );
   if (!onPress) return <span role="img" aria-label={t(art.labelKey)} style={line}>{shape}</span>;
   return (

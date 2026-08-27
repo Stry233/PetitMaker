@@ -4,8 +4,8 @@
  * `PanelShell` renders projections and calls verbs; `PanelColumn` is the only production caller that
  * supplies them. A verb it forgets to pass type-checks (every one is optional, because a headless
  * test wires none of them) and costs the user a control that is drawn, translated and dead — the
- * incident banner's repair pill, Escape on the composer ghost and the composer's own Stop all shipped
- * that way at once. So the list is the test, exactly as `panel-runner.test.ts` pins the tool
+ * incident banner's repair pill, Escape on the composer ghost and the composer's own Stop can all
+ * go that way at once. So the list is the test, exactly as `panel-runner.test.ts` pins the tool
  * dependencies by name for the same reason.
  *
  * `PanelShell` is replaced by a recorder here: what is under test is the props handed ACROSS the
@@ -223,8 +223,7 @@ describe('the props the column hands across the seam', () => {
     // vignette, the same picture seam every other card's is on.
     'onMarkRegion', 'onClearRegion', 'regionShot',
     // THE BANNER'S REPAIR PILLS. Every one of them is drawn because a press can be routed, so an
-    // unwired `onBannerAction` is a row of named repairs that answer a press with nothing — which is
-    // exactly what shipped until this line existed.
+    // unwired `onBannerAction` is a row of named repairs that answer a press with nothing.
     'onBannerAction',
     // The storage notice's own answer, and the only way a standing one is ever put down.
     'onDismissStorage',

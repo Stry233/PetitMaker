@@ -107,8 +107,8 @@ describe('the keyboard window', () => {
 });
 
 /*
- * The board's own scroll region is the app's ONE both-axis scroller (`useScrollFadeBoth`), so it is
- * this window's job to cover the branch Task 1 left untested: two intersected mask layers when both
+ * The board's own scroll region is the app's ONE both-axis scroller (`useScrollFadeBoth`), so this
+ * window is the only place its branches can be covered: two intersected mask layers when both
  * axes overflow, one plain layer once only one still does, and no mask at all once it fits.
  * `useTravel`'s settle loop runs on requestAnimationFrame + performance.now(), pumped with the same
  * queue/clock stub `scroll-fade.test.ts` established.

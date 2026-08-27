@@ -170,8 +170,8 @@ describe('the fountain grammar', () => {
 
   it('keeps every band of a cross 4-CONNECTED, so a reading can see the court (I5.3)', () => {
     // `waterBodies` decomposes 4-connected, so a band that skips a rung as it turns the corner between
-    // two arms shatters into four annuli, each thinner than the accent floor — which is why three of
-    // the eighteen gate maps carrying a large court were INVISIBLE to `isCourt`, to the
+    // two arms shatters into four annuli, each thinner than the accent floor — which leaves three of
+    // the eighteen gate maps carrying a large court INVISIBLE to `isCourt`, to the
     // one-main-fountain rule and to the arrival reading. The flare is what governs it.
     for (let r = 5; r <= 9; r++) {
       for (const seed of SEEDS) {
@@ -180,7 +180,7 @@ describe('the fountain grammar', () => {
         const { water } = fountainCells(cross, { x: 40, y: 40 });
         if (water.length === 0) continue;
         // ONE PIECE PER WATER BAND is the claim: a court of two moats is two bodies by design, and the
-        // defect was each of them falling into the four arcs between the cross's arms.
+        // failure mode is each of them falling into the four arcs between the cross's arms.
         const own = new Set(water.map((c) => `${c.x},${c.y}`));
         const seen = new Set<string>();
         let pieces = 0;

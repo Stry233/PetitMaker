@@ -121,9 +121,9 @@ describe('withAlpha always emits a two-digit hex byte', () => {
  *
  * `tokens.ts:edge` re-exports the shell's `PANEL_EDGE`, which is `1px solid <colour>`. A card that
  * spells `1px solid ${edge}` emits `1px solid 1px solid <colour>` — one invalid declaration, dropped
- * entire, and the card ships with no outline at all against a plate it is a shade away from. It
- * happened twice and nothing could see it: the value reads correct at the call site and the failure
- * is silent at every layer below. `trouble.test.tsx` asserts the two cards' resolved borders; this is
+ * entire, and the card ships with no outline at all against a plate it is a shade away from. The
+ * mistake is invisible by hand: the value reads correct at the call site and the failure is silent
+ * at every layer below. `trouble.test.tsx` asserts the two cards' resolved borders; this is
  * the rule, so the next card cannot rediscover it.
  */
 describe('the panel writes its one border treatment one way', () => {
@@ -143,9 +143,9 @@ describe('the panel writes its one border treatment one way', () => {
  * The house has two ink primaries because it has two SHAPES: `windowPrimary` is the centred confirm
  * and carries a radius authored for that shape; `windowFooterPrimary` is the one that stretches
  * across the foot of a column at the house radius. Every primary in this panel is the stretched one —
- * the gate cards' Approve, Resume wherever it stands, the setup foot, the manage Done — and three of
- * them reached for the centred token, overrode its `flex` and its `padding`, and kept its radius by
- * accident. The panel then drew its cards at one corner and its screens at another.
+ * the gate cards' Approve, Resume wherever it stands, the setup foot, the manage Done — and one that
+ * reaches for the centred token, overriding its `flex` and its `padding`, keeps a radius authored
+ * for another shape: the panel then draws its cards at one corner and its screens at another.
  */
 describe('the panel draws one primary', () => {
   it('gives the gate primary and the hold primary the footer radius, which is a token', () => {

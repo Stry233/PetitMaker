@@ -39,7 +39,7 @@
  */
 import { callApproved } from '../../agent/core/gates';
 import type { RunnerConfig } from '../../agent/exec/runner';
-import { takeMapSnapshot } from '../../agent/snapshot';
+import { takeMapRegionSnapshot, takeMapSnapshot } from '../../agent/snapshot';
 import type { AgentToolDeps } from '../../agent/tools/tools';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { host } from '../../kit/host';
@@ -147,8 +147,12 @@ export function makePanelToolDeps(opts: { vision: boolean }): AgentToolDeps {
       useEditorStore.getState().setModal(kind === 'json' ? 'exportJson' : 'export', true);
     },
   };
-  // Wired ONLY where the armed model can read an image; without it `view_map` degrades to the token
-  // grid rather than sending a picture to a model that will refuse it.
-  if (opts.vision) deps.snapshot = takeMapSnapshot;
+  // Wired ONLY where the armed model can read an image; without them `view_map` degrades to the
+  // token grid rather than sending a picture to a model that will refuse it. The pair travels
+  // together: the region member is the look-closer half of the same capability.
+  if (opts.vision) {
+    deps.snapshot = takeMapSnapshot;
+    deps.snapshotRegion = takeMapRegionSnapshot;
+  }
   return deps;
 }

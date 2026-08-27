@@ -28,12 +28,12 @@ describe('the log the store BOOTS on', () => {
   /**
    * THE BOOT LOG CARRIES THE SUBSCRIPTION, and nothing has to ask for it. A session belongs to a
    * map, so the app calls `hydrate()` only when a map is RESTORED — every other launch runs on the
-   * log the store made for itself, and until that one was wired an append reached nobody: no epoch
-   * bump, so the panel never re-rendered while a job ran, and no debounced save, so the session was
-   * never written and there was nothing to restore next time either.
+   * log the store made for itself, and were that one unwired an append would reach nobody: no epoch
+   * bump, so the panel never re-renders while a job runs, and no debounced save, so the session is
+   * never written and there is nothing to restore next time either.
    *
    * A fresh MODULE is the only way to see that state: the suite's own `clearSession()` re-adopts,
-   * which is what hid it.
+   * which masks it.
    */
   it('bumps the epoch on an append with no hydrate() ever called', async () => {
     vi.resetModules();

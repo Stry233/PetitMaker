@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act, screen } from '@testing-library/react';
 import { CurveHandles } from '../../../ui/chrome/floating/CurveHandles';
+import { I18nProvider } from '../../../i18n/context';
 import {
   __resetCurveSession, beginCurveSession, endCurveSession, getCurveSession,
 } from '../../../tools/paint/curve-session';
@@ -74,35 +75,35 @@ afterEach(() => {
 
 describe('what is on screen', () => {
   it('nothing at all when no curve has been drawn', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     expect(screen.queryByTestId('curve-handles')).toBeNull();
   });
 
   it('a grab and two direction knobs for every anchor', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 1, y: 1 }, { x: 5, y: 3 }, { x: 9, y: 1 }]);
-    expect(screen.getAllByLabelText(/^curve anchor /)).toHaveLength(3);
+    expect(screen.getAllByLabelText(/^Curve point /)).toHaveLength(3);
     expect(screen.getAllByLabelText(/^curve direction /)).toHaveLength(6);
   });
 
   it('places the grabs in proportion to their anchors', () => {
     // Absolute px carry the chrome zoom, which is a property of the viewport, not of this
     // component; the RATIO between two anchors is what the projection is being asked for.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 4 }, { x: 6, y: 4 }]);
     const px = (label: string) => {
       const el = screen.getByLabelText(label) as HTMLElement;
       return { left: parseFloat(el.style.left), top: parseFloat(el.style.top) };
     };
-    const a = px('curve anchor 1'), b = px('curve anchor 2');
+    const a = px('Curve point 1'), b = px('Curve point 2');
     expect(b.left / a.left).toBeCloseTo(3, 5);   // x 2 -> 6
     expect(b.top).toBeCloseTo(a.top, 5);         // same row
   });
 
   it('goes away when the session ends', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 1, y: 1 }, { x: 5, y: 1 }]);
-    expect(screen.getAllByLabelText(/^curve anchor /)).toHaveLength(2);
+    expect(screen.getAllByLabelText(/^Curve point /)).toHaveLength(2);
     act(() => { endCurveSession(); });
     // AnimatePresence holds the node for its fade, so what is asserted is that the session is gone
     // and the overlay is on its way out — not that the DOM emptied synchronously.
@@ -112,24 +113,24 @@ describe('what is on screen', () => {
 
 describe('dragging', () => {
   it('moves an anchor, and re-lays the map only on release', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
-    drag(screen.getByLabelText('curve anchor 1'), { x: 3, y: 7 });
+    drag(screen.getByLabelText('Curve point 1'), { x: 3, y: 7 });
     expect(getCurveSession()!.anchors[0]).toMatchObject({ x: 3, y: 7 });
     expect(repaint, 'one repaint per drag, not per pointer event').toHaveBeenCalledTimes(1);
   });
 
   it('ghosts the path on every frame of the drag, so the drag can be aimed', () => {
     // Without it the anchor moves and nothing else does until the release.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
-    drag(screen.getByLabelText('curve anchor 1'), { x: 3, y: 7 });
+    drag(screen.getByLabelText('Curve point 1'), { x: 3, y: 7 });
     expect(preview).toHaveBeenCalled();
     expect(preview.mock.calls[0]![0][0]).toMatchObject({ x: 3, y: 7 });
   });
 
   it('turns the tangent when a direction knob is dragged, without moving the anchor', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
     drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 });
     const a = getCurveSession()!.anchors[1]!;
@@ -141,7 +142,7 @@ describe('dragging', () => {
   it('mirrors the incoming knob, so the two ends are one tangent', () => {
     // Dragging the far end is the same direction seen from the other side; storing it unmirrored
     // would kink the path at the anchor instead of keeping it smooth through.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
     drag(screen.getByLabelText('curve direction 2 in'), { x: 8, y: 6 });
     expect(getCurveSession()!.anchors[1]!.hy).toBe(-4);
@@ -149,7 +150,7 @@ describe('dragging', () => {
 
   it('breaks the line while the break key is held, leaving the other side where it was', () => {
     // Photoshop's pen: Alt turns one side of the handle on its own, so the anchor becomes a corner.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
     holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
     const a = getCurveSession()!.anchors[1]!;
@@ -158,7 +159,7 @@ describe('dragging', () => {
   });
 
   it('re-links the two sides when the same knob is dragged WITHOUT the break key', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
     holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
     drag(screen.getByLabelText('curve direction 2 out'), { x: 12, y: 2 });
@@ -167,7 +168,7 @@ describe('dragging', () => {
   });
 
   it('draws the direction line THROUGH the anchor, so a broken handle reads as a corner', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
     holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
     const line = document.querySelectorAll('polyline')[1] as SVGPolylineElement;
@@ -175,11 +176,11 @@ describe('dragging', () => {
   });
 
   it('does not let the press through to the canvas, which would dismiss the handles', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     const seen = vi.fn();
     window.addEventListener('pointerdown', seen);
-    act(() => { screen.getByLabelText('curve anchor 1').dispatchEvent(pointer('pointerdown')); });
+    act(() => { screen.getByLabelText('Curve point 1').dispatchEvent(pointer('pointerdown')); });
     window.removeEventListener('pointerdown', seen);
     expect(seen).not.toHaveBeenCalled();
   });
@@ -195,15 +196,15 @@ describe('sizing against the map zoom', () => {
   }
   /** The VISIBLE dot inside the target, which is what scales with the map. */
   const grabWidth = () => {
-    const btn = screen.getByLabelText('curve anchor 1') as HTMLElement;
+    const btn = screen.getByLabelText('Curve point 1') as HTMLElement;
     return parseFloat((btn.firstElementChild as HTMLElement).style.width);
   };
-  const hitWidth = () => parseFloat((screen.getByLabelText('curve anchor 1') as HTMLElement).style.width);
+  const hitWidth = () => parseFloat((screen.getByLabelText('Curve point 1') as HTMLElement).style.width);
 
   it('shrinks the controls as the map zooms out', () => {
     // A curve has an anchor every few cells: fixed-size controls swell to cover the very shape they
     // are meant to be adjusting once the map is small.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => { viewAtCellPx(64); });
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     const full = grabWidth();
@@ -212,7 +213,7 @@ describe('sizing against the map zoom', () => {
   });
 
   it('stops shrinking at a size that can still be grabbed', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => { viewAtCellPx(20); });
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     const small = grabWidth();
@@ -222,7 +223,7 @@ describe('sizing against the map zoom', () => {
 
   it('keeps a clickable target however small the dot gets', () => {
     // A tangent knob is a small dot by design; it must not also be a small target.
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => { viewAtCellPx(4); });
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     expect(grabWidth()).toBeLessThan(20);
@@ -232,7 +233,7 @@ describe('sizing against the map zoom', () => {
   });
 
   it('never grows past its design size when the map zooms IN', () => {
-    render(<CurveHandles />);
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => { viewAtCellPx(64); });
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     const full = grabWidth();

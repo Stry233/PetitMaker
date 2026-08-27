@@ -506,8 +506,8 @@ describe('runJob failure modes', () => {
     seedOrder(log, 'go');
     // An extended-thinking provider can hit its output cap while still reasoning, before any text
     // or tool call lands. Such a turn has neither, so it also reads as EMPTY: with the empty gate
-    // standing first in runJob's order, three of them settled `jobEnd {outcome:'done'}` with no
-    // summary at all, reporting success for a job that never answered. A truncated turn is the
+    // standing first in runJob's order, three of them would settle `jobEnd {outcome:'done'}` with
+    // no summary at all, reporting success for a job that never answered. A truncated turn is the
     // model being cut off, not choosing silence, so it is not an empty turn.
     const adapter = createScriptedAdapter([reasoningTurn('thinking'), reasoningTurn('still thinking'), reasoningTurn('thinking yet')]);
     const executor = makeExecutor();
@@ -522,7 +522,7 @@ describe('runJob failure modes', () => {
     expect(adapter.requests).toHaveLength(3);
   });
 
-  it('13b. three genuinely EMPTY turns the model chose still end the job done, exactly as before', async () => {
+  it('13b. three genuinely EMPTY turns the model chose still end the job done', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
     // The other half of the definition: excluding a truncated turn from "empty" must not stop a

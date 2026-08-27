@@ -106,8 +106,8 @@ describe("the character's entrance", () => {
    */
   it('wears no selected splat while the panel is open', async () => {
     mountShell();
-    /** Every splat drawing on screen, found by its ART rather than by a test id: the block's own copy
-     *  carried none, which is exactly why nothing caught it. */
+    /** Every splat drawing on screen, found by its ART rather than by a test id: a stray copy
+     *  carrying no test id would escape any id-based query. */
     const splats = () => [...document.querySelectorAll('img')]
       .filter((img) => img.getAttribute('src') === MODE_PLATE.src);
     /** The assistant block's own box: the anchor's nearest positioned container. */

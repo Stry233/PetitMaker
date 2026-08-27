@@ -1,7 +1,7 @@
 /**
  * No interaction source may compare a pointer button to a literal.
  *
- * Which buttons navigate the camera was written out by hand in three separate files, and a
+ * Which buttons navigate the camera would otherwise be written out by hand file by file, and a
  * reintroduced literal is invisible in review. Everything goes through
  * `core/interaction/pointer-buttons`, which holds the values and is not under this root.
  */

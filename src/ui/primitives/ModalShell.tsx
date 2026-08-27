@@ -167,11 +167,10 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
   onCloseRef.current = onClose;
 
   // Escape closes the modal — but ONLY the topmost open shell.
-  // Most ModalShell consumers (About, Settings, Help, Export, ExportJson,
-  // Import) treat `onClose` as a plain dismiss, so a shared handler here is
-  // safe for them, with one caveat (ExportModal mid-export). A window with
-  // work in flight guards its own handler instead (ChangePlanetModal refuses
-  // to close while a transfer runs), which this reaches through `onCloseRef`. Keyed on
+  // Most ModalShell consumers (About, Settings, Help, ExportJson, Import)
+  // treat `onClose` as a plain dismiss; a window with work in flight guards
+  // its own handler instead (ExportModal refuses mid-export, ChangePlanetModal
+  // while a transfer runs), which this reaches through `onCloseRef`. Keyed on
   // `open`+`passive`, not on `onClose` identity, so a consumer whose `passive`
   // flips mid-`open` joins or leaves the stack at that flip, not only at mount.
   useEffect(() => {

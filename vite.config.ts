@@ -69,6 +69,7 @@ function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: stri
       const title = target.title;
       const tags = basePath === '/'
         ? [
+            ...target.verificationMetas.map((m) => `<meta name="${m.name}" content="${m.content}" />`),
             `<meta name="description" content="${target.description}" />`,
             `<meta name="keywords" content="${target.keywords}" />`,
             `<link rel="canonical" href="${origin}/" />`,
@@ -200,7 +201,7 @@ export default defineConfig(({ mode }) => {
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict
       // `script-src 'self'` (no 'unsafe-inline'). Modern browsers support modulepreload natively.
       modulePreload: { polyfill: false },
-      // (minify defaults to esbuild in prod; left as-is)
+      // (minify stays on Vite's prod default, esbuild)
     },
   };
 });
