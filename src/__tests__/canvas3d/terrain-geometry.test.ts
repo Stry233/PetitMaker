@@ -173,7 +173,7 @@ describe('preview3d/terrain-geometry', () => {
     expect(wallVerts(atCentre)).toBe(wallVerts(offCentre));
   });
 
-  it('a patchOnly inner-fan rim is cull-tested exactly (finding-2: side classification is float-exact)', () => {
+  it('a patchOnly inner-fan rim is cull-tested exactly (side classification is float-exact)', () => {
     // A Γ-patch (inner) fan's straight edges lie on CELL SIDES and must get the rim neighbour-cull. The
     // same fanPoly endpoint snap keeps those endpoints exact so the `=== x0` side test matches; otherwise
     // a patch on the float-fragile centre column draws a phantom rim THROUGH its equal/taller water

@@ -1,13 +1,5 @@
-/*
- * Wavy — the app's ONE emphasis underline: a yellow wave travelling under a word.
- *
- * It lives here rather than in `agent/atoms.tsx` because the whole Site Log UI is
- * a lazy chunk, and the first-launch tour is in the main bundle: importing it from atoms would pull
- * that chunk's atoms + markdown renderer into the main bundle for one underline.
- *
- * The travel itself is `.pw-wavy` in ui/design/animations.css, so reduced motion freezes it there with
- * every other looping decoration while the underline stays visible.
- */
+/** Shared animated emphasis underline. Keeping it in primitives prevents the main-bundle tour from
+ * importing the lazy assistant chunk. Reduced motion freezes the wave but keeps it visible. */
 import type { CSSProperties, ReactNode } from 'react';
 import { usePx } from '../design/scale';
 
@@ -15,7 +7,7 @@ import { usePx } from '../design/scale';
  *  custom props). */
 type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
 
-/** Prototype wave tile: 7×6 css px → 14×12 design px, 2px→4px round stroke.
+/** Wave tile: 7×6 CSS pixels scaled to 14×12 design pixels with a 2px round stroke.
  *  The SVG itself stays in its 7×6 coordinate space; background-size scales it.
  *  Spaces and quotes are percent-encoded (same rendering; strict CSS value
  *  parsers reject raw spaces/quotes inside url()). */

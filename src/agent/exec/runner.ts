@@ -114,19 +114,7 @@ export function createRunner(cfg: RunnerConfig): {
   /** Continues a paused job with no note (the panel's Resume button, as opposed to `send` with
    *  typed text, which carries the note as a queued steer). */
   resume(): void;
-  /**
-   * PUT A HELD JOB AWAY: the user has declined to continue it.
-   *
-   * It SETTLES the job rather than leaving it standing, and that is the point. A paused job owns the
-   * composer's resume route and the session's current seat, so a panel that merely hid its card
-   * would be one with no way to a fresh order and a dock still reporting a hold nothing is showing.
-   * Settling it as `aborted` is what the outcome already means — a run the user stopped — and the
-   * record that lands is what the panel then FILES (escape invariant 2: a set-aside job becomes a
-   * visible row, never a disappearance).
-   *
-   * A LIVE JOB IS `stop()`'s BUSINESS and this leaves it alone: there is a loop to abort there, and
-   * appending an end under it would race the one the loop writes itself.
-   */
+  /** Settles and files a held job as aborted. A live job remains the responsibility of `stop()`. */
   setAside(): void;
   active(): boolean;
   /** Ends a standing retry backoff early (the dock's countdown press); a no-op when none is
@@ -150,16 +138,8 @@ export function createRunner(cfg: RunnerConfig): {
     const { log } = useAgentSession.getState();
     const controller = new AbortController();
     abortController = controller;
-    // CRITICAL DEFENSE: this job closes over `log` for its whole life, but `clearSession` (or a
-    // future `hydrate` that decides to proceed anyway) can swap the STORE's log out from under it
-    // at any moment. An orphaned job would keep executing tool calls against the real map behind an
-    // empty panel, with its gates landing on a dead log and pause/resume mis-targeting — so rather
-    // than trust every caller to sequence around a live run, the job watches the store itself: the
-    // instant the store's log stops being the one this job holds, abort exactly as `stop()` would.
-    // The resulting jobEnd/incident lands on the OLD (held) log, never on the fresh one clearSession
-    // just adopted. A steer the reentry branch of `send()` queues onto the NEW log in the meantime
-    // is not lost: it sits there until that log's own next job runs and `deliverSteers` picks
-    // it up.
+    // A job owns the log it launched with. Replacing that log aborts the job before it can edit the
+    // map behind a fresh session; completion stays on the old log and new-log steers wait there.
     const unwatchLog = useAgentSession.subscribe((state) => {
       if (state.log !== log) controller.abort();
     });
@@ -211,9 +191,7 @@ export function createRunner(cfg: RunnerConfig): {
     };
     inflight = runJob(log, loopDeps)
       .catch((err): JobOutcome => {
-        // Should be impossible (every real failure inside runJob is caught and reported as a
-        // value); a defensive catch so a stray throw still settles the job rather than stranding
-        // it "active" forever with no jobEnd/incident to end it.
+        // Convert an unexpected rejection into a terminal incident so the job always settles.
         const message = err instanceof Error ? err.message : String(err);
         append(log, { kind: 'incident', error: { cls: 'unknown', detail: redactSecrets(message) } });
         return 'incident';

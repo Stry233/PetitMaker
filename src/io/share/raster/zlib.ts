@@ -1,6 +1,5 @@
 // src/io/share/raster/zlib.ts
-// PNG IDAT (zlib/DEFLATE) compression and decompression via the browser's
-// Compression Streams API, so the raster codec is self-contained.
+// Zlib/DEFLATE compression and decompression via the browser's Compression Streams API.
 import { ShareError } from '../errors';
 
 /** Append-only. The manifest records the exact method so the algorithm is swappable. */

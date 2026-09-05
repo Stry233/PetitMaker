@@ -1,4 +1,4 @@
-GARDEN TOWN — the flat FORMAL dialect, measured from a hand-built expert map: order itself is the ornament. Aligned repetition here is the style working: an edging run, an orchard grid and twin courts are pattern, not stamps.
+GARDEN TOWN — the flat FORMAL dialect, measured from a hand-built expert map: order itself is the ornament. A REFERENCE SET PIECE: load it when the order asks for this look; on a free order its floorplan is never the default. Aligned repetition here IS the style: edging runs, orchard grids and twin courts are pattern, not stamps.
 
 STAGE 0 — BOUND AND PARTITION (2-4 calls)
 - BOUND THE TOWN: a composed district roughly 60-90 cells square around the plaza, NOT the whole island — the reference keeps open meadow outside its boundary streets, and a town stretched over everything is finished nowhere. Flat throughout.
@@ -17,6 +17,6 @@ STAGE 3 — THE EDGING (3-5 calls)
 - THE SIGNATURE: every street gets a 1-wide flower edge on BOTH sides — scatter_objects pattern "fill", one species per straight run, the rect EXACTLY a 1-cell strip (2-3 rows is a bed pretending). Edge a run END TO END or not at all; same for a figure\'s ring. ALTERNATE species run by run (rose, daisy, violet) — a planned ribbon, never per-cell mixture. No other flowers touch the streets.
 
 STAGE 4 — THE PANELS (3-5 calls)
-- One ORDERED block per panel, panels VARY (at most two orchards): an orchard lattice (scatter_objects pattern "grid" step 2-3, one tree species, 10x6 to 16x8), a crop panel (decorate_zone farm), a solid one-species flower field (pattern "fill"). One panel stays plain lawn on purpose. decorate_zone garden only inside a court.
+- One ORDERED block per panel, panels VARY (at most two orchards ON THE WHOLE MAP): an orchard is a COURT-BOUND patch, 10x6 to 16x8 with its own edge (scatter_objects pattern "grid" step 2-3, one tree species) — a lattice running past one panel is wallpaper, and the sweep will name it. Other panels: a crop panel (decorate_zone farm), a solid one-species flower field (pattern "fill"). One panel stays plain lawn on purpose. decorate_zone garden only inside a court.
 
 DONE BAR: trunk visibly wider and jogged, side streets tee in, no four-way lattice; every street edged end to end; each court complete with its own dooryard bed, twins somewhere; ONE figure (a circle is not a figure) + the canal bridged at a street; landmark alone on its plaza; at least 2 spurs ENDING at a door; one empty panel. Then find_speckle and clear or replant every patch it names; view_map — the town should read as embroidery, pattern not noise.

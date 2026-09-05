@@ -356,8 +356,7 @@ describe('putting the glyph where the grid can hold it keeps more of the drawing
     // The cells the fit exists for, with the bars at the measured numbers rather than near them.
     // Centred, an E six cells tall puts its bars between rows and keeps a FIFTH of the ink it was
     // drawn with (0.213, and an L 0.209); fitted, both keep over nine tenths (0.908 and 0.955). The
-    // bars are set a clear step inside those — 0.85 and 0.35 — so a real regression fails and a
-    // hundredth of drift does not.
+    // bounds of 0.85 and 0.35 distinguish material loss from hundredth-scale drift.
     for (const text of ['E', 'L']) {
       const g = gains.find((x) => x.f.text === text && x.f.height === 6)!;
       expect(g.fitted, `${text} at six, fitted`).toBeGreaterThan(0.85);

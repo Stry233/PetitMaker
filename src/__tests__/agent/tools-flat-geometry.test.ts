@@ -149,13 +149,6 @@ describe('flat geometry: both spellings, one edit', () => {
     expect(r.content).toMatch(/^Scattered [1-3]\/3/);
   });
 
-  it('run_generator takes flat rect corners as its target area', async () => {
-    const { deps } = setup(24, 24);
-    const r = await executeToolCall(call('run_generator', { x1: 0, y1: 0, x2: 15, y2: 15, seed: 7 }), deps);
-    expect(r.isError).toBe(false);
-    expect(r.content).toContain('over the 256-cell region');
-  });
-
   it('the site finders take nearX/nearY as the flat near point', async () => {
     const a = setup();
     const b = setup();
@@ -256,9 +249,9 @@ describe('flat geometry: the schema stays emittable', () => {
     const road = props('build_road');
     expect(road.shape?.enum).toEqual(['line', 'cells']);
     for (const k of ['x1', 'y1', 'x2', 'y2', 'width']) expect(road[k]?.type, `build_road.${k}`).toBe('integer');
-    for (const name of ['scatter_objects', 'run_generator']) {
-      const p = props(name);
-      for (const k of ['x1', 'y1', 'x2', 'y2']) expect(p[k]?.type, `${name}.${k}`).toBe('integer');
+    {
+      const p = props('scatter_objects');
+      for (const k of ['x1', 'y1', 'x2', 'y2']) expect(p[k]?.type, `scatter_objects.${k}`).toBe('integer');
     }
     for (const name of ['find_flat_areas', 'find_bridge_sites', 'find_ramp_sites']) {
       const p = props(name);
@@ -277,9 +270,9 @@ describe('flat geometry: the approval line reads it', () => {
     expect(flat).toContain('(2,3)');
   });
 
-  it('a flat scatter/run_generator rect reaches the description', () => {
-    const nested = describeToolCall({ name: 'run_generator', input: { rect: { x1: 0, y1: 0, x2: 9, y2: 9 }, seed: 4 } }, en);
-    const flat = describeToolCall({ name: 'run_generator', input: { x1: 0, y1: 0, x2: 9, y2: 9, seed: 4 } }, en);
+  it('a flat scatter_objects rect reaches the description', () => {
+    const nested = describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a'], count: 5, rect: { x1: 0, y1: 0, x2: 9, y2: 9 } } }, en);
+    const flat = describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a'], count: 5, x1: 0, y1: 0, x2: 9, y2: 9 } }, en);
     expect(flat).toEqual(nested);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The plantable road (issue #11): the game grows flowers and crops on some road surfaces, and the
+ * Some road surfaces support flowers and crops, and the
  * editor grants that through the road's `plantable` trait — the dirt road today. Flora and a
  * plantable road COEXIST on a cell, in both orders of arrival: placing flora keeps the road it
  * lands on, and painting the road under standing flora keeps the flowers. Everything else keeps

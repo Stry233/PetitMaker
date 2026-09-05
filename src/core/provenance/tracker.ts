@@ -1,7 +1,7 @@
 // src/core/provenance/tracker.ts
 import { cellKey } from '../model/grid-model';
 import type { MacroCoord } from '../model/types';
-import { applyOpToTaint, deriveSummary, dominantAuthor, type OpKind, sourceClass } from './policy';
+import { applyMoveToTaint, applyOpToTaint, deriveSummary, dominantAuthor, type OpKind, sourceClass } from './policy';
 import { APP_VERSION } from '../../version';
 import {
   ProvSource, type SourceContext, type UnitTaint, type ProvenanceOperation,
@@ -101,6 +101,83 @@ export class ProvenanceTracker {
     }
     this.state.summary = null;
     return delta;
+  }
+
+  /** Re-seat an object that was removed and immediately re-placed under the SAME id — a move or a
+   *  rotation. `taint` is what it carried before the remove; it keeps it (see `applyMoveToTaint`),
+   *  and the op enters the ledger as cosmetic under the mover's source. */
+  restoreObjectTaint(objectId: string, taint: UnitTaint, scope: ScopeMeta): TaintDelta {
+    const ctx = this.currentSource();
+    const id = `op-${++this.opSeq}`;
+    const before = clone(this.state.objectTaint.get(objectId) ?? null);
+    const after = applyMoveToTaint(clone(taint)!, ctx.source, id);
+    this.state.objectTaint.set(objectId, after);
+    this.updateSession(ctx.source);
+    this.state.ledger.push(this.makeOp(id, ctx, 'cosmetic', [], [{ id: objectId, kind: 'cosmetic' }], scope));
+    if (this.state.ledger.length > LEDGER_MAX) {
+      this.state.ledger.splice(0, this.state.ledger.length - LEDGER_MAX);
+    }
+    this.state.summary = null;
+    return { cells: [], objects: [{ id: objectId, before, after: clone(after) }], opIds: [id] };
+  }
+
+  /**
+   * Adopt a prior map's provenance across a TRANSFER: the same build re-seated on another planet.
+   * Cell taint arrives shifted by `offset` wherever the replay actually landed content, object
+   * taint follows the ids that survived (a transfer keeps every object's id), and the source's
+   * ledger and session flags ride along — the work's history is the work's, whichever template it
+   * stands on. Runs AFTER the replay recorded its own ops: the replay's taint is a placeholder for
+   * cells whose true author is known, and this overwrites it with that truth.
+   *
+   * Carried ledger ops are re-keyed (`xfer-` prefix) so they cannot collide with this tracker's
+   * own `op-N` sequence, and the carried taint's op references are remapped with them; a reference
+   * to an op the source ledger had already capped away stays as it was, which is the same
+   * coarseness it had at home.
+   */
+  adoptTransplant(
+    prev: ProvenanceState,
+    offset: MacroCoord,
+    keepCell: (x: number, y: number) => boolean,
+    keepObject: (id: string) => boolean,
+  ): void {
+    const remap = new Map<string, string>();
+    for (const op of prev.ledger) remap.set(op.id, `xfer-${op.id}`);
+    const reref = (t: UnitTaint | null): UnitTaint | null => {
+      if (!t) return null;
+      return {
+        ...t,
+        contribution: { ...t.contribution },
+        createdByOp: remap.get(t.createdByOp) ?? t.createdByOp,
+        lastModifiedByOp: remap.get(t.lastModifiedByOp) ?? t.lastModifiedByOp,
+      };
+    };
+    for (let sy = 0; sy < prev.cellTaint.length; sy++) {
+      const row = prev.cellTaint[sy]!;
+      for (let sx = 0; sx < row.length; sx++) {
+        const t = row[sx];
+        if (!t) continue;
+        const dx = sx + offset.x, dy = sy + offset.y;
+        if (!this.state.cellTaint[dy] || dx < 0 || dx >= this.state.cellTaint[dy]!.length) continue;
+        if (!keepCell(dx, dy)) continue;
+        this.state.cellTaint[dy]![dx] = reref(t);
+      }
+    }
+    for (const [id, t] of prev.objectTaint) {
+      if (keepObject(id)) this.state.objectTaint.set(id, reref(t)!);
+    }
+    this.state.ledger = [
+      ...prev.ledger.map((op) => ({ ...op, id: remap.get(op.id)! })),
+      ...this.state.ledger,
+    ].slice(-LEDGER_MAX);
+    const a = this.state.session, b = prev.session;
+    a.aiAnalysisUsed ||= b.aiAnalysisUsed;
+    a.aiWritesUsed ||= b.aiWritesUsed;
+    a.aiAcceptedCount += b.aiAcceptedCount;
+    a.proceduralRuns += b.proceduralRuns;
+    a.analysisOnlyCalls += b.analysisOnlyCalls;
+    a.humanAfterAi ||= b.humanAfterAi;
+    a.aiAfterHuman ||= b.aiAfterHuman;
+    this.state.summary = null;
   }
 
   applyDelta(delta: TaintDelta, dir: 'before' | 'after'): void {

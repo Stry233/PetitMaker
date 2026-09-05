@@ -2,12 +2,11 @@
 // scroll vs pinch) and multi-touch pinch tracking. No DOM/Pixi imports, so it unit-tests headlessly;
 // usePointerInteraction owns the wiring.
 
-/** What a wheel event MEANS:
+/** What KIND of gesture a wheel event is; the camera verb it drives is `wheelVerb`'s decision:
  *  - 'pinch-zoom'  — a touchpad pinch (browsers synthesize ctrl+wheel for it) or explicit ctrl+wheel:
  *                    smooth, magnitude-proportional zoom anchored at the cursor.
- *  - 'scroll-pan'  — a touchpad two-finger scroll: pan the map (the touchpad idiom — a two-finger
- *                    scroll must pan, not zoom; zooming on scroll makes trackpads unusable).
- *  - 'wheel-zoom'  — a discrete mouse-wheel notch: the classic stepped zoom. */
+ *  - 'scroll-pan'  — a continuous touchpad-style scroll (small fractional deltas).
+ *  - 'wheel-zoom'  — a discrete mouse-wheel notch. */
 export type WheelIntent = 'pinch-zoom' | 'scroll-pan' | 'wheel-zoom';
 
 export interface WheelLike { deltaX: number; deltaY: number; deltaMode: number; ctrlKey: boolean }
@@ -21,8 +20,8 @@ const NOTCH_MIN = 50;
 
 /** Heuristic mouse-wheel vs touchpad discrimination with per-gesture stickiness. One instance per
  *  listener; feed every non-ctrl wheel event through classify(). Deliberate bias: an ambiguous
- *  stream (e.g. macOS mice, which emit accelerated fractional deltas) classifies as touchpad pan —
- *  matching the platform idiom those devices ship with. */
+ *  stream (e.g. macOS mice, which emit accelerated fractional deltas) classifies as a touchpad
+ *  scroll, so it rides the smooth, magnitude-proportional path rather than the stepped one. */
 export class WheelClassifier {
   private lastKind: Exclude<WheelIntent, 'pinch-zoom'> | null = null;
   private lastTime = -Infinity;

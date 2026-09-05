@@ -1,11 +1,4 @@
-/**
- * Regression: the roads macro must never stack a second road object on a cell that already
- * carries one — whether the duplicate comes from a widened run's own dilation overlapping itself,
- * or from a later press landing on cells an earlier press already paved. V-PLACE-OVERLAP exempts
- * coatings from the overlap block (a road is meant to be coated OVER), so an unguarded placement
- * validates and stacks silently; only a floating road over a road makes that illegal in-game, and
- * a saved map holding one is corrupt (the share codec refuses it).
- */
+/** The roads macro leaves at most one road coating per cell across dilation and repeated presses. */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';

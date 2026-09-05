@@ -8,7 +8,7 @@ import {
   redactKey, stripEmptyTools, wireFetch, withThinkingBudget,
 } from '../../../agent/eval/live-bench';
 import { createScriptedAdapter } from '../../../agent/eval/scripted-adapter';
-import { sanitizeEndpointUrl } from '../../../agent/security/key-storage';
+import { sanitizeEndpointUrl } from '../../../core/runtime/endpoint-url';
 import type { StreamEvent } from '../../../agent/core/types';
 
 const KEY = 'sk-live-abcdef1234567890';

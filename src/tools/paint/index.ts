@@ -22,7 +22,8 @@
  */
 export { DrawingTool } from './drawing-tool';
 export {
-  getCurveSession, isCurveSessionOpen, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
+  endCurveSession, getCurveSession, isCurveSessionOpen, moveCurveAnchor, setCurveHandle,
+  subscribeCurveSession,
 } from './curve-session';
 export {
   anchorHandles, bezier4, circleCells, curveCells, expandLine, lineCells, rectCells, snapShapeEnd,

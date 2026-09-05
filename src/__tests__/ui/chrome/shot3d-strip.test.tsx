@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import { Shot3dStrip } from '../../../ui/chrome/modals/export/Shot3dStrip';
 import { I18nProvider } from '../../../i18n/context';
@@ -57,12 +57,15 @@ describe('Shot3dStrip', () => {
     expect(st.preview3DEdit?.index).toBe(1);
   });
 
-  it('Add appends a shot; delete removes one', () => {
+  it('Add appends a shot; delete removes one', async () => {
     setShots(3);
     renderStrip();
     fireEvent.click(screen.getByLabelText('Add shot'));
     expect(useEditorStore.getState().export3dShots).toHaveLength(4);
     fireEvent.click(screen.getAllByLabelText('Remove shot')[0]!);
-    expect(useEditorStore.getState().export3dShots).toHaveLength(3);
+    await waitFor(() => {
+      expect(useEditorStore.getState().export3dShots).toHaveLength(3);
+      expect(screen.getAllByTitle('Click to set the camera angle')).toHaveLength(3);
+    });
   });
 });

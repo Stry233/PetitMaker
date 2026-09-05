@@ -89,9 +89,7 @@ describe('road cut legality — fan/triangle same-direction parity (validateCut)
   });
 
   it('no deadlock: a road below a state-4-trimmed end-cap still validates raw and keeps a legal cut', () => {
-    // Regression: the neighbour's canonical tokens read as actual-frame geometry made its shared edge
-    // register as EMPTY, so the road below could validate NO state at all — not even raw/square — and the
-    // manual tool's cycle found nothing (the cell read as un-editable).
+    // The neighbour's canonical tokens are transformed before its shared edge is classified.
     const state = makeState(12, 12);
     const road = addRoad(state, 5, 5);
     addRoad(state, 5, 4, [...CANONICAL_ROAD_STATES[4]!]); // end-cap above, trimmed to the / diagonal

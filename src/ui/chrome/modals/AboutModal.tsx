@@ -1,45 +1,8 @@
 /**
- * About modal — a two-view drill-in.
- *
- *  - View A (About): a brand block that anchors the eye (app name + tagline +
- *    one muted version line), the Legal & policies grid as the primary action
- *    area (icon + label + chevron drill-in rows), the configured filing rows,
- *    a compact names-only team line, and a receding fan-project disclaimer +
- *    source/© footer.
- *  - View B (Document): `LegalDocView`, lazily imported so the legal bundle
- *    (registry + every ?raw doc body + markdown parser/emitter) stays out of
- *    the main chunk until a user opens a doc.
- *
- * Motion — a WIDTH-ONLY MORPH. The two views share ONE card that animates its
- * WIDTH between them (the house `springs.stiff`) from View A's width to View
- * B's while the content cross-fades inside, and `overflow:hidden` on the card
- * clips everything so nothing renders outside the boundary during a morph, a
- * crossfade, or the exit. Width is per-view (ABOUT_WIDTH / DOC_WIDTH); HEIGHT
- * IS CONSTANT across both views — the card always sits at View A's measured
- * height (`measureAboutHeight`, capped at ABOUT_MAX_VH), and the doc view
- * simply fills that fixed height, scrolling its own body internally
- * (`LegalDocView`'s pinned header/footer + inner `data-scroll` region). Height
- * is measured only while View A is showing (mount + a `ResizeObserver` on the
- * About surface) — a locale change while on About still resizes the card, but
- * switching to/from the doc view never retargets it, so the two views can
- * never desync on height. `ModalShell` puts width (and this fixed height) on
- * `animate` only (never `initial`), so an open never morphs; each open's first
- * estimate→measured correction is a hard snap (`sizeReady`, RE-ARMED on every
- * close so a stale measurement carried over from a prior open can't spring-
- * morph into place on the next one — see `sizeReady`'s reset effect), and
- * reduced motion snaps all size changes.
- *
- * The whole modal still enters/exits as ONE unit — App keeps this component
- * mounted and drives `open`, so `ModalShell`'s own `AnimatePresence` owns the
- * card enter AND exit. The INNER `AnimatePresence` cross-fades the A↔B view
- * SWITCH (pure opacity; both views are absolutely positioned so they overlap);
- * a close would otherwise propagate exit DOWN and float the current view free of
- * the card, so we gate the inner `exit` on `ModalShell`'s `exiting` signal (the
- * render-prop `(exiting) => …`) — while the shell closes the frozen view rides
- * the card out in lockstep. The card WIDTH is frozen on exit too: the
- * measurement effect is gated on `open`, so a close never retargets the morph
- * mid-exit. Reopening resets to View A. The exiting view also gets
- * `pointerEvents:'none'` so it can't steal a click while it fades.
+ * Two-view About and legal-document modal. The legal reader is lazy-loaded. Both views share the
+ * About view's measured, capped height; only width morphs while content cross-fades. Initial sizing
+ * and reduced motion snap. Closing freezes the inner view and card dimensions so the shell exits as
+ * one unit, and reopening returns to About.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, Suspense, lazy, type CSSProperties } from 'react';

@@ -22,10 +22,7 @@ registerCatalogItem({ ...house, id: 'test-remove-cost', width: 1, height: 1 });
 const place = (id: string, i: number): PlacedObject =>
   ({ id, catalogId: 'test-remove-cost', position: { x: i % 90, y: Math.floor(i / 90) }, rotation: 0, elevation: 0 });
 
-/** The layer's private id->sprite LOD map, plus a counter of how many times its
- *  iteration protocol fires (a full walk), for white-box cost assertions. EVERY full-walk door is
- *  counted — Symbol.iterator, values, keys, entries, forEach — because updateLod already walks via
- *  `.values()`, and a pin watching only the default iterator would miss a regression through it. */
+/** The layer's id-to-sprite LOD map with every full-iteration entry point instrumented for cost assertions. */
 function instrumentLodMap(layer: ObjectLayer): { map: Map<string, unknown>; walks: () => number } {
   const map = (layer as unknown as { lodSprites: Map<string, unknown> }).lodSprites;
   let walks = 0;

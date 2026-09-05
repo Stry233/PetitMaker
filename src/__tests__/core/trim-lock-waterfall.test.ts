@@ -34,9 +34,9 @@ describe('waterfall-side corner locking', () => {
   });
 
   it('locks the falling water itself whole: no corner of a face cell is cuttable', () => {
-    // Issue #8: the drop side was locked but the lip's corners AWAY from the flow — against its
-    // back wall and caps, which pin nothing (not same-type) and drop nothing — were offered, and
-    // cutting them rounded the back of the fall.
+    // Every corner of a face cell resists cutting, the corners AWAY from the flow included —
+    // against the back wall and caps they pin nothing (not same-type) and drop nothing, and a cut
+    // there would round the back of the fall.
     const state = waterfallSouth();
     const lip = computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain');
     expect(lip).toEqual([true, true, true, true]);

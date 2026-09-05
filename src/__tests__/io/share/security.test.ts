@@ -1,5 +1,4 @@
-// src/__tests__/io/share/security.test.ts — hostile/malformed/oversized inputs must never crash
-// the PetitGlyph v2 raster-first importer; every path returns a typed ImportResult.
+// Hostile, malformed, and oversized inputs return typed failures from the raster-first importer.
 import { describe, it, expect } from 'vitest';
 import { buildShareCode } from '../../../io/share/export';
 import { importFromRaster, importFromBytes } from '../../../io/share/import';

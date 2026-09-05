@@ -1,6 +1,7 @@
 import {
   type GridState,
   type MacroCell,
+  type MacroCoord,
   type MapTemplate,
   type PlacedObject,
   type TerrainCell,
@@ -9,6 +10,11 @@ import {
   CellZone,
   TerrainType,
 } from '../core/model/types';
+import {
+  ANNOTATION_COLORS, generateAnnotationId,
+  type AnnotationsState, type MapAnnotation,
+} from '../core/model/annotations';
+import type { CurveAnchor } from '../core/model/spline';
 import { cellKey, createGrid, createPlazaObject, onHalfGrid } from '../core/model/grid-model';
 import { generateObjectId } from '../core/model/object-id';
 import { PLAZA_ID } from '../core/model/constants';
@@ -27,11 +33,7 @@ import {
 } from './save-format';
 import { serializeProvenance, deserializeProvenance, markLegacyUnknown } from '../core/provenance/serialize';
 
-/* ── SaveFile schema lives in ./save-format/types (shared with the migration
-   framework). serialize writes CURRENT_VERSION; deserialize lifts any older save
-   to the current shape via migrateToCurrent before decoding. ─────────────────── */
-
-/* ── Corner codec maps ───────────────────────────────────── */
+/* Save files are migrated to the schema in ./save-format/types before decoding. */
 
 const CORNER_ENCODE: Record<string, string> = {
   square: 'S', fan: 'F', 'tri-NW': '1', 'tri-NE': '2', 'tri-SW': '3', 'tri-SE': '4', empty: 'E',
@@ -41,20 +43,16 @@ const CORNER_DECODE: Record<string, CornerTrim> = {
   S: 'square', F: 'fan', T: 'tri-NW', '1': 'tri-NW', '2': 'tri-NE', '3': 'tri-SW', '4': 'tri-SE', E: 'empty',
 };
 
-/** Encode a corner tuple to its 4-char suffix, or undefined when all-square ('SSSS' — the default,
- *  which the token/object omits). The single source for the CORNER_ENCODE + all-square-elision idiom
- *  shared by terrain tokens and saved objects. */
+/** Encodes corners as a four-character suffix, omitting the all-square default. */
 export function encodeCorners(corners: Corners): string | undefined {
   const suffix = corners.map((c: CornerTrim) => CORNER_ENCODE[c] ?? 'S').join('');
   return suffix === 'SSSS' ? undefined : suffix;
 }
 
-/** Decode a 4-char corner suffix back to a corner tuple (missing/unknown chars → 'square'). */
+/** Decodes a four-character corner suffix, treating unknown characters as square. */
 export function decodeCorners(suffix: string): Corners {
   return [0, 1, 2, 3].map((i) => CORNER_DECODE[suffix[i]!] ?? 'square') as Corners;
 }
-
-/* ── Cell tokenisation ───────────────────────────────────── */
 
 export function terrainToken(t: TerrainCell): string {
   let token = `t${t.type}:${t.elevation}`;
@@ -65,8 +63,7 @@ export function terrainToken(t: TerrainCell): string {
   } else if (t.patchOnly) {
     token += '::P';
   }
-  // Γ patch: a cosmetic corner fillet (patchOnly) whose real support tier is patchBase — see
-  // docs/ARCHITECTURE.md → Edge-Cut System. `:B{n}` encodes that base; absent ⇒ legacy fallback (elevation-1).
+  // Patch-only terrain stores its support tier in `:B{n}`; an absent tier falls back to elevation - 1.
   if (t.patchOnly && t.patchBase !== undefined) token += ':B' + t.patchBase;
   return token;
 }
@@ -75,8 +72,6 @@ function cellToToken(cell: MacroCell): string {
   if (!cell.terrain) return '_';
   return terrainToken(cell.terrain);
 }
-
-/* ── RLE compression ─────────────────────────────────────── */
 
 export function rleEncode(tokens: string[]): string {
   if (tokens.length === 0) return '';
@@ -96,12 +91,7 @@ export function rleEncode(tokens: string[]): string {
   return runs.join(',');
 }
 
-/**
- * Decode a comma-joined RLE stream. `maxTokens` bounds the expansion: run counts are
- * attacker-controlled in an imported file, so an unbounded loop would let a single
- * `1e9*_` run allocate the tab to death before any later validation could reject the
- * save. Throws on malformed or over-long input; callers treat that as a bad file.
- */
+/** Decodes comma-separated RLE while bounding expansion from untrusted run counts. */
 export function rleDecode(rle: string, maxTokens?: number): string[] {
   if (rle === '') return [];
   const tokens: string[] = [];
@@ -125,10 +115,7 @@ export function rleDecode(rle: string, maxTokens?: number): string[] {
   return tokens;
 }
 
-/* ── Token → Cell parsing ────────────────────────────────── */
-
-/** Parse one terrain token. Returns null for malformed or out-of-range values —
- *  imported tokens are untrusted, and a NaN elevation must never reach GridState. */
+/** Parses one terrain token and rejects malformed or out-of-range values. */
 export function parseTerrain(s: string): TerrainCell | null {
   const parts = s.slice(1).split(':');
   const type = Number(parts[0]) as TerrainType;
@@ -160,22 +147,16 @@ function tokenToCell(token: string, zone: CellZone): MacroCell {
     if (part.startsWith('t')) {
       terrain = parseTerrain(part);
     }
-    // Legacy corner ('c') and road ('r') tokens are silently ignored
+    // Obsolete corner (`c`) and road (`r`) tokens are accepted but ignored.
   }
 
   return { zone, terrain };
 }
 
-/* ── Public API ──────────────────────────────────────────── */
-
-/** `camera` is session/view data (which view was looking where), not map content — it never
- *  comes from GridState (a higher layer would have to leak into core/model to put it there).
- *  Callers that want it round-tripped (io/autosave) read it live from the canvas at write time
- *  and pass it in; every other caller (import, share codecs, editor-api) omits it. */
+/** Serializes map state with optional camera session data supplied by the caller. */
 export function serialize(state: GridState, camera?: PersistedCamera): string {
   const { template, cells, objects } = state;
 
-  // Flatten row-major
   const tokens: string[] = [];
   for (let y = 0; y < template.height; y++) {
     const row = cells[y];
@@ -213,27 +194,23 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
     objects: objectList,
     metadata: { savedAt: new Date().toISOString() },
     ...(state.provenance ? { provenance: serializeProvenance(state.provenance) } : {}),
-    // Notes round-trip with the map (autosave keeps them). Written only when non-empty, and
-    // outside what the share codecs read: canonicalize() takes version/templateId/cells/objects.
+    // Project notes are omitted when empty and are not part of the canonical share payload.
     ...(state.notes && (state.notes.title || state.notes.description || state.notes.author)
       ? { notes: state.notes }
       : {}),
+    // An empty annotation layer has no persisted visibility or lock state.
+    ...(state.annotations && state.annotations.items.length > 0 ? { annotations: state.annotations } : {}),
     ...(camera && (camera.view2d || camera.view3d) ? { camera } : {}),
   };
 
   return JSON.stringify(saveFile);
 }
 
-/** Finite-number guard for camera fields read back from storage — untrusted (hand-edited
- *  localStorage, an old/foreign save) — a NaN/string must never reach the camera bridge. */
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
-/** Read just the `camera` section from a save's raw JSON, independent of `deserialize` (which
- *  returns a GridState and has no business carrying view state). Malformed/missing shapes are
- *  dropped field-by-field rather than failing the whole read: a corrupt 3D camera shouldn't cost
- *  the user their 2D one. Never throws; returns undefined when there's nothing usable. */
+/** Reads valid 2D and 3D camera fields independently without rejecting the map. */
 export function readSaveCamera(json: string): PersistedCamera | undefined {
   let raw: unknown;
   try {
@@ -264,17 +241,8 @@ export function readSaveCamera(json: string): PersistedCamera | undefined {
 }
 
 /**
- * The coatings a LATER coating has completely covered, by id.
- *
- * Nothing in the rules refuses a second road on a paved cell: V-PLACE-OVERLAP exempts surface
- * coatings so that a placement may coat OVER one, which leaves a tool that forgets to strip the
- * tile underneath free to stack them. The stack is invisible on screen, charges its load value
- * once per copy, travels with the save, and is what makes a share code unbuildable (one real map
- * reached ten dirt roads on a single cell). Read by TRAIT, so any future coating item is covered.
- *
- * Last one wins, which is what coating over means. A coating that still owns a cell of its own
- * survives: two differently sized coatings that merely OVERLAP are not a stack, and dropping one
- * of those would take ground the other never covered.
+ * Finds coatings fully covered by later coatings. A coating that still owns any cell survives,
+ * so partial overlaps preserve both objects. Catalog traits define which objects are coatings.
  */
 export function stackedCoatingIds(objects: Iterable<PlacedObject>): Set<string> {
   const owner = new Map<string, string>();
@@ -303,12 +271,9 @@ export function stackedCoatingIds(objects: Iterable<PlacedObject>): Set<string> 
 }
 
 export function deserialize(json: string, template: MapTemplate): GridState {
-  // Lift any older save to the current shape before decoding (throws
-  // SaveVersionError on a future-version or unmigratable file).
+  // Migration rejects unsupported future versions and inputs without a migration path.
   const save = migrateToCurrent(JSON.parse(json) as RawSave) as unknown as SaveFile;
-  // A save decoded into the wrong template would load silently sheared — terrain
-  // squashed into the top rows, the rest grass. Fail loudly instead, matching the
-  // raster import path's incompatible-template error.
+  // Row-major cell data is meaningful only for its declared template dimensions.
   if (save.templateId && save.templateId !== template.id) {
     throw new Error(`Save was made for map template "${save.templateId}", not "${template.id}".`);
   }
@@ -325,8 +290,7 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (!row) continue;
     for (let x = 0; x < template.width; x++) {
       const token = tokens[idx++];
-      // The plaza is an object, so its cells are plain grass: terrain a legacy save baked into
-      // them is ignored, and createGrid has already set grass there.
+      // Plaza terrain comes from its immutable template object, not saved cell tokens.
       if (token && (template.zones[y]?.[x] ?? CellZone.Grass) !== CellZone.Plaza) {
         row[x] = tokenToCell(token, row[x]?.zone ?? CellZone.Grass);
       }
@@ -334,23 +298,16 @@ export function deserialize(json: string, template: MapTemplate): GridState {
   }
 
   const objects = new Map<string, PlacedObject>();
+  // Provenance keys follow object IDs that are replaced during validation.
+  const reIdedObjects = new Map<string, string>();
   for (const obj of save.objects) {
     if (obj.id === PLAZA_ID) continue; // recreated fresh from the template below
-    // A retired id (the four plain colour roads) reads as the item that replaced it, BEFORE the
-    // guard below drops what it cannot resolve — an old map converts rather than losing its roads.
-    // Exact match only: this is a rename table, not a prefix rule, so a crafted near-miss id still
-    // falls through to the drop.
+    // Exact catalog-ID aliases preserve renamed items; unknown IDs are discarded below.
     const catalogId = currentCatalogId(obj.catalogId);
-    // Import validation: only real catalog items may enter the state. A crafted
-    // save could otherwise smuggle arbitrary strings as catalogId — which the
-    // renderer/rules would choke on, and which the AI agent would echo into its
-    // model context (prompt-injection vector via shared map files).
+    // Catalog IDs can enter model context, so imports accept only registered values.
     const item = getCatalogItem(catalogId);
     if (!item) continue;
-    // Numeric fields are untrusted: a NaN position or a 45° rotation would pass the
-    // type cast and corrupt every downstream footprint read. Drop the object instead.
-    // A halfStep item (ramps, bridges) anchors on the half grid, so 7.5 is a legal x for
-    // one and only one; 7.33 is legal for neither.
+    // Half-step items accept integer or half-integer anchors; other items require integers.
     const onGrid = (v: number) => (hasHalfStep(item) ? onHalfGrid(v) : Number.isInteger(v));
     if (!onGrid(obj.x) || !onGrid(obj.y)
       || obj.x < 0 || obj.y < 0 || obj.x >= template.width || obj.y >= template.height) continue;
@@ -358,12 +315,9 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (obj.elevation !== undefined && !isValidElevation(obj.elevation)) continue;
     if (obj.spanLength !== undefined
       && (!Number.isInteger(obj.spanLength) || obj.spanLength < 1 || obj.spanLength > Math.max(template.width, template.height))) continue;
-    // The id is untrusted free text and the agent's get_objects prints it verbatim into model
-    // context, so an id outside the minter's own alphabet is replaced rather than carried — the
-    // other prompt-injection door beside catalogId. Every id this app ever wrote passes (the
-    // minter emits base36, the share decoder o<n>), so only a crafted or hand-edited save is
-    // touched, and such a save's exported step history was never replayable anyway.
+    // Object IDs can enter model context; replace values outside the app's emitted alphabet.
     const id = /^[A-Za-z0-9_-]{1,64}$/.test(obj.id) ? obj.id : generateObjectId();
+    if (id !== obj.id && typeof obj.id === 'string') reIdedObjects.set(obj.id, id);
     const placed: PlacedObject = {
       id,
       catalogId,
@@ -379,9 +333,7 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     objects.set(id, placed);
   }
 
-  // Repair a map that arrives with coatings stacked on one cell, beside the unknown-catalogId
-  // drop above: both are about what may enter the state, and a stack is one road tile's worth of
-  // map wearing several objects' worth of load, save size and share-code payload.
+  // Fully covered coatings are invisible duplicates and must not consume load or payload space.
   for (const id of stackedCoatingIds(objects.values())) objects.delete(id);
 
   const plaza = createPlazaObject(template);
@@ -395,10 +347,19 @@ export function deserialize(json: string, template: MapTemplate): GridState {
   };
   if (save.provenance) {
     result.provenance = deserializeProvenance(save.provenance, template.width, template.height);
+    // Keep provenance aligned with replaced and discarded object IDs.
+    const taint = result.provenance.objectTaint;
+    for (const [oldId, newId] of reIdedObjects) {
+      const t = taint.get(oldId);
+      if (t) { taint.delete(oldId); taint.set(newId, t); }
+    }
+    for (const id of [...taint.keys()]) {
+      if (!objects.has(id)) taint.delete(id);
+    }
   } else {
     markLegacyUnknown(result); // legacy / pre-provenance map → existing content is Unknown
   }
-  // Notes: untrusted input — coerce to strings and clamp lengths (title/author 80, description 400).
+  // Notes are untrusted; coerce them to strings and enforce persisted length limits.
   if (save.notes && typeof save.notes === 'object') {
     result.notes = {
       ...(save.notes.title ? { title: String(save.notes.title).slice(0, 80) } : {}),
@@ -406,5 +367,88 @@ export function deserialize(json: string, template: MapTemplate): GridState {
       ...(save.notes.author ? { author: String(save.notes.author).slice(0, 80) } : {}),
     };
   }
+  const annotations = decodeAnnotations(save.annotations);
+  if (annotations) result.annotations = annotations;
   return result;
+}
+
+/* Invalid annotations are discarded; collection, text and coordinate limits bound imported data. */
+const ANNOT_MAX_ITEMS = 500;
+const ANNOT_MAX_CELLS = 5000;
+const ANNOT_MAX_POINTS = 200;
+const ANNOT_MAX_COORD = 1024;
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
+
+function finiteCoord(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= ANNOT_MAX_COORD ? v : null;
+}
+
+export function decodeAnnotations(raw: unknown): AnnotationsState | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as { items?: unknown; visible?: unknown; locked?: unknown };
+  if (!Array.isArray(r.items)) return undefined;
+  const items: MapAnnotation[] = [];
+  for (const entry of r.items.slice(0, ANNOT_MAX_ITEMS)) {
+    const note = decodeAnnotation(entry);
+    if (note) items.push(note);
+  }
+  if (items.length === 0) return undefined;
+  return { items, visible: r.visible !== false, locked: r.locked === true };
+}
+
+function decodeAnnotation(raw: unknown): MapAnnotation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = raw as Record<string, unknown>;
+  const id = typeof n.id === 'string' && n.id ? n.id.slice(0, 40) : generateAnnotationId();
+  const color = typeof n.color === 'string' && HEX_COLOR.test(n.color) ? n.color : ANNOTATION_COLORS[0]!;
+  if (n.kind === 'zone') {
+    if (!Array.isArray(n.cells)) return null;
+    const cells: MacroCoord[] = [];
+    for (const c of n.cells.slice(0, ANNOT_MAX_CELLS)) {
+      const x = finiteCoord((c as MacroCoord)?.x);
+      const y = finiteCoord((c as MacroCoord)?.y);
+      if (x === null || y === null || !Number.isInteger(x) || !Number.isInteger(y)) continue;
+      cells.push({ x, y });
+    }
+    if (cells.length === 0) return null;
+    const num = typeof n.num === 'number' && Number.isInteger(n.num) && n.num > 0 && n.num < 10000 ? n.num : 0;
+    return {
+      kind: 'zone', id, cells, color, name: typeof n.name === 'string' ? n.name.slice(0, 40) : '', num,
+      size: n.size === 's' || n.size === 'l' ? n.size : 'm',
+    };
+  }
+  if (n.kind === 'text') {
+    const x = finiteCoord(n.x);
+    const y = finiteCoord(n.y);
+    const text = typeof n.text === 'string' ? n.text.slice(0, 80) : '';
+    if (x === null || y === null || !text) return null;
+    return {
+      kind: 'text', id, x, y, text,
+      style: n.style === 'chip' ? 'chip' : 'label',
+      size: n.size === 's' || n.size === 'l' ? n.size : 'm',
+      color,
+    };
+  }
+  if (n.kind === 'route') {
+    if (!Array.isArray(n.points)) return null;
+    const points: CurveAnchor[] = [];
+    // Direction handles are bounded offsets and each side is valid only as an x/y pair.
+    const handle = (v: unknown): number | null =>
+      typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 64 ? v : null;
+    for (const c of n.points.slice(0, ANNOT_MAX_POINTS)) {
+      const a = c as CurveAnchor;
+      const x = finiteCoord(a?.x);
+      const y = finiteCoord(a?.y);
+      if (x === null || y === null) continue;
+      const pt: CurveAnchor = { x, y };
+      const hx = handle(a?.hx), hy = handle(a?.hy);
+      if (hx !== null && hy !== null) { pt.hx = hx; pt.hy = hy; }
+      const ihx = handle(a?.ihx), ihy = handle(a?.ihy);
+      if (ihx !== null && ihy !== null) { pt.ihx = ihx; pt.ihy = ihy; }
+      points.push(pt);
+    }
+    if (points.length < 2) return null;
+    return { kind: 'route', id, points, color, dashed: n.dashed !== false };
+  }
+  return null;
 }

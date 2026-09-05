@@ -1,5 +1,5 @@
 /**
- * Water CONVERTS, it is not excavated (issue #7).
+ * Water converts existing terrain rather than excavating it.
  *
  * The water eraser paints MOUNTAIN at the water's own elevation: the cell becomes this layer's terrain
  * and is itself the bank that keeps its neighbours legal. Digging the cell to bare ground instead

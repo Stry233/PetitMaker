@@ -52,6 +52,7 @@ function fakeRenderer(): MapRenderer {
     objectLayer: { animateRotation: vi.fn() },
     applyViewportTransform: vi.fn(),
     captureMapImage: vi.fn(() => 'data:image/png;base64,x'),
+    captureAnnotationsImage: vi.fn(() => 'data:image/png;base64,ink'),
     resyncObjects: vi.fn(),
   } as unknown as MapRenderer;
 }
@@ -105,9 +106,20 @@ describe('host', () => {
     const renderer = fakeRenderer();
     setMapRenderer(renderer);
     expect(host.capture2d(512, true)).toBe('data:image/png;base64,x');
-    expect(renderer.captureMapImage).toHaveBeenCalledWith(512, true);
+    expect(renderer.captureMapImage).toHaveBeenCalledWith(512, true, undefined, undefined);
     host.resync();
     expect(renderer.resyncObjects).toHaveBeenCalled();
+  });
+
+  it('reports no ink capture when the 2D renderer is not mounted', () => {
+    expect(host.capture2dAnnotations()).toBeNull();
+  });
+
+  it('captures the ink layer alone through the registered 2D renderer', () => {
+    const renderer = fakeRenderer();
+    setMapRenderer(renderer);
+    expect(host.capture2dAnnotations(2048)).toBe('data:image/png;base64,ink');
+    expect(renderer.captureAnnotationsImage).toHaveBeenCalledWith(2048);
   });
 
   it('reports no 2D camera when nothing is mounted', () => {

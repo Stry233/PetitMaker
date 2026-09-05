@@ -1,29 +1,8 @@
 /*
- * stencil-sample.ts — a source picture read into a stencil by AREA, and the dithering that matches
- * the result to a small palette.
- *
- * WHY NOT LET THE CANVAS DO IT. Drawing a picture straight into a canvas the size of the region asks
- * the browser to downscale it, and a browser downscaling by a factor of thirty samples rather than
- * integrates: a cell takes the colour of whichever few pixels it happened to land on, so a one-pixel
- * highlight can survive at full strength while a whole eye disappears. At the sizes a region gives —
- * twenty cells across is a normal ask — that is the difference between a face and a smudge. Here each
- * destination quadrant integrates the SOURCE RECTANGLE under it, every pixel weighted by how much of
- * it the quadrant covers, which is the same thing a photographic reduction does.
- *
- * WHY DITHER. The palettes are tiny — nine terrain colours, a few dozen item colours — so a nearest
- * match quantises a gradient into bands and drops any detail whose colour sits between two entries.
- * Error diffusion spends the mistake on the neighbours instead, so the AREA reads as the colour the
- * picture had even though no single cell can.
- *
- * WHY NOT ALWAYS. Both of those are right for a PHOTOGRAPH and wrong for a drawing. Pixel art, an
- * emoji, a sticker are already a small palette of exact colours, and both fail the same two ways:
- * averaging blends an outline into the ground behind it and invents a colour the
- * picture never had, and diffusing an error across an edge that was exact lays speckle where the
- * drawing had a clean line. So the source is CLASSIFIED (`readSourceNature`) and a flat one is read
- * by majority with no diffusion at all.
- *
- * Both are plain arithmetic over numbers: the canvas is needed only to get the source's pixels, and
- * that happens once, on the main thread (`ui/shell/bars/stencil-raster.ts`).
+ * Converts decoded pixels to a cell stencil. Each destination quadrant integrates its covered source
+ * area, avoiding browser downsampling artifacts. Photographic sources use averaged colour and error
+ * diffusion; flat drawings use majority colour without diffusion to preserve exact edges. The module
+ * is pure arithmetic after pixels arrive from the main-thread rasterizer.
  */
 import type { Stencil, StencilSourceNature } from '../../../core/model/types';
 import { COVERAGE_ON } from './stencil';
@@ -123,28 +102,10 @@ export function readSourceNature(src: SourcePixels): { nature: StencilSourceNatu
 }
 
 /**
- * A picture fitted into `box` and read back as a stencil, keeping its aspect and centred — the same
- * `object-fit: contain` a picture gets anywhere else.
- *
- * Read at TWICE the cell resolution, like everything else that produces a stencil: each cell's four
- * quadrants carry their own coverage (the signal the trim pass chooses corner shapes from) and the
- * cell's own coverage is the average of the four. COVERAGE IS ALWAYS THE AREA INTEGRAL — it is the
- * silhouette, and a shape wants the true share of itself in each cell whatever the picture is made
- * of. Only the COLOUR is read two ways: averaged for a photograph, and by MAJORITY for a drawing,
- * where the average of an outline and the ground behind it is a colour the picture never had.
- *
- * A cell the picture does not reach keeps zero coverage, which is what leaves the map as it was
- * there: the colour mode treats an uncovered cell as "not part of the picture" rather than as sea.
- * A flat BACKDROP is dropped the same way (`backgroundMask`), so the subject's own outline is what
- * lands on the map.
- *
- * AND THE PICTURE IS FITTED BY WHAT IT BUILDS, not by the frame its file came in. A sticker
- * photographed on a sheet of white is mostly white, and that white is keyed to nothing: fitted by
- * the file, the subject took a third of the region and the rest of it was spent on cells that build
- * nothing at all. So the border rows and columns that lay nothing are dropped and the rest is
- * fitted again (`buildingCrop`), which is the same picture at the resolution the region can
- * actually give it. `trim: false` is the untrimmed reading, kept for the comparison the harness
- * scores.
+ * Fits a source into `box` with preserved aspect ratio and centered placement. Two-by-two quadrant
+ * sampling records coverage for corner trimming. Photographs average colour; flat drawings use the
+ * majority colour. Transparent or removed backdrop cells remain uncovered. Empty build borders are
+ * cropped and sampled again unless `trim` is disabled.
  */
 export function stencilFromPixels(src: SourcePixels, box: SampleBox, opts: SampleOptions = {}): Stencil | null {
   if (box.width < 1 || box.height < 1 || src.width < 1 || src.height < 1) return null;

@@ -1,6 +1,6 @@
 import { hasShareCode, type Badge, type ExportComposition, type ExportOptions, type Rect, type ResolutionKey } from './types';
 import { canvasFitScale, type PixelSize } from './sizing';
-import { moduleBaseFor, bandSize } from '../share/glyph/geometry';
+import { moduleBaseFor, currentBandSize } from '../share/glyph/geometry';
 export type { ExportComposition, ExportOptions, Rect, ResolutionKey };
 export type { PixelSize } from './sizing';
 
@@ -28,8 +28,9 @@ const GAP = 18;
 const TITLE_H = 34, DESC_H = 26, BADGE_ONLY_H = 34;   // header sub-heights
 const LAYER_LABEL_H = 20;                              // "LAYERS" strip above the column
 export const CARD_3D_H = 130;                          // optional 3D card row
-const CODE_LABEL_H = 20;                               // PetitGlyph label above the code band
+export const CODE_LABEL_H = 20;                       // heading above the PetitGlyph raster
 const FOOTER_H = 40;                                   // footer band
+export const BRAND_H = 56;                              // maker's band, on every export
 const COL_GAP = 16;                                    // gap between map and layer area
 const SUB_COL_W = 148;                                 // width of one layer sub-column
 /** Gap between stacked layer sub-columns (shared with paint). */
@@ -37,9 +38,18 @@ export const COL_GAP_INNER = 10;
 /** Layers per sub-column before wrapping to the next column on the right (shared with paint). */
 export const MAX_PER_COL = 5;
 
-// The map+column content row height tracks the map's natural aspect, clamped readable.
+/** The grid legend's own gutters (left letters, bottom numbers), inside the map band. Owned here
+ *  so the bare layout can size the canvas around them; drawMap consumes them at paint time. */
+export const LEGEND_LEFT = 18;
+export const LEGEND_BOTTOM = 18;
+
+// The map+column content row height tracks the map's natural aspect, clamped readable. The upper
+// clamp exists to balance the band against the LAYER COLUMN beside it; with the column off the
+// map stands alone, and clamping it there only letterboxes it between wide side margins — alone
+// it may run tall, held by the loose cap.
 const CONTENT_MIN_RATIO = 0.42;   // of inner width
 const CONTENT_MAX_RATIO = 0.64;
+const CONTENT_MAX_RATIO_ALONE = 1.25;
 
 function scaleRect(r: Rect, S: number): Rect {
   return { x: Math.round(r.x * S), y: Math.round(r.y * S), w: Math.round(r.w * S), h: Math.round(r.h * S) };
@@ -67,6 +77,31 @@ export function computeComposition(
   const hasHeader = !!opts.title || !!opts.description || showBadge;
   const headerH = hasHeader ? ((opts.title ? TITLE_H : 0) + (opts.description ? DESC_H : 0) || BADGE_ONLY_H) : 0;
 
+  // BARE EXPORT: nothing was asked for but the 2D map — no header, no layer column, no 3D card,
+  // no code band, no footer. The card chrome (margins, cream frame, rounded corners) says "this
+  // is a composed share sheet"; with nothing composed it is only a border around the picture, so
+  // the canvas takes the map's own aspect and the map takes the whole canvas, keeping just the
+  // grid legend's gutters when the legend is on.
+  if (!hasHeader && !opts.layerPreview && !opts.card3d && !opts.footer && !hasShareCode(opts)) {
+    const legendL = opts.grid ? LEGEND_LEFT : 0;
+    const legendB = opts.grid ? LEGEND_BOTTOM : 0;
+    // Unrounded in BASE coords: the one rounding happens at output scale, so height and the map
+    // rect cannot disagree by a pixel.
+    const bareH = legendB + (BASE_WIDTH - legendL) / aspect;
+    let width = opts.resolution === 'original' && ctx.mapPx
+      ? Math.max(RESOLUTION_WIDTHS.high, ctx.mapPx.w)
+      : RESOLUTION_WIDTHS[opts.resolution];
+    let S = width / BASE_WIDTH;
+    const f = canvasFitScale(width, (bareH + BRAND_H) * S);
+    width *= f; S *= f;
+    return {
+      width: Math.round(width), height: Math.round((bareH + BRAND_H) * S), scale: S,
+      map: scaleRect({ x: 0, y: 0, w: BASE_WIDTH, h: bareH }, S),
+      brand: scaleRect({ x: 0, y: bareH, w: BASE_WIDTH, h: BRAND_H }, S),
+      badges: [], bare: true,
+    };
+  }
+
   // Layer area: stacked sub-columns on the right (wraps to a 2nd/3rd column past MAX_PER_COL),
   // map fills the rest.
   const nCols = opts.layerPreview ? Math.max(1, Math.ceil(ctx.layerCount / MAX_PER_COL)) : 0;
@@ -74,7 +109,8 @@ export function computeComposition(
   const mapW = opts.layerPreview ? innerW - layerAreaW - COL_GAP : innerW;
   // Content height follows the MAP's natural aspect (so it fills its band, minimal letterbox),
   // clamped to a balanced range so the map is never oversized or a thin slice.
-  const contentH = Math.round(Math.min(innerW * CONTENT_MAX_RATIO, Math.max(innerW * CONTENT_MIN_RATIO, mapW / aspect)));
+  const maxRatio = opts.layerPreview ? CONTENT_MAX_RATIO : CONTENT_MAX_RATIO_ALONE;
+  const contentH = Math.round(Math.min(innerW * maxRatio, Math.max(innerW * CONTENT_MIN_RATIO, mapW / aspect)));
 
   // Build the layout in BASE-800 coordinates first; width/scale are chosen afterwards so the
   // proportions are identical at every output size.
@@ -90,6 +126,9 @@ export function computeComposition(
   y += contentH;
   if (opts.card3d) { y += GAP; baseRects.card3d = { x: PAD, y, w: innerW, h: CARD_3D_H }; y += CARD_3D_H; }
   if (opts.footer) { y += GAP; baseRects.footer = { x: PAD, y, w: innerW, h: FOOTER_H }; y += FOOTER_H; }
+  y += GAP;
+  baseRects.brand = { x: PAD, y, w: innerW, h: BRAND_H };
+  y += BRAND_H;
   const baseH = y + PAD;
 
   // Output width: presets are fixed; Native uses the map's native pixel width, with High as a floor.
@@ -102,7 +141,8 @@ export function computeComposition(
 
   const out: ExportComposition = {
     width: Math.round(width), height: Math.round(baseH * S), scale: S,
-    map: scaleRect(baseRects.map!, S), badges: showBadge ? badges : [],
+    map: scaleRect(baseRects.map!, S), brand: scaleRect(baseRects.brand!, S),
+    badges: showBadge ? badges : [],
   };
   for (const k of ['header', 'layerLabel', 'layerCol', 'card3d', 'footer'] as const) {
     if (baseRects[k]) out[k] = scaleRect(baseRects[k]!, S);
@@ -118,14 +158,15 @@ export function computeComposition(
     if (mb === null) {
       out.codeBandUnavailable = true; // composition too small to host a legible code
     } else {
-      const { width: bandW, height: mosaicH } = bandSize(mb);
+      const { width: bandW, height: mosaicH } = currentBandSize(mb);
       const gapPx = Math.round(GAP * S);
-      const bandBlockH = Math.round(CODE_LABEL_H * S + mosaicH);
+      const bandBlockH = Math.round(CODE_LABEL_H * S) + mosaicH;
       const prevBottom = out.card3d ? out.card3d.y + out.card3d.h : out.map.y + out.map.h;
       const bandY = prevBottom + gapPx;
       out.codeBand = { x: Math.round((out.width - bandW) / 2), y: bandY, w: bandW, h: bandBlockH };
       const footprint = gapPx + bandBlockH;
       if (out.footer) out.footer.y += footprint;
+      out.brand.y += footprint;
       out.height += footprint;
     }
   }

@@ -7,10 +7,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    // `scripts/**` covers the release-tooling tests, which are internal (see
-    // docs/internal/deployment/public-repo-manifest.md) — the public snapshot ships no
-    // such files, so the pattern simply matches nothing there.
+    // The public snapshot omits release-tooling tests, so this pattern simply matches nothing there.
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mts'],
+    onConsoleLog(log) {
+      // Reduced-motion tests set the preference explicitly; Framer's device advisory is expected.
+      if (log.startsWith('You have Reduced Motion enabled on your device.')) return false;
+    },
   },
   resolve: {
     alias: {

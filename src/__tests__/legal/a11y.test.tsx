@@ -168,9 +168,7 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     expect(style).not.toContain(colors.textSecondary);
   });
 
-  // Four more small-text spots in the About view (tagline, version card, both section titles, and
-  // the ICP/PSB filing link) take `colors.brownText` for the same reason as the disclaimer above,
-  // pinned here so a regression trips this file rather than failing AA silently.
+  // These small-text elements use the darker brown required for AA contrast on the About surface.
   it('the tagline is NOT set in the failing textSecondary color', () => {
     renderModal();
     const tagline = screen.getByText('Map Editor');

@@ -1,12 +1,4 @@
-/**
- * A REFUSED WATER STROKE NAMES THE LAYER THAT WOULD WORK (issue #15).
- *
- * The reported map: a three-layer mountain, then a waterfall painted on its lip with a layer left
- * armed from an earlier edit. The refusal was technically right (the fall's caps must reach exactly
- * the water's layer) and useless: nothing said the ask was one layer low. Where the ground leaves
- * the stroke exactly ONE layer it could stand at, the refusal says which; where none or several
- * would, the rule's own reason stands, because naming several is a lecture rather than a remedy.
- */
+/** A refused water stroke names the sole legal layer when one exists and otherwise keeps the rule's reason. */
 import { describe, it, expect } from 'vitest';
 import { DrawingTool } from '../../../tools/paint/drawing-tool';
 import { soleLegalWaterLayer } from '../../../tools/paint/water-layers';
@@ -24,11 +16,7 @@ const exec = (s: GridState) => new CommandExecutor(s, new EventBus<EditorEvents>
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const terrainAt = (s: GridState, x: number, y: number) => s.cells[y]?.[x]?.terrain ?? null;
 
-/**
- * THE ISSUE'S MAP: a three-layer mesa standing on ground, which is what the mountain brush leaves
- * with layer 3 armed. The fall goes on its southern lip at (8,8): the two cells either side are its
- * caps at layer 3, and the ground in front is the uniform row V-WTR-03 reads.
- */
+/** Three-layer mesa with a waterfall site on its southern lip at (8,8). */
 function mesa(): GridState {
   const state = makeState(20, 20);
   for (let y = 4; y <= 8; y++) for (let x = 4; x <= 12; x++) setTerrain(state, x, y, TerrainType.Mountain, 3);

@@ -1,66 +1,9 @@
-/*
- * SelectionHandles.tsx — Figma-style corner buttons on the selection box:
- * rotate (top-left, rotatable objects only) + delete (top-right, for objects
- * and peelable terrain cells). The selection rectangle itself is drawn in
- * PixiJS world space; these HTML buttons
- * are anchored to the same screen rect and re-tracked imperatively on every
- * viewport-changed / objects-changed event (React gets no per-frame signal), so
- * they follow pan, zoom, drag and rotation without re-rendering each frame.
- *
- * RE-TRACKING IS EVENT-DRIVEN, so anything that moves the target WITHOUT emitting an event has to be
- * named explicitly or the handles keep coordinates from before it. Three such things exist: the
- * CHROME SCALE (Ctrl +/-, the Settings slider, a persisted zoom restored on load — these change the
- * `zoom` subtree the box renders in, so its divided-out coords are stale the moment the scale moves;
- * a plain React value, so an effect keyed on it covers it), a window RESIZE (its own listener, since
- * it moves the projection without touching React state), and the ACTIVE VIEW (a 2D↔3D swap replaces
- * the projection entirely; the new view emits viewport-changed only once its camera moves).
- *
- * The active view is taken from `onActiveViewChange`, NOT from `viewMode`: the handles project
- * through whichever view is REGISTERED, and that registration does not coincide with the store flip.
- * A layout effect keyed on `viewMode` runs before the passive effect that registers 2D, and the 3D
- * scene registers a whole lazy import later, so keying on the mode re-tracks against the OUTGOING
- * projection and leaves the buttons at the old view's coordinates.
- *
- * A PLURAL selection (2+ members) swaps to a group mode: a fixed-size control ROW (rotate, a count
- * badge, delete) floating above ONE anchor POINT — the centre of the group's macro footprint bounds,
- * which is also the point `rotateGroup` turns the body about (both the button and the rotate
- * keyboard shortcut run through the one shared `kit/group-edit.ts:rotateGroupAction`). Both
- * corners show unconditionally, so the refusal from `rotateGroup`/`deleteGroup` names the blocker
- * instead of a hidden button leaving the user to guess. Terrain never joins a plural selection, so
- * `selection.length > 1` is all objects by construction.
- *
- * THE INVARIANT the group mode exists to keep: fixed-size UI must never be positioned from a
- * projected BOX. A box's screen extents are a function of the camera — orbit until the group's long
- * axis points away and it collapses to a sliver, dolly in and it outgrows the viewport — so buttons
- * pinned to its corners converge, then vanish, then wander off the top of the screen, none of which
- * the user asked for. A POINT projects predictably under any camera. Size, spacing and lift are
- * therefore CONSTANTS (`selection-handles-layout.ts`); the camera decides only where the row sits,
- * and the row is clamped into the viewport so it stays reachable. It hides only when the ANCHOR is
- * unusable (behind the camera or off-screen) — there is no box left to degenerate. Escape deselects
- * either way.
- *
- * THE ANCHOR HOLDS STILL ACROSS A ROTATION: this row is a control surface, not part of the scene —
- * the same argument that keeps it off the rotation's own arc animation. A quarter turn returns every
- * member to the same footprint bounds, but the half-cell lattice snap `rotationPivot` applies flips
- * direction with the box's aspect, and a member's own extent swaps as it turns, so recomputing the
- * anchor from the live bounds on every `objects-changed` made the row creep a fraction of a cell per
- * click — a button that moves cannot be clicked twice in a row. `reposition`'s group branch therefore
- * caches the anchor in `groupAnchorRef`, keyed by membership, and only feeds it a freshly recomputed
- * point when the membership changed OR `kit/group-edit.ts`'s own rotate call is not in flight —
- * so a genuine group MOVE (which really does relocate the selection) still tracks, a membership
- * change still tracks, and only the rotation's own geometry churn is held frozen. Four turns are a
- * rigid-body identity (every member lands back exactly home), so a frozen anchor is trivially back
- * where it started too.
- *
- * The single-selection anchor (2D footprint or the 3D body box below) keeps its exact box-derived
- * placement: one object's box is small and camera-stable, and pinning to its real corners is what
- * makes a single object's handles read as grabbing that object.
- *
- * Stacks at `z.canvasControls` — above the canvas, BELOW the floating panels: a control that
- * follows the camera must never cover chrome the user deliberately opened.
- *
- * Styled with the cozy tokens (panelCream, float shadow) + framer-motion springs, so the handles
- * read as the same family as the app's other floating controls.
+/**
+ * HTML rotate/delete controls projected over the canvas selection. Repositioning follows viewport,
+ * object, resize, chrome-scale, and active-view registration changes; `viewMode` may change before
+ * the replacement projection is registered. A group uses a fixed row anchored at its rotation
+ * pivot and clamped to the viewport. That anchor is cached while rotation changes object bounds so
+ * repeated clicks do not move the controls. A single selection stays attached to its projected box.
  */
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
@@ -77,18 +20,17 @@ import { colors, font, radii, shadows, springs, cursors, z } from '../../design/
 import { TEXT_FLOOR } from '../../design/text-weight';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import { TILE_SIZE } from '../../../core/model/constants';
+import { helpTargetAttr } from '../modals/help/targets';
 import { placeControlRow, groupRowMetrics, type RowMetrics } from './selection-handles-layout';
 
-// SINGLE selection only: the handle diameter tracks the map zoom (so it stays proportional to the one
-// object's box it is pinned to), clamped so it's never unusably small or oversized. The GROUP row
-// takes no zoom term at all — see the file header's invariant.
+// Single-object handles follow map zoom; group controls remain a fixed screen size.
 const BTN_BASE = 32, BTN_MIN = 20, BTN_MAX = 44;
 const handleSize = (zoom: number) =>
   Math.round(Math.max(BTN_MIN, Math.min(BTN_MAX, BTN_BASE * zoom)));
 const currentZoom = (): number =>
   (getActiveView()?.projection.cellToScreen(0, 0).scale ?? TILE_SIZE) / TILE_SIZE;
 
-// The round cream face both modes share; only the POSITIONING idiom differs below.
+// Shared control appearance; each mode supplies its own positioning.
 const handleFace = (danger: boolean, size: number): CSSProperties => ({
   width: size,
   height: size,
@@ -106,25 +48,22 @@ const handleFace = (danger: boolean, size: number): CSSProperties => ({
   WebkitTapHighlightColor: 'transparent',
 });
 
-// SINGLE selection: pinned to a corner of the object's own box.
+// Single selection: pinned to an object-box corner.
 const cornerHandleStyle = (danger: boolean, corner: 'left' | 'right', size: number): CSSProperties => ({
   ...handleFace(danger, size),
   position: 'absolute',
   top: 0,
   ...(corner === 'left' ? { left: 0, marginLeft: -size / 2 } : { right: 0, marginRight: -size / 2 }),
-  marginTop: -size / 2, // centre the button on the box corner (margins, so framer's scale transform stays free)
+  marginTop: -size / 2, // Margins leave the transform available to Framer Motion.
 });
 
-// GROUP: an item in the control row, laid out by the row's flexbox. No box, no corners, so no
-// camera term can reach the distance between two buttons.
+// Group selection: fixed-size flex item in the control row.
 const rowHandleStyle = (danger: boolean, size: number): CSSProperties => ({
   ...handleFace(danger, size),
   flex: '0 0 auto',
 });
 
-// The plural-selection count: a bare number, so it carries no i18n copy. Sits between the two
-// buttons, at the width `groupRowMetrics` predicted (an explicit width, so the row's measured size
-// and the clamp's arithmetic can never disagree).
+// The explicit width must match `groupRowMetrics` so viewport clamping uses the rendered size.
 const countBadgeStyle = (size: number, width: number): CSSProperties => ({
   flex: '0 0 auto',
   width,
@@ -135,7 +74,7 @@ const countBadgeStyle = (size: number, width: number): CSSProperties => ({
   borderRadius: radii.pill,
   background: colors.panelCream,
   color: colors.frameDark,
-  // Without the family this inherits the UA serif, which no other chrome uses.
+  // This non-button span otherwise inherits the browser serif.
   fontFamily: font.family,
   fontWeight: 800,
   fontSize: Math.max(TEXT_FLOOR, Math.round(size * 0.4)),
@@ -424,7 +363,7 @@ export function SelectionHandles() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
         >
-          <div ref={boxRef} style={trackedStyle}>
+          <div ref={boxRef} {...helpTargetAttr('select')} style={trackedStyle}>
           {(plural || rotatable) && (
             <motion.button
               type="button"

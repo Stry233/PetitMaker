@@ -19,18 +19,37 @@
  * the projection's screen coordinates are already the right ones.
  */
 import { useCallback, useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import type { MazeEnd } from '../../../tools/generation/maze';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { cursors, font } from '../../design/styles';
 import { ACTIVE, PLATE_INK } from '../../design/tokens';
 
 /** Smallest a mark may draw at, in css px: below this the character stops being readable and the
  *  mark stops doing its one job. */
-const MIN_PX = 26;
+export const MIN_PX = 26;
+
+/** The mark's face at a given size (css px): fill, ink, weight and the size's own ratios. The one
+ *  place both the live drag marker and the Help Center's still figure draw a gate pill from. */
+export function gateMarkStyle(size: number): CSSProperties {
+  return {
+    background: ACTIVE,
+    color: PLATE_INK,
+    fontFamily: font.family,
+    fontWeight: 900,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    borderRadius: '999px',
+    height: `${size}px`,
+    padding: `0 ${Math.round(size * 0.42)}px`,
+    fontSize: `${size * 0.42}px`,
+  };
+}
 
 export type EndId = 'entrance' | 'exit';
 
@@ -65,11 +84,8 @@ function Marker({ end, text, testId, onMove }: {
     // whole point of naming the two ends is that a person should not have to work out which is
     // which. The height is the cell's, the width is whatever the word needs, and the pill grows
     // around it — so a longer language reads rather than being cut.
-    el.style.height = `${size}px`;
+    Object.assign(el.style, gateMarkStyle(size));
     el.style.width = 'auto';
-    el.style.padding = `0 ${Math.round(size * 0.42)}px`;
-    el.style.fontSize = `${size * 0.42}px`;
-    el.style.borderRadius = '999px';
     // Measured after the text has its size, so the pill is centred on its cell by its OWN width.
     const w = el.offsetWidth;
     el.style.left = `${tl.x + (br.x - tl.x) / 2 - w / 2}px`;
@@ -131,19 +147,17 @@ function Marker({ end, text, testId, onMove }: {
       data-testid={testId}
       data-cell={`${end.cell.x},${end.cell.y}`}
       data-kind={end.kind}
+      {...helpTargetAttr('maze')}
       role="button"
       aria-label={text}
       tabIndex={-1}
       onPointerDown={startDrag}
       style={{
+        // The face (fill, ink, font, size ratios) is `place()`'s to draw, from `gateMarkStyle`,
+        // once it knows the cell's projected size; this is the shell before that first measurement.
         position: 'fixed', left: 0, top: 0, display: 'none',
         alignItems: 'center', justifyContent: 'center',
-        background: ACTIVE, color: PLATE_INK,
-        // The interface's own face, named explicitly: unset, the mark falls back to the browser's
-        // default and reads as foreign to everything around it.
-        fontFamily: font.family,
-        fontWeight: 900, lineHeight: 1, whiteSpace: 'nowrap', zIndex: 2,
-        cursor: cursors.clickable, touchAction: 'none',
+        zIndex: 2, cursor: cursors.clickable, touchAction: 'none',
       }}
     >
       {text}

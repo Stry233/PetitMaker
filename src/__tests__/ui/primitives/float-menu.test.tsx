@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FloatMenu, floatMenuItemStyle, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
+import { UiPreviewProvider } from '../../../ui/primitives/ui-preview';
 import { ACTIVE } from '../../../ui/design/tokens';
 import { radii, z } from '../../../ui/design/styles';
 
@@ -235,5 +236,55 @@ describe('a caller that brings its own rows', () => {
     render(<Menu open items={[]} body={<div data-testid="own-row" />} onClose={onClose} />);
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A PICTURED MENU HOLDS STILL. A Help figure's containment (`inert`, `pointer-events: none`) is a
+ * property of its real DOM subtree, so the body portal, the ClickCatcher and the window Escape
+ * capture would all stand OUTSIDE it, over the live app: an invisible full-viewport click absorber
+ * and an Escape eaten app-wide, forever. Pictured, the open card renders inline under its row and
+ * nothing reaches past the figure.
+ */
+describe('a pictured menu', () => {
+  const pictured = (props: Partial<React.ComponentProps<typeof FloatMenu>> = {}) => (
+    <UiPreviewProvider><Menu {...props} /></UiPreviewProvider>
+  );
+
+  it('renders the open card inline in the row s own subtree, never at the body', () => {
+    render(pictured({ open: true }));
+    const card = screen.getByRole('menu');
+    expect(screen.getByTestId('panel').contains(card)).toBe(true);
+    // In flow rather than viewport-fixed: the frame's containment can only hold what is in it.
+    expect(card.style.position).toBe('static');
+  });
+
+  it('stands no click catcher anywhere in the document', () => {
+    render(pictured({ open: true }));
+    const catchers = [...document.body.querySelectorAll('div')].filter((el) => (
+      el.style.position === 'fixed' && el.style.inset === '0px' && el.style.pointerEvents === 'auto'
+    ));
+    expect(catchers).toHaveLength(0);
+  });
+
+  it('attaches no window listeners: Escape travels on and closes nothing', () => {
+    const onClose = vi.fn();
+    const outer = vi.fn();
+    const added = vi.spyOn(window, 'addEventListener');
+    render(pictured({ open: true, onClose }));
+    // The live menu's one keydown registration is capture-phase at the window; pictured, it never happens.
+    expect(added.mock.calls.some(([type, , opts]) => type === 'keydown' && opts === true)).toBe(false);
+    added.mockRestore();
+    window.addEventListener('keydown', outer);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    window.removeEventListener('keydown', outer);
+    expect(outer).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the closed picture a bare row, exactly as live', () => {
+    render(pictured());
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false');
   });
 });

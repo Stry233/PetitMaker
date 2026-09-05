@@ -115,15 +115,24 @@ describe('keybinds import / export', () => {
     expect('not.a.command' in res.binds!).toBe(false);
   });
 
-  it('rejects invalid JSON, duplicate combos, and reserved combos', () => {
+  it('rejects invalid JSON, duplicate combos, and a UI-scale twin', () => {
     expect(parseKeybinds('{nope').error).toBe('invalid-json');
     expect(parseKeybinds(JSON.stringify({ 'tool.brush': 'k', 'tool.eraser': 'k' })).error).toBe('duplicate-combo');
-    expect(parseKeybinds(JSON.stringify({ 'tool.brush': 'ctrl+z' })).error).toBe('reserved-combo');
+    // Ctrl+Shift+= is the shifted keycap of the file's own zoom-in binding (its default here).
+    expect(parseKeybinds(JSON.stringify({ 'tool.brush': 'ctrl+shift+=' })).error).toBe('reserved-combo');
   });
 
-  it('never imports onto a reserved command', () => {
-    const res = parseKeybinds(JSON.stringify({ 'history.undo': 'j', 'tool.brush': 'k' }));
+  it('judges the twins against the zoom keys the file itself carries', () => {
+    // Moving zoom-in off `=` frees its twin, and the file is read as one keymap.
+    const res = parseKeybinds(JSON.stringify({ 'app.ui_zoom_in': 'ctrl+9', 'tool.brush': 'ctrl+shift+=' }));
     expect(res.ok).toBe(true);
-    expect('history.undo' in res.binds!).toBe(false);
+    expect(res.binds!['tool.brush']).toBe('ctrl+shift+=');
+  });
+
+  it('imports history and UI-scale bindings like any other command', () => {
+    const res = parseKeybinds(JSON.stringify({ 'history.undo': 'ctrl+alt+u', 'app.ui_zoom_in': 'ctrl+9' }));
+    expect(res.ok).toBe(true);
+    expect(res.binds!['history.undo']).toBe('ctrl+alt+u');
+    expect(res.binds!['app.ui_zoom_in']).toBe('ctrl+9');
   });
 });

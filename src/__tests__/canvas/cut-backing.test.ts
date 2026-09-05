@@ -100,7 +100,7 @@ describe('cutBackingByCorner', () => {
   });
 
   it('Γ notch: cut water flanked by mountain is filled by that mountain, not the ground under it', () => {
-    // The reported dent (issue #2): a pond at the foot of a mountain. The TL corner of the water cell has
+    // A pond at the foot of a mountain. The top-left corner of the water cell has
     // mountain on BOTH edges, so the mountain turns a corner over this cell — the rounded-away quadrant
     // opens onto the mountain, and the junction reads as one straight line down the steps of the notch.
     const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({

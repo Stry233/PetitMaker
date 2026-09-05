@@ -12,7 +12,7 @@
  * through the tool's own paint path, so an adjusted curve is exactly the curve that would have been
  * drawn at those anchors — same stacking, same reconcile, same auto edge-cut.
  */
-import { anchorHandles, type CurveAnchor } from './shapes';
+import { anchorHandles, type CurveAnchor } from '../../core/model/spline';
 
 export interface CurveSession {
   /** The anchors, in the order they were placed. */
@@ -21,6 +21,9 @@ export interface CurveSession {
   width: number;
   /** Terrain sits on the micro grid, tiles on the macro grid; the overlay positions against it. */
   terrainGrid: boolean;
+  /** Anchors on the CONTINUOUS half-cell grid (a route's), not whole cells: the overlay projects
+   *  them unshifted and reads a drag at the same precision. */
+  freeCoords: boolean;
   /** Counts up on every change, so a subscriber re-renders on an in-place anchor edit. */
   revision: number;
 }
@@ -55,10 +58,13 @@ export function getCurveSession(): CurveSession | null {
 /** Open the adjust phase on a curve that has just been painted. */
 export function beginCurveSession(
   anchors: CurveAnchor[],
-  opts: { width: number; terrainGrid: boolean },
+  opts: { width: number; terrainGrid: boolean; freeCoords?: boolean },
   owner: CurveSessionHost,
 ): void {
-  session = { anchors: anchors.map((a) => ({ ...a })), width: opts.width, terrainGrid: opts.terrainGrid, revision: 0 };
+  session = {
+    anchors: anchors.map((a) => ({ ...a })), width: opts.width, terrainGrid: opts.terrainGrid,
+    freeCoords: opts.freeCoords === true, revision: 0,
+  };
   host = owner;
   emit();
 }

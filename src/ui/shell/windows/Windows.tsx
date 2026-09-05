@@ -11,7 +11,7 @@
  * `DropImportOverlay` rides along with the Import window: it is the same import, reached by dropping
  * a file on the app instead of opening the window first, and it no-ops while the window is open.
  */
-import { Suspense, lazy, useCallback } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
 import { announceArrival } from '../../../core/runtime/arrival-bus';
 import { currentKit } from '../../../kit/context';
@@ -30,6 +30,15 @@ import { SettingsModal } from '../../chrome/modals/SettingsModal';
 // The shots editor is the three.js scene, so it stays out of the main bundle and is mounted only
 // while it is open — unlike its five siblings, it has no card exit of its own to protect.
 const Preview3D = lazy(() => import('../../chrome/modals/export/Preview3D').then((m) => ({ default: m.Preview3D })));
+
+// The Help Center carries thirty pages of prose and its demo scenes, so it is its own chunk. Once
+// opened it stays mounted (the card exit needs the tree), which is why the gate below latches.
+const HelpModal = lazy(() => import('../../chrome/modals/help/HelpModal').then((m) => ({ default: m.HelpModal })));
+const WhatsThisLayer = lazy(() => import('../../chrome/modals/help/WhatsThisLayer').then((m) => ({ default: m.WhatsThisLayer })));
+
+// The stylize window carries its own provider dialects and image pipeline, so it stays out of the
+// main bundle and mounts only while it is open, same as Preview3D beside it.
+const StylizeWindow = lazy(() => import('../../chrome/modals/export/stylize/StylizeWindow').then((m) => ({ default: m.StylizeWindow })));
 
 /** The line that says the build travelled. Stands ALONE: what came along and what did not are two
  *  facts, and a row of the notice says one thing. */
@@ -77,10 +86,32 @@ export function transferArrival(outcome: { moved: TransferCounts; dropped: Trans
   return { kind: 'boot' };
 }
 
+/** Warm the help chunk on idle: it is the largest lazy bundle (seven locale tables, the demo
+ *  engine, every figure), and parsing it while the visitor is still looking at the splash or the
+ *  map is what makes the first press of Help open a window instead of a download. */
+function useWarmHelpChunk(): void {
+  useEffect(() => {
+    const warm = () => { void import('../../chrome/modals/help/HelpModal'); };
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(warm, { timeout: 6000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(warm, 2500);
+    return () => clearTimeout(t);
+  }, []);
+}
+
 export function Windows() {
+  useWarmHelpChunk();
   const modals = useEditorStore((s) => s.modals);
   const setModal = useEditorStore((s) => s.setModal);
   const setEditMode = useEditorStore((s) => s.setEditMode);
+  const whatsThis = useEditorStore((s) => s.whatsThis);
+  // Latched: the chunk arrives at the first open (or the first pick-mode arm) and the tree then
+  // stays for the life of the shell, so the card's exit is never cut by an unmount.
+  const helpEver = useRef(false);
+  if (modals.help || whatsThis) helpEver.current = true;
+  const helpMounted = helpEver.current;
 
   const locale = useEditorStore((s) => s.locale);
   const setLocale = useEditorStore((s) => s.setLocale);
@@ -143,7 +174,14 @@ export function Windows() {
         onClose={() => setModal('settings', false)}
       />
 
-      <KeyboardModal open={modals.help} onClose={() => setModal('help', false)} />
+      <KeyboardModal open={modals.keyboard} onClose={() => setModal('keyboard', false)} />
+
+      {helpMounted && (
+        <Suspense fallback={null}>
+          <HelpModal open={modals.help} onClose={() => setModal('help', false)} />
+          <WhatsThisLayer />
+        </Suspense>
+      )}
 
       <AboutModal open={modals.about} onClose={() => setModal('about', false)} />
 
@@ -154,6 +192,12 @@ export function Windows() {
       {modals.preview3d && (
         <Suspense fallback={null}>
           <Preview3D onClose={() => setModal('preview3d', false)} />
+        </Suspense>
+      )}
+
+      {modals.stylize && (
+        <Suspense fallback={null}>
+          <StylizeWindow onClose={() => setModal('stylize', false)} />
         </Suspense>
       )}
     </>

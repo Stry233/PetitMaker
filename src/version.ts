@@ -10,12 +10,10 @@
  * Change APP_NAME (and any per-locale override below) and the new name flows
  * everywhere automatically: it is injected as the `{app}` token into every UI
  * string via translateFor (see i18n/context) and into the agent system prompt
- * (see agent/system-prompt), and the browser tab title derives from it too. No
- * runtime string hardcodes the brand — they all write `{app}`.
+ * (see agent/system-prompt). Runtime copy uses `{app}`.
  *
- * Only non-runtime, build-time surfaces still carry the literal (they can't read
- * this constant): index.html <title> and package.json "name" — plus descriptive
- * code comments. Grep those two files if you rebrand.
+ * Deployment titles and descriptions in legal/deploy-targets.ts, the index.html
+ * fallback title, and package.json also carry the name and need review when rebranding.
  */
 export const APP_NAME = 'PetitMaker';
 

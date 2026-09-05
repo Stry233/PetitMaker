@@ -3,14 +3,21 @@ import type { GridState } from '../../core/model/types';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { encodeMapPayload, type ShareCodeMeta } from './codec/payload';
 import { encodeGlyph } from './glyph/encode';
-import { moduleBaseFor, type Tier } from './glyph/geometry';
+import { moduleBaseFor } from './glyph/geometry';
+import type { GlyphPlan, GlyphProfile } from './glyph/profiles';
 import { ShareError } from './errors';
 
-export interface ShareCode { rgba: Uint8Array; width: number; height: number; tier: Tier; payloadLen: number }
+export interface ShareCode {
+  rgba: Uint8Array;
+  width: number;
+  height: number;
+  profile: GlyphProfile;
+  plan: GlyphPlan;
+  payloadLen: number;
+  shareOriginalRecommended: boolean;
+}
 
-/** Render the share-code band at the module base for a composition width. Throws ShareError
- *  ('decode-failed') only if the payload exceeds T5 — the measured-worst-case ladder makes that
- *  unreachable for maps this editor can produce. */
+/** Render the share-code band at the module base for a composition width. */
 export async function buildShareCode(
   state: GridState,
   summary: MapProvenanceSummary | null,
@@ -21,6 +28,6 @@ export async function buildShareCode(
   if (mb === null) return null; // composition too small for a robust code
   const payload = await encodeMapPayload(state, summary, meta);
   const g = encodeGlyph(payload, mb);
-  if (!g) throw new ShareError('decode-failed', 'Map payload exceeds the densest code tier.');
-  return { ...g, payloadLen: payload.length };
+  if (!g) throw new ShareError('decode-failed', 'Map payload exceeds the densest PetitGlyph profile.');
+  return { ...g, payloadLen: payload.length, shareOriginalRecommended: g.profile.div > 4 };
 }

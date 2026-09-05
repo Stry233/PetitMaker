@@ -1,26 +1,8 @@
 /**
- * What a Γ fillet may be, checked three ways: as rules, against the maps that were reported broken,
- * and against random editing.
- *
- * A fillet is DECORATION (docs RULES.md §10.4): additive geometry on the inner corner of a concave
- * Γ arrangement, carrying no support of its own and replaced outright if terrain is later painted
- * over it. Every artefact reported on this feature came from one of those clauses being broken
- * somewhere, so they are written down here as invariants any map must satisfy:
- *
- *   I1  A fillet's tier is JUSTIFIED by its walls: some fillet corner is wrapped at that tier and
- *       not past it. Below any wrap it HANGS (a wedge nothing stands beside); wrapped past it, the
- *       walls have OUTGROWN it (the stale wedge stacking a layer onto a trimmed notch leaves, #17).
- *       Between those it is a grounded column from its support to its tier — height above the
- *       support is not a fault.
- *   I2  A fillet decorates a NOTCH, not a PIT: a bare cell with terrain on all four edges is a hole
- *       in the surface, and a fillet there reads as terrain the map does not have.
- *   I3  Every cut VALIDATES: the seam with each neighbour still meets.
- *   I4  Editing never LOSES MASS: no stroke leaves a cell that held a real block empty. (A fillet
- *       going when its Γ arrangement changes is the decoration doing its job, not lost mass.)
- *
- * The four fixtures are the maps from the reports, stripped to their cells. They still CONTAIN the
- * violations — that is what they are for: the tools must refuse to make them again, and the
- * reconcile pass must clear the ones already saved.
+ * Γ-fillet invariants exercised through validation, stored fixtures, and randomized edits.
+ * A fillet is decorative inner-corner geometry: its tier must be justified by adjacent walls, it
+ * may decorate a notch but not a fully enclosed pit, every cut must validate against neighbours,
+ * and editing must not remove a cell's structural terrain.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
@@ -46,11 +28,7 @@ const MAPS = ['report-1.json', 'report-2.json', 'report-3.json', 'report-4.json'
 
 interface Violation { x: number; y: number; why: string }
 
-/** Every cell of a map that breaks I1, I2 or I3 — one entry per cell, all its reasons.
- *  A fillet is a grounded COLUMN from its support to its tier (#17), so height above the support
- *  is not a fault; what faults a patch is a tier nothing justifies: HANGING (no fillet corner
- *  wrapped at the recorded tier), OUTGROWN (every wrapped corner's wall reaches past the tier — the
- *  stale wedge a stacked layer leaves), or sitting on a PIT. */
+/** Reports unjustified tiers, outgrown fillets, enclosed pits, and invalid neighbour seams. */
 function violations(state: GridState): Violation[] {
   const out: Violation[] = [];
   state.cells.forEach((row, y) => row.forEach((cell, x) => {

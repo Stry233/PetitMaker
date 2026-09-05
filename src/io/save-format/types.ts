@@ -53,6 +53,10 @@ export interface SaveFile {
    *  `unknown` because json-codec must not gain a dependency on generation/history/etc types —
    *  only io/export-json (write) and io/import-sections (read) parse them. */
   notes?: MapNotes;
+  /** The plan-notes annotation layer. Additive and optional like the sections around it (no
+   *  version bump); typed `unknown` here for the same reason they are — json-codec alone parses
+   *  and clamps it. */
+  annotations?: unknown;
   generation?: unknown;
   session?: unknown;
   history?: unknown;

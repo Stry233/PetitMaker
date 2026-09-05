@@ -1,12 +1,6 @@
 /*
- * propose.ts — what the surveyor SEES on the open map, as four proposals she could sketch.
- *
- * THE SKETCHES ARE OF THIS ISLAND OR THERE ARE NO SKETCHES. The normative artifact draws four fixed
- * dashed figures over a drawn island; the honest equivalent in the running app is four ANALYSERS
- * over the live `GridState`, each answering "is there one of these here, and where". An analyser
- * that finds nothing yields nothing, and a map that answers all four with nothing yields an empty
- * list — which is a card that does not render at all. A fixed set of pretty proposals about a map
- * that has none of them is the one thing this file exists not to do.
+ * Derives up to four sketch proposals from the live `GridState`. Each analyzer returns a proposal
+ * only when the corresponding feature is present; an empty result keeps the sketch card hidden.
  *
  * IT READS THE EVALUATOR'S OWN MASKS (`tools/generation/designer/eval`) rather than walking the
  * cells here: `readGrid` decides what land, pavement, water and a plant ARE for the whole project,
@@ -451,8 +445,8 @@ function infill(g: EvalGrid, stand: readonly SketchPoint[]): SketchPoint[] {
  * The proposals this map offers, in the order the card cycles them.
  *
  * Each family gets at most one, and a region already spoken for is not proposed twice: four sketches
- * of one meadow would read as one idea drawn four ways. The order is the artifact's own family
- * order, and it is stable for a given map — the card's rotation is a clock, not a shuffle.
+ * of one meadow would read as one idea drawn four ways. Family order is stable for a given map, so
+ * the timed card rotation is deterministic rather than shuffled.
  */
 export function proposeSketches(state: GridState): SketchIdea[] {
   const g = readGrid(state);

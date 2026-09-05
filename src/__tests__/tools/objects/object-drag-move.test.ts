@@ -79,8 +79,8 @@ describe('dragging a snapping object re-snaps its orientation at the drop', () =
     expect(moved!.rotation, 'orientation re-detected at the destination').toBe(90);
   });
 
-  it('a ramp dragged onto a half-offset cliff lands at the half anchor (issue #4)', () => {
-    // Task 3 UX: the drop anchor goes through snapAnchor too, so a halfStep item can land on the
+  it('a ramp dragged onto a half-offset cliff lands at the half anchor', () => {
+    // The drop anchor goes through snapAnchor too, so a halfStep item can land on the
     // half grid at the destination, not only where it started. Same lane as
     // half-step-detection.test.ts's case (a): a mountain shoulder at x = 7 and a water bank at
     // x = 4 leave a lane exactly the ramp's width — only the HALF anchor at x = 4.5 clears it.

@@ -1,42 +1,8 @@
 /**
- * Stage B of the methodology pipeline: STREETS AS THE PARTITION.
- *
- * The decoded references are built at two scales, and this is the second one. Stage A
- * (`composition.ts`) tiles the island with terrace plates; this stage lays a few long STRAIGHT
- * streets across them, and streets plus plate edges cut the island into DISTRICTS — the blocks the
- * later stage fills. The garden-town reference is exactly that and nothing else: a 2-wide street
- * grid on flat ground cutting 23 blocks of median 260 cells. The terraced reference is the same idea
- * with the terraces carrying most of the cutting, which is why the street spacing here widens with
- * richness: where the plates already partition, the streets only subdivide what is left too big.
- *
- * WHY STRAIGHT LINES RATHER THAN ROUTES. A road routed from each lot's entry back to the network
- * wanders between destinations and outlines nothing: the pavement reads as random and the regions do not
- * read at all. A street here is a full-island LINE at one coordinate — it cannot wander, and every block
- * it bounds gets a straight frontage for free. The seeded freedom is in WHERE the lines sit, not in what
- * shape they take.
- *
- * WIDTH, DEAD ENDS AND CONNECTIVITY ARE CONSEQUENCES OF THE CONSTRUCTION, and the mechanism is the
- * stamp: a line is a 1-cell skeleton dilated by a
- * w x w square, and a skeleton cell is only legal where its whole stamp may be paved. So every paved
- * cell lies inside an all-paved w x w square (the opening measure reads at least w everywhere) and
- * has at least two paved neighbours (no tip cells). Connectivity is settled by PRUNING rather than by
- * gating: every legal piece is laid, the flights join what they can, and pavement the plaza still
- * cannot reach is erased.
- *
- * RAMPS ARE ROAD FURNITURE, never a feature of their own, and never laid over pavement. A road
- * tile carries the `flat` trait, which reads the cell plus one column right and one row below, so
- * pavement is IMPOSSIBLE on the cell before a tier step: the pavable mask leaves a one-cell gap at
- * every step by itself. Where a street meets one it takes a FLIGHT — one ramp per tier, each one four
- * cells of run, the pavement cleared out of their way — so a ramp never overlaps pavement. Flights
- * come in two shapes and no others: INLINE, carrying a street over a step it runs into, and ENTRY,
- * climbing off a street at right angles onto the terrace it runs along. The count is bounded by what
- * each shape is FOR: an inline flight is built only where it joins a piece of pavement the plaza
- * cannot otherwise walk to, and an entry only where a block big enough to compose on has no other
- * way in, one per block.
- *
- * Pure and deterministic per (seed, template, composition, richness): data in, data out, no state,
- * no commands, no browser API, so it runs inside the worker pool. The sculptor and the placer of
- * later stages turn this into commands.
+ * Stage B partitions terrace plates with seeded straight streets. A street skeleton is dilated by
+ * its rank width only where the full stamp is paveable; unreachable fragments are pruned. Inline
+ * ramp flights reconnect street segments across tiers, while entry flights serve otherwise isolated
+ * districts. The plan is pure and deterministic and is committed by later stages.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
@@ -52,12 +18,8 @@ import { RAMP_RUN, type SeedInfo } from '../types';
 export const TRUNK_W = 3;
 export const BRANCH_W = 2;
 
-/** GENERATION PAVES WITH FOUR PLAIN SURFACES: a dirt track for the network, and stone, red brick and
- *  asphalt as accents. The catalog's other paving is patterned tiling meant for the hand tools'
- *  palette — a player picks a herringbone brick for one courtyard, and a whole island laid out in it
- *  reads as wallpaper. Both decoded reference maps pave the same way: the dirt track carries 87% of
- *  the target's network and 95% of the garden town's, with the other three as small accents. */
-export const ROAD_DOMINANT = 'path-overgrown-dirt';
+/** Plain network surface plus three restrained accent materials. */
+export const ROAD_DOMINANT = 'path-rustic-dirt';
 export const ROAD_ACCENTS = ['path-garden-stone', 'path-lattice-red-brick', 'path-urban-asphalt'] as const;
 /** One material carries 87 to 95% of the pavement on both references. */
 export const DOMINANT_SHARE = 0.87;
@@ -85,22 +47,9 @@ export interface StreetRun {
   /** A stretch of the MOVEMENT LINE: the map's primary walk, laid before anything else and carried
    *  over every tier step it meets. Absent on an ordinary street. */
   primary?: boolean;
-  /** Cells the ARRIVAL rule has already taken off each end, low end first.
-   *
-   *  It is carried on the run because the settling loop runs the rule several times and the bound is
-   *  a TOTAL, not a per-pass allowance: a per-pass bound takes another few cells on every pass until
-   *  the end arrives or the street is gone, and what goes with it is the frontage the blocks along
-   *  it stand on (measured: the batch frontage mean halved, and a tenth of the open island on one
-   *  seed was left with no street at all). */
+  /** Total cells already eroded from each end across all settling passes, low end first. */
   eroded?: [number, number];
-  /** Whether the near-miss join has already been offered to each end, low end first.
-   *
-   *  ONCE PER END, and for the same reason the erosion above carries a total: the settling loop runs
-   *  the rule several times, and a gap that the join closes and the pruning then takes back would be
-   *  closed again on every pass — the loop never settles, and the plan that comes out is whatever
-   *  the last pass happened to leave (measured: 135 passes on one seed, sixteen cells of pavement
-   *  standing where nothing reached them). A near miss is closed once; if what it joined did not
-   *  survive, the gap was not this street's to close. */
+  /** Whether each end has consumed its one near-miss join attempt, low end first. */
   joinedEnd?: [boolean, boolean];
 }
 
@@ -188,32 +137,7 @@ export interface StreetPlan {
 
 // --- tunables ----------------------------------------------------------------------------------
 
-/**
- * Centre-to-centre spacing of the branch streets, at richness 0 and 1.
- *
- * A 2-wide grid at spacing s paves about 4/s of the island, so the spacing IS the pavement share:
- * the garden town's 15.9% reads 25 and the terraced island's 12.0% reads 33.
- *
- * THE QUIET END PLANS THE DENSER GRID, and it is the anti-grid rule that decides which way this
- * runs. A flat island has no terraces to cut it, so its grid is the only thing partitioning it and a
- * wide spacing leaves blocks twice the reference's size with a tenth of the island shut off
- * (measured at richness 0.2 on the garden-town template). A terraced island is already cut by its
- * own plates, and the staggering cuts every line again, so the same spacing there buys junctions
- * rather than blocks: it is the terraced end that reads a four-way share over the references' and a
- * street spanning the island, and standing its lines further apart is what brings both inside.
- *
- * THE UNSERVED BLOCKS ARE PAID FOR OUT OF IT TOO. A block no grid line reached takes a line of its
- * own along its foot (`unservedBlockLines`), which is what puts pavement on the mass — and, on a flat
- * island, on the pieces a coast or a pruned line left bare; the grid stands off a little so the
- * island's total share stays the references'.
- *
- * The MOVEMENT LINE is paid for out of this. Its primary trunk is the widest pavement on the map and
- * costs about four points of the island on its own, so the branch grid stands off a little; the
- * pavement share is a fact about the whole network, not about any one street in it. It stands off
- * only a LITTLE, because the branches are the map's 2-wide pavement and the width mix the references
- * are read against is what they carry — spacing the grid out to pay for the line in full puts three
- * quarters of the pavement at trunk width, which neither reference does.
- */
+/** Branch-street centre spacing. Flat maps use a denser grid; terraces provide extra partitions. */
 const SPACING = { low: 20, high: 24 } as const;
 /** How far a single gap may stand from the nominal spacing, as a share of it. A ruled grid is the
  *  thing the eye reads first and likes least, and the references have a wide block-size spread at one
@@ -226,36 +150,9 @@ const SPACING_GROWTH = 0.26;
 /** How far a line may be nudged off its nominal coordinate to find ground it can actually run on. */
 const OFFSET_SEARCH = 4;
 /**
- * THE ANTI-GRID, as two numbers. The game's own guidance is 避免大面积规则的井字格, and to insert a side
- * path or a turn where one direction runs long.
- *
- * A street that meets another street SQUARELY makes a four-way crossing, and a map made of them reads as
- * a lattice. Staggering the meeting — the second half of the street resumes a few cells across, so the one
- * crossing becomes two T-junctions with a Z-shaped walk between them — is the guidance's own operator,
- * and it does three things at once:
- * it removes a four-way, it breaks the straight run that spanned the island, and it gives the blocks
- * either side of the street different depths.
- *
- * `LONG_RUN_SHARE` is the rule that BINDS: past this share of the island's own extent a street
- * staggers at the next street it meets, whether or not the draw asked for one. Read by the same
- * measure `eval/junctions.ts` uses, the two decoded references' longest straight runs are 0.70 and
- * 0.73 of their islands and NEITHER carries a run over 0.8; the construction aims under both so the
- * measured answer, which a coast or a terrace can only lengthen, lands inside them.
- *
- * `STAGGER_EVERY` is how far a street runs straight between two staggers, and it is the number the
- * whole operator is steered by. A DRAW — stagger at some share of the crossings — is the wrong control:
- * it shortens every run in proportion, so a batch that reaches the references' four-way share (40% and
- * 39% of junctions) reads a mean run of 27.6 cells against their 35.6 and 38.0, the band where pavement
- * reads as random. An INTERVAL sets both readings at once: runs stay about this long, and a street meeting a crossing
- * about every 20 cells staggers at every second one, which is the four-way share the references
- * carry. It is set at the low end of their mean-run band, since a coast and a terrace shorten a run
- * further and neither lengthens one.
- *
- * IT WIDENS AT THE QUIET END, for the same reason the spacing tightens there: a flat garden town's
- * grid is thinner and its blocks are cut by nothing else, so a stagger costs it a whole street's
- * frontage where a terraced island has a plate edge to fall back on. Measured at richness 0.2 on the
- * garden-town template, staggering at the terraced interval left one seed a district short and a
- * block with a twentieth of its edge on a street.
+ * Stagger long streets at bounded intervals, replacing four-way crossings with paired T-junctions
+ * and capping uninterrupted runs. Quiet flat maps stagger less often because each street supplies
+ * more district frontage.
  */
 const LONG_RUN_SHARE = 0.55;
 const STAGGER_EVERY = { low: 70, high: 50 } as const;

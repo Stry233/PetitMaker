@@ -1,63 +1,10 @@
 /**
- * The CLASSIC cursor art: one 32x32 SVG per cursor, drawn in code rather than extracted from a
- * pixel-art source. This is the set the app shipped before the drawn PNG set, kept as an
- * alternative a user can switch back to; `cursor-art` remains the default.
+ * Code-drawn 32px cursor set with its own hotspot table.
  *
- * The two sets are drawn independently, so their HOTSPOTS differ and are not interchangeable:
- * every pointing cursor here carries its tip at the top-left corner, where the pixel set puts the
- * block under the pointer instead. `CLASSIC_HOTSPOTS` is this set's own table, in the 32px
- * coordinates the shapes below are authored in.
- *
- * CONSTRUCTION RULES, which every cursor below is drawn to:
- *
- * - SIZE: the box is `CLASSIC_CURSOR_SIZE` and the viewBox is `0 0 32 32`, so an authored
- *   coordinate IS an image pixel and a hotspot needs no conversion.
- * - INK is ONE weight for the whole set: a 2px stroke of the brand palette's `INK`, with round joins
- *   and round caps everywhere. No glyph gets a lighter or heavier line to make itself fit.
- *   The only sharp point in the set is the pointer apex, which carries the meaning "this pixel".
- * - AN OUTLINED SHAPE MUST BE WIDE ENOUGH TO CARRY THE INK. A 2px stroke lands 1px inside the path
- *   on each side, so a narrow part closes up and reads as a solid lump instead of a light shape
- *   with an outline. Measured at 32px, the width at which a cream interior survives is 4px for an
- *   axis-aligned part and 4.5px for a DIAGONAL one, which antialiases on both edges. Those are the
- *   floors a hand's finger gaps, the eraser's body across its short axis, the pointer's stem and
- *   every ribbon and shaft are sized against; a shape that cannot carry the line gets WIDER, never
- *   a thinner line.
- * - FILL is the brand palette's `CREAM`, except a tool that paints a material, which is filled with
- *   the colour the MAP draws that material in.
- * - MARGIN: a 2px stroke overhangs its path by 1px, so 2px-stroked geometry stays within
- *   1.5..30.5 and every coordinate in the file stays inside 0..32.
- * - OCCUPANCY: a pointing cursor's ink runs corner to corner, from the arrow apex on (2,2) to
- *   the glyph's far edge near (30,30). A symmetric cursor is centred on (16,16), which is its
- *   hotspot, and spans at least 26 of the 32px on its long axis.
- * - RADIUS: no vertex in a tool glyph is left to the round join, which only rounds a 2px ink
- *   line and leaves the fill under it mitred. A corner is CONSTRUCTED as a quadratic whose
- *   control point is the vertex it replaces, with the path cut back along both edges by the
- *   radius: 4.5px on a tile's square corners, 2.2..3.2px on an angled silhouette's vertices.
- * - THERE IS ONE ARROW. `ARROW` is the set's only pointer, at one size and one weight, and every
- *   pointing cursor is that arrow with its tool glyph drawn OVER it, OVERLAPPING: the arrow
- *   first, the glyph second, so the glyph occludes the arrow's tail and keeps every identifying
- *   feature of its own. Overlapping is what lets the glyph be full size in a 32px box; sitting them
- *   side by side forces the tool into a shrunken corner. The glyph fills
- *   (11,11)..(30,30) and the arrow's apex on (2,2) is the hotspot for all of them.
- * - THE TOOL IS THE LARGER OF THE TWO. A tool cursor names a tool, so the glyph is what the eye
- *   lands on and `TIP` is a small pointer attached to it: `ARROW` scaled to 0.55 about its apex,
- *   with the stem alone widened back to the 4.5px diagonal ink floor. 0.55 is itself a FLOOR: the
- *   barb between head and tail measures 2px there, and anything smaller closes it, at which point
- *   the pointer stops reading as a pointer.
- * - A STROKE-ONLY glyph (orbit, marquee, text) is drawn twice, a wide cream halo first and the
- *   ink over it, so it stays legible on a dark panel where ink alone would vanish.
- * - THERE IS ONE HAND, in three states: `hand-open`, `hand-closed` and `clickable` share a
- *   FOUR-finger grid on the same x boundaries (8.5 / 13.25 / 18 / 22.75 / 27.5), the same palm
- *   box, the same thumb lobe and the same crease positions. A state may change only what closing
- *   a hand changes: how far each finger curls, the resulting height, and where the thumb lies.
- *   A finger may never appear, vanish or change width between them, because `hand-open` and
- *   `hand-closed` ALTERNATE inside one drag and any other difference reads as a flicker.
- *   Fingers are separated by INTERIOR ink lines, not by gaps, since a 2px outline closes any gap
- *   narrow enough to fit four fingers; fingertips are rounded and of UNEQUAL length, which is
- *   the cue that reads as a hand at a glance.
- * - The refusal badge is a circle-slash parked in the top-right corner, clear of the glyph.
- *   The Ctrl membership badges (select-add/select-remove) share that same corner circle, ink
- *   stroke and cream fill; only the mark inside it (a plus, a minus) differs.
+ * Shapes use 2px rounded ink over cream or the represented map material. Pointing cursors share
+ * the arrow apex at (2,2); symmetric cursors use (16,16). Stroke-only glyphs receive a cream halo.
+ * The three hand states retain the same finger grid so drag-state changes do not alter silhouette
+ * identity. Refusal and selection-membership badges occupy the shared top-right badge slot.
  */
 import { INK, CREAM, ERROR_RED } from '../../core/runtime/brand-palette';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
@@ -66,7 +13,7 @@ import type { CursorId } from '../../core/runtime/cursor-spec';
 /** The size these shapes are authored at, and the size they ship at. */
 export const CLASSIC_CURSOR_SIZE = 32;
 
-/** Road tan: the dirt-road value this set was drawn against (the item itself has since retired). */
+/** Road tan used by the classic road glyph. */
 const ROAD = '#c4a882';
 const MOUNTAIN = ELEVATION_COLORS[3]!;
 

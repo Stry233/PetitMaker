@@ -10,20 +10,17 @@ import { createDefaultRegistry } from '../../../rules';
 import { I18nProvider } from '../../../i18n/context';
 import { roadLookup } from '../../../state/object-index';
 
-// buildShareCode runs the real PetitGlyph v2 encode pipeline (canonicalize + SHA-256 + RS coding),
-// which needs a template registered in config/maps — the synthetic `makeState` template isn't one.
-// Stub it to a small fixed code so the export flow can be exercised end to end in jsdom.
+// Synthetic test maps lack a registered template; preserve the real glyph footprint in the stub.
 vi.mock('../../../io/share', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../io/share')>();
+  const { encodeGlyph } = await import('../../../io/share/glyph/encode');
   return {
     ...actual,
-    buildShareCode: vi.fn(async () => ({
-      rgba: new Uint8Array(4 * 4 * 4).fill(180),
-      width: 4,
-      height: 4,
-      tier: { id: 0, div: 1, bits: 3, colors: 8, dataCols: 132, dataRows: 27, payloadCap: 184 },
-      payloadLen: 32,
-    })),
+    buildShareCode: vi.fn(async (_state, _summary, _meta, availableWidth: number) => {
+      const moduleBase = actual.moduleBaseFor(availableWidth);
+      if (moduleBase === null) return null;
+      return { ...encodeGlyph(new Uint8Array(32), moduleBase)!, payloadLen: 32, shareOriginalRecommended: false };
+    }),
   };
 });
 // downloadBlob calls URL.createObjectURL, which jsdom doesn't implement — capture the Blob instead.
@@ -39,6 +36,7 @@ vi.mock('../../../kit/host', () => ({
 import { buildShareCode } from '../../../io/share';
 import { downloadBlob } from '../../../io/image-export';
 import { host } from '../../../kit/host';
+import * as Toast from '../../../ui/chrome/floating/Toast';
 import { setStoreState, setStoreModal } from '../../_store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -71,7 +69,8 @@ function makeFakeCtx(): CanvasRenderingContext2D {
 }
 
 describe('ExportModal', () => {
-  beforeEach(() => { setStoreState({ locale: 'en' }); });
+  // The window remembers its choices between openings; each test opens it fresh.
+  beforeEach(() => { localStorage.clear(); setStoreState({ locale: 'en' }); });
 
   it('a human-only map shows the provenance badge control DISABLED (not hidden) and no "No AI" text', () => {
     mountStateWith();
@@ -152,6 +151,23 @@ describe('ExportModal', () => {
       expect(filename).toMatch(/^petit-planet-\d+\.png$/);
     });
 
+    it('keeps a dense code exportable and recommends sharing its original file', async () => {
+      const { encodeGlyph } = await import('../../../io/share/glyph/encode');
+      vi.mocked(buildShareCode).mockResolvedValueOnce({
+        ...encodeGlyph(new Uint8Array(7200), 12)!, payloadLen: 7200, shareOriginalRecommended: true,
+      });
+      const toast = vi.spyOn(Toast, 'showToast');
+      mountStateWith();
+      const { container } = render(<ExportModal />, { wrapper: Wrapper });
+      const message = 'Image sharing: this map may not import after resizing. Share the original image or a map file.';
+      await waitFor(() => expect(screen.getByText(message)).toBeTruthy(), { timeout: 3000 });
+      await waitFor(() => expect(container.querySelector('img')).toBeTruthy());
+      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
+      await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
+      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
+      expect(toast).toHaveBeenLastCalledWith(message, 'info');
+    });
+
     it('a Plain export never requests a share code', async () => {
       mountStateWith();
       render(<ExportModal />, { wrapper: Wrapper });
@@ -160,6 +176,25 @@ describe('ExportModal', () => {
 
       await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
       expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
+    });
+
+    it('fits the Native glyph to the reserved band width without clipping either finder', async () => {
+      vi.stubGlobal('Image', class {
+        width = 8192;
+        height = 6000;
+        onload: (() => void) | null = null;
+        set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+      });
+      mountStateWith();
+      render(<ExportModal />, { wrapper: Wrapper });
+      fireEvent.click(screen.getByText('Native'));
+      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
+
+      await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
+      const calls = vi.mocked(buildShareCode).mock.calls;
+      expect(calls[calls.length - 1]![3]).toBe(7440);
+      const result = await vi.mocked(buildShareCode).mock.results[calls.length - 1]!.value;
+      expect(result?.width).toBe(7440);
     });
 
     it('the preview shows NO image while the code is encoding (no placeholder), then the real one', async () => {

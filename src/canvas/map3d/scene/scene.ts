@@ -30,6 +30,8 @@ import { arcMotion, arcOffset, spinOffset, type ArcMotion, type GroupRotation } 
 import { isMotionReduced } from '../../map2d/motion-state';
 import { getCell } from '../../../core/model/grid-model';
 import { Overlay3D } from './overlay3d';
+import { Annotations3D, type Annotations3DOpts } from './annotations3d';
+import type { AnnotationsState } from '../../../core/model/annotations';
 import { Projection3D } from '../interaction/projection';
 import type { ActiveView, ViewCamera } from '../../view-projection';
 import { CommandType } from '../../../core/model/types';
@@ -338,6 +340,9 @@ export class ThreeScene {
     onFrame?: (eased: number) => void;
   } | null = null;
   private hiddenLayers: ReadonlySet<number> = new Set();
+  /** Object edits arrived while the scene was paused: the deltas were skipped, so the instanced
+   *  set no longer matches the map and `resume()` rebuilds it whole (see `resetObjects`). */
+  private objectsStale = false;
   private viewCache: GridState | null = null;
   private plazaGroup: THREE.Group | null = null;
   private plazaElevation: number | null = null;
@@ -347,6 +352,9 @@ export class ThreeScene {
   private legendGroup: THREE.Group | null = null;
   private legendMat: THREE.MeshBasicMaterial | null = null;
   private arrowGroup = new THREE.Group();
+  /** The plan-notes layer's own group; asks arrive through `setAnnotations` and re-drape with the
+   *  terrain flush, since its heights are baked into its vertices. */
+  private annotations3d = new Annotations3D();
   private editorView: ActiveView | null = null;
   private bus: EventBus<EditorEvents> | null = null;
   /** One mesh per road material present (each wears that material's tile art). */
@@ -504,6 +512,7 @@ export class ThreeScene {
 
     this.buildTerrain(this.liveState);
     this.scene.add(this.arrowGroup);
+    this.scene.add(this.annotations3d.group);
     this.rebuildWaterfallArrows();
     if (bus) {
       this.bus = bus;
@@ -520,6 +529,13 @@ export class ThreeScene {
         this.requestRender();
       };
       const onObjects = (data: EditorEvents['objects-changed']) => {
+        // A paused scene (the 2D view standing over this one) mirrors nothing per object: a road
+        // fill is thousands of these events, and instancing them into meshes nobody can see costs
+        // more than rebuilding the whole set from the live map once on resume.
+        if (!this.running) {
+          this.objectsStale = true;
+          return;
+        }
         let roads = false;
         for (const id of data.removed ?? []) roads = this.removeObjectInstance(id) || roads;
         for (const obj of data.added ?? []) roads = this.addObjectInstance(obj) || roads;
@@ -1163,6 +1179,21 @@ export class ThreeScene {
   /** Settings toggles for the passive overlays. The grid + chunk bounds are DRAPED via the terrain
    *  shader (see addGridOverlay) — toggling is a single uniform write, no rebuild; only the layer
    *  numbers remesh with their chunks. */
+  /** The plan-notes layer as the store holds it; the scene re-drapes the same ask itself when the
+   *  ground moves. */
+  setAnnotations(data: AnnotationsState | null, opts: Annotations3DOpts): void {
+    this.annotations3d.update(this.meshState(), data, opts);
+    this.requestRender();
+  }
+
+  /** Re-rasterise the note labels — for when the app's own fonts finish loading after the first
+   *  bake, which would otherwise leave fallback-face lettering standing for the session. */
+  rebakeAnnotationText(): void {
+    this.annotations3d.dropBakes();
+    this.annotations3d.refresh(this.meshState());
+    this.requestRender();
+  }
+
   setPassiveOverlays(flags: { grid: boolean; numbers: boolean; chunks: boolean }): void {
     const rebuild = flags.numbers !== this.passive.numbers;
     this.passive = { ...flags };
@@ -1239,6 +1270,7 @@ export class ThreeScene {
     // Re-baked HERE, with the terrain flush, so the drape and the ground under it are one frame's
     // worth of the same map. Coalesced with it too: a generation fires thousands of cells-changed.
     if (this.buildableDirty) { this.buildableDirty = false; this.overlay3d?.refreshBuildable(); }
+    this.annotations3d.refresh(this.meshState());
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -2054,8 +2086,30 @@ export class ThreeScene {
   resume(): void {
     if (this.disposed || this.running) return;
     this.running = true;
+    if (this.objectsStale) {
+      this.objectsStale = false;
+      this.resetObjects();
+    }
     this.requestRender();
     this.loop();
+  }
+
+  /** Rebuild the instanced-object set from the live map: every slot, road id, elevation record and
+   *  in-flight per-object animation is bookkeeping about a set this scene stopped mirroring. The
+   *  group meshes stay (capacity is reusable); only their counts and instances are rewritten. */
+  private resetObjects(): void {
+    for (const group of this.groups.values()) group.mesh.count = 0;
+    this.slots = new InstanceSlots();
+    this.roadIds.clear();
+    this.objElevation.clear();
+    this.plops.clear();
+    this.spins.clear();
+    this.groupArc = null;
+    this.buildObjects(this.liveState);
+    this.roadTrimDirty = true;
+    this.iconRefineDirty = true;
+    this.chromeNudgeDirty = true;
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   private disposed = false;
@@ -2067,6 +2121,7 @@ export class ThreeScene {
     cancelAnimationFrame(this.raf);
     this.busDetach?.();
     this.overlay3d?.dispose();
+    this.annotations3d.dispose();
     for (const chunk of this.terrainChunks.values()) {
       for (const geo of chunk.geometries) geo.dispose();
     }

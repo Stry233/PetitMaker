@@ -1,31 +1,8 @@
 /*
- * PlanRail.tsx — the filed plan living inside the ticket (normative prototype `.rail`/`.stage`).
- * A stage before
- * `plan.currentIndex` is DONE (a drawn check on an ink box), the stage AT `currentIndex` is the
- * ACTIVE one (its box on the armed yellow with a spinner turning in it, per the prototype's
- * `.stage.now .box`), and everything after is PENDING (dimmed). Only the
- * active stage nests a live op row — `OpsList` off `job.ops`, since the view carries one flat op
- * list for the whole job rather than one per stage.
- *
- * A rewind affordance is opt-in: a DONE stage whose index a checkpoint recorded (`checkpoint.
- * stageIndex`) offers to jump back there, but only when the caller passed `onRewind` — a rail with
- * no rewind handler (a settled job being replayed, say) never grows the control. A press hands back
- * the CHECKPOINT ITSELF (`FlipTicket`'s exported `Checkpoint`, the one shape a rewind speaks in this
- * panel), so a caller needs no copy of the list to know where it is being sent.
- *
- * Each stage but the last grows the connecting spine (prototype `.stage::before`): a 2px `TRACK`
- * line from just under its own box down into the next row, so the boxes read as one joined rail
- * rather than a loose stack. `.stage:last-child::before{display:none}` is why the final stage
- * grows none — UNLESS it is the active one and nests its op rows, which is what the prototype's own
- * `:not(:has(.ops.nested))` says: the spine then runs down the side of the work.
- *
- * A STAGE'S ROLLUP is what the record owes that a bare label cannot say: how much of the work under
- * it did not stick. Only the ACTIVE stage can carry one, because the view holds ONE flat op list for
- * the whole job (see above) — there is no per-stage partition to count a finished stage's reverts
- * from, and a rollup guessed onto the wrong stage would be worse than none.
- *
- * A CHECKPOINT FLAG survives from the plan the user approved (`PlanStage.checkpoint`): the stages
- * they were told the assistant would stop at keep saying so while the plan is worked.
+ * Renders completed, active and pending plan stages as a connected rail. The active stage owns the
+ * job's flat operation list and its reverted-operation rollup. Completed stages expose recorded
+ * checkpoints when a rewind handler is available; checkpoint flags remain visible throughout the
+ * run. The final active stage extends its spine beside nested operations.
  */
 import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
@@ -43,8 +20,7 @@ import type { JobView, OpRow as OpRowData } from '../../agent/core/project-view'
 
 type StagePlan = NonNullable<JobView['plan']>;
 
-/** The rollup pill (prototype `.stage .rollup`): a muted count on the inset, riding the label's own
- *  line rather than standing under it. */
+/** Muted reverted-operation count aligned with the active stage label. */
 const ROLLUP_STYLE: CSSProperties = {
   flex: '0 0 auto',
   alignSelf: 'center',

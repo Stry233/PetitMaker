@@ -2,9 +2,12 @@
  * The keymap declares what commands exist; this declares what they do. The two halves have to
  * cover each other exactly, or an id is either unreachable or unlisted.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { COMMAND_META } from '../../core/runtime/keybindings';
 import { COMMANDS, COMMAND_BY_ID, RUN } from '../../kit/commands';
+import { useEditorStore } from '../../state/store';
+import { createDefaultRegistry } from '../../rules/index';
+import { makeTemplate } from '../rules/_helpers';
 
 describe('command registry', () => {
   it('implements exactly the declared ids', () => {
@@ -51,5 +54,59 @@ describe('COMMAND_META <-> RUN bijection', () => {
     const ids = new Set(COMMAND_META.map((c) => c.id));
     const stale = Object.keys(RUN).filter((id) => !ids.has(id));
     expect(stale).toEqual([]);
+  });
+});
+
+describe('the numbered tool keys inside annotate mode', () => {
+  const s = () => useEditorStore.getState();
+  const ctx = { openBuild: () => { throw new Error('a number key in annotate mode must not switch modes'); } } as never;
+
+  beforeEach(() => {
+    s().setEditMode({ mode: 'annotate' });
+    s().setAnnotationTool('none');
+  });
+
+  it('arms the matching annotation tool, keeping each key its cross-mode meaning', () => {
+    RUN['tool.line']!(ctx);
+    expect(s().annotationTool).toBe('zone');
+    expect(s().annotationZoneShape).toBe('line');
+    RUN['tool.curve']!(ctx);
+    expect(s().annotationZoneShape).toBe('curve');
+    RUN['tool.eraser']!(ctx);
+    expect(s().annotationTool).toBe('erase');
+  });
+
+  it('the two keys with no annotate twin carry the text and the route', () => {
+    RUN['tool.edgecut']!(ctx);
+    expect(s().annotationTool).toBe('text');
+    RUN['tool.smart']!(ctx);
+    expect(s().annotationTool).toBe('route');
+    // Pressing the active one puts the tool away, the terrain rows' own toggle.
+    RUN['tool.smart']!(ctx);
+    expect(s().annotationTool).toBe('none');
+  });
+
+  it('select-all means the NOTES: the drawing tool goes away and every note joins', () => {
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().setEditMode({ mode: 'annotate' });
+    s().addAnnotation({ kind: 'text', id: 't1', x: 5.5, y: 5.5, text: 'a', style: 'chip', size: 'm', color: '#FFB347' });
+    s().addAnnotation({ kind: 'text', id: 't2', x: 8.5, y: 8.5, text: 'b', style: 'chip', size: 'm', color: '#FFB347' });
+    s().setAnnotationTool('zone');
+    RUN['selection.all']!(ctx);
+    expect(s().annotationTool).toBe('none');
+    expect(s().annotationSelection).toEqual(['t1', 't2']);
+  });
+
+  it('the toggle answers the shaped cells on tool AND shape together', () => {
+    RUN['tool.brush']!(ctx);
+    expect(s().annotationTool).toBe('zone');
+    expect(s().annotationZoneShape).toBe('free');
+    // The same key again puts it away; a DIFFERENT shape re-arms rather than toggling.
+    RUN['tool.brush']!(ctx);
+    expect(s().annotationTool).toBe('none');
+    RUN['tool.rect']!(ctx);
+    RUN['tool.circle']!(ctx);
+    expect(s().annotationTool).toBe('zone');
+    expect(s().annotationZoneShape).toBe('circle');
   });
 });

@@ -140,6 +140,7 @@ type NoteTag = EventOf<'systemNote'>['note'];
 const NOTE_TAG_ROUTING: Record<NoteTag, Routes> = {
   delivery: ['fold:damper stamp', 'record:the loop\'s one-per-job zero-write closing nudge; wording undisplayed'],
   review: ['fold:damper stamp', 'record:the loop\'s one-per-job review invitation; wording undisplayed'],
+  'plan-close': ['fold:damper stamp', 'record:the loop\'s one-per-job unfinished-plan closing guard; wording undisplayed'],
 };
 
 /** Every `ToolResultDetail` member — the view-only extras a result carries. */

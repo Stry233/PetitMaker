@@ -1,12 +1,7 @@
 /*
- * atoms.tsx — the panel's own visual atoms, built against the normative prototype's `.tape`,
- * `.segs`, `.op .end`/tick, `.wpill` and `.stampline` rules. NOTHING HERE CASTS A SHADOW, matching
- * the prototype's flat paper: every surface is a fill and a radius.
- *
- * Looping decor reuses the shell's existing `.pw-stripes` class + `--pw-stripe-travel` custom
- * property (`ui/design/animations.css`), already gated on reduced motion at the CSS layer; `TapeBar`
- * additionally reads `useReducedMotionConfig()` itself so the crawl is testable without touching the
- * `<html data-reduced-motion>` attribute (the same JS+CSS double gate the rest of the panel wears).
+ * Shared, shadow-free visual primitives for the assistant panel. Looping stripe decoration uses the
+ * shell animation class and custom property; `TapeBar` also checks the JavaScript reduced-motion
+ * setting so behavior is consistent in rendering and tests.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
@@ -21,6 +16,22 @@ import { Spinner } from '../primitives/Spinner';
 import { amplitude, cssMotion, framerMotion } from './motion';
 import { useT } from '../../i18n/context';
 import type { OpRow } from '../../agent/core/project-view';
+
+/** A SCREEN ARRIVING IN THE JOB ZONE for a press (`panel.zone.swap`): the gear's manage card, the
+ *  connection form, the keyless office. Entrance only — the zone's ternary replaces screens
+ *  synchronously, so the arrival is the whole gesture, and every screen makes the same one. */
+export function zoneEnter(reduced: boolean): {
+  initial: false | { opacity: number; y: number };
+  animate: { opacity: number; y: number };
+  transition: ReturnType<typeof framerMotion>;
+} {
+  return {
+    initial: reduced ? false : { opacity: 0, y: amplitude('panel.zone.swap') ?? 8 },
+    animate: { opacity: 1, y: 0 },
+    transition: framerMotion('panel.zone.swap'),
+  };
+}
+
 
 /** The crawl's length, read from its declaration rather than typed here — `.pw-stripes` carries the
  *  keyframes and the reduced-motion gate but its own 1s belongs to the shell's other users of the
@@ -48,7 +59,7 @@ const HELD_OPACITY = 0.45;
  *  and crawls one stripe period (`.pw-stripe-drift`, reduced-motion gated both here and in CSS,
  *  which carries the reason the crawl travels the LAYER rather than its background-position); a
  *  determinate fraction sizes the fill and never animates the pattern itself, only its width
- *  (`panel.tape.fill`; prototype `.tape>i{transition:width .5s var(--punchy)}`).
+ *  (`panel.tape.fill`).
  *
  *  `held` (a pause, a stop, a retry wait) freezes the fill in place and dims it: the crawl stops
  *  even where motion is otherwise allowed, and a determinate fraction keeps the width it already
@@ -113,9 +124,8 @@ interface TickSpec {
 const MARK_SIZE = 13;
 
 /**
- * THE END-MARK VOCABULARY, and `Record` rather than a `switch` so a status the union grows fails
- * `tsc` on the missing key before it can fail silently at runtime. Seven marks (the artifact's own
- * `ENDS`), and `run` alone is not a mark at all — a call still working wears the house Spinner,
+ * The end-mark vocabulary. A `Record` makes a new status fail type-checking until it has a mark.
+ * `run` alone is not a mark: a call still working wears the house Spinner,
  * because which phase it is in belongs to the words on the row rather than to a second loader.
  *
  * WHAT TAKES A HUE IS WHAT THE USER MUST ACT ON, and nothing else. `ok` is the QUIET CHECK in plain
@@ -189,12 +199,11 @@ export function TickDot({ status }: { status: OpRow['status'] }) {
 /* ── the window pill, ported into the panel's own paper ─────────────────── */
 
 /**
- * `windowPill`'s three fills, worn by a panel control (`.wpill` in the prototype). `on` names the
+ * `windowPill`'s three fills, worn by a panel control. `on` names the
  * surface the pill itself stands on, exactly as `windowPill` reads it: a `quiet` pill flips fill to
  * stay legible on either cream level, `active`/`danger` bring their own colour regardless.
  *
- * IT PRESSES LIKE EVERY OTHER BUTTON IN THE HOUSE (`buttonMotion`), and the prototype's own
- * `.gpill2` hover/active pair is that same 1.03/0.95. `animations.css` states outright that there
+ * It uses the shared `buttonMotion` hover and press treatment. `animations.css` states that there
  * are no global button rules — components own their hover and tap — so a plain `<button>` here was
  * motionless while the retry pill beside it, being a `TimedButton`, sprang: two press idioms on one
  * card. A DISABLED pill takes none of it: a control that refuses must not answer the pointer.
@@ -262,7 +271,7 @@ export function Pill({
 /* ── the hold's own primary ──────────────────────────────────────────────── */
 
 /**
- * RESUME, WHEREVER IT STANDS (prototype `.tact.primary`): the ink fill, never the ask's amber, since
+ * Resume uses the ink fill wherever it stands, never the ask amber, since
  * lifting a hold is an action on a held job rather than a "this needs you" gate.
  *
  * IT IS ONE CONSTANT BECAUSE THE VERB HAS THREE SEATS — the paused ticket's foot, the hold row under
@@ -284,7 +293,7 @@ export const RESUME_PRIMARY: CSSProperties = {
 
 /* ── single-line stamp ───────────────────────────────────────────────────── */
 
-/** One icon + a muted line of text (prototype `.stampline`): a job's side notes (compaction, a
+/** One icon plus a muted line of text for job side notes (compaction, a
  *  damper, an interruption, a note the user sent) read this way, never as their own card.
  *
  *  IT MAY TAKE A SECOND LINE rather than truncating at one (`.stampline .tx`): a stamp carries the
@@ -330,7 +339,7 @@ export function Stamp({ icon, children }: { icon: IconId; children: ReactNode })
 /* ── the record's own two small parts: a count and a result ──────────────── */
 
 /**
- * The pill that stands for the op rows a list is not showing (prototype `.countpill`).
+ * The pill that stands for operation rows a list is not showing.
  *
  * IT NAMES THE TAIL IT LEFT VISIBLE, not just the total: "9 steps" alone beside three rows reads as
  * a claim that nine of them are drawn below. `shown` is what the caller kept.
@@ -364,12 +373,12 @@ export function CountPill({ total, shown, onClick }: { total: number; shown?: nu
   );
 }
 
-/** How wide a chip may run before it ellipsizes, in px (prototype `.op .rchip`). A chip is a short
+/** How wide a result chip may run before it ellipsizes, in CSS pixels. A chip is a short
  *  phrase beside a row; past this it would push the row's own words out. */
 const CHIP_MAX = 150;
 
 /**
- * A row's outcome said in a word or two (prototype `.op .rchip`): what came of the call, where the
+ * A row's outcome said in a word or two: what came of the call, where the
  * mark alone cannot say it. `warn` is the revert ink and `bad` the danger one — the same two hues
  * the marks carry, so a chip and the mark beside it never disagree about how bad a thing is.
  */
@@ -469,7 +478,7 @@ export interface IconButtonProps {
   'data-act'?: string;
   disabled?: boolean;
   lit?: boolean;
-  /** The gear ALONE recedes to the muted door tone at rest (artifact `.ib.door`); every other glyph
+  /** The gear alone recedes to the muted door tone at rest; every other glyph
    *  on the card, the seat control included, stands at the house ink like the rest of the card's own
    *  words. A lit door reads as ink again (`.ib.door.lit`), the surface it opens standing open. */
   door?: boolean;

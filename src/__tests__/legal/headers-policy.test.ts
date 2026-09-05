@@ -7,35 +7,24 @@ import {
   fullCspString,
   HEADERS_POLICY,
   headerEntries,
+  PROVIDER_ORIGINS,
   parseExtraConnectSrc,
   toCspMeta,
   toEsaDoc,
   toNetlifyHeaders,
   toVercelJson,
   withExtraConnectSrc,
+  withExtraFontSrc,
   type VercelJsonLike,
 } from '../../../security/headers-policy';
 import { rewriteIndexHtmlCsp, stringifyVercelJson } from '../../../scripts/generate-headers-core.mts';
-import { LEGAL } from '../../legal/config';
+import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
+import { PROVIDER_IDS, providerNetworkUrls } from '../../agent/providers/defaults';
+import { STYLIZE_PROVIDERS } from '../../io/stylize/providers';
 
 // Canonical headers policy + platform adapters, with no external font hosts.
 // SECURITY-RELEVANT: this file's job is to prove the policy reproduces the
 // live protections exactly, with no Google Fonts hosts allowed.
-
-const PROVIDER_ORIGINS = [
-  'https://api.anthropic.com',
-  'https://api.openai.com',
-  'https://api.deepseek.com',
-  'https://generativelanguage.googleapis.com',
-  'https://openrouter.ai',
-  'https://open.bigmodel.cn',
-  'https://api.z.ai',
-  'https://dashscope-intl.aliyuncs.com',
-  'https://dashscope.aliyuncs.com',
-  'https://api.moonshot.cn',
-  'https://api.moonshot.ai',
-  'https://api.perplexity.ai',
-];
 
 describe('HEADERS_POLICY — shape', () => {
   it('carries every named-provider origin in connect-src, plus self and the custom-endpoint sources', () => {
@@ -59,13 +48,15 @@ describe('HEADERS_POLICY — shape', () => {
     expect(connect).toHaveLength(1 + PROVIDER_ORIGINS.length + 3);
   });
 
-  it('names every host the provider adapters actually call', async () => {
-    // These origins are documentation: connect-src's broad `https:` is what actually admits them.
-    // The list is worth reading only while it equals what the adapters call, which this holds.
-    const { PROVIDER_IDS, providerBaseUrls } = await import('../../agent/providers/defaults');
+  it('names every host the provider adapters actually call', () => {
     for (const id of PROVIDER_IDS) {
-      for (const url of providerBaseUrls(id)) {
+      for (const url of providerNetworkUrls(id)) {
         expect(PROVIDER_ORIGINS, `${id} calls ${url}`).toContain(new URL(url).origin);
+      }
+    }
+    for (const provider of STYLIZE_PROVIDERS) {
+      if (!provider.needsBaseUrl) {
+        expect(PROVIDER_ORIGINS, `${provider.id} calls ${provider.baseUrl}`).toContain(new URL(provider.baseUrl).origin);
       }
     }
   });
@@ -116,6 +107,17 @@ describe('dev-only connect-src extension (VITE_EXTRA_CONNECT_SRC) — never in t
     expect(HEADERS_POLICY.cspDirectives['connect-src']).not.toContain('https://x.example.edu');
     // other directives untouched
     expect(extended.cspDirectives['script-src']).toEqual(HEADERS_POLICY.cspDirectives['script-src']);
+    expect(HEADERS_POLICY.cspDirectives['script-src']).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+  });
+});
+
+describe('dev-only font-src extension (VITE_EXTRA_FONT_SRC) — never in the canonical policy', () => {
+  it('appends only to font-src, and is a no-op when empty', () => {
+    expect(withExtraFontSrc(HEADERS_POLICY, [])).toBe(HEADERS_POLICY);
+    const extended = withExtraFontSrc(HEADERS_POLICY, ['https://fonts.example.edu']);
+    expect(extended.cspDirectives['font-src']).toEqual(["'self'", 'https://fonts.example.edu']);
+    expect(HEADERS_POLICY.cspDirectives['font-src']).toEqual(["'self'"]);
+    expect(extended.cspDirectives['connect-src']).toEqual(HEADERS_POLICY.cspDirectives['connect-src']);
   });
 });
 
@@ -275,13 +277,7 @@ describe('rewriteIndexHtmlCsp()', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Standing drift guard (integration): the committed public/_headers,
-// vercel.json, docs/internal/deployment/esa-headers.md, and index.html's CSP <meta>
-// must all match what the policy generates RIGHT NOW — this is what
-// `npm run legal:headers:check` also verifies, but as a plain vitest assertion
-// it runs on every `npm run test:run` with no CLI step required.
-// ---------------------------------------------------------------------------
+// Every committed header surface must match the canonical policy generator.
 
 describe('generated files — standing drift guard', () => {
   it('public/_headers matches toNetlifyHeaders()', () => {
@@ -294,16 +290,12 @@ describe('generated files — standing drift guard', () => {
     expect(readFileSync('vercel.json', 'utf8')).toBe(regenerated);
   });
 
-  // internal-repo-only check: docs/internal/deployment/esa-headers.md never ships publicly (see
-  // docs/internal/deployment/public-repo-manifest.md), so this self-skips on a public-repo export
-  // instead of failing on ENOENT — same convention as ops-docs.test.ts.
+  // The ESA operations document is checked only in a checkout that contains it.
   if (existsSync('docs/internal/deployment/esa-headers.md')) {
     it('docs/internal/deployment/esa-headers.md matches toEsaDoc()', () => {
-      // Same domain data the generator passes (scripts/generate-headers.mts): the
-      // runbook's legacy-domain 301 table comes from LEGAL, so a domain change has
-      // to be regenerated like any other policy change.
+      // The ESA operator document always describes the Chinese deployment.
       expect(readFileSync('docs/internal/deployment/esa-headers.md', 'utf8')).toBe(toEsaDoc(
-        HEADERS_POLICY, { canonicalOrigin: LEGAL.canonicalOrigin, legacyOrigins: LEGAL.legacyOrigins },
+        HEADERS_POLICY, { canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins },
       ));
     });
 

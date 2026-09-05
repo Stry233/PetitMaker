@@ -4,8 +4,8 @@
  * The pass runs inside `commitStroke`, so these tests drive the executor end-to-end: paint or
  * erase through `execute`, commit, and read what the map holds. A footprint uniform again at some
  * level carries the road there (up under a paint, down under an erase); a footprint left mixed or
- * wet removes the road — the game's no-floating rule (issue #13 was an eraser stroke leaving a
- * road hanging over the cleared half of its ground).
+ * wet removes the road — the game's no-floating rule (an eraser stroke must not leave a road
+ * hanging over the cleared half of its ground).
  */
 import { describe, it, expect } from 'vitest';
 import { CommandType, TerrainType, type PlacedObject } from '../../core/model/types';

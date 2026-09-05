@@ -293,32 +293,10 @@ export function layStencilObjects(
 }
 
 /**
- * What each cell of a picture asks a palette for, and how much of the mistake is spent on the
- * neighbours — the two decisions both colour readings share.
- *
- * THE PICTURE IS FITTED TO THE PALETTE FIRST. A palette says a range of tones and a picture has a
- * range of its own, and the two are usually nowhere near each other: pastel art against the terrain
- * ramp is entirely brighter than the brightest green, so every cell matched on its absolute colour
- * comes back the same one and the picture arrives as a single flat tier. The fit is measured over
- * exactly the cells that will be matched (`stencil.ts:sourceToneRange`), so what sets the two ends is
- * the subject rather than a backdrop that has already been dropped.
- *
- * AND A DRAWING IS NOT DIFFUSED. Error diffusion is what lets a small palette say a gradient; across
- * a drawing's exact edges it only lays speckle, which at twenty cells a side is most of the picture.
- *
- * `span` lays the picture's whole range ACROSS the palette instead of merely moving it into reach.
- * A material that has to appear needs its end of the palette reached rather than reachable: a
- * picture whose tones already sit inside the ramp is left where it is by the ordinary fit, and where
- * that is is a fact about the source file rather than about the subject.
- *
- * AND IN A SMALL BOX THE PICTURE'S HUE IS SPENT ON TONE (`hueAware`, `stencil-small.ts`). A palette of
- * one hue can only tell two areas apart by lightness, so two the source separates by colour alone
- * arrive as one tier — the single largest small-box legibility gap, measured, and it is the
- * material's rather than the box's. Where the box is small enough that the tonal reading is not
- * legible anyway, each cell's tone is moved by the turn from the picture's own dominant hue, so a red
- * bow and a green stem of the same lightness land a tier and a half apart. Off above the gate, and
- * off for a palette that HAS hues (the roads, the item catalogue): there a colour match already says
- * what the picture said, and a tone move would only distort it.
+ * Maps covered source cells into a material palette. Source tones are fitted over the cells that can
+ * actually be written, without error diffusion across small hard-edged drawings. `span` uses the full
+ * palette range. `hueAware` converts hue separation into tone only for small, single-hue palettes;
+ * `plain` retains the unshifted tone reading for lightness decisions.
  */
 function paletteReader(
   state: GridState,
@@ -345,13 +323,8 @@ function paletteReader(
     return covered(stencil, x, y) && writable(state, origin.x + x, origin.y + y, allow);
   };
   const reach = paletteToneRange(palette);
-  // THE HUE LIFT GOES IN BEFORE THE RANGE IS MEASURED, which is what keeps the palette whole. Added
-  // afterwards it pushes cells past the darkest and brightest entries, where they pile up on one
-  // answer (measured: a pastel fixture's use of the ramp fell as its hue separation rose); taken out
-  // of the range beforehand it costs the picture's own tonal amplitude instead. Read as part of the
-  // SOURCE, the lift widens the picture's range and the ordinary fit lands the widened range on the
-  // palette — so every entry is still reachable and the tone the lift claimed is the tone the picture
-  // gives up, in proportion.
+  // Include hue lift in the measured source range so the ordinary fit keeps every palette entry
+  // reachable instead of clipping shifted cells at the endpoints.
   const lift = hueAware ? hueReach(smallBoxWeight(stencil), reach) : 0;
   const hue = lift > 0 ? hueToneOffsets(stencil, matchable, lift) : null;
   const lifted = hue
@@ -396,22 +369,7 @@ function paletteStep(palette: readonly { rgb: number }[]): number {
   return (range.hi - range.lo) / Math.max(1, palette.length - 1);
 }
 
-/**
- * The tone at or above which a picture belongs to the WATER rather than to the ramp: halfway between
- * the brightest green and the blue.
- *
- * WHICH IS A NEAREST-TONE MATCH, not a share. Water is the one thing on the map
- * brighter than any green — 206 against a ramp that tops out at 184 — so what the material can say
- * is a picture's LIGHT, and the picture decides how much of itself that is: a subject with a white
- * muzzle and an ear's fluff gets ponds exactly there, and one with no highlights at all gets none.
- * A fixed quantile instead takes a third of every picture whatever it is made of, which on a warm
- * drawing reached down into the mid tones and sank half the face.
- *
- * NOT A COLOUR match, which is what the `palette` role does with the same blue: the fit carries a
- * cell's hue along, so a cream highlight lands near the blue in tone and nowhere near it in hue, and
- * a weighted RGB distance hands it back to the greens (measured: 0.6% of a picture came back water).
- * Tone is the axis the ramp and the blue actually share.
- */
+/** Water threshold halfway between the two brightest palette tones. */
 function waterTone(palette: readonly { rgb: number }[]): number {
   const tones = palette.map((entry) => luma(entry.rgb)).sort((a, b) => a - b);
   const top = tones[tones.length - 1] ?? 0, next = tones[tones.length - 2] ?? top;
@@ -419,29 +377,10 @@ function waterTone(palette: readonly { rgb: number }[]): number {
 }
 
 /**
- * The picture as COLOUR: each cell takes the terrain whose own colour is nearest to it.
- *
- * The shape is not the subject here, so an uncovered (transparent) cell is simply left alone rather
- * than being treated as sea — a photograph fills its region, and a cut-out PNG keeps its background
- * as whatever the map already had there. That holds for every material: what a picture does not
- * cover is not the picture, and a region painted round it stays the ground it was.
- *
- * WATER HAS THREE ROLES and they are not degrees of one thing. Out of the palette, the picture is
- * eight greens. In it, the one blue is a ninth entry that a genuinely blue area wins — which is
- * right for a photograph and is why a green picture asked for in water came back with no water in it
- * at all.
- *
- * AS THE PRIMARY IT IS THE PICTURE'S INNER MATERIAL: the figure stands in terrain and the areas the
- * ramp has nothing bright enough for — an ear's fluff, a muzzle, a highlight — are sunk as the water
- * inside it (`waterTone`). The picture is fitted to a range the blue tops rather than to the greens
- * alone, so its light end lands on the water instead of being flattened onto the brightest green.
- *
- * THE SILHOUETTE IS NEVER WATER: a cell with the outside on one of its edges is drawn in terrain
- * whatever its tone, so the figure has a bank all the way round and the water reads as being INSIDE
- * a shape rather than as a hole where the shape should be.
- *
- * `fitTones` off matches the picture's colours where they are instead of landing them on the ramp,
- * which is the reading the evaluation harness scores the fitted one against.
+ * Renders covered image cells with the nearest terrain palette entry; transparent cells retain the
+ * map beneath them. Water may be excluded, participate as an ordinary colour, or serve as the primary
+ * material for bright interior cells. Silhouette cells always remain terrain to form a containing
+ * bank. `fitTones` controls whether source tones are fitted to the available range.
  */
 export function layStencilColor(
   state: GridState,
@@ -658,7 +597,7 @@ export function layStencilColor(
  * WHAT THE MATERIAL A PICTURE WAS ASKED FOR LETS IT BORROW (`stencil-small.ts:BorrowPolicy`).
  *
  * THE MODE PROMISE IS ABSOLUTE: a mountain picture is mountain, a water picture is water and its banks,
- * and neither lays a road (maintainer's ruling, 2026-08-19 — "adding road is confusing"). Only the MIXED
+ * and neither lays a road: a road on a single-terrain picture confuses the read. Only the MIXED
  * material, which exists to spend colour, borrows at all, and there it borrows freely. Read off the water
  * role because that is what the three terrain materials differ by: `none` is the mountain picture,
  * `primary` the water one, `palette` the mixed one. A picture built from objects never reaches here —
@@ -819,43 +758,10 @@ function missAt(palette: readonly { rgb: number }[], rgb: number): number {
 }
 
 /**
- * The DECORATION: objects placed on the picture, over whatever the primary material left standing.
- *
- * IN A SMALL BOX IT IS AN ACCENT SPENT ON FEATURES, and above the gate it is a background texture over
- * anchor points. The two are different instruments and this is where they are chosen between
- * (`smallBoxWeight`, the same gate every small-box reading is behind).
- *
- * THE FEATURES FIRST (`stencil-feature.ts`). The decoration is the one thing in a terrain picture that
- * carries a real hue, so what it is worth spending on is the small interior areas whose colour the ramp
- * cannot say — an eye, a marking, a red throat — one species per feature, on the feature's own cells, so
- * a feature spanning several of them reads as its shape. Budgeted (`featureBudget`) and capped
- * (`FEATURE_MAX`), which is also what keeps a picture's object count where the load rules can carry it.
- *
- * THE BACKGROUND TEXTURE, in two terms that add up. A cell where the picture CHANGES most — an eye,
- * an outline, the edge of a bow — which is the luma gradient; and a cell whose COLOUR the primary
- * cannot say, which is its distance from the nearest thing in that palette. The first finds the
- * places that carry the drawing, the second the places that carry its colour, and a picture's most
- * salient cells are where the two agree. The colour term is measured against the picture's own
- * floor, so a picture that is out of the palette's reach EVERYWHERE (pastel art against the green
- * ramp) is not read as salient everywhere: what counts is being further out than the picture's own
- * baseline. It fades out across the gate: in a box small enough that a gradient reading is not legible
- * anyway, an evenly spaced dotting of marks is a texture laid over a figure rather than a statement
- * about it, measured as the worst material at every size.
- *
- * BOUNDED, SPACED AND DETERMINISTIC. At most `DECOR_MAX_SHARE` of the picture, no two BACKGROUND marks
- * touching (they would read as a patch rather than as a mark), and chosen by ranking cells on
- * salience with the flat index breaking ties — no randomness, so the same picture decorates the same
- * way. Every placement goes through the rules like any other, and a refusal is simply skipped: the
- * decoration never makes an illegal map, it just says less on one that is already full.
- *
- * `replaceable` is what THIS RUN put down, and what a mark may take from it depends on which mark it is.
- * Where the primary tiled the picture with objects (`paved`), every decorated cell is already occupied by
- * one, so the decoration takes that cell — the bow drawn in a second species over the coat drawn in the
- * first. A COATING under a TERRAIN picture is the primary borrowing a hue for a whole region
- * (`planBorrow`), and only a FEATURE mark may take a cell of it: a feature is the more specific
- * statement of the two, and the flower standing there says what the paving was borrowed to say. The
- * background pass leaves it alone, since trading a region's colour for one dot is a loss. Anything else
- * standing there was not this run's to move, so the cell is left alone and the mark goes without.
+ * Decorate a stencil after its primary material. Small images spend the budget on detected color
+ * features; larger images rank background cells by luma gradient plus palette miss. Selection is
+ * deterministic, capped, and spaced. Feature marks may replace coating laid by this run; background
+ * marks replace only this run's object tiling. All placements still pass ordinary map rules.
  */
 export function layStencilDecor(
   state: GridState,
@@ -1039,4 +945,3 @@ export function runStencilPlan(
   }
   return result;
 }
-

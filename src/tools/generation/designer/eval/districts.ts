@@ -37,8 +37,7 @@ export interface DistrictLegibility {
  * cannot tell a block from a leftover of the same area, which is what the rectangularity is here
  * to start saying.
  */
-export function districtLegibility(state: GridState): DistrictLegibility {
-  const g = readGrid(state);
+export function districtLegibility(state: GridState, g = readGrid(state)): DistrictLegibility {
   const regions = segmentRegions(g);
   const sizes = regions.map((r) => r.cells.length).sort((a, b) => a - b);
   const at = (p: number): number => (sizes.length ? sizes[Math.min(sizes.length - 1, Math.floor(p * sizes.length))]! : 0);
@@ -126,8 +125,7 @@ export interface DistrictFrontage {
  * Both parts are needed and neither is sufficient. A map of few enormous blocks, each touching some
  * road somewhere, outlines 77% of its area by the first test alone and 8% by both together.
  */
-export function districtFrontage(state: GridState): DistrictFrontage {
-  const g = readGrid(state);
+export function districtFrontage(state: GridState, g = readGrid(state)): DistrictFrontage {
   const { W, H } = g;
   const dist = pavementDistance(g);
   const regions = segmentRegions(g);

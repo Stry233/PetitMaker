@@ -1,36 +1,8 @@
 /**
- * The prose-tools adapter: tool calling over an endpoint that refuses the `tools` parameter,
- * carried entirely in text. Wraps any real `Adapter`; the loop above keeps its native tool
- * surface and never learns the wire had none. An eval-seam rig like its siblings here — nothing
- * in the product imports it.
- *
- * REQUEST SIDE. `tools` goes down empty and the schemas are stated in the system prompt instead
- * (`proseToolsSystemSection`), and the history is rewritten so nothing tool-shaped reaches the
- * wire: an assistant turn's calls are re-rendered as the fenced blocks the model is told to
- * write, and a tool-result message becomes a user message of fenced result blocks (images ride
- * that user message, the one place the plain wire accepts them).
- *
- * THE EMISSION FORMAT, stated to the model by the injected section:
- *
- *   ```tool_call
- *   {"tool": "<name>", "args": { ... }}
- *   ```
- *
- * One fenced block per call, tag exactly `tool_call`, one JSON object per block. Several blocks
- * are several calls, run in written order; text outside the blocks is narration and is kept.
- * Results return in the next user message as ```tool_result``` blocks, one per call, in order:
- * `{"tool": "<name>", "ok": true|false, "content": "..."}`. A reply with no `tool_call` block is
- * the finishing turn.
- *
- * RESPONSE SIDE. Text is held to the end of the turn (a block published as it streams would be
- * prose the log cannot take back), then parsed: blocks become tool calls, the surrounding text
- * stays narration. A block whose JSON is broken or is not one call, but which still names a
- * tool, is delivered with UNPARSEABLE args on purpose: the loop's own reissue result is the
- * correction prompt, and its dampers own the escalation, so no second retry channel exists here.
- * A block naming no tool at all stays in the narration verbatim. A whole message body that is one
- * bare `{"name", "arguments"}` object is recognized through `toolCallInProse` — the reader
- * `providers/openai.ts` normalizes that wire shape with — rather than a second parser. Every turn
- * whose calls came out of prose carries the `tool-call-as-prose` quirk.
+ * Evaluation adapter for endpoints without native tool calls. It rewrites schemas, calls, results,
+ * and history as `tool_call`/`tool_result` fenced JSON while preserving surrounding narration.
+ * Responses are buffered until complete so protocol blocks never leak as streamed prose. Malformed
+ * named calls reach the loop as unparseable arguments and use its normal correction path.
  */
 import { parseArgs } from '../core/json';
 import type { ProviderMessage } from '../core/project-messages';

@@ -1,28 +1,8 @@
 /**
- * The map coder: ONE representation of a map, coded field by field against what the reader can
- * already work out for itself.
- *
- * The code is a sequence of adaptive binary decisions driven by a range coder. Encoder and decoder
- * walk identical model state in the same order, so nothing about the models is transmitted.
- *
- * Two ideas carry the size:
- *
- * PLANES, NOT RECORDS. Terrain and objects are coded as images in raster order, each field getting
- * the neighbours already decoded as its context. A cell's neighbours predict it well — terrain
- * comes in contiguous masses at terraced heights, roads run in lines, flowers grow in drifts — and
- * an object's POSITION costs nothing beyond the occupancy bit that says it is there, so a crowded
- * region is cheaper per object than a sparse one. A ramp or bridge can stand half a cell off that
- * raster, which is the one thing the image cannot say on its own — see `MapModelOpts.half`.
- *
- * THE RULES ARE SHARED KNOWLEDGE. Anything the reader can derive from what it has already decoded
- * is not sent. The largest of these is the corner field: the silhouette alone decides which of a
- * cell's four corners are even allowed to be cut, and on real maps 91-95% are locked square.
- * Those slots cost nothing but a near-certain bit. The same applies to an object's elevation,
- * which is the surface it stands on. The prior that decides this is a WIRE CONSTANT, frozen here
- * rather than read from the live rules — see `lockedCorners`.
- *
- * The costs are asymmetric: deriving is work the reader does once on import, and it buys bytes in
- * an image whose size is fixed.
+ * Adaptive range-coded map representation shared by the encoder and decoder.
+ * Terrain and objects are raster planes whose decoded neighbours provide model context.
+ * Derivable fields, including ordinary object elevation and commonly locked corners, use stable wire predictors.
+ * `MapModelOpts.half` carries the sub-cell offset needed by ramps and bridges.
  */
 import {
   RangeEncoder, RangeDecoder, BitModel, TreeModel, UintModel,
@@ -30,8 +10,12 @@ import {
 } from './bitio';
 import type { CellFields } from './grid-io';
 import { SHARE_CATALOG_ORDER } from './catalog-order';
-import { type Corners, type CornerTrim, type MapTemplate } from '../../../core/model/types';
+import { frozenTemplateMask } from './template-mask';
+import type { Corners, CornerTrim, MapTemplate } from '../../../core/model/types';
 import type { SaveObject } from '../../save-format';
+
+/** The encoder's inverse of `SHARE_CATALOG_ORDER[idx]`, asked once per object per pass. */
+const SHARE_CATALOG_INDEX = new Map(SHARE_CATALOG_ORDER.map((id, i) => [id, i]));
 
 /** Corner codes, in the order `grid-io` spells them. */
 const CORNERS = 'SF1234E';
@@ -45,8 +29,7 @@ const models = <T>(n: number, make: () => T): T[] => Array.from({ length: n }, m
 class Models {
   // terrain planes
   has = models(64, () => new BitModel());
-  /** Sized for every value the tree can DECODE (0-3), not just the types the model defines: a
-   *  crafted stream may name a type the enum does not have, and must land on a real model. */
+  /** Covers every two-bit decoded value, including invalid values from hostile streams. */
   type = models(25, () => new TreeModel(2));
   elevZero = models(8, () => new BitModel());
   elevDelta = new UintModel();
@@ -56,7 +39,7 @@ class Models {
   patchOnly = models(2, () => new BitModel());
   hasPatchBase = new BitModel();
   patchBase = new TreeModel(4);
-  /** "Anything at all in this row?" — a map's empty margins cost one bit a row, not one a cell. */
+  /** Row-presence model keeps empty margins at one bit per row. */
   rowHas = models(2, () => new BitModel());
   rowOcc = models(2, () => new BitModel());
   // object plane
@@ -78,18 +61,9 @@ class Models {
 }
 
 /**
- * WIRE CONSTANT — the corner prior. A corner is pinned square when an EDGE-sharing neighbour holds
- * same-type mass reaching this cell's tier; a diagonal touches at a point and never pins.
- *
- * This is a FROZEN copy of the geometry, not a call into the live edge-cut rules.
- * A predictor does not have to be right, only STABLE: every code ever written was coded against
- * this partition of the corner slots, so a reader has to reproduce it exactly, forever. Wiring it
- * to `trim-lock.ts` would mean that editing a game rule silently invalidates every share code in
- * existence — the same trap as coding a map against what the generator happens to produce.
- *
- * It is allowed to drift from the live rules. If it does, the cuts it fails to anticipate are
- * simply spelled out and the code grows by a few bytes. Measured against the live rule when this
- * was frozen: agreement 99.1-100% across the corpus, locking 91-95% of slots on a real map.
+ * Stable wire predictor for square corners: a same-type edge neighbour reaching this tier pins the shared corner.
+ * It is intentionally independent of editable placement rules; predictor misses remain explicit data rather than changing decode semantics.
+ * The frozen predictor agrees with 99.1–100% of corpus cases and locks 91–95% of corner slots.
  */
 const EDGE_NEIGHBOURS: readonly (readonly (readonly [number, number])[])[] = [
   [[-1, 0], [0, -1]], // top-left
@@ -126,31 +100,52 @@ const hasCtx = (w: unknown, n: unknown, nw: unknown, ne: unknown, par: number) =
   (w ? 1 : 0) | (n ? 2 : 0) | (nw ? 4 : 0) | (ne ? 8 : 0) | (par << 4);
 
 /**
- * Model options the encoder picks per map and names in the frame.
- *
- * `parity` adds the cell's position parity to the shape context. A map laid out on a lattice —
- * a maze's corridors, a tiled pattern — is partly decided by that parity. The win is small, since
- * the neighbourhood already accounts for most of a lattice, and on an organic island the extra
- * contexts only adapt more slowly: a straight loss. So it is a choice, not a default. The encoder
- * codes the map under each shape and keeps the smaller; the frame names the winner.
- *
- * `half` says the object plane carries a sub-cell offset per object. Ramps and bridges anchor on
- * the half grid, so their raster cell alone no longer fixes where they stand. This is not a size
- * choice like `parity`: a map either needs it or cannot use it, so it PARTITIONS the table rather
- * than joining the search (see `hasHalfPosition`, which is what `payload.ts` picks the half from).
- * Kept as a shape rather than a new frame field precisely so a map without one codes byte-for-byte
- * as it always did, and so a build too old to know shape 2 refuses by name at the variant lookup.
- *
- * THE TABLE IS APPEND-ONLY. A code names its shape by index, so an index means forever what it
- * meant when it was written.
+ * Frame-indexed model variants. `templateMask` names a frozen buildable-coordinate mask revision.
+ * Variant indices are append-only wire identities.
  */
-export interface MapModelOpts { parity: boolean; half: boolean }
+export interface MapModelOpts { parity: boolean; half: boolean; templateMask?: 1 }
 export const MODEL_VARIANTS: readonly MapModelOpts[] = [
   { parity: false, half: false },
   { parity: true, half: false },
   { parity: false, half: true },
   { parity: true, half: true },
+  { parity: false, half: false, templateMask: 1 },
+  { parity: true, half: false, templateMask: 1 },
+  { parity: false, half: true, templateMask: 1 },
+  { parity: true, half: true, templateMask: 1 },
 ];
+
+function codedCell(mask: Readonly<Uint8Array> | null, index: number): boolean {
+  return !mask || mask[index] === 1;
+}
+
+function codedRow(mask: Readonly<Uint8Array> | null, y: number, width: number): boolean {
+  if (!mask) return true;
+  const start = y * width;
+  for (let index = start; index < start + width; index++) {
+    if (mask[index] === 1) return true;
+  }
+  return false;
+}
+
+/** Whether a model can omit its masked coordinates without losing map data. */
+export function modelCanRepresent(
+  template: MapTemplate,
+  cells: readonly (CellFields | null)[],
+  objects: readonly SaveObject[],
+  opts: MapModelOpts,
+): boolean {
+  if (!opts.templateMask) return true;
+  const mask = frozenTemplateMask(template, opts.templateMask);
+  if (!mask) return false;
+  for (let index = 0; index < cells.length; index++) {
+    if (cells[index] && mask[index] !== 1) return false;
+  }
+  return objects.every((object) => {
+    const index = Math.floor(object.y) * template.width + Math.floor(object.x);
+    return mask[index] === 1;
+  });
+}
 
 /** Does any object stand off the whole-cell grid? Decides which half of MODEL_VARIANTS applies. */
 export const hasHalfPosition = (objects: readonly SaveObject[]): boolean =>
@@ -192,32 +187,38 @@ export function encodeMap(
   enc: RangeEncoder, template: MapTemplate, cells: (CellFields | null)[], objects: SaveObject[],
   opts: MapModelOpts = { parity: false, half: false },
 ): void {
+  if (!modelCanRepresent(template, cells, objects, opts)) {
+    throw new Error('map-coder: template mask would omit map data');
+  }
   const M = new Models();
   const width = template.width;
   const n = cells.length;
+  const mask = opts.templateMask ? frozenTemplateMask(template, opts.templateMask)! : null;
   const par = (i: number, y: number) => (opts.parity ? ((i % width) & 1) | ((y & 1) << 1) : 0);
 
   // ── terrain: shape, then type, then height, then the cosmetic fields ──
   let prevRow = 0;
   for (let y = 0; y < template.height; y++) {
+    if (!codedRow(mask, y, width)) continue;
     const rowUsed = rowHasTerrain(cells, y, width) ? 1 : 0;
     enc.encodeBit(M.rowHas[prevRow]!, rowUsed);
     prevRow = rowUsed;
     if (!rowUsed) continue;
     for (let i = y * width; i < (y + 1) * width; i++) {
-    const nb = around(cells, i, width);
-    const c = cells[i] ?? null;
-    enc.encodeBit(M.has[hasCtx(nb.w, nb.n, nb.nw, nb.ne, par(i, y))]!, c ? 1 : 0);
-    if (!c) continue;
-    encodeTree(enc, M.type[typeCtx(nb)]!, c.type);
-    const d = c.elevation - predictElev(nb);
-    enc.encodeBit(M.elevZero[elevCtx(nb)]!, d !== 0 ? 1 : 0);
-    if (d !== 0) encodeUint(enc, M.elevDelta, zigzag(d));
-    enc.encodeBit(M.patchOnly[nb.w?.patchOnly ? 1 : 0]!, c.patchOnly ? 1 : 0);
-    if (c.patchOnly) {
-      enc.encodeBit(M.hasPatchBase, c.patchBase != null ? 1 : 0);
-      if (c.patchBase != null) encodeTree(enc, M.patchBase, c.patchBase);
-    }
+      if (!codedCell(mask, i)) continue;
+      const nb = around(cells, i, width);
+      const c = cells[i] ?? null;
+      enc.encodeBit(M.has[hasCtx(nb.w, nb.n, nb.nw, nb.ne, par(i, y))]!, c ? 1 : 0);
+      if (!c) continue;
+      encodeTree(enc, M.type[typeCtx(nb)]!, c.type);
+      const d = c.elevation - predictElev(nb);
+      enc.encodeBit(M.elevZero[elevCtx(nb)]!, d !== 0 ? 1 : 0);
+      if (d !== 0) encodeUint(enc, M.elevDelta, zigzag(d));
+      enc.encodeBit(M.patchOnly[nb.w?.patchOnly ? 1 : 0]!, c.patchOnly ? 1 : 0);
+      if (c.patchOnly) {
+        enc.encodeBit(M.hasPatchBase, c.patchBase != null ? 1 : 0);
+        if (c.patchBase != null) encodeTree(enc, M.patchBase, c.patchBase);
+      }
     }
   }
 
@@ -250,46 +251,48 @@ export function encodeMap(
   const idAt = (i: number) => anchor.get(i)?.[0]?.catalogId ?? null;
   let prevOccRow = 0;
   for (let y = 0; y < template.height; y++) {
+    if (!codedRow(mask, y, width)) continue;
     const rowUsed = rowHasObject(anchor, y, width) ? 1 : 0;
     enc.encodeBit(M.rowOcc[prevOccRow]!, rowUsed);
     prevOccRow = rowUsed;
     if (!rowUsed) continue;
     for (let i = y * width; i < (y + 1) * width; i++) {
-    const x = i % width;
-    const here = anchor.get(i);
-    enc.encodeBit(M.occ[occCtx(anchor, i, x, width)]!, here ? 1 : 0);
-    if (!here) continue;
-    const ctxId = (x > 0 ? idAt(i - 1) : null) ?? idAt(i - width) ?? (x > 0 ? idAt(i - width - 1) : null);
-    const surface = cells[i]?.elevation ?? 0;
-    for (let j = 0; j < here.length; j++) {
-      const o = here[j]!;
-      const idx = SHARE_CATALOG_ORDER.indexOf(o.catalogId);
-      if (idx < 0) throw new Error(`map-coder: unknown catalogId ${o.catalogId}`);
-      if (ctxId !== null) {
-        const same = o.catalogId === ctxId ? 1 : 0;
-        enc.encodeBit(M.sameId[j === 0 ? 0 : 1]!, same);
-        if (!same) encodeTree(enc, M.catalog, idx);
-      } else encodeTree(enc, M.catalog, idx);
-      const half = halfOffsetOf(o);
-      if (opts.half) encodeTree(enc, M.halfOffset, half);
-      else if (half !== 0) throw new Error('map-coder: half position under a whole-cell shape');
-      enc.encodeBit(M.rotZero, o.rotation !== 0 ? 1 : 0);
-      if (o.rotation !== 0) encodeTree(enc, M.rot, ROTS.indexOf(o.rotation));
-      enc.encodeBit(M.hasElev, o.elevation !== undefined ? 1 : 0);
-      if (o.elevation !== undefined) {
-        const onSurface = o.elevation === surface ? 0 : 1;
-        enc.encodeBit(M.elevIsSurface, onSurface);
-        if (onSurface) encodeUint(enc, M.objElev, o.elevation);
+      if (!codedCell(mask, i)) continue;
+      const x = i % width;
+      const here = anchor.get(i);
+      enc.encodeBit(M.occ[occCtx(anchor, i, x, width)]!, here ? 1 : 0);
+      if (!here) continue;
+      const ctxId = (x > 0 ? idAt(i - 1) : null) ?? idAt(i - width) ?? (x > 0 ? idAt(i - width - 1) : null);
+      const surface = cells[i]?.elevation ?? 0;
+      for (let j = 0; j < here.length; j++) {
+        const o = here[j]!;
+        const idx = SHARE_CATALOG_INDEX.get(o.catalogId) ?? -1;
+        if (idx < 0) throw new Error(`map-coder: unknown catalogId ${o.catalogId}`);
+        if (ctxId !== null) {
+          const same = o.catalogId === ctxId ? 1 : 0;
+          enc.encodeBit(M.sameId[j === 0 ? 0 : 1]!, same);
+          if (!same) encodeTree(enc, M.catalog, idx);
+        } else encodeTree(enc, M.catalog, idx);
+        const half = halfOffsetOf(o);
+        if (opts.half) encodeTree(enc, M.halfOffset, half);
+        else if (half !== 0) throw new Error('map-coder: half position under a whole-cell shape');
+        enc.encodeBit(M.rotZero, o.rotation !== 0 ? 1 : 0);
+        if (o.rotation !== 0) encodeTree(enc, M.rot, ROTS.indexOf(o.rotation));
+        enc.encodeBit(M.hasElev, o.elevation !== undefined ? 1 : 0);
+        if (o.elevation !== undefined) {
+          const onSurface = o.elevation === surface ? 0 : 1;
+          enc.encodeBit(M.elevIsSurface, onSurface);
+          if (onSurface) encodeUint(enc, M.objElev, o.elevation);
+        }
+        enc.encodeBit(M.hasSpan, o.spanLength !== undefined ? 1 : 0);
+        if (o.spanLength !== undefined) encodeUint(enc, M.span, o.spanLength);
+        enc.encodeBit(M.objCorners, o.corners !== undefined ? 1 : 0);
+        if (o.corners !== undefined) {
+          for (let k = 0; k < 4; k++) encodeTree(enc, M.objCorner[k]!, CORNERS.indexOf(o.corners[k]!));
+        }
+        enc.encodeBit(M.objPatch, o.patchOnly ? 1 : 0);
+        enc.encodeBit(M.more, j < here.length - 1 ? 1 : 0);
       }
-      enc.encodeBit(M.hasSpan, o.spanLength !== undefined ? 1 : 0);
-      if (o.spanLength !== undefined) encodeUint(enc, M.span, o.spanLength);
-      enc.encodeBit(M.objCorners, o.corners !== undefined ? 1 : 0);
-      if (o.corners !== undefined) {
-        for (let k = 0; k < 4; k++) encodeTree(enc, M.objCorner[k]!, CORNERS.indexOf(o.corners[k]!));
-      }
-      enc.encodeBit(M.objPatch, o.patchOnly ? 1 : 0);
-      enc.encodeBit(M.more, j < here.length - 1 ? 1 : 0);
-    }
     }
   }
 }
@@ -316,24 +319,28 @@ export function decodeMap(
   const M = new Models();
   const width = template.width;
   const n = template.width * template.height;
+  const mask = opts.templateMask ? frozenTemplateMask(template, opts.templateMask) : null;
+  if (opts.templateMask && !mask) throw new Error('map-coder: template mask is unavailable');
   const par = (i: number, y: number) => (opts.parity ? ((i % width) & 1) | ((y & 1) << 1) : 0);
   const cells: (CellFields | null)[] = new Array(n).fill(null);
 
   let prevRow = 0;
   for (let y = 0; y < template.height; y++) {
+    if (!codedRow(mask, y, width)) continue;
     const rowUsed = dec.decodeBit(M.rowHas[prevRow]!);
     prevRow = rowUsed;
     if (!rowUsed) continue;
     for (let i = y * width; i < (y + 1) * width; i++) {
-    const nb = around(cells, i, width);
-    if (dec.decodeBit(M.has[hasCtx(nb.w, nb.n, nb.nw, nb.ne, par(i, y))]!) === 0) continue;
-    const type = decodeTree(dec, M.type[typeCtx(nb)]!);
-    let elevation = predictElev(nb);
-    if (dec.decodeBit(M.elevZero[elevCtx(nb)]!) === 1) elevation += unzigzag(decodeUint(dec, M.elevDelta));
-    const patchOnly = dec.decodeBit(M.patchOnly[nb.w?.patchOnly ? 1 : 0]!) === 1;
-    let patchBase: number | null = null;
-    if (patchOnly && dec.decodeBit(M.hasPatchBase) === 1) patchBase = decodeTree(dec, M.patchBase);
-    cells[i] = { type, elevation, corners: null, patchOnly, patchBase };
+      if (!codedCell(mask, i)) continue;
+      const nb = around(cells, i, width);
+      if (dec.decodeBit(M.has[hasCtx(nb.w, nb.n, nb.nw, nb.ne, par(i, y))]!) === 0) continue;
+      const type = decodeTree(dec, M.type[typeCtx(nb)]!);
+      let elevation = predictElev(nb);
+      if (dec.decodeBit(M.elevZero[elevCtx(nb)]!) === 1) elevation += unzigzag(decodeUint(dec, M.elevDelta));
+      const patchOnly = dec.decodeBit(M.patchOnly[nb.w?.patchOnly ? 1 : 0]!) === 1;
+      let patchBase: number | null = null;
+      if (patchOnly && dec.decodeBit(M.hasPatchBase) === 1) patchBase = decodeTree(dec, M.patchBase);
+      cells[i] = { type, elevation, corners: null, patchOnly, patchBase };
     }
   }
 
@@ -356,48 +363,50 @@ export function decodeMap(
   const idAt = (i: number) => anchor.get(i)?.[0]?.catalogId ?? null;
   let prevOccRow = 0;
   for (let y = 0; y < template.height; y++) {
+    if (!codedRow(mask, y, width)) continue;
     const rowUsed = dec.decodeBit(M.rowOcc[prevOccRow]!);
     prevOccRow = rowUsed;
     if (!rowUsed) continue;
     for (let i = y * width; i < (y + 1) * width; i++) {
-    const x = i % width;
-    if (dec.decodeBit(M.occ[occCtx(anchor, i, x, width)]!) === 0) continue;
-    const ctxId = (x > 0 ? idAt(i - 1) : null) ?? idAt(i - width) ?? (x > 0 ? idAt(i - width - 1) : null);
-    const surface = cells[i]?.elevation ?? 0;
-    const here: SaveObject[] = [];
-    anchor.set(i, here);
-    for (let j = 0; ; j++) {
-      if (j >= MAX_OBJECTS_PER_CELL) throw new Error('map-coder: implausible objects on one cell');
-      let catalogId: string;
-      if (ctxId !== null && dec.decodeBit(M.sameId[j === 0 ? 0 : 1]!) === 1) catalogId = ctxId;
-      else {
-        const idx = decodeTree(dec, M.catalog);
-        const id = SHARE_CATALOG_ORDER[idx];
-        if (id === undefined) throw new Error('map-coder: catalog index out of range');
-        catalogId = id;
+      if (!codedCell(mask, i)) continue;
+      const x = i % width;
+      if (dec.decodeBit(M.occ[occCtx(anchor, i, x, width)]!) === 0) continue;
+      const ctxId = (x > 0 ? idAt(i - 1) : null) ?? idAt(i - width) ?? (x > 0 ? idAt(i - width - 1) : null);
+      const surface = cells[i]?.elevation ?? 0;
+      const here: SaveObject[] = [];
+      anchor.set(i, here);
+      for (let j = 0; ; j++) {
+        if (j >= MAX_OBJECTS_PER_CELL) throw new Error('map-coder: implausible objects on one cell');
+        let catalogId: string;
+        if (ctxId !== null && dec.decodeBit(M.sameId[j === 0 ? 0 : 1]!) === 1) catalogId = ctxId;
+        else {
+          const idx = decodeTree(dec, M.catalog);
+          const id = SHARE_CATALOG_ORDER[idx];
+          if (id === undefined) throw new Error('map-coder: catalog index out of range');
+          catalogId = id;
+        }
+        const half = opts.half ? decodeTree(dec, M.halfOffset) : 0;
+        const rotation = dec.decodeBit(M.rotZero) === 1 ? ROTS[decodeTree(dec, M.rot)]! : 0;
+        const o: SaveObject = {
+          id: 'o?', catalogId,
+          x: x + (half & 1 ? 0.5 : 0),
+          y: Math.floor(i / width) + (half & 2 ? 0.5 : 0),
+          rotation,
+        };
+        if (dec.decodeBit(M.hasElev) === 1) {
+          o.elevation = dec.decodeBit(M.elevIsSurface) === 0 ? surface : decodeUint(dec, M.objElev);
+        }
+        if (dec.decodeBit(M.hasSpan) === 1) o.spanLength = decodeUint(dec, M.span);
+        if (dec.decodeBit(M.objCorners) === 1) {
+          let cs = '';
+          for (let k = 0; k < 4; k++) cs += CORNERS[decodeTree(dec, M.objCorner[k]!)] ?? 'S';
+          o.corners = cs;
+        }
+        if (dec.decodeBit(M.objPatch) === 1) o.patchOnly = true;
+        here.push(o);
+        objects.push(o);
+        if (dec.decodeBit(M.more) === 0) break;
       }
-      const half = opts.half ? decodeTree(dec, M.halfOffset) : 0;
-      const rotation = dec.decodeBit(M.rotZero) === 1 ? ROTS[decodeTree(dec, M.rot)]! : 0;
-      const o: SaveObject = {
-        id: 'o?', catalogId,
-        x: x + (half & 1 ? 0.5 : 0),
-        y: Math.floor(i / width) + (half & 2 ? 0.5 : 0),
-        rotation,
-      };
-      if (dec.decodeBit(M.hasElev) === 1) {
-        o.elevation = dec.decodeBit(M.elevIsSurface) === 0 ? surface : decodeUint(dec, M.objElev);
-      }
-      if (dec.decodeBit(M.hasSpan) === 1) o.spanLength = decodeUint(dec, M.span);
-      if (dec.decodeBit(M.objCorners) === 1) {
-        let cs = '';
-        for (let k = 0; k < 4; k++) cs += CORNERS[decodeTree(dec, M.objCorner[k]!)] ?? 'S';
-        o.corners = cs;
-      }
-      if (dec.decodeBit(M.objPatch) === 1) o.patchOnly = true;
-      here.push(o);
-      objects.push(o);
-      if (dec.decodeBit(M.more) === 0) break;
-    }
     }
   }
   return { cells, objects };

@@ -1,24 +1,5 @@
-/**
- * fin-ticket.test.tsx — THE TERMINAL FAMILY: one grammar, five hierarchies.
- *
- * Each block below pins ONE hierarchy against what the artifact says leads it, and — just as
- * importantly — against what it must NOT carry: `done` has no ledger and no tape (the gauge is the
- * capped hierarchy's own), `done.capped` has no postcard and no counting stats, `aborted` has no
- * flip at all, the compact settle has no File it away, and the archive card has no flip, no counts
- * and no per-step rewind.
- *
- * THE TWO RULES THAT BIND EVERY ONE OF THEM are tested where they are made rather than per card:
- * a zero count renders no stat cell (a printed zero is a count of an absence), and nothing here
- * fabricates a step (a job with no checkpoint has no story, so no flip is grown).
- *
- * The count-up is judged on the two frames that matter: the FIRST one, which must read `0` because
- * a figure that mounted at its total and then dropped to zero would read as the card correcting
- * itself, and the LAST one. Under reduced motion there is only one frame and it is the total.
- *
- * Reduced motion is driven by framer's own `<MotionConfig reducedMotion="always">` rather than by
- * the `<html data-reduced-motion>` attribute, matching `atoms.test.tsx`: the components read
- * `useReducedMotionConfig()`, so the provider is the whole input.
- */
+/** Terminal-card variants and the content each outcome may render. Count-up assertions cover the
+ * first and final frames; reduced-motion cases render the total immediately. */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -75,7 +56,7 @@ function makeJob(over: Partial<JobView> = {}): JobView {
   };
 }
 
-/** The artifact's own village job: a boardwalk, six houses and a pine grove, over four checkpoints. */
+/** A completed village job with several operations and checkpoints. */
 const VILLAGE = makeJob({
   // Each call carries the plan stage it ran under, as the fold stamps one.
   ops: [
@@ -169,10 +150,7 @@ describe('done: the built thing leads', () => {
     expect(filed).toEqual([1]);
   });
 
-  /** THE TAPE IS THE CAPPED HIERARCHY'S OWN. The artifact's done card puts the postcard straight
-   *  under the order line and carries no gauge at all: a finished job earns no bar for finishing,
-   *  whatever plan it ran. A capped one shows the stages it got through, which is the whole point of
-   *  that card. */
+  /** Only a capped job shows how far its plan progressed; a completed job needs no progress gauge. */
   it('draws no tape on a finished job, and the plan\'s own fraction on a capped one', () => {
     const done = renderReduced(<FlipTicket job={VILLAGE} />);
     expect(done.queryByTestId('tape-bar')).toBeNull();
@@ -885,11 +863,7 @@ describe('the stop card: its rewind names the same cost', () => {
   });
 });
 
-/**
- * THE SIXTH DRESS. A record whose edits are off the map is not a `done` card at 55% opacity: every
- * claim on its front is now false, and dimming a false sentence does not make it true. The artifact
- * gives `rewound` its own stamp, its own foot verb and its own sentence, and suppresses the claims.
- */
+/** A rewound record suppresses completion claims that no longer describe the map. */
 describe('the rewound dress', () => {
   it('stops reading Built, and wears the take-back\'s own stamp', () => {
     const { getByTestId } = renderReduced(<FlipTicket job={VILLAGE} rolledBack />);

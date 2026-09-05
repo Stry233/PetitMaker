@@ -3,6 +3,7 @@ import { font, radii, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
+import { useEditorStore } from '../../../../state/store';
 import { applyPreset, hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { moduleBaseFor } from '../../../../io/share';
@@ -10,22 +11,26 @@ import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import { HelpBubble } from './HelpBubble';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { Switch } from '../../../primitives/Switch';
-import { Expand } from './Expand';
+import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
+import { StylizeEntry } from './stylize/StylizeEntry';
 
 const RES_KEYS: ResolutionKey[] = ['compact', 'standard', 'high', 'original'];
 const PRESETS: ExportPreset[] = ['share', 'plain'];
 const hasCurrentProv = (s: MapProvenanceSummary | null) => !!s && (s.containsAi || s.containsProcedural);
 
 /** Settings only — the modal renders the fixed footer (Cancel / Export) outside the scroll region. */
-export function ExportControls({ options, setOptions, summary, footerSamples }: {
+export function ExportControls({ options, setOptions, summary, footerSamples, initialOpen = false }: {
   options: ExportOptions; setOptions: (o: ExportOptions) => void; summary: MapProvenanceSummary | null;
   /** Current value of each footer token (date/dims/name/…), shown in the footer editor's menu. */
   footerSamples: Record<string, string>;
+  /** Open the Appearance disclosure from the first render (a picture of the column can pose the
+   *  rows a live visitor reaches with one press). */
+  initialOpen?: boolean;
 }) {
   const t = useT();
-  const [details, setDetails] = useState(false);
+  const [details, setDetails] = useState(initialOpen);
   const set = <K extends keyof ExportOptions>(k: K, v: ExportOptions[K]) => setOptions({ ...options, [k]: v });
 
   // The share code needs a minimum composition width; the Compact size is below it, so an
@@ -54,6 +59,8 @@ export function ExportControls({ options, setOptions, summary, footerSamples }: 
         <div style={capStyle}>{t('export.sec_size')}</div>
         <SegmentedControl idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
+
+      <StylizeEntry />
 
       {/* Importability — labels + help bubbles, no paragraphs */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -104,6 +111,16 @@ export function ExportControls({ options, setOptions, summary, footerSamples }: 
               <Expand open={options.card3d}><div style={{ paddingTop: 10 }}><Shot3dStrip open={options.card3d} /></div></Expand>
             </div>
             <Row><span style={rowLabel}>{t('export.opt_grid')}</span><Switch on={options.grid} onClick={() => set('grid', !options.grid)} label={t('export.opt_grid')} /></Row>
+            {/* The edit door rides IN the toggle row — a full row for one small verb pushed the
+                appearance section a step taller than it says. It stands whether the toggle is on
+                or off: editing the notes and including them in the image are separate decisions. */}
+            <Row>
+              <span style={rowLabel}>{t('annot.export_include')}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                <button type="button" onClick={editAnnotations} style={editNotesBtn}>{t('annot.export_edit')}</button>
+                <Switch on={options.annotations} onClick={() => set('annotations', !options.annotations)} label={t('annot.export_include')} />
+              </span>
+            </Row>
           </div>
         </Expand>
       </div>
@@ -136,6 +153,25 @@ const codeWarn: CSSProperties = {
   borderRadius: radii.sm, padding: '7px 9px',
 };
 const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: skin.muted, padding: 0 };
+
+/** The door into annotation editing while the toggle above it is on: close whichever export
+ *  surface is standing (the modal, or the share window carrying it as a section) and select the
+ *  plan-notes layer, exactly what the layer panel's own row writes. */
+function editAnnotations(): void {
+  const s = useEditorStore.getState();
+  s.setModal('share', false);
+  s.setModal('export', false);
+  s.setModal('exportJson', false);
+  const data = s.gridState?.annotations;
+  if (data && !data.visible) s.setAnnotationsVisible(true);
+  s.setEditMode({ mode: 'annotate' });
+}
+
+const editNotesBtn: CSSProperties = {
+  background: 'transparent', border: `1.5px dashed ${skin.muted}`, borderRadius: 999,
+  padding: '3px 11px', cursor: cursors.clickable, fontFamily: font.family,
+  ...roleFont('caption'), color: skin.ink,
+};
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

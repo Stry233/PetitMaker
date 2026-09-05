@@ -1,5 +1,5 @@
 /**
- * The half-step span items (issue #4) at the DETECTION level: bridge-span and
+ * Half-step span items at the detection level: bridge-span and
  * heightDrop walking the half grid. The reported cases are (a) a ramp that only
  * fits flush at a half anchor beside a mountain edge and (b) the 0.5 + 1 + 0.5
  * gap — half a block of mountain either side of a one-block gap — which the
@@ -70,7 +70,7 @@ function plateauMap(size = 20): GridState {
   return state;
 }
 
-describe('heightDrop on the half grid (issue #4 repros)', () => {
+describe('heightDrop on the half grid', () => {
   it('(a) a ramp fits flush at a half anchor where every whole anchor is blocked', () => {
     // The low ground carries a mountain shoulder at x = 7 and a water bank at x = 4;
     // the open lane is exactly the ramp's two cells wide (x = 5, 6). A whole anchor
@@ -116,7 +116,7 @@ describe('heightDrop on the half grid (issue #4 repros)', () => {
   });
 });
 
-describe('waterSpan on the half grid (issue #4 repros)', () => {
+describe('waterSpan on the half grid', () => {
   /** Banks of mountain at x = 4 and x = 8 on `rows`, water between them on `rows`. */
   function channel(rows: number[]): GridState {
     const state = grassMap();
@@ -297,7 +297,7 @@ describe('gating: only a halfStep item may anchor on a half cell', () => {
   });
 });
 
-describe('whole-anchor regression pins (detection is unchanged where it was already legal)', () => {
+describe('whole-anchor placements remain legal', () => {
   it('pins the bridge span over a three-wide river, both orientations', () => {
     const horizontal = grassMap();
     for (const y of [5, 6]) {

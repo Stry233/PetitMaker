@@ -1,33 +1,10 @@
 /*
- * JobTicket.tsx — the order slip a job's whole story stands on: the order line, the region it was
- * filed under, the construction-tape progress band, the model's own says-line, then ONE body of
- * items — the plan rail or a flat op list, the helper lane, the side stamps, and a hold's own mark
- * and verbs (normative prototype `.ticket`).
- *
- * THE ORDER LINE IS STICKY. The body scrolls inside the job zone and the ticket can be taller than
- * the room it has, so the title rides at the top of its own card (`.ticket .order`, offset by the
- * card's padding AND its border so it sits flush) — the panel's subject is the one thing that must
- * not scroll away while a long record is read.
- *
- * PLAN VS. FLAT OPS IS EXCLUSIVE, never both: a `JobView` carries one flat `ops` list for the
- * whole job (there is no per-stage partition in the data), so when a plan exists that SAME list
- * nests under the plan rail's active stage (`PlanRail`) and the ticket does not also print it
- * below the rail — a planless job prints it directly instead. A job with neither a plan nor any
- * ops yet (freshly ordered, still thinking) renders NEITHER: `PlanRail` never appears as an empty
- * scaffold waiting for a plan that has not arrived.
- *
- * WHERE A STAMP STANDS SAYS WHAT IT EXPLAINS. The two that describe what comes NEXT lead the body —
- * a revised plan stands over the rail it revised, and a playbook stands with the call that opened it
- * (`OpRow` renders that one, so it lands in op order rather than at the foot). The rest look BACK at
- * work already recorded and stand under it: the notes the user sent, a tidy-up, a change of
- * approach, an interruption.
- *
- * THE TAPE ONLY EVER DESCRIBES THE LIVE JOB'S OWN PROGRESS: a settled job (`job.outcome` set) or one
- * rendered where the caller says `live={false}` (a past job standing in the log) shows no band at
- * all, matching the prototype's finished-ticket flip card taking over from here instead. `held`
- * freezes whatever band there is, for the states where nothing is moving.
+ * A job ticket keeps its sticky order line above the progress, model output and work record. Jobs
+ * with plans place their flat operation list under the active plan stage; planless jobs render the
+ * same list directly. Settled and historical jobs omit the live progress band, while held jobs
+ * freeze it. Stamps are placed next to the work they describe.
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { RESUME_PRIMARY, Stamp, TapeBar, type TapeMode } from './atoms';
 import { ThoughtRow, ThoughtsBox } from './ThoughtsBox';
@@ -43,7 +20,7 @@ import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
 import { LoadingDots } from '../primitives/LoadingDots';
-import { framerMotion } from './motion';
+import { cssMotion, framerMotion } from './motion';
 import { useT } from '../../i18n/context';
 import type { JobView } from '../../agent/core/project-view';
 
@@ -66,8 +43,7 @@ export function jobStamps(
   }));
 }
 
-/** The plate's own inset and border, so the sticky order line can offset itself by exactly what
- *  stands above it (prototype: `padding:12px` + a 1px edge, `top:-13px`). */
+/** Ticket inset and border widths used to align the sticky order line. */
 const TICKET_PAD = 12;
 const TICKET_BORDER = 1;
 
@@ -90,6 +66,10 @@ function tapeModeFor(job: JobView, live: boolean): TapeMode | undefined {
  *  `panel.says.caret`). Under reduced motion it stands lit, which reads as a mark at the end of the
  *  line rather than as a hung one. */
 const CARET_BLINK = { opacity: [1, 1, 0, 0] };
+
+/** The says line's closed height: the two clamped lines, at the note rung's own size and the
+ *  line-height the span declares. The unfold animates between this and the whole text. */
+const SAYS_CLOSED_H = Math.round(roleFont('note').fontSize * 1.4 * 2);
 
 const ORDER_STYLE: CSSProperties = {
   position: 'sticky',
@@ -115,8 +95,7 @@ const ORDER_STYLE: CSSProperties = {
   overflowWrap: 'anywhere',
 };
 
-/** The body's own tight rhythm (prototype `.ops`), against the ticket's roomier one between the
- *  order line, the tape and the says line. */
+/** Compact spacing for the operation list within the roomier ticket layout. */
 const BODY_STYLE: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2 };
 
 /** No thought open. A module constant so a fresh mount's set is the same object every time. */
@@ -126,7 +105,7 @@ const NONE_OPEN: ReadonlySet<number> = new Set();
  *  it can never collide with one. */
 const LIVE_TURN = -1;
 
-/** The pill beside the says row that opens the CURRENT turn's thinking (prototype `.thoughts`). */
+/** Button beside the model output that opens the current turn's reasoning. */
 const THOUGHTS_PILL: CSSProperties = {
   flex: '0 0 auto',
   border: 'none',
@@ -188,6 +167,9 @@ export function JobTicket({
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
   const [saysOpen, setSaysOpen] = useState(false);
+  // The says line re-renders on every epoch bump while a job streams; the markdown parse only
+  // owes the renders where the text itself moved.
+  const saysRuns = useMemo(() => (job.says === undefined ? null : inlineProseRuns(job.says)), [job.says]);
   const tapeMode = tapeModeFor(job, live);
   const toggleSays = () => setSaysOpen((o) => !o);
   /**
@@ -295,6 +277,15 @@ export function JobTicket({
             </span>
           ) : (
             <>
+              {/* The unclamp UNFOLDS on the shared beat (`panel.detail.unfold`): the wrapper's height
+                  opens to the whole text and closes back to the two-line cap, which is the same cut
+                  the clamp makes — the clamp only adds the ellipsis on top. */}
+              <motion.div
+                initial={false}
+                animate={{ height: saysOpen ? 'auto' : SAYS_CLOSED_H }}
+                transition={framerMotion('panel.detail.unfold')}
+                style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
+              >
               <span
                 data-testid="says-line"
                 data-open={saysOpen}
@@ -304,10 +295,8 @@ export function JobTicket({
                   ...roleFont('note'),
                   fontFamily: font.family,
                   color: colors.brownText,
-                  flex: 1,
-                  minWidth: 0,
-                  lineHeight: 1.4,
                   display: '-webkit-box',
+                  lineHeight: 1.4,
                   WebkitLineClamp: saysOpen ? undefined : 2,
                   WebkitBoxOrient: 'vertical',
                   overflow: 'hidden',
@@ -317,7 +306,7 @@ export function JobTicket({
                   ...INLINE_PROSE_STYLE,
                 }}
               >
-                {inlineProseRuns(job.says)}
+                {saysRuns}
                 {streaming && (
                   <motion.span
                     data-testid="says-caret"
@@ -336,6 +325,7 @@ export function JobTicket({
                   />
                 )}
               </span>
+              </motion.div>
               {/* The whole line is one press away, since a clamped two lines can end mid-clause. */}
               <button
                 type="button"
@@ -356,6 +346,8 @@ export function JobTicket({
                   justifyContent: 'center',
                   cursor: cursors.clickable,
                   transform: saysOpen ? 'rotate(180deg)' : undefined,
+                  // The turn rides the same unfold beat as the text it points at.
+                  transition: cssMotion('panel.detail.unfold', ['transform'], reduced),
                 }}
               >
                 <Icon id="pw-chevron" size={13} />
@@ -463,7 +455,7 @@ export function JobTicket({
   );
 }
 
-/** The pausemark (prototype `.pausemark`): a muted pill saying where the work stopped. */
+/** Muted pill describing where the work stopped. */
 const PAUSEMARK_STYLE: CSSProperties = {
   alignSelf: 'flex-start',
   display: 'inline-flex',

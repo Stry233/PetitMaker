@@ -1,47 +1,9 @@
 /**
- * THE FOUNTAIN COURT: the island's one ARTIFICIAL water feature, drawn from a grammar.
- *
- * The game's own guidance on water separates it from everything else by kind rather than by size:
- * 人工水景，可以比自然水体规整 — a fountain may be more regular than natural water, and it is
- * composed IN RELATION to the space around it (a plaza's centre, the end of a street, beside a
- * building's entrance). A large one keeps a whole open court around it; a small one sits in a garden
- * or at a street corner. One clear MAIN fountain per region and never several.
- *
- * The grammar this module draws from, learned off the style target's own instance — a 1-wide ring moat
- * around a 14x14 platform holding a 10x10 octagonal medallion holding a mountain figure — rather than
- * copied from it:
- *  - a REGULAR outline: square, octagon, ring or cross, as a distance metric on the macro grid;
- *  - CONCENTRIC NESTING, alternating water and dry from the outside in — moat, platform, basin —
- *    one to three deep by how much room the site has, every WATER band at least `MOAT_MIN` levels
- *    deep so the body a reading decomposes is one body;
- *  - a CENTRE FIGURE of mountain, at every nesting depth: standing in the basin where the innermost
- *    band is water, on the platform where it is dry, one tier above either;
- *  - AXIAL SYMMETRY by construction: every band is a level set of the metric, so the composition
- *    mirrors about both of its own axes whatever the seed drew;
- *  - a DRY COURT of open ground around the whole of it, which nothing else may take, and which the
- *    pipeline PAVES on the large court WHERE A COURSE CAN REACH IT (`FountainCourt.frame`). A court
- *    is a built space: water in the middle, a figure standing in it, pavement round the whole. Left bare
- *    it reads on a finished map as a pond dug in a lawn. Over eighteen measured maps that carry a large
- *    court, fourteen have 64% to 83% of the band paved and four have NONE, because the network never got
- *    there — the same residual the figure's own frame has, and the same cause.
- *
- * NEARLY EVERY ISLAND CARRIES ONE LARGE COURT. The plaza's own ground is asked first, and where the
- * hub cannot stand one the places are offered it in turn, biggest lot first, before anything is drawn
- * at garden scale — an island of ornaments has no space composed around water at all. MEASURED over
- * twenty maps: 20 of 20 at richness 0.5, and 18 of 20 at full richness, where `tafa/31337` and
- * `tafa/1024` have no 13x13 rectangle of one-tier ground with a street in reach anywhere on them. A ring
- * scan of the WHOLE island finds nothing for those two at reach 70 or 220 either: what they are short of
- * is ground, not search.
- * Every instance is drawn per seed — the outline, the nesting depth and the span all vary — so the
- * reference's own 14x14/10x10 layout is one point in the grammar rather than the thing produced.
- *
- * LEGALITY. The court is composed on ONE flat terrace: a fountain is not terraced. Every water band
- * therefore stands at that terrace's tier with dry ground or the figure around it, so the body shows
- * no face and V-WTR-02 asks it for no caps; the figure is one tier up, which is inside V-MTN-03's own
- * window since its whole 3x3 stands at the tier below it.
- *
- * Pure over its inputs, like every other planning module here: a `TerrainPlan` and masks in, cells
- * out, and the same (seed, plan) draws the same courts.
+ * Builds regular artificial-water compositions from concentric square, octagonal, ring, or cross
+ * bands. Water and dry bands alternate around a raised center figure, with a reserved dry court that
+ * the street pass may pave. Courts require one flat terrace, making water faces and mountain support
+ * legal by construction. Large sites are tried before garden-scale sites; seeded shape and nesting
+ * choices keep instances distinct. Pure planning only: inputs and masks in, cells out.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';

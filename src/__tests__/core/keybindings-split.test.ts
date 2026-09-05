@@ -16,14 +16,10 @@ describe('keymap data', () => {
     expect(normalizeCombo('G+Shift')).toBe('shift+g');
   });
 
-  it('lets an override replace a default binding', () => {
-    const rebindable = COMMAND_META.find((c) => !c.reserved && c.defaultCombo)!;
-    expect(effectiveCombo({ [rebindable.id]: 'ctrl+alt+j' }, rebindable.id)).toBe('ctrl+alt+j');
-  });
-
-  it('ignores overrides on a reserved command', () => {
-    const reserved = COMMAND_META.find((c) => c.reserved)!;
-    expect(effectiveCombo({ [reserved.id]: 'ctrl+alt+j' }, reserved.id)).toBe(reserved.defaultCombo);
+  it('lets an override replace any command\'s default binding', () => {
+    for (const cmd of COMMAND_META.filter((c) => c.defaultCombo)) {
+      expect(effectiveCombo({ [cmd.id]: 'ctrl+alt+j' }, cmd.id), cmd.id).toBe('ctrl+alt+j');
+    }
   });
 
   it('maps each bound combo to exactly one command', () => {

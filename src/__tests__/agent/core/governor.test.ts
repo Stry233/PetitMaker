@@ -11,12 +11,16 @@ import {
   hasLandedWrite,
   landedWriteCount,
   lengthStopNudge,
+  planOwedNudge,
+  planProgress,
+  PLAN_OWED_AT,
   reasoningOnlyNudge,
   repeatedFailure,
   repeatRefusal,
   revertNudge,
   reviewNudge,
   REVIEW_MIN_TURNS_LEFT,
+  unfinishedPlanNudge,
   verbatimRetryNudge,
 } from '../../../agent/core/governor';
 
@@ -148,6 +152,51 @@ describe('verbatimRetryNudge', () => {
     seedCall(log, 'call-1', call.name, { x: 9, y: 9 });
     seedResult(log, 'call-1', call.name, { isError: true });
     expect(verbatimRetryNudge(log, call)).toBeUndefined();
+  });
+});
+
+describe('plan nudges', () => {
+  const seedPlan = (log: ReturnType<typeof createLog>, n: number) => {
+    append(log, { kind: 'plan', stages: Array.from({ length: n }, (_, i) => ({ label: `stage ${i + 1}` })), revision: 0 });
+  };
+  const seedWrites = (log: ReturnType<typeof createLog>, n: number) => {
+    for (let i = 0; i < n; i++) {
+      seedCall(log, `w${i}`, 'place_object', { x: i });
+      seedResult(log, `w${i}`, 'place_object', { write: true });
+    }
+  };
+
+  it('planProgress reads the filed stages and the current index', () => {
+    const log = createLog();
+    seedOrder(log);
+    expect(planProgress(log)).toBeUndefined();
+    seedPlan(log, 4);
+    expect(planProgress(log)).toEqual({ stageCount: 4, current: 0, nextLabel: 'stage 1' });
+    append(log, { kind: 'stage', index: 2 });
+    expect(planProgress(log)).toEqual({ stageCount: 4, current: 2, nextLabel: 'stage 3' });
+  });
+
+  it('planOwedNudge fires only in the write window while no plan stands', () => {
+    const log = createLog();
+    seedOrder(log);
+    seedWrites(log, PLAN_OWED_AT - 1);
+    expect(planOwedNudge(log)).toBeUndefined();
+    seedWrites(log, 1);
+    expect(planOwedNudge(log)).toMatch(/update_plan now/);
+    seedPlan(log, 3);
+    expect(planOwedNudge(log)).toBeUndefined();
+  });
+
+  it('unfinishedPlanNudge stands while stages remain and rests on the last one', () => {
+    const log = createLog();
+    seedOrder(log);
+    expect(unfinishedPlanNudge(log)).toBeUndefined();
+    seedPlan(log, 3);
+    expect(unfinishedPlanNudge(log)).toMatch(/3 of 3 stages not finished/);
+    append(log, { kind: 'stage', index: 1 });
+    expect(unfinishedPlanNudge(log)).toMatch(/2 of 3 stages not finished \(current: "stage 2"\)/);
+    append(log, { kind: 'stage', index: 2 });
+    expect(unfinishedPlanNudge(log)).toBeUndefined();
   });
 });
 
@@ -579,10 +628,15 @@ describe('reviewNudge', () => {
     expect(msg).toContain('verify');
   });
 
-  it('points at view_map over the order\'s own ground, never at the whole-map scorecard', () => {
+  it('demands the close sweep pair beside the order-scoped look, with the scope constraint standing', () => {
     const msg = reviewNudge();
     expect(msg).toContain('view_map');
-    expect(msg).not.toContain('evaluate_map');
+    // Live rounds showed detector findings going stale because nothing re-ran them at close, so
+    // the pass now names the sweep pair explicitly; the scope sentence is what keeps the whole-map
+    // scorecard from inviting edits a constrained order never asked for.
+    expect(msg).toContain('find_speckle');
+    expect(msg).toContain('evaluate_map');
+    expect(msg).toContain('Do not add anything the order did not ask for');
   });
 
   it('contains no em dash', () => {

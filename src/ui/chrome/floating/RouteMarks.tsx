@@ -1,35 +1,8 @@
 /*
- * RouteMarks.tsx — the two ends of the road that was just laid, for a moment, and the nudge.
- *
- * The route is real pavement; these are HTML marks anchored to the cells the two taps landed on, in
- * the shape `MazeEndpoints` established for a mark that stands ON the map: a pill sized to its own
- * cell, positioned imperatively through the ACTIVE view's projection and re-placed on
- * viewport-changed / resize / an active-view swap, since React gets no per-frame signal.
- *
- * WHAT THEY SAY IS WHICH END THEY ARE. A route has a direction, and dragging the far end of a road is
- * not the same edit as dragging the near one, so each mark carries its own word rather than both
- * wearing a dot.
- *
- * THEY LEAVE WITH THE SESSION rather than fading out. An exit animation holds the nodes in the tree
- * past the moment the session is gone, and a mark that is still on screen but no longer attached to a
- * route is a control that does nothing when it is grabbed.
- *
- * AN UNDO TAKES THEM WITH IT (`history-applied`, which undo and redo emit and nothing else does): the
- * marks describe a route, and a step back through history is the one way the map can lose that route
- * without the tool being told. The nudge's own restore deliberately does not go through undo, so it
- * cannot trip this.
- *
- * SO DOES A CARD SWITCH, and it has to be read HERE. The tool compares `armingEpoch` too, but it can
- * only do so when a pointer event reaches it: a switch made with the pointer off the map leaves the
- * marks drawn until it comes back, and a drag that begins and ends inside a pill never reaches the
- * canvas at all, so a relay could still run under a card the hand has moved on from. The counter is the
- * one notion of a switch (`state/slices/edit.ts`); this reads it rather than inventing a second.
- *
- * The comparison is against the SESSION'S own epoch, not against the last count this component saw.
- * A route builds off the main thread, so a switch during the build invalidates marks that have not
- * opened yet: watching for the count to change sees that switch before there is anything to close,
- * and then nothing afterwards. Asking whether the marks on screen belong to the arming in force has
- * no such gap.
+ * Draggable HTML marks for a completed route's near and far endpoints. Their positions follow the
+ * active view projection. Undo, redo, session close, and a changed arming epoch remove them
+ * immediately; the epoch comparison uses the session's own value so switches during an async build
+ * also invalidate its marks.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';

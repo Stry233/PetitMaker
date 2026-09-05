@@ -1,32 +1,8 @@
 /**
- * The map's one SET PIECE (文字/图案景观): a phrase or a figure written into the terrain.
- *
- * The style target carries two of them, and they are the two this stage builds:
- *  - THE WALL BANNER. A rectangle of the backing wall's plateau is flooded at the plateau's own
- *    tier and the glyph is the wall left STANDING inside it — water is the page, the mountain top is
- *    the stroke. The reference's own is 68x14 cells at elevation 8, stroke weight 1 to 2, letter height
- *    12, framed by pavement so it reads as a signboard rather than as a lake.
- *  - THE GROUND FIELD. The same idea with the polarity inverted: a ground-level water rectangle on
- *    open ground, the letters standing as dry ground inside it (the reference's 18x28 field, letters
- *    about 5x6, read side-on from the plaza).
- *
- * BOTH ARE LEGAL BY CONSTRUCTION, by the same two readings the rest of the sculpt uses:
- *  - V-WTR-02 asks for caps only where a water cell FACES something lower. The banner's panel sits
- *    strictly inside the plateau, so every cell around it — ring, neighbouring water, and the glyph
- *    itself — stands at the panel's own tier or above, and the panel shows no face at all. The
- *    ground field is at elevation 0, and nothing is lower than that.
- *  - V-MTN-03 reads a water cell as support up to its own surface (a waterfall is carved by
- *    CONVERTING a block, so the conversion cannot lower the neighbourhood it stands in). A stroke of
- *    wall at tier N surrounded by water at N therefore keeps the whole 3x3 window it had before the
- *    flood, and the letters survive the repair fixpoint instead of being eaten by it.
- *
- * THE GLYPHS ARE AUTHORED HERE, as cell masks, and that is a constraint rather than a preference:
- * drawing a letter from a font needs a canvas, and the only rasterizer in the tree is a browser one
- * on the main thread (the generator runs inside the worker pool, browser-API-free by contract). What
- * is shared with that path is the `Stencil` the rasterizer produces and the reading of it, so a
- * canvas-drawn phrase could be handed to `layPhrase` unchanged.
- *
- * Pure and deterministic per (seed, plan, terrain): no state, no commands, no browser API.
+ * Writes a phrase or figure into terrain as a local cell mask. A wall banner leaves plateau cells
+ * standing inside same-tier water; a ground field leaves dry glyphs inside ground-level water. Both
+ * arrangements preserve the water-cap and mountain-support invariants. Local masks avoid a browser
+ * font rasterizer, keeping this stage pure and worker-safe.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
@@ -331,12 +307,8 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
   const banners = bannerSearches(input);
   const fields = fieldSearches(input);
   // THE FAMILY IS A CHOICE, NOT A CONSEQUENCE OF WHICH ONE COULD ANSWER THE LARGEST RUNG.
-  //
-  // Rung-major over all three forms makes the court the answer on TWENTY of twenty maps: no phrase panel
-  // reaches the big rung on ordinary ground, the court's terrace floor usually does, and the loop returns
-  // there before a banner is ever asked at the rung below — one form on every island, which reads as
-  // predefined whatever it is. So a seed DRAWS its family, that family is offered every rung down to the
-  // floor, and only a family the island cannot carry anywhere hands the map to the other two.
+  // Choose a family first, then try its size rungs. Comparing every family at each rung would favor
+  // terrace courts because their panels are usually larger than phrase panels.
   const preferred = drawKind(rng, r);
   const rungs = [SET_PIECE_BIG, SET_PIECE_WANT, floor]
     .filter((v, k, all) => v >= floor && all.indexOf(v) === k);
@@ -352,8 +324,7 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
     const found = ask(preferred, want);
     if (found) return commit(input.terrain, found);
   }
-  // THE FALLBACK IS RUNG-MAJOR, since here the question is no longer which form the map wanted but
-  // whether it can carry one at all: the biggest panel any remaining form offers is the right answer.
+  // If the chosen family cannot fit, use the largest viable panel from the remaining families.
   const rest = KIND_WEIGHTS.map((w) => w.kind).filter((k) => k !== preferred);
   for (const want of rungs) {
     for (const kind of rest) {

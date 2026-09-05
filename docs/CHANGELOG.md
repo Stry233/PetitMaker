@@ -4,6 +4,39 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.334] - 2026-09-04
+
+### Fixed
+
+- Text generation now fits font strokes to the selected region, including small rectangles such as 5×5 and 5×6 cells. Letters and digits retain their gaps, enclosed spaces, and lowercase details; larger text keeps the font's curves and proportions. Dense characters receive stronger stroke checks, emoji retain contrasting interior details, and mixed text is fitted by character type. Input preserves joined emoji and combining marks and supports Chinese and Japanese composition.
+- Painting roads on maps with large road networks no longer stutters. Picture candidates based on road materials also generate faster because edge-fade geometry is no longer recalculated repeatedly for the entire connected surface on every brush frame.
+- Flowers and shrubs can now be planted on the Garden Stone, Park Stone and Simple Flowerbed paths, matching the plantable surfaces in the game.
+- When the Keyboard Shortcuts window is narrower than the keyboard layout, a visible horizontal scrollbar now provides access to the full layout.
+- When the object shelf's category names are wider than the room and the row scrolls, choosing a name near the far end no longer snaps the row back to its first name; the chosen name stays in view.
+- Authorship records are now preserved consistently. Changing planets carries provenance with transferred content; moving or rotating an object retains its author; repainting a cell with identical content does not change its author; share-image imports retain their AI and procedural disclosures; and save imports reconcile provenance with the content that loaded.
+
+### Changed
+
+- The international website moves to [petitmaker.cc](https://petitmaker.cc/). Page titles and search metadata follow each deployment’s language, with updated canonical URLs and sitemaps.
+
+- Importable share images use a shorter, fixed-height PetitGlyph ribbon with four sage tones and no text inside the code. Improved error correction makes resized and recompressed images easier to recover. Very dense maps include a recommendation to share the original file. Version 1 and 2 share images remain readable.
+- Generating an island now plans faster, most visibly on lower-end machines, and the result for any given seed is unchanged.
+- Returning to a generation type now restores its existing candidate cards immediately instead of rebuilding them. Custom recipe numbers are also restored for procedural, letter, and picture generation.
+- Each generation type now keeps its own candidate batch and recipe number. Requesting a new batch for one type does not change another type's candidates.
+- Painting roads recomputes only the surface under the brush instead of every road surface on the map, so paving stays smooth on maps already dense with streets.
+- The startup wordmark now follows the deployment target. The international site uses the English wordmark and the mainland-China site uses the Chinese wordmark throughout startup.
+- Settings now includes a visual preview of the current keyboard bindings, with each key colored by function category. The preview updates when bindings change and opens the Keyboard Shortcuts window when selected.
+- Undo, Redo, and the two interface-scale commands can now be reassigned on the Keyboard Shortcuts page. Interface-scale shortcuts remain available while a dialog is open; shifted forms of their assigned keys remain reserved because they share the same physical keys.
+- Scrolling now zooms the 2D map around the pointer, matching 3D navigation. Mouse-wheel steps, touchpad scrolling, pinch gestures, and horizontal scrolling all zoom; right-button, middle-button, Space-drag, and keyboard controls continue to pan.
+- A plain export with all optional sections disabled now contains only the map, without a card border. When per-layer previews are disabled, the map uses the full card width. Every exported image includes an attribution band and app logo.
+
+### Added
+
+- Three paths newly added to the game join the catalog: Maizeglow Brick, Tilled Soil and Rustic Dirt. An old save or share code paved with the retired plain dirt road now loads as the Rustic Dirt Path, the game's own plain track.
+- A built-in Help Center, available from Help in the menu, covers getting started, camera controls, building tools, generation, planning, saving and sharing, the Agent, and settings in every supported language. Its demonstrations run the editor on a real map region, and interface figures use live controls. Search covers pages and questions; the question-mark button enables a context-help mode that opens documentation for the selected control.
+- A plan-notes layer for whole-island planning: paint named, numbered zones, place text labels (map lettering or a colored chip), and draw route arrows whose anchors stay adjustable after the line is drawn, with the same direction handles the terrain curve brush has. A zone's caption is its grab handle; Ctrl-click or a Ctrl-drag band gathers several notes, Ctrl+A takes them all, and a gathered set moves, recolors and deletes together; gathered zones can merge into one. Everything lives on its own layer with an eye and a lock in the layer panel. Notes render in both the 2D and 3D views, follow the terrain in 3D, save with the map and importable PetitGlyphs, and can be shown or hidden in the exported picture independently.
+- When exporting a 2D share image, the map can now be restyled as an illustration. Built-in procedural and on-device model styles draw locally without an API key or network request. Online preset styles and a custom description use an image service selected from the current provider menu and connected with your own key. Every model-drawn picture, local or online, carries a small corner mark noting that AI drew the illustration; purely procedural pictures do not. All styles stand in one list with a render-time meter, and several takes can be generated per session, compared with the original, and swapped before export. Asking a built-in style again draws a fresh variation rather than the same picture.
+
 ## [0.8.39] - 2026-08-27
 
 ### Changed

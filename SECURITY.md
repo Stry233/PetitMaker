@@ -4,7 +4,7 @@
 
 ## Supported versions
 
-PetitMaker is a static, single-page web app with no backend and no release train of long-lived versions. Only the **latest deployment** served from the official site is supported and will receive security fixes. Older builds you may have cached, forked, or self-hosted are not covered; update to the current deployment before reporting.
+PetitMaker is a static, single-page web app with no project-operated backend for accounts or map storage and no release train of long-lived versions. Only the **latest deployment** served from the official site is supported and will receive security fixes. Older builds you may have cached, forked, or self-hosted are not covered; update to the current deployment before reporting.
 
 ## Reporting a vulnerability
 

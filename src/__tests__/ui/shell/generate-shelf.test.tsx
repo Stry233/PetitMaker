@@ -40,6 +40,9 @@ vi.mock('../../../ui/shell/bars/stencil-plan', async (importOriginal) => {
       stencil: { width: 1, height: 1, coverage: new Uint8Array([255]), color: new Uint32Array([0]) },
       origin: { x: 0, y: 0 },
     })),
+    // The real peek reads the real module cache, which the mocked builder above never files; the
+    // default answers "not cached", which is the slow path every existing test walks.
+    peekStencilPlan: vi.fn(() => undefined),
   };
 });
 
@@ -58,7 +61,7 @@ import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import type { KitContext } from '../../../kit/context';
 import { serialize } from '../../../io/json-codec';
 // The component reads the barrel, which is mocked above; these are the real implementations.
-import { clearGenerated, generateCandidate, generateMap } from '../../../kit/operations/generate';
+import { clearGenerated, generateCandidate, generateMap, __resetCandidateCache } from '../../../kit/operations/generate';
 import { generateCandidate as barrelCandidate, generateMap as barrelGenerateMap } from '../../../kit/operations';
 import type { Candidate } from '../../../kit/operations';
 import { getCatalogByCategory } from '../../../state/catalog';
@@ -67,10 +70,13 @@ import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { GenerateShelf } from '../../../ui/shell/bars/GenerateShelf';
+import * as textRaster from '../../../ui/shell/bars/stencil-raster';
+import { fitTextGrid } from '../../../tools/generation/stencil/stencil-text-grid';
+import { fontModel } from '../../tools/generation/stencil/_text-fonts';
 import { MazeEndpoints } from '../../../ui/shell/bars/MazeEndpoints';
 import {
   BODY_H, CANDIDATES, CARD_H, CARD_MAX_H, GAP, PAD, SEED_DIGITS, SLIDERS, SLIDERS_TIGHT, STRIP, TABS,
-  batchSeeds, maxElevationFor, shelfConfig, slidersFor, stencilNote, textNeedsWidth,
+  batchSeeds, maxElevationFor, shelfConfig, slidersFor, stencilNote,
 } from '../../../ui/shell/bars/generate-shelf';
 import { IMAGE_POOL, sampleName } from '../../../ui/shell/bars/stencil-samples';
 import { APP_NAME, brandName } from '../../../version';
@@ -181,6 +187,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   cleanup();
   setActiveView(null);
   setMapRenderer(null);
@@ -1288,6 +1295,80 @@ describe('a click that does not reach the map', () => {
 });
 
 /**
+ * A batch the shelf has already photographed comes back WHOLE. Every part of it is cached — the
+ * candidates under their (ground, recipe) key, the pictures per candidate grid — so returning to a
+ * kind must stand its cards up at once rather than blanking them, sitting out the settle, and
+ * asking the pool for maps it already holds.
+ */
+describe('returning to a kind already photographed', () => {
+  it('stands the batch up at once: no pending cards, no rebuilt candidates', async () => {
+    __resetCandidateCache();
+    installKit();
+    setMapRenderer({
+      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
+    } as unknown as MapRenderer);
+    // The real builder, so the candidate cache is filed exactly as the app files it.
+    vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
+    mount();
+
+    const cards = (): HTMLElement[] => screen.getAllByRole('button', { name: /^Recipe/ });
+    const pictured = (): number => cards().filter((c) => c.querySelector('img[src^="data:image/png"]')).length;
+    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
+
+    // The shelf opens on the maze; the island is the second kind photographed, and the RETURN to
+    // the maze is the moment under test.
+    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
+
+    const built = vi.mocked(barrelCandidate).mock.calls.length;
+    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
+    // Microtasks only — the settle timer has not fired, so any picture standing is the cache's.
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(pictured(), 'the cards never went pending').toBe(CANDIDATES);
+    expect(vi.mocked(barrelCandidate).mock.calls.length, 'no candidate was rebuilt').toBe(built);
+  }, 60_000);
+
+  /** The picture kinds ride one more cache — the built plan — and return the same way once it and
+   *  the candidates both answer. */
+  it('stands a letter batch up the same way, without rasterizing a plan', async () => {
+    __resetCandidateCache();
+    installKit();
+    setMapRenderer({
+      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
+    } as unknown as MapRenderer);
+    useEditorStore.setState({ region: rect(2, 2, 30, 30) });
+    const fixedPlan = {
+      read: 'shape' as const, fill: { kind: 'terrain' as const, terrain: 1 },
+      stencil: { width: 1, height: 1, coverage: new Uint8Array([255]), color: new Uint32Array([0]) },
+      origin: { x: 2, y: 2 },
+    };
+    const { buildStencilPlan: mockedBuild, peekStencilPlan: mockedPeek } =
+      await import('../../../ui/shell/bars/stencil-plan');
+    vi.mocked(mockedBuild).mockImplementation(async () => fixedPlan);
+    vi.mocked(mockedPeek).mockImplementation(() => fixedPlan);
+    vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
+    mount();
+
+    // A letter card is named by its word, not by a recipe number, so the count is of the cards'
+    // pictures themselves.
+    const pictured = (): number => document.querySelectorAll('img[src^="data:image/png"]').length;
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await waitFor(() => expect(pictured()).toBeGreaterThan(0), { timeout: 20_000 });
+    await act(async () => { await new Promise((r) => setTimeout(r, 600)); });
+    const shown = pictured();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
+    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
+
+    const built = vi.mocked(barrelCandidate).mock.calls.length;
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(pictured(), 'the letter cards never went pending').toBe(shown);
+    expect(vi.mocked(barrelCandidate).mock.calls.length, 'no candidate was rebuilt').toBe(built);
+  }, 60_000);
+});
+
+/**
  * THE PICTURE KINDS' OWN STRIP. A letter stands one layer on the ground it is written on, so it has
  * no tallest layer to choose and the knob is gone from that kind entirely; the picture's heights ARE
  * its colours, so the knob it inherited is the depth of the terrain ramp and it goes with the ramp
@@ -1453,6 +1534,80 @@ describe('what a picture is built from', () => {
  * to change rather than photographing a row of smudges.
  */
 describe('a word too long for its region', () => {
+  it('leaves the pending state after fonts load even when no batch sample fits', async () => {
+    installKit();
+    useEditorStore.setState({ region: rect(2, 2, 6, 7) });
+    mount();
+    await settle();
+    vi.mocked(barrelCandidate).mockClear();
+
+    let loaded = false;
+    let release!: () => void;
+    const font = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(textRaster, 'glyphFontsReady').mockImplementation(() => loaded);
+    vi.spyOn(textRaster, 'ensureGlyphFonts').mockImplementation(async () => { await font; loaded = true; });
+    vi.spyOn(textRaster, 'glyphSurvives').mockReturnValue({ separation: 0, density: 1, pieces: 1, wholePieces: 1, multiStroke: true, ok: false });
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 420)); });
+    expect(screen.getByRole('button', { name: 'New batch' }).getAttribute('aria-disabled')).toBe('true');
+    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
+
+    await act(async () => { release(); });
+    await settle();
+    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it.each([5, 6])('builds a custom W in a five-column, %i-row region', async height => {
+    const original = textRaster.glyphSurvives;
+    const measure = vi.spyOn(textRaster, 'glyphSurvives').mockImplementation((text, frame) => text === 'W'
+      ? { separation: 1, density: 0.5, pieces: 1, wholePieces: 1, multiStroke: true, ok: fitTextGrid(fontModel(text), frame)?.ok ?? false }
+      : original(text, frame));
+    installKit();
+    useEditorStore.setState({ region: rect(2, 2, 6, 1 + height) });
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await settle();
+    vi.mocked(barrelCandidate).mockClear();
+
+    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'W' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
+    await settle();
+
+    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(/Text: enlarge the region/)).toBeNull();
+    expect(vi.mocked(barrelCandidate).mock.calls.length).toBeGreaterThan(0);
+    measure.mockRestore();
+  }, 30_000);
+
+  it('waits for the custom text font without rebuilding the existing batch', async () => {
+    installKit();
+    useEditorStore.setState({ region: rect(2, 2, 6, 7) });
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await settle();
+    vi.mocked(barrelCandidate).mockClear();
+
+    let loaded = false;
+    let release!: () => void;
+    const font = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(textRaster, 'glyphFontsReady').mockImplementation(text => text !== 'W' || loaded);
+    vi.spyOn(textRaster, 'ensureGlyphFonts').mockImplementation(async () => { await font; loaded = true; });
+    const original = textRaster.glyphSurvives;
+    vi.spyOn(textRaster, 'glyphSurvives').mockImplementation((text, frame) => text === 'W'
+      ? { separation: 1, density: 0.5, pieces: 1, wholePieces: 1, multiStroke: true, ok: fitTextGrid(fontModel(text), frame)?.ok ?? false }
+      : original(text, frame));
+
+    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'W' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 420)); });
+    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
+    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(/Text: enlarge the region/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'New batch' }).getAttribute('aria-disabled')).toBe('true');
+
+    await act(async () => { release(); });
+    await settle();
+    expect(vi.mocked(barrelCandidate)).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
   it('says so on the card, and generates nothing for it', async () => {
     installKit();
     useEditorStore.setState({ region: rect(2, 2, 15, 15) });    // 14 wide: one glyph fits, three do not
@@ -1465,7 +1620,7 @@ describe('a word too long for its region', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
 
-    expect(screen.getByText(new RegExp(`region ${textNeedsWidth('ABC')} cells across`))).toBeTruthy();
+    expect(screen.getByText(/Text: use fewer characters/)).toBeTruthy();
     expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(0);
   }, 30_000);
 
@@ -1478,7 +1633,7 @@ describe('a word too long for its region', () => {
     fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
-    expect(screen.queryByText(/cells across/)).toBeNull();
+    expect(screen.queryByText(/Text: use fewer characters/)).toBeNull();
   }, 30_000);
 });
 

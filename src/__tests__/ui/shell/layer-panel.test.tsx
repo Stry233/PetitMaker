@@ -535,14 +535,14 @@ describe('the layer panel', () => {
    * standing in for a whole generated island.
    */
   it('reads the map as it is on opening, not as it was when the rail mounted', () => {
-    useEditorStore.setState({ gridState: makeState(), activeLayer: 0 });
+    act(() => { useEditorStore.setState({ gridState: makeState(), activeLayer: 0 }); });
     mount();
     openPanel();
     expect(count(0)).toBe('0');
     closePanel();
 
     // A map built while the panel was away.
-    useEditorStore.setState({ gridState: stepped() });
+    act(() => { useEditorStore.setState({ gridState: stepped() }); });
     openPanel();
     expect(count(1)).toBe('16');
     expect(count(2)).toBe('4');

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isPng, readChunks, buildChunk } from '../../../../io/share/raster/png-chunks';
 import { encodePng, decodePng } from '../../../../io/share/raster/png-raster';
+import { DEFAULT_LIMITS } from '../../../../io/share/errors';
 
 // Minimal valid-enough PNG: signature + IHDR(13) + IEND. Enough for chunk framing.
 function tinyPng(): Uint8Array {
@@ -41,5 +42,20 @@ describe('PNG chunks and raster codec', () => {
     const sig = [137, 80, 78, 71, 13, 10, 26, 10];
     const png = new Uint8Array([...sig, ...buildChunk('IHDR', ihdr), ...buildChunk('IEND', new Uint8Array(0))]);
     await expect(decodePng(png)).rejects.toThrow(/Unsupported PNG format/);
+  });
+
+  it('enforces the caller pixel limit before allocating the raster', async () => {
+    const png = await encodePng({ width: 4, height: 4, data: new Uint8Array(64) });
+    await expect(decodePng(png, { ...DEFAULT_LIMITS, maxRasterPixels: 15 })).rejects.toThrow('PNG dimensions out of range');
+    expect((await decodePng(png, { ...DEFAULT_LIMITS, maxRasterPixels: 16 })).data.length).toBe(64);
+  });
+
+  it('retains the default 64-megapixel ceiling', async () => {
+    const ihdr = new Uint8Array(13);
+    const view = new DataView(ihdr.buffer);
+    view.setUint32(0, 8192); view.setUint32(4, 8193);
+    ihdr[8] = 8; ihdr[9] = 6;
+    const png = new Uint8Array([...tinyPng().subarray(0, 8), ...buildChunk('IHDR', ihdr), ...buildChunk('IEND', new Uint8Array(0))]);
+    await expect(decodePng(png)).rejects.toThrow('PNG dimensions out of range');
   });
 });

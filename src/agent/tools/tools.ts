@@ -27,19 +27,18 @@ import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
 import { validateCut } from '../../core/edge-cut/cut-validator';
 import { roadLookup } from '../../state/object-index';
 import { CORNER_POS, CORNER_COMPASS, type CornerPos } from '../../core/edge-cut/corner-index';
-import { objectRect, coatingsUnder } from '../../state/object-geometry';
+import { objectRect } from '../../state/object-geometry';
+import { coatingsUnder } from '../../state/object-index';
 import { isCoating, hasTrait, standsOnCoating } from '../../core/model/traits';
-import type { GenerateConfig } from '../../core/model/types';
-import type { KitContext } from '../../kit/context';
-import { generateMap } from '../../kit/operations';
+import { makeRng } from '../../core/model/rng';
 import { mapOverview, mapSummary, objectLine, regionTokens, selectionContext, REGION_CAP } from '../serialize';
 import { decorateZoneHandler, plantForestHandler, buildRoadNetworkHandler, frameCrossingHandler, THEMES } from './tools-director';
 import { SKILLS, listSkills } from '../skills';
 import { evaluateMap, renderScorecard, speckleFindings, type QualityReport } from '../quality';
 import type { ToolCall, ToolResult, ToolSchema } from './types';
-import { type AgentToolDeps, type ToolResultBody, argError, clamp, dedupe, formatErrors, geometryError, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError, clamp, clipBuildable, clipOccupied, dedupe, formatErrors, geometryError, occupiedNote, offZoneNote, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
 import { rectInput } from './geometry';
-import { sculptTerrace, carveRiver, sculptWall, sinkPool } from './tools-terraform';
+import { regionClip, sculptTerrace, carveRiver, sculptWall, sinkPool } from './tools-terraform';
 import { findFlatAreas, findBridgeSites, findRampSites, scanBridgeSites } from './tools-search';
 import { objectPlacementCommand, removeObjectCommand } from '../../tools/objects';
 
@@ -304,7 +303,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'scatter_objects',
     description:
-      'Place many items at once. pattern "scatter" (default) = natural randomness for forests and meadows; "fill" = every cell of the rect in row order, for solid one-species beds, crop plots and 1-wide edging ribbons; "grid" = every step-th cell, for orchard lattices and islet parterres. Positions inside the rect (or the user selection if no rect), validated per placement (illegal spots are skipped). One undo step. Returns how many landed.',
+      'Place many items at once. pattern "scatter" (default) = a natural-looking arrangement (deterministic for the same area) for groves and meadows; "fill" = every cell of the rect in row order, for solid one-species beds, crop plots and 1-wide edging ribbons; "grid" = every step-th cell, for orchard lattices and islet parterres. Positions inside the rect (or the user selection if no rect), validated per placement (illegal spots are skipped). One undo step. Returns how many landed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,7 +311,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         count: { type: 'integer', minimum: 1, maximum: 200 },
         ...coordProps,
         rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Scatter area; the flat corners x1,y1,x2,y2 mean the same.' },
-        pattern: { type: 'string', enum: ['scatter', 'fill', 'grid'], description: 'scatter = random (default); fill = solid row-major fill; grid = a lattice of every step-th cell.' },
+        pattern: { type: 'string', enum: ['scatter', 'fill', 'grid'], description: 'scatter = natural arrangement (default); fill = solid row-major fill; grid = a lattice of every step-th cell.' },
         step: { type: 'integer', minimum: 2, maximum: 6, description: 'Grid pitch for pattern "grid" (default 2: an open lattice).' },
         spacing: { type: 'integer', minimum: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid.' },
       },
@@ -331,7 +330,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         baseRadius: { type: 'integer', minimum: 3, maximum: 12, description: 'Footprint radius of tier 1.' },
         tiers: { type: 'integer', minimum: 1, maximum: 3, description: 'Elevation levels (default 2).' },
         smooth: { type: 'string', enum: ['round', 'rect'], description: "Cliff corner style (default 'round')." },
-        seed: { type: 'integer', description: 'Shape seed (random if omitted).' },
+        seed: { type: 'integer', description: 'Shape seed (derived from the site when omitted, so the same call replays).' },
       },
       required: ['cx', 'cy', 'baseRadius'],
     },
@@ -471,25 +470,6 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
-    name: 'run_generator',
-    description:
-      "Run the editor's professional procedural generator: a full designed-island pipeline (themed zones, lakes/rivers with legal containment, terraced elevation, bridges/ramps, villages, roads, layered nature). REPLACES existing content in the target area. Use it to bootstrap large areas or whole maps, then refine with the other tools. Same seed + params = same result.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        algorithm: { type: 'string', enum: ['designed', 'maze'], description: "'designed' = a composed island, regions and hierarchical roads (default); 'maze' = mountain maze." },
-        mode: { type: 'string', enum: ['earth', 'water', 'mixed'], description: 'Terrain bias (island only; default mixed).' },
-        maxElevation: { type: 'integer', minimum: 1, maximum: 6 },
-        richness: { type: 'integer', minimum: 0, maximum: 100, description: 'Scenery richness 0-100 (default 70), the island generator\'s ONE style knob: 100 = terraced, watery, densely composed, roughly one tree per flower; 0 = a flat garden town with beds along its streets. It scales the terrain drama, the water, the decoration and the theme count together.' },
-        seed: { type: 'integer', description: 'Recipe id for reproducibility (random if omitted).' },
-        ...coordProps,
-        rect: { type: 'object', properties: coordProps, required: ['x1', 'y1', 'x2', 'y2'], description: 'Target area (the flat corners x1,y1,x2,y2 mean the same); falls back to the user selection, then the WHOLE MAP.' },
-        mazeEntrance: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: where the maze opens to let a walker in. Snapped to the nearest cell on the maze border. Omit both gates for two default openings on opposite sides.' },
-        mazeExit: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' } }, required: ['x', 'y'], description: 'Maze only: the second opening, snapped the same way.' },
-      },
-    },
-  },
-  {
     name: 'list_skills',
     description: 'List the available build playbooks (proven multi-step recipes for villages, hills, rivers…). Cheap — call it when the user asks for a composite scene.',
     inputSchema: { type: 'object', properties: {} },
@@ -597,9 +577,14 @@ export const SUBAGENT_TOOL_SCHEMAS: ToolSchema[] = TOOL_SCHEMAS.filter(
 /* ── per-tool handlers ───────────────────────────────────────────────── */
 
 function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
-  const cells = resolveCells(input, deps.getState());
-  if (cells.length === 0) return geometryError(input, 'area');
-  if (cells.length > 4000) return argError('too many cells in one call (max 4000), split the edit into smaller areas.');
+  const resolved = resolveCells(input, deps.getState());
+  if (resolved.length === 0) return geometryError(input, 'area');
+  if (resolved.length > 4000) return argError('too many cells in one call (max 4000), split the edit into smaller areas.');
+  const zoneClip = clipBuildable(resolved, deps.getState());
+  if (zoneClip.cells.length === 0) return argError('every cell lies outside the buildable grass zone (sea, beach, plaza or boundary), aim inside it.');
+  const { cells, occupied } = clipOccupied(zoneClip.cells, deps.getState());
+  const offZone = zoneClip.offZone;
+  if (cells.length === 0) return argError('every remaining cell lies under standing objects; clear_area removes object and terrain together, or aim elsewhere.');
   const type = input.terrain === 'water' ? TerrainType.Water : TerrainType.Mountain;
   const elevation = Number(input.elevation);
   const commands: Command[] = [];
@@ -616,7 +601,7 @@ function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
   return runStroke(
     deps,
     commands,
-    () => `Painted ${label} elev ${elevation} on ${cells.length} cell(s)${smooth ? ', edges smoothed' : ''}.`,
+    () => `Painted ${label} elev ${elevation} on ${cells.length} cell(s)${smooth ? ', edges smoothed' : ''}.${offZoneNote(offZone)}${occupiedNote(occupied)}`,
     cells,
     // Non-interactive edge-cut (rounds convex tips/steps, fills empty notches).
     // Uses the generated-* path, NOT applyAutoEdgeCut: the latter needs a full
@@ -628,12 +613,16 @@ function paintTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
 
 
 function eraseTerrain(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
-  const cells = resolveCells(input, deps.getState());
-  if (cells.length === 0) return geometryError(input, 'area');
+  const resolved = resolveCells(input, deps.getState());
+  if (resolved.length === 0) return geometryError(input, 'area');
+  const zoneClip = clipBuildable(resolved, deps.getState());
+  if (zoneClip.cells.length === 0) return argError('every cell lies outside the buildable grass zone (sea, beach, plaza or boundary), aim inside it.');
+  const { cells, occupied } = clipOccupied(zoneClip.cells, deps.getState());
+  if (cells.length === 0) return argError('every remaining cell lies under standing objects; clear_area removes object and terrain together, or aim elsewhere.');
   return runStroke(
     deps,
     [{ type: CommandType.EraseTerrain, timestamp: Date.now(), cells }],
-    () => `Erased terrain on ${cells.length} cell(s).`,
+    () => `Erased terrain on ${cells.length} cell(s).${offZoneNote(zoneClip.offZone)}${occupiedNote(occupied)}`,
     cells,
   );
 }
@@ -643,8 +632,17 @@ function eraseTerrain(deps: AgentToolDeps, input: Record<string, unknown>): Tool
 
 function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const state = deps.getState();
-  const cells = resolveCells(input, state);
-  if (cells.length === 0) return geometryError(input, 'area');
+  const resolved = resolveCells(input, state);
+  if (resolved.length === 0) return geometryError(input, 'area');
+  const zoneClip = clipBuildable(resolved, state);
+  if (zoneClip.cells.length === 0) return argError('every cell lies outside the buildable grass zone (sea, beach, plaza or boundary), aim inside it.');
+  // A LOCKED object survives the clear, so the ground under it cannot be erased either: those
+  // cells are skipped rather than letting one plaza-shadow cell refuse the stroke.
+  const lockedRects = [...state.objects.values()].filter((o) => o.locked).map((o) => objectRect(o));
+  const cells = zoneClip.cells.filter((c) => !lockedRects.some((r) => c.x + 1 > r.x && c.x < r.x + r.w && c.y + 1 > r.y && c.y < r.y + r.h));
+  const underLocked = zoneClip.cells.length - cells.length;
+  const offZone = zoneClip.offZone;
+  if (cells.length === 0) return argError('every remaining cell lies under a locked structure, which a clear cannot touch.');
   const cellSet = new Set(cells.map((c) => `${c.x},${c.y}`));
   const commands: Command[] = [];
   for (const obj of state.objects.values()) {
@@ -661,10 +659,7 @@ function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolRes
     }
   }
   const removed = commands.length;
-  // THE RAGE-CLEAR GUARD. A refused bed or a blocked road answered by bulldozing the district is
-  // the observed failure (two live runs cleared ~900 cells of their OWN nearly-finished work and
-  // ran out of turns rebuilding). Demolition at this scale must be a conscious choice: the refusal
-  // names the cost, and `demolish: true` is the acknowledgment.
+  // Large clears require explicit demolition intent.
   if ((removed > 25 || cells.length > 400) && input.demolish !== true) {
     return {
       isError: true,
@@ -674,7 +669,7 @@ function clearArea(deps: AgentToolDeps, input: Record<string, unknown>): ToolRes
     };
   }
   commands.push({ type: CommandType.EraseTerrain, timestamp: Date.now(), cells });
-  return runStroke(deps, commands, () => `Cleared ${cells.length} cell(s): removed ${removed} object(s), terrain reset to flat grass.`, cells);
+  return runStroke(deps, commands, () => `Cleared ${cells.length} cell(s): removed ${removed} object(s), terrain reset to flat grass.${offZoneNote(offZone)}${underLocked > 0 ? ` ${underLocked} cell(s) under a locked structure were skipped.` : ''}`, cells);
 }
 
 
@@ -688,9 +683,11 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
   if (!item || item.category !== 'road') {
     return argError(`"${catalogId}" is not a road item, pass a road id from the catalog.`, `catalogId: "${getRoadMaterials()[0]!.id}"`);
   }
-  const cells = resolveCells(input, deps.getState(), 'line');
-  if (cells.length === 0) return geometryError(input, 'path');
-  if (cells.length > 400) return argError('road too long for one call (max 400 cells), split it into segments.');
+  const resolvedRoad = resolveCells(input, deps.getState(), 'line');
+  if (resolvedRoad.length === 0) return geometryError(input, 'path');
+  if (resolvedRoad.length > 400) return argError('road too long for one call (max 400 cells), split it into segments.');
+  const { cells, offZone } = clipBuildable(resolvedRoad, deps.getState());
+  if (cells.length === 0) return argError('every cell lies outside the buildable grass zone (sea, beach, plaza or boundary), aim inside it.');
   const exec = deps.getExecutor();
   const failures: string[] = [];
   let ok = 0;
@@ -712,7 +709,19 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
   if (outOfRegion) return outOfRegion;
   if (reverted) return { isError: true, content: `REVERTED, nothing changed:\n${formatErrors(violations)}` };
   if (ok > 0) deps.onFlash?.(cells);
-  let msg = `Laid ${ok}/${cells.length} road cell(s).`;
+  let msg = `Laid ${ok}/${cells.length} road cell(s).${offZoneNote(offZone)}`;
+  // Said at the moment the crossing is made: the close-out hint arrives when re-routing a whole
+  // grid costs more turns than remain, so the lay itself names the four-way it just created.
+  if (ok > 0) {
+    const roadAtNow = roadLookup(deps.getState());
+    const paved = (x: number, y: number) => roadAtNow(x, y) !== null;
+    const made = cells.filter((c) => paved(c.x, c.y)
+      && paved(c.x + 1, c.y) && paved(c.x - 1, c.y) && paved(c.x, c.y + 1) && paved(c.x, c.y - 1)
+      && [paved(c.x + 1, c.y + 1), paved(c.x + 1, c.y - 1), paved(c.x - 1, c.y + 1), paved(c.x - 1, c.y - 1)].filter(Boolean).length <= 1);
+    if (made.length > 0) {
+      msg += `\nNote: this run crossed another street at ${made.slice(0, 3).map((c) => `(${c.x},${c.y})`).join(' ')}, making a FOUR-WAY — the reference never crosses two streets. Stop a side street AT the trunk (T junction) or offset it; fix this now while it is one street, not at the close.`;
+    }
+  }
   if (failures.length > 0) msg += ` Skipped cells:\n${dedupe(failures).slice(0, 2).join('\n')}`;
   if (ok === 0) {
     msg += '\nRoads coat FLAT GROUND-LEVEL GRASS only. Fixes: route across grass (roads may cross a bridge/ramp but not open water, mountains, or object footprints); clear_area to open a blocked path; or place a bridge/ramp for the gap first, then road up to it.';
@@ -720,7 +729,7 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
   return { isError: ok === 0, content: msg, detail };
 }
 
-/* ── batch: scatter objects with natural randomness ──────────────────── */
+/* ── batch: scatter objects in ordered or natural patterns ───────────── */
 
 async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
   const ids = (input.catalogIds as string[] | undefined) ?? [];
@@ -734,7 +743,8 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   }
   const state = deps.getState();
   const rect = rectInput(input);
-  const pool = rect ? resolveCells({ rect }, state) : [...deps.getRegion()];
+  const resolvedPool = rect ? resolveCells({ rect }, state) : [...deps.getRegion()];
+  const { cells: pool, offZone } = clipBuildable(resolvedPool, state);
   if (pool.length === 0) {
     return argError('no area to scatter over, pass the rect corners or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
   }
@@ -750,10 +760,13 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
     pool.length = 0;
     pool.push(...kept);
   }
+  // Seeded from the pool's own ground: the same call over the same area replays exactly (a macro,
+  // not a dice roll), and a different area draws a different arrangement.
+  const rng = makeRng(pool.reduce((h, c) => (h * 31 + c.x * 7 + c.y * 13) | 0, pool.length + count));
   if (pattern === 'scatter') {
-    // shuffle (Fisher-Yates), unseeded: nothing replays a scatter
+    // shuffle (Fisher-Yates) on the seeded stream
     for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = rng.int(i + 1);
       [pool[i], pool[j]] = [pool[j]!, pool[i]!];
     }
   }
@@ -769,7 +782,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
     for (const cell of pool) {
       if (placedAt.length >= count) break;
       if (spacing > 0 && placedAt.some((p) => Math.abs(p.x - cell.x) <= spacing && Math.abs(p.y - cell.y) <= spacing)) continue;
-      const id = ids[Math.floor(Math.random() * ids.length)]!;
+      const id = rng.pick(ids);
       const road = roadAt(cell.x, cell.y);
       if (road && !standsOnCoating(getCatalogItem(id), getCatalogItem(road.catalogId)!)) { onRoad++; continue; }
       const cmd = buildPlaceCmd(deps, id, cell.x, cell.y, 0);
@@ -784,6 +797,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
   if (placedAt.length > 0) deps.onFlash?.(placedAt);
   let why = placedAt.length < count && failures.length > 0 ? ` Most common rejections:\n${dedupe(failures).slice(0, 3).join('\n')}` : '';
   if (onRoad > 0) why += `\n${onRoad} cell(s) skipped: they carry a road, and objects cannot stand on one. Edging runs BESIDE a street, so offset the rect off the pavement.`;
+  why += offZoneNote(offZone);
   if (placedAt.length === 0) {
     why += '\nNothing placed. Most items need flat grass clear of water, slopes, and other objects. Fixes: pick a flatter/emptier area (find_flat_areas), lower the spacing, or clear_area first. Flora/trees will not sit on water or mountains.';
   }
@@ -881,13 +895,14 @@ async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): 
   }
   const state = deps.getState();
   const { width: mw, height: mh } = state.template;
-  const region = deps.getRegion();
-  const clip = region.length > 0 ? new Set(region.map((c) => `${c.x},${c.y}`)) : null;
   // The spread is the tool's own, so it clips to an armed region like the organic terraformers do.
+  const clip = regionClip(deps);
   const cells = figureCells(shape, Math.round(cx), Math.round(cy), size)
     .filter((c) => c.x >= 1 && c.y >= 1 && c.x < mw - 1 && c.y < mh - 1)
     .filter((c) => !clip || clip.has(`${c.x},${c.y}`));
-  if (cells.length === 0) return argError('the figure lies off the map or outside the selected region, move cx,cy.');
+  const zoned = clipOccupied(clipBuildable(cells, deps.getState()).cells, deps.getState()).cells;
+  if (zoned.length === 0) return argError('the figure lies off the map, outside the selected region, or outside the buildable grass zone; move cx,cy.');
+  if (zoned.length < cells.length) { cells.length = 0; cells.push(...zoned); }
 
   const ringId = typeof input.ringId === 'string' ? input.ringId : undefined;
   if (ringId && !getCatalogItem(ringId)) return argError(`unknown ringId "${ringId}", use a tree or flora id from the CATALOG section.`);
@@ -978,66 +993,6 @@ async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): 
       + `${ringId ? `; ring: ${ringWanted} ${ringId} positions around it (${Math.max(0, ok - 1 - (islandPlace ? 1 : 0))} landed)` : ''}. The shape is symmetric by construction.`,
     waterCells,
   );
-}
-
-/* ── the procedural generator as a tool ──────────────────────────────── */
-
-/**
- * THE REGION LOCK HERE IS THE PIPELINE'S OWN, not this file's.
- *
- * Every other write tool is checked by `firstStray` over the commands as applied; a generator run
- * issues thousands, so the confinement is the generator's contract instead: it designs the WHOLE
- * island and the painted region crops what lands, which is the same contract Generate has in the UI.
- * A change to that contract is a change to `designer/pipeline.ts`, and nothing added here can
- * tighten it.
- */
-async function runGenerator(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
-  const state = deps.getState();
-  const algorithm = input.algorithm === 'maze' ? 'maze' : 'designed';
-  const rect = rectInput(input);
-  const region: MacroCoord[] | null = rect
-    ? resolveCells({ rect }, state)
-    : deps.getRegion().length > 0
-      ? [...deps.getRegion()]
-      : null;
-  const entrance = (input.mazeEntrance as MacroCoord | undefined) ?? null;
-  const exit = (input.mazeExit as MacroCoord | undefined) ?? null;
-  const config: GenerateConfig = {
-    algorithm,
-    mode: input.mode === 'earth' || input.mode === 'water' ? input.mode : 'mixed',
-    corridorWidth: 1,
-    ...(entrance || exit ? { mazeGates: { entrance, exit } } : {}),
-    maxElevation: clamp(Number(input.maxElevation) || 3, 1, algorithm === 'maze' ? 3 : 6),
-    seed: Number.isFinite(Number(input.seed)) && input.seed !== undefined ? Number(input.seed) : Math.floor(Math.random() * 99999),
-    region,
-    // The one 0..1 style knob. The default matches the shelf's.
-    richness: clamp(input.richness !== undefined ? Number(input.richness) : 70, 0, 100) / 100,
-  };
-  const kit: KitContext = {
-    state,
-    executor: deps.getExecutor(),
-    registry: deps.getExecutor().getRegistry(),
-  };
-  const outcome = await generateMap(kit, { config, region });
-  if (outcome.violations.length > 0) return { isError: true, content: `REVERTED:\n${formatErrors(outcome.violations)}` };
-  const scope = region ? `${region.length}-cell region` : 'whole map';
-  const g = outcome.mazeGates;
-  const gateNote = g
-    ? ` Maze gates (snapped to the border): entrance ${g.entrance ? `(${g.entrance.x},${g.entrance.y})` : 'none'}, exit ${g.exit ? `(${g.exit.x},${g.exit.y})` : 'none'}.`
-    : '';
-  // A REGION THAT BUILT NOTHING SAYS WHY, so the model re-plans instead of retrying the same call.
-  // 'reclaimed' is not a failure and not retryable at that seed or any other: the terrain around the
-  // region rests on the ground inside it, so only what that terrain needs could be left there.
-  const scopeNote = outcome.scopeEmpty === 'reclaimed'
-    ? ' Nothing could be built in that region: the terrain around it rests on the ground inside it (a mountain 3x3 base, a pond cap), so only what those surroundings need was left standing there. Re-running will not help at any seed; choose a region over lower ground, or a wider one that takes in the higher ground too.'
-    : outcome.scopeEmpty === 'empty'
-      ? ' Nothing was built in that region: the ground was free to build on, and this run put nothing there. Try a wider region, another seed, or a higher richness.'
-      : '';
-  deps.onFlash?.(outcome.cells);
-  return {
-    isError: false,
-    content: `Generated (${config.algorithm}, seed ${config.seed}) over the ${scope}: ${outcome.placed} terrain cell(s); objects now on map: ${state.objects.size}.${gateNote}${scopeNote} Refine with inspect_region + the editing tools.`,
-  };
 }
 
 function buildPlaceCmd(
@@ -1293,17 +1248,12 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
     if (!reply) return argError('reply must be a non-empty string.', 'reply: "Yes, go ahead"');
     return { isError: false, content: 'Suggestion noted.' };
   } },
-  // `update_plan` has NO handler here, and that is the wiring rather than an omission: the loop
-  // intercepts the call before the executor and appends the `plan` event itself (core/loop.ts's
-  // `handleUpdatePlan`), because the plan is a log fact and the call is gated at plan scope. A
-  // subagent, whose schema set excludes the tool, gets the executor's unknown-tool answer instead.
+  // The loop handles `update_plan` because it owns plan events and plan-scope approval.
   list_skills: { handler: () => ({ isError: false, content: `Available skills:\n${listSkills()}\nUse load_skill to get the full playbook.` }) },
   load_skill: { handler: (_deps, input) => {
     const name = String(input.name);
     const skill = SKILLS[name];
-    // Live runs planned their own paraphrase and dropped the stages the skill calls not optional,
-    // so the program rides with the playbook: file the stages, then a skipped one shows as an
-    // unfinished plan item instead of vanishing.
+    // Required playbook stages are also filed as visible plan items.
     return skill
       ? { isError: false, content: `${skill.body}\n\n(system) These stages are the program: file them as your update_plan stages by name and finish each before the next. A stage the playbook calls "not optional" is a commitment, not a suggestion.`, detail: { skill: { name, kind: skill.kind, title: skill.title } } }
       : { isError: true, content: `Unknown skill "${name}". Call list_skills for the catalogue.` };
@@ -1328,7 +1278,6 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   draw_figure: { write: true, handler: drawFigure },
   build_road: { write: true, handler: buildRoad },
   scatter_objects: { write: true, handler: scatterObjects },
-  run_generator: { write: true, handler: runGenerator },
   decorate_zone: { write: true, handler: decorateZoneHandler },
   plant_forest: { write: true, handler: plantForestHandler },
   build_road_network: { write: true, handler: buildRoadNetworkHandler },

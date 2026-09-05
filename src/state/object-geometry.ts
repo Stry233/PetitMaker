@@ -1,7 +1,7 @@
 import type { CatalogItem, GridState, MacroCoord, PlacedObject } from '../core/model/types';
-import { cellOverlapsRect, rectsOverlap, cellKey, getCell, straddledCells } from '../core/model/grid-model';
+import { cellOverlapsRect, cellKey, getCell, straddledCells } from '../core/model/grid-model';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
-import { hasTrait, isCoating } from '../core/model/traits';
+import { hasTrait } from '../core/model/traits';
 import { getCatalogItem } from './catalog';
 
 /** Whether an item may anchor on the half-cell grid in both axes — the ramp/bridge
@@ -129,10 +129,9 @@ export function getRotatedSize(item: { width: number; height: number }, rotation
     : { w: item.width, h: item.height };
 }
 
-export function getPlacedObjectSize(obj: import('../core/model/types').PlacedObject): { w: number; h: number } {
+export function getPlacedObjectSize(obj: import('../core/model/types').PlacedObject, item = getCatalogItem(obj.catalogId)): { w: number; h: number } {
   // Self-described off-catalog objects (the plaza) carry their own footprint — honor it (matches objectRect).
   if (obj.width !== undefined && obj.height !== undefined) return { w: obj.width, h: obj.height };
-  const item = getCatalogItem(obj.catalogId);
   if (!item) return { w: 1, h: 1 };
   if (obj.spanLength) {
     const perpW = item.width;
@@ -147,11 +146,11 @@ export function getPlacedObjectSize(obj: import('../core/model/types').PlacedObj
  *  object's own width/height (off-catalog/fractional objects like the plaza) or
  *  the catalog/rotation-derived size. Used by the overlap rules so a fractional
  *  footprint and a normal integer one share one geometry path. */
-export function objectRect(obj: PlacedObject): { x: number; y: number; w: number; h: number } {
+export function objectRect(obj: PlacedObject, item?: CatalogItem): { x: number; y: number; w: number; h: number } {
   if (obj.width !== undefined && obj.height !== undefined) {
     return { x: obj.position.x, y: obj.position.y, w: obj.width, h: obj.height };
   }
-  const { w, h } = getPlacedObjectSize(obj);
+  const { w, h } = item ? getPlacedObjectSize(obj, item) : getPlacedObjectSize(obj);
   return { x: obj.position.x, y: obj.position.y, w, h };
 }
 
@@ -172,22 +171,6 @@ export function buildObjectOccupancy(state: GridState): Set<string> {
         if (cellOverlapsRect(r, x, y, -0.5)) occ.add(cellKey(x, y));
   }
   return occ;
-}
-
-/** Surface-coating objects (roads/paths) whose footprint overlaps `rect`. The
- *  overlap rule exempts coatings so an object CAN be placed over a road; the
- *  intended editor behavior is to strip the covered road and place. Interactive
- *  placement (manual placer, agent place_object) uses this to remove the roads it
- *  covers (and to tell the user/agent it happened). Returns [] when clear. */
-export function coatingsUnder(state: GridState, rect: { x: number; y: number; w: number; h: number }): PlacedObject[] {
-  const hit: PlacedObject[] = [];
-  for (const [, obj] of state.objects) {
-    const item = getCatalogItem(obj.catalogId);
-    if (!item || !isCoating(item)) continue;
-    const r = objectRect(obj);
-    if (rectsOverlap(rect, r)) hit.push(obj);
-  }
-  return hit;
 }
 
 // "Which object is at this cell?" lives in state/object-index (`objectAt`): the same question the

@@ -1,26 +1,6 @@
-/**
- * escape.test.tsx — THE WAY OUT, in every state the panel can be in.
- *
- * Four invariants, from the design's own escape audit, and every one of them is a rule about what
- * must NOT be there: a guard, a machine writing the open flag, a pointer trap, a screen with no
- * leave verb. So this file is mostly negative assertions, and each one names the trap it stands on.
- *
- *  1. PANEL COLLAPSE IS UNCONDITIONAL. The collapse control (the assistant block) and Escape never
- *     read session state: setup, a job asking a question and a refused key all fold. The parked
- *     character is the standing way back in, and a running job keeps running shut.
- *  2. A MACHINE NEVER RE-OPENS IT. A probe settling, a retry landing, a job ending: none of them
- *     may write the open flag, or a collapse the user made is undone by a timer they cannot see.
- *  3. POINTER CONTAINMENT. Nothing the panel mounts takes a press outside its own box.
- *  4. A LEAVE VERB EVERYWHERE — the store seam for those is `agent/session/store.ts`'s own suite
- *     (`fileAway`/`clearRecord`); the buttons that call them belong to the cards. Its sharpest case
- *     is the SET-ASIDE, which must FILE the job rather than drop it and must never land a keyed
- *     panel on the disconnected rest: `trouble.test.tsx` holds both halves, on the surfaces that
- *     offer the verb (the banner's pill and the held offer's card).
- *
- * The Escape LADDER is the other half of invariant 1: one layer peels per press. An open menu goes
- * first (`FloatMenu` catches the key at the window in capture and stops it), the composer's ghost
- * and then its field second, and only a bare panel folds.
- */
+/** Exit behavior across panel states. Collapse is unconditional, automatic transitions never open
+ * the panel, the folded overlay leaves the map interactive, and Back restores the preceding view.
+ * Escape closes only the highest open layer on each press. */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -125,10 +105,7 @@ function renderPanel(id: string, onCollapse: () => void) {
       </I18nProvider>
     </MotionConfig>,
   );
-  // `setup.key-entry` NAMES THE KEY FORM ITSELF, not the keyless rest a disconnected desk opens on
-  // first (the artifact's OWN Connect verb stands between the two). Pressed through here so the
-  // fixture genuinely stands the form this id names, rather than silently testing the welcome
-  // screen a second time under the form's name.
+  // Credential entry follows the disconnected rest, so the fixture presses Connect to reach it.
   if (id === 'setup.key-entry') fireEvent.click(view_.getByTestId('dream-connect'));
   return view_;
 }
@@ -161,10 +138,8 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('invariant 1: the collapse control never reads session state', () => {
-  /** THE PROTOTYPE'S OWN GUARD IS DELIBERATELY NOT KEPT: refusing to fold from setup and from a
-   *  disconnected desk leaves the two states a lost visitor is most likely to be in with no way
-   *  back to the map. The block is one press, both ways, whatever the session is doing. */
+describe('the collapse control never reads session state', () => {
+  /** Every panel state can return to the map in one press. */
   it('folds the panel from setup, from an open gate and from a refused key alike', async () => {
     for (const id of Object.keys(STATES)) {
       seedStore(id);
@@ -320,7 +295,7 @@ describe('invariant 1: the collapse control never reads session state', () => {
   });
 });
 
-describe('invariant 2: a machine-initiated advance never writes the open flag', () => {
+describe('a machine-initiated advance never writes the open flag', () => {
   /**
    * A SOURCE SCAN, because the defect is a WRITE that should not exist and no state of the app can
    * prove the absence of one. Exactly two files may move the flag: the store slice that owns it, and
@@ -366,7 +341,7 @@ describe('invariant 2: a machine-initiated advance never writes the open flag', 
   });
 });
 
-describe('invariant 3: pointer containment', () => {
+describe('pointer containment', () => {
   /** The character stands in a layer of its own over the whole window, so the layer itself must be
    *  pointer-deaf: anything else makes a 0-size overlay swallow presses meant for the map (and for
    *  the entrance button directly underneath). */
@@ -408,14 +383,7 @@ describe('invariant 3: pointer containment', () => {
   });
 });
 
-/**
- * BACK REOPENS THE LIST, and this is proven through the real seam (`PanelColumn`), not `PanelShell`
- * alone: `openRecord` is held one layer up, and has to survive the strip UNMOUNTING while the
- * record it opened covers the job zone (`PanelShell` only ever renders the strip in the branch that
- * is NOT showing an opened record). A flag `HistoryStrip` kept to itself would forget it had been
- * open the instant that press lands, so Back puts the job zone back at rest with the list standing
- * collapsed again — a press per past record read, against the artifact's own "list reopened".
- */
+/** `PanelColumn` retains the list's expanded state while an opened record temporarily replaces it. */
 describe('the opened past record: Back reopens the list', () => {
   function seedConnected(): void {
     const model = Object.fromEntries(PROVIDER_IDS.map((p) => [p, ''])) as Record<ProviderId, string>;

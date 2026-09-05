@@ -60,7 +60,7 @@ body:
     attributes:
       label: Which site
       options:
-        - petit-maker.com (global)
+        - petitmaker.cc (global)
         - petitmaker.com.cn (mainland China)
         - A local or dev build
     validations:

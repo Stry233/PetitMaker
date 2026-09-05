@@ -1,65 +1,9 @@
 /**
- * The macro as a TOOL: armed like a brush, aimed like a placer.
- *
- * The pointer machine, the camera and the cursor already know what a tool is — a press builds,
- * a nav-drag pans or orbits, Escape and a mode switch disarm, `canActAt` drives the forbidden
- * badge. Running a macro through this class buys all of that at once, where a bespoke click
- * surface over the map has to re-answer each of those questions and answered most of them "no".
- *
- * EACH PRESS LAYS ITS OWN, like a brush: one edit, one undo entry, and the seed advances so the
- * next press at the same spot is a different draw. `changes: 0` is an answer, not a failure — a
- * stream with no coast to reach reports zero and a reason — and the one case a toast reports is
- * a press that built nothing, since that is the one thing the map cannot show.
- *
- * THE PLANTING SPRAYS. Held down it keeps planting — denser under a resting pointer, a band under
- * a moving one — the way a spray can lays paint, because a planting is the one macro whose
- * repeats compose (a second hill on a hill is a mistake; a second stand beside a stand is a
- * wood). The whole hold is ONE undo entry: `collapseHistory` folds every burst back to the
- * press's own watermark on release, so undo takes back the gesture, not one puff of it.
- *
- * A HOLD IS TIME, AND ONLY WHERE THE POINTER RESTS. Each burst at the spot the hand is holding
- * advances that stand one succession step (`succession.ts`): the heart matures while the rim keeps
- * its pioneers. DRAGGING is the other idiom: travel far enough from the anchor and the burst starts a
- * NEW young stand there, so a dragged hold lays a band of fresh
- * plantings rather than a smear of old growth. Releasing simply stops the clock; nothing freezes
- * the age but the absence of another burst.
- *
- * THE GHOST FOLLOWS THE POINTER: one preview in flight at a time, and the moment an answer lands
- * the newest cell the pointer has reached is asked next — so a moving cursor trails a live ghost
- * by one preview's latency instead of waiting for the hand to stop. The preview runs the real
- * macro off-thread (`preview.ts`), answers are cached per cell, and an answer that comes back for
- * a question no longer asked is dropped rather than drawn.
- *
- * THE GHOST PREVIEWS THE SHORT PRESS for a planting or a single-press macro — never the hold, since
- * simulating one would guess how long the hand stays down. `road-link` breaks that pattern on
- * purpose: once the first tap marks a point, its ghost previews the WHOLE route between the mark and
- * the pointer, because that route — not a "short press" at the pointer's own cell — is exactly what
- * the second tap will commit. Every ghost also carries `losses`: the coatings the shape would
- * replace and the hand-placed cells it would refuse, drawn as a second wash beside the gain
- * (`ToolOverlay.showGhost`'s `losses` argument), so the promise a ghost makes is never only the half
- * that gains.
- *
- * `road-link`'s OWN TWO TAPS are a small state machine (`mark`, `linkDown`) layered on top of the
- * single-press path every other macro uses: with no mark standing, a tap on a building is the whole
- * gesture (one door spur) and a tap on open ground plants the first mark; with a mark standing, a tap
- * ANYWHERE lays the route and clears the mark. Nothing touches the map at the first tap, so
- * abandoning the gesture (Escape, a nav tap — `cancelPending`/`hasPending`) costs nothing to abandon.
- *
- * THE SECOND TAP ALWAYS COMMITS, and the CHOICE BETWEEN ROUTES is made afterwards on real pavement.
- * It cannot be made on the ghost: the ghost is drawn from the mark to the POINTER'S OWN cell, so the
- * tap that means "here, and commit" is always a tap on the drawn route, and a gesture where that tap
- * cycled instead could never be committed at all on a map offering more than one way to go.
- *
- * AND THE TWO ENDS STAY A MOMENT afterwards (`route-session.ts`), as marks a hand can drag. A NUDGE IS
- * RESTORE THEN RELAY, the curve's adjust phase in one dimension: the route's own undo entry is rolled
- * back and the route is laid again at the moved ends under the SAME seed. So a nudge costs one undo
- * entry, the line keeps the character the taps drew, and a refused nudge re-lays the route that stood
- * byte for byte, since the seed, the ends and the ground under them are all the ones that produced it.
- *
- * A CYCLE IS THAT SAME RELAY with a different argument: a tap on the standing route's own cells lays
- * it again at the SAME ends under the NEXT offer. One relay body serves both (`relay`), so a cycle
- * cannot answer a refusal differently from a nudge, and the route's cells are a fixed set by then
- * rather than a line being redrawn under the pointer, so the tap is unambiguous.
+ * Runs macros through the ordinary pointer-tool lifecycle. Each press advances the seed and creates
+ * one undo entry. Held planting emits ordered succession bursts that collapse into one undo step;
+ * moving far enough starts a new stand. Previews run one at a time and discard stale results.
+ * `road-link` uses two taps, then keeps draggable endpoints and cycles alternative routes by rolling
+ * back and replaying the same seed as a single undo entry.
  */
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { ItemCategory, ToolType } from '../../core/model/types';
@@ -90,54 +34,28 @@ function offerLine(ctx: ToolContext, offer: number, offers: readonly string[]): 
   return ctx.t('smart.route_offer', { n: offer + 1, total: offers.length, name: ctx.t(OFFER_LABEL[profile]) });
 }
 
-/** THE ROAD CAME OUT NARROWER THAN THE BAR ASKED FOR. Above width 1 a standing planting necks the
- *  corridor rather than being removed, which is the design and is also invisible from where the
- *  press was made: the pinch can be forty cells down the route, off the near edge of the screen, and
- *  a road that is 3 wide except at one cell reads as a road that is 3 wide. Said once per run,
- *  whatever the count — where it happened is on the map, and a number of cells is not what the user
- *  asked about. */
+/** Report when preserved plantings narrow a multi-cell route. */
 function narrateNeck(ctx: ToolContext, outcome: MacroOutcome): void {
   if (outcome.narrowedByPlanting) showToast(ctx.t('smart.road_necked'), 'info');
 }
 
-/** The offer a fresh commit lays, and so the offer its ghost previews: the FIRST one drafted. ONE
- *  constant, because a ghost drawing a different way round than the tap lays is a promise broken. */
+/** Fresh commits and their previews use the first drafted route. */
 const COMMIT_OFFER = 0;
 
-/** How often a HELD planting sprays another burst, and how far the pointer travels before a move
- *  sprays one without waiting for the clock. */
+/** Held-planting cadence and movement threshold. */
 const SPRAY_MS = 350;
 const SPRAY_STEP = 3;
 
-/** SMART BUILD SHOWS THE CARD WITHOUT A GLYPH: the build brushes name the ONE surface they lay, and
- *  a macro lays a composition — a stand of trees over a flora floor, a lane with its verges. There is
- *  no glyph that would be true, so the preview keeps the frame and drops the icon. */
+/** Macro previews combine multiple materials, so their card has no single-material glyph. */
 const GHOST_CARD: PreviewCell = { icon: null, valid: true };
 
-/** The context's armed macro, narrowed to the ids the engine implements — the arming carries a
- *  plain string because `core` cannot know the macro catalogue. */
+/** Narrow the core-owned armed string to an implemented macro id. */
 export function armedMacroId(ctx: ToolContext): MacroId | null {
   const armed = ctx.armedMacro;
   return armed !== null && (MACRO_IDS as readonly string[]).includes(armed) ? (armed as MacroId) : null;
 }
 
-/**
- * A COMMITTED ROUTE, WHILE ITS MARKS STAND: everything a nudge or a cycle has to re-lay it with.
- *
- * `seed` and `offer` are the committed route's own, so a nudge re-draws the same route moved rather
- * than rolling a new one, and a refused nudge or cycle restores the original exactly. `watermark` is
- * the undo depth the route was laid over, which is what the rollback aims at and also the evidence
- * that the route is still the top entry. `epoch` is `ToolContext.armingEpoch` when it landed (see
- * `armedNow`). `ctx` is frozen at the commit (a shallow copy, as `drawing-tool` freezes the curve's):
- * the bar's material, width and trim must stay what the route was laid with, while the grid and the
- * command closures inside it stay live.
- *
- * `offers` and `cells` are what makes the CHOICE reachable on the pavement rather than on the ghost:
- * the ways this run drafted (`MacroOutcome.offers`, in offer order) and the cells its own objects
- * cover. `cells` is measured off the map after the landing (`laidCells`) rather than predicted, so a
- * tap can tell "on this route" from "somewhere else" without a preview and without a shape the map
- * does not have.
- */
+/** Replay state for a committed route while its endpoint controls remain active. */
 interface NudgeableRoute {
   from: MacroCoord;
   to: MacroCoord;
@@ -181,7 +99,7 @@ export class MacroTool implements Tool {
   id = ToolType.Macro;
   cursor: CursorId = 'place';
 
-  /** Advances per press, so pressing the same spot again is a reroll rather than the same draw. */
+  /** Advances per press so repeated presses can produce different seeded layouts. */
   private seed = 1;
   /** What the standing ghost answers, so a re-sample at the same cell with the same seed is free. */
   private ghostKey: string | null = null;
@@ -192,40 +110,19 @@ export class MacroTool implements Tool {
    *  next, superseding anything it skipped on the way. */
   private wanted: { coord: MacroCoord; key: string } | null = null;
   private previewing = false;
-  /** The held planting in progress: where the next burst lands, where the last one did, the undo
-   *  watermark the whole hold collapses to, what it has planted so far, and how many bursts are
-   *  still building off-thread. `done` marks a released hold whose last burst has yet to land.
-   *  `anchor`/`stage` are the hold's TIME: the spot it has been resting on and how many bursts have
-   *  landed there, and `anchorSeed` is the seed the first burst there consumed — what a COMPOSITION
-   *  (a garden bed, a delight) is drawn from, so one hold lays one of them rather than one per
-   *  burst. */
+  /** In-progress held planting, including ordered work and the undo watermark for the whole hold. */
   private spray: {
     id: MacroId; at: MacroCoord; last: MacroCoord; watermark: number; changes: number;
     pending: number; done: boolean; ctx: ToolContext;
     anchor: MacroCoord; stage: number; anchorSeed: number;
-    /** Every object id standing on the map when this hold began — never this hold's own, whatever
-     *  a later burst plants. A burst ages only what is NOT in this set (see `patch.ts`'s
-     *  `heldIds`), so a hold never rewrites a hand-placed plant or an earlier press's stand. Reset
-     *  on re-anchor (travel), since a fresh stand's aging must not reach back into the one the hold
-     *  just left. */
+    /** Object ids present at the current anchor; succession may age only objects added by this hold. */
     baseIds: ReadonlySet<string>;
     timer: ReturnType<typeof setInterval>;
   } | null = null;
-  /** Presses and bursts land IN ORDER: each off-thread build starts from the map the previous
-   *  landing left, so a burst can never build against ground an earlier burst has since planted.
-   *  An ORDER, never an outcome — see `chain`. */
+  /** Serializes presses and bursts so each build reads the prior landing. */
   private applying: Promise<void> = Promise.resolve();
 
-  /**
-   * THE FIRST TAP.
-   *
-   * Null between gestures, which is what makes the machine two states rather than a mode: with no
-   * mark a press MARKS (or spurs a building), with a mark a press COMMITS. Nothing on the map
-   * changes at the first tap, so an abandoned gesture costs nothing to abandon.
-   *
-   * The mark carries no OFFER, and a commit always lays the first one: a gesture in flight has no
-   * pavement to choose between, and the choice belongs to the route once it stands (`cycleRoute`).
-   */
+  /** First `road-link` tap; no map edit occurs until the second tap commits. */
   private mark: {
     from: MacroCoord;
     /** `ToolContext.armingEpoch` when the tap landed. See `armedNow`. */

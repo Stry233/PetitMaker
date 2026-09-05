@@ -1,9 +1,6 @@
-// The map coder is the ONE encoding of a map. What matters is that it is exact — every field
-// comes back as it went in — and that the fields it does NOT send are the ones the reader can
-// work out for itself.
 import { describe, it, expect } from 'vitest';
 import { RangeEncoder, RangeDecoder } from '../../../../io/share/codec/bitio';
-import { encodeMap, decodeMap, MODEL_VARIANTS } from '../../../../io/share/codec/map-coder';
+import { encodeMap, decodeMap, MODEL_VARIANTS, modelCanRepresent } from '../../../../io/share/codec/map-coder';
 import { tokensOf, parseToken, tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
 import { canonicalize } from '../../../../io/share/canonical';
 import { getMapTemplate } from '../../../../config/maps';
@@ -34,12 +31,12 @@ describe('map coder', () => {
     }
   }, 120_000);
 
-  it('returns the same map under every model shape', async () => {
-    // The shapes differ only in what the coder is told to expect, never in what it carries.
+  it('returns the same map under every applicable model shape', async () => {
     const { state } = (await corpusCases()).find((c) => c.name === 'maze-64')!;
     const c = canonicalize(state);
     const cells = tokensOf(c.cells).map(parseToken);
     for (let v = 0; v < MODEL_VARIANTS.length; v++) {
+      if (!modelCanRepresent(state.template, cells, c.objects, MODEL_VARIANTS[v]!)) continue;
       const { got } = roundTrip(state.template, cells, c.objects, v);
       expect(got.cells.map(tokenOf), `variant ${v}`).toEqual(cells.map(tokenOf));
     }

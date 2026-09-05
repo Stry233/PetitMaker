@@ -1,35 +1,7 @@
-/*
- * use-celebrate-edge.ts — the one pose that is a MOMENT rather than a state.
- *
- * `poseForPhase` answers from the phase, which is what the session IS; celebrating is what just
- * HAPPENED, and the two cannot come from the same reading. A job finishing well leaves the session
- * at `idle`, and `idle` is also where a session sits an hour later, where a stopped job leaves it,
- * and where a restored log opens — so a pose driven off the phase would either celebrate forever or
- * celebrate on arrival at a map somebody else built.
- *
- * SO IT IS AN EDGE, and the edge is the newest SETTLED job's `orderSeq` CHANGING while that job is
- * one worth dancing about. Not the phase, not the job count, not the outcome:
- *  - the seq is the identity of the job, so a second celebrated job is a second celebration and a
- *    re-render of the same one is none;
- *  - the ref is SEEDED on the first run rather than starting empty, which is what makes a restored
- *    session silent: the job was already there when the panel opened, so nothing changed;
- *  - WHETHER IT IS WORTH DANCING ABOUT IS `JobView.celebrate`, DECIDED IN THE PROJECTION and never
- *    re-derived here. `settle` answers it once — done, at least one write LANDED, and not ended on
- *    a question — so the two hosts that read this hook, the history line and the dock all agree by
- *    construction. Read off `outcome` instead, this danced over a refusal, over a map question
- *    answered from three reads, over a silent giveup, and over a job that had just asked the user
- *    something and was waiting for the reply.
- *
- * It holds for `POSES.celebrating.settleAt` — the pose's own one-shot length, read from the table
- * rather than restated, so the pose and the state it is shown in end together.
- *
- * AND IT BELONGS TO THE JOB IT IS ABOUT. The state is the celebrated job's `orderSeq`, not a
- * boolean, because the dance has TWO ways to end and a flag only covers one of them: the clock
- * running out, and the next job settling. A flag made the second one unreachable — the effect's
- * cleanup killed the timer, the new job took the non-firing branch and never lowered it, and the
- * character danced on over its own failure banner until something else finished well. Held as a seq
- * it cannot outlive its job: the moment a newer one settles, the seq no longer matches and the pose
- * is over, before the effect has even run.
+/**
+ * Produces the one-shot celebration pose when a newly settled job's projected `celebrate` flag is
+ * true. The first render seeds the seen sequence so restored sessions stay quiet. State stores the
+ * celebrated order id, allowing either the timer or any newer settlement to end the pose.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { PanelView } from '../../../agent/core/project-view';

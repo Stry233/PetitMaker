@@ -7,7 +7,7 @@ Thanks for your interest in PetitMaker, an unofficial map editor for *Petit Plan
 - **Code contributions** are licensed **inbound = outbound** under **Apache-2.0**.
 - Every commit must carry a **Developer Certificate of Origin** sign-off (`Signed-off-by:`), added with `git commit -s`.
 - **Contributors retain copyright** in their contributions; you license your work to the project, you do not assign ownership to it.
-- **Art / non-code asset contributions** require a separate **written permission record** before they can be merged; the maintainers keep these records privately.
+- **Art / non-code asset contributions** require separate **written permission** before they can be merged.
 - We only publish a contributor's name with their **consent**.
 
 ## Developer Certificate of Origin (DCO)
@@ -77,15 +77,19 @@ Code contributions are accepted under **Apache-2.0**, the same license the proje
 
 ## Art & non-code asset contributions
 
-Art, icons, fonts, sounds, and other non-code assets are **not** covered by the code license and cannot be merged on a DCO sign-off alone. Before such a contribution is accepted, we must have an explicit **written permission record** describing what is granted, by whom, and under what terms. The maintainers keep these records privately, together with the project's asset-provenance ledger; neither is part of the public repository. `docs/ASSET_LICENSES.md` carries the public summary.
+Art, icons, fonts, sounds, and other non-code assets are **not** covered by the code license and cannot be merged on a DCO sign-off alone. Before such a contribution is accepted, the maintainers must verify written permission that identifies the contributor, the covered material, and the granted rights. `docs/ASSET_LICENSES.md` carries the public license and source summary.
 
-If you want to contribute an asset, contact us first (see below) so we can set up the permission record. Do not submit third-party or game-derived material you do not have the right to license.
+If you want to contribute an asset, contact us first (see below) so we can confirm what evidence is required. Do not submit third-party or game-derived material you do not have the right to license.
 
 ## Credit & naming
 
 We only publish a contributor's name (in credits, the About screen, release notes, or elsewhere) **with that person's consent**. If you contribute, let us know whether and how you would like to be credited; we will record your preference and will not publish your name without permission.
 
 ## Development setup
+
+International site: https://petitmaker.cc/
+
+Chinese site: https://petitmaker.com.cn/
 
 Requires [Node.js](https://nodejs.org) 24 or newer.
 

@@ -12,7 +12,7 @@ export type CursorId =
   | 'place' | 'select' | 'move'
   | 'select-add' | 'select-remove'
   | 'hand-open' | 'hand-closed' | 'orbit' | 'marquee' | 'busy'
-  | 'default' | 'clickable' | 'blocked' | 'text';
+  | 'default' | 'clickable' | 'blocked' | 'text' | 'help';
 
 /**
  * Logical pixel size of every cursor image, and so how big the cursor is on screen: a CSS
@@ -111,6 +111,10 @@ export const CURSORS: Readonly<Record<CursorId, CursorSpec>> = {
   // costs the stem a hard edge at fractional display scales, so the drawing gives up the pixel
   // instead.
   text: { hotspot: [15, 16], fallback: 'text', hasArt: true },
+  // The Help Center's "what's this?" pick mode. Left to the OS keyword until the painted set gains
+  // a question-mark drawing of its own: the mode is rare and momentary, and the platform's help
+  // arrow already says exactly what it means.
+  help: { hotspot: [2, 2], fallback: 'help', hasArt: false },
 };
 
 export const CURSOR_IDS = Object.keys(CURSORS) as CursorId[];
@@ -128,6 +132,7 @@ export const DOM_CURSORS = {
   clickable: '--pw-cursor-clickable',
   blocked: '--pw-cursor-blocked',
   text: '--pw-cursor-text',
+  help: '--pw-cursor-help',
 } as const satisfies Partial<Record<CursorId, string>>;
 
 export type DomCursorId = keyof typeof DOM_CURSORS;

@@ -19,9 +19,7 @@ for (const path in modules) {
   ART[name] = modules[path]!;
 }
 
-/** The basenames this folder ships, one per file: the character body plus its two PNG badges
- *  (prototype `ART.base`/`ART.idea`/`ART.ask`, renamed here to their own file basenames since this
- *  folder holds nothing else). */
+/** The three PNG basenames shipped here: the character body and two badges. */
 export type CharacterArtId = 'base' | 'badge-idea' | 'badge-ask';
 
 export function characterArt(id: CharacterArtId): string {

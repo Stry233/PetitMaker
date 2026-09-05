@@ -1,20 +1,8 @@
 /*
- * OptionPick.tsx — two or three sketched options, and the pick IS the gate (normative prototype
- * `.opt`, on the ask card's own plate).
- *
- * THE OPTIONS RIDE THE ASK (`gateAsked.options` → `AskRecord.options`), which is the only event that
- * exists at ask time. `optionAskFrom` below is the whole read: it is the card's business to know that
- * a `words` answer naming one of the captions it offered was a PICK, because the log records the
- * user's sentence and nothing else — an offer with no answer beside it could not tell the two apart.
- *
- * THREE MARKS, THREE MEANINGS, and they must not be confused for one another. A still-live card
- * answers a HOVER with the `ACTIVE` fill (an invitation). The PICK is a solid ink ring plus its own
- * chip, never the hover paint — a paint that a pointer can also produce cannot say "this is the one
- * you chose". And a settled card that was NOT picked simply dims and is `disabled` FOR REAL, so a
- * press on a question already answered reaches nothing rather than looking pressable.
- *
- * "None of these" declines the pick without answering in words and without killing the job: the
- * decline the other two gates carry as their Don't pill.
+ * Renders a gate whose answer is one of two or three sketched options. The log stores a selection as
+ * a words verdict, so `optionAskFrom` recovers the selected index by matching the answer to a caption.
+ * Open options use hover fill; the selected option uses an ink ring, and other settled options are
+ * disabled and dimmed. "None of these" declines the gate without stopping the job.
  */
 import { useState, type ReactNode } from 'react';
 import { AskCard, AskPill, QuickRow, VerdictChip, type VerdictMark } from './GateBlock';
@@ -27,8 +15,7 @@ import { useT } from '../../i18n/context';
 import type { AskRecord } from '../../agent/core/project-view';
 import type { GateOption } from '../../agent/core/types';
 
-/** One proposed option: a caption and, where a rect on the map exists, a REAL capture of the ground
- *  it describes (the caller owning a renderer builds the node — see `map-shot.tsx`). */
+/** A proposed option and an optional map capture supplied by the rendering caller. */
 export interface OptionCard {
   cap: string;
   thumb?: ReactNode;
@@ -42,10 +29,7 @@ export interface OptionAsk {
   cards: readonly OptionCard[];
   /** Which card was taken, or -1 for "none of these". Absent while the ask is open. */
   picked?: number;
-  /** Set once the ask is settled some way that is not a pick. Every mark rather than the three the
-   *  pick path produces: a log may hold any answer against any gate (an ask re-entered after a
-   *  reload, a gate answered from another surface), and a chip the card cannot draw would be worse
-   *  than one that reads a little oddly. */
+  /** A non-pick outcome, including answers submitted from another surface. */
   verdict?: VerdictMark;
 }
 
@@ -84,9 +68,7 @@ export function optionAskFrom(
   return { ...base, verdict: ask.verdict };
 }
 
-/** How large an option's picture stands, in px (the artifact's own `.opt .thumb`). Exported because
- *  the caller that owns a renderer captures at exactly this size: the box and the shot in it must be
- *  one number, not two that agree today. */
+/** Option thumbnail size in CSS pixels, shared with the capture caller. */
 export const OPTION_THUMB = { width: 88, height: 62 } as const;
 const THUMB_W = OPTION_THUMB.width;
 const THUMB_H = OPTION_THUMB.height;
@@ -109,10 +91,7 @@ function OptionRow({
 }) {
   const t = useT();
   const dim = settled && !picked;
-  // HELD IN STATE, NOT PAINTED ON THE NODE (`atoms.tsx:Pill`'s own pattern). An imperative
-  // `style.background` written on pointer-enter is not rewritten by a render that did not change the
-  // declared value, so a card hovered and then PICKED kept the ask fill under its ink ring — the one
-  // paint the pick's mark may not be confused with.
+  // State-driven hover is cleared by the settled render; imperative styles can outlive that change.
   const [hovered, setHovered] = useState(false);
   const lit = hovered && !settled;
   return (

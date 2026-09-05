@@ -23,6 +23,8 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode }
 import { AnimatePresence, motion } from 'framer-motion';
 import { btnReset, cursors, pressable } from '../../design/styles';
 import { MAP_LABEL } from '../../design/tokens';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
+import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import type { Glyph } from '../frame';
 import { GlyphIcon } from '../GlyphIcon';
 import { captionShift, MODE, SCALE, TEXT } from '../units';
@@ -64,7 +66,7 @@ export const AUTO_TRIM = <AutoTrim />;
 /** The eraser's shape chip, the second of the settings a cell can carry. */
 export const ERASER_SHAPE = <EraserShapeChip />;
 
-export function ToolCell({ glyph, label, commandId, active, centre, onSelect, carries }: {
+export function ToolCell({ glyph, label, commandId, active, centre, onSelect, carries, helpTarget }: {
   glyph: Glyph;
   /** Accessible name, and the name shown under the cell while it is the active one. */
   label: string;
@@ -78,6 +80,9 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
   onSelect: () => void;
   /** A control the cell's plate grows into a pill to hold, while this cell is the active one. */
   carries?: ReactNode;
+  /** Overrides the row's own help page for this one cell, where the tool is its own Help Center
+   *  page rather than the row's (the edge-trim and smart-build cells). */
+  helpTarget?: HelpPageId;
 }) {
   const shape = useMotion('tool.plate.shape');
   const grown = active && carries != null;
@@ -116,6 +121,7 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
 
   return (
     <div
+      {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
       style={{
         position: 'relative', flex: 'none', display: 'flex', alignItems: 'center',
         height: CELL_BOX.h,
@@ -147,31 +153,9 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
       >
         <GlyphIcon glyph={glyph} size={GLYPH * SCALE} />
       </motion.button>
-      {/*
-        THE CONTROL OPENS THE PILL AND THE ROW FOLLOWS. The clip box is what the cell's layout width
-        grows by, so the cells after it slide rather than jump — that is the whole of the width
-        transition, since flex reads the animated number every frame.
-
-        `alignSelf: stretch` gives the clip the cell's full height, so the chip's hover pop is not
-        shaved by a box drawn to the chip's own size.
-
-        THE INSET IS ON BOTH SIDES OF THE CLIP, and the box is pulled back left by the one it gained:
-        the chip stands where it stood and the cell grows by what it grew by, but the pop now has the
-        same room to grow into on the left as on the right. With the padding on the right only, the
-        hover pop's left half had nowhere to go and was shaved off — measured at 1.9 px against 8 of
-        slack on the other side. The width the fold closes to is that inset rather than zero, which
-        is what keeps the cell's own contribution at zero once the negative margin is counted.
-
-        AND THE CONTROL IS HELD AT THE CLOSING EDGE, which is what decides WHERE it is cut. Held at
-        the opening edge it stayed put while the box's right edge swept across it, so the box cut it
-        on the side it shares with the plate's own end — and a box narrower than it is tall has its
-        corner radius clamped to half its width, which is a smaller curve than the plate's, so the
-        cut left square ears standing outside the pill with nothing behind them. That is what a
-        closing pill looked like. Held at the closing edge instead, the chip travels with that edge,
-        keeps its inset from it, and is cut on the LEFT — a line inside the plate, over the plate,
-        which is the one place a cut can be made without a shape to hide it. The rounded clip is what
-        makes that line a curve rather than a chord.
-      */}
+      {/* The animated clip width moves following cells through flex layout. Symmetric inset preserves
+          hover overflow, and anchoring the chip to the closing edge keeps the clipped edge inside the
+          plate. */}
       <AnimatePresence initial={false}>
         {grown ? (
           <motion.span

@@ -8,8 +8,11 @@
  */
 import { ToolType, type DesignMode } from './types';
 
-/** What is being built. `null` is rest: the map takes no marks. */
-export type BuildMode = 'object' | 'road' | 'mountain' | 'water' | 'generate' | null;
+/** What is being built. `null` is rest: the map takes no marks. `annotate` is the plan-notes
+ *  layer: it has no block in the mode row — the layer panel's 标注 row and the export modal's
+ *  编辑标注 door arm it — but it IS a build mode, so which bar is up and who owns the pointer
+ *  stay one fact. */
+export type BuildMode = 'object' | 'road' | 'mountain' | 'water' | 'generate' | 'annotate' | null;
 
 /** How it is being built. `none` means a surface is chosen but no tool is armed on it — a
  *  selection gesture left the brush without leaving the surface, so the next mark on the same
@@ -36,7 +39,7 @@ const SHAPE_MODE: Record<BuildShape, DesignMode> = {
   free: 'brush', line: 'line', curve: 'curve', rect: 'rect', circle: 'circle',
 };
 
-export const CONTENT: Record<Exclude<BuildMode, null | 'object' | 'generate'>, ContentType> = {
+export const CONTENT: Record<Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>, ContentType> = {
   mountain: 'mountain', water: 'water', road: 'tile',
 };
 
@@ -45,7 +48,7 @@ export const CONTENT: Record<Exclude<BuildMode, null | 'object' | 'generate'>, C
  *  mode is 'road', and that is the whole reason the two tables are not the same. */
 export const MODE_FOR_CONTENT = Object.fromEntries(
   Object.entries(CONTENT).map(([mode, content]) => [content, mode]),
-) as Record<ContentType, Exclude<BuildMode, null | 'object' | 'generate'>>;
+) as Record<ContentType, Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>>;
 
 /**
  * The ONE `DesignMode` → `ToolType` mapping, so a mode's implementing tool has one answer
@@ -87,7 +90,7 @@ const REST: EditModeState = {
 
 /** The surfaces that take CONTENT. Written once here — `CONTENT`, the arming union and the bars all
  *  key off the same three, so a fourth surface arrives as one type error instead of four. */
-export type ContentMode = Exclude<BuildMode, null | 'object' | 'generate'>;
+export type ContentMode = Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>;
 
 /**
  * WHAT A CONTENT SURFACE HAS ARMED. One field, so it holds one thing: a surface cannot be erasing
@@ -141,8 +144,10 @@ export type EditModeInputs =
   | Inputs<ContentMode, ContentArming>
   | Inputs<'object', ObjectArming>
   // Rest is a PAUSE, not a put-down: the map takes no marks and `resolveEditMode` never reads the
-  // arming here, but the surface resumes with what it held when the bar comes back.
-  | Inputs<null | 'generate', Arming>;
+  // arming here, but the surface resumes with what it held when the bar comes back. Annotate rides
+  // the same arm: WHICH annotation tool is armed is the annotation slice's own field, the way
+  // `eraserShape` is the eraser's, so the mode carries no arming of its own.
+  | Inputs<null | 'generate' | 'annotate', Arming>;
 
 /** The flat keys every shell caller passes. ONE adapter (`nextEditMode`) turns them into an
  *  arming. */
@@ -169,6 +174,10 @@ export function resolveEditMode(inputs: EditModeInputs): EditModeState {
     case null:
     case 'generate':
       return REST;
+    // The annotate tool owns the pointer while the plan-notes layer is being edited; the four
+    // content facts are inert (nothing here lays terrain or arms an item).
+    case 'annotate':
+      return { toolType: ToolType.Annotate, designMode: 'hand', contentType: 'mountain', armedItem: null, armedMacro: null };
     case 'object':
       return objectState(inputs.arming);
     default:
@@ -315,7 +324,7 @@ export function nextEditMode(prev: EditModeInputs, patch: EditModePatch): EditMo
   const mode = patch.mode === undefined ? prev.mode : patch.mode;
   const shape = patch.shape ?? prev.shape;
 
-  if (mode === null || mode === 'generate') {
+  if (mode === null || mode === 'generate' || mode === 'annotate') {
     const arming = prev.arming;
     return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: heldObjectAfter(prev) };
   }

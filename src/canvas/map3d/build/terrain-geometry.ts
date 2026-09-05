@@ -443,16 +443,14 @@ function pushFeatherRing(m: MeshData, outer: Pt[], inner: Pt[], y: number, col: 
 function pushRegionCore(m: MeshData, rings: Pt[][], y: number, col: Rgb): void {
   // One connected surface has one outer ring; every other ring is a hole in it.
   let outerIdx = 0, outerArea = 0;
-  const areas = rings.map((ring, i) => {
+  rings.forEach((ring, i) => {
     let a = 0;
     for (let k = 0; k < ring.length; k++) {
       const [x1, y1] = ring[k]!, [x2, y2] = ring[(k + 1) % ring.length]!;
       a += x1 * y2 - x2 * y1;
     }
     if (Math.abs(a) > outerArea) { outerArea = Math.abs(a); outerIdx = i; }
-    return a;
   });
-  void areas;
   const ordered = [rings[outerIdx]!, ...rings.filter((_, i) => i !== outerIdx)];
   const flat: number[] = [];
   const holes: number[] = [];

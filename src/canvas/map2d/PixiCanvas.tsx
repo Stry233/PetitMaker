@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
+import { annotationInkScale } from '../../core/model/annotations';
 import { selectedObjectIds } from '../../state/selection';
 import { MapRenderer } from './map-renderer';
 import { createDefaultRegistry } from '../../rules/index';
@@ -38,8 +39,11 @@ export function PixiCanvas() {
   const initMap = useEditorStore((s) => s.initMap);
 
   // Returning to 2D re-points the tool layer at this view (the 3D canvas
-  // registers itself symmetrically when it becomes active).
+  // registers itself symmetrically when it becomes active). The renderer also learns whether it
+  // is the view ON SCREEN: covered by the 3D canvas its loop draws nothing, which on a dense map
+  // is the difference between a free 3D session and a second full scene rendered underneath it.
   useEffect(() => {
+    rendererRef.current?.setPresenting(viewMode !== '3d');
     if (viewMode === '2d' && rendererRef.current) setActiveView(rendererRef.current.asEditorView());
   }, [viewMode]);
   const showGrid = useEditorStore((s) => s.showGrid);
@@ -52,6 +56,9 @@ export function PixiCanvas() {
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const layerLocked = useEditorStore((s) => s.layerLocked);
   const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
+  const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
+  const annotationDraft = useEditorStore((s) => s.annotationDraft);
+  const annotationSelection = useEditorStore((s) => s.annotationSelection);
 
   // Mount / unmount
   useEffect(() => {
@@ -61,6 +68,9 @@ export function PixiCanvas() {
     const box = container.getBoundingClientRect();
     const renderer = new MapRenderer(eventBus, container, box.width, box.height);
     rendererRef.current = renderer;
+    // A session can restore straight into 3D (`viewMode` persists), and this mount-only effect
+    // runs after the mode effect already looked for a renderer that was not there yet.
+    renderer.setPresenting(useEditorStore.getState().viewMode !== '3d');
     setMapRenderer(renderer);
 
     // Always open a fresh map. If an autosave exists, the shell offers to restore it from its own
@@ -142,6 +152,24 @@ export function PixiCanvas() {
     renderer.terrainLayer.drawNumbers(gs);
     renderer.mountNumberContainer();
   }, [showLayerNumbers]);
+
+  // The plan-notes layer redraws whole on any of its inputs; the epoch is what says the
+  // in-place-mutated data moved. A late-arriving font re-bakes the labels once it lands, or a
+  // name typed before the face loaded would keep its fallback raster for the session.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const gs = useEditorStore.getState().gridState;
+    if (!renderer || !gs) return;
+    const draw = () => renderer.annotationLayer.draw(gs.annotations ?? null, {
+      draft: useEditorStore.getState().annotationDraft,
+      selectionIds: useEditorStore.getState().annotationSelection,
+      inkScale: annotationInkScale(gs.template),
+    });
+    draw();
+    let stale = false;
+    document.fonts?.ready.then(() => { if (!stale) draw(); });
+    return () => { stale = true; };
+  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState]);
 
   // Re-draw when gridState changes (new project)
   useEffect(() => {

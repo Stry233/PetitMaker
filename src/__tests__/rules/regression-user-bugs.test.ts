@@ -1,5 +1,6 @@
 /**
- * Regression tests for user-reported bugs (2026-05-24), each reproducing the scenario as described.
+ * Whole-pipeline scenario tests over the water, waterfall and support rules: each suite draws one
+ * small map and pins what the rules make of it.
  *
  * All diagrams use top-view at elevation 2 unless noted otherwise.
  * "Two level" = elevation 2 (layer 2).
@@ -22,7 +23,7 @@ function paint(x: number, y: number, type: TerrainType, elev: number): PaintTerr
   return { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: type, elevation: elev };
 }
 
-describe('User Bug 1: Water should become waterfall with south direction', () => {
+describe('Water should become waterfall with south direction', () => {
   // Top-view at elev 2:
   // M M M M M M
   // M M M M M M
@@ -41,7 +42,7 @@ describe('User Bug 1: Water should become waterfall with south direction', () =>
   });
 });
 
-describe('User Bug 2: Enclosed water row must not be rejected', () => {
+describe('Enclosed water row must not be rejected', () => {
   // Top-view at elev 2:
   // M M M M M M
   // M W W W W M  ← enclosed by mountains on all sides
@@ -90,7 +91,7 @@ describe('User Bug 2: Enclosed water row must not be rejected', () => {
   });
 });
 
-describe('User Bug 3: Cross pattern water in 3x3 mountain', () => {
+describe('Cross pattern water in 3x3 mountain', () => {
   // Top-view at elev 2:
   //   M W M
   //   W W W  ← cross pattern
@@ -126,7 +127,7 @@ describe('User Bug 3: Cross pattern water in 3x3 mountain', () => {
   });
 });
 
-describe('User Bug 4: Layer panel block counts', () => {
+describe('Layer panel block counts', () => {
   // Side view: build a 3x3 mountain from layer 1 to 3
   // Each layer should show correct block count even when covered
   it('counts cells in all layers they occupy', () => {
@@ -192,7 +193,7 @@ describe('User Bug 4: Layer panel block counts', () => {
   });
 });
 
-describe('User Bug 5: Plaza collision boundary', () => {
+describe('Plaza collision boundary', () => {
   // Plaza occupies world x ∈ [76.5, 96.5]. Terrain renders on the micro-grid
   // (−HALF_TILE), so a terrain cell x covers [x−0.5, x+0.5]:
   //   x=76 → [75.5, 76.5]  touches the plaza edge, no overlap → buildable
@@ -237,7 +238,7 @@ describe('User Bug 5: Plaza collision boundary', () => {
   });
 });
 
-describe('User Bug 6: 3x3 block at layer 4 must not be self-supporting', () => {
+describe('3x3 block at layer 4 must not be self-supporting', () => {
   // Side view:
   // M M M   (layer 4)
   // M M M   (layer 3)
@@ -255,7 +256,7 @@ describe('User Bug 6: 3x3 block at layer 4 must not be self-supporting', () => {
   });
 });
 
-describe('User Bug 7: Two-layer structure with inner water at elev 2', () => {
+describe('Two-layer structure with inner water at elev 2', () => {
   // Top view:
   // ..111111111111...
   // ..112222222211...
@@ -299,7 +300,7 @@ describe('User Bug 7: Two-layer structure with inner water at elev 2', () => {
   });
 });
 
-describe('User Bug 8: Water at elev 2 needs elev-2 caps on perpendicular', () => {
+describe('Water at elev 2 needs elev-2 caps on perpendicular', () => {
   // Two-layer structure with elev-1 outer ring, elev-2 inner area.
   // Water at elev 2 replacing bottom inner row:
   // ..111111111111...

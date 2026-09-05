@@ -1,26 +1,23 @@
-// src/__tests__/legal/secret-exclusion.test.ts — SECURITY PIN (spec §18.3): every map export
-// codec (plain save, PetitGlyph share-code, sectioned JSON export, provenance summary) must
-// NEVER carry anything derived from localStorage — not the agent's BYOK key material, not any
-// app preference. These codecs are pure functions of GridState; they have no business reading
-// storage at all. These tests are PINS, not TDD-red-first: they are expected to pass immediately
-// against the real codecs. If any assertion here ever fails, STOP — that is a real vulnerability
-// (a codec silently reading storage), not a test to "fix".
-//
-// Storage seeding matches the REAL at-rest shapes:
-//   - 'petit-agent-settings-v1' (src/agent/security/key-storage.ts) — keys are obfuscated with
-//     btoa(unescape(encodeURIComponent(secret))) in the no-vault fallback path (jsdom has no
-//     WebCrypto vault, so this is the exact path a real browser without IndexedDB would take).
-//   - 'petit-planet-locale' / 'petit-planet-ui-zoom' / 'petit-planet-autosave' (src/state/store.ts,
-//     src/io/autosave.ts) — ordinary prefs, seeded with distinctive canary values (not their real
-//     shapes) so a leak is unambiguous — a real locale like 'en' could coincidentally appear in
-//     unrelated content and wouldn't prove anything either way.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+// Export codecs are pure functions of map state. Distinctive storage canaries verify that API keys,
+// preferences, and session-only command history never enter saves or share payloads.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// autosave's camera read touches the live 2D/3D view registries; this suite mounts neither, so it
+// gets the same "no view opened this session" answer a real cold session would (mirrors
+// src/__tests__/io/autosave.test.ts's own mock).
+vi.mock('../../kit/host', () => ({
+  host: { camera: { get2d: () => undefined, get3d: () => undefined } },
+}));
+
 import { makeState, makeTemplate, setTerrain } from '../rules/_helpers';
 import { serialize, deserialize } from '../../io/json-codec';
 import { buildShareCode } from '../../io/share/export';
 import { encodeMapPayload, decodeMapPayload } from '../../io/share/codec/payload';
 import { toSaveJSON } from '../../io/share/canonical';
 import { serializeWithSections, type ExportJsonOptions } from '../../io/export-json';
+import { scheduleAutosave } from '../../io/autosave';
+import { versionStore } from '../../io/stylize/versions';
+import { PREFS } from '../../core/runtime/prefs';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
@@ -113,7 +110,7 @@ function newExecutor(state: GridState): CommandExecutor {
   return new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
 }
 
-describe('secret exclusion (spec §18.3) — codecs never touch storage', () => {
+describe('secret exclusion — codecs never touch storage', () => {
   beforeEach(() => seedLocalStorage());
 
   it('serialize(state) contains neither the fake key nor any localStorage pref value', () => {
@@ -206,28 +203,9 @@ describe('secret exclusion (spec §18.3) — codecs never touch storage', () => 
   });
 });
 
-// ── Spec §18.3 surface #3: history/undo state never enters share payloads. ────────────────────
-//
-// The tests above build GridState directly (no CommandExecutor) — no undo history ever exists,
-// so nothing pins its exclusion from the PetitGlyph share payload. GridState itself has no
-// `history` field (undo/redo stacks live only inside CommandExecutor — see command-executor.ts),
-// so this is also an architectural pin: encodeMapPayload/buildShareCode take a GridState, never
-// an executor, and can only encode what's actually IN the state.
-//
-// These tests route real edits through a CommandExecutor to accumulate genuine undo depth (≥3),
-// including one cell that was painted then overwritten (its old value survives only in an undo
-// entry's before/after snapshots) and one paint that was committed then UNDONE (its value survives
-// only in the redo stack — not even reachable via getUndoEntries()). Two independent checks:
-//   (a) the payload is byte-identical to encoding a structurally-equal state built WITHOUT any
-//       executor/history at all — proving the accumulated history contributes zero bytes. The
-//       codec is a pure function of GridState content (canonicalize() re-derives object ids from
-//       position/catalogId/etc, not the raw id string — see canonical.ts:objKey — and neither
-//       candidate here sets `state.generation`, so the P_EMPTY predictor is the only candidate:
-//       fully deterministic, with no MDL-competition variance).
-//   (b) decoding the payload back recovers ONLY the live final values at the history-touched
-//       cells, never the superseded/undone ones — a concrete behavioral demonstration, not just
-//       an architectural one.
-describe('history/undo state never enters share payloads (spec §18.3 surface #3)', () => {
+// Command history belongs to CommandExecutor rather than GridState. The payload must therefore be
+// identical for equal live states regardless of undo depth, and decoding must recover only live values.
+describe('history/undo state never enters share payloads', () => {
   const SHARED_TEMPLATE_ID = 'secret-exclusion-history-shared';
   // Elevations kept at 1-3 so layers auto-pass the 3x3 base rule (V-MTN-03) — no support
   // scaffolding needed to keep every intermediate stroke post-stroke-valid.
@@ -364,5 +342,104 @@ describe('history/undo state never enters share payloads (spec §18.3 surface #3
 
     // (18,18) was painted then undone — the live state (and thus the payload) never saw it.
     expect(rebuilt.cells[18]![18]!.terrain).toBeNull();
+  });
+});
+
+// The stylize API key is sealed in settings and generated pictures live only in `versionStore`.
+// Neither is an input to a map save or share codec.
+describe('stylize secrets never enter a payload', () => {
+  const STYLIZE_KEY_CANARY = 'CANARY-STYLIZE-SEALED-KEY-1a2b3c4d5e6f';
+  const STYLIZE_BITMAP_CANARY = 'CANARY-STYLIZE-BITMAP-9f8e7d6c5b4a3f2e';
+
+  /** The real on-disk shape (`StoredRecord` in settings.ts): the canary rides in the fields a real
+   *  key/prompt would occupy, including `keySealed`, which is where an ENCRYPTED key ciphertext
+   *  lives on a real machine — planting it in plain here proves the codecs never read this record
+   *  at all, encrypted or not. */
+  function seedStylizeSettings(): void {
+    localStorage.setItem(
+      PREFS.stylize.key,
+      JSON.stringify({
+        provider: 'gemini',
+        model: STYLIZE_KEY_CANARY,
+        customBaseUrl: '',
+        direction: 'watercolor',
+        customPrompt: STYLIZE_KEY_CANARY,
+        keySealed: { iv: 'AAAAAAAAAAAAAAAA', ct: STYLIZE_KEY_CANARY },
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    seedLocalStorage();
+    seedStylizeSettings();
+    versionStore.reset();
+  });
+  afterEach(() => {
+    versionStore.reset();
+    vi.useRealTimers();
+  });
+
+  it('a settings-record key and a minted version bitmap reach no save payload, share payload, exported JSON section, or autosave blob', async () => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${btoa(STYLIZE_BITMAP_CANARY)}`;
+    versionStore.mint({ kind: 'model', direction: 'watercolor', image: img, fingerprint: versionStore.currentFingerprint() });
+    expect(versionStore.getState().versions).toHaveLength(1); // the mint actually happened
+
+    const state = buildStateWithObjects();
+
+    const save = serialize(state);
+    expect(save).not.toContain(STYLIZE_KEY_CANARY);
+    expect(save).not.toContain(STYLIZE_BITMAP_CANARY);
+
+    const payload = await encodeMapPayload(state, null, { appVersion: '1.0-test', saveVersion: 3 });
+    const latin1 = Array.from(payload, (b) => String.fromCharCode(b)).join('');
+    expect(latin1).not.toContain(STYLIZE_KEY_CANARY);
+    expect(latin1).not.toContain(STYLIZE_BITMAP_CANARY);
+    const code = await buildShareCode(state, null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
+    expect(code).not.toBeNull();
+
+    const allSections: ExportJsonOptions = {
+      notes: { title: 'Test Map', description: 'A test map', author: 'tester' },
+      includeGeneration: true,
+      includeProvenance: true,
+      session: { v: 1, lockedLayers: [], camera: { x: 0, y: 0, zoom: 1 } },
+      includeStats: true,
+      includeCatalogInfo: true,
+      pretty: true,
+    };
+    const exported = serializeWithSections(state, allSections);
+    expect(exported).not.toContain(STYLIZE_KEY_CANARY);
+    expect(exported).not.toContain(STYLIZE_BITMAP_CANARY);
+
+    vi.useFakeTimers();
+    scheduleAutosave(state);
+    vi.advanceTimersByTime(2000);
+    const autosaved = localStorage.getItem(PREFS.autosave.key);
+    expect(autosaved).not.toBeNull();
+    expect(autosaved).not.toContain(STYLIZE_KEY_CANARY);
+    expect(autosaved).not.toContain(STYLIZE_BITMAP_CANARY);
+  });
+
+  // ── Self-check: prove these two canaries would actually fire on a real leak. ──────────────────
+  describe('self-check: the stylize canaries actually fire (negative control)', () => {
+    it('a tampered save payload with the sealed-key canary injected fails the same assertion', () => {
+      const state = buildStateWithObjects();
+      const clean = serialize(state);
+      expect(clean).not.toContain(STYLIZE_KEY_CANARY);
+      const tampered = `${clean}::${STYLIZE_KEY_CANARY}`;
+      expect(() => expect(tampered).not.toContain(STYLIZE_KEY_CANARY)).toThrow();
+    });
+
+    it('a tampered autosave blob with the bitmap canary injected fails the same assertion', () => {
+      vi.useFakeTimers();
+      const state = buildStateWithObjects();
+      scheduleAutosave(state);
+      vi.advanceTimersByTime(2000);
+      const clean = localStorage.getItem(PREFS.autosave.key);
+      expect(clean).not.toBeNull();
+      expect(clean).not.toContain(STYLIZE_BITMAP_CANARY);
+      const tampered = `${clean}::${STYLIZE_BITMAP_CANARY}`;
+      expect(() => expect(tampered).not.toContain(STYLIZE_BITMAP_CANARY)).toThrow();
+    });
   });
 });

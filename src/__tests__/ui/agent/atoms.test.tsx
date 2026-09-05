@@ -155,18 +155,8 @@ describe('TapeBar', () => {
   });
 });
 
-/** THE END-MARK VOCABULARY: every `OpRow['status']` member, paired with the mark it must draw and
- *  the ink it must draw it in (`'spin'` is the house Spinner, which has no symbol of its own). The
- *  seven marks are the artifact's own `ENDS` table — `ok`/`err`/`rv`/`sh`/`ghost`/`no`/`cut` — and a
- *  status shares a mark only where the two say the same thing: a call answered in words and one
- *  still awaiting its answer are both a proposal that never ran.
- *
- *  `as const satisfies` rather than a widening `: ReadonlyArray<...>` annotation, on purpose: a
- *  normal annotation makes `typeof END_MARKS[number][0]` read back as the ANNOTATION
- *  (`OpRow['status']` itself, already "complete" no matter what's listed), which silently defeats
- *  the exhaustiveness check below. `satisfies` validates each first element against
- *  `OpRow['status']` without widening the inferred literal-tuple type, so
- *  `typeof END_MARKS[number][0]` is truly just the statuses actually listed. */
+/** Every operation status and its rendered mark. `satisfies` validates the entries without
+ * widening their literal types, which keeps the exhaustiveness assertion meaningful. */
 const END_MARKS = [
   ['ok', 'pw-check', tickInk.ok],
   ['run', 'spin', ''],
@@ -254,12 +244,7 @@ describe('Pill', () => {
     expect(['', 'none']).toContain(getByTestId('pill').style.boxShadow);
   });
 
-  /**
-   * IT PRESSES LIKE EVERY OTHER BUTTON IN THE HOUSE. `animations.css` states outright that there are
-   * no global button rules, so a plain `<button>` here was motionless while the retry pill beside it
-   * on the same dock card, being a `TimedButton`, sprang: two press idioms on one card. The
-   * prototype's own worded-act pair is that same 1.03 hover and 0.95 tap.
-   */
+  /** Pills use the shared button feedback rather than relying on global button CSS. */
   it('takes the house press feedback', async () => {
     const { getByTestId } = render(
       <MotionConfig reducedMotion="never"><Pill>Label</Pill></MotionConfig>,
@@ -308,8 +293,7 @@ describe('Stamp', () => {
     expect(['', 'none']).toContain(getByTestId('stamp').style.boxShadow);
   });
 
-  /** A noted line may take a SECOND line rather than truncating what the user said (artifact
-   *  `.stampline .tx`): a note cut off at the panel's width is a note the record does not hold. */
+  /** A noted line may use a second line so the record preserves the user's text. */
   it('lets its text run to two lines rather than ellipsizing at one', () => {
     const { getByTestId } = render(<Stamp icon="pw-note">Noted: keep the shore clear of houses</Stamp>);
     const text = getByTestId('stamp-text');

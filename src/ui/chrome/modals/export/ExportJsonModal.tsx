@@ -10,7 +10,7 @@ import { serializeWithSections, sectionSizes, type ExportJsonOptions, type Secti
 import { downloadJSON } from '../../../../io/image-export';
 import { host } from '../../../../kit/host';
 import { ModalShell } from '../../../primitives/ModalShell';
-import { Expand } from './Expand';
+import { Expand } from '../../../primitives/Expand';
 import { Switch } from '../../../primitives/Switch';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { HelpBubble } from './HelpBubble';

@@ -24,6 +24,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../state/store';
+import { useUiPreviewPose } from '../primitives/ui-preview';
 import { isMotionReduced } from '../../canvas/map2d/motion-state';
 import { followStep } from '../../canvas/map2d/zoom-accum';
 
@@ -86,9 +87,12 @@ function subscribe(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
-/** The animated uiZoom — identical live value across every consumer this frame. */
+/** The animated uiZoom — identical live value across every consumer this frame. A pictured
+ *  shell holds 1 instead: a figure is laid out for its posed window, not for the reader's
+ *  UI-scale setting, so its picture does not move when the live interface is rescaled. */
 export function useAnimatedUiZoom(): number {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const zoom = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useUiPreviewPose() ? 1 : zoom;
 }
 
 function subscribeZoom(cb: () => void): () => void {

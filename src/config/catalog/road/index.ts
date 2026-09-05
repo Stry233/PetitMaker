@@ -1,5 +1,8 @@
 import type { CatalogItem } from '../../../core/model/types';
 import path_overgrown_dirt from './path-overgrown-dirt.json';
+import path_rustic_dirt from './path-rustic-dirt.json';
+import path_tilled_soil from './path-tilled-soil.json';
+import path_maizeglow_brick from './path-maizeglow-brick.json';
 import path_blue_board from './path-blue-board.json';
 import path_classic_basketweave_brick from './path-classic-basketweave-brick.json';
 import path_classic_mosaic_brick from './path-classic-mosaic-brick.json';
@@ -31,6 +34,10 @@ import path_wavy_terracotta from './path-wavy-terracotta.json';
 // choices a hand makes for one courtyard.
 export const road: CatalogItem[] = [
   path_overgrown_dirt,
+  // The dirt family stays together behind its leader: the plain track and the tilled furrows are
+  // the same reach-for-first material at two dressings.
+  path_rustic_dirt,
+  path_tilled_soil,
   path_blue_board,
   path_classic_basketweave_brick,
   path_classic_mosaic_brick,
@@ -46,6 +53,7 @@ export const road: CatalogItem[] = [
   path_garden_stone,
   path_geometric_terracotta,
   path_lattice_red_brick,
+  path_maizeglow_brick,
   path_patterned_tile,
   path_radiant_star_stone,
   path_retro_block,

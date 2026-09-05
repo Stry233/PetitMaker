@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // Ambient @types are OPT-IN: a dependency dragging @types/node into node_modules must not
+    // change what this browser-only code sees ("fs exists" flips every no-node ts-expect-error).
+    "types": [],
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],

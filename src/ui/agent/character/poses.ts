@@ -1,20 +1,7 @@
 /**
- * poses.ts — the one character's choreography, transcribed AS DATA from the normative
- * prototype's `POSES`/`MICRO`/`MORPH`/`CURVES` tables (`const POSES = {...}` and its
- * neighbours). `Character.tsx` is the one reader: it walks a `PoseSpec`'s `enter`/`seq`/`loops` tracks through the Web
- * Animations API exactly as the prototype's `makeCharacter`/`setPose` do, on `flip`/`pose`/`body`
- * — the three nested transform layers the prototype's DOM carries (flip for the asking mirror,
- * pose for the momentary lean/hop, body for the ambient sway/rock).
- *
- * `poseForPhase` is the SessionPhase → PoseName mapping: `celebrating` and `noted` are ONE-SHOTS
- * a caller triggers explicitly (a fresh `jobEnd(done)` edge, a note landing) and are therefore
- * never returned here — `SessionPhase` itself carries no member for either, so the shell observes
- * the edge instead of reading a phase value for it.
- *
- * THREE MORE POSES ARE OUTSIDE THE PHASE MAPPING FOR A DIFFERENT REASON: `keylean` and `pleased`
- * portray the SETUP screen, which stands in the job zone while the session has no phase worth
- * portraying (a keyless desk reads `sleeping` from the mapping), and `watching` portrays the map
- * holding the pencil. Each is passed in by the surface that owns the moment.
+ * Character choreography as Web Animations data for the nested flip, pose and body transform layers.
+ * `poseForPhase` maps durable session phases; one-shot `celebrating` and `noted` poses are triggered
+ * from events. Setup supplies `keylean` and `pleased`, and region marking supplies `watching`.
  */
 import type { SessionPhase } from '../../../agent/core/project-view';
 import type { BadgeId } from './badges';
@@ -24,7 +11,7 @@ export type PoseName =
   | 'paused' | 'trouble' | 'sleeping' | 'noted'
   | 'keylean' | 'pleased' | 'watching';
 
-/** The three nested transform layers `Character.tsx` animates. Prototype: `.flip`/`.pose`/`.body`. */
+/** The three nested transform layers animated by `Character.tsx`. */
 export type BodyPart = 'flip' | 'pose' | 'body';
 
 export interface PoseKeyframe {
@@ -290,7 +277,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
 };
 
 /**
- * THE CONNECT-PRESS WAKE BEAT (prototype: the `connect` handler's own frames). Pressing Connect on
+ * The Connect-press wake beat. Pressing Connect on
  * the keyless rest, she rises OUT of the sleeping rest as the key screen lands: the first frame IS
  * the sleeping still, so there is no jump, the .62 frame passes neutral with a slight stretch, and
  * the landing is plain `none` on the overshoot curve.
@@ -309,8 +296,7 @@ export const WAKE_BEAT: PoseTrack = {
 };
 
 /**
- * Her acknowledgement when she is pressed: one springy squash in place (prototype `PRESS_SQUASH` /
- * `heroAcknowledge`). ADDITIVE for the ear-flick's reason — the breath loops on the same part and
+ * Her acknowledgement when pressed: one springy squash in place. Additive for the ear-flick's reason: the breath loops on the same part and
  * property. `Character.tsx`'s `acknowledge` verb is the one player.
  */
 export const PRESS_SQUASH: PoseTrack = {
@@ -323,7 +309,7 @@ export const PRESS_SQUASH: PoseTrack = {
 };
 
 /**
- * Ambient one-shot gestures a pose's `timers` fire on a jittered interval. Prototype `MICRO`.
+ * Ambient one-shot gestures fired by pose timers on a jittered interval.
  *
  * ADDITIVE, because the part it plays on is the part the breath loops on: an ear-flick that REPLACED
  * the transform dropped the breath to its rest value for its own 120ms and snapped it back at the end,
@@ -357,7 +343,7 @@ export const POSE_DWELL = 520;
 export const PUFF = { dur: 340, stagger: 20, clearAfter: 460 };
 
 /**
- * The SessionPhase → PoseName mapping (spec 0.2's state-inventory table). `connected: false` wins
+ * The SessionPhase → PoseName mapping. `connected: false` wins
  * outright — a disconnected session shows `sleeping` whatever phase the log last recorded, since
  * there's nothing running to portray. `aborted` settles to `idle` (a stopped session is not mid
  * job and not in trouble). `celebrating`/`noted` are one-shots outside this mapping — see the

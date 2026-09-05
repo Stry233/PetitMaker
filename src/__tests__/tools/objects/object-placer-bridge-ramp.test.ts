@@ -1,9 +1,4 @@
-// Regression: the placer validates a placement BEFORE executing (to protect roads). The bridge (waterSpan)
-// and ramp (heightDrop) traits SNAP — mutate — the command's position during validation, so validating the
-// real command and then re-validating it in executeCommand double-snapped and wrongly REJECTED a perfectly
-// legal bridge/ramp (the ghost was green, but placing it failed). The placer now validates a throwaway
-// clone, so the original is snapped exactly once. These tests place a bridge across a river and a ramp up a
-// cliff through the real tool and assert the object lands.
+/** Placement validation snaps a cloned command; execution snaps the original exactly once. */
 import { describe, it, expect } from 'vitest';
 import { ObjectPlacerTool } from '../../../tools/objects/object-placer';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -17,7 +12,7 @@ import { roadLookup } from '../../../state/object-index';
 const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
 
-describe('ObjectPlacerTool: bridge + ramp placement (double-snap regression)', () => {
+describe('ObjectPlacerTool bridge and ramp placement', () => {
   it('places a bridge across a painted water river', () => {
     const S = 24; const state = makeState(S, S);
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) setZone(state, x, y, CellZone.Grass);

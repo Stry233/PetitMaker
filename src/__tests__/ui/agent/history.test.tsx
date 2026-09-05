@@ -1,20 +1,5 @@
-/**
- * history.test.tsx — THE PAST-JOBS STRIP: its grouping, its rows, and the two things a row may and
- * may not offer.
- *
- * The terminal family's own cards are pinned in `fin-ticket.test.tsx`; this file holds the LIST —
- * the day headers the artifact's own builder produces, the rows' glyph/name/stat, the reveal that
- * may not move the row, and the ROLLBACK GUARD: a record built on a map that is not open reads but
- * cannot be rolled back, and the panel stands the notice over the list.
- *
- * The strip reads `useT()`, so every render goes through `I18nProvider` with a stubbed
- * `localStorage` (the same wrapper `job-ticket.test.tsx` uses, for the same reason: the store's
- * persistence writes on mount and jsdom ships no storage).
- *
- * DAY GROUPING IS TESTED AGAINST A FIXED CLOCK. `now` is an input to the strip precisely so a test
- * (and the fidelity rig) gets the same picture every run: a suite that read the wall clock would
- * pass all day and fail at midnight.
- */
+/** Past-job grouping, row actions, and rollback eligibility. Tests use a fixed clock so day groups
+ * remain deterministic across midnight. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -488,11 +473,7 @@ describe('PanelShell: a cleared record leaves the list', () => {
   });
 });
 
-/**
- * THE ROW'S ROLL BACK IS DESTRUCTIVE, so it asks first and NAMES THE SIZE (artifact: "destructive:
- * first press asks, naming the size; the row it would kill dims"). Fired on the first click it
- * would be the one destructive press in the whole panel that does.
- */
+/** Rollback is destructive, so the first press asks for confirmation and names its scope. */
 describe('HistoryStrip: the roll back asks before it fires', () => {
   function jobAt(over: Partial<JobView> = {}): JobView {
     return makeJob({

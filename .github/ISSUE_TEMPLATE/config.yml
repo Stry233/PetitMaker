@@ -1,5 +1,1 @@
 blank_issues_enabled: true
-contact_links:
-  - name: Report a security vulnerability
-    url: https://github.com/Stry233/PetitMaker/blob/main/SECURITY.md
-    about: Please report security issues privately as described in the security policy, never in a public issue.

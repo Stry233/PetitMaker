@@ -34,9 +34,8 @@ import {
   type ManifestGlobs,
 } from '../../../scripts/export-public-repo-core.mts';
 
-// The public-repo allowlist manifest + export pipeline. IP-CRITICAL:
-// internal documents and game-derived reference material must never be exportable. See
-// docs/internal/deployment/public-repo-manifest.md (the single allowlist authority).
+// The allowlist and exporter must keep private documents and game-derived source material out of
+// every public selection.
 
 const MANIFEST_PATH = 'docs/internal/deployment/public-repo-manifest.md';
 
@@ -80,11 +79,8 @@ describe('public-repo-manifest.md — exists and parses', () => {
 });
 
 describe('public-repo-manifest.md — internal block carries the critical entries', () => {
-  // internal-repo-only check: MANIFEST_PATH (docs/internal/deployment/public-repo-manifest.md)
-  // never ships publicly, so a public-repo export tree doesn't have it. loadManifest() must
-  // NOT be called at describe-body (collection) scope — an unguarded call there throws
-  // during test COLLECTION, which crashes the whole file rather than skipping cleanly. Same
-  // self-skip convention as ops-docs.test.ts.
+  // The manifest is absent from exported trees. Guard collection-time reads so the remaining
+  // fixture-based exporter tests can still run there.
   if (!existsSync(MANIFEST_PATH)) {
     it.skip('internal-repo-only: public-repo-manifest.md not present (public-repo export)', () => {});
     return;
@@ -162,17 +158,14 @@ describe('public-repo-manifest.md — internal block carries the critical entrie
   it('leaves docs/ARCHITECTURE.md public (tier 3 default-included) and keeps the map-building rules internal', () => {
     expect(isPublicPath('docs/ARCHITECTURE.md', manifest)).toBe(true);
     expect(isInternalPath('docs/ARCHITECTURE.md', manifest)).toBe(false);
-    // The game's building rules are game-derived, so they sit under docs/internal/ rather
-    // than beside the public architecture reference.
+    // Game-derived building rules are withheld rather than grouped with public architecture docs.
     expect(isInternalPath('docs/internal/RULES.md', manifest)).toBe(true);
     expect(isPublicPath('docs/internal/RULES.md', manifest)).toBe(false);
     expect(isPublicPath('docs/RULES.md', manifest)).toBe(false);
   });
 
   it('classifies the deployment docs (esa-headers, manifest, checklist) as internal', () => {
-    // All of docs/internal/deployment/** is internal — esa-headers.md, the manifest
-    // itself, and the launch checklist. The export scripts stay PUBLIC (tier 1) so a public
-    // repo still carries a working exporter; they read the manifest from docs/internal/.
+    // Deployment records are withheld while the reusable export scripts remain public.
     expect(isInternalPath('docs/internal/deployment/esa-headers.md', manifest)).toBe(true);
     expect(isPublicPath('docs/internal/deployment/esa-headers.md', manifest)).toBe(false);
     expect(isInternalPath('docs/internal/deployment/public-repo-manifest.md', manifest)).toBe(true);
@@ -207,7 +200,7 @@ describe('repo hygiene — no source file hides from text search', () => {
   // from it, so such a file answers no text search over the repo — including the searches the
   // guards in this suite and every audit are run with. Binary assets carry NUL bytes legitimately
   // and are the only exemption.
-  const BINARY_EXT = /\.(?:png|jpg|woff2)$/;
+  const BINARY_EXT = /\.(?:png|jpg|webp|woff2|onnx)$/;
 
   it('no tracked file under src/, scripts/ or security/ contains a NUL byte', () => {
     const scanned = gitTrackedFiles().filter(
@@ -225,9 +218,7 @@ describe('repo hygiene — no source file hides from text search', () => {
 });
 
 describe('export leak check — re-derived independently of the copy step', () => {
-  // internal-repo-only check: needs the manifest to re-derive the selection — self-skip on
-  // export. The inner CLAUDE.md-existence guard below covers the "sanity" sub-test separately
-  // and depends on the manifest too, so it never runs once this guard fires.
+  // Re-deriving the live selection requires the private manifest; fixture-only tests run without it.
   if (!existsSync(MANIFEST_PATH)) {
     it.skip('internal-repo-only: public-repo-manifest.md not present (public-repo export)', () => {});
     return;
@@ -277,10 +268,7 @@ describe('export leak check — re-derived independently of the copy step', () =
     }
   });
 
-  // internal-repo-only check: the "sanity" half (the named files really are tracked) only
-  // holds in THIS (internal) repo — a public-repo export never tracks CLAUDE.md et al. at
-  // all (working as intended), so `gitTrackedFiles()` there naturally omits them. Self-skip
-  // rather than fail, same convention as ops-docs.test.ts / the auditStatus block above.
+  // The tracked-file sanity check applies only where the private repository files are present.
   if (existsSync('CLAUDE.md')) {
     it('known real internal files are excluded from the public selection', () => {
       const manifest = loadManifest();
@@ -381,10 +369,7 @@ describe('AI-attribution guard — the snapshot carries no commit-trailer author
 });
 
 describe('agent-doc pointer guard — nothing that ships names an AGENTS.md', () => {
-  // The public repository has no AGENTS.md and no CLAUDE.md, so a shipped comment saying "see
-  // AGENTS.md" sends its reader to a path that does not exist there and publishes the shape of
-  // what was withheld. The rule is the same one that keeps `docs/internal/...` out of shipped
-  // prose: state the fact in the shipped file, keep the pointer in the agent doc.
+  // Shipped prose states the relevant fact directly instead of pointing to withheld instructions.
   it('finds a pointer wherever it appears in a copied file', () => {
     const hits = findAgentDocPointers([
       { path: 'src/ui/shell/Shell.tsx', text: '// layout rules: see AGENTS.md\n' },
@@ -578,7 +563,7 @@ none-yet\` may ship.
 | path | permission basis |
 |---|---|
 | a.png | none-yet |
-| b.png | none-yet |
+| b.png | **permission basis: none-yet** — review pending |
 | c.png | resolved |
 `;
 
@@ -593,8 +578,7 @@ resolved permission basis.
 
   describe('parseAssetProvenanceStatus — pure parse (fixture strings)', () => {
     it('open form: reports open=true and counts only table-row "none-yet" cells', () => {
-      // 2 real row hits — NOT 3, even though the status line's own backtick-quoted mention
-      // of "none-yet" (prose describing what to look for) also contains the substring.
+      // Both plain and annotated cells count; the prose occurrence above the table does not.
       expect(parseAssetProvenanceStatus(OPEN_FIXTURE)).toEqual({ open: true, noneYetCount: 2 });
     });
 
@@ -604,9 +588,7 @@ resolved permission basis.
   });
 
   describe('auditStatus — reads docs/internal/legal/asset-provenance.md under a repoRoot', () => {
-    // internal-repo-only check: docs/internal/legal/asset-provenance.md never ships publicly (see
-    // DENYLIST_SPOTCHECK / the manifest's internal block), so this file's public-repo copy
-    // self-skips rather than fails — same pattern as ops-docs.test.ts.
+    // Compare with the live private ledger only in a checkout that contains it.
     if (existsSync('docs/internal/legal/asset-provenance.md')) {
       it('reflects this (internal) repo\'s real ledger', () => {
         // A live integration check against the real file, not a fixture: whatever the ledger
@@ -622,10 +604,7 @@ resolved permission basis.
     }
 
     it('absent file (no docs/internal/legal/ present) → {open: false, noneYetCount: 0}, not a throw', () => {
-      // Running from a tree without docs/internal/legal/asset-provenance.md means we're not in the
-      // gated (internal) repo at all — docs/internal/legal/** never ships publicly (see
-      // DENYLIST_SPOTCHECK), so its absence implies a re-export of an already-public tree,
-      // which the audit gate doesn't apply to.
+      // A tree without the private ledger has no internal audit gate to enforce.
       expect(auditStatus('/nonexistent-repo-root-for-audit-gate-test')).toEqual({
         open: false,
         noneYetCount: 0,

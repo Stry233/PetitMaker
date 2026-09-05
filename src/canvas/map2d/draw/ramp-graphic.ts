@@ -1,8 +1,9 @@
 import * as PIXI from 'pixi.js-legacy';
 import { TILE_SIZE } from '../../../core/model/constants';
 import type { CatalogItem, PlacedObject } from '../../../core/model/types';
-import { hasTrait } from '../../../core/model/traits';
+export { isRampItem } from '../object-sprite-url';
 import { iconUrl } from '../../../assets/icon-urls';
+import { requestRender as broadcastRender } from '../render-scheduler';
 import { getIconTexture } from './icon-color';
 import { fitSpriteToTexture } from './sprite-fit';
 import { lerpColor } from '../layers/object-animations';
@@ -39,10 +40,6 @@ const RAMP_COLORS: Record<string, number> = {
   'ramp-plank': 0xc79e6e,        // plank — wood brown
 };
 
-export function isRampItem(item: CatalogItem | undefined): boolean {
-  return !!item && hasTrait(item, 'heightDrop');
-}
-
 function getRampLayers(item: CatalogItem): number {
   const t = item.traits.find(t => t.type === 'heightDrop');
   return t?.type === 'heightDrop' ? t.layers : 1;
@@ -52,6 +49,9 @@ export function drawRamp(
   wrapper: PIXI.Container, obj: PlacedObject,
   item: CatalogItem, size: { w: number; h: number },
   showNumbers: boolean,
+  /** Opens the render window of the renderer the wrapper lives on — the caller's own field, or
+   *  the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   const layers = getRampLayers(item);
   const highElev = obj.elevation;
@@ -99,7 +99,7 @@ export function drawRamp(
     const turn = rampIconTurn(obj.rotation);
     sprite.rotation = turn.rotation;
     const badge = Math.min(fw, fh) * 0.8; // fits the short side, aspect preserved
-    fitSpriteToTexture(sprite, tex, (tw, th) => badge / Math.max(tw, th), turn.flipX);
+    fitSpriteToTexture(sprite, tex, (tw, th) => badge / Math.max(tw, th), turn.flipX, requestRender);
     wrapper.addChild(sprite);
   }
 

@@ -55,7 +55,7 @@ const NEAR = 8;
 
 // Keyword cursors a browser is guaranteed to understand: what the user gets if our image or
 // hotspot is ever rejected.
-const KEYWORDS = ['default', 'crosshair', 'grab', 'grabbing', 'move', 'copy', 'progress', 'not-allowed', 'pointer', 'all-scroll', 'text'];
+const KEYWORDS = ['default', 'crosshair', 'grab', 'grabbing', 'move', 'copy', 'progress', 'not-allowed', 'pointer', 'all-scroll', 'text', 'help'];
 
 describe('cursor catalogue', () => {
   it('describes every id exactly once', () => {
@@ -90,7 +90,11 @@ describe('cursor catalogue', () => {
     // cycles, since a static custom cursor reads as stuck while a long operation runs.
     expect(CURSORS.busy.hasArt).toBe(false);
     expect(CURSORS.busy.fallback).toBe('progress');
-    for (const id of CURSOR_IDS.filter((i) => i !== 'busy')) expect(CURSORS[id].hasArt, id).toBe(true);
+    // `help` is the other frameless id, differently: no drawing exists at all, and the OS help
+    // arrow IS the design until the cursor PSD gains a question mark. Everything else is painted.
+    expect(CURSORS.help.hasArt).toBe(false);
+    expect(CURSORS.help.fallback).toBe('help');
+    for (const id of CURSOR_IDS.filter((i) => i !== 'busy' && i !== 'help')) expect(CURSORS[id].hasArt, id).toBe(true);
   });
 
   it('only lets cursors whose tool can ANSWER carry the forbidden badge', () => {
@@ -331,7 +335,9 @@ describe('cursor CSS', () => {
     for (const id of CURSOR_IDS) {
       // A closed url(), then the hotspot, then the mandatory keyword. An unclosed url()
       // makes the whole declaration invalid and the element gets no cursor at all. `busy` is in
-      // it too: no file of its own, but the ring's frames answer through the same shape.
+      // it too: no file of its own, but the ring's frames answer through the same shape. `help`
+      // alone resolves to its bare keyword: it has no drawing, by design, until the PSD gains one.
+      if (id === 'help') { expect(cursorCss(id)).toBe('help'); continue; }
       expect(cursorCss(id).trimEnd(), id).toMatch(/^url\("[^"]+"\)\s+\d+\s+\d+,\s*[a-z-]+$/);
     }
   });

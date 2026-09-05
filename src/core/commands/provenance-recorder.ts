@@ -3,10 +3,11 @@ import {
   type CellSnapshot,
   type Command,
   type GridState,
+  type TerrainCell,
 } from '../model/types';
-import { cellKey } from '../model/grid-model';
+import { cellKey, getCell } from '../model/grid-model';
 import { ProvenanceTracker, type TaintDelta } from '../provenance/tracker';
-import type { SourceContext, MapProvenanceSummary } from '../provenance/types';
+import type { SourceContext, MapProvenanceSummary, UnitTaint } from '../provenance/types';
 import type { OpKind } from '../provenance/policy';
 
 /**
@@ -20,10 +21,28 @@ import type { OpKind } from '../provenance/policy';
  * BEFORE the state restore; deriveScope wraps the reconcile pass so its nested
  * commands record as derived.
  */
+const TOMBSTONE_MAX = 4096;
+
+/** Whether two terrain cells hold the same content — the repaint-churn gate above. */
+function sameTerrainContent(a: TerrainCell, b: TerrainCell): boolean {
+  if (a.type !== b.type || a.elevation !== b.elevation) return false;
+  if (a.patchOnly !== b.patchOnly || a.patchBase !== b.patchBase) return false;
+  const ca = a.corners, cb = b.corners;
+  if (!ca && !cb) return true;
+  if (!ca || !cb) return false;
+  return ca.every((c, i) => c === cb[i]);
+}
+
 export class ProvenanceRecorder {
   private tracker: ProvenanceTracker;
   private state: GridState;
   private deriving = 0;
+  /** The taint of recently removed objects, by id. A move or a rotation is RemoveObject followed
+   *  by PlaceObject under the SAME id (fresh objects always draw fresh ids, and undo/redo bypass
+   *  capture), so a place that finds its id here is a RE-SEAT: the unit keeps the taint it had
+   *  instead of being re-authored by whoever dragged it. Bounded: genuinely deleted objects leave
+   *  entries behind, and the oldest go first. */
+  private tombstones = new Map<string, UnitTaint>();
 
   constructor(state: GridState) {
     this.state = state;
@@ -51,22 +70,46 @@ export class ProvenanceRecorder {
         const had = beforeT.get(cellKey(s.coord.x, s.coord.y)) ?? null;
         const now = s.cell.terrain;
         if (!had && now) byKind.create.push(s.coord);
-        else if (had && now) byKind.replace.push(s.coord);
+        // A repaint that changed NOTHING re-authors nothing: the water brush repaints every cell
+        // under it by design, and presence-only classing handed a whole standing lake to whoever
+        // dragged across it.
+        else if (had && now && !sameTerrainContent(had, now)) byKind.replace.push(s.coord);
         else if (had && !now) byKind.delete.push(s.coord);
       }
       for (const k of ['create', 'replace', 'delete'] as OpKind[]) {
         if (byKind[k].length) deltas.push(this.tracker.record(k, byKind[k], [], meta(this.deriving > 0)));
       }
     } else if (cmd.type === CommandType.PlaceObject) {
-      deltas.push(this.tracker.record('create', [], [{ id: cmd.object.id, kind: 'create' }], meta(this.deriving > 0)));
+      const carried = this.tombstones.get(cmd.object.id);
+      if (carried) {
+        this.tombstones.delete(cmd.object.id);
+        deltas.push(this.tracker.restoreObjectTaint(cmd.object.id, carried, meta(this.deriving > 0)));
+      } else {
+        deltas.push(this.tracker.record('create', [], [{ id: cmd.object.id, kind: 'create' }], meta(this.deriving > 0)));
+      }
     } else if (cmd.type === CommandType.RemoveObject) {
+      const live = this.tracker.state.objectTaint.get(cmd.objectId);
+      if (live) {
+        // Delete-then-set: Map.set on a standing key keeps its old insertion slot, and eviction
+        // walks insertion order — a mass clear must not push out the object about to be dragged.
+        this.tombstones.delete(cmd.objectId);
+        this.tombstones.set(cmd.objectId, { ...live, contribution: { ...live.contribution } });
+        if (this.tombstones.size > TOMBSTONE_MAX) {
+          const oldest = this.tombstones.keys().next().value;
+          if (oldest !== undefined) this.tombstones.delete(oldest);
+        }
+      }
       deltas.push(this.tracker.record('delete', [], [{ id: cmd.objectId, kind: 'delete' }], meta(this.deriving > 0)));
     } else if (cmd.type === CommandType.TrimCorners) {
       if (cmd.layer === 'road' && cmd.objectId) {
         const kind: OpKind = this.state.objects.has(cmd.objectId) ? 'cosmetic' : 'delete';
         deltas.push(this.tracker.record(kind, [], [{ id: cmd.objectId, kind }], meta(this.deriving > 0)));
       } else {
-        deltas.push(this.tracker.record('cosmetic', [{ x: cmd.x, y: cmd.y }], [], meta(this.deriving > 0)));
+        // A corner cycle that took the LAST of the cell (all-empty corners on a bare gamma) is a
+        // delete: a cosmetic op never clears taint, and bare ground with an author is a ghost the
+        // summary counts forever.
+        const emptied = !getCell(this.state.cells, cmd.x, cmd.y)?.terrain;
+        deltas.push(this.tracker.record(emptied ? 'delete' : 'cosmetic', [{ x: cmd.x, y: cmd.y }], [], meta(this.deriving > 0)));
       }
     }
     return deltas.length ? this.tracker.mergeDeltas(deltas) : undefined;

@@ -14,15 +14,13 @@
  * Both loops are AMBIENT in the registry's own sense: they say nothing the interface needs to say,
  * so reduced motion drops them outright and each dressing paints the complete still instead. Neither
  * runs while its card is off screen: the card's presence IS the engine's gate.
- *
- * The values are the normative artifact's own (`sketchEngine`, `dreamEngine`).
  */
 
-/** The curves the artifact's engines use by name, spelled once. */
+/** Shared curves for the sketch and dream engines. */
 const PUNCHY = 'cubic-bezier(.2,0,0,1)';
 const SPRING = 'cubic-bezier(.175,.885,.32,1.275)';
 const DRAW = 'cubic-bezier(.3,0,.2,1)';
-/** The dream engine's own wake/slump/twitch curve (`CURVE_OUT` in the artifact). */
+/** Wake, slump and twitch curve used by the dream engine. */
 const CURVE_OUT = 'cubic-bezier(.2,.8,.3,1)';
 
 /** One WAAPI one-shot: how long, on what curve, and how far into the beat it starts. */
@@ -54,8 +52,7 @@ export const SKETCH = {
   pip: { dur: 300, easing: SPRING, delay: 200, stagger: 180 } as Beat,
   /** The wipe. */
   wipe: { dur: 420, easing: PUNCHY } as Beat,
-  /** The caption swapping: out, then in from below. The artifact's own `swapCap` plays the out
-   *  half with no easing of its own, which is the WAAPI default (`linear`). */
+  /** Caption swap: a linear exit followed by an entrance from below. */
   capOut: { dur: 140, easing: 'linear' } as Beat,
   capIn: { dur: 260, easing: SPRING } as Beat,
   /** How far the incoming caption rises from, in px. */
@@ -129,11 +126,7 @@ export const GARNISH: Record<'scribble' | 'tea' | 'stretch', readonly Garnish[]>
   ],
 };
 
-/** How long the note badge stays up while she scribbles, and which rituals rotate.
- *
- *  THE RITUALS CARRY NO BADGE. The artifact's tea ritual wears a CUP, and the shipped badge set
- *  (`character/badges.tsx`, the prototype's own drawings) has none: standing in another badge would
- *  say something else, so the tea is the lean alone. */
+/** How long the note badge stays up while she scribbles, and which badge-free rituals rotate. */
 export const SCRIBBLE_BADGE_MS = 2100;
 export const RITUALS = ['tea', 'stretch'] as const;
 

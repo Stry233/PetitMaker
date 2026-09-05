@@ -97,7 +97,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('a WATER notch keeps its water and rounds its own corner — filled by the mountain that wraps it', () => {
-    // Issue #2: a mountain built into a pond. The water cell in the mountain's Γ notch is a different real
+    // A mountain built into a pond. The water cell in the mountain's Γ notch is a different real
     // surface, so it is never flooded with a fillet (it rounds its own convex corner instead) — but what
     // shows behind that cut is the wrapping mountain, not the ground under the mountain. A ground reveal
     // here draws a wedge of grass at every step of the junction, which reads as a dent in the bank.
@@ -116,7 +116,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('two mountains attached DIAGONALLY weld across the water corner between them', () => {
-    // Issue #2, second configuration: the 2x2 is mountain / bare ground on one diagonal and mountain / water
+    // The 2x2 has mountain and bare ground on one diagonal, with mountain and water
     // on the other. The two shores meet at a point on the water's corner, which rounds out — and what shows
     // behind it is those shores, not a wedge of grass driven between them. The Γ fillet stays refused there
     // (adding mass would bridge the pinch); only the backing, which adds none, welds.
@@ -176,10 +176,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('raises an under-tall Γ fillet with the mass — a fillet is a grounded column, whatever its floor', () => {
-    // Regression: a circle drawn at ground then stacked taller left its inner Γ fillets at the FIRST tier,
-    // so the rounding showed only "on the ground" while the mountain rose square above it. Re-trimming
-    // lifts the fillet to the wrapping tier: it renders as a column from its floor to that tier (#17),
-    // so it follows however far the walls rise, over bare ground and over a real notch block alike.
+    // A Γ fillet rises with its wrapping tier and renders as a column from its structural floor.
     const state = makeState(12, 12);
     const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // notch at (4,4)
     const trim = (e: number) => {
@@ -223,10 +220,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('rounds a neighbouring cell made convex by the stroke (mountain peninsula into a new water hole)', () => {
-    // Regression: carving water into a mountain leaves mountain corners poking into the water (two water
-    // edges = a convex peninsula tip). Those corners belong to cells OUTSIDE the water stroke, so a
-    // stroke-only pass never rounded them and the water/mountain border stayed jagged — yet the manual tool
-    // rounds them. Auto-trim must round the stroke's real-terrain border too.
+    // Auto-trim includes neighbouring mountain cells made convex by the new water boundary.
     const state = makeState(12, 12);
     for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     const water: [number, number][] = [[5, 4], [4, 5], [5, 5]]; // an L of water; (4,4) keeps water on its right + below

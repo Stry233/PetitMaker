@@ -142,7 +142,7 @@ describe('computeLockedCorners — terrain', () => {
     setTerrain(state, 5, 4, TerrainType.Mountain, 2); // north rim (same level)
     setTerrain(state, 5, 6, TerrainType.Mountain, 1); // SOUTH bank lowered → a real drop (cascade / peeled bank)
     // The drop makes this cell a capped waterfall face — falling water, so the WHOLE cell locks
-    // (issue #8), not only the drop side.
+    // not only the drop side.
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([true, true, true, true]);
   });
 

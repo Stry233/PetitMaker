@@ -945,8 +945,7 @@ describe('deriveView', () => {
     });
   });
 
-  /** The dock's "thought for …" line stands on this, because eight of the nine providers report no
-   *  usage at all: characters are the only reading of a thought's size the session can be sure of. */
+  /** Character count remains available when a provider omits reasoning-token usage. */
   describe('a job carries how much was thought inside it', () => {
     /** The SIZE reading alone, so a test about counting stays about counting: the per-turn marks
      *  and the total span are their own subject, right below. */

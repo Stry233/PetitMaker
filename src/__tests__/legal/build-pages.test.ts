@@ -10,6 +10,8 @@ declare const process: { cwd(): string; env: Record<string, string | undefined> 
 
 import type { LegalConfig } from '../../legal/config';
 import { LEGAL } from '../../legal/config';
+import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
+import { isIndexablePage } from '../../legal/site-paths';
 import { DOCS } from '../../legal/registry';
 import type { MdNode } from '../../legal/markdown';
 import {
@@ -66,14 +68,10 @@ describe('pageHtml', () => {
     expect(html).toContain('<link rel="canonical" href="https://example.org/privacy" />');
   });
 
-  it('emits a zh hreflang alternate for a zh-capable doc', () => {
+  it('keeps utility documents readable without indexing them', () => {
     const html = pageHtml('privacy', 'en', cfg);
-    expect(html).toContain('hreflang="zh" href="https://example.org/zh/privacy"');
-  });
-
-  it('emits x-default pointing at the English page', () => {
-    const html = pageHtml('privacy', 'en', cfg);
-    expect(html).toContain('hreflang="x-default" href="https://example.org/privacy"');
+    expect(html).toContain('name="robots" content="noindex, follow"');
+    expect(html).not.toContain('rel="alternate"');
   });
 
   it('zh page sets html lang to zh-CN and canonical to the /zh path', () => {
@@ -143,20 +141,14 @@ describe('pageHtml', () => {
     expect(about).not.toContain('class="updated"');
   });
 
-  it('hreflang pair symmetry: the en page and zh page of the same doc reference each other', () => {
-    const en = pageHtml('privacy', 'en', cfg);
-    const zh = pageHtml('privacy', 'zh', cfg);
-
-    // en page's zh alternate must equal zh's own canonical
-    const enZhAlt = /hreflang="zh" href="([^"]+)"/.exec(en)?.[1];
-    const zhCanonical = /rel="canonical" href="([^"]+)"/.exec(zh)?.[1];
-    expect(enZhAlt).toBe(zhCanonical);
-
-    // zh page's en alternate must equal en's own canonical
-    const zhEnAlt = /hreflang="en" href="([^"]+)"/.exec(zh)?.[1];
-    const enCanonical = /rel="canonical" href="([^"]+)"/.exec(en)?.[1];
-    expect(zhEnAlt).toBe(enCanonical);
+  it('pairs the international English page with its Chinese counterpart', () => {
+    const en = pageHtml('about', 'en', fixtureCfg({ canonicalOrigin: DEPLOY_TARGETS.global.canonicalOrigin }));
+    const zh = pageHtml('about', 'zh', fixtureCfg({ canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin }));
+    expect(en).toContain('hreflang="zh-CN" href="https://petitmaker.com.cn/zh/about/"');
+    expect(zh).toContain('hreflang="en" href="https://petitmaker.cc/about"');
+    expect(en.match(/<link rel="alternate"[^>]+>/g)).toEqual(zh.match(/<link rel="alternate"[^>]+>/g));
   });
+
 });
 
 describe('metaDescription', () => {
@@ -191,29 +183,20 @@ describe('metaDescription', () => {
 });
 
 describe('sitemapXml', () => {
-  const cfg = fixtureCfg();
-
-  it('lists en+zh privacy URLs', () => {
-    const xml = sitemapXml(cfg);
-    expect(xml).toContain('<loc>https://example.org/privacy</loc>');
-    expect(xml).toContain('<loc>https://example.org/zh/privacy</loc>');
-  });
-
-  it('lists exactly the emitted pages (parity with pagePlan)', () => {
-    const xml = sitemapXml(cfg);
-    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    const expected = pagePlan().map((p) => `${cfg.canonicalOrigin}${p.path}`);
-    expect(locs.sort()).toEqual(expected.sort());
-    expect(locs.length).toBe(16); // 9 docs, 7 with a zh companion
-  });
-
-  it('every url carries an x-default alternate', () => {
-    const xml = sitemapXml(cfg);
-    const urlBlocks = xml.split('<url>').slice(1);
-    for (const block of urlBlocks) {
-      expect(block).toContain('hreflang="x-default"');
-    }
-  });
+  for (const target of Object.values(DEPLOY_TARGETS)) {
+    it(`lists only the ${target.id} homepage and primary-language product pages`, () => {
+      const cfg = fixtureCfg({ canonicalOrigin: target.canonicalOrigin });
+      const xml = sitemapXml(cfg);
+      const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+      const expected = [cfg.canonicalOrigin + '/', ...pagePlan(cfg)
+        .filter((p) => isIndexablePage(p.slug, p.lang, cfg.canonicalOrigin))
+        .map((p) => cfg.canonicalOrigin + p.path)];
+      expect(locs.sort()).toEqual(expected.sort());
+      expect(locs).toHaveLength(4);
+      expect(xml).not.toContain('hreflang');
+      expect(xml).not.toContain('<lastmod>');
+    });
+  }
 });
 
 describe('securityTxt', () => {

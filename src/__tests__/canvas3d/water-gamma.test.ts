@@ -127,8 +127,7 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
 describe('elevated trimmed water backing (round pool on a plateau)', () => {
   it('shapes the mountain bank to the cut-away, not a full quadrant occluding the water body', () => {
     // An elevated water@2 cell whose TL corner rounds against a mountain@2 bank. The bank backing must
-    // fill only the rounded-off cap (revealPolygon), NOT a full quadrant — a full quadrant shows through
-    // the translucent water and occludes the pool body so it reads as a thin surface (the reported bug).
+    // fill only the rounded-off cap (revealPolygon), not a full quadrant that occludes the pool body.
     const s = makeState(5, 5) as GridState;
     setTerrain(s, 1, 2, TerrainType.Mountain, 2); // -x bank
     setTerrain(s, 2, 1, TerrainType.Mountain, 2); // -y bank
@@ -154,8 +153,7 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
 
   it('a mountain ISLAND in an elevated pool reveals water only in the cut-away, not a full block over it', () => {
     // The concave inner corner of an elevated L-pool is a mountain@2 island whose corner rounds into the
-    // water@2. The revealed water must fill only the rounded cap — a full-quadrant water surface sits ABOVE
-    // the mountain fan (translucent) and covers the whole micro-block, hiding the terrain (the reported bug).
+    // water@2. The revealed water must fill only the rounded cap; a full quadrant hides the terrain.
     const s = makeState(5, 5) as GridState;
     setTerrain(s, 1, 2, TerrainType.Water, 2);
     setTerrain(s, 2, 1, TerrainType.Water, 2);

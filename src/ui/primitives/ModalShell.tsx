@@ -35,6 +35,14 @@ export function useModalExiting(): boolean {
   return useContext(ModalExitingContext);
 }
 
+/** PREVIEW MODE: a shell mounted as a PICTURE of itself (the Help Center's figures). Under this
+ *  context the shell is passive and self-contained: no overlay lock, no shell-stack membership, no
+ *  focus capture; the backdrop positions absolutely inside the provider's frame instead of over the
+ *  window (no blur, no dock padding, no overlay z); the card drops its own chrome `zoom` (the
+ *  frame's ancestor card already carries one — nested zooms square) and its viewport-unit caps,
+ *  which are meaningless inside a small frame. */
+export const ModalPreviewContext = createContext(false);
+
 export type ModalShellChildren = ReactNode | ((exiting: boolean) => ReactNode);
 
 // A `motionSize` morph can travel hundreds of px between a consumer's sections (ShareWindow's
@@ -61,10 +69,10 @@ export interface ModalShellProps {
    *  AND height become Framer-animated values animating to these numbers, so a
    *  view whose size differs from the previous one makes the whole card morph
    *  as one motion while its content cross-fades inside (the card already clips
-   *  via `overflow:hidden` in `cardStyle`). Size is put on `animate` only (never
-   *  `initial`) so the FIRST open never morphs — framer starts the card at these
-   *  values. `maxVh` still applies as a hard CSS cap on top. Omit for a static
-   *  card (every other modal). */
+   *  via `overflow:hidden` in `cardStyle`). Size rides on `initial` too, so the
+   *  FIRST open mounts at these values instead of tweening to them from the
+   *  content's own width. `maxVh` still applies as a hard CSS cap on top. Omit
+   *  for a static card (every other modal). */
   motionSize?: { width: number; height: number };
   /** Snap the size change instantly (no animation) — used by the consumer for the
    *  first post-mount measurement, before any real morph should animate. Reduced
@@ -146,8 +154,10 @@ const sentinelStyle: CSSProperties = {
   border: 0,
 };
 
-export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive = false, children }: ModalShellProps) {
-  useOverlayLock(open && lockOverlay); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
+export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
+  const preview = useContext(ModalPreviewContext);
+  const passive = passiveProp || preview;
+  useOverlayLock(open && lockOverlay && !preview); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
   const chrome = useChromeScale();
   // Published on the card, the one element that carries the surface's `zoom` — so the weights and
   // the zoom they were resolved for cannot come apart. Every token and label inside inherits them.
@@ -242,8 +252,8 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
         transition: springs.stiff,
       };
 
-  // MORPHING CARD: when `motionSize` is set the card's width+height ride on
-  // `animate` (never `initial`, so the first open doesn't morph) and animate on
+  // MORPHING CARD: when `motionSize` is set the card's width+height ride on `animate` (and on
+  // `initial`, so the first open mounts AT the size rather than tweening to it) and animate on
   // `sizeSpring` (a calm tween by default — `SIZE_MORPH_TWEEN`'s comment has why).
   // `sizeInstant` (first measurement) and reduced motion collapse that transition
   // to a hard cut. `default` still owns scale/y so the entrance stays crisp
@@ -260,7 +270,10 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
         transition: { duration: 0 },
       }
     : {
-        initial: { scale: 0.92, y: 10 },
+        // The size rides on `initial` as well as `animate`: a key present only on `animate` starts
+        // from the DOM's own value at mount, which for a card is its content's auto width, and the
+        // first open would tween from that to the declared size while the entrance is in flight.
+        initial: { scale: 0.92, y: 10, ...sizeAnim },
         animate: { scale: 1, y: 0, ...sizeAnim },
         exit: { scale: 0.92, y: 10, transition: exitTransition },
         transition: motionSize
@@ -270,21 +283,32 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
 
   const card: CSSProperties = {
     ...cozyPanel,
-    zoom: chrome,
+    zoom: preview ? 1 : chrome,
     ...weights,
     // With `motionSize`, framer owns width/height on `animate` — omit the static
     // ones so they don't fight the animated values (maxHeight still caps).
     ...(motionSize == null && resolvedWidth != null ? { width: resolvedWidth } : {}),
     ...(motionSize == null && resolvedHeight != null ? { height: resolvedHeight } : {}),
-    ...(maxVh != null ? { maxHeight: `${maxVh / chrome}vh` } : {}),
-    ...(maxVw != null ? { maxWidth: `${maxVw / chrome}vw` } : {}),
+    ...(!preview && maxVh != null ? { maxHeight: `${maxVh / chrome}vh` } : {}),
+    ...(!preview && maxVw != null ? { maxWidth: `${maxVw / chrome}vw` } : {}),
     ...cardStyle,
   };
+
+  const previewBackdrop: CSSProperties = preview
+    ? {
+        position: 'absolute',
+        zIndex: 'auto',
+        paddingLeft: 0,
+        paddingRight: 0,
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+      }
+    : {};
 
   return (
     <AnimatePresence>
       {open && (
-        <motion.div style={{ ...cozyOverlay, ...backdropStyle }} onClick={onClose} {...overlayMotion}>
+        <motion.div style={{ ...cozyOverlay, ...previewBackdrop, ...backdropStyle }} onClick={onClose} {...overlayMotion}>
           <motion.div
             ref={cardRef}
             style={card}

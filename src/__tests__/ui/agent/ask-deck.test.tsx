@@ -1,19 +1,4 @@
-/**
- * ask-deck.test.tsx — the answered asks standing as ONE DECK in the record.
- *
- * THE DECK IS A PRESENTATION OF EXISTING ENTRIES, so the seam under test is a pure grouping over
- * `AskRecord[]`: which asks deck, the minimum a pile needs, and the rule that a STANDING ask (open
- * or held) never stacks — it needs attention, and a card inside a pile is not asking for any. The
- * deck sits exactly where its cards sat: a run of consecutive answered asks folds in place, and a
- * standing ask between two runs keeps the runs apart, so the record's trail never reorders.
- *
- * The face is the pile's own card (the ask cards' chrome, spine retired) saying two facts: how many
- * answers it holds, and the NEWEST verdict — refined the way the cards themselves refine it, so a
- * tapped quick pill reads "answered: {word}" on the face exactly as it does on the card inside.
- *
- * Expanding is VIEW STATE: default collapsed, the cards fan into the list in place, a second press
- * restacks, and nothing about it is derivable from the log or survives a reload.
- */
+/** Pins grouping, ordering, verdict summary, and transient expansion for settled approval decks. */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -186,7 +171,7 @@ describe('the deck, collapsed and expanded', () => {
     expect(queryByTestId('gate-block')).toBeNull();
   });
 
-  it('wears the answered cards own chrome: the plate, and the retired spine', () => {
+  it('wears the settled-card plate and spine', () => {
     const { getByTestId } = renderWithI18n(deckOf([answered(), answered(), answered()]));
     const face = getByTestId('ask-deck-face');
     expect(face.style.background).toBe(rgb(PLATE));

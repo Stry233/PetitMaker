@@ -160,10 +160,24 @@ export function openingWidths(paved: Uint8Array, W: number, H: number, maxK = 12
 
 export interface Region { cells: number[]; elevation: number }
 
+/** Memo per grid: several readings segment the same finished map in one evaluation pass, and the
+ *  flood fill is pure in `g`. Callers share the arrays, so a Region is read, never mutated. */
+const regionsMemo = new WeakMap<EvalGrid, Map<number, Region[]>>();
+
 /** 4-connected components of open land (not paved, not water, not under the
  *  plaza), cut wherever the surface elevation changes. Terraces are what separate one composed
  *  place from the next; a segmentation that ignores them returns one island-sized blob. */
 export function segmentRegions(g: EvalGrid, minCells = REGION_MIN_CELLS): Region[] {
+  let byMin = regionsMemo.get(g);
+  if (!byMin) regionsMemo.set(g, byMin = new Map());
+  const hit = byMin.get(minCells);
+  if (hit) return hit;
+  const out = segmentRegionsUncached(g, minCells);
+  byMin.set(minCells, out);
+  return out;
+}
+
+function segmentRegionsUncached(g: EvalGrid, minCells: number): Region[] {
   const { W, H } = g;
   const open = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) if (g.land[i] && !g.paved[i] && !g.water[i] && !g.plaza[i]) open[i] = 1;

@@ -5,10 +5,12 @@ export type ExportPreset = 'share' | 'plain';
 export interface ExportOptions {
   title: string; description: string;
   preset: ExportPreset;
-  /** "Let others rebuild this map" — draws a PetitGlyph v2 share-code band into the image. */
+  /** Draw a PetitGlyph band that lets another editor rebuild the map. */
   importable: boolean;
   // Appearance (advanced/Details):
   showBadge: boolean; layerPreview: boolean; card3d: boolean; grid: boolean; footer: boolean;
+  /** Draw the plan-notes layer in the map band. PetitGlyph data is independent of this choice. */
+  annotations: boolean;
   /** Footer line template: literal text + {tokens} + an optional {fill} that right-aligns the rest. */
   footerTemplate: string;
   resolution: ResolutionKey; // "Size"
@@ -35,4 +37,9 @@ export interface ExportComposition {
   /** True when a share code was requested but the composition is too small to host one
    *  (below the codec's minimum module base) — the caller should toast export.code_too_small. */
   codeBandUnavailable?: boolean;
+  /** Nothing was asked for but the map itself: the canvas IS the map band — no card margins, no
+   *  frame stroke, no corner rounding. See computeComposition. */
+  bare?: boolean;
+  /** The maker's band, always carrying the lockup and optionally the deployment's site mark. */
+  brand: Rect;
 }

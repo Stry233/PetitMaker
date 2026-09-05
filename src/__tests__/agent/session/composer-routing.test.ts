@@ -98,7 +98,6 @@ describe('submitComposer: gated route', () => {
 
   it('falls back to steer when the phase says gated but no gate is pending', () => {
     const log = createLog(now);
-    // Defensive case: the projected phase claims 'gated' but the log carries no open gateAsked.
     const result = submitComposer(log, 'gated', 'go ahead anyway');
     expect(result).toEqual({ route: 'steer', startsJob: false });
     expect(log.events).toHaveLength(1);

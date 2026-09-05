@@ -1,29 +1,7 @@
 /**
- * THE ERROR-SHAPE ZOO: one battery of real-world failure payloads, driven through both dialect
- * adapters, the classification ladder, the retry ladder and the loop.
- *
- * Nine providers answer this harness and no two of them fail the same way. OpenAI sends
- * `{error:{message,type,code}}`; Anthropic sends `{type:'error',error:{...}}`; a gateway in front of
- * either sends an HTML page, a bare status with no body, or the string its own framework produced.
- * Every one of those has to arrive somewhere a person can act on, which is what this file holds:
- *
- *   1. CLASSIFICATION IS TOTAL. Every shape lands a declared `ErrorClass`, `unknown` included, and
- *      no shape makes an adapter throw past its own generator. A throw that escapes is the whole
- *      turn lost with no event, so the panel would sit in `streaming` until something else moved it.
- *   2. WHAT IS TRANSIENT IS RETRIED. A rate limit, a 5xx, a dead socket and a platform that sent
- *      nothing are all worth another attempt, and the ladder must actually take it.
- *   3. A PLATFORM THAT SENT NOTHING IS NOT A MODEL THAT SAID NOTHING. These are two different
- *      sentences to a user and they are told apart at the ADAPTER, since it is the only layer that
- *      can see the difference (see `PROVIDER_SILENCE` in `core/errors` and the empty-stream guard in
- *      both adapters). Getting it wrong shows "Ended. nothing was said" over a gateway fault, which
- *      blames the model for its host.
- *   4. THE DETAIL IS REDACTED AND THE CLASS IS BANNERABLE. A key quoted back inside an error body is
- *      the one thing a transcript may not carry, and a class with no banner row is a fault with no
- *      face.
- *
- * The payload strings are the real ones: the two SDKs' own no-body/no-message wordings are quoted
- * from their sources, and the 429 bodies are the shapes an Open-WebUI-style gateway returns at a
- * per-minute cap.
+ * Exercises representative SDK and gateway failure payloads through adapters, classification,
+ * retries, redaction, and user-facing banners. Empty provider streams remain distinct from valid
+ * model responses with no text.
  */
 import { createElement } from 'react';
 import { render } from '@testing-library/react';

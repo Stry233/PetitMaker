@@ -40,6 +40,18 @@ export function makeToolCtx(
     armedMacro: null,
     armingEpoch: 0,
     macroContext: { state, executor, registry: executor.getRegistry() },
+    annotations: state.annotations ?? null,
+    annotationTool: 'none',
+    annotationZoneShape: 'free',
+    annotationColor: '#FF8A7A',
+    annotationTextStyle: 'label',
+    annotationTextSize: 'm',
+    annotationRouteDashed: true,
+    annotationSelection: [],
+    annotationDraft: null,
+    annotationEdit: {
+      begin() {}, apply() {}, add() {}, remove() {}, select() {}, setDraft() {}, setNaming() {},
+    },
     ...over,
   };
 }

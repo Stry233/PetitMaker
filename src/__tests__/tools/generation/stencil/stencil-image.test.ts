@@ -17,9 +17,7 @@
  * colour most of it is rather than the average of what it covers, and its exact edges are not diffused
  * into speckle.
  *
- * The report's two attachments are the fixtures. They are INTERNAL (`docs/internal/`), so the cases
- * that need them self-skip where that tree is absent, as the other internal-document tests do; every
- * case that can be made from our own art runs everywhere.
+ * Image-backed cases skip when their optional fixtures are absent; synthetic cases run everywhere.
  */
 // @ts-ignore node builtins are untyped in this tree (no @types/node)
 import { existsSync, readFileSync } from 'node:fs';
@@ -462,8 +460,7 @@ describe('the material a picture is asked for is the material it gets', () => {
    * What stands on the picture's cells, on its silhouette, and on the region around it, once the run
    * has committed.
    *
-   * `outsideBuilt` is the regression counter: cells of the region the picture does not cover that
-   * were written anyway, which is the flood coming back.
+   * `outsideBuilt` counts writes to region cells outside the picture's coverage.
    */
   function built(src: SourcePixels, side: number, water: StencilWaterRole): {
     covered: number; water: number; mountain: number;

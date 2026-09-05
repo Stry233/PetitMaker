@@ -1,28 +1,8 @@
-/*
- * panel-frame.ts — where the assistant's panel stands, in the frame's own css px.
- *
- * THE PANEL STANDS ON THE FRAME'S OWN GRID, and that is the invariant the rest of this file serves:
- * its left edge is the block rows' margin and its top edge is the row clearance below the mode row's
- * ink — the same line the assistant's own row hangs from — so the column lines up with everything
- * else in the frame rather than with whatever the character's box happens to be. Her seat inside it
- * is the desk's own (`ui/agent/DeskHeader.tsx`), at the plate's padding beside the dock band, and she
- * TRAVELS THE SHORT DISTANCE BETWEEN THE TWO when the panel opens (`SEAT_TRAVEL_MAX`).
- *
- * ITS WIDTH IS THE MODE ROW'S, and this file is where that number comes from: five blocks and the
- * four gaps between them. `ui/agent/tokens.ts:PANEL_WIDTH` re-exports it under the panel's own name,
- * so the column lines up with the row above it at both edges instead of merely standing near it.
- *
- * The FOOT is measured up from the window's bottom rather than down from the top: the bottom bars
- * hang off that edge, so the room a column has is the window's height less this margin and the bar
- * that is showing. Carried from the retired site log's own reserve, which was judged per bar (a row
- * of tool cells is a hand's width; the object shelf adds a row of names over its cards; the generate
- * shelf carries three candidates, a row of controls and two sliders) — one number for all five
- * either ends the panel halfway up an empty screen or lets the generate bar's tabs come up behind it.
- *
- * BOTH CLEARANCES YIELD RATHER THAN EMPTY THE PANEL, foot first and head after it — see
- * `panelTop`/`panelMaxHeight`, which is where the whole of that argument lives. And an UNANSWERED
- * QUESTION borrows on top of that (`panelMaxHeight`'s `borrow`): the courtesy to the bar below is
- * worth less than a question the user cannot read.
+/**
+ * Assistant-panel geometry in the shell frame's CSS-pixel coordinate system.
+ * The panel shares the mode row's left edge and width. Its available height reserves room for the
+ * active bottom bar, then yields that reserve and top clearance when needed to keep controls usable.
+ * A pending question may borrow additional vertical room.
  */
 import type { BuildMode } from '../../core/model/edit-mode';
 import type { DockSide } from '../../core/runtime/prefs';
@@ -95,8 +75,7 @@ export const PANEL_TOP = MODE_ROW_BASE + MODE.label.gap
  */
 export const SEAT_TRAVEL_MAX = CHARACTER_SEAT.w;
 
-/** Room to leave under the column so it clears the bottom bar, in css px measured up from the
- *  window's bottom edge. The design-px numbers the site log was judged at, at the frame's scale. */
+/** Room below the panel for each bottom-bar layout, in CSS pixels at the frame scale. */
 export function footReserve(mode: BuildMode): number {
   if (mode === 'object') return 560 * SCALE;
   if (mode === 'generate') return 760 * SCALE;

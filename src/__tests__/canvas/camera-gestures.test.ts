@@ -207,6 +207,13 @@ describe('the wheel, routed by intent', () => {
     expect(calls).toEqual([{ verb: 'orbit', args: [20, 0] }]);
   });
 
+  it('zooms smoothly on a dominant HORIZONTAL scroll in 2D, from the horizontal magnitude', () => {
+    const { cam, calls } = fakeCamera({ orbit: undefined });
+    make(cam).wheel(wheel({ deltaX: 20, deltaY: 1 }));
+    expect(calls[0]!.verb).toBe('zoomBy');
+    expect(calls[0]!.args[0]).toBeCloseTo(Math.exp(-20 / 200), 5);
+  });
+
   it('always zooms smoothly for ctrl+wheel, wherever the pointer is', () => {
     const { cam, calls } = fakeCamera();
     make(cam).pinchWheel(wheel({ deltaY: -30, ctrlKey: true }));

@@ -1,17 +1,18 @@
-// src/io/share/codec/payload.ts — PetitGlyph payload frame: assembles/parses the byte frame the
-// visible glyph code carries. It holds the map coded by codec/map-coder.ts wrapped in a small
-// header — template and catalog identity, a binary provenance record, and a SHA-256 content-hash
-// gate, so a corrupted or foreign payload is rejected before it reaches the reconstruction path.
+// PetitGlyph payload framing: canonical map data, annotations, format identities, provenance, and
+// a SHA-256 integrity check around the range-coded map residual.
 import type { CanonicalSave } from '../canonical';
 import { canonicalize, canonicalBytes, templateHash, catalogHash, objKey } from '../canonical';
 import { getMapTemplate } from '../../../config/maps';
 import { sha256 } from '../crypto/sha256';
 import { ShareError } from '../errors';
 import type { MapProvenanceSummary } from '../../../core/provenance/types';
+import type { AnnotationsState } from '../../../core/model/annotations';
 import { tokensOf, tokensToCells, tokenOf, parseToken } from './grid-io';
-import { encodeMap, decodeMap, MODEL_VARIANTS, hasHalfPosition, type MapModelOpts } from './map-coder';
+import { encodeMap, decodeMap, MODEL_VARIANTS, hasHalfPosition, modelCanRepresent, type MapModelOpts } from './map-coder';
 import { RangeEncoder, RangeDecoder } from './bitio';
 import type { GenerateConfig, GridState } from '../../../core/model/types';
+import { decodeAnnotations } from '../../json-codec';
+import { CompressionMethod, deflate, inflate } from '../raster/zlib';
 
 export interface ShareCodeMeta {
   title?: string;
@@ -31,10 +32,10 @@ export interface ProvenanceInfo {
 
 const MAGIC0 = 0x50; // 'P'
 const MAGIC1 = 0x32; // '2'
-/** The payload wire format. A reader rejects any frame that does not carry this exact version, so
- *  bumping it whenever the object or terrain encoding changes turns a stale code into a named
- *  refusal instead of a content-hash mismatch further down. */
-const FRAME_VERSION = 3;
+/** Supported frame range. Frame 3 has no annotations; frame 4 adds a length-prefixed annotation
+ * record between the generation note and map residual. */
+const EARLIEST_FRAME_VERSION = 3;
+const FRAME_VERSION = 4;
 const TITLE_MAX_CHARS = 48;
 
 // ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──
@@ -145,33 +146,61 @@ function decodeProvenanceRecord(bytes: Uint8Array): ProvenanceInfo {
 
 // ── frame assembly ──────────────────────────────────────────────────────────────────────────
 
-/** The most a generation note may occupy in the frame. The whole payload must fit the glyph's
- *  densest tier (T5, ~21 KB, map included), so a note is a passenger, never the cargo: one the
- *  size of a painted-region cell list can starve the map it rides with, and past this it is
- *  dropped whole rather than truncated (a cut JSON recipe parses as damage). */
+/** Maximum generation-note size within the approximately 21 KB densest glyph tier. */
 const NOTE_MAX_BYTES = 2048;
 
-/** The generation recipe as note bytes, or nothing where no faithful note can ride. A stencil
- *  recipe never rides: its `stencilPlan` is the source picture in typed arrays, which JSON
- *  mangles into per-element objects (tens of kilobytes that also read back wrong), and the map
- *  itself already carries the picture. */
+/** Encode generation metadata when it is compact and JSON-safe. Stencil source arrays are omitted. */
 function noteBytes(generation: GenerateConfig | undefined): Uint8Array {
   if (!generation || generation.stencilPlan) return new Uint8Array(0);
   const bytes = new TextEncoder().encode(JSON.stringify(generation));
   return bytes.length <= NOTE_MAX_BYTES ? bytes : new Uint8Array(0);
 }
 
+const ANNOTATION_MAX_BYTES = 4 * 1024 * 1024;
+const ANNOTATION_MAX_INFLATE_RATIO = 256;
+
+interface AnnotationRecord {
+  plain: Uint8Array;
+  compressed: Uint8Array;
+}
+
+/** Serialize the validated annotation layer independently from the canonical map. */
+async function annotationRecord(raw: unknown): Promise<AnnotationRecord> {
+  const annotations = decodeAnnotations(raw);
+  if (!annotations) return { plain: new Uint8Array(0), compressed: new Uint8Array(0) };
+  const plain = new TextEncoder().encode(JSON.stringify(annotations));
+  if (plain.length > ANNOTATION_MAX_BYTES) {
+    throw new ShareError('decode-failed', 'Annotation data exceeds the PetitGlyph safety limit.');
+  }
+  const compressed = await deflate(plain, CompressionMethod.Deflate);
+  if (compressed.length > 0xffff) {
+    throw new ShareError('decode-failed', 'Annotation data exceeds the PetitGlyph frame limit.');
+  }
+  return { plain, compressed };
+}
+
+/** Unambiguous hash input for frame 4: length-prefixed map bytes followed by annotations. */
+function contentBytes(canonical: CanonicalSave, annotations: Uint8Array): Uint8Array {
+  const map = canonicalBytes(canonical);
+  const out = new Uint8Array(8 + map.length + annotations.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, map.length, true);
+  out.set(map, 4);
+  view.setUint32(4 + map.length, annotations.length, true);
+  out.set(annotations, 8 + map.length);
+  return out;
+}
+
 function buildFrame(
   canonical: CanonicalSave, contentHash: Uint8Array, generation: GenerateConfig | undefined,
-  summary: MapProvenanceSummary | null, meta: ShareCodeMeta, variant: number,
+  annotations: Uint8Array, summary: MapProvenanceSummary | null, meta: ShareCodeMeta, variant: number,
 ): Uint8Array {
   const template = getMapTemplate(canonical.templateId);
   const enc = new RangeEncoder();
   encodeMap(enc, template, tokensOf(canonical.cells).map(parseToken), canonical.objects, MODEL_VARIANTS[variant]!);
   const residual = enc.finish();
   const prov = encodeProvenanceRecord(summary, meta);
-  // The recipe rides along as a NOTE: the editor shows it and can regenerate from it. Nothing in
-  // the map's reconstruction reads it, so a code stays readable however the generator changes.
+  // Generation metadata is optional and is not required to reconstruct the encoded map.
   const note = noteBytes(generation);
 
   const w = new ByteWriter();
@@ -186,28 +215,25 @@ function buildFrame(
   w.blob8(prov);
   w.raw(contentHash);
   w.blob16(note);
+  w.blob16(annotations);
   w.raw(residual);
   return w.toBytes();
 }
 
-/**
- * Build the payload frame. A map has ONE encoding, so this is not a search: the frame is built,
- * then decoded back and hash-checked before it is handed out, which turns a coder bug into a
- * refusal here rather than a wrong map in someone else's editor.
- */
+/** Build and verify a payload frame before returning it. */
 export async function encodeMapPayload(state: GridState, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Promise<Uint8Array> {
   const canonical = canonicalize(state);
-  const want = await sha256(canonicalBytes(canonical));
-  // The model has a few shapes (see MapModelOpts) and which one suits a map is a property of the
-  // map, not of the format. Coding is cheap, so every APPLICABLE shape is tried and the smallest
-  // kept; the frame names the winner, so the reader does no searching. Applicable is not a size
-  // question: only a half-capable shape can carry a half-cell anchor, and only it costs anything
-  // to say a map has none — so a map without one searches exactly the shapes it always did.
+  const template = getMapTemplate(canonical.templateId);
+  const cells = tokensOf(canonical.cells).map(parseToken);
+  const annotations = await annotationRecord(state.annotations);
+  const want = await sha256(contentBytes(canonical, annotations.plain));
+  // Try applicable models and retain the smallest frame; half-cell anchors require half support.
   const half = hasHalfPosition(canonical.objects);
   let frame: Uint8Array | null = null;
   for (let v = 0; v < MODEL_VARIANTS.length; v++) {
     if (MODEL_VARIANTS[v]!.half !== half) continue;
-    const f = buildFrame(canonical, want, state.generation, summary, meta, v);
+    if (!modelCanRepresent(template, cells, canonical.objects, MODEL_VARIANTS[v]!)) continue;
+    const f = buildFrame(canonical, want, state.generation, annotations.compressed, summary, meta, v);
     if (!frame || f.length < frame.length) frame = f;
   }
   await decodeMapPayload(frame!);
@@ -218,6 +244,7 @@ export interface DecodedMapPayload {
   canonical: CanonicalSave;
   provenance: ProvenanceInfo;
   generation?: GenerateConfig;
+  annotations?: AnnotationsState;
   templateHash: number;
   catalogHash: number;
 }
@@ -226,17 +253,15 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
   try {
     const r = new ByteReader(bytes);
     const m0 = r.u8(), m1 = r.u8();
-    if (m0 !== MAGIC0 || m1 !== MAGIC1) throw new ShareError('corrupt', 'Not a PetitGlyph v2 payload (bad magic).');
+    if (m0 !== MAGIC0 || m1 !== MAGIC1) throw new ShareError('corrupt', 'Not a PetitGlyph payload (bad magic).');
 
     const version = r.u8();
     if (version > FRAME_VERSION) throw new ShareError('future-version', `Payload version ${version} is newer than this build supports.`);
-    if (version !== FRAME_VERSION) throw new ShareError('decode-failed', `Unsupported payload version ${version}.`);
+    if (version < EARLIEST_FRAME_VERSION) throw new ShareError('decode-failed', `Unsupported payload version ${version}.`);
 
     const variant = r.u8();
     const model: MapModelOpts | undefined = MODEL_VARIANTS[variant];
-    // A shape this build does not have is a code from a NEWER build, not a damaged one: the
-    // table is append-only, so an index past its end can only have been written later. Saying
-    // "corrupt" would send the reader looking for a better photograph of a perfectly good code.
+    // The variant table is append-only, so an unknown index requires a newer reader.
     if (!model) throw new ShareError('future-version', `Model variant ${variant} is newer than this build supports.`);
 
     const canonicalVersion = r.u8();
@@ -247,6 +272,7 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
     const provenance = decodeProvenanceRecord(provBytes);
     const contentHash = r.raw(32);
     const note = r.blob16();
+    const annotationBlob = version >= 4 ? r.blob16() : new Uint8Array(0);
     const residual = r.rest();
 
     const template = getMapTemplate(templateId);
@@ -260,6 +286,13 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
       }
     }
 
+    const annotationBytes = annotationBlob.length > 0
+      ? await inflate(annotationBlob, CompressionMethod.Deflate, {
+          maxBytes: ANNOTATION_MAX_BYTES,
+          maxRatio: ANNOTATION_MAX_INFLATE_RATIO,
+        })
+      : new Uint8Array(0);
+
     const { cells, objects } = decodeMap(new RangeDecoder(residual), template, model);
     const canonical: CanonicalSave = {
       version: canonicalVersion,
@@ -271,11 +304,24 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
         .map((o, i) => ({ ...o, id: `o${i}` })),
     };
 
-    const gotHash = await sha256(canonicalBytes(canonical));
+    const gotHash = await sha256(version >= 4
+      ? contentBytes(canonical, annotationBytes)
+      : canonicalBytes(canonical));
     if (!bytesEqual(gotHash, contentHash)) throw new ShareError('corrupt', 'Content hash mismatch.');
 
     const result: DecodedMapPayload = { canonical, provenance, templateHash: tHash, catalogHash: cHash };
     if (generation !== undefined) result.generation = generation;
+    if (annotationBytes.length > 0) {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(new TextDecoder().decode(annotationBytes));
+      } catch {
+        throw new ShareError('decode-failed', 'Malformed annotation record.');
+      }
+      const annotations = decodeAnnotations(raw);
+      if (!annotations) throw new ShareError('decode-failed', 'Malformed annotation record.');
+      result.annotations = annotations;
+    }
     return result;
   } catch (e) {
     if (e instanceof ShareError) throw e;

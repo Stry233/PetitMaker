@@ -21,6 +21,7 @@
  */
 import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
 import { useEditorStore } from '../../state/store';
+import { useUiPreviewPose } from '../primitives/ui-preview';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, textDevicePx, weightVars } from './text-weight';
 
@@ -83,6 +84,7 @@ export function useDockRef(): number {
  *  even where neither axis moved. Exported for the one question that must NOT go through the fit:
  *  whether there is room to dock, which is what decides the widening the fit reads. */
 export function useViewportSize(): { w: number; h: number } {
+  const posed = useUiPreviewPose()?.viewport;
   const [w, setW] = useState(() => (typeof window === 'undefined' ? FIT_REF.w : window.innerWidth));
   const [h, setH] = useState(() => (typeof window === 'undefined' ? FIT_REF.h : window.innerHeight));
   useEffect(() => {
@@ -91,7 +93,9 @@ export function useViewportSize(): { w: number; h: number } {
     onResize();
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  return { w, h };
+  // A pictured shell lays itself out for the window its figure poses, so every fit and plan
+  // downstream of this reading agrees with the box the picture is drawn in.
+  return posed ?? { w, h };
 }
 
 /** `frameFit` of the live window, re-read on resize, with whatever strip is docked taken off it.

@@ -1,40 +1,12 @@
-/*
- * stencil-small.ts — WHAT A SMALL BOX DOES DIFFERENTLY, and why only a small box does it.
- *
- * A picture fitted to a whole island has a cell for nearly every feature it holds. A picture in a
- * sixteen-cell box has about 150 cells for a subject whose outline and the rim inside it take most of
- * them, and the reduction that is right at the first size is what deletes the subject at the second.
- * Measured over the benchmark matrix: at 16 cells a picture's coherent areas arrive as fragments, and
- * two areas the source separates by HUE at the same lightness land on the same tier about half the
- * time — against one time in twenty when the same picture is paved in paths, whose palette has real
- * hues in it. The green ramp is eight greens: hue is the one distinction it cannot make, so hue has
- * to be spent on the distinction it CAN make, which is lightness.
- *
- * EVERYTHING HERE IS GATED ON THE BOX (`smallBoxWeight`): full at or below `SMALL_BOX_FULL`, blended
- * to nothing by `SMALL_BOX_OFF`, and absent above it. A caller reading weight 0 must do exactly what
- * it did before — not something arithmetically equal, the same code path — because the large-scale
- * output of this generator is frozen by fingerprint and a picture told over a whole island is already
- * legible. The gate is the SHORTER side, since that is what a picture is fitted to.
- *
- * Pure arithmetic over the stencil, deterministic, no state and no rules: what reaches the map is
- * whatever the palette match and the executor make of the reading this produces.
+/**
+ * Deterministic image-reading adjustments for small stencil regions.
+ * The short side controls a smooth 24-to-32-cell gate; weight zero leaves the standard path untouched.
+ * Small regions preserve a few coherent areas and translate useful hue differences into a one-hue terrain ramp.
  */
 import type { Stencil } from '../../../core/model/types';
 import { covered, luma, type ToneRange } from './stencil';
 
-/**
- * The box a picture is SMALL in, and the box it is no longer small in, as cells on the shorter side.
- *
- * 24 is the small-box end because it is where measurement says a picture stops being
- * able to say what it is: the coherent areas that survive fall away steeply from there down, and the
- * engine's own image floor (`STENCIL_MIN_SIDE.image`, 20) sits inside it. 32 is the other end because
- * that is the first size in the matrix where the failures the levers here answer are no longer the
- * dominant ones — a 32-cell box holds four times the cells of a 16-cell one — and because a threshold
- * has to be somewhere a measurement puts it rather than at a round number.
- *
- * BETWEEN THEM THE EFFECT IS BLENDED rather than switched, so a region painted one cell wider cannot
- * change the picture's whole treatment.
- */
+/** Full treatment through 24 cells on the short side, fading linearly to zero at 32. */
 export const SMALL_BOX_FULL = 24;
 export const SMALL_BOX_OFF = 32;
 
@@ -47,22 +19,7 @@ export function smallBoxWeight(box: { width: number; height: number }): number {
   return (SMALL_BOX_OFF - side) / (SMALL_BOX_OFF - SMALL_BOX_FULL);
 }
 
-/**
- * How much of the palette's own tonal range a small box spends on HUE rather than on tone.
- *
- * HUE IS PAID FOR OUT OF THE RANGE, NOT ADDED PAST ITS ENDS. A palette has one axis and both the
- * picture's lightness and its colours want it, so the two share it: the tonal fit targets a range
- * inset by this much at each end and the hue term moves a cell within what was reserved. Adding the
- * term on top instead pushes cells past the darkest and brightest entries, where they pile up on one
- * answer — measured on a pastel fixture at twenty cells, the palette's own use fell while the hue
- * separation rose, which is trading one legibility failure for another.
- *
- * A HALF is what a sixteen-cell box is worth spending. Half the ramp is ±1.7 tiers of room, so two
- * areas a third of the circle apart land two tiers away from each other and opposite hues three and
- * a half — and the tone that pays for it was shading inside areas of ten to forty cells, which at
- * this size nobody was reading. The gate is what keeps that trade to the sizes it is true at: the
- * share is scaled by the box's weight, so a 32-cell box spends none of its range on hue.
- */
+/** Share of a one-hue palette's tonal range reserved for hue separation at full weight. */
 export const HUE_RANGE_SHARE = 0.5;
 
 /** The most tone a hue difference may claim, either side of where the picture's own tone landed. */
@@ -70,29 +27,14 @@ export function hueReach(weight: number, palette: ToneRange): number {
   return weight <= 0 ? 0 : (HUE_RANGE_SHARE * weight * (palette.hi - palette.lo)) / 2;
 }
 
-/** The chroma at which a colour's whole hue offset is spent, and the chroma below which it has none.
- *  A grey has no hue to be separated by, and a nearly-grey has nearly none. */
+/** Chroma bounds for applying hue offsets; neutral colors retain their tone. */
 export const HUE_CHROMA_FULL = 60;
 export const HUE_CHROMA_MIN = 16;
 
-/**
- * How much of a picture has to be in a DIFFERENT colour family from its dominant one before any tone
- * is spent on hue at all.
- *
- * A PICTURE OF ONE FAMILY HAS NO HUE DIFFERENCE TO SPEND, and spending tone on it is a pure loss: a
- * pastel sticker is cream, pink and a little rose, so every cell's turn from the dominant hue is small
- * and noisy, and moving each cell by its own small amount scrambles the shading that WAS carrying the
- * subject (measured: the palette's own use fell on exactly that fixture, while nothing separated). So
- * the lever asks first whether there are two families here at all — mass outside the dominant sector
- * and its two neighbours, which is a sixth of the circle either side — and declines where there are
- * not. A twelfth is small enough for a bow on a coat and large enough to exclude a stray antialiased
- * pixel.
- */
+/** Minimum weighted mass outside the dominant hue family before hue consumes tonal range. */
 export const HUE_FAMILY_MIN = 1 / 12;
 
-/** How many sectors the hue circle is counted in when the picture's own dominant hue is found.
- *  Twelve is 30 degrees each: finer than the eye needs to name a colour family, coarse enough that
- *  one sector holds a whole one. */
+/** Thirty-degree sectors used to identify the dominant hue family. */
 const HUE_SECTORS = 12;
 
 /** Hue in degrees and chroma as the channel spread — enough of HSV for "is this a different colour,
@@ -110,35 +52,15 @@ export function signedTurn(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-/**
- * A turn round the hue circle as a signed share of the tone reserved for hue, in [-1, 1].
- *
- * COMPRESSIVE, not proportional: what the eye reads is THAT two colours differ rather than how far
- * apart they are on a wheel, and a proportional term spends nearly all its room on the rare pair of
- * opposites while leaving the common pair — a third of a turn or less, a bow against a coat, a petal
- * against a stem — inside one palette step, which is no separation at all. The square root puts a
- * sixth of a turn most of the way to half the room and still reaches its limit only at the far side.
- */
+/** Compressive signed hue distance in [-1, 1], giving nearby color families useful separation. */
 export function hueLift(turn: number): number {
   const share = Math.min(1, Math.abs(turn) / 180);
   return Math.sign(turn) * Math.sqrt(share);
 }
 
 /**
- * The TONE each cell's colour should be moved by so that areas the picture separates by hue arrive as
- * different palette entries — null where the picture has no hue to spend.
- *
- * WHY A LINE THROUGH THE PICTURE'S OWN DOMINANT HUE. A palette of one hue orders its entries by
- * lightness alone, so carrying hue into the result means laying the hue circle on a line, and every
- * way of doing that has one cut where two neighbouring hues land at opposite ends. This puts the cut
- * diametrically OPPOSITE the picture's commonest hue — the emptiest part of its own colour circle —
- * and measures every cell as the turn from that dominant hue, so the offsets are one function of the
- * picture and the cut falls where the picture has least to lose. A cell is weighted by its chroma, so
- * a grey keeps its tone exactly and the dominant area itself barely moves.
- *
- * `reach` is the tone a half-turn of hue is worth (`hueReach`), which the caller has already taken out
- * of the palette's range: every offset is inside ±reach, so nothing here can push a cell past an end
- * of the palette.
+ * Maps hue distance from the dominant family into bounded tonal offsets.
+ * The hue-circle cut falls opposite the dominant family, and chroma weights each offset; null means hue adds no useful distinction.
  */
 export function hueToneOffsets(
   stencil: Stencil,
@@ -166,16 +88,12 @@ export function hueToneOffsets(
     coloured++;
   }
   if (coloured === 0) return null;
-  // The commonest hue FAMILY, then that family's own mean direction — not the sector's middle, which
-  // would leave a picture of a single colour shifted by however far that colour sits from a sector
-  // boundary. Ties between sectors go to the lower one, so the answer is one function of the picture
-  // rather than of the walk.
+  // Use the weighted mean within the strongest family; lower-index sectors win ties.
   let best = 0;
   for (let s = 1; s < HUE_SECTORS; s++) if (sectors[s]! > sectors[best]!) best = s;
   const dominant = ((Math.atan2(sectorY[best]!, sectorX[best]!) * 180) / Math.PI + 360) % 360;
 
-  // Is there a second colour family here at all? Everything outside the dominant sector and the two
-  // beside it, against everything coloured.
+  // Adjacent sectors belong to the dominant family; only farther sectors justify an offset.
   let total = 0, elsewhere = 0;
   for (let s = 0; s < HUE_SECTORS; s++) {
     total += sectors[s]!;
@@ -192,37 +110,13 @@ export function hueToneOffsets(
   return out;
 }
 
-/**
- * The fewest cells a body of WATER may be in a small box, and how far below the water's own tone a cell
- * may be and still be sunk to make one up.
- *
- * A POND IS A SHAPE, A SPECK IS DAMAGE. Water is chosen by nearest tone over the picture's light areas,
- * and at 62 cells a highlight is an area — a muzzle, a drink's surface — so it lands as one pond with a
- * bank. At 16 the same highlight is four scattered cells and lands as four one-cell ponds, which read
- * as holes rather than as a figure: measured over the matrix, 43% of pictures at 16 cells hold more than
- * a seventh of their water in pieces of one or two cells, against 8% at 62.
- *
- * Three is the smallest count that can hold a shape at all, and it is the floor the offline
- * measures count a body at. The tolerance is a whole palette step: a cell that far below the water's
- * tone is the next-lightest thing the picture has there, so sinking it is something the SOURCE
- * supports; past that the speck has nothing to grow into and goes back to being land.
- */
+/** Minimum coherent water body and its one-palette-step growth tolerance. */
 export const WATER_BODY_MIN = 3;
 export const WATER_GROW_STEPS = 1;
 
 /**
- * Settle the water a small box would otherwise lay as specks: every body under `WATER_BODY_MIN` either
- * grows to it out of the lightest cells beside it, or goes back to land. Mutates `isWater` and returns
- * how many cells changed hands.
- *
- * `tone` is what each cell asked the palette for, `cut` the tone at which water begins and `step` the
- * palette's own tone between neighbouring entries, so what a speck may grow into is decided by the
- * PICTURE rather than by the shape of the speck. `open` is the cells water may take at all — the
- * caller's own rule, which for the primary water role keeps the figure's silhouette dry so a pond
- * always has a bank.
- *
- * Bodies are walked largest first, so a speck beside a real pond joins the pond rather than the two
- * growing separately, and the whole pass is one function of the picture: no randomness, ties by index.
+ * Grows undersized water bodies from eligible bright neighbours or returns them to land.
+ * Mutates `isWater`, processes larger bodies first, breaks ties by cell index, and returns the number of changed cells.
  */
 export function settleWaterBodies(
   stencil: Stencil,
@@ -292,8 +186,7 @@ export function settleWaterBodies(
   return moved;
 }
 
-/** A colour moved `weight` of the way toward another, per channel. 0 is the first colour exactly and 1
- *  is the second exactly, which is what lets the whole treatment fade out across the gate. */
+/** Per-channel interpolation; weights zero and one return the endpoints exactly. */
 export function blendColour(from: number, to: number, weight: number): number {
   if (weight <= 0) return from;
   if (weight >= 1) return to;
@@ -304,54 +197,10 @@ export function blendColour(from: number, to: number, weight: number): number {
   return ((mix(16) << 16) | (mix(8) << 8) | mix(0)) >>> 0;
 }
 
-/**
- * WHAT A SMALL BOX ASKS THE PALETTE FOR, per cell: its AREA's answer rather than its own.
- *
- * THE FAILURE THIS IS FOR. A per-cell match spends the palette on a tonal ramp and rounds every cell
- * against it, so a picture's interior arrives as fragments of two tiers with the quantisation error
- * dithered across them: measured at 16 cells, the result held twice as many coherent areas as the
- * source's own reading has, while keeping under a fifth of the areas the picture actually holds. Both
- * halves of that are the same mistake — cells were the unit. Here the AREA is: the picture is read as
- * the few coherent areas a small box can hold (`coherentAreas`), each is given one palette entry
- * (`allocateEntries` where the palette is a tonal ramp, its own nearest colour where the palette has
- * hues of its own), and every cell of it asks for that.
- *
- * `distinct` is the difference between the two palettes, and it is not a preference. A ramp of one hue
- * can only separate two areas by spending two ENTRIES on them, so the allocation is what makes them
- * different at all; a palette with real hues in it already answers two colours differently, and
- * forcing distinctness there would move an area off its own colour for nothing.
- *
- * Null where the box is not small: a caller must then do exactly what it did before.
- */
-/**
- * How much of a cell's answer the AREA gives at full weight, the rest being the cell's own colour.
- *
- * NOT ALL OF IT. An area reading is the right unit for the features a small box has to keep and the
- * wrong one for what is genuinely continuous: a photograph's gradient posterised to its own areas loses
- * the palette use the dither was buying it (measured on the synthetic continuous-tone fixture, palette
- * use fell by a third), and our own pixel-art heart lost a fifth of its tonal reading. Left at a share,
- * each cell asks mostly for its area's entry and a little for its own colour, and the error still worth
- * spending goes to the neighbours as before — so a flat area comes out flat while a real gradient keeps
- * its shading.
- */
+/** Share of a flat region's palette request supplied by its region-level color. */
 export const AREA_SHARE = 1;
 
-/**
- * WHICH REGIONS ARE TOLD FLAT AND WHICH KEEP THEIR OWN SHADING — the per-region half of that answer.
- *
- * A REGION READING IS RIGHT FOR A DRAWN AREA AND WRONG FOR A GRADIENT. Posterising a soft pastel body
- * to one entry loses exactly what the dither was carrying: measured on our own pastel fixtures at twenty
- * cells, the palette's own use fell by a third and the tonal reading with it, while the same treatment on
- * a flat-coloured icon is what makes it legible. The picture's `nature` cannot decide this — a pastel
- * sticker reads as a DRAWING by its colour count, and it is one, with soft shading inside it.
- *
- * SO THE REGION DECIDES, and the discriminator is ROUGHNESS rather than range: a gradient covers a wide
- * range in small steps between neighbouring cells, while a region that covers a wide range in big steps
- * is holding several things the merge had no budget to separate. Measured over our fixtures in palette
- * steps: a pastel body runs 2 to 5 steps of range at 0.45 to 0.67 of a step between neighbours, and the
- * icons that want composing run 6 to 16 steps of range at 1.5 to 6 — the two do not overlap, and the
- * threshold sits in the gap. A region with nothing to grade (`RANGE_MIN`) is flat whatever its roughness.
- */
+/** Region-level thresholds, in palette steps, that distinguish flat areas from smooth gradients. */
 export const REGION_RANGE_MIN = 2;
 export const REGION_SMOOTH_MAX = 0.7;
 export const REGION_ROUGH_MIN = 1.4;
@@ -396,17 +245,10 @@ export function readSmallBox(
   minTone?: (depth: number) => number,
 ): SmallBoxRead | null {
   if (weight <= 0 || entries.length === 0) return null;
-  // A DRAWING HAS AREAS AND A PHOTOGRAPH HAS GRADIENTS, and the question is asked PER REGION rather than
-  // per picture (`regionFlatness`): a per-picture label misreads shaded sprites as photographs and
-  // declines two thirds of a benchmark that way, while posterising a genuinely smooth gradient loses
-  // exactly what the dither was carrying. A region that is genuinely smooth keeps its own shading
-  // whatever the picture is called; a flat area is told in one entry for the same reason. Neither
-  // answer needs the label.
+  // Flatness is measured per region so shaded subjects retain gradients while flat areas stay coherent.
   const read0 = coherentAreas(stencil, matchable, colourAt);
   if (read0.length === 0) return null;
-  // THE PICTURE IS TOLD IN A FEW SPATIAL REGIONS WHERE THE PALETTE IS SCARCE, and that is only the
-  // ramp: a palette with real hues of its own answers every area's colour already, so there is nothing
-  // for a region budget to buy there and the picture keeps the resolution the box gave it.
+  // A one-hue ramp spends distinct entries on a bounded set of spatial regions.
   const outline = distinct ? fuseAreas(read0, figureRim(stencil, read0)) : { areas: read0, at: -1 };
   const grouped = distinct
     ? mergeToTarget(stencil, outline.areas, regionTarget(stencil, outline.areas, weight), outline.at)
@@ -442,17 +284,12 @@ export function readSmallBox(
       const own = colourAt(i);
       return has[i] ? blendColour(own, target[i]!, share * told[i]!) : own;
     },
-    // A DITHER IS A PER-CELL DEVICE and this reading is not per cell: where a region is told flat, every
-    // cell of it asks for the same entry and an error spent on the neighbours is noise laid over an
-    // answer that was already exact. It fades back in as the box grows, on the same gate — and in
-    // proportion to how much of the picture is a gradient rather than an area, which is what still wants
-    // it (`regionFlatness`).
+    // Dither remains only where the gate and region gradients leave per-cell tone to express.
     damping: damping * (1 - share * mean),
   };
 }
 
-/** What a small box's reading of a picture is: the answer per cell, the dither that is left, and the
- *  REGIONS it was told in — which is what lets a caller spend something other than a tier on one. */
+/** Region-aware palette requests and residual dither for a small stencil. */
 export interface SmallBoxRead {
   wanted: (index: number) => number | null;
   damping: number;
@@ -462,22 +299,7 @@ export interface SmallBoxRead {
   rim: number;
 }
 
-/**
- * HOW MANY REGIONS A SMALL BOX TELLS A PICTURE IN: three to six, by the size of the figure.
- *
- * A COMPOSITION, NOT A QUANTISATION. Segmented at five bits a channel a real icon at sixteen cells is
- * twenty to seventy areas of four or five cells each, and a palette of eight greens cannot say twenty
- * things: the allocation ends up merging them on TONE, which is a decision about lightness taken over
- * a picture whose subject is WHERE its parts are. So the areas are merged SPATIALLY first, down to the
- * few the box can actually hold, and the palette is spent on those.
- *
- * THREE TO SIX IS THE PICTURE'S OWN READING, not a taste: measured over the benchmark, the coherent
- * areas a source holds AT THE BOX'S OWN CELL COUNT fall to about four at sixteen cells (and to ninety
- * at sixty-two, which is why none of this applies there). One region per four cells of the box's
- * shorter SIDE is that reading — a box twice as wide holds about twice as many things, not four times
- * — and it is blended back toward the unmerged reading as the gate closes, so a box one cell wider
- * cannot re-compose the picture.
- */
+/** Target three to six spatial regions, roughly one for every four cells on the short side. */
 export const REGION_TARGET_MIN = 3;
 export const REGION_TARGET_MAX = 6;
 export const REGION_CELLS_PER = 4;
@@ -490,21 +312,8 @@ export function regionTarget(box: { width: number; height: number }, areas: read
 }
 
 /**
- * Merge adjacent areas until there are `target` of them: cheapest pair first, cost being how far
- * apart the two are in COLOUR times how much of the picture the smaller of them is.
- *
- * WHY SIZE IS IN THE COST. Two large areas of nearly one colour are what a small box has no room to
- * distinguish, and merging them costs the picture nothing; a three-cell eye against a face is a large
- * colour distance over a tiny area, and merging it costs the picture the eye. The harmonic mean of the
- * two sizes is what says that — it tracks the SMALLER area, so a feature is expensive to lose whatever
- * it sits in — and it is why this is not a quantisation with a different threshold: the same colour
- * difference is worth keeping in one place and not in another.
- *
- * `protect` is an area no merge may consume (the enclosing rim, `figureRim`), because its whole value
- * is that it is one region: merged into the mass it surrounds, the figure loses its outline, which is
- * the one thing a small box reliably keeps. Returns where it ended up.
- *
- * Deterministic: pairs are scanned in index order and the first strictly-cheapest wins.
+ * Merges adjacent areas to `target` using color distance weighted by harmonic mean area size.
+ * `protect` identifies an unmergeable outline; pair scan order provides deterministic ties.
  */
 export function mergeToTarget(
   stencil: Stencil, areas: readonly Area[], target: number, protect = -1,
@@ -574,22 +383,7 @@ export function mergeToTarget(
   };
 }
 
-/**
- * The areas that together make the figure's OUTLINE — the dark line drawn round a subject — or an
- * empty list where the picture has none.
- *
- * IT IS ONE REGION AND IT IS NEVER FOUND AS ONE. A one-cell outline is a chain of one- and two-cell
- * pieces under 4-connectivity (two cells meeting at a corner are two blocks), so no single coherent
- * area is ever the outline: measured on the seed picture at sixteen cells, twenty separate areas hold
- * it. Every one of them is small and unlike its neighbour, which is what makes each individually cheap
- * to merge away — so the outline is CONSTRUCTED here, protected from merging as one, and allocated
- * apart. What it costs to lose is the silhouette, which is the one thing a small box reliably keeps.
- *
- * Two tests, both about being a line round the figure rather than a part of it: the cells sit at the
- * figure's EDGE rather than inside it, and they are DARKER than the figure's own mean. The union then
- * has to go most of the way round (`RIM_ENCLOSE_MIN`) and to be a line rather than the subject
- * (`RIM_SHARE_MAX`), or the picture is read as having no outline at all.
- */
+/** Detects dark, shallow regions that collectively enclose enough of the figure to form an outline. */
 export const RIM_ENCLOSE_MIN = 0.4;
 export const RIM_DEPTH_MAX = 2;
 export const RIM_SHARE_MAX = 0.4;
@@ -626,13 +420,11 @@ export function figureRim(stencil: Stencil, areas: readonly Area[]): number[] {
   return out;
 }
 
-/** Several areas told as one, in place of the several: the mean colour over all their cells, and the
- *  list back in ascending first-cell order with the fused region's own index. */
+/** Fuses selected areas by cell-weighted mean color and returns the fused area's sorted position. */
 export function fuseAreas(areas: readonly Area[], ids: readonly number[]): { areas: Area[]; at: number } {
   const taken = new Set(ids);
   if (taken.size === 0) return { areas: [...areas], at: -1 };
-  // One area is already the region it would be fused into: a closed ring survives 4-connectivity whole,
-  // and it wants naming rather than rebuilding.
+  // Preserve object identity when the selected outline is already one connected area.
   if (taken.size === 1) return { areas: [...areas], at: ids[0]! };
   const cells: number[] = [];
   let r = 0, g = 0, b = 0;
@@ -653,39 +445,26 @@ export function fuseAreas(areas: readonly Area[], ids: readonly number[]): { are
   return { areas: out, at: out.indexOf(fused) };
 }
 
-/**
- * The picture's coherent colour AREAS at this cell count: 4-connected runs of cells the eye would
- * read as one colour, with anything under `AREA_MIN` folded into the neighbour it is nearest in
- * colour.
- *
- * FOUR-CONNECTED AND AT FIVE BITS A CHANNEL, which is what the map itself does with a shape (two
- * cells meeting at a corner are two blocks with ground between them) and what the sampler already
- * counts colours at (`bucketOf`): near-identical shades — a JPEG's noise, a scaler's blend — have to
- * share a label or every gradient is a thousand areas.
- */
+/** A four-connected run in five-bit-per-channel color space. */
 export interface Area {
   /** Cell indices, in ascending order. */
   cells: number[];
-  /** The mean colour of the source over them, which is what the area is matched by. */
+  /** Cell-weighted mean source color. */
   rgb: number;
-  /** The area's own tone, and the tone offset applied to it (already inside `rgb`). */
+  /** Luma of `rgb`. */
   tone: number;
 }
 
-/** The fewest cells that make an AREA rather than a speck: three, the smallest count that can hold a
- *  shape at all, and the same floor the offline measures count areas at. */
+/** Minimum cell count for a coherent area. */
 export const AREA_MIN = 3;
 
-/** How near in colour a speck has to be to a neighbour to be folded into it: about two palette steps
- *  of the terrain ramp, in the channel-weighted units every colour distance here uses. Past that the
- *  speck is a feature the picture drew rather than noise inside an area. */
+/** Maximum channel-weighted distance for folding a speck into an adjacent area. */
 export const FOLD_MAX = 30;
 
 const bucketOf = (rgb: number): number =>
   ((((rgb >> 19) & 0x1f) << 10) | (((rgb >> 11) & 0x1f) << 5) | ((rgb >> 3) & 0x1f)) >>> 0;
 
-/** How far apart two colours are, channel-weighted and NOT squared — the units every colour gap in
- *  this system is stated in (`BORROW_MIN_GAIN`, `COLLIDE_MIN`, `FOLD_MAX`), so two of them compare. */
+/** Channel-weighted Euclidean color distance used by all thresholds in this module. */
 export function colourGap(a: number, b: number): number {
   return Math.sqrt(colourDistance(a, b));
 }
@@ -697,12 +476,7 @@ const colourDistance = (a: number, b: number): number => {
   return 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
 };
 
-/**
- * Segment the cells a reading may write into coherent colour areas, smallest ones absorbed.
- *
- * `colourAt` is the colour each cell is read as — the tone-fitted, hue-lifted one, so the areas are
- * the ones the palette is about to be asked for rather than the ones the file happens to hold.
- */
+/** Segments writable cells by their fitted color and folds close undersized regions into neighbours. */
 export function coherentAreas(
   stencil: Stencil,
   matchable: (index: number) => boolean,
@@ -747,18 +521,7 @@ export function coherentAreas(
     return ((Math.round(a.r / size) << 16) | (Math.round(a.g / size) << 8) | Math.round(a.b / size)) >>> 0;
   };
 
-  // A SPECK OF THE SAME COLOUR AS WHAT IT SITS IN IS NOT A FEATURE, so it joins the neighbouring area
-  // it is nearest in colour rather than spending a palette entry of its own — largest first, so a chain
-  // of specks resolves against real areas before it resolves against other specks. An area with no
-  // neighbour at all (a lone cell in the middle of ground) keeps itself: there is nothing to fold it
-  // into, and dropping it would take a cell of the picture off the map.
-  //
-  // A SPECK THAT IS NOTHING LIKE ITS NEIGHBOUR IS KEPT (`FOLD_MAX`), and that test is what saves a
-  // drawing's outline. A one-cell dark rim is a CHAIN of one- and two-cell pieces under 4-connectivity
-  // — the map's own connectivity, since two cells meeting at a corner are two blocks — so a fold that
-  // asked only about size swallowed the outline into the body it surrounds, and our own heart fixture
-  // came back with a third of its rim drawn as its middle. What a small box has left to say is mostly
-  // small: an eye, a nose, a line round a shape.
+  // Resolve larger specks first; keep isolated or strongly contrasting details such as outlines.
   const order = areas.map((_, id) => id)
     .filter((id) => areas[id]!.cells.length < AREA_MIN)
     .sort((a, b) => (areas[b]!.cells.length - areas[a]!.cells.length) || (areas[a]!.cells[0]! - areas[b]!.cells[0]!));
@@ -803,16 +566,7 @@ function indexAtLeast(byTone: readonly { tone: number }[], tone: number | undefi
   return byTone.length - 1;
 }
 
-/**
- * How deep inside the figure each cell sits: 0 outside it, 1 on its rim, upward inward — the plain
- * 4-connected distance to the nearest cell the reading does not write.
- *
- * WHY A READING NEEDS THIS AT ALL. A small box spends most of itself on the outline, so "how much of
- * this area is interior" is the difference between a feature and a fringe: a four-cell sliver along
- * the silhouette cannot hold a tier of its own without the support rules lowering half of it, and an
- * area in the middle of the subject can. It is the third term of an area's salience:
- * size times contrast times interiority.
- */
+/** Four-connected distance from each figure cell to the outside: 1 on the rim, increasing inward. */
 export function cellDepths(
   stencil: Stencil,
   inFigure: (index: number) => boolean,
@@ -845,20 +599,7 @@ export function cellDepths(
   return depth;
 }
 
-/**
- * How much each area is worth a palette entry of its own: SIZE times CONTRAST times INTERIORITY, each
- * as a share of the most any area of this picture has.
- *
- * THREE TERMS, and each answers a way an area can fail to matter. SIZE
- * because a palette entry spent on four cells says less than one spent on forty. CONTRAST — the
- * largest colour distance to an area it actually touches — because an area that is nearly its
- * neighbour's colour loses nothing by sharing its entry, while the eye reads a hard boundary as the
- * subject's own line. INTERIORITY because a sliver along the silhouette is a fringe of the outline
- * rather than a region of the picture.
- *
- * Multiplied rather than added: an area that fails ANY of the three is not a feature, and a sum would
- * let a large enough fringe outrank a small hard-edged eye.
- */
+/** Scores each area by normalized size × neighbour contrast × interior depth. */
 export function areaSalience(stencil: Stencil, areas: readonly Area[]): AreaReading {
   const { width, height } = stencil;
   const owner = new Int32Array(width * height).fill(-1);
@@ -885,61 +626,27 @@ export function areaSalience(stencil: Stencil, areas: readonly Area[]): AreaRead
     size.push(area.cells.length);
     contrast.push(worst);
     inside.push(area.cells.reduce((sum, i) => sum + depth[i]!, 0) / area.cells.length);
-    // WHAT THE WHOLE AREA CAN STAND AT: its SHALLOWEST cell. An area is told in one tier, and a tier
-    // its rim cannot hold is one the support rules carve out of it — a mass given the top of the ramp
-    // comes back as a gradient from its own edge inward, a relief the picture never had, and next to a
-    // lighter area that kept its tier the picture reads upside down (measured on our own arrow fixture:
-    // 0.57 fidelity before the allocation, 0.28 with the deepest cell deciding, 0.15 with the median).
+    // A region's shallowest cell caps the uniform tier that all of its cells can support.
     deepest.push(area.cells.reduce((least, i) => Math.min(least, depth[i]!), Infinity));
     touches.push([...near].sort((a, b) => a - b));
   }
   const share = (xs: number[]): number[] => {
     const top = Math.max(...xs, 0);
-    // An area with no neighbour has no contrast to measure, and a picture whose areas all touch
-    // nothing is one area: either way the term says nothing and is left at 1 rather than at 0.
+    // A missing comparison is neutral rather than zero salience.
     return top <= 0 ? xs.map(() => 1) : xs.map((v) => v / top);
   };
   const [s, c, d] = [share(size), share(contrast), share(inside)];
   return { salience: areas.map((_, id) => s[id]! * c[id]! * d[id]!), depth: deepest, touches };
 }
 
-/** What an area reading says about each area beyond its own cells: how much it is worth an entry of its
- *  own, how deep inside the figure its SHALLOWEST cell sits (which is what it can stand at), and which
- *  areas it touches. */
+/** Salience, minimum support depth, and adjacency for each area. */
 export interface AreaReading { salience: number[]; depth: number[]; touches: number[][] }
 
 /**
- * WHICH PALETTE ENTRY EACH AREA IS TOLD IN — the allocation this file exists for.
- *
- * EVERY AREA STARTS AT THE ENTRY NEAREST ITS OWN TONE, which is the faithful answer and the one a
- * per-cell match would have given it; what an area reading adds is that the whole area gets that ONE
- * answer instead of being rounded cell by cell with the error dithered across it. Two things are then
- * spent on top of that, and both are small on purpose — spreading the areas across the whole ramp by
- * rank trades a tenth of the tonal reading for nothing (measured over the matrix): a cream face is a
- * dozen areas of nearly one colour, and the noise in their means becomes a relief the picture never
- * had.
- *
- *  - A COLLISION IS BROKEN WHERE IT MATTERS. Two areas the picture separates but the palette rounds
- *    onto one entry are the T2 failure in miniature, so the more salient of the pair is moved one
- *    entry, in the direction that keeps the picture's own light and dark in order, and only into an
- *    entry nothing else is using. Ordered by salience (`areaSalience`: size times contrast times
- *    interiority), so the spare entries go to the areas that carry the subject.
- *  - AN AREA MAY NOT BE GIVEN A TIER ITS OWN CELLS CANNOT STAND AT (`minTone`). A drawing's outline is
- *    the darkest thing in it and therefore wants the tallest tier, and it is one cell wide at the
- *    figure's edge, where the support rules cap it three layers above the ground beside it: allocated
- *    the top of the ramp it is lowered to a third of it while the mass inside it keeps what it was
- *    given, and the picture arrives with its outline lighter than its body. Measured on our own heart
- *    fixture: 0.47 fidelity before the allocation, 0.00 with it and without this floor.
- *  - AND THE OUTLINE IS SPENT APART (`rim`). The floor above is a CAP, and while the picture is kept in
- *    one order the cap the outline takes is the cap the whole picture takes: an outline that can stand
- *    three layers holds the mass it encloses to four, whatever range the drawing had (measured on the
- *    seed picture: the tier spread fell from 0.61 to 0.52 when the areas started being told one entry
- *    each, and the panels read visibly flat). An outline's job at this size is the BOUNDARY rather than
- *    the tone, so it is given one dark tier — the darkest it can legally stand at — and the amplitude is
- *    spent on what it encloses. That inverts the picture's own light and dark at exactly one boundary,
- *    deliberately: the figure reads as a low wall round a taller mass instead of one flat plate. It is
- *    also why it is never merged away: a silhouette told in the tier beside it is a figure with no line
- *    round it.
+ * Assigns one palette entry to each connected image area. Areas begin at their nearest tone; close
+ * groups merge before scarce entries are assigned, and salient collisions receive unused adjacent
+ * entries while preserving tonal order. Support depth caps each area's tier. A sufficiently thin
+ * silhouette may use its darkest legal tier independently so the enclosed mass keeps its range.
  */
 export function allocateEntries(
   areas: readonly Area[],
@@ -953,12 +660,8 @@ export function allocateEntries(
   if (areas.length === 0 || entryTones.length === 0) return out;
   const byTone = entryTones.map((tone, index) => ({ tone, index })).sort((a, b) => a.tone - b.tone);
 
-  // The tone two areas have to differ by to be worth two entries: one step of the palette. Anything
-  // closer rounds to the same entry or its neighbour, and FORCING those apart is how this allocation
-  // can do real damage — a cream face is a dozen areas of nearly one colour, and spreading them across
-  // the ramp turns the noise in their means into a relief (measured: a neighbour icon came back at 0.01
-  // fidelity, its pattern scrambled rather than merely flattened). Merged on the whole GROUP's range
-  // rather than pairwise, since single linkage folds a gradient into one tier.
+  // Merge groups whose complete tonal range is narrower than one palette step. Using complete ranges
+  // avoids the single-linkage effect that would collapse a gradual gradient into one group.
   const step = byTone.length > 1
     ? (byTone[byTone.length - 1]!.tone - byTone[0]!.tone) / (byTone.length - 1)
     : Infinity;
@@ -969,14 +672,9 @@ export function allocateEntries(
     floor: indexAtLeast(byTone, minTone[id]),
   })).sort((a, b) => (a.tone - b.tone) || (areas[a.ids[0]!]!.cells[0]! - areas[b.ids[0]!]!.cells[0]!));
 
-  // The outline is a region because it is the silhouette, and it is one ENTRY for the same reason.
+  // A detected outline remains one palette group.
   const holdsRim = (group: { ids: number[] }): boolean => rim >= 0 && group.ids.includes(rim);
-  // AND IT IS GIVEN ITS OWN TIER ONLY WHERE IT IS A LINE. Being one region costs the picture nothing;
-  // being spent apart costs the picture's own order over exactly the outline's cells, since the mass it
-  // encloses is then free to stand taller than it. A fifth of the figure is where the two meet — the
-  // interior gains about twice the tonal range and the order lost is worth about twice the outline's
-  // share — and past it the trade is the wrong way round (measured on our own heart fixture, whose rim
-  // is a quarter of it: 0.47 fidelity kept in order, 0.00 inverted, its correlation going negative).
+  // Thin outlines may receive an independent entry.
   const rimShare = rim >= 0
     ? (areas[rim]?.cells.length ?? 0) / Math.max(1, areas.reduce((sum, area) => sum + area.cells.length, 0))
     : 1;
@@ -1020,13 +718,10 @@ export function allocateEntries(
     });
   }
 
-  // ONE AREA HAS NOTHING TO KEEP IN ORDER, so the floor is not asked of it: what the support rules make
-  // of a single mass is the terracing this generator has always produced, and the material's promise is
-  // that a picture reaches the layers it was given.
+  // One area has no inter-area order to preserve.
   const single = groups.length === 1;
 
-  // Where each group would go on its own: the entry nearest its own tone, which is the faithful answer
-  // and the one a per-cell match would have given every one of its cells.
+  // Start each group at its nearest tone.
   const want = groups.map((group) => {
     let at = 0, bestD = Infinity;
     for (const [index, entry] of byTone.entries()) {
@@ -1036,14 +731,7 @@ export function allocateEntries(
     return at;
   });
 
-  // THE FLOOR MOVES THE WHOLE PICTURE RATHER THAN ONE AREA. A thin dark area cannot stand at the tier its
-  // tone asks for, and lifting only that area leaves the mass inside it darker than itself: the picture
-  // upside down. So the tightest floor shifts the darkest group, and the rest are carried up with it,
-  // compressed into the room that is left. What that costs is amplitude — a small figure has three tiers
-  // of headroom and not eight — and what it buys is a picture the right way up.
-  //
-  // THE OUTLINE IS TAKEN OUT OF THIS ARITHMETIC where it is a line: the shift is measured over what it
-  // encloses, and the order is kept among THOSE. It then takes its own floor below.
+  // Shift ordered groups together to satisfy support floors; handle a thin outline independently.
   const spent = apart ? groups.map((_, k) => k).filter((k) => !holdsRim(groups[k]!)) : [];
   const carried = spent.length > 0 ? spent : groups.map((_, k) => k);
   const first = carried[0]!, last = carried[carried.length - 1]!;
@@ -1061,7 +749,7 @@ export function allocateEntries(
     previous = at;
     for (const id of group.ids) out[id] = byTone[at]!.index;
   }
-  // The outline: the darkest tier it can stand at, and nothing about the rest of the picture in it.
+  // Give an independent outline its darkest supported tier.
   for (const [k, group] of groups.entries()) {
     if (!holdsRim(group) || carried.includes(k)) continue;
     for (const id of group.ids) out[id] = byTone[group.floor]!.index;
@@ -1070,49 +758,13 @@ export function allocateEntries(
 }
 
 
-/**
- * WHAT A MATERIAL LETS A PICTURE BORROW from another family's palette, and it is a promise about the
- * material rather than a quality knob. Both instruments read it: the paved REGION (`planBorrow`) and the
- * bed inside a body (`planColourFill`).
- *
- * A visitor who asks for a mountain picture is owed a mountain and one who asks for water is owed water
- * and its banks, so both borrow NOTHING — a picture told in the material that was asked for and no road
- * in it (maintainer's ruling, 2026-08-19). A palette that already has hues of its own (the paths, the
- * item catalogue) borrows nothing either: a colour match there already said what the picture said. The
- * MIXED material is the one that has asked for whatever says the picture best, and it borrows FREELY.
- *
- * `accent` is a borrow bounded to `BORROW_ACCENT_SHARE` of the figure, which is what the mountain and
- * water materials carried between stages 2c and 2e. No material asks for it today.
- */
+/** Whether another material family may represent none, a bounded accent, or any region. */
 export type BorrowPolicy = 'none' | 'accent' | 'free';
 
-/**
- * How much of the figure an ACCENT may cover, how much better the other palette has to say a region's
- * colour before anything is borrowed at all, and the fewest cells worth borrowing for.
- *
- * A THIRD IS WHERE AN ACCENT STOPS LEADING. Measured over the benchmark, a figure's largest region is
- * about half of it and the next two about a fifth each, so a third lets the second and third regions be
- * paved while the subject's own mass stays in the material that was asked for.
- *
- * THE GAIN IS IN THE SAME CHANNEL-WEIGHTED UNITS every colour distance here uses, and 24 is about a
- * step and a half of the terrain ramp: below it the two palettes say the region's colour about equally
- * well and the borrow would only cost the picture its tier.
- */
+/** Accent area cap and minimum channel-weighted improvement over the primary palette. */
 export const BORROW_ACCENT_SHARE = 1 / 3;
 export const BORROW_MIN_GAIN = 24;
-/**
- * How much of a region the borrowed material has to actually REACH before the borrow is taken at all.
- *
- * A coating wants flat ground and a region is a plateau, so its right and bottom edge rows sit against
- * the next tier and refuse (terrain renders half a cell off the macro grid, so a footprint's flat check
- * sweeps one cell past each end) — and a real region is a blob rather than a rectangle, so it loses that
- * fringe along every boundary it has with another region, not just along two sides. Measured on the seed
- * picture at sixteen cells, the face keeps 0.4 to 0.5 of itself; a rectangle four cells across keeps
- * 0.56. TWO FIFTHS is under both and well above a scatter, and the knee is real: at eleven twentieths the
- * seed picture's face pays its whole statement to the threshold and comes back green.
- *
- * Read by the caller, since the built surface is what decides it and only the caller has that.
- */
+/** Minimum fraction of a region that must accept the borrowed material. */
 export const BORROW_COVER_MIN = 0.4;
 
 /** The nearest entry of a palette to a colour, and how far off it is (channel-weighted, not squared). */
@@ -1128,20 +780,8 @@ export function nearestEntry(
 }
 
 /**
- * WHICH REGIONS ARE TOLD IN A BORROWED MATERIAL, and in which of its entries.
- *
- * The measured prize this answers: the same picture paved in paths separates two areas the source tells
- * apart by hue 0.95 of the time against the green ramp's 0.55, because the paths have real hues. Once a
- * picture is a few REGIONS rather than a field of cells, that hue can be spent where it belongs — one
- * region at a time, in the family whose own colour is nearest to it — instead of on every cell's tone.
- *
- * `own` is the region's colour in the PICTURE, not the tone-fitted one the ramp is asked for: what is
- * being decided is which palette can say what the source said. The outline is never borrowed: its job is
- * the boundary, and a paved silhouette is a figure with no line round it.
- *
- * Ordered by how much of the picture each borrow buys (the gain times the cells it covers), so an accent
- * that has to stop somewhere stops after the regions that carry the most colour. Ties by first cell:
- * one answer per picture.
+ * Assigns eligible regions to a closer coating palette under the borrow policy.
+ * The outline stays in the primary material; offers rank by color gain × area with stable cell-order ties.
  */
 export function planBorrow(
   regions: readonly Area[],
@@ -1179,24 +819,7 @@ export function planBorrow(
   return out;
 }
 
-/**
- * How far round the hue circle a bed's own material may sit from the region's colour, the fewest cells a
- * bed may be, how much of the figure every bed together may cover, and how many bodies one picture may
- * fill.
- *
- * THE HUE IS WHAT A BED SAYS, so the material is chosen among the entries whose hue is the region's and
- * whose own chroma makes them a colour at all — forty degrees is a colour FAMILY (the twelve-sector
- * reading above is thirty), and a grey tile on a red body says lightness, which the ramp already said.
- * There is no second test of how far off the ramp itself is: `BORROW_MIN_GAIN` is that test, and measured
- * over the benchmark an absolute floor on top of it either rejected nothing (a colour the ramp is within
- * two steps of cannot be beaten by a step and a half) or rejected the silver-blue and brown subjects the
- * beds exist to colour.
- *
- * TWO CELLS, because one is a stray tile and two are a patch. A SIXTEENTH of the figure over at most TWO
- * bodies: the same share the accent spends on features (`stencil-feature.ts:FEATURE_BUDGET_SHARE`), so a
- * picture's whole colour statement stays an eighth of it, and a subject has one or two bodies — a third
- * bed is the picture's shading rather than its colour.
- */
+/** Hue tolerance, minimum patch size, total area budget, and region cap for color beds. */
 export const FILL_HUE_MAX = 40;
 export const FILL_BED_MIN = 2;
 export const FILL_BUDGET_SHARE = 1 / 16;
@@ -1205,46 +828,22 @@ export const FILL_MAX_REGIONS = 2;
 /** One body filled: which region, the coating that says its colour, and how many cells the bed may take. */
 export interface ColourFill { region: number; catalogId: string; want: number }
 
-/** What the caller knows about the map and the material that this reading cannot: which regions a
- *  coating already covers, how many cells of a region will take one, what the material lets the picture
- *  borrow, and where a BODY starts (the share `stencil-feature.ts:FEATURE_MAX_SHARE` calls too big to be
- *  a feature — that module is built on this one, so the share arrives as an argument rather than as a
- *  second number here). */
+/** Map-dependent availability and borrow budget supplied by the caller. */
 export interface FillGate {
   bodyShare: number;
   paved: ReadonlySet<number>;
   ground: (region: number) => number;
-  /** The SAME answer `planBorrow` is given, so the two instruments cannot promise different materials. */
+  /** Shared policy for region paving and color beds. */
   policy: BorrowPolicy;
   /** Cells the paving already laid, charged against what an accent material may spend. */
   coated: number;
 }
 
 /**
- * WHICH BODIES GET A BED OF BORROWED COLOUR, and in which entry — the answer for a region the paving
- * wanted and the GROUND refused.
- *
- * THE FAILURE THIS IS FOR. A picture has three colour
- * instruments: the ramp, which says lightness; the paving, which says a whole REGION's colour and is
- * taken only where it can COVER one (`BORROW_COVER_MIN` — a scatter of paving over a tier of green reads
- * as neither material); and the accent, which says a FEATURE and is refused a body outright
- * (`FEATURE_MAX_SHARE`). A subject whose own mass is a colour no green can approximate, on ground too
- * broken to hold a paved region, was therefore told entirely in green: measured over the benchmark, a
- * quarter of the pictures at sixteen cells said nothing about their own colour at all. A viewer reads
- * the two halves of that apart — a mark whose colour the SUBJECT has reads as the subject's colour
- * arriving, a mark whose colour it does not have reads as speckle — so a bed is laid only where the
- * borrowed material says the region's OWN hue, and a body no instrument can say gets nothing.
- *
- * A BED IS NOT A SMALLER BORROW. The borrow claims to be the region's SURFACE, which is why it has to
- * cover it; a bed claims one block inside the body, and it is bounded to a sixteenth of the figure over
- * two bodies precisely so it cannot be read as the surface it stands on. Everything else is the borrow's
- * own arithmetic — the same gain against the ramp (`BORROW_MIN_GAIN`), the same ordering by how much
- * colour a spend buys, the same `BorrowPolicy` and the same cap it sets — so the two cannot disagree
- * about which palette says a region better, nor about whether the material may borrow at all.
- *
- * Deterministic: offers ordered by gain times cells with ties by first cell, the budget divided evenly
- * and its remainder handed down the ranking (`planFeatureMarks`'s own arithmetic, for its own reason —
- * a plain walk gives the first body everything and the second nothing).
+ * Plans small beds of borrowed colour for large bodies that cannot accept enough paving. A bed is
+ * offered only when a same-hue coating improves materially on the terrain ramp, shares the ordinary
+ * borrow policy and remaining accent budget, and has enough valid ground. Offers rank by gain times
+ * area; the bounded budget is divided evenly, with stable first-cell tie-breaking.
  */
 export function planColourFill(
   regions: readonly Area[],
@@ -1256,8 +855,7 @@ export function planColourFill(
 ): ColourFill[] {
   if (coatings.length === 0 || ramp.length === 0 || gate.policy === 'none') return [];
   const figure = regions.reduce((sum, area) => sum + area.cells.length, 0);
-  // What the material still allows to be borrowed: everything under a free borrow, and otherwise what
-  // the accent's own share has not already been paved with.
+  // Accent beds share their budget with region paving; free borrowing has no shared cap.
   const room = gate.policy === 'free' ? Infinity
     : Math.floor(figure * BORROW_ACCENT_SHARE) - gate.coated;
   const budget = Math.min(room, Math.round(figure * FILL_BUDGET_SHARE));
@@ -1299,14 +897,7 @@ export function planColourFill(
     .filter((fill) => fill.want >= FILL_BED_MIN);
 }
 
-/**
- * The nearest entry to a colour AMONG THE ENTRIES OF ITS OWN HUE — null where the palette has none.
- *
- * Two tests, and both are about saying a colour rather than a lightness: the entry's hue is within
- * `maxTurn` of the colour's, and the entry HAS a hue (`HUE_CHROMA_MIN`, the chroma below which a colour
- * is a grey). Nearest in the ordinary channel-weighted distance among those, so the lightness is as
- * close as the hue allows.
- */
+/** Finds the nearest chromatic palette entry within `maxTurn` degrees of the source hue. */
 export function hueMatched(
   entries: readonly { rgb: number }[], rgb: number, maxTurn: number,
 ): { at: number; off: number } | null {
@@ -1323,19 +914,8 @@ export function hueMatched(
 }
 
 /**
- * The cells one BED takes: `want` of the region's own cells that the ground will hold, gathered around
- * ONE seed rather than spread over the body.
- *
- * A BED IS A BLOCK, AND THE GROUND DECIDES HOW MUCH OF ONE. A coating wants flat ground and a region
- * built in terrain is flat only in patches, so the cells that will hold one are scattered through the
- * body — and a spend spread over all of them reads as speckle rather than a bed. So the walk starts
- * at the DEEPEST cell of the region that will hold a mark (deepest inside the region, which is where the
- * ground is flattest and a block reads as being in the body rather than on its edge) and spends outward
- * from there in breadth-first order through the region, taking the cells that hold: whatever the ground
- * allows comes out as one cluster around one point.
- *
- * Deterministic: the seed is the lowest-indexed of the deepest cells, and the walk takes its neighbours
- * in one fixed order, so a picture beds the same way every time.
+ * Selects one connected color bed by breadth-first search from the deepest eligible cell.
+ * Lowest cell index and fixed neighbour order make the result deterministic.
  */
 export function bedCells(
   stencil: Stencil, area: Area, open: (index: number) => boolean, want: number,
@@ -1370,7 +950,7 @@ export function bedCells(
   return out;
 }
 
-/** The picture's own mean colour over a region — what the source said there, before any fit. */
+/** Mean source color over a region before palette fitting. */
 export function sourceColour(stencil: Stencil, area: Area): number {
   let r = 0, g = 0, b = 0;
   for (const i of area.cells) {
@@ -1381,12 +961,5 @@ export function sourceColour(stencil: Stencil, area: Area): number {
   return ((Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)) >>> 0;
 }
 
-/**
- * How far apart two areas' colours have to be for the palette rounding them together to count as a
- * failure rather than as the right answer.
- *
- * In the same channel-weighted units every colour distance in this system uses. Twelve is about a
- * palette step of the terrain ramp: below it the two areas are one colour as far as any palette here
- * can say, and spending an entry on the difference would move one of them off its own tone for nothing.
- */
+/** Minimum channel-weighted source-color gap for treating a shared palette entry as a collision. */
 export const COLLIDE_MIN = 12;

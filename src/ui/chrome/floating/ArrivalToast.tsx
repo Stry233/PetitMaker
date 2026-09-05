@@ -1,38 +1,8 @@
-/*
- * ArrivalToast.tsx — where you have just arrived, said once, over the top of the map.
- *
- * The sibling of `Toast.tsx` one size up: the same cream ground, the same corner and the same
- * shadow family, because it is the same kind of thing standing in the same band. What makes it
- * bigger is that it carries a picture, a name and two answers rather than a sentence.
- *
- * IT NEVER BLOCKS ANYTHING. The map's own entrance keeps playing behind it, the frame arrives
- * around it, and the notice takes itself away after a few seconds if nobody touches it: the clock
- * is `TimedButton`'s, drawn on the OK it presses, so the only thing that happens without a hand on
- * it is the one thing the visitor was going to do anyway.
- *
- * THE EYEBROW CYCLES, and it is the only thing on the notice that changes. An arrival that carries
- * lines of its own (the session came back; a transfer landed, and something did not come with it)
- * says the arrival phrase first and gives each line the row in turn, one every few seconds. Never
- * two at once and never chained with a separator: a report reads as a sentence nobody stops for,
- * where one short line at a time is read. The SWAPS survive reduced motion because they carry the
- * information; what reduced motion drops is the crossfade, leaving a cut.
- *
- * WHEN IT SHOWS is `arrival-gate.ts` and nothing else here: the facts are collected below and the
- * decision is made there, so "why has the greeting not come up" has one place to look.
- *
- * EVERY CHANGE OF WORDS CHANGES THE CARD'S SIZE, so the box eases to it: one line is not the width
- * of the next, and resuming under a standing notice brings a different name and picture as well.
- * Snapping is the one movement here that would look like a fault. The glide is
- * `ui/hooks/use-size-glide`, which the change-planet window's height uses too; why it measures and
- * springs by hand rather than using Framer's `layout` is written there. It is keyed on the LINE
- * being said as well as the arrival, so each line of a report brings the card with it.
- *
- * IT STANDS BESIDE THE SAVED-SESSION OFFER rather than behind it — the card at the foot of the map
- * asks whether to pick the last map back up, this says which planet is under you, and both are true
- * at once. Answering either answers both: resuming re-announces the arrival as 'restored' into the
- * notice already up, and a HAND on OK or on "switch planet" declines the offer through the shell's
- * own dismissal (`core/runtime/restore-offer`). The countdown running out does not: nobody answered
- * anything, so the card at the foot of the map is left exactly as it was.
+/**
+ * Non-blocking arrival notice with map art, name, and actions. Additional arrival facts rotate one
+ * line at a time; reduced motion keeps the information changes but removes cross-fades. The card
+ * glides to changed content size and uses `TimedButton` for automatic acknowledgement. Manual actions
+ * decline a saved-map offer, while timeout leaves that separate offer untouched.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -53,23 +23,13 @@ import { hasSeenTour } from '../tour/use-tour';
 import { TOAST_BAND_ROW, TOAST_BAND_TOP } from './toast-band';
 import { ARRIVAL_LEAD_KEY, arrivalLines, arrivalOpens } from './arrival-gate';
 
-/** How long a notice stands once it has said everything, in seconds: long enough to read a name and
- *  the line under it, short enough that it is gone before it is furniture. It is also the whole life
- *  of a notice with nothing further to say. */
+/** Seconds the final line remains visible. */
 export const ARRIVAL_AFTER_S = 8;
 
 /** How long each eyebrow line holds before the next takes the row, in ms. */
 export const EYEBROW_SWAP_MS = 3000;
 
-/**
- * How long the countdown runs for a notice of `lines` lines, in seconds.
- *
- * THE LAST LINE GETS THE SAME READING TIME AS THE ONLY LINE OF A PLAIN NOTICE. The cycle spends
- * `lines * cadence` before that line even arrives (the phrase holds one cadence, then each line in
- * turn), so the fuse is that spend plus a beat to read what landed — floored at the plain notice's
- * own life, since one line lands at 3s and 3 + a beat is less than a visitor needs. With today's
- * numbers: nothing to add 8s, one line 8s (max(8, 3+4)), two lines 10s, three 13s.
- */
+/** Countdown duration that gives the final rotated line a full reading beat. */
 export function arrivalFuseS(lines: number): number {
   const BEAT_S = 4;
   return Math.max(ARRIVAL_AFTER_S, lines * (EYEBROW_SWAP_MS / 1000) + BEAT_S);
@@ -227,6 +187,83 @@ function Eyebrow({ text }: { text: string }) {
   );
 }
 
+/**
+ * The notice card itself, extracted so the Help Center can stand one as a live figure: the same
+ * plate, planet art, eyebrow, name and answer row the arrival shows. `measureKey` drives the width
+ * glide (the live notice keys it by its line cycle; a figure passes a constant), and `paused`
+ * holds the OK countdown still for a card that is a picture rather than a question.
+ */
+export function ArrivalCard({ art, eyebrow, name, seq, paused, onOk, onSwitch, measureKey }: {
+  art: string | undefined;
+  eyebrow: string;
+  name: string;
+  seq: number;
+  paused?: boolean;
+  onOk: (byClock: boolean) => void;
+  onSwitch: () => void;
+  measureKey: string;
+}) {
+  const t = useT();
+  const row = useSizeGlide<HTMLDivElement>(measureKey, { axis: 'width' });
+  return (
+    <motion.div
+      key="arrival"
+      data-testid="arrival-toast"
+      style={cardStyle}
+      initial={{ opacity: 0, y: -20, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      // The sibling toast's own exit: a clean slide out rather than a spring back, so the
+      // per-variant transition wins over the bouncy entrance.
+      exit={{ opacity: 0, y: -10, scale: 0.96, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+      transition={springs.bouncy}
+    >
+      <div
+        ref={row.ref}
+        data-testid="arrival-row"
+        style={row.gliding ? { ...rowStyle, ...glidingStyle } : rowStyle}
+      >
+        {art && (
+          <img
+            src={art}
+            alt=""
+            draggable={false}
+            style={{ width: ART, height: ART, objectFit: 'contain', flex: 'none' }}
+          />
+        )}
+        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexShrink: 0 }}>
+          <Eyebrow text={eyebrow} />
+          <span style={nameStyle}>{name}</span>
+        </span>
+      </div>
+      <span style={answersStyle}>
+        {/* No `paused` from the card itself: TimedButton pauses under a pointer on the BUTTON, and
+            a hold taken from the whole notice would be taken by a pointer parked anywhere in this
+            band of the map, which is not someone reading. A keyboard visitor reaches OK before the
+            other answer and its own focus cancels the clock outright. */}
+        <TimedButton
+          key={seq}
+          after={ARRIVAL_AFTER_S}
+          paused={paused}
+          onPress={onOk}
+          data-testid="arrival-ok"
+          style={{ ...answerStyle, background: colors.frameDark, color: colors.panelCream }}
+        >
+          {t('arrival.ok')}
+        </TimedButton>
+        <motion.button
+          type="button"
+          {...buttonMotion}
+          data-testid="arrival-switch"
+          onClick={onSwitch}
+          style={{ ...answerStyle, background: colors.surfaceSecondary, color: colors.frameDark }}
+        >
+          {t('arrival.switch')}
+        </motion.button>
+      </span>
+    </motion.div>
+  );
+}
+
 export interface ArrivalToastProps {
   /** The boot splash still owns the screen. */
   splashActive: boolean;
@@ -266,7 +303,6 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   const lines = shown ? arrivalLines(shown.arrival) : NO_LINES;
   // Keyed on the LINE as well as the arrival: each one is a different width, and the box follows
   // whichever is being said.
-  const row = useSizeGlide<HTMLDivElement>(`${shown?.seq ?? 0}:${step}:${measured}`, { axis: 'width' });
 
   useEffect(() => subscribeArrival(setPending), []);
 
@@ -336,60 +372,15 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
     <div role="status" style={{ ...containerStyle, zoom: chrome, ...weights }}>
       <AnimatePresence>
         {shown && (
-          <motion.div
-            key="arrival"
-            data-testid="arrival-toast"
-            style={cardStyle}
-            initial={{ opacity: 0, y: -20, scale: 0.94 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            // The sibling toast's own exit: a clean slide out rather than a spring back, so the
-            // per-variant transition wins over the bouncy entrance.
-            exit={{ opacity: 0, y: -10, scale: 0.96, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
-            transition={springs.bouncy}
-          >
-            <div
-              ref={row.ref}
-              data-testid="arrival-row"
-              style={row.gliding ? { ...rowStyle, ...glidingStyle } : rowStyle}
-            >
-              {art && (
-                <img
-                  src={art}
-                  alt=""
-                  draggable={false}
-                  style={{ width: ART, height: ART, objectFit: 'contain', flex: 'none' }}
-                />
-              )}
-              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexShrink: 0 }}>
-                <Eyebrow text={eyebrow} />
-                <span style={nameStyle}>{localizedName(shown.template.name, locale)}</span>
-              </span>
-            </div>
-            <span style={answersStyle}>
-              {/* No `paused` from the card: TimedButton pauses under a pointer on the BUTTON, and a
-                  hold taken from the whole notice would be taken by a pointer parked anywhere in
-                  this band of the map, which is not someone reading. A keyboard visitor reaches OK
-                  before the other answer and its own focus cancels the clock outright. */}
-              <TimedButton
-                key={shown.seq}
-                after={ARRIVAL_AFTER_S}
-                onPress={dismiss}
-                data-testid="arrival-ok"
-                style={{ ...answerStyle, background: colors.frameDark, color: colors.panelCream }}
-              >
-                {t('arrival.ok')}
-              </TimedButton>
-              <motion.button
-                type="button"
-                {...buttonMotion}
-                data-testid="arrival-switch"
-                onClick={switchPlanet}
-                style={{ ...answerStyle, background: colors.surfaceSecondary, color: colors.frameDark }}
-              >
-                {t('arrival.switch')}
-              </motion.button>
-            </span>
-          </motion.div>
+          <ArrivalCard
+            art={art}
+            eyebrow={eyebrow}
+            name={localizedName(shown.template.name, locale)}
+            seq={shown.seq}
+            onOk={dismiss}
+            onSwitch={switchPlanet}
+            measureKey={`${shown.seq}:${step}:${measured}`}
+          />
         )}
       </AnimatePresence>
     </div>

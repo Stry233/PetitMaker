@@ -138,11 +138,7 @@ describe('keyDestination', () => {
 
 /* ── the key masks at rest, and reveals on focus ─────────────── */
 
-/**
- * THE ARTIFACT'S OWN DOCUMENTED POLICY: the key is a secret, so it masks when the
- * field rests and focusing reveals it, one policy at entry and at the probe screens alike. A real
- * key never contains asterisks, so nothing about typing or pasting changes.
- */
+/** API keys mask at rest and reveal on focus on both entry and verification screens. */
 describe('the key masks when the field rests, and reveals on focus', () => {
   it('rests masked once it holds a value, and reveals again on focus', () => {
     renderWithI18n(<SetupScreen probe={pendingProbe} />);
@@ -529,6 +525,58 @@ describe('the chooser outranks the check it was opened over', () => {
   });
 });
 
+/**
+ * THE MODEL REQUEST CANNOT BE RECALLED EITHER, and its answer carries more than the probe's: the
+ * list files a default model and its refusal un-files the key and takes the screen back. Landing
+ * either after the user has stepped off the reading acts on a connection the answer was never
+ * about — the walk here is commit, Back, a pick of a different platform with the same key in hand,
+ * and only then does the first platform answer.
+ */
+describe('a model answer is dropped once the user steps off its reading', () => {
+  /** One resolvable/rejectable list request per provider, so the abandoned one can answer last. */
+  function heldLists() {
+    const held: Partial<Record<ProviderId, { resolve: (ids: string[]) => void; reject: (e: unknown) => void }>> = {};
+    const listModels = vi.fn(({ provider }: { provider: ProviderId; apiKey: string }) =>
+      new Promise<string[]>((resolve, reject) => { held[provider] = { resolve, reject }; }));
+    return { held, listModels };
+  }
+
+  /** Walks commit(claude) → Back → pick(openai), leaving claude's list request abandoned in flight. */
+  async function stepOffClaudeOntoOpenai(listModels: ReturnType<typeof vi.fn>) {
+    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    expect(phaseOf()).toBe('confirm');
+
+    fireEvent.click(screen.getByTestId('setup-confirm-back'));
+    expect(phaseOf()).toBe('key');
+
+    fireEvent.click(screen.getByTestId('setup-prov-row'));
+    await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.openai.name)); });
+    expect(phaseOf()).toBe('confirm');
+    expect(useAgentPanelSettings.getState().provider).toBe('openai');
+  }
+
+  it('files no default model off a list that lands after the step-off', async () => {
+    const { held, listModels } = heldLists();
+    await stepOffClaudeOntoOpenai(listModels);
+
+    await act(async () => { held.claude!.resolve(['claude-sonnet-4-5']); });
+    expect(useAgentPanelSettings.getState().model.openai).toBe('');
+    expect(useAgentPanelSettings.getState().model.claude).toBe('');
+  });
+
+  it('leaves the new confirmation standing when the abandoned reading is refused', async () => {
+    const { held, listModels } = heldLists();
+    await stepOffClaudeOntoOpenai(listModels);
+
+    await act(async () => { held.claude!.reject(Object.assign(new Error('Unauthorized'), { status: 401 })); });
+    expect(phaseOf()).toBe('confirm');
+    expect(screen.getByTestId('setup-armed-provider').getAttribute('data-provider')).toBe('openai');
+    expect(useAgentPanelSettings.getState().keyed).toContain('openai');
+  });
+});
+
 describe('a check that failed says so on the row it failed at', () => {
   it('crosses the row and asks, when nobody accepts the key', async () => {
     renderWithI18n(
@@ -652,7 +700,6 @@ describe('a check that failed says so on the row it failed at', () => {
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
     expect(phaseOf()).toBe('confirm');
     expect(onManage).toHaveBeenCalledTimes(1);
-    // The retired dead end: nothing on this screen says it, and no typed id stands here either.
     expect(screen.queryByTestId('setup-models-unavailable')).toBeNull();
     expect(screen.queryByTestId('setup-need-model')).toBeNull();
     expect(screen.queryByTestId('setup-model-input')).toBeNull();
@@ -1037,7 +1084,7 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
 
     expect(phaseOf()).toBe('confirm');
-    expect(screen.queryByTestId('setup-models-unavailable'), 'the dead end is retired').toBeNull();
+    expect(screen.queryByTestId('setup-models-unavailable'), 'no unavailable-model dead end').toBeNull();
     expect(screen.queryByTestId('setup-model-note')).toBeNull();
     // The key stayed filed: an unlisted model is not a refusal.
     expect(useAgentPanelSettings.getState().keyed).toContain('custom');

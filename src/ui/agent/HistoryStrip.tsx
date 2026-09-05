@@ -1,56 +1,9 @@
 /*
- * HistoryStrip.tsx — the past jobs: one quiet inset row in the record, and a FLOATING list of lines
- * that opens under it (normative prototype `.hrow` + `.ddCard.hist`, the `idle.history` state).
- *
- * THE LIST FLOATS, AND THE PANEL NEVER MAKES ROOM FOR IT. Every dropdown in this panel
- * is the house one — `ui/primitives/FloatMenu`, a body-level card anchored to its row — so opening
- * this list neither grows the job zone nor moves the composer under the hand travelling toward it.
- * It is also what lets the job zone waive its 72px floor for a rest state whose whole record is this
- * one closed row: the row is all there is in the zone, open or shut.
- *
- * IT TAKES THE CARD, NOT THE ITEM MODEL. A `FloatMenu` row is one `menuitem` button, and these rows
- * carry a SECOND control (roll this job back) that cannot nest inside one — so the rows are built
- * here and handed over as the card's `body`, which is what that escape hatch exists for.
- *
- * THE LIST IS GROUPED, AND THE GROUPS ARE THE ARTIFACT'S OWN (`histListParts`): the open map's jobs
- * under day headers — Today, Yesterday, Earlier — and then, under a header of their own, the jobs
- * built somewhere else. A day is read off the record's `orderAt` against the caller's `now`, so the
- * grouping is the record's own date rather than a position in the list.
- *
- * A JOB'S OWN GLYPH AND ITS EDIT COUNT ARE READ OFF ITS OPS, never passed in: the glyph is the last
- * writing tool the job ran (`iconForTool`, the same table `OpRow` draws from), and the count is the
- * cells plus objects its tool results reported. A job that only ever read the map shows a zero
- * count, which is the honest reading of a job that changed nothing.
- *
- * "ROLLED BACK" IS PRESENTATIONAL, and this component is told rather than deciding: the shell owns
- * the undo watermark and hands down the set of order seqs whose edits are no longer on the map.
- * Such a row dims, states `rolled back` where its count would be, and drops its roll-back action —
- * there is nothing left to take back.
- *
- * AND SO ARE THE TWO ROLLBACK REFUSALS (`otherMap`, `unknownMap`). A ROLLBACK MAY NOT AIM AT A MAP
- * THAT IS NOT STANDING: undoing a job whose edits are on another map would pop this map's undo stack
- * instead, so such a row stands in its own group, dimmed, OPEN to read and offering no roll back at
- * all. The refusal is the absent control plus the notice the panel stands over the list, rather than
- * a press that fails — a control that refuses must not answer the pointer. The SECOND group is the
- * records that name no map at all (a log written before the order carried one): unverifiable rather
- * than elsewhere, refused for the same reason and said in its own words, because a record that may
- * well be this map's must not be told it is not.
- *
- * THE WHOLE ROW OPENS THE TICKET, as the prototype's own row does (`.hitem` IS the button there):
- * the open action is a real button STRETCHED over the row (`position: absolute; inset: 0`), which a
- * nested button could not be, so the row's own content is pointer-deaf and paints above it while
- * every press on the row body lands on the button underneath. The open-the-ticket square at the
- * right is therefore DRAWING — the control it depicts is the row. Roll back is the one press that
- * must not be the row's, so it is a button of its own, layered over the stretch and taking its own
- * clicks. Tab order is open then roll back, which puts the ordinary answer first and the
- * destructive one second. NO ANCESTOR OF THE STRETCH MAY CARRY A TRANSFORM: it would become the
- * containing block and the button would cover the wrong box.
- *
- * The prototype reveals a row's actions on hover (`.hitem:hover .acts`), which is a stylesheet rule
- * this inline-styled component has no equivalent for; pointer/focus state stands in. Both the count
- * and the actions live in ONE grid cell, stacked, so the reveal cannot move the row: the cell is as
- * wide as the wider of the two whichever one is showing, and the roll-back button stays in the DOM
- * (transparent, pointer-deaf) so a keyboard tab reaches it and reveals it by focus alone.
+ * Shows past jobs in a body-level floating menu, grouped by date and map identity. Each row derives
+ * its glyph and edit count from recorded operations. Rolled-back jobs and jobs that cannot be tied
+ * to the open map expose no rollback action. The row-wide open button sits behind a separate rollback
+ * button, so ancestors must not establish a transformed containing block. Hover and focus reveal the
+ * action without changing row geometry.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
@@ -156,8 +109,7 @@ export function dayOf(at: number, now: number): Day {
   return 'earlier';
 }
 
-/** The 26px action square (prototype `.hact`), worn by a real button and by the open-the-ticket
- *  glyph alike — that glyph is DRAWING, the control under it is the row-wide button below. */
+/** The 26px action square shared by real actions and the decorative open-ticket glyph. */
 const ACTION_SQUARE: CSSProperties = {
   width: 26,
   height: 26,
@@ -186,8 +138,7 @@ const SQUARE_ASKING: CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-/** A group's header (prototype `.dhead`): the quietest line in the card, since it names where the
- *  rows are rather than saying anything about them. */
+/** Quiet group header that locates the rows below it. */
 const DAY_HEAD: CSSProperties = {
   ...roleFont('small'),
   fontFamily: font.family,
@@ -229,6 +180,8 @@ function HistoryRow({
   const rollable = onRollBack !== undefined && !rolledBack && blocked === undefined
     && watermark !== undefined && rollbackReaches(watermark, undoDepth);
   const actions = (onOpen ? 1 : 0) + (rollable ? 1 : 0);
+  const statKey = statKeyFor(job);
+  const edits = editsIn(job);
   const dim = rolledBack || blocked !== undefined;
   const copy = rewindConfirmCopy(
     t, watermark === undefined ? null : rollbackCost(watermark, undoDepth, job.endUndoIndex),
@@ -330,9 +283,9 @@ function HistoryRow({
         >
           {rolledBack
             ? t('agent3.history_rolled_back')
-            : statKeyFor(job) !== null
-              ? t(statKeyFor(job)!)
-              : t(editsIn(job) === 1 ? 'agent3.history_edits_one' : 'agent3.history_edits', { n: editsIn(job) })}
+            : statKey !== null
+              ? t(statKey)
+              : t(edits === 1 ? 'agent3.history_edits_one' : 'agent3.history_edits', { n: edits })}
         </span>
         {actions > 0 && (
           <span
@@ -345,9 +298,7 @@ function HistoryRow({
               pointerEvents: revealed || asking ? 'auto' : 'none',
             }}
           >
-            {/* THE ONE DESTRUCTIVE PRESS ON A ROW, so it asks first and NAMES THE SIZE — in the
-                square's own words, since a glyph cannot say what a roll-back takes. The count beside
-                it stands down while the question is up, exactly as the artifact's row does. */}
+            {/* Rollback confirmation replaces the count and names the number of edits affected. */}
             {rollable && (
               <InlineConfirm
                 question={copy.question}
@@ -517,7 +468,7 @@ export function HistoryStrip({
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {t('agent3.history_past_jobs')}
             </span>
-            {/* The count sits at the row's far end, next to the chevron (artifact `.hrow .n`). */}
+            {/* Keep the count at the row's far end beside the chevron. */}
             <span
               data-testid="history-count"
               style={{

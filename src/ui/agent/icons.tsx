@@ -1,30 +1,8 @@
 /*
- * icons.tsx — the agent panel's icon sprite, the design artifact's own r8 drawing set.
- *
- * The <symbol> markup below is lifted from the artifact's inline sprite block with a script rather
- * than hand-retyped, so a drawing here is the one the artifact ships. Re-copy the same block and
- * paste the result back in if the set changes; do not hand-edit a path.
- *
- * IT PAINTS IN INK ALONE: every fill and stroke is `currentColor` or
- * `none`, so a glyph takes the colour of whatever it stands in and a single drawing serves the
- * dock, a card and a disabled row. Where a mark needs a second value inside a shape, the r8 pass cuts
- * it as a KNOCKOUT rather than painting it: an even-odd subpath (the note's folded corner, the
- * warning's bar and dot) or a `<mask>` whose black/white says which pixels survive (the four
- * `pw-m-*` masks, which are plumbing for their one symbol and not icons of their own).
- * `__tests__/ui/agent/icons.test.tsx` holds the set equal to the artifact's and fails on a colour.
- *
- * THREE DRAWINGS CARRY A NOTE THE ART CANNOT:
- *   pw-flag — one confident parallel S-wave with the fly edge riding it, the banner solid ink. Worn by
- *     the blueprint step markers and the capped stamp as well as by a flag.
- *   pw-disconnected — the plug a breath from its socket: not connected yet, connect me. NOT
- *     sleep-themed, not the credential key (pw-key), and nothing is severed (pw-cloud-off is the
- *     network lost mid-run); it must stay distinct from pw-plug, the object itself, at every size.
- *   pw-badge-spark / pw-badge-note — the only two symbols the artifact's r8 monochrome pass left with
- *     a painted accent, because nothing references them there: the character's badges are DRAWN, in
- *     `character/badges.tsx`, and these sprite copies are unused in the artifact and here alike. They
- *     are carried at the pass's own idiom rather than as an exception, the spark's small star in plain
- *     ink and the note's folded corner as the even-odd knockout `pw-note` already uses (the same fold
- *     shape, translated), so no symbol in the sheet paints a colour.
+ * Monochrome SVG sprite for the assistant panel, generated from the project's design source. Do not
+ * hand-edit path data. Every visible fill and stroke uses `currentColor`; internal masks and even-odd
+ * paths create knockouts without introducing a second paint color. `pw-disconnected` represents an
+ * unplugged connection, while `pw-cloud-off` represents a connection lost during a run.
  */
 
 const SYMBOLS = `
@@ -100,7 +78,7 @@ const SYMBOLS = `
   <symbol id="pw-badge-spark" viewBox="0 0 24 24"><path d="M 11 3.6 L 12.98 10.42 L 19.8 12.4 L 12.98 14.38 L 11 21.2 L 9.02 14.38 L 2.2 12.4 L 9.02 10.42 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M 19.2 1.5 L 20.05 3.95 L 22.5 4.8 L 20.05 5.65 L 19.2 8.1 L 18.35 5.65 L 15.9 4.8 L 18.35 3.95 Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="pw-badge-note" viewBox="0 0 24 24"><path d="M 6.6 3 L 13.8 3 L 20 9.2 L 20 18.4 Q 20 21 17.4 21 L 6.6 21 Q 4 21 4 18.4 L 4 5.6 Q 4 3 6.6 3 Z M 13.8 3 L 13.8 8.1 Q 13.8 9.2 14.9 9.2 L 20 9.2 Z M 8.9 13 L 14.3 13 Q 15.6 13 15.6 14.3 L 15.6 14.3 Q 15.6 15.6 14.3 15.6 L 8.9 15.6 Q 7.6 15.6 7.6 14.3 L 7.6 14.3 Q 7.6 13 8.9 13 Z" fill="currentColor" fill-rule="evenodd"/></symbol>`;
 
-/** Every icon id the sprite defines, in the artifact's own declaration order. */
+/** Every icon id defined by the sprite, in source order. */
 export type IconId =
   | 'pw-terrain-raise'
   | 'pw-terrain-lower'
@@ -172,10 +150,7 @@ export type IconId =
   | 'pw-badge-spark'
   | 'pw-badge-note';
 
-/**
- * Mounts the sprite sheet once. `display:none` per the artifact — a `<use>` elsewhere in the document
- * still resolves a hidden symbol's contents.
- */
+/** Mounts the hidden sprite sheet; document-level `<use>` elements can still resolve its symbols. */
 export function IconSprite() {
   return (
     <svg

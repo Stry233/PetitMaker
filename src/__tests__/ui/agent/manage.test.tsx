@@ -119,9 +119,7 @@ describe('what stands behind the gear', () => {
       .toBe(translations.en['agent3.setup_manage_model']);
   });
 
-  /** THE CARD'S TEXTS SAY ONLY WHAT THE STATE NEEDS. The standing explainers are retired — what a
-   *  destructive verb does not take is carried by its own question — and so is the endpoint's
-   *  press-to-verify button: the check runs itself off the same events that re-judge the connection. */
+  /** Destructive details live in confirmation prompts, and endpoint verification runs automatically. */
   it('carries no standing explainer prose and no check button', () => {
     mount({ jobCount: 3 });
     for (const id of ['manage-forget-note', 'manage-clear-note', 'manage-endpoint-check']) {
@@ -851,23 +849,9 @@ describe('the card reads in dependency order', () => {
   });
 });
 
-/**
- * EVERY LIST ON THIS CARD IS THE SHARED FLOATING MENU, and its card is round on all four corners.
- *
- * The panel's two dropdowns are the longest lists in the app (nine platforms, a provider's whole
- * model roster), so they are where a hand-rolled popover would be tempting and where a clipped or
- * partially-declared radius shows first. Both facts are asserted: the card is the house one (its own
- * `role`, its own rung), and its four corners resolve to the same declared radius, so an asymmetric
- * corner cannot come from this surface's own styling.
- *
- * WHAT THIS CANNOT SEE is the glass: jsdom paints nothing, so a corner squared by a scrollbar gutter,
- * by an ancestor's clip or by a fractional device scale is the fidelity rig's measurement, not this
- * one. What it does hold is the layer below that — nothing here declares its own card.
- */
+/** Both dropdowns use the shared floating-menu card and its uniform radius. */
 describe('the dropdowns on this card are the house menu', () => {
-  /** The radius AS DECLARED. jsdom does not expand the shorthand into the four longhands, so what is
-   *  read is the declaration itself — which is the thing a partial one would show up in: a single
-   *  token is all four corners, and anything with a space in it is naming them separately. */
+  /** jsdom preserves the shorthand rather than expanding its four sides. */
   const declaredRadius = (el: HTMLElement) => el.style.borderRadius;
 
   it.each(['manage-prov-row', 'manage-model-dd'])('opens a round-cornered house card from %s', (row) => {

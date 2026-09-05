@@ -198,3 +198,20 @@ describe('nextEditMode: the shelf remembers its card across a trip to a surface'
     expect(s.arming).toEqual({ kind: 'none' });
   });
 });
+
+describe('the annotate mode', () => {
+  it('resolves to the annotate tool with nothing armed on the map', () => {
+    const inputs = nextEditMode(REST_INPUTS, { mode: 'annotate' });
+    const s = resolveEditMode(inputs);
+    expect(s.toolType).toBe(ToolType.Annotate);
+    expect(s.armedItem).toBeNull();
+    expect(s.armedMacro).toBeNull();
+  });
+
+  it('carries the surface arming through, so leaving and returning resumes the brush held before', () => {
+    const there = nextEditMode(REST_INPUTS, { mode: 'mountain', tool: 'shape', shape: 'circle' });
+    const away = nextEditMode(there, { mode: 'annotate' });
+    const back = nextEditMode(away, { mode: 'mountain' });
+    expect(back.arming).toEqual({ kind: 'shape', shape: 'circle' });
+  });
+});

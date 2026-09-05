@@ -47,7 +47,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
 
   it('lets flora stand on a plantable road, and only on one', () => {
     // The game plants flowers and crops on some road surfaces; the editor grants it through the
-    // road's `plantable` trait, which the dirt road carries (issue #11).
+    // road's `plantable` trait, which the dirt road carries.
     expect(objectOnCoatingRule.validate(
       withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('f', 'flower-daisy', 4, 4)))).toEqual([]);
     expect(objectOnCoatingRule.validate(

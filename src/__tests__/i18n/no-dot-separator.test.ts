@@ -39,9 +39,7 @@ const ROOTS = [
   'scripts/legal-pages-core.mts',
 ];
 
-/** A file whose dot is a drawing, not a sentence. Each must still contain one (asserted below), so
- *  the list cannot quietly outlive its reason. Empty today: the retired site log's key field masked
- *  what was typed with a row of bullets, and the panel that replaced it does not. */
+/** Files where a dot is data or artwork rather than prose; every exemption is presence-checked. */
 const DATA_DOTS: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {

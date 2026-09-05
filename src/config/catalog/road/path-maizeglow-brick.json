@@ -1,0 +1,28 @@
+{
+  "id": "path-maizeglow-brick",
+  "category": "road",
+  "icon": "path-maizeglow-brick",
+  "name": {
+    "en": "Maizeglow Brick Path",
+    "zh": "玉米金砖路",
+    "ja": "メイズグロウレンガの道",
+    "ru": "Кукурузная кирпичная дорожка",
+    "th": "ทางอิฐสีข้าวโพด",
+    "id": "Jalan Bata Kuning Jagung",
+    "fr": "Chemin de briques jaune maïs"
+  },
+  "color": "#c8bd95",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

@@ -38,8 +38,8 @@ import { colors, cursors, shadows, springs, z } from '../../design/styles';
  * fixed controls swell to cover the very shape they are meant to be adjusting once the map is small.
  * The floor is what keeps them grabbable, and they never grow past the sizes below.
  */
-const GRAB = 30;
-const KNOB = 18;
+export const GRAB = 30;
+export const KNOB = 18;
 const MIN_SCALE = 0.45;
 /** Every control gets at least this much clickable width, whatever it LOOKS like. A tangent knob is
  *  a small dot by design — it must not also be a small target, and at low zoom it shrinks further.
@@ -90,7 +90,7 @@ const hitBox = (face: number): CSSProperties => {
 
 /** The visible dot: the same round, borderless, shadowed face the selection's corner buttons wear —
  *  this is a control the user grabs, not a technical vertex marker. */
-const face = (size: number, fill: string): CSSProperties => ({
+export const face = (size: number, fill: string): CSSProperties => ({
   width: size,
   height: size,
   borderRadius: '50%',
@@ -124,8 +124,9 @@ export function CurveHandles() {
     setZoomK(handleScale(proj.cellToScreen(0, 0).scale));
     const handles = anchorHandles(live.anchors);
     // Terrain renders on the micro grid (half a cell up and left of the macro corner); anchors are
-    // macro coords, so a terrain curve's handles sit on the cell CENTRE of that shifted grid.
-    const shift = live.terrainGrid ? 0 : 0.5;
+    // macro coords, so a terrain curve's handles sit on the cell CENTRE of that shifted grid. A
+    // free-coord session's anchors already carry their own fractions.
+    const shift = live.terrainGrid || live.freeCoords ? 0 : 0.5;
     const point = (x: number, y: number) => {
       const p = proj.cellToScreen(x + shift, y + shift);
       return { x: p.x / chrome, y: p.y / chrome };
@@ -155,7 +156,16 @@ export function CurveHandles() {
   // One window-level drag: the pointer routinely leaves a 18px target, and a capture on the button
   // would fight the canvas underneath for the same events.
   useEffect(() => {
-    const cellOf = (e: PointerEvent) => getActiveView()?.projection.screenToMacro(e.clientX, e.clientY);
+    // A free-coord session reads the drag at the half-cell precision its anchors live on.
+    const cellOf = (e: PointerEvent) => {
+      const proj = getActiveView()?.projection;
+      if (!proj) return undefined;
+      if (getCurveSession()?.freeCoords) {
+        return proj.screenToHalf?.(e.clientX, e.clientY)
+          ?? (() => { const c = proj.screenToMacro(e.clientX, e.clientY); return { x: c.x + 0.5, y: c.y + 0.5 }; })();
+      }
+      return proj.screenToMacro(e.clientX, e.clientY);
+    };
     const apply = (e: PointerEvent, commit: boolean) => {
       const g = grab.current;
       const live = getCurveSession();

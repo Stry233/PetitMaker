@@ -1,30 +1,7 @@
 /**
- * ONE MAP, MORE THAN ONE WAY TO PAVE IT: the seeded decisions a road network's shape turns on.
- *
- * The router is deliberate everywhere — the cheapest portal chain, the first node in list order, the
- * lowest cell index on an A* tie — and every one of those decisions is a function of the MAP alone.
- * That is why the whole-map press came out byte-identical at every seed: nothing the seed fed was
- * read by anything that shapes a layout (the two rngs `network.ts` already made drive scenic
- * crossings and roadside planting, and a live-map press does neither).
- *
- * So the seed is given somewhere to land. Four decisions, chosen because each moves the layout
- * without moving what makes it a good one:
- *
- *  - the CORRIDOR FIELD, a smooth cost surface a route pays to cross. Two seeds put their low ground
- *    in different places, so trunks form along different lines. Bounded by `CORRIDOR_COST`: a route
- *    will bend to a cheaper corridor, never take a scenic tour to reach one, since the extra length
- *    is paid at full step cost while the field can only ever discount a fraction of one.
- *  - the CROSSING WEIGHT, which breaks a near-tie between two viable portal chains toward different
- *    ramps or fords. Deterministic per portal within a run: Dijkstra settles a region the moment it
- *    is popped, so a weight that answered twice would corrupt the path it reconstructs.
- *  - the JOIN ORDER of the spanning tree, which decides what the network grows from and therefore
- *    which streets become trunks and which become spurs.
- *  - the ORDER equal candidates are tried in — a crossing site among the sites linking one pair of
- *    regions, a door among the cells a spur may leave a building from.
- *
- * NONE OF IT IS ON BY DEFAULT. Generation runs this same router with its own seed and its output is
- * hash-pinned, so `NetworkOptions.variation` is what turns these on and only the live-map press
- * passes it. Absent, every function here is unreachable and the arithmetic is the classic one.
+ * Optional seeded variation for the live-map road builder. It changes a bounded corridor cost,
+ * crossing tie-breaks, spanning-tree join order, and equal-candidate order without weakening route
+ * legality. Generation leaves this option unset to preserve its deterministic baseline.
  */
 import type { MacroCoord } from '../../core/model/types';
 import { valueNoise01 } from '../../core/model/noise';

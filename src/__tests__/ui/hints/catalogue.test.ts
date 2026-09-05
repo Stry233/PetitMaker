@@ -5,7 +5,7 @@ import { rowsFor, SCENARIO_ROWS } from '../../../ui/hints/catalogue';
 import { effectiveCombo, prettyCombo } from '../../../core/runtime/keybindings';
 import type { CameraCaps } from '../../../core/interaction/camera-verbs';
 
-const CAPS_2D: CameraCaps = { canOrbit: false, wheelZooms: false };
+const CAPS_2D: CameraCaps = { canOrbit: false, wheelZooms: true };
 const CAPS_3D: CameraCaps = { canOrbit: true, wheelZooms: true };
 const en = translations.en;
 

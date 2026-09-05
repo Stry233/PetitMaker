@@ -1,37 +1,8 @@
 /**
- * The methodology generator's ORCHESTRATOR: the planning stages in order, then one commit through
- * the live rules.
- *
- *   composition/ (where the mass sits, and the walk through it)
- *     -> streets/ (the partition) -> places/ (which regions, where, and what stands in them)
- *     -> terrain/ + water/ (the ground realized) -> build/ (committed and placed)
- *     -> dressing/ (the places filled)
- *
- * Every stage above is pure data; this is the only file that ORDERS them, and `build/` is the only
- * one that touches a map. It touches it the way every other generator does — terrain through
- * `planToCommands` after the decrease-only repair fixpoint, every object through one `tryPlace`, so
- * the RuleRegistry judges each edit and a refusal changes nothing. There is no direct state
- * mutation anywhere in the pipeline.
- *
- * TERRAIN GOES DOWN BEFORE ANYTHING IS PLACED, and the whole PLAN is drawn before that. A road
- * coating validates the ground it lies on (the `flat` trait), so pavement and terrain cannot share a
- * cell; the order that follows is: draw the composition, the streets, the places and the buildings
- * ON PAPER, let the sculptor realize the ground all four stand on, commit that, and only then lay
- * the pavement and the objects onto the ground that was planned for them.
- *
- * Planning the streets BEFORE the ground is what lets the island be terraced rather than flat. A
- * network routed on a finished surface can only use the ground that stayed at elevation 0, so the
- * town has to be a plain for its roads to reach anything; a network planned on the plates rides them
- * instead, and a flight of ramps carries it between tiers.
- *
- * A REFUSAL IS A FINDING, NOT AN ACCIDENT. Everything the pipeline commits is legal by
- * construction — the tier field caps its own heights, the water is cut to shapes the rules cannot
- * refuse, the streets only run on ground a coating may be laid on, and a building stands inside one
- * district at one tier — so every count in `refused` should be zero; they are returned rather than
- * swallowed so a caller can fail on them instead of reading a thinner map as a successful one.
- *
- * Browser-API-free by construction (the worker-pool contract): nothing here reads the DOM, storage
- * or a clock, and the whole run is a function of (seed, richness, template).
+ * Orders the pure design stages, commits terrain through the rule-aware command path, then places
+ * crossings, pavement, objects, and dressing. The complete plan is created before terrain commits
+ * so streets can cross terraces. Refusal counts remain visible to callers. Planning is deterministic
+ * for `(seed, richness, template)` and does not use browser APIs.
  */
 import { flatIndex } from '../../../core/model/grid-model';
 import { makeRng } from '../../../core/model/rng';

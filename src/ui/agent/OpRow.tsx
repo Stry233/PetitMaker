@@ -1,39 +1,17 @@
 /*
- * OpRow.tsx — one line per tool call: an icon, a present-participle verb phrase, what came of it in
- * a word (the result chip) and its END MARK (normative prototype `.op` / `.op .ph2` / `.op .rchip` /
- * `.op .end`). A read tool (`op.isRead`) recedes into the muted ink, matching `.op.read`. A row with
- * something to say opens an inset detail well on click (`.op.open` / `.op .dt`).
- *
- * A REFUSAL IS NEVER SHOWN IN THE MODEL'S OWN WORDS. Every tool answer on this seam is English
- * written FOR a model — "REVERTED:", "OUT OF REGION: this edit reached (61,40) …", a `(system)`
- * nudge, a rule id in brackets with a hint after it — and none of it belongs in a panel that speaks
- * seven languages. So a refused row says the outcome in the user's own language and lifts exactly
- * one fact out of the model's copy: the RULE TEXT, which is the only part a person can act on
- * (`ruleText` below strips the id and the model-facing hint off it, and `Category:` reads bold,
- * since the taxonomy is the lesson). A refusal with nothing left after that treatment falls back to
- * the panel's own sentence. A SUCCESSFUL row's detail is the one deliberate exception: it shows the
- * tool's own first data line verbatim ("Placed 12 trees …"), the per-surface decision
- * `model-prose.tsx`'s header records.
- *
- * A REFUSED row opens on arrival rather than waiting for a click, wherever it has a sentence to
- * give: the prototype ships `open:true` on every one of them, since the reason IS the point of the
- * row. A refusal with nothing to add stays shut.
- *
- * Which glyph and which phrase a tool name draws is `tool-meta.ts`, beside this file: the lane and
- * the past-jobs strip read the same table.
- *
- * `OpsList` is the newest-3-collapse both the flat ticket body and the plan rail's active stage
- * want: beyond three rows, the older ones fold into one count pill (`CountPill`) that expands to the
- * full list on click. Shared here rather than duplicated in JobTicket/PlanRail.
+ * Renders one row per tool call with shared icon and verb metadata. Refusals show a localized result
+ * and actionable rule text, omitting model-facing rule ids and hints; successful rows may show the
+ * tool's first data line. Refusals with details open automatically. `OpsList` initially collapses
+ * older rows beyond the newest three and is shared by flat tickets and active plan stages.
  */
 import { Fragment, useState, type ReactNode, type KeyboardEvent } from 'react';
-import { motion } from 'framer-motion';
-import { amplitude, framerMotion } from './motion';
+import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { amplitude, cssMotion, framerMotion } from './motion';
 import { Icon } from './icons';
 import { iconForTool, verbKeyForTool } from './tool-meta';
 import { CountPill, ResultChip, Stamp, TickDot } from './atoms';
 import { Lane, laneRollup, type LaneView } from './Lane';
-import { withAlpha } from './tokens';
+import { withAlpha } from '../design/styles';
 import { INK, INSET, PLATE_INK } from '../design/tokens';
 import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
@@ -118,10 +96,7 @@ function withFragment(template: string, node: ReactNode): ReactNode {
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
-/** THE REFUSALS OPEN WITHOUT BEING ASKED, every one of them that has a sentence to give (the
- *  prototype ships `open:true` on each): a closed row reports that something went wrong and hides
- *  what, which is the one thing the user needs from it. A refusal with nothing to add stays shut,
- *  since there is nothing behind it. */
+/** Failure states whose actionable details open on arrival. */
 const OPENS_ON_ARRIVAL: ReadonlySet<OpRowData['status']> = new Set<OpRowData['status']>([
   'revert', 'blocked', 'error',
 ]);
@@ -189,13 +164,12 @@ const GHOST_ROWS: ReadonlySet<OpRowData['status']> = new Set<OpRowData['status']
   'pending-gate', 'words', 'skipped',
 ]);
 
-/** The dashed ghost outline's own ink (prototype `.op.ghostrow`), derived from the house ink so the
- *  two cannot drift. */
+/** Dashed ghost outline derived from the shared ink color. */
 const GHOST_EDGE = `1px dashed ${withAlpha(INK, 0.35)}`;
 
 /** One op, one line.
  *
- *  A ROW ARRIVES FROM BELOW (`panel.op.enter`, the prototype's `blockEnter`): it is the next line of
+ *  A new row arrives from below (`panel.op.enter`): it is the next line of
  *  a record being written, and a line that appeared in place read as a redraw of the whole ticket.
  *  Only a NEW row animates — `OpsList` keys by `callId`, so an existing row re-rendering with a new
  *  status is the same element and stands still while its mark reports instead.
@@ -220,6 +194,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
   const ghost = GHOST_ROWS.has(op.status);
   const toggle = () => canOpen && setOpen((o) => !o);
   const ink = muted || ghost ? colors.brownText : PLATE_INK;
+  const reduced = useReducedMotionConfig() === true;
 
   return (
     <>
@@ -246,6 +221,8 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           border: ghost ? GHOST_EDGE : undefined,
           cursor: canOpen ? cursors.clickable : cursors.default,
           boxShadow: 'none',
+          // The press's surface change rides the same unfold beat as the detail it reveals.
+          transition: cssMotion('panel.detail.unfold', ['background-color', 'padding'], reduced),
         }}
       >
         <span
@@ -274,34 +251,49 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           >
             {phrase}
           </span>
-          {open && detail !== undefined && (
-            <span
-              data-testid="op-detail"
-              style={{
-                ...roleFont('note'),
-                fontFamily: font.family,
-                color: colors.brownText,
-                display: 'block',
-                marginTop: 2,
-                lineHeight: 1.35,
-                // A tool's data line can be one long coordinate list or URL with no space in it.
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {detail}
-            </span>
-          )}
-          {/* WHAT THE MODEL SAW, shown to the reader whole: the record must let a person check the
-              model's eyes against their own map. Live sessions only — persistence strips images, so
-              a rehydrated row keeps its summary line and the chip alone says a look happened. */}
-          {open && op.image !== undefined && (
-            <img
-              data-testid="op-image"
-              src={op.image}
-              alt={t('agent3.op_view_alt')}
-              style={{ display: 'block', width: '100%', marginTop: 6, borderRadius: 8, border: `1px solid ${withAlpha(INK, 0.15)}` }}
-            />
-          )}
+          {/* The well UNFOLDS on the shared beat (`panel.detail.unfold`): height opens from nothing
+              with the content deciding where it lands, the ThoughtsBox reveal grammar. */}
+          <AnimatePresence initial={false}>
+            {open && (detail !== undefined || op.image !== undefined) && (
+              <motion.span
+                key="well"
+                initial={reduced ? false : { height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={framerMotion('panel.detail.unfold')}
+                style={{ display: 'block', overflow: 'hidden' }}
+              >
+                {detail !== undefined && (
+                  <span
+                    data-testid="op-detail"
+                    style={{
+                      ...roleFont('note'),
+                      fontFamily: font.family,
+                      color: colors.brownText,
+                      display: 'block',
+                      marginTop: 2,
+                      lineHeight: 1.35,
+                      // A tool's data line can be one long coordinate list or URL with no space in it.
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    {detail}
+                  </span>
+                )}
+                {/* WHAT THE MODEL SAW, shown to the reader whole: the record must let a person check the
+                    model's eyes against their own map. Live sessions only — persistence strips images, so
+                    a rehydrated row keeps its summary line and the chip alone says a look happened. */}
+                {op.image !== undefined && (
+                  <img
+                    data-testid="op-image"
+                    src={op.image}
+                    alt={t('agent3.op_view_alt')}
+                    style={{ display: 'block', width: '100%', marginTop: 6, borderRadius: 8, border: `1px solid ${withAlpha(INK, 0.15)}` }}
+                  />
+                )}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </span>
         {/* The detail line carries the whole answer, so the chip yields its space while open. */}
         {!open && chip !== undefined && <ResultChip {...(chip.tone ? { tone: chip.tone } : {})}>{chip.text}</ResultChip>}
@@ -335,9 +327,8 @@ interface OpsListProps {
   marks?: (index: number) => ReactNode;
 }
 
-/** The newest 3 op rows; anything older folds into one count pill naming the total AND the tail it
- *  left visible, which expands to the full list on click (prototype: `I.count('9 steps')` standing
- *  ahead of the rows it kept). Fewer than 4 ops never collapses — there is nothing behind the pill
+/** The newest three operation rows; anything older folds into a count pill naming the total and the
+ *  visible tail. Fewer than four operations never collapse because there is nothing behind the pill
  *  to hide. */
 export function OpsList({ ops, lane, marks }: OpsListProps) {
   const [expanded, setExpanded] = useState(false);

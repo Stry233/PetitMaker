@@ -1,6 +1,12 @@
-COMPOSITION — arrange any scene the way the expert maps are arranged. These rules are measured from hand-built reference islands, not taste.
+COMPOSITION — arrange any scene the way the expert maps are arranged: rules measured from hand-built reference islands.
 
-WHEN TO USE: before placing any multi-element scene, and whenever view_map shows something "off" that no rule names.
+WHEN TO USE: before any multi-element scene, and whenever view_map shows something "off" that no rule names.
+
+THE PARTI COMES FIRST (the one organizing idea the whole map serves)
+- Before any plan, SHORTLIST THREE partis from the menu, one line each on how it uses THIS site (coast shape, plaza position, the order's words) — then commit to the one whose skeleton is FURTHEST from the reference maps, and NAME it in the plan's first stage.
+- A working menu: axial procession; rings around one center; a river splitting twin banks; an archipelago of ponds; a crescent town around a bay; a valley between two ridges; one monumental figure in open ground; scattered hamlets on a loop road; an orchard quilt with a hollow heart; a terraced amphitheater against one side.
+- THE HOUSE HABIT: a walled water band across one whole edge with terraced strips below is what this studio builds when it stops choosing. On a free or vague order that parti is DISQUALIFIED — take it only when the order asks for a wall, terraces or a high water garden.
+- THE REFERENCES TEACH GRAIN AND CRAFT, NEVER THE LAYOUT: on a free or vague order, reproducing either reference floorplan is the failure being tested for.
 
 THE TWO DIALECTS (decide before arranging anything)
 - FORMAL ORDER (the garden-town dialect): straight streets with flower edging, walled courts, orchard grids, crop plots, iconic figures. Here ALIGNED repetition is the style working — a run of one species, twin courts, a lattice of trees are pattern, not stamps.
@@ -14,10 +20,10 @@ THE LADDER OF IMPORTANCE
 VIEW RELATIONSHIPS (the main line of beauty)
 - Every important spot answers two questions: what do you SEE from it, and what stands BEHIND it? In front: low open scenery (water, lawn, flower beds, the sea). Behind: mass (a terrace wall, a fall, a tree stand). Near low, far high — never wall off the direction a building or lookout faces.
 - A building's door anchors its axis: the door side gets the view, the back gets the backing. With no building, the path's entry direction is the front and the region's deep end takes the backing.
-- LOCAL symmetry, one view at a time: a door flanked by a matched pair of trees, a path between two mirrored beds, a court with matched corners. Two thirds of the expert map's decorated places carry a local mirror — and it is single-species pairs that mirror well. Whole-map symmetry is invisible and not the goal.
+- LOCAL symmetry, one view at a time: a door flanked by a matched pair of trees, a path between two mirrored beds, a court with matched corners. Single-species pairs mirror well. Whole-map symmetry is invisible and not the goal.
 
 RHYTHM AND SPACE
-- Alternate compression and release along the walk: a lane pinched between a hedge and a terrace edge, a 1-wide bridge, a gap in a planted border — then an open court right after. A map that is open everywhere reveals nothing because it hides nothing.
+- Alternate compression and release along the walk: a pinched lane, a 1-wide bridge, a gap in a border — then an open court. A map open everywhere reveals nothing because it hides nothing.
 - Negative space is content: expert maps leave about half the ground empty, and the plateau around the primary feature nearly bare. Stop decorating before every cell is spent.
 
 METHOD
@@ -28,9 +34,9 @@ METHOD
 5. Detail last: beds and specimen planting at the focal points, then evaluate_map and stop when nothing regressed.
 
 FAILURE MODES
-- Two equal masses flanking the center: demote one (lower it a tier, shrink it) so the eye lands somewhere.
-- Everything centered: one centered hill + centered pond + centered house is a diagram, not a place.
+- Two equal masses flanking the center: demote one (lower or shrink it) so the eye lands somewhere.
+- Everything centered: hill + pond + house all centered is a diagram, not a place.
 - Confetti: even sprinkling of objects with no cluster and no gap. Build beds and specimens instead (see the ecology skill).
 - Horror vacui: filling all ground. If under a third of the scene is open, remove decoration rather than adding.
 
-DONE CHECK: from view_map you can name the one primary set piece, point at a local mirror, and name 2-3 pinch-then-open moments on the walk.
+DONE CHECK: from view_map you can name the one primary set piece, point at a local mirror, and 2-3 pinch-then-open moments on the walk.

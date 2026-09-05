@@ -7,6 +7,7 @@ import { tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
 import { getMapTemplate } from '../../../../config/maps';
 import { SHARE_CATALOG_ORDER } from '../../../../io/share/codec/catalog-order';
 import { ELEVATION_MAX } from '../../../../core/model/constants';
+import { CellZone } from '../../../../core/model/types';
 import type { SaveObject } from '../../../../io/save-format';
 import type { MapTemplate } from '../../../../core/model/types';
 
@@ -131,7 +132,22 @@ describe('map coder — extremes of the representable', () => {
           });
         }
       }
-      for (let v = 0; v < MODEL_VARIANTS.length; v++) trip(cells, objects, v);
+      for (let v = 0; v < MODEL_VARIANTS.length; v++) {
+        const model = MODEL_VARIANTS[v]!;
+        if (!model.templateMask) {
+          trip(cells, objects, v);
+          continue;
+        }
+        const maskedCells = cells.map((cell, index) => {
+          const x = index % template.width;
+          const y = Math.floor(index / template.width);
+          return template.zones[y]?.[x] === CellZone.Grass ? cell : null;
+        });
+        const maskedObjects = objects.filter((object) => (
+          template.zones[Math.floor(object.y)]?.[Math.floor(object.x)] === CellZone.Grass
+        ));
+        trip(maskedCells, maskedObjects, v);
+      }
     }
   }, 120_000);
 });

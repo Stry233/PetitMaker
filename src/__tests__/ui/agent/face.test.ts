@@ -53,7 +53,7 @@ describe('the closed-eye lid', () => {
     const big = lashWidth(240);
     const small = lashWidth(56);
     expect(big / small).toBeCloseTo(240 / 56, 3);
-    // The prototype's own 2px lash, at the size its hero is drawn.
+    // At the standard 72px character size, the lash is approximately 2px.
     expect(lashWidth(72)).toBeCloseTo(2, 0);
     expect(LID_LASH).toBeLessThan(0.5);
   });

@@ -74,8 +74,8 @@ describe('skill bodies name only real things', () => {
   });
 
   it('no body names set dressing the catalog cannot build', () => {
-    // These nouns have no catalog item and no legal construction, so a body that names one sends
-    // the model hunting for a thing it can never place ("jetty" cost real turns in live runs).
+    // These nouns have no catalog item or supported construction, so skill prose must not promise
+    // that the Agent can place them.
     const ghost = /\b(jetty|jetties|pier|piers|fountain|lantern|fence|statue|gazebo|dock)\b/i;
     for (const [name, s] of Object.entries(SKILLS)) {
       const hit = `${s.description}\n${s.body}`.match(ghost);

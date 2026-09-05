@@ -1,14 +1,13 @@
 // src/io/share/canonical.ts
 import type { GridState, MapTemplate } from '../../core/model/types';
+import type { AnnotationsState } from '../../core/model/annotations';
 import { serialize } from '../json-codec';
 import type { SaveFile, SaveObject } from '../save-format';
 import { fnv1a, hashJSON } from '../../core/model/hash';
 import { getAllItems } from '../../state/catalog';
 
-// The canonical map is PROVENANCE-FREE: it is template + cells + objects only. Provenance is
-// volatile (op timestamps in the ledger) and is carried separately by the EmbeddedProvenance
-// carrier — so canonical bytes are deterministic, the content hash is purely about the map, and
-// procedural-v1 replay can verify exact map equality.
+// The canonical map is template + cells + objects only. Provenance and annotations use separate
+// payload fields, leaving one deterministic byte representation for map integrity checks.
 export interface CanonicalSave {
   version: number;
   templateId: string;
@@ -16,15 +15,12 @@ export interface CanonicalSave {
   objects: SaveObject[];
 }
 
-/** Total, deterministic object sort key. Objects cannot overlap, so
- *  (x,y,catalogId,rotation,span,corners,patch) is unique → no id tiebreak needed. */
+/** Deterministic object sort key independent of runtime ids. */
 export function objKey(o: SaveObject): string {
   return [o.x, o.y, o.catalogId, o.rotation, o.elevation ?? '', o.spanLength ?? '', o.corners ?? '', o.patchOnly ? 1 : 0].join('|');
 }
 
-/** The optional SaveObject fields (elevation/spanLength/corners/patchOnly), present-only, in
- *  canonical order — the single source both `canonicalize` and `stable` spread after the fixed
- *  keys, so the optional-field set can't drift between the two. Spread order == JSON key order. */
+/** Optional object fields in their canonical JSON key order. */
 function optionalFields(o: SaveObject): Partial<SaveObject> {
   const r: Partial<SaveObject> = {};
   if (o.elevation !== undefined) r.elevation = o.elevation;
@@ -34,21 +30,20 @@ function optionalFields(o: SaveObject): Partial<SaveObject> {
   return r;
 }
 
-/** Deterministic, id-normalized view of the SaveFile, built on the save encoder itself:
- *  serialize → parse → normalize (sort objects, re-id o0,o1,…, drop timestamp). */
+/** Deterministic save view with sorted objects, normalized ids, and no timestamp. */
 export function canonicalize(state: GridState): CanonicalSave {
   const save = JSON.parse(serialize(state)) as SaveFile;
-  const sorted = [...save.objects].sort((a, b) => {
-    const ka = objKey(a), kb = objKey(b);
-    return ka < kb ? -1 : ka > kb ? 1 : 0;
-  });
+  // Cache sort keys because dense maps contain thousands of objects.
+  const keyed = save.objects.map((o) => ({ o, k: objKey(o) }));
+  keyed.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+  const sorted = keyed.map((e) => e.o);
   const objects: SaveObject[] = sorted.map((o, i) => (
     { id: `o${i}`, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, ...optionalFields(o) }
   ));
   return { version: save.version, templateId: save.templateId, cells: save.cells, objects };
 }
 
-/** Stable JSON (fixed key order) of the canonical save — the hash + json-codec unit. */
+/** Stable JSON with a fixed key order for hashing and encoding. */
 function stable(c: CanonicalSave): string {
   const obj = (o: SaveObject) => (
     { id: o.id, catalogId: o.catalogId, x: o.x, y: o.y, rotation: o.rotation, ...optionalFields(o) }
@@ -63,9 +58,16 @@ function stable(c: CanonicalSave): string {
 
 export function canonicalBytes(c: CanonicalSave): Uint8Array { return new TextEncoder().encode(stable(c)); }
 
-/** A real SaveFile JSON string the existing deserialize() consumes (DRY load path). */
-export function toSaveJSON(c: CanonicalSave): string {
-  const save: SaveFile = { version: c.version, templateId: c.templateId, cells: c.cells, objects: c.objects, metadata: { savedAt: '' } };
+/** A SaveFile JSON string for the shared deserialize path. */
+export function toSaveJSON(c: CanonicalSave, annotations?: AnnotationsState): string {
+  const save: SaveFile = {
+    version: c.version,
+    templateId: c.templateId,
+    cells: c.cells,
+    objects: c.objects,
+    metadata: { savedAt: '' },
+    ...(annotations ? { annotations } : {}),
+  };
   return JSON.stringify(save);
 }
 

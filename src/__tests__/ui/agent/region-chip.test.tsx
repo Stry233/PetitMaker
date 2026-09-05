@@ -290,7 +290,7 @@ describe('the marking state', () => {
 
   it('finishes on Escape before the panel folds, since marking is the outer layer', async () => {
     const { getByTestId } = await mountColumn();
-    useEditorStore.getState().setAssistantOpen(true);
+    await act(async () => { useEditorStore.getState().setAssistantOpen(true); });
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
 
     await act(async () => { fireEvent.keyDown(getByTestId('panel-shell'), { key: 'Escape' }); });

@@ -196,7 +196,7 @@ describe('Ctrl while a build brush is active (TerrainBrush)', () => {
     expect(getCell(gs.cells, 5, 5)?.terrain).toBeFalsy();
   });
 
-  it('regression: an UNMODIFIED click still paints normally', () => {
+  it('an unmodified click paints normally', () => {
     activate(ToolType.TerrainBrush);
     setHeld(false);
 
@@ -222,7 +222,7 @@ describe('Ctrl while the eraser is active', () => {
     expect(useEditorStore.getState().activeTool).toBe(ToolType.Hand);
   });
 
-  it('regression: an UNMODIFIED click still erases normally', () => {
+  it('an unmodified click erases normally', () => {
     activate(ToolType.Eraser);
     setTerrain(gs, 5, 5, TerrainType.Mountain, 1);
     setHeld(false);
@@ -250,7 +250,7 @@ describe('Ctrl while the edge cutter is active', () => {
     expect(useEditorStore.getState().activeTool).toBe(ToolType.Hand);
   });
 
-  it('regression: an UNMODIFIED click still cuts normally', () => {
+  it('an unmodified click cuts normally', () => {
     activate(ToolType.EdgeCut);
     setTerrain(gs, 10, 10, TerrainType.Mountain, 3);
     setHeld(false);

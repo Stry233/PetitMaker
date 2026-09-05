@@ -1,5 +1,5 @@
 /**
- * The two smart-planting cards (task #26).
+ * The two smart-planting cards.
  *
  * THE ID IS THE SCOPE: `patch-tree` and `patch-flora` are two macros, one per card, each pinned here
  * on the property its card promises. One undifferentiated `patch` armed from either tab of the object

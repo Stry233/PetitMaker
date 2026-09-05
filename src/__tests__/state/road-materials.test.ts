@@ -33,10 +33,10 @@ describe('road materials', () => {
 });
 
 describe('path tile surfaces (#22, #37)', () => {
-  it('has 25 surfaces, every one of them an in-game path', () => {
+  it('has 28 surfaces, every one of them an in-game path', () => {
     const roads = getRoadMaterials();
-    expect(roads).toHaveLength(25);
-    expect(roads.filter((r) => r.id.startsWith('path-'))).toHaveLength(25);
+    expect(roads).toHaveLength(28);
+    expect(roads.filter((r) => r.id.startsWith('path-'))).toHaveLength(28);
   });
 
   it('arms the dirt path by default, which is what leading the category means', () => {
@@ -61,13 +61,20 @@ describe('path tile surfaces (#22, #37)', () => {
     }
   });
 
-  it('plants on the dirt path and nowhere else', () => {
-    // The trait came in with the plain dirt road (issue #11) and moved to the surface that replaced
-    // it, so a map that had flowers standing on a dirt road still loads legal.
+  it('plants on the five surfaces that carry flowers in-game, and nowhere else', () => {
+    // A saved map with flowers standing on one of these must still load legal, so the plantable
+    // trait lives on exactly the surfaces the game itself plants on: the two dirt tracks, the two
+    // stone garden paths, and the flowerbed.
     const plantable = getRoadMaterials()
       .filter((r) => r.traits?.some((t) => t.type === 'plantable'))
       .map((r) => r.id);
-    expect(plantable).toEqual(['path-overgrown-dirt']);
+    expect(plantable).toEqual([
+      'path-overgrown-dirt',
+      'path-rustic-dirt',
+      'path-park-stone',
+      'path-garden-stone',
+      'path-simple-flowerbed',
+    ]);
   });
 
   it('names every path in all 7 locales', () => {

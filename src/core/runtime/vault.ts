@@ -1,24 +1,10 @@
 /**
- * Key vault — AES-GCM encryption of the BYOK API keys with a NON-EXTRACTABLE
- * CryptoKey persisted in IndexedDB (structured clone stores the key HANDLE;
- * its bits are never exposed to script, not even ours). localStorage then
- * carries only ciphertext.
- *
- * Honest threat model (front-end-only app — full write-up in docs/THREAT_MODEL.md):
- * - DEFEATS: casual localStorage inspection, disk forensics / backups of the
- *   localStorage store, and any exfiltration that obtains localStorage content
- *   without also executing code in this origin.
- * - DOES NOT defeat: code running in this origin (XSS, malicious extension) —
- *   in-page script can always USE the key handle to decrypt, or capture keys
- *   as the user types. No client-side scheme fixes that without a per-session
- *   user passphrase, which defeats the product's convenience premise.
- *
- * Every entry point feature-detects SubtleCrypto + IndexedDB and returns null
- * when unavailable (old browsers, some private windows, jsdom) — the caller
- * (key-storage.ts) then stays on base64 obfuscation.
+ * AES-GCM key sealing with a non-extractable CryptoKey stored in IndexedDB. This protects copied
+ * localStorage ciphertext, but code executing in the origin can still use the key handle.
+ * Operations return null when SubtleCrypto or IndexedDB is unavailable.
  */
 
-import { PREFS } from '../../core/runtime/prefs';
+import { PREFS } from './prefs';
 
 export interface SealedBlob {
   /** base64 12-byte AES-GCM IV */
@@ -27,8 +13,7 @@ export interface SealedBlob {
   ct: string;
 }
 
-/** IndexedDB, not localStorage, but the name is declared alongside every other persisted key so
- *  the table enumerates everything this origin writes to disk. */
+/** IndexedDB database name declared in the shared persisted-key table. */
 const DB_NAME = PREFS.agentVault.key;
 const STORE = 'k';
 const KEY_ID = 'aes-v1';
@@ -78,7 +63,7 @@ function dbPut(db: IDBDatabase, id: string, value: unknown): Promise<void> {
 
 let keyPromise: Promise<CryptoKey | null> | null = null;
 
-/** The origin's vault key: created once (non-extractable), then reused. */
+/** Create or load the origin's non-extractable vault key. */
 function getVaultKey(): Promise<CryptoKey | null> {
   keyPromise ??= (async () => {
     const s = subtle();
@@ -97,13 +82,13 @@ function getVaultKey(): Promise<CryptoKey | null> {
         db.close();
       }
     } catch {
-      return null; // IndexedDB blocked (some private modes) → caller falls back
+      return null;
     }
   })();
   return keyPromise;
 }
 
-/** Pure crypto half, exported for tests (which supply their own CryptoKey). */
+/** Key-explicit crypto operation used by the vault and its tests. */
 export async function sealWithKey(key: CryptoKey, plain: string): Promise<SealedBlob> {
   const s = subtle();
   if (!s) throw new Error('SubtleCrypto unavailable');
@@ -119,9 +104,7 @@ export async function openWithKey(key: CryptoKey, blob: SealedBlob): Promise<str
   return new TextDecoder().decode(plain);
 }
 
-/** Destroy the vault (the AES key handle) — part of the local-data reset.
- *  Resolves on success, error, OR a 2s deadline (a blocked delete must not
- *  stall the reset flow; the subsequent reload releases any open handles). */
+/** Delete the vault, resolving on completion, failure, or a two-second deadline. */
 export function deleteVault(): Promise<void> {
   keyPromise = null;
   const f = idb();
@@ -155,6 +138,6 @@ export async function openSecret(blob: SealedBlob): Promise<string | null> {
   try {
     return await openWithKey(key, blob);
   } catch {
-    return null; // wrong key (profile moved) or corrupted blob
+    return null;
   }
 }

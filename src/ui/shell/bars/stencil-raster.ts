@@ -1,38 +1,22 @@
-/*
- * stencil-raster.ts — turning a character or an image into a `Stencil`.
- *
- * THE ONE PART THAT NEEDS A BROWSER. Everything that READS a stencil is plain arithmetic in
- * `tools/generation/stencil/` and runs anywhere, including the candidate worker; drawing a glyph
- * or decoding a photograph needs a canvas, so it happens here, once, on the main thread, and the
- * result travels as numbers.
- *
- * THE REGION DECIDES THE RESOLUTION. A stencil is exactly as many cells as the area it will be built
- * in, so what the visitor painted is what sets the fidelity — the same letter is a blocky five cells
- * across in a small region and a legible forty in a large one. Nothing here has a size of its own.
- */
+/** Browser font outlines and decoded images supply the stencils used by generation. */
 import type { MacroCoord, Stencil } from '../../../core/model/types';
 import {
-  airCells, COVERAGE_ON, densityOf, finishGlyph, glyphLegible, glyphWeight, GLYPH_WEIGHTS,
-  piecesOf, runsAlong, separationOf, stencilFromPixels, type GlyphReading,
+  airCells, analyzeTextGrid, COVERAGE_ON, densityOf, finishGlyph, fitTextGrid, glyphLegible, glyphWeight, GLYPH_WEIGHTS,
+  piecesOf, runsAlong, separationOf, stencilFromPixels, type GlyphReading, type TextGridModel, type TextGridResult,
+  emojiTextDrawing, fitEmojiDrawing, isEmojiGrapheme, textGraphemes, normalizeTextPresentation, textTopology, textStrokeEnds, type EmojiDrawing,
 } from '../../../tools/generation/stencil';
 
 /** The rectangle a stencil is drawn into: the painted region's bounding box, or the whole map. */
 export interface StencilBox { origin: MacroCoord; width: number; height: number }
 
-/**
- * The faces a stencilled letter is drawn with, and they are THIS PROJECT'S OWN.
- *
- * `sans-serif` is not a font, it is whatever the machine happens to resolve — so the same word in the
- * same region comes out as a different picture on a different computer, which no other part of the
- * generator would tolerate, and a stroke-width table calibrated against it would be calibrated
- * against nothing. The shipped faces are also the ones whose stems the weight table is measured from.
- *
- * The Latin face leads: it is 30KB an instance against several megabytes for a CJK weight, so a word
- * of letters costs nothing to draw at whichever weight the region wants. Anything it has no glyph for
- * — every ideograph, kana and hangul — falls through to the CJK face, which is what the boot already
- * warms.
- */
+/** Shipped Latin and CJK faces stabilize ordinary glyph geometry; uncovered scripts and emoji use system fonts. */
 export const GLYPH_FONT_STACK = "'PW Rounded Sans', 'Alibaba PuHuiTi 3', sans-serif";
+
+export function glyphFontsReady(text: string): boolean {
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  return !fonts?.check || GLYPH_WEIGHTS.every(weight =>
+    ["'PW Rounded Sans'", "'Alibaba PuHuiTi 3'"].every(face => fonts.check(`${weight} 16px ${face}`, text)));
+}
 
 /**
  * Have the browser fetch the faces before anything is drawn with them.
@@ -45,10 +29,12 @@ export async function ensureGlyphFonts(text = '', weight?: number): Promise<void
   const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
   if (!fonts?.load) return;
   const weights = weight === undefined ? GLYPH_WEIGHTS : [weight];
+  const changed = weights.some(w => !fonts.check?.(`${w} 16px ${GLYPH_FONT_STACK}`, text));
   await Promise.all(weights.flatMap((w) => [
     fonts.load(`${w} 16px 'PW Rounded Sans'`, text).catch(() => undefined),
     fonts.load(`${w} 16px 'Alibaba PuHuiTi 3'`, text).catch(() => undefined),
   ]));
+  if (changed) { textModels.clear(); fittedTexts.clear(); survives.clear(); }
 }
 
 /**
@@ -129,30 +115,9 @@ function readBack(ctx: CanvasRenderingContext2D, width: number, height: number):
 const SUB = 2;
 
 /**
- * Where to put the glyph so the cell grid can HOLD it — the stencil's answer to hinting.
- *
- * A cell is on or off, and the threshold is half coverage. So where a stroke lands within the cell
- * grid decides whether it survives at all: a bar one cell thick sitting square on a row is a solid
- * row of cells, and the SAME bar half a cell lower is two rows at half coverage each, both of which
- * fall below the threshold and vanish. At forty cells that costs a ragged edge; at eight it costs the
- * letter, which is how a small word comes out with strokes missing rather than merely blocky.
- *
- * A real hinting engine moves each stem onto the grid. This moves the whole glyph, which is what a
- * letter's own repeated rhythm — three bars and two counters of an E, all at one pitch — mostly wants
- * anyway: the placement is searched over the four quarter-cell phases and scored by how DECIDED the
- * resulting cells are, summing how near each one sits to the threshold it is about to be judged by.
- * The winner is the phase at which the face's strokes line up with the grid.
- *
- * THE CANDIDATES ARE MEASURED FROM THE CENTRED PLACEMENT, from half a cell before it to a quarter
- * after: four quarter-cell steps, which is every phase there is, since a whole cell of shift is the
- * same picture again. Half a cell is the FURTHEST any of them moves, and it is exactly the air the
- * fit leaves on that side (`stencil.ts:airCells`, half of its cell at each edge) — so the extreme
- * candidate lands the ink flush with the region's border and none of them can push it past. A search
- * that stepped a whole cell one way would: a glyph three quarters of a cell low loses the bottom of
- * its last stroke to the border, which is a missing bar rather than a shifted one. In a region with
- * no air to spare the ink already reaches both edges, and every phase is drawn at the same size — the
- * search then chooses among pictures that clip a fraction of a stroke at one end or the other, and
- * still picks the one the grid holds best.
+ * Aligns a glyph to the cell grid by testing all four quarter-cell phases on each axis. Candidates
+ * stay within half a cell of the centered position, matching the reserved edge air. The score favors
+ * cells clearly above or below the coverage threshold, preserving thin strokes at small sizes.
  */
 function gridFit(
   ctx: CanvasRenderingContext2D, text: string, cw: number, ch: number,
@@ -236,34 +201,10 @@ function surface(width: number, height: number): CanvasRenderingContext2D | null
 }
 
 /**
- * A character — a letter, a digit, an emoji — drawn as large as it will go inside `box`.
- *
- * MEASURED, THEN FITTED. A glyph's ink is not its font size and not its advance width: an emoji is
- * nearly square, a 'j' hangs below the baseline, and a 'W' is far wider than tall. So it is drawn
- * once at a reference size, its ink measured through the text metrics the browser reports, and then
- * drawn again scaled and centred on that ink. Fitting to the font size instead leaves a letter
- * floating high in its box with the descender's worth of empty cells under it.
- *
- * Emoji are drawn in COLOUR and everything else in solid black: the image mode reads colour and the
- * text mode reads coverage, and an emoji carries its own colours either way.
- *
- * DRAWN AT THE WEIGHT THE REGION CAN CARRY (`tools/generation/stencil/stencil-stroke.ts`), rather than at the
- * heaviest there is: a stroke and the counter beside it are each a whole number of cells, so in a
- * small region a bold face closes the letter up. The weight can be given instead of derived, which is
- * how the same letter is drawn with more resolution than its region has — the reference picture an
- * evaluation compares the built one against has to differ in resolution ALONE.
- *
- * `magnify` says how many times the REGION's own cell grid this drawing is, and 1 is the region
- * itself. It is what lets that higher-resolution draw be the same picture rather than a similar one:
- * the air and the grid a glyph is fitted to are both measured in region cells, so a drawing at four
- * times the resolution leaves four times the pixels of air and lines its strokes up with the same
- * grid. Told nothing, it would fit a proportionally larger letter and land it on a finer grid, and
- * the two pictures would differ in size and phase as well as in resolution.
- *
- * `search` off draws the glyph plainly centred, with no grid fit at all. Nothing in the app asks for
- * that; the evaluation does, because a fit judged only against
- * pictures the fit itself placed would be judging its own choice — the fixed placement is the
- * outside reference the search has to beat.
+ * Draws a character at the largest ink-bound size that fits `box`. Browser text metrics center the
+ * actual ink, and region-aware weight preserves counters at small sizes. Emoji retain colour; other
+ * glyphs use solid coverage. `magnify` preserves region-relative air and grid phase at higher
+ * resolution, while `search: false` disables grid fitting for evaluation comparisons.
  */
 export function drawGlyph(
   text: string, box: StencilBox, weight = glyphWeight(text, box), magnify = 1, search = true,
@@ -300,47 +241,187 @@ export function drawGlyph(
   return readBack(ctx, width, height);
 }
 
-/**
- * The glyph as the generator takes it: drawn by the face, then repaired and held to the stroke width
- * the region can carry (`tools/generation/stencil/stencil-stroke.ts:finishGlyph`).
- *
- * The two halves are separate because only the DRAWING needs a browser. A stored raster can be
- * finished anywhere, which is what lets the evaluation harness and its tests run the processing over
- * committed font rasters instead of re-deriving it.
- */
+type TextReference = Pick<Stencil, 'width' | 'height' | 'coverage'> & { picture?: EmojiDrawing; ascent: number; descent: number };
+interface TextModel extends TextGridModel { source: TextReference; emoji: boolean }
+const textModels = new Map<string, TextModel>();
+const fittedTexts = new Map<string, TextGridResult | null>();
+
+/** Font analysis is independent of the selected region and shared by fitting and rasterization. */
+function textModel(text: string, detail = 0.0025, weight = 500): TextModel | null {
+  if (!text.trim()) return null;
+  text = normalizeTextPresentation(text);
+  const key = `${text}\u0000${detail}\u0000${weight}`;
+  const known = textModels.get(key);
+  if (known) return known;
+  const source = drawTextReference(text, detail, weight);
+  if (!source) return null;
+  const model = analyzeTextGrid(source);
+  if (model) {
+    if (textModels.size >= 48) textModels.delete(textModels.keys().next().value!);
+    const result = { ...model, source, emoji: textGraphemes(text).some(isEmojiGrapheme) };
+    textModels.set(key, result);
+    return result;
+  }
+  return null;
+}
+
+/** A font outline with enough pixels to distinguish strokes before fitting them to map cells. */
+export function drawTextReference(text: string, detail = 0.0025, weight = 500): TextReference | null {
+  text = normalizeTextPresentation(text);
+  const ctx = surface(1, 1);
+  if (!ctx) return null;
+  ctx.font = `${weight} 100px ${GLYPH_FONT_STACK}`;
+  const metrics = ctx.measureText(text);
+  const inkW = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
+  const inkH = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+  if (!(inkW > 0 && inkH > 0)) return null;
+  const scale = Math.min(96 / inkH, 2044 / inkW);
+  const width = Math.ceil(inkW * scale) + 4, height = Math.ceil(inkH * scale) + 4;
+  ctx.canvas.width = width; ctx.canvas.height = height;
+  ctx.font = `${weight} ${100 * scale}px ${GLYPH_FONT_STACK}`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, 2 + metrics.actualBoundingBoxLeft * scale, 2 + metrics.actualBoundingBoxAscent * scale);
+  const rgba = ctx.getImageData(0, 0, width, height).data;
+  const picture = textGraphemes(text).some(isEmojiGrapheme) ? emojiTextDrawing({ width, height, data: rgba }, detail) : undefined;
+  const coverage = picture?.coverage ?? Uint8Array.from({ length: width * height }, (_, i) => rgba[i * 4 + 3]!);
+  return { width: picture?.width ?? width, height: picture?.height ?? height, coverage, picture, ascent: metrics.actualBoundingBoxAscent, descent: metrics.actualBoundingBoxDescent };
+}
+
+export function measuredTextMinimum(text: string): { width: number; height: number } | null {
+  const runs = textRuns(text);
+  if (runs.some(run => run.emoji)) {
+    return { width: runs.reduce((sum, run) => sum + run.gap + (run.emoji ? 5 : textModel(run.text)?.minimum.width ?? 5), 0), height: 5 };
+  }
+  return textModel(text)?.minimum ?? null;
+}
+
+interface TextRun { text: string; emoji: boolean; gap: number }
+
+function textRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  let buffer = '', gap = 0;
+  const flush = () => {
+    if (buffer.trim()) runs.push({ text: buffer.trim(), emoji: false, gap: runs.length ? Math.max(gap, /^\s/u.test(buffer) ? 2 : 1) : 0 });
+    if (buffer) gap = /\s$/u.test(buffer) ? 2 : 1;
+    buffer = '';
+  };
+  for (const glyph of textGraphemes(text)) {
+    if (isEmojiGrapheme(glyph)) {
+      flush();
+      runs.push({ text: glyph, emoji: true, gap: runs.length ? gap || 1 : 0 });
+      gap = 1;
+    } else buffer += glyph;
+  }
+  flush();
+  return runs;
+}
+
+function fitMixedText(runs: TextRun[], box: { width: number; height: number }): TextGridResult {
+  const { width, height } = box;
+  const stencil: Stencil = { width, height, coverage: new Uint8Array(width * height), color: new Uint32Array(width * height), cellAligned: true };
+  const refused = { stencil, ok: false, loss: 1 };
+  const models = runs.map(run => textModel(run.text));
+  if (models.some(model => !model)) return refused;
+  const ascent = Math.max(...models.map(model => model!.source.ascent));
+  const descent = Math.max(...models.map(model => model!.source.descent));
+  const scale = height / (ascent + descent);
+  const heights = models.map(model => Math.min(height, Math.max(5, Math.round((model!.source.ascent + model!.source.descent) * scale))));
+  const minimums = models.map((model, i) => runs[i]!.emoji ? 5 : model!.minimum.width);
+  const widths = models.map((model, i) => Math.max(minimums[i]!, Math.round(model!.width / model!.height * heights[i]!)));
+  const gaps = runs.map(run => Math.max(run.gap, Math.round(height / 10) * run.gap));
+  const total = () => widths.reduce((a, b) => a + b, 0) + gaps.reduce((a, b) => a + b, 0);
+  while (total() > width) {
+    let chosen = -1;
+    for (let i = 0; i < widths.length; i++) if (widths[i]! > minimums[i]! && (chosen < 0 || widths[i]! / minimums[i]! > widths[chosen]! / minimums[chosen]!)) chosen = i;
+    if (chosen >= 0) { widths[chosen]!--; continue; }
+    chosen = gaps.findIndex((gap, i) => gap > runs[i]!.gap);
+    if (chosen < 0) return refused;
+    gaps[chosen]!--;
+  }
+  let x0 = Math.floor((width - total()) / 2);
+  for (let i = 0; i < runs.length; i++) {
+    x0 += gaps[i]!;
+    const frame = { origin: { x: 0, y: 0 }, width: widths[i]!, height: heights[i]! };
+    const fitted = gridText(runs[i]!.text, frame);
+    if (fitted && !fitted.ok) return refused;
+    const raster = fitted?.stencil ?? drawGlyph(runs[i]!.text, frame);
+    if (!raster) return refused;
+    if (!fitted) finishGlyph(raster);
+    const source = models[i]!.source;
+    const y0 = Math.max(0, Math.min(height - frame.height, Math.round(ascent * scale - source.ascent / (source.ascent + source.descent) * frame.height)));
+    for (let y = 0; y < raster.height; y++) for (let x = 0; x < raster.width; x++) {
+      stencil.coverage[(y0 + y) * width + x0 + x] = raster.coverage[y * raster.width + x]!;
+    }
+    x0 += raster.width;
+  }
+  return { stencil, ok: true, loss: 0 };
+}
+
+function gridText(text: string, box: { width: number; height: number }): TextGridResult | null {
+  const key = `${text}\u0000${box.width}x${box.height}`;
+  if (fittedTexts.has(key)) return fittedTexts.get(key)!;
+  const result = fitText(text, box);
+  if (fittedTexts.size >= 64) fittedTexts.delete(fittedTexts.keys().next().value!);
+  fittedTexts.set(key, result);
+  return result;
+}
+
+function structureLoss(model: TextGridModel, stencil: Stencil): number {
+  const ink = Uint8Array.from(stencil.coverage, value => value >= COVERAGE_ON ? 255 : 0);
+  const topology = textTopology(ink, stencil.width, stencil.height);
+  return Math.abs(topology.pieces - model.pieces) + Math.abs(topology.counters - model.counters)
+    + Math.max(0, model.ends - Math.max(1, Math.floor(model.ends / 4)) - textStrokeEnds(ink, stencil.width, stencil.height));
+}
+
+function fitText(text: string, box: { width: number; height: number }): TextGridResult | null {
+  const runs = textRuns(text);
+  if (runs.length > 1 && runs.some(run => run.emoji)) return fitMixedText(runs, box);
+  const model = textModel(text);
+  if (!model) return null;
+  if (model.emoji) {
+    return fitEmojiDrawing(model.source.picture!, box);
+  }
+  // Once stems occupy several cells, the outline retains the font's curves without grid deformation.
+  const stroke = 2 * model.radius * Math.min(box.width / model.width, box.height / model.height);
+  if (stroke >= 1.5) return null;
+  const fitted = fitTextGrid(model, box);
+  if (!fitted || fitted.ok) return fitted;
+  const frame = { origin: { x: 0, y: 0 }, ...box };
+  // Lighter outlines can separate neighboring strokes before geometry is extracted.
+  for (const weight of new Set([glyphWeight(text, box), ...GLYPH_WEIGHTS].filter(value => value <= 500))) {
+    const reference = weight === 500 ? model : textModel(text, 0.0025, weight)!;
+    const native = drawGlyph(text, frame, weight);
+    if (!native) continue;
+    finishGlyph(native);
+    if (structureLoss(reference, native) === 0) return { stencil: { ...native, cellAligned: true }, ok: true, loss: 0 };
+    if (weight !== 500) {
+      const alternative = fitTextGrid(reference, box);
+      if (alternative?.ok) return alternative;
+    }
+  }
+  return fitted;
+}
+
+/** Null leaves native-outline acceptance to the conservative bound and outline judge. */
+export function gridTextFits(text: string, box: { width: number; height: number }): boolean | null {
+  return gridText(text, box)?.ok ?? null;
+}
+
 export function rasterizeText(text: string, box: StencilBox): Stencil | null {
+  const minimum = measuredTextMinimum(text);
+  if (minimum && (box.width < minimum.width || box.height < minimum.height)) return null;
+  const grid = gridText(text, box);
+  if (grid) return grid.ok ? grid.stencil : null;
   const stencil = drawGlyph(text, box);
   if (!stencil) return null;
   finishGlyph(stencil);
   return stencil;
 }
 
-/**
- * How many times the region's own grid the DRAWING is read at when a glyph is being judged. Four: the
- * same magnification the evaluation matrix compares its letters against, so the shelf and the matrix
- * are asking one question.
- */
+/** Resolution multiplier for the outline reference used by the shelf's legibility check. */
 const JUDGE_SCALE = 4;
 
-/**
- * WHETHER THIS GLYPH SURVIVES THIS REGION, measured on the drawing rather than guessed from the text.
- *
- * The floors in `stencil.ts` answer for a whole shelf — one region serves five dealt cards and the
- * visitor's own at once, and a string is all they have to go on — so they have to hold for the
- * hardest letter anyone might type. A card knows its own text, and by the time it has a picture the
- * glyph has been drawn: at that point the better answer is the drawing's.
- *
- * The reading is the legibility bars (`stencil.ts:GLYPH_LEGIBLE`): the pieces the drawing is in, how
- * much of the separation it gave its strokes the quantised letter still carries, and how much of its
- * own box is ink. The truth comes from the SAME glyph drawn four times over, because a weight heavy
- * enough to fuse two strokes fuses them in any picture drawn at that weight — a letter compared
- * against its own resolution scores perfectly while arriving as a block.
- *
- * MEMOISED on the text and the region, since the shelf asks per card and re-renders freely and the
- * answer is a pure function of the two. Unbounded on purpose and safely so: an entry is a handful of
- * numbers, and one is added only when a visitor types a different word or paints a different region —
- * a bound driven by hands, not by a loop.
- */
+/** Fitting and preview share the same geometry verdict. */
 const survives = new Map<string, GlyphVerdict>();
 
 export interface GlyphVerdict extends GlyphReading { ok: boolean }
@@ -359,6 +440,10 @@ export function glyphSurvives(text: string, box: StencilBox): GlyphVerdict {
 const UNMEASURED: GlyphVerdict = { separation: 0, density: 1, pieces: 0, wholePieces: 1, multiStroke: true, ok: false };
 
 function judge(text: string, box: StencilBox): GlyphVerdict {
+  const minimum = measuredTextMinimum(text);
+  if (minimum && (box.width < minimum.width || box.height < minimum.height)) return UNMEASURED;
+  const grid = gridText(text, box);
+  if (grid) return { ...judgeDrawn(grid.stencil, grid.stencil, 1), ok: grid.ok };
   const flat = { origin: box.origin, width: box.width, height: box.height };
   const built = drawGlyph(text, flat);
   const weight = glyphWeight(text, flat);

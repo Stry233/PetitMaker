@@ -19,6 +19,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join, resolve } from 'node:path';
 import { translations } from '../../i18n/translations';
+import { HELP_TABLES } from '../../i18n/locales/help';
 import type { Locale } from '../../core/model/types';
 
 declare const __dirname: string;
@@ -64,7 +65,7 @@ function keyLikeStrings(texts: string[]): Set<string> {
 }
 
 function usedKeys(): Set<string> {
-  return keyLikeStrings(SOURCE_TEXT);
+  return keyLikeStrings([...SOURCE_TEXT, ...SCRIPT_TEXT]);
 }
 
 /** Every .mts under scripts/, recursively. The offline README-figure pipeline drives the live app
@@ -104,6 +105,7 @@ const DYNAMIC_PREFIXES: readonly string[] = [
   'kbd.cat.', // ui/chrome/modals/keyboard/KeyboardModal.tsx: t(`kbd.cat.${category}`) per keybind category heading
   'hint.sep.', // ui/hints/tokens.tsx: t(`hint.sep.${separator}`) for the combo-token separator glyph
   'context.rotate_', // ui/chrome/floating/ContextMenu.tsx: t(`context.rotate_${axis}`) for the rotate-object menu row
+  'stylize.provider_', // ui/chrome/modals/export/stylize/Hero.tsx: t(`stylize.provider_${id}`) per provider row
 ];
 
 const isDynamic = (key: string): boolean => DYNAMIC_PREFIXES.some((p) => key.startsWith(p));
@@ -164,7 +166,10 @@ describe('i18n gaps: a key asked for and never declared fails the suite', () => 
   ];
 
   it('every literal key at a translate call site resolves in en', () => {
-    const enSet = new Set(Object.keys(translations.en));
+    // The Help Center's tables arrive as a lazy OVERLAY (`i18n/locales/help`) rather than through
+    // the eager merge, so its keys resolve too; the overlay's own parity, register and orphan
+    // checks live in `__tests__/ui/help/catalog.test.ts`.
+    const enSet = new Set([...Object.keys(translations.en), ...Object.keys(HELP_TABLES.en)]);
     const missing = new Set<string>();
     for (const [i, text] of SOURCE_TEXT.entries()) {
       for (const call of CALLS) {

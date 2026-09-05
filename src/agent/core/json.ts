@@ -1,5 +1,4 @@
-/** Never-throwing JSON for streamed tool arguments. The repair closes what the stream has not
- *  finished; it never invents values, so a dangling `"y":` is dropped rather than nulled. */
+/** Parses streamed tool arguments, closing complete partial values without inventing missing ones. */
 export function parsePartial(raw: string): Record<string, unknown> {
   return parseArgs(raw) ?? {};
 }
@@ -21,21 +20,16 @@ function tryParse(s: string): Record<string, unknown> | undefined {
 // Characters that mean "this number is not finished yet" when they follow a digit.
 const NUM_TAIL = /[\d.eE+-]/;
 
-/** One scan tracking string/escape state and a bracket stack. `safeEnd` follows the end of the
- *  last fully-formed VALUE: a closed value string, a finished number or literal, or a closed
- *  nested structure. A closed KEY string does NOT advance it, since the pair's value may still be
- *  missing (a key is only ever a quoted string, so any bare number/literal/`{`/`[` is always a
- *  value). Once scanned, the text is cut back to that point, or, mid-string on a VALUE, the
- *  string is closed in place instead of dropped; the bracket stack for whatever survives is then
- *  recomputed from scratch, since brackets opened or closed past the cut no longer apply. */
+/**
+ * Trims to the last complete value, closes an unfinished value string when possible, then balances
+ * the surviving brackets. A complete key alone is not a safe cut because its value is still absent.
+ */
 function repair(raw: string): string {
   const stack: string[] = [];
   let inStr = false;
   let openIsKey = false;
   let safeEnd = 0;
-  // Index of the backslash starting an escape still being consumed (-1 once it completes): a cut
-  // landing here can't just close the string in place, since the appended quote would itself be
-  // read as escaped data rather than a terminator.
+  // Index of an incomplete escape; a closing quote cannot be appended inside it.
   let escStart = -1;
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i] ?? '';
@@ -53,8 +47,7 @@ function repair(raw: string): string {
     }
     if (c === '"') {
       inStr = true;
-      // A quote opens a KEY only inside an object and only where a value isn't already expected
-      // (i.e. it does not immediately follow a `:`); everywhere else a string is a value.
+      // A quoted object member is a key unless it follows a value separator.
       openIsKey = stack[stack.length - 1] === '}' && precedingSignificant(raw, i) !== ':';
     } else if (c === '{' || c === '[') {
       stack.push(c === '{' ? '}' : ']');
@@ -74,9 +67,9 @@ function repair(raw: string): string {
 
   let s: string;
   if (!inStr) s = raw.slice(0, safeEnd);
-  else if (openIsKey) s = raw.slice(0, safeEnd); // dangling key: drop it whole, escape or not
-  else if (escStart >= 0) s = raw.slice(0, escStart) + '"'; // drop the incomplete escape, keep the value up to it
-  else s = raw + '"'; // ordinary unterminated value: close as-is
+  else if (openIsKey) s = raw.slice(0, safeEnd); // Drop a dangling key.
+  else if (escStart >= 0) s = raw.slice(0, escStart) + '"'; // Drop the incomplete escape.
+  else s = raw + '"'; // Close an unterminated value string.
   return s + restack(s).reverse().join('');
 }
 

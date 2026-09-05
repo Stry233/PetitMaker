@@ -1,20 +1,6 @@
-// Public-repo export CLI: snapshots the allowlisted subset of this repo (per
-// docs/internal/deployment/public-repo-manifest.md) into a clean output directory with
-// fresh history-free files, then leak-checks the result.
-//
-// This file is CLI-ONLY (side-effecting: reads real files off disk, writes to --out, may
-// spawn npm, may set process.exitCode) and unconditionally runs `main()` at the bottom — it
-// is never imported for its exports. The pure/testable core (glob matcher, manifest
-// parsing, classification, leak-check re-derivation) lives in
-// ./export-public-repo-core.mts, which src/__tests__/legal/repo-hygiene.test.ts imports
-// directly instead of this file. scripts/license-audit.mts's doc comment says why a
-// main-module guard cannot host both under `vite-node`.
-//
-// IP-CRITICAL: internal documents and game-derived reference material must NEVER be
-// exportable. This script only ever COPIES the manifest's allowlist — it never has a code
-// path that copies "everything except X"; the allowlist is additive by construction, and
-// the leak check re-derives its assertion from the internal glob list independently of the
-// copy step's own bookkeeping.
+// CLI that copies the export manifest's allowlist into a clean snapshot and independently checks
+// the result for withheld files. Pure parsing and classification live in export-public-repo-core.mts
+// so tests can import them without invoking filesystem writes or subprocesses.
 //
 // Usage:
 //   vite-node scripts/export-public-repo.mts --out <dir>              copy the allowlist
@@ -100,14 +86,8 @@ function walkOutput(outDir: string, rel = ''): string[] {
   return out;
 }
 
-// The exported snapshot ships fresh history-free files, so it has no `.git`. But the
-// shipped test suite includes `src/__tests__/legal/repo-hygiene.test.ts`, which calls
-// `git ls-files -z` to re-derive its own hygiene/leak-check assertions — exactly what the
-// published public repo is (a fresh `git init` + commit of this same file set). Without a
-// `.git` here, that suite fails because the verify harness doesn't look like a repo, not
-// because the export is wrong. `--verify` is a "this tree is publish-ready" claim, so it
-// inits + commits a throwaway local repo first, the same shape as the real publish step;
-// the plain dry-run copy stays a pure file snapshot.
+// Verification uses a throwaway git commit because the exported hygiene tests inspect tracked
+// files. The temporary repository has the same one-snapshot shape as the published checkout.
 function initGitSnapshot(outDir: string): void {
   const run = (args: string[]) => {
     const result = spawnSync('git', args, { cwd: outDir, stdio: 'inherit' });
@@ -132,12 +112,7 @@ function runVerify(outDir: string): void {
       }
     }
   } finally {
-    // Leave the directory as the snapshot again. Verifying is a side trip: it needs a git
-    // repo (for the shipped suite's git-dependent tests), a node_modules and a dist, none
-    // of which are part of what gets published. Leaving them behind contradicts the
-    // export's "history-free files" contract, trips the publish workflow's "no .git in the
-    // snapshot" assertion, and makes the publish sync copy ~15k dependency files into the
-    // public checkout for git to then ignore.
+    // Restore the output to publishable source files after verification.
     for (const artifact of ['.git', 'node_modules', 'dist', 'tsconfig.tsbuildinfo']) {
       rmSync(join(outDir, artifact), { recursive: true, force: true });
     }
@@ -148,8 +123,7 @@ function runVerify(outDir: string): void {
 async function main(): Promise<void> {
   const { out, verify, allowOpenAudit } = parseArgs(process.argv.slice(2));
   const rootDir = process.cwd();
-  // resolve() (unlike join()) treats an absolute `out` as-is instead of concatenating it
-  // onto rootDir — callers pass both relative and absolute --out paths.
+  // Callers may provide a relative or absolute output path.
   const outDir = resolve(rootDir, out);
 
   const manifestPath = join(rootDir, 'docs', 'internal', 'deployment', 'public-repo-manifest.md');
@@ -162,7 +136,7 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true });
   copyAllowlisted(rootDir, outDir, toCopy);
 
-  // --- Leak check (explicit, not just "we only copied the allowlist") ---------------
+  // Recheck the selected output independently of the allowlist pass.
   const leaked = findLeakedPaths(toCopy, manifest);
   if (leaked.length > 0) {
     throw new Error(
@@ -178,8 +152,7 @@ async function main(): Promise<void> {
         spotted.map((p) => `  ${p}`).join('\n')
     );
   }
-  // The agent-instruction files sit beside the source they describe, so they have no fixed
-  // path for the check above to name — the whole output is walked for the basename instead.
+  // Agent-instruction files can occur at any depth, so scan by basename.
   const denied = findByBasename(walkOutput(outDir), AGENT_DOC_NAMES);
   if (denied.length > 0) {
     throw new Error(
@@ -193,7 +166,7 @@ async function main(): Promise<void> {
     .filter(({ bytes }) => isProbablyText(bytes))
     .map(({ path, bytes }) => ({ path, text: Buffer.from(bytes).toString('utf8') }));
 
-  // --- Agent-doc pointer scan (the snapshot has no agent instructions to point at) ----
+  // Public files cannot point to agent instructions that the snapshot omits.
   const pointers = findAgentDocPointers(copiedText);
   if (pointers.length > 0) {
     throw new Error(
@@ -204,7 +177,7 @@ async function main(): Promise<void> {
     );
   }
 
-  // --- AI-attribution scan (the export must carry no commit-trailer attribution) ----
+  // The snapshot declares project authorship without development-history trailers.
   const attributed = findAiAttribution(copiedText);
   if (attributed.length > 0) {
     throw new Error(
@@ -220,14 +193,12 @@ async function main(): Promise<void> {
   console.log(`[export-public-repo] copied ${toCopy.length}/${tracked.length} tracked files into ${outDir}`);
   console.log('[export-public-repo] leak check passed (no internal-glob match, no denylisted path present).');
 
-  // --- Asset-provenance audit gate (docs/internal/legal/asset-provenance.md) ------------------
-  // Always warn while the audit is open — the dry-run copy above is NOT gated by this
-  // (inspection is legitimate); only --verify (a publish-readiness claim) is refused below.
+  // Copying remains available for inspection; --verify requires a closed provenance audit.
   const status = auditStatus(rootDir);
   if (status.open) {
     console.warn(
       `[export-public-repo] WARNING: asset-provenance audit is OPEN (${status.noneYetCount} row(s) still ` +
-        `"permission basis: none-yet") — see docs/internal/legal/asset-provenance.md. This export may include ` +
+        `"permission basis: none-yet"). This export may include ` +
         `assets not yet cleared for public release.`
     );
   }
@@ -237,7 +208,7 @@ async function main(): Promise<void> {
       throw new Error(
         `[export-public-repo] REFUSED: --verify while the asset-provenance audit is OPEN ` +
           `(${status.noneYetCount} row(s) still "none-yet"). Pass --allow-open-audit to run anyway, or ` +
-          `close the audit first (docs/internal/legal/asset-provenance.md).`
+          `close the private audit first.`
       );
     }
     runVerify(outDir);

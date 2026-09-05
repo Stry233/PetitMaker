@@ -7,7 +7,7 @@
  * bindable here, no per-command wiring. Fully DOM, so it is verifiable via the headless-Firefox
  * screenshot loop.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, type Variants } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import { font, radii, inkTint, springs, buttonMotion, cursors } from '../../../design/styles';
@@ -18,6 +18,7 @@ import {
 import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { useScrollFadeBoth } from '../../../primitives/scroll-fade';
+import { useWheelToHorizontal } from '../../../primitives/wheel-horizontal';
 import { showToast } from '../../floating/Toast';
 import { downloadBlob } from '../../../../io/image-export';
 import { COMMANDS, COMMAND_BY_ID, type EditorCommand } from '../../../../kit/commands';
@@ -57,6 +58,89 @@ const kbdRegion: CSSProperties = {
   display: 'flex', justifyContent: 'safe center', alignItems: 'flex-start',
   flex: '0 1 auto', minHeight: 0, overflowX: 'auto', overflowY: 'auto',
 };
+
+/**
+ * The board's horizontal bar: the region hides the platform bars (`pw-noscroll`) and the edge fade
+ * says "more", but a fade cannot be grabbed — this draws a thumb over the same native scroller and
+ * writes back. Mounted only while the board actually overflows. It wears the app's cozy scrollbar
+ * look (`animations.css`: a thin warm pill on a transparent lane, the modals' own bars), drawn out
+ * here only because the region's two-axis fade mask would wash a bar INSIDE the scroller along its
+ * whole length.
+ */
+const HBAR_H = 12;
+// The visible pill: the cozy bar's 12px lane minus its 3px transparent inset each side.
+const HBAR_THUMB = 6;
+const HBAR_FILL = 'var(--sb-thumb, rgba(130, 96, 66, 0.40))';
+const HBAR_FILL_HOVER = 'var(--sb-thumb-hover, rgba(130, 96, 66, 0.62))';
+function BoardHBar({ left, vw, cw, label, onScrollTo }: {
+  left: number; vw: number; cw: number; label: string;
+  onScrollTo: (left: number, glide: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  /** The pointer's offset into the thumb while a drag holds it, in track px. */
+  const grab = useRef<number | null>(null);
+  const [hover, setHover] = useState(false);
+  const room = Math.max(0, cw - vw);
+  // The floor keeps the thumb grabbable on a very wide board; percentage of the track, so it
+  // follows the window without a measured width.
+  const thumbFrac = Math.max(0.08, cw > 0 ? vw / cw : 1);
+  const posFrac = room > 0 ? left / room : 0;
+
+  const scrollFor = (clientX: number): number | null => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return null;
+    const thumbW = rect.width * thumbFrac;
+    const travel = rect.width - thumbW;
+    if (travel <= 0) return 0;
+    const thumbLeft = clientX - rect.left - (grab.current ?? thumbW / 2);
+    return Math.min(room, Math.max(0, (thumbLeft / travel) * room));
+  };
+  const down = (e: ReactPointerEvent<HTMLElement>, onThumb: boolean): void => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const thumbW = rect.width * thumbFrac;
+    // Grabbing the thumb keeps the point under the pointer; pressing the track jumps the thumb's
+    // centre there, so the press lands where the user aimed rather than a thumb-width away.
+    grab.current = onThumb ? e.clientX - rect.left - (rect.width - thumbW) * posFrac : thumbW / 2;
+    const to = scrollFor(e.clientX);
+    if (to !== null) onScrollTo(to, !onThumb);
+  };
+
+  return (
+    <div
+      ref={ref}
+      role="scrollbar"
+      aria-label={label}
+      aria-controls="kbd-region"
+      aria-orientation="horizontal"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(room)}
+      aria-valuenow={Math.round(left)}
+      onPointerDown={(e) => down(e, false)}
+      onPointerMove={(e) => {
+        if (!e.buttons || grab.current === null) return;
+        const to = scrollFor(e.clientX);
+        if (to !== null) onScrollTo(to, false);
+      }}
+      onPointerUp={() => { grab.current = null; }}
+      style={{ position: 'relative', height: HBAR_H, margin: '6px 6px 0', flexShrink: 0, cursor: cursors.clickable, touchAction: 'none' }}
+    >
+      <span
+        data-testid="kbd-hbar-thumb"
+        onPointerDown={(e) => { e.stopPropagation(); down(e, true); }}
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
+        style={{
+          position: 'absolute', top: (HBAR_H - HBAR_THUMB) / 2, height: HBAR_THUMB,
+          left: `${posFrac * (1 - thumbFrac) * 100}%`, width: `${thumbFrac * 100}%`,
+          borderRadius: radii.pill, background: hover ? HBAR_FILL_HOVER : HBAR_FILL,
+          transition: 'background-color 0.15s ease',
+        }}
+      />
+    </div>
+  );
+}
 const titleStyle: CSSProperties = { ...windowTitle, marginBottom: 16, flexShrink: 0 };
 
 // The window pill, at this page's own size (its rows are denser than Settings'). `primary` is the
@@ -134,6 +218,27 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const kbdRef = useRef<HTMLDivElement>(null);
   const kbdFade = useScrollFadeBoth(kbdRef);
+  // When the window is short enough that only sideways travel remains, a mouse's vertical
+  // notches drive it; with vertical room the hook stands aside and the wheel scrolls as usual.
+  useWheelToHorizontal(kbdRef);
+
+  // The board region's live scroll geometry, feeding the drawn horizontal bar below it.
+  const [hbar, setHbar] = useState({ left: 0, vw: 0, cw: 0 });
+  const measureHbar = useCallback(() => {
+    const el = kbdRef.current;
+    if (!el) return;
+    setHbar((p) => (p.left === el.scrollLeft && p.vw === el.clientWidth && p.cw === el.scrollWidth)
+      ? p
+      : { left: el.scrollLeft, vw: el.clientWidth, cw: el.scrollWidth });
+  }, []);
+  useEffect(() => {
+    measureHbar();
+    const el = kbdRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measureHbar);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open, measureHbar]);
 
   const activePreset = useMemo(() => detectPreset(overrides), [overrides]);
 
@@ -175,6 +280,8 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
       const combo = comboFromEvent(e);
       if (!combo) return; // bare modifier / space — keep listening
       const r = rebind(selectedId, combo);
+      // The one refusal a recorded chord can hit: a shifted twin of a live UI-scale binding, which
+      // the UI-scale listener answers on the same keycap.
       if (!r.ok) setNote(t('kbd.reserved'));
       else setNote(r.displaced ? `${t('kbd.reassigned_from')} ${label(r.displaced)}` : null);
       setRecording(false);
@@ -314,29 +421,22 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const selCombo = selectedId ? effectiveCombo(overrides, selectedId) : null;
   const detail = (() => {
     if (!selected) return <span style={{ ...roleFont('body'), color: skin.muted, fontFamily: font.family }}>{t('kbd.hint')}</span>;
-    const reserved = !!selected.reserved;
+    const clearOff = !selCombo;
+    const resetOff = effectiveCombo({}, selected.id) === selCombo;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ width: 13, height: 13, borderRadius: 4, background: CATEGORY_COLOR[selected.category], flex: '0 0 auto' }} />
         <span style={{ ...roleFont('head'), color: skin.ink, fontFamily: font.family }}>{t(selected.labelKey)}</span>
         <span style={recording ? { ...comboChip, background: skin.active, color: skin.ink } : comboChip}>
-          {recording ? t('kbd.recording') : reserved ? t('kbd.reserved') : selCombo ? prettyCombo(selCombo) : t('kbd.unbound')}
+          {recording ? t('kbd.recording') : selCombo ? prettyCombo(selCombo) : t('kbd.unbound')}
         </span>
-        {!reserved && (() => {
-          const clearOff = !selCombo;
-          const resetOff = effectiveCombo({}, selected.id) === selCombo;
-          return (
-            <>
-              <motion.button {...buttonMotion} style={pill('primary')} onClick={() => { setNote(null); setRecording(true); }}>{t('kbd.record')}</motion.button>
-              <motion.button {...(clearOff ? {} : buttonMotion)} style={pill('quiet', clearOff, 'inset')} disabled={clearOff} onClick={() => { clear(selected.id); setNote(null); }}>{t('kbd.clear')}</motion.button>
-              <motion.button
-                {...(resetOff ? {} : buttonMotion)}
-                style={pill('quiet', resetOff, 'inset')} disabled={resetOff}
-                onClick={() => { if (selected.defaultCombo) rebind(selected.id, selected.defaultCombo); else clear(selected.id); setNote(null); }}
-              >{t('kbd.reset')}</motion.button>
-            </>
-          );
-        })()}
+        <motion.button {...buttonMotion} style={pill('primary')} onClick={() => { setNote(null); setRecording(true); }}>{t('kbd.record')}</motion.button>
+        <motion.button {...(clearOff ? {} : buttonMotion)} style={pill('quiet', clearOff, 'inset')} disabled={clearOff} onClick={() => { clear(selected.id); setNote(null); }}>{t('kbd.clear')}</motion.button>
+        <motion.button
+          {...(resetOff ? {} : buttonMotion)}
+          style={pill('quiet', resetOff, 'inset')} disabled={resetOff}
+          onClick={() => { if (selected.defaultCombo) rebind(selected.id, selected.defaultCombo); else clear(selected.id); setNote(null); }}
+        >{t('kbd.reset')}</motion.button>
         {note && <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{note}</span>}
       </div>
     );
@@ -358,8 +458,8 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const keyboardH = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
 
   return (
-    <ModalShell open={open} onClose={onClose} width={width} maxVwPct={96} maxVh={92} cardStyle={cardStyle} ariaLabel={t('modal.help_title')}>
-      <div style={titleStyle}>{t('modal.help_title')}</div>
+    <ModalShell open={open} onClose={onClose} width={width} maxVwPct={96} maxVh={92} cardStyle={cardStyle} ariaLabel={t('modal.keyboard_title')}>
+      <div style={titleStyle}>{t('modal.keyboard_title')}</div>
 
       {/* search (left) + reset-all (right), the same two ends the modifier row below hangs its own
           controls from. The field is a READING width rather than the board's: a search box a metre
@@ -458,8 +558,9 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
       {/* ONLY the keyboard scrolls (header above + footer below stay pinned). One region scrolls both
           axes; its height = board + 6px top room (hover lift + selection ring) + 14px bottom strip so
           the horizontal bar has room without spuriously triggering the vertical one. It shrinks under
-          height pressure (high UI zoom) and scrolls; the fade is the only continuation signal. */}
-      <div ref={kbdRef} data-testid="kbd-region" className="pw-noscroll" style={{ ...kbdRegion, height: keyboardH + 20, ...kbdFade }}>
+          height pressure (high UI zoom) and scrolls; the fade says "more", and the drawn bar below
+          the region is the grabbable handle for the horizontal axis. */}
+      <div ref={kbdRef} id="kbd-region" data-testid="kbd-region" className="pw-noscroll" onScroll={measureHbar} style={{ ...kbdRegion, height: keyboardH + 20, ...kbdFade }}>
         {/* Must NOT be keyed by the active layer: keying it remounts every keycap on each
             Ctrl/Shift/Alt press, which replays the entrance instead of switching layer. The container
             stays stable and each key cross-fades its own label + eases its own tint. `initial/animate`
@@ -476,6 +577,16 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           {gridBoard(NUMPAD, NUMPAD_COLS, NUMPAD_ROWS_N, 99, KEY_H + GAP)}
         </motion.div>
       </div>
+
+      {hbar.cw > hbar.vw + 1 && (
+        <BoardHBar
+          left={hbar.left}
+          vw={hbar.vw}
+          cw={hbar.cw}
+          label={t('kbd.scrollbar')}
+          onScrollTo={(l, glide) => kbdRef.current?.scrollTo({ left: l, behavior: glide && !reduced ? 'smooth' : 'auto' })}
+        />
+      )}
 
       {/* detail strip — the hint when nothing is selected, else the selected command's
           record / clear / reset controls. Pinned (always visible) below the scrolling board. */}

@@ -35,9 +35,8 @@ describe('preview3d: road edge-cut renders in 3D', () => {
   });
 
   it('the cut DIRECTION follows the connection side (a 1:1 port of 2D drawRoadShape)', () => {
-    // A wedge road: connSide is left at rotation 0 (filled mass on the LEFT) and right at rotation 180
-    // (filled on the RIGHT). The 3D shape must flip with it, like the 2D txPt transform — the regression
-    // for the cut rendering in the WRONG direction.
+    // A wedge fills the left side at rotation 0 and the right side at rotation 180. The 3D shape
+    // follows the same directional transform as the 2D shape.
     const wedge = (rot: number) => { const s = makeState(20, 20) as GridState; addRoad(s, 'w', ['square', 'fan', 'square', 'fan'], rot); return buildRoadTrimMesh(s); };
     const left = wedge(0), right = wedge(180);
     expect(left.positions.length).toBeGreaterThan(0);

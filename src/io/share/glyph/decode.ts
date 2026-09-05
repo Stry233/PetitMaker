@@ -1,288 +1,441 @@
-// src/io/share/glyph/decode.ts — PetitGlyph v2 decoder. Recovers the payload bytes from an RGBA
-// image containing a rendered code band. The band's grid footprint is FIXED (GRID_COLS ×
-// GRID_ROWS), so once the finder pair is located the module pitch and origin are known exactly —
-// no per-module search. The pipeline mirrors encode.ts in reverse:
-//   finder pair → calibrate (learn 16 color centroids + a black→white grayscale ramp) →
-//   header (grayscale, RS(8), erasure-aware) → data (color, erasure-aware, per-tier grid) →
-//   symbols→bytes → un-whiten → deinterleave → per-block RS(71) → crc32 check.
-// Every failure path returns null; the whole per-candidate attempt is wrapped in try/catch so a
-// bounds bug can never throw out of the decoder.
 import {
-  GRID_COLS, GRID_ROWS, TOP_ROWS, RS_N, RS_K, HEADER_NSYM, HEADER_BYTES,
+  GRID_COLS, TOP_ROWS, CURRENT_TOP_ROWS, RS_N, RS_K, HEADER_NSYM, HEADER_BYTES, HEADER_VERSION,
   HEADER_OFFSET, HEADER_ENC_BYTES, HEADER_SYMBOL_BITS, HEADER_MODULES, FINDER, CALIB_CELLS,
   TIERS, type Tier, calibrationRect, headerModuleAt, nBlocks,
 } from './geometry';
-import { PALETTE8_INDICES, HEADER_LEVELS, BG, rgbToYcc, classify, paletteForVersion, type RGB } from './palette';
+import { dataCellAt, GLYPH_PROFILES, planFor, type GlyphPlan } from './profiles';
+import {
+  PALETTE8_INDICES, HEADER_LEVELS, rgbToYcc, classify, paletteForVersion, type RGB,
+} from './palette';
 import { rsDecode } from './rs';
 import { deinterleave, deinterleaveErasures } from './interleave';
-import { symbolsToBytes, symbolErasuresToByteErasures } from './bitpack';
+import { bytesToSymbols, symbolsToBytes, symbolErasuresToByteErasures } from './bitpack';
 import { crc32 } from '../crypto/crc32';
 import { whiten } from './encode';
+import { convolutionDecode, codedBits } from './convolution';
+import { BlockRecovery, type RecoveryBudget } from './recovery';
 
-const ERASURE_CONF = 0.2;      // data-module confidence below this → RS erasure
-const HEADER_ERASURE_CONF = 0.15; // header-module confidence below this → RS erasure
+const ERASURE_CONFIDENCE = 0.2;
+const HEADER_ERASURE_CONFIDENCE = 0.15;
 
-/** A connected dark blob's bounding box + pixel count. */
-interface Comp { minx: number; maxx: number; miny: number; maxy: number; count: number }
+interface Component { minx: number; maxx: number; miny: number; maxy: number; count: number }
+interface Geometry { ox: number; oy: number; module: number }
 
-/** One fixed-geometry candidate derived from a finder pair. */
-interface Geo { ox: number; oy: number; module: number }
-
-/** Luma of an RGB triple (BT.601), reusing the palette's forward transform. */
-function luma(c: RGB): number {
-  return rgbToYcc(c[0], c[1], c[2])[0];
+function luminance(color: RGB): number {
+  return rgbToYcc(color[0], color[1], color[2])[0];
 }
 
-const HEADER_LUMAS: number[] = HEADER_LEVELS.map((c) => luma(c));
+const HEADER_LUMAS = HEADER_LEVELS.map((color) => luminance(color));
 
-/** Median of a numeric array (lower-middle for even length). Empty → 0. */
-function median(vals: number[]): number {
-  if (vals.length === 0) return 0;
-  const s = vals.slice().sort((a, b) => a - b);
-  return s[(s.length - 1) >> 1]!;
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[(sorted.length - 1) >> 1]!;
 }
 
-/** Median RGB over the inner half (inset 25% per side) of a float pixel rect, sampling at integer
- *  coords. Returns null if the rect lies entirely outside the image. */
-function sampleRect(rgba: Uint8Array, width: number, height: number, x0: number, y0: number, w: number, h: number): RGB | null {
-  const ix0 = x0 + w * 0.25, ix1 = x0 + w * 0.75;
-  const iy0 = y0 + h * 0.25, iy1 = y0 + h * 0.75;
-  const rs: number[] = [], gs: number[] = [], bs: number[] = [];
-  const push = (x: number, y: number) => {
+/** Median RGB over the inner half of a pixel rectangle. */
+function sampleRect(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+): RGB | null {
+  const xa = Math.ceil(x0 + w * 0.25);
+  const xb = Math.floor(x0 + w * 0.75);
+  const ya = Math.ceil(y0 + h * 0.25);
+  const yb = Math.floor(y0 + h * 0.75);
+  const red: number[] = [];
+  const green: number[] = [];
+  const blue: number[] = [];
+  const push = (x: number, y: number): void => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const i = (y * width + x) * 4;
-    rs.push(rgba[i]!); gs.push(rgba[i + 1]!); bs.push(rgba[i + 2]!);
+    const index = (y * width + x) * 4;
+    red.push(rgba[index]!);
+    green.push(rgba[index + 1]!);
+    blue.push(rgba[index + 2]!);
   };
-  const xa = Math.ceil(ix0), xb = Math.floor(ix1);
-  const ya = Math.ceil(iy0), yb = Math.floor(iy1);
-  for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) push(x, y);
-  if (rs.length === 0) push(Math.round((x0 + w / 2)), Math.round((y0 + h / 2))); // tiny module fallback
-  if (rs.length === 0) return null;
-  return [median(rs), median(gs), median(bs)];
-}
-
-/** Median luma over a horizontal strip of rows (used for the white quiet-zone reference). */
-function sampleStripLuma(rgba: Uint8Array, width: number, height: number, x0: number, x1: number, y: number): number | null {
-  const yi = Math.round(y);
-  if (yi < 0 || yi >= height) return null;
-  const xa = Math.max(0, Math.round(x0)), xb = Math.min(width - 1, Math.round(x1));
-  const vals: number[] = [];
-  for (let x = xa; x <= xb; x++) {
-    const i = (yi * width + x) * 4;
-    vals.push(luma([rgba[i]!, rgba[i + 1]!, rgba[i + 2]!]));
+  for (let y = ya; y <= yb; y++) {
+    for (let x = xa; x <= xb; x++) push(x, y);
   }
-  return vals.length ? median(vals) : null;
+  if (red.length === 0) push(Math.round(x0 + w / 2), Math.round(y0 + h / 2));
+  return red.length > 0 ? [median(red), median(green), median(blue)] : null;
 }
 
-/** Connected-component dark-blob scan → fixed-geometry finder-pair candidates, best first. The band
- *  spans GRID_COLS by construction, so a pair fixes the module pitch with no per-module search. */
-function findFinders(rgba: Uint8Array, width: number, height: number): Geo[] {
-  // The threshold is tighter than "any dark-ish pixel": the darkest DATA/calibration
-  // palette colors (luma-band-0) are intentionally dark for contrast but must NOT flood-fill-merge
-  // with a finder square that happens to sit directly adjacent to one of them (finders and data
-  // share a border with no reserved gap row/col on that side) — a merge corrupts the finder's
-  // bounding box, which the shape/size filters below then reject, making the TRUE finder
-  // undetectable for that image. True finder pixels are exactly (0,0,0) and stay far under this
-  // bound even after heavy capture degradation (see robustness.test.ts). The nearest confusable
-  // non-finder dark is band 0's channel-sum minimum: 121 in the v1 palette, 119 in v2. That margin
-  // is what caps band 0's chroma scale in palette.ts, since the entry pushing both Cb and Cr
-  // negative darkens as that scale rises.
-  const dark = (idx: number) => rgba[idx * 4]! + rgba[idx * 4 + 1]! + rgba[idx * 4 + 2]! < 100;
+/** Finder separation distinguishes the share band from dark shapes elsewhere in the image. */
+function findFinders(rgba: Uint8Array, width: number, height: number): Geometry[] {
+  const dark = (pixel: number) => rgba[pixel * 4]! + rgba[pixel * 4 + 1]! + rgba[pixel * 4 + 2]! < 100;
   const seen = new Uint8Array(width * height);
-  const comps: Comp[] = [];
+  const components: Component[] = [];
   const stack: number[] = [];
-  for (let p = 0; p < width * height; p++) {
-    if (seen[p] || !dark(p)) continue;
-    let minx = width, maxx = 0, miny = height, maxy = 0, count = 0;
-    stack.push(p); seen[p] = 1;
-    while (stack.length) {
-      const q = stack.pop()!; const x = q % width, y = (q / width) | 0;
-      count++; if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y;
-      if (x > 0 && !seen[q - 1] && dark(q - 1)) { seen[q - 1] = 1; stack.push(q - 1); }
-      if (x < width - 1 && !seen[q + 1] && dark(q + 1)) { seen[q + 1] = 1; stack.push(q + 1); }
-      if (y > 0 && !seen[q - width] && dark(q - width)) { seen[q - width] = 1; stack.push(q - width); }
-      if (y < height - 1 && !seen[q + width] && dark(q + width)) { seen[q + width] = 1; stack.push(q + width); }
-      if (count > width * height) return []; // pathological (e.g. random image) → bail
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    if (seen[pixel] || !dark(pixel)) continue;
+    let minx = width;
+    let maxx = 0;
+    let miny = height;
+    let maxy = 0;
+    let count = 0;
+    stack.push(pixel);
+    seen[pixel] = 1;
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      const x = current % width;
+      const y = Math.floor(current / width);
+      count++;
+      minx = Math.min(minx, x);
+      maxx = Math.max(maxx, x);
+      miny = Math.min(miny, y);
+      maxy = Math.max(maxy, y);
+      if (x > 0 && !seen[current - 1] && dark(current - 1)) { seen[current - 1] = 1; stack.push(current - 1); }
+      if (x < width - 1 && !seen[current + 1] && dark(current + 1)) { seen[current + 1] = 1; stack.push(current + 1); }
+      if (y > 0 && !seen[current - width] && dark(current - width)) { seen[current - width] = 1; stack.push(current - width); }
+      if (y < height - 1 && !seen[current + width] && dark(current + width)) { seen[current + width] = 1; stack.push(current + width); }
+      if (count > width * height) return [];
     }
-    const w = maxx - minx + 1, h = maxy - miny + 1;
-    if (w >= 6 && h >= 6 && count > 0.55 * w * h && w / h > 0.6 && w / h < 1.66) comps.push({ minx, maxx, miny, maxy, count });
+    const componentWidth = maxx - minx + 1;
+    const componentHeight = maxy - miny + 1;
+    if (
+      componentWidth >= 6
+      && componentHeight >= 6
+      && count > 0.55 * componentWidth * componentHeight
+      && componentWidth / componentHeight > 0.6
+      && componentWidth / componentHeight < 1.66
+    ) {
+      components.push({ minx, maxx, miny, maxy, count });
+    }
   }
-  if (comps.length < 2) return [];
-  // The two finders are equal-size solid squares sharing a top edge, far apart horizontally.
-  comps.sort((a, b) => b.count - a.count);
-  const cand = comps.slice(0, 12);
-  const pairs: { left: Comp; right: Comp; score: number }[] = [];
-  for (let i = 0; i < cand.length; i++) for (let j = i + 1; j < cand.length; j++) {
-    const A = cand[i]!, B = cand[j]!;
-    const wA = A.maxx - A.minx + 1, hA = A.maxy - A.miny + 1, wB = B.maxx - B.minx + 1, hB = B.maxy - B.miny + 1;
-    if (Math.min(wA, wB) / Math.max(wA, wB) < 0.7 || Math.min(hA, hB) / Math.max(hA, hB) < 0.7) continue; // equal size
-    if (Math.abs(A.miny - B.miny) > Math.max(hA, hB)) continue;                                            // same top edge
-    const cxA = (A.minx + A.maxx) / 2, cxB = (B.minx + B.maxx) / 2;
-    if (Math.abs(cxA - cxB) < 4 * Math.max(wA, wB)) continue;                                              // far apart
-    const [left, right] = cxA < cxB ? [A, B] : [B, A];
-    pairs.push({ left, right, score: A.count + B.count });
-  }
-  if (!pairs.length) return [];
-  pairs.sort((a, b) => b.score - a.score); // prefer the largest blobs (the real finders)
+  if (components.length < 2) return [];
 
-  // Fixed geometry: the finder pair spans the full GRID_COLS grid by construction, so the module
-  // pitch is (right.maxx - left.minx + 1) / GRID_COLS and the origin is the TL finder's top-left.
-  const out: Geo[] = [];
-  for (const { left, right } of pairs.slice(0, 4)) {
-    const module = (right.maxx - left.minx + 1) / GRID_COLS;
-    if (module < 2.5) continue;
-    const ox = left.minx, oy = left.miny;
-    // Implied band must fit the image (within a blur-bleed tolerance of 2 modules).
-    if (ox + GRID_COLS * module > width + 2 * module) continue;
-    if (oy + GRID_ROWS * module > height + 2 * module) continue;
-    // Each finder's measured size should be ~FINDER modules.
-    const sizeL = (left.maxx - left.minx + 1 + (left.maxy - left.miny + 1)) / 2;
-    const sizeR = (right.maxx - right.minx + 1 + (right.maxy - right.miny + 1)) / 2;
-    if (Math.abs(sizeL - FINDER * module) > 1.5 * module) continue;
-    if (Math.abs(sizeR - FINDER * module) > 1.5 * module) continue;
-    out.push({ ox, oy, module });
+  components.sort((a, b) => b.count - a.count);
+  const candidates = components.slice(0, 64);
+  const pairs: { left: Component; right: Component; score: number }[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i]!;
+      const b = candidates[j]!;
+      const aw = a.maxx - a.minx + 1;
+      const ah = a.maxy - a.miny + 1;
+      const bw = b.maxx - b.minx + 1;
+      const bh = b.maxy - b.miny + 1;
+      if (Math.min(aw, bw) / Math.max(aw, bw) < 0.7 || Math.min(ah, bh) / Math.max(ah, bh) < 0.7) continue;
+      if (Math.abs(a.miny - b.miny) > Math.max(ah, bh)) continue;
+      const acx = (a.minx + a.maxx) / 2;
+      const bcx = (b.minx + b.maxx) / 2;
+      const spanInFinderWidths = Math.abs(acx - bcx) / ((aw + bw) / 2);
+      if (spanInFinderWidths < 28 || spanInFinderWidths > 60) continue;
+      const [left, right] = acx < bcx ? [a, b] : [b, a];
+      pairs.push({ left, right, score: a.count + b.count });
+    }
   }
-  return out;
+  pairs.sort((a, b) => b.score - a.score);
+
+  const geometries: Geometry[] = [];
+  for (const { left, right } of pairs.slice(0, 4)) {
+    const leftCx = (left.minx + left.maxx + 1) / 2;
+    const rightCx = (right.minx + right.maxx + 1) / 2;
+    const leftCy = (left.miny + left.maxy + 1) / 2;
+    const rightCy = (right.miny + right.maxy + 1) / 2;
+    const centeredModule = (rightCx - leftCx) / (GRID_COLS - FINDER);
+    const candidatesForPair: Geometry[] = [
+      {
+        module: centeredModule,
+        ox: leftCx - FINDER * centeredModule / 2,
+        oy: (leftCy + rightCy) / 2 - FINDER * centeredModule / 2,
+      },
+      {
+        module: (right.maxx - left.minx + 1) / GRID_COLS,
+        ox: left.minx,
+        oy: left.miny,
+      },
+    ];
+    for (const geometry of candidatesForPair) {
+      const { module, ox, oy } = geometry;
+      if (module < 2.5) continue;
+      if (ox + GRID_COLS * module > width + 2 * module) continue;
+      if (oy + TOP_ROWS * module > height + 2 * module) continue;
+      const leftSize = (left.maxx - left.minx + 1 + left.maxy - left.miny + 1) / 2;
+      const rightSize = (right.maxx - right.minx + 1 + right.maxy - right.miny + 1) / 2;
+      if (Math.abs(leftSize - FINDER * module) > 1.5 * module) continue;
+      if (Math.abs(rightSize - FINDER * module) > 1.5 * module) continue;
+      if (!geometries.some((item) => Math.abs(item.ox - ox) < 0.01 && Math.abs(item.oy - oy) < 0.01 && Math.abs(item.module - module) < 0.01)) {
+        geometries.push(geometry);
+      }
+    }
+  }
+  return geometries;
 }
 
-interface Header { version: number; palette: readonly RGB[]; tier: Tier; payloadLen: number; crc: number }
+/** Finder darkness supplies fractional edge coverage after antialiased resizing. */
+function refineGeometry(rgba: Uint8Array, width: number, height: number, geometry: Geometry): Geometry {
+  const { ox, oy, module } = geometry;
+  const ink = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
+  const paper = sampleRect(rgba, width, height, ox + 80 * module, oy + module, module, module);
+  if (!ink || !paper) return geometry;
+  const white = luminance(paper);
+  const contrast = white - luminance(ink);
+  if (contrast < 80) return geometry;
+  const center = (left: number): { x: number; y: number } => {
+    let sx = 0, sy = 0, total = 0;
+    for (let y = Math.max(0, Math.floor(oy - 2)); y < Math.min(height, oy + FINDER * module + 2); y++) {
+      for (let x = Math.max(0, Math.floor(left - 2)); x < Math.min(width, left + FINDER * module + 2); x++) {
+        const p = (y * width + x) * 4;
+        const value = luminance([rgba[p]!, rgba[p + 1]!, rgba[p + 2]!]);
+        const weight = Math.max(0, Math.min(1, (white - value) / contrast));
+        sx += (x + 0.5) * weight;
+        sy += (y + 0.5) * weight;
+        total += weight;
+      }
+    }
+    return { x: sx / total, y: sy / total };
+  };
+  const left = center(ox), right = center(ox + (GRID_COLS - FINDER) * module);
+  const refinedModule = (right.x - left.x) / (GRID_COLS - FINDER);
+  return { module: refinedModule, ox: left.x - FINDER * refinedModule / 2,
+    oy: (left.y + right.y) / 2 - FINDER * refinedModule / 2 };
+}
 
-/** Attempt a full decode at one fixed-geometry candidate. Returns payload or null.
- *
- *  The header is read FIRST: it is drawn in grayscale against the finder/quiet-zone references, so
- *  it needs no color calibration, and the version it carries is what says which palette the band
- *  below it is drawn in. That palette is resolved once here — the per-module classifier below
- *  never branches on version. */
-function decodeAt(rgba: Uint8Array, width: number, height: number, geo: Geo): Uint8Array | null {
-  const { ox, oy, module } = geo;
+interface HeaderBase { payloadLen: number; crc: number; palette: readonly RGB[] }
+interface LegacyHeader extends HeaderBase { kind: 'legacy'; tier: Tier }
+interface CurrentHeader extends HeaderBase { kind: 'current'; plan: GlyphPlan }
+type Header = LegacyHeader | CurrentHeader;
 
-  // Grayscale references: black from the TL finder interior, white from the quiet zone above it.
-  const black = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
-  if (!black) return null;
-  const blackY = luma(black);
-  const whiteYsample = sampleStripLuma(rgba, width, height, ox, ox + GRID_COLS * module, oy - 1.5 * module);
-  const whiteY = whiteYsample ?? luma(BG);
-  const headerRefs = HEADER_LUMAS.map((lv) => blackY + (whiteY - blackY) * (lv / 255));
+interface CurrentCandidate {
+  geometry: Geometry;
+  header: CurrentHeader;
+  centroids: readonly RGB[];
+  recovery: BlockRecovery;
+}
 
-  // ── Header: HEADER_MODULES grayscale modules → 2-bit symbols → RS(8) → HEADER_BYTES record. ──
+function parseHeader(bytes: Uint8Array): Header | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = view.getUint8(HEADER_OFFSET.version);
+  const transportId = view.getUint8(HEADER_OFFSET.tier);
+  const payloadLen = view.getUint16(HEADER_OFFSET.payloadLen, true);
+  const crc = view.getUint32(HEADER_OFFSET.crc, true);
+  if (version === 1 || version === 2) {
+    const palette = paletteForVersion(version);
+    const tier = TIERS[transportId];
+    if (!palette || !tier || payloadLen > tier.payloadCap) return null;
+    return { kind: 'legacy', palette, tier, payloadLen, crc };
+  }
+  if (version !== HEADER_VERSION) return null;
+  const profile = GLYPH_PROFILES.find((item) => item.id === transportId);
+  if (!profile || profile.id !== transportId) return null;
+  const plan = planFor(payloadLen, profile);
+  if (!plan) return null;
+  return { kind: 'current', palette: profile.palette, plan, payloadLen, crc };
+}
+
+function decodeLegacy(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  geometry: Geometry,
+  header: LegacyHeader,
+  centroids: readonly RGB[],
+): Uint8Array | null {
+  const { ox, oy, module } = geometry;
+  const { tier, payloadLen, crc } = header;
+  const blockCount = nBlocks(tier);
+  const streamBytes = blockCount * RS_N;
+  const symbolCount = Math.ceil((streamBytes * 8) / tier.bits);
+  const size = module / tier.div;
+  const dataY = oy + TOP_ROWS * module;
+  const palette = tier.colors === 8 ? PALETTE8_INDICES.map((index) => centroids[index]!) : centroids;
+  const symbols: number[] = new Array(symbolCount);
+  const erased: number[] = [];
+  for (let k = 0; k < symbolCount; k++) {
+    const col = k % tier.dataCols;
+    const row = Math.floor(k / tier.dataCols);
+    const sample = sampleRect(rgba, width, height, ox + col * size, dataY + row * size, size, size);
+    if (!sample) return null;
+    const hit = classify(sample, palette);
+    symbols[k] = hit.idx;
+    if (hit.confidence < ERASURE_CONFIDENCE) erased.push(k);
+  }
+
+  const stream = whiten(symbolsToBytes(symbols, tier.bits, streamBytes));
+  const byteErasures = symbolErasuresToByteErasures(erased, tier.bits, streamBytes);
+  const blocks = deinterleave(stream, blockCount, RS_N);
+  const blockErasures = deinterleaveErasures(byteErasures, blockCount, RS_N);
+  const full = new Uint8Array(blockCount * RS_K);
+  for (let block = 0; block < blockCount; block++) {
+    if (blockErasures[block]!.length > RS_N - RS_K) return null;
+    const decoded = rsDecode(blocks[block]!, RS_N - RS_K, blockErasures[block]!);
+    if (!decoded) return null;
+    full.set(decoded, block * RS_K);
+  }
+  if (payloadLen > full.length) return null;
+  const payload = full.slice(0, payloadLen);
+  return (crc32(payload) >>> 0) === (crc >>> 0) ? payload : null;
+}
+
+function decodeCurrent(
+  rgba: Uint8Array, width: number, height: number, geometry: Geometry,
+  header: CurrentHeader, centroids: readonly RGB[], recovery: BlockRecovery,
+): Uint8Array | null {
+  return recoverCurrent(rgba, width, height, { geometry, header, centroids, recovery }, 0, 0, 1, 0, 1, { attempts: 1000 });
+}
+
+function decodeAt(
+  rgba: Uint8Array, width: number, height: number, geometry: Geometry,
+  current: CurrentCandidate[],
+): Uint8Array | null {
+  const { ox, oy, module } = geometry;
+  const ink = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
+  const paper = sampleRect(rgba, width, height, ox + 80 * module, oy + module, module, module);
+  if (!ink || !paper) return null;
+  const inkY = luminance(ink);
+  const paperY = luminance(paper);
+  const headerReferences = HEADER_LUMAS.map((value) => inkY + (paperY - inkY) * (value / 255));
+
   const headerSymbols: number[] = [];
   const headerErasures: number[] = [];
   for (let k = 0; k < HEADER_MODULES; k++) {
     const { col, row } = headerModuleAt(k);
-    const s = sampleRect(rgba, width, height, ox + col * module, oy + row * module, module, module);
-    if (!s) return null;
-    const y = luma(s);
-    // Nearest header reference on luma only (header positions are known; never compare vs BG).
-    let best = 0, d1 = Infinity, d2 = Infinity;
-    for (let j = 0; j < headerRefs.length; j++) {
-      const d = Math.abs(y - headerRefs[j]!);
-      if (d < d1) { d2 = d1; d1 = d; best = j; } else if (d < d2) { d2 = d; }
+    const sample = sampleRect(rgba, width, height, ox + col * module, oy + row * module, module, module);
+    if (!sample) return null;
+    const value = luminance(sample);
+    let best = 0;
+    let nearest = Infinity;
+    let second = Infinity;
+    for (let index = 0; index < headerReferences.length; index++) {
+      const distance = Math.abs(value - headerReferences[index]!);
+      if (distance < nearest) {
+        second = nearest;
+        nearest = distance;
+        best = index;
+      } else if (distance < second) {
+        second = distance;
+      }
     }
     headerSymbols.push(best);
-    const conf = d2 > 0 ? (d2 - d1) / d2 : 1;
-    if (conf < HEADER_ERASURE_CONF) headerErasures.push(k);
+    const confidence = second > 0 ? (second - nearest) / second : 1;
+    if (confidence < HEADER_ERASURE_CONFIDENCE) headerErasures.push(k);
   }
-  const headerBytes = symbolsToBytes(headerSymbols, HEADER_SYMBOL_BITS, HEADER_ENC_BYTES);
-  const headerByteErasures = symbolErasuresToByteErasures(headerErasures, HEADER_SYMBOL_BITS, HEADER_ENC_BYTES);
-  if (headerByteErasures.length > HEADER_NSYM) return null;
-  const headerData = rsDecode(headerBytes, HEADER_NSYM, headerByteErasures);
-  if (!headerData || headerData.length < HEADER_BYTES) return null;
-  const header = parseHeader(headerData);
+  const encodedHeader = symbolsToBytes(headerSymbols, HEADER_SYMBOL_BITS, HEADER_ENC_BYTES);
+  const byteErasures = symbolErasuresToByteErasures(headerErasures, HEADER_SYMBOL_BITS, HEADER_ENC_BYTES);
+  if (byteErasures.length > HEADER_NSYM) return null;
+  const headerBytes = rsDecode(encodedHeader, HEADER_NSYM, byteErasures);
+  if (!headerBytes || headerBytes.length < HEADER_BYTES) return null;
+  const header = parseHeader(headerBytes);
   if (!header) return null;
-  const { palette, tier, payloadLen, crc } = header;
 
-  // ── Calibration: learn one centroid per palette entry from the swatch row. ──
-  // The centroids are MEASURED off this image, not read from the version's table, so the data
-  // region is classified against the colors the band actually carries after whatever recompression
-  // it went through. The version fixes how many swatches there are and what each index means.
   const centroids: RGB[] = [];
-  for (let i = 0; i < palette.length; i++) {
-    const { col } = calibrationRect(i);
-    const x = ox + col * module, y = oy;
-    const s = sampleRect(rgba, width, height, x, y, CALIB_CELLS * module, CALIB_CELLS * module);
-    if (!s) return null;
-    centroids.push(s);
+  for (let i = 0; i < header.palette.length; i++) {
+    const { col, row } = calibrationRect(i);
+    const sample = sampleRect(
+      rgba, width, height,
+      ox + col * module, oy + row * module,
+      CALIB_CELLS * module, CALIB_CELLS * module,
+    );
+    if (!sample) return null;
+    centroids.push(sample);
   }
 
-  // ── Data: sample exactly the codeword-backed module count, classify to symbols. ──
-  const blocks = nBlocks(tier);
-  const streamBytes = blocks * RS_N;
-  const symbolCount = Math.ceil((streamBytes * 8) / tier.bits);
-  const size = module / tier.div;
-  const dataY0 = oy + TOP_ROWS * module;
-
-  // Centroid subset: for 8-color tiers, build it in PALETTE8_INDICES order so classify's returned
-  // index IS the symbol value; for 16-color tiers the full learned set (idx = symbol).
-  const tierCentroids: RGB[] = tier.colors === 8
-    ? PALETTE8_INDICES.map((idx) => centroids[idx]!)
-    : centroids;
-
-  const symbols: number[] = new Array(symbolCount);
-  const dataErasures: number[] = [];
-  for (let k = 0; k < symbolCount; k++) {
-    const col = k % tier.dataCols, rowIdx = Math.floor(k / tier.dataCols);
-    const x = ox + col * size, y = dataY0 + rowIdx * size;
-    const s = sampleRect(rgba, width, height, x, y, size, size);
-    if (!s) return null;
-    const { idx, confidence } = classify(s, tierCentroids);
-    symbols[k] = idx;
-    if (confidence < ERASURE_CONF) dataErasures.push(k);
-  }
-
-  // ── Transport reverse. ──
-  const packed = symbolsToBytes(symbols, tier.bits, streamBytes);
-  const stream = whiten(packed); // XOR self-inverse → un-whiten
-  const byteErasures = symbolErasuresToByteErasures(dataErasures, tier.bits, streamBytes);
-  const perBlock = deinterleave(stream, blocks, RS_N);
-  const perBlockErasures = deinterleaveErasures(byteErasures, blocks, RS_N);
-
-  const dataParts: Uint8Array[] = [];
-  for (let b = 0; b < blocks; b++) {
-    const eras = perBlockErasures[b]!;
-    if (eras.length > RS_N - RS_K) return null; // > 71 erasures — uncorrectable
-    const decoded = rsDecode(perBlock[b]!, RS_N - RS_K, eras);
-    if (!decoded) return null;
-    dataParts.push(decoded);
-  }
-
-  const full = new Uint8Array(blocks * RS_K);
-  for (let b = 0; b < blocks; b++) full.set(dataParts[b]!, b * RS_K);
-  if (payloadLen > full.length) return null;
-  const payload = full.slice(0, payloadLen);
-  if ((crc32(payload) >>> 0) !== (crc >>> 0)) return null;
-  return payload;
+  if (header.kind === 'legacy') return decodeLegacy(rgba, width, height, geometry, header, centroids);
+  const matching = current.find((candidate) => candidate.header.crc === header.crc
+    && candidate.header.payloadLen === header.payloadLen
+    && candidate.header.plan.profile.id === header.plan.profile.id);
+  const recovery = matching?.recovery ?? new BlockRecovery(header.plan, header.payloadLen, header.crc);
+  current.push({ geometry, header, centroids, recovery });
+  return decodeCurrent(rgba, width, height, geometry, header, centroids, recovery);
 }
 
-/** Parse + validate the 8-byte header record. Returns null on any invalid field. */
-function parseHeader(bytes: Uint8Array): Header | null {
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const version = dv.getUint8(HEADER_OFFSET.version);
-  const palette = paletteForVersion(version);
-  if (!palette) return null;
-  const tierId = dv.getUint8(HEADER_OFFSET.tier);
-  if (tierId < 0 || tierId >= TIERS.length) return null;
-  const tier = TIERS[tierId]!;
-  const payloadLen = dv.getUint16(HEADER_OFFSET.payloadLen, true);
-  if (payloadLen > tier.payloadCap) return null;
-  const crc = dv.getUint32(HEADER_OFFSET.crc, true);
-  return { version, palette, tier, payloadLen, crc };
+function recoverCurrent(
+  rgba: Uint8Array, width: number, height: number, candidate: CurrentCandidate,
+  dx: number, dy: number, gain: number, sharpen: number, radius: number, budget: RecoveryBudget,
+  spanAdjustment = 0,
+): Uint8Array | null {
+  const { geometry, header: { plan }, centroids, recovery } = candidate;
+  const { profile } = plan;
+  const size = geometry.module / profile.div;
+  const pixel = (x: number, y: number): RGB => {
+    const weight = (v: number): number => {
+      const a = Math.abs(v);
+      return a < 1 ? 1.5 * a * a * a - 2.5 * a * a + 1 : a < 2 ? -0.5 * a * a * a + 2.5 * a * a - 4 * a + 2 : 0;
+    };
+    const sx = x - 0.5, sy = y - 0.5;
+    const color = [0, 0, 0];
+    for (let iy = Math.floor(sy) - 1; iy <= Math.floor(sy) + 2; iy++) {
+      for (let ix = Math.floor(sx) - 1; ix <= Math.floor(sx) + 2; ix++) {
+        const w = weight(sx - ix) * weight(sy - iy);
+        const p = (Math.max(0, Math.min(height - 1, iy)) * width + Math.max(0, Math.min(width - 1, ix))) * 4;
+        for (let channel = 0; channel < 3; channel++) color[channel]! += rgba[p + channel]! * w;
+      }
+    }
+    return color as unknown as RGB;
+  };
+  const soft = new Float32Array(codedBits(plan.streamBytes));
+  const anchors = centroids.map(luminance);
+  const mid = (anchors[0]! + anchors[3]!) / 2;
+  const levels = anchors.map((value) => mid + (value - mid) * gain);
+  for (let k = 0; k < plan.symbolCount; k++) {
+    const { col, row } = dataCellAt(k, plan);
+    const x = geometry.ox + (col + 0.5) * size + dx + ((col + 0.5) / profile.dataCols - 0.5) * spanAdjustment;
+    const y = geometry.oy + CURRENT_TOP_ROWS * geometry.module + (row + 0.5) * size + dy;
+    let value = luminance(pixel(x, y));
+    if (sharpen > 0) {
+      const neighbors = [pixel(x - radius, y), pixel(x + radius, y), pixel(x, y - radius), pixel(x, y + radius)];
+      value += sharpen * (value - neighbors.reduce((sum, c) => sum + luminance(c), 0) / 4);
+    }
+    const distances = levels.map((level) => (value - level) ** 2);
+    const labels = [0, 1, 3, 2];
+    for (let bit = 0; bit < 2 && k * 2 + bit < soft.length; bit++) {
+      let zero = Infinity, one = Infinity;
+      for (let l = 0; l < 4; l++) {
+        if ((labels[l]! >>> (1 - bit)) & 1) one = Math.min(one, distances[l]!);
+        else zero = Math.min(zero, distances[l]!);
+      }
+      soft[k * 2 + bit] = Math.max(-4000, Math.min(4000, zero - one));
+    }
+  }
+  const stream = convolutionDecode(soft, plan.streamBytes);
+  return recovery.read(bytesToSymbols(stream, 2), Array(plan.streamBytes * 4).fill(1), budget);
 }
 
-/** Decode a PetitGlyph v2 code band from an RGBA image. Returns the payload bytes, or null on any
- *  failure. Never throws. */
+/** Decode a v1, v2, or v3 PetitGlyph from a larger RGBA image. */
 export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Uint8Array | null {
-  let candidates: Geo[];
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
+    || width * height * 4 !== rgba.length) return null;
+  let candidates: Geometry[];
   try {
     candidates = findFinders(rgba, width, height);
   } catch {
     return null;
   }
-  for (const geo of candidates) {
+  const current: CurrentCandidate[] = [];
+  for (const geometry of candidates) {
     try {
-      const payload = decodeAt(rgba, width, height, geo);
+      const payload = decodeAt(rgba, width, height, geometry, current);
       if (payload) return payload;
     } catch {
-      // bounds bug or malformed geometry — try the next candidate
+      // A malformed candidate does not prevent testing the remaining finder pairs.
+    }
+  }
+  for (const candidate of current.slice()) {
+    const geometry = refineGeometry(rgba, width, height, candidate.geometry);
+    const centroids = candidate.centroids.map((_, i): RGB => {
+      const rect = calibrationRect(i);
+      const x = Math.floor(geometry.ox + (rect.col + CALIB_CELLS / 2) * geometry.module);
+      const y = Math.floor(geometry.oy + (rect.row + CALIB_CELLS / 2) * geometry.module);
+      const p = (y * width + x) * 4;
+      return [rgba[p]!, rgba[p + 1]!, rgba[p + 2]!];
+    });
+    current.push({ ...candidate, geometry, centroids });
+  }
+  const budget: RecoveryBudget = { attempts: 16_000 };
+  const offsets = [[0, 0], [0, -0.25], [0, 0.25], [-0.25, 0], [0.25, 0],
+    [-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]] as const;
+  // Recompression changes color separation and pixel phase; the complete payload still needs its CRC.
+  for (const [gain, sharpen, radius, span] of [[1, 0, 1, 0], [0.85, 0, 1, 0], [1, 0.25, 1, 0], [1, 0.5, 1, 0],
+    [1, 0, 1, 1], [1, 0, 1, -1]] as const) {
+    for (const [dx, dy] of offsets) for (const candidate of current) {
+      const payload = recoverCurrent(rgba, width, height, candidate, dx, dy, gain, sharpen, radius, budget, span);
+      if (payload) return payload;
+      if (budget.attempts <= 0) return null;
     }
   }
   return null;

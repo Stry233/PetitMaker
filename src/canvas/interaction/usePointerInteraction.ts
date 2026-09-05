@@ -25,6 +25,7 @@ import { TouchPinch } from './gestures';
 import { createCameraGestures, DRAG_THRESHOLD } from './camera-gestures';
 import { noteNavGestureLost } from './nav-gesture-hint';
 import { macroRect, objectsInBand } from './marquee';
+import { annotationsInRect } from '../../core/model/annotations';
 import { installModifierTracking, isPanDragHeld, isMultiSelectHeld, onMultiSelectChange } from '../../core/runtime/modifier-state';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
 import {
@@ -148,34 +149,10 @@ export function paintGroupRotationArc(
 }
 
 /**
- * Everything the hover preview and the cursor depend on BESIDES where the pointer is.
- *
- * ONE definition, read by the subscription that asks for a re-sample AND by the gate that decides
- * whether to recompute. Those two have to agree: a trigger the gate does not know about re-samples
- * and is thrown away, and a gate input nothing triggers waits for the user to jiggle the mouse.
- * Keeping them on one list is what stops the next dependency needing its own bespoke wiring.
- *
- * `mapEpoch` stands in for the map itself. The grid mutates IN PLACE, so no store subscription can
- * see a placement or a paint; the map-mutation events bump a counter instead.
- *
- * `toolEpoch` stands in for the tool layer, which mutates in place for the same reason and LAGS the
- * store besides: the canvas writes the ToolManager's tool and the DrawingTool's shape and surface in
- * an effect, which runs after the store has already told its subscribers. A probe run on the store
- * change alone therefore asks the tool the user has just left, and caches that answer under the new
- * inputs, so the badge keeps the departed tool's verdict until the pointer crosses into another cell.
- * The `tool-synced` bump is what asks again once the tool being asked is the one the store names, and
- * it is the only input covering a change of SURFACE or SHAPE, which move no store field named here.
- *
- * `autoEdgeCut` and `tileMaterial` are here because the GHOST is drawn from them: the trim decides
- * the shape the preview promises and the material decides its colour, so a build-bar setting
- * changed while the pointer stands over the map otherwise leaves a preview of the stroke the user
- * has just stopped asking for, until they jiggle the mouse.
- *
- * A LIST OF VALUES, compared member by member — never serialized. `selection` carries one entry per
- * selected object, so joining it into a string cost 0.2 ms and 48 KB of garbage per call at a
- * select-all on a generated map, on a list read at pointer-move rate by both mounted canvases. The
- * store REPLACES the selection array on every change (`state/slices/engine.ts`) and never mutates it
- * in place, so its identity already answers the only question this list asks of it.
+ * Non-positional inputs that invalidate hover previews and cursors. Map and tool epochs represent
+ * in-place mutations; the tool epoch also waits for the canvas tool to catch up with store state.
+ * Preview settings are included because they change ghost shape or colour. Values are compared by
+ * identity to avoid serializing large selections on pointer movement.
  */
 type HoverInputs = readonly unknown[];
 
@@ -495,8 +472,23 @@ export function usePointerInteraction(
         macro,
         hit: hit ? { id: hit.id, draggable: isDraggableObject(hit), locked: !!hit.locked } : null,
         placementAllowed: !tool?.canActAt || !ctx || tool.canActAt(macro, ctx),
-        pendingGesture: tool?.hasPending?.() ?? false,
+        toolGrabs: !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false)),
+        toolSelects: !!(ctx && (tool?.selects?.(ctx) ?? false)),
+        toolSelectHit: (ctx && tool?.selectHit) ? tool.selectHit(macro, ctx) : null,
+        pendingGesture: (ctx ? tool?.hasPending?.(ctx) : false) ?? false,
         viewPansLeftDrag: activeView.leftDragPans !== false,
+        clickOnlyStroke: store.activeTool === ToolType.Annotate
+          && (store.annotationTool === 'text' || store.annotationTool === 'route' || store.annotationTool === 'erase'
+            || (store.annotationTool === 'zone' && store.annotationZoneShape === 'curve')
+            // While a note stands selected, a drawing tool's press only DISMISSES (the tool's own
+            // dismiss-first rule), so the drag under it is the camera's — the map stays movable
+            // while the verb row is up.
+            || (store.annotationTool !== 'none' && store.annotationSelection.length > 0)
+            // The select state: a press that grabs a note drags IT; empty ground presses only
+            // clear the selection, so their drag is the camera's — the empty-handed pan every
+            // other mode already answers with.
+            || (store.annotationTool === 'none' && !(ctx && (tool?.grabAt?.(macro, ctx) ?? false)))),
+
       };
     };
 
@@ -519,6 +511,13 @@ export function usePointerInteraction(
           return;
         case 'tool-stroke':
           toolDown = true;
+          // The annotate select state's note grab is an object drag to the hand: in the 'none'
+          // state, clickOnlyStroke false MEANS the press grabbed a note (see the facts above), so
+          // the cursor closes exactly as it does when a placed object is picked up.
+          if (store.activeTool === ToolType.Annotate && store.annotationTool === 'none'
+            && !f.clickOnlyStroke && !f.multiSelectHeld) {
+            setCursorDrag('object');
+          }
           tools()?.handlePointerDown(e.clientX, e.clientY);
           return;
         case 'select':
@@ -896,24 +895,37 @@ export function usePointerInteraction(
         touchUndoStart = -1;
       }
       if (bandArmed) {
+        // A tool-owned select state runs its own press under this band (the plan pairs them):
+        // close that stroke here, since this branch returns before the ordinary tool-up path.
+        if (toolDown) {
+          toolDown = false;
+          tools()?.handlePointerUp(e.clientX, e.clientY);
+        }
         const bandView = view();
         if (bandActive && bandView && bandStartMacro) {
           const rect = macroRect(bandStartMacro, bandView.projection.screenToMacro(e.clientX, e.clientY));
           bandView.overlay.clearBand();
-          const gs = useEditorStore.getState().gridState;
-          const covered = gs ? objectsInBand(gs, rect) : [];
-          if (covered.length > 0 && gs) {
-            const store = useEditorStore.getState();
-            const existing = store.selection;
-            const additions = covered
-              .filter((id) => !existing.some((r) => r.kind === 'object' && r.id === id))
-              .map((id) => ({ kind: 'object', id } as const));
-            if (additions.length > 0) {
-              // Leave a brush's terrain-editing mode BEFORE writing the selection (see
-              // leaveBrushForSelection) — not after, or the tool-can't-hold-a-selection
-              // subscription would clear this same write before the switch lands.
-              leaveBrushForSelection();
-              store.setSelection([...existing, ...additions]);
+          const store = useEditorStore.getState();
+          if (store.activeTool === ToolType.Annotate) {
+            // The notes' own band: membership by drawn ink, additive like the object band below.
+            const covered = annotationsInRect(rect, store.gridState?.annotations?.items ?? []);
+            const additions = covered.filter((id) => !store.annotationSelection.includes(id));
+            if (additions.length > 0) store.setAnnotationSelection([...store.annotationSelection, ...additions]);
+          } else {
+            const gs = store.gridState;
+            const covered = gs ? objectsInBand(gs, rect) : [];
+            if (covered.length > 0 && gs) {
+              const existing = store.selection;
+              const additions = covered
+                .filter((id) => !existing.some((r) => r.kind === 'object' && r.id === id))
+                .map((id) => ({ kind: 'object', id } as const));
+              if (additions.length > 0) {
+                // Leave a brush's terrain-editing mode BEFORE writing the selection (see
+                // leaveBrushForSelection) — not after, or the tool-can't-hold-a-selection
+                // subscription would clear this same write before the switch lands.
+                leaveBrushForSelection();
+                store.setSelection([...existing, ...additions]);
+              }
             }
           }
         }

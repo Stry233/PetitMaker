@@ -34,7 +34,7 @@ jobs:
             };
             const site = answer('Which site');
             if (site.includes('.com.cn')) labels.push('site:cn');
-            else if (site.includes('petit-maker.com')) labels.push('site:global');
+            else if (site.includes('petitmaker.cc') || site.includes('petit-maker.com')) labels.push('site:global');
             const area = answer('Where it happened');
             if (/3D/.test(area)) labels.push('area:3d');
             else if (/agent/i.test(area)) labels.push('area:agent');
@@ -61,9 +61,9 @@ jobs:
                   'Thanks for the report! Two details make a map problem much easier to reproduce:',
                   '',
                   '- attach the **share image** of the map (Save and share, then export the picture: it carries the whole map inside it), and',
-                  '- say **which site** you were on, petit-maker.com or petitmaker.com.cn, if the form did not already ask.',
+                  '- say **which site** you were on, petitmaker.cc or petitmaker.com.cn, if the form did not already ask.',
                   '',
-                  '感谢反馈！两条信息能让地图问题更容易复现：附上地图的**分享图**（「保存与分享」导出的图片，其中包含整张地图），并说明你使用的站点是 petit-maker.com 还是 petitmaker.com.cn（如果表单尚未询问）。',
+                  '感谢反馈！两条信息能让地图问题更容易复现：附上地图的**分享图**（「保存与分享」导出的图片，其中包含整张地图），并说明你使用的站点是 petitmaker.cc 还是 petitmaker.com.cn（如果表单尚未询问）。',
                 ].join('\n'),
               });
             }

@@ -4,7 +4,7 @@ These Terms of Use govern your access to and use of {app}. The English and Chine
 
 ## At a Glance
 
-This summary is provided for convenience and does not replace the numbered articles below, which are the binding terms. {app} is a **free**, browser-based tool for planning maps. It provides no accounts and no cloud saves; everything is stored **locally** in your browser. Because your work resides in your browser, you are responsible for [backing up your own maps](#9-user-backup-responsibility) by exporting files or images. Sharing an [importable image](#7-importable-images) can make the map data it contains accessible to anyone who receives it. The tool is provided "as is", with liability limited to the maximum extent the law allows, and nothing in these terms removes rights that the law does not permit us to remove. These terms are issued by {operator}; questions or complaints may be directed to {email}.
+This summary is provided for convenience and does not replace the numbered articles below, which are the binding terms. {app} is a **free**, browser-based tool for planning maps. It provides no accounts and no cloud saves; your maps are stored **locally** in your browser. Because your work resides in your browser, you are responsible for [backing up your own maps](#9-user-backup-responsibility) by exporting files or images. Sharing an [importable image](#7-importable-images) can make the map data it contains accessible to anyone who receives it. Optional AI features use API keys you supply and may incur charges from the provider you select. The tool is provided "as is", with liability limited to the maximum extent the law allows, and nothing in these terms removes rights that the law does not permit us to remove. These terms are issued by {operator}; questions or complaints may be directed to {email}.
 
 ## 1. Definitions
 
@@ -14,9 +14,10 @@ The following terms carry the meanings given here throughout this document:
 - **"{app}", "the service", or "the tool"** means the {app} web application and the static pages that accompany it.
 - **"we", "us", or "our"** means {operator}, the party that issues these terms and publishes the tool.
 - **"you" or "your"** means the person who accesses or uses the tool, and, where a parent or guardian accepts on a minor's behalf, that parent or guardian.
-- **"a map"** means the terrain, water, roads, objects, and other content you arrange in the editor.
+- **"a map"** means the terrain, water, roads, objects, planning annotations, and other content you arrange in the editor.
 - **"the AI Agent"** means the optional feature that sends your prompts and map data to an AI provider you select.
-- **"an AI provider"** means a third-party AI service whose API key you supply and to which the AI Agent sends requests.
+- **"the illustration studio"** means the optional export feature that can redraw a rendered map on your device or through an AI provider you select.
+- **"an AI provider"** means a third-party AI service whose API key you supply and to which the AI Agent or provider-backed illustration studio sends requests.
 - **"an importable image"** means an exported image that embeds enough data to reconstruct the underlying map, as described in [Article 7](#7-importable-images).
 - **"the Privacy Policy"** means the [Privacy Policy](/privacy) published alongside these terms.
 
@@ -30,15 +31,17 @@ You must be old enough to form a binding agreement in the place where you live, 
 
 {app} is a **free**, browser-based, **unofficial** map-planning tool for the game *Petit Planet*. It runs entirely within your web browser.
 
-The service provides **local-only storage**: there are no user accounts and no cloud saves, and your work is stored **locally** on your device, in browser storage and in any files you export. We do not retain your maps on our servers. The maps you design are **planning artifacts, not game content**: they are not official game content, are not guaranteed to be reproducible in the game, and create no relationship with the game's publisher.
+The service provides **local-only storage**: there are no user accounts and no cloud saves, and your work is stored **locally** on your device, in browser storage and in any files you export. The project operates no application backend that receives or stores your maps. The maps you design are **planning artifacts, not game content**: they are not official game content, are not guaranteed to be reproducible in the game, and create no relationship with the game's publisher.
 
 ## 4. BYOK & AI Providers
 
-The optional AI Agent operates on a "bring your own key" (BYOK) basis: you supply **your own key** for an AI provider of your choice, requests are sent from your browser to that provider, and you bear any costs the provider charges.
+The optional AI Agent and provider-backed illustration studio operate on a "bring your own key" (BYOK) basis: you supply **your own key** for an AI provider, requests are sent from your browser to that provider, and you bear any costs the provider charges. Procedural and on-device illustration styles do not contact an AI provider.
 
 Your use of a provider is governed by **your own agreement with that provider**. We are not a party to that relationship and are not responsible for it. For a description of what is transmitted, when it is transmitted, and the key-validation request the application makes on key entry, refer to the AI-provider disclosures in the [Privacy Policy](/privacy).
 
-Content the AI Agent generates is produced **at your direction** and is yours to review before you rely on it. AI output can be inaccurate, can propose a map that is not in fact reproducible in the game, and can reflect the limitations of the provider's model. You are responsible for checking generated content for suitability and for any third-party rights before you use or publish it, on the same footing as content you make by hand ([Article 6](#6-user-content--third-party-material)). We do not warrant the AI Agent's output ([Article 10](#10-warranty-disclaimer)).
+You may connect a provider only if you satisfy its age, territory, account, and permitted-use requirements. Some providers limit API access to adults or to professional or business use. A parent or guardian's consent under [Article 2](#2-acceptance--capacity) does not replace a provider's eligibility requirements.
+
+Content produced through the AI Agent or an AI illustration provider is generated **at your direction** and is yours to review before you rely on it. AI output can be inaccurate, can alter or omit map details, can propose a map that is not reproducible in the game, and can reflect the limitations of the provider's model. You are responsible for checking generated content for suitability and third-party rights before you use or publish it, on the same footing as content you make by hand ([Article 6](#6-user-content--third-party-material)). We do not warrant AI-generated output ([Article 10](#10-warranty-disclaimer)).
 
 ## 5. Acceptable Use
 
@@ -47,7 +50,7 @@ Acceptable use of {app} means using it lawfully and without harming the service 
 - use the tool for any unlawful purpose, or to infringe the rights of any person;
 - abuse, overload, or interfere with the service or the infrastructure that serves it, including the edge, CDN, and any hosting, whether by automated scraping, excessive automated requests, or other load that degrades the service for others;
 - attempt to break, bypass, or probe the application's security other than as permitted by our security policy (see the [Security Policy](/security));
-- use another person's AI-provider account or API key without authorization, or attempt to gain unauthorized access to any account, key, or system;
+- use another person's provider account or API key without authorization, or attempt to gain unauthorized access to any account, key, or system;
 - misrepresent your affiliation with the project or its team, impersonate us, or present the tool or your maps as official game content or as endorsed by the game's publisher;
 - use the service to violate the intellectual-property or other rights of any third party.
 
@@ -55,7 +58,7 @@ Acceptable use of {app} means using it lawfully and without harming the service 
 
 As between you and us, you retain any rights you hold in your original contributions. This does not grant you ownership of third-party characters, game assets, trademarks, templates, or other incorporated material.
 
-{app}'s own code is licensed under **Apache-2.0**; the {app} brand, name, and original artwork are separately reserved, all rights reserved unless stated otherwise. The ownership and licensing of every shipped asset is documented in the [Asset Licenses](/asset-licenses) document. *Petit Planet*, whose Chinese name is 星布谷地, and related names, characters, and assets are the property of their respective owners, including miHoYo and its overseas brand HoYoverse (COGNOSPHERE PTE. LTD.); {app} is an **unofficial** fan project.
+{app}'s own code is licensed under **Apache-2.0**; the {app} brand, name, and original artwork are separately reserved, all rights reserved unless stated otherwise. The [Asset Licenses](/asset-licenses) document summarizes the source and current licensing or provenance status of shipped asset categories. *Petit Planet*, whose Chinese name is 星布谷地, and related names, characters, and assets are the property of their respective owners, including miHoYo and its overseas brand HoYoverse (COGNOSPHERE PTE. LTD.); {app} is an **unofficial** fan project.
 
 ## 7. Importable Images
 
@@ -71,7 +74,7 @@ You are responsible for backing up your own work. Because your maps reside in yo
 
 ## 10. Warranty Disclaimer
 
-To the maximum extent permitted by applicable law, {app} is provided **"AS IS"** and **"AS AVAILABLE"**, without warranties of any kind, whether express or implied, including any implied warranties of merchantability, fitness for a particular purpose, and non-infringement. This mirrors the warranty disclaimer of the software's Apache-2.0 license. We do not warrant that the tool will be uninterrupted or error-free, that maps will be reproducible in the game, or that the AI Agent's output will be accurate or fit for any purpose.
+To the maximum extent permitted by applicable law, {app} is provided **"AS IS"** and **"AS AVAILABLE"**, without warranties of any kind, whether express or implied, including any implied warranties of merchantability, fitness for a particular purpose, and non-infringement. This mirrors the warranty disclaimer of the software's Apache-2.0 license. We do not warrant that the tool will be uninterrupted or error-free, that maps will be reproducible in the game, or that AI-generated output will be accurate or fit for any purpose.
 
 ## 11. Limitation of Liability
 
@@ -93,7 +96,7 @@ After we receive a complete complaint, we will acknowledge it, review it in good
 
 We prefer to resolve concerns **informally** in the first instance: please contact us at {email}, and we will make a genuine effort to resolve the matter.
 
-We do not impose an aggressive or exclusive court or venue upon you. Where it applies, the **mandatory applicable law** of the country or region where you live governs these terms and your use of {app}, and you retain the benefit of any mandatory protections and any right to bring proceedings there. This modest posture reflects that {app} is an unofficial, non-commercial fan project.
+Where it applies, the **mandatory applicable law** of the country or region where you live governs these terms and your use of {app}. You retain any mandatory protections and any right that applicable law gives you to bring proceedings there.
 
 ## 15. Entire Agreement
 
@@ -113,7 +116,7 @@ You may not assign or transfer your rights or obligations under these terms with
 
 ## 19. Notices
 
-We communicate changes to these terms, and other notices concerning the service, by posting them on the site and, once the project's repository is public, in that repository. Because the service has no accounts, we do not send individual notices; you should review the current version at [{origin}]({origin}) from time to time. You may reach us for any notice or request at {email}.
+We communicate changes to these terms and other notices concerning the service by posting them on the site and in the [project repository]({repo}). Because the service has no accounts, we do not send individual notices; you should review the current version at [{origin}]({origin}) from time to time. You may reach us for any notice or request at {email}.
 
 ## 20. Interpretation
 
@@ -121,4 +124,4 @@ Headings are for convenience only and do not affect interpretation. "Including" 
 
 ## 21. Changes
 
-We may update these terms from time to time. When we do so, we revise the effective date and policy version shown at the top of this page, so that it is always clear which version applies. We will give reasonable notice of material changes, and continued use of {app} following a non-material update constitutes your acceptance of the revised terms. Prior versions remain available through the project's repository history once it is public. These terms are issued by {operator}, and the canonical version is published at [{origin}]({origin}).
+We may update these terms from time to time. When we do so, we revise the effective date and policy version shown at the top of this page, so that it is always clear which version applies. We will give reasonable notice of material changes through the channels described in [Article 19](#19-notices). Your continued use after the stated effective date means that you accept the revised terms, except where applicable law requires another form of notice or consent. Published versions remain available through the [project repository]({repo}) history. These terms are issued by {operator}, and the canonical version is published at [{origin}]({origin}).

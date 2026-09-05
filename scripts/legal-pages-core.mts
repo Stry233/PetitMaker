@@ -1,15 +1,7 @@
-// Pure(ish) core of the static legal-page generator: renders every registry doc
-// (src/legal/registry.ts) through the shared markdown emitter
-// (src/legal/markdown-html.ts) into a full zero-JS HTML document, plus the
-// sitemap/robots/security.txt/license-tree copy that make the site crawlable.
-//
-// Split from scripts/build-legal-pages.mts (the CLI entry) for the reason
-// scripts/license-audit.mts's doc comment gives: a main-module guard does not
-// work under `vite-node`. So there is NO CLI logic and NO top-level side effect
-// at import time — every export only touches the filesystem when CALLED
-// (writeAll) — and src/__tests__/legal/build-pages.test.ts can import it
-// directly without risk of running the real build against the real
-// (still-draft) LEGAL config.
+/**
+ * Pure rendering core for zero-JavaScript legal pages and their sitemap, robots, security, and license artifacts.
+ * Only `writeAll` writes to the filesystem; imports and render helpers have no side effects.
+ */
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -21,11 +13,14 @@ import type { LegalConfig } from '../src/legal/config';
 import { validateLegalConfig } from '../src/legal/validate-config';
 import { renderHtml } from '../src/legal/markdown-html';
 import { inlineText, type MdNode } from '../src/legal/markdown';
+import { alternateLinks, socialTags } from './site-html.mts';
+import { canonicalPagePath, isIndexablePage, pagePath, translatedPageUrls } from '../src/legal/site-paths';
+import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
+import { en } from '../src/i18n/locales/en';
+import { zh } from '../src/i18n/locales/zh';
 import { brandName } from '../src/version';
 
-// Minimal ambient shape for the pieces of `process` this module uses — this repo
-// declares the node globals it uses locally, per file, rather than carrying an
-// @types/node dependency.
+// Local ambient type avoids adding Node types to the browser compilation.
 declare const process: { cwd(): string };
 
 export type Lang = 'en' | 'zh';
@@ -34,9 +29,7 @@ export function resolveMode(env: Record<string, string | undefined>): 'release' 
   return env.PETIT_RELEASE === '1' ? 'release' : 'dev';
 }
 
-// The authored doc order — every doc-listing surface (footer nav, sitemap,
-// writeAll) iterates this instead of `Object.keys(DOCS)`, so the order is a
-// contract rather than an incidental object-literal detail.
+/** Shared document order for footer navigation, page generation, and the sitemap. */
 export const ALL_DOC_IDS: DocId[] = [
   'privacy',
   'terms',
@@ -49,10 +42,7 @@ export const ALL_DOC_IDS: DocId[] = [
   'changelog',
 ];
 
-// Plain-language page titles, EN/ZH literal (static pages render no i18n).
-// Duplicated from src/i18n/locales/{en,zh}.ts's `legal.doc_*` keys: importing the
-// i18n system would pull its whole module graph into a vite-node build script,
-// for nine short labels.
+// Static-page labels stay local so this Node generator does not import the browser i18n graph.
 const DOC_TITLES: Record<DocId, { en: string; zh: string }> = {
   privacy: { en: 'Privacy Policy', zh: '隐私政策' },
   terms: { en: 'Terms of Use', zh: '使用条款' },
@@ -65,19 +55,13 @@ const DOC_TITLES: Record<DocId, { en: string; zh: string }> = {
   changelog: { en: 'Changelog', zh: '更新日志' },
 };
 
-// Static-page-only literal disclaimer (the React About view has its own copy
-// authored in src/legal/content/about.*.md; this is the FOOTER strip repeated on
-// every static page, same substance, short form).
+/** Short affiliation disclaimer repeated in every static page footer. */
 const DISCLAIMER: Record<Lang, string> = {
   en: 'This is an unofficial, non-commercial fan project. It is not affiliated with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.).',
   zh: '本项目为非官方、非商业性质的同人项目，与米哈游及其海外品牌 HoYoverse（COGNOSPHERE PTE. LTD.）无任何关联，未获得其认可或赞助。',
 };
 
-// One escaper for text content AND attribute values, mirroring
-// src/legal/markdown-html.ts's `esc()`. That file's escaper is not exported: it is
-// the single path for MARKDOWN-sourced content, and this is the equivalent for the
-// page-SHELL strings this script builds itself (titles, nav labels, disclaimers,
-// config values).
+/** Escapes page-shell text and attribute values; Markdown content uses its renderer's own escaper. */
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -87,15 +71,7 @@ function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * The `<meta name="description">` source: the first paragraph block's plain
- * text (formatting stripped), truncated to at most 155 characters — exported
- * so it can be unit-tested directly against a hand-built node tree (real doc
- * content rarely carries the punctuation/CJK-length edge cases worth pinning).
- * Truncation happens on the RAW text (a single trailing '…' keeps the total
- * at-or-under the cap); escaping for the HTML attribute happens at the call
- * site, same as every other page-shell string.
- */
+/** First paragraph as plain text, capped at `maxLen` characters for the meta description. */
 export function metaDescription(nodes: MdNode[], maxLen = 155): string {
   const p = nodes.find((n): n is Extract<MdNode, { t: 'p' }> => n.t === 'p');
   const raw = (p ? inlineText(p.children) : '').trim();
@@ -161,11 +137,11 @@ footer.legal p { margin: 0 0 6px; }
 }
 `.trim();
 
-function footerNavHtml(effLang: Lang): string {
+function footerNavHtml(effLang: Lang, cfg: LegalConfig): string {
   const items = ALL_DOC_IDS.map((id) => {
     const meta = DOCS[id];
     const linkLang: Lang = effLang === 'zh' && meta.source.zh !== null ? 'zh' : 'en';
-    const path = linkLang === 'zh' ? `/zh/${meta.slug}` : `/${meta.slug}`;
+    const path = pagePath(meta.slug, linkLang, cfg.canonicalOrigin);
     return `<a href="${esc(path)}">${esc(DOC_TITLES[id][linkLang])}</a>`;
   });
   return items.join('');
@@ -176,7 +152,7 @@ function filingRowsHtml(cfg: LegalConfig): string {
   const hasPsb = !!(cfg.psbNumber && cfg.psbUrl);
   if (!hasIcp && !hasPsb) return '';
   const parts: string[] = [];
-  // The two filings stand apart on space, not on a mark between them (same as the in-app bar).
+  // Spacing matches the in-app filing bar without introducing a text separator.
   const gap = hasIcp && hasPsb ? ' style="margin-right:12px"' : '';
   if (hasIcp) parts.push(`<a href="${esc(cfg.icpUrl!)}"${gap}>${esc(cfg.icpNumber!)}</a>`);
   if (hasPsb) parts.push(`<a href="${esc(cfg.psbUrl!)}">${esc(cfg.psbNumber!)}</a>`);
@@ -192,60 +168,40 @@ function updatedLineHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   return `<p class="updated">${esc(text)}</p>\n`;
 }
 
-/**
- * Full zero-JS HTML document for one doc/language. Pure function of
- * (id, lang, cfg) — no Date.now()/env reads — so it is byte-deterministic,
- * which is what lets `writeAll` scan its OWN output for unresolved `{...}`
- * tokens before ever touching disk.
- */
+/** Deterministic zero-JavaScript HTML document for one document and language. */
 export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   const meta = DOCS[id];
   const hasZh = meta.source.zh !== null;
-  // An en-only doc always renders English content, regardless of what `lang`
-  // was requested with — mirrors LegalDocView.tsx's `effLang` fallback so the
-  // static page and the in-app reader never disagree about which language a
-  // given doc/lang pair actually renders.
+  // English-only sources ignore a Chinese request on every render surface.
   const effLang: Lang = hasZh ? lang : 'en';
 
   const title = DOC_TITLES[id][effLang];
   const nodes = docNodes(id, effLang, cfg, title);
-  // docNodes() guarantees a leading synthetic h1 when the source has none
-  // (LICENSE) — nodes.length <= 1 means the resolved body carries nothing but
-  // that heading, i.e. an EMPTY document body. Always a build error (never
-  // just a release-mode warning): a doc that resolves to nothing is a content
-  // bug regardless of who's about to deploy it.
+  // `docNodes` supplies a synthetic h1 when needed, so one node means the body is empty.
   if (nodes.length <= 1) {
     throw new Error(`legal-pages: "${id}"/"${effLang}" resolved to an empty document body`);
   }
   const [h1Node, ...restNodes] = nodes;
   const h1Html = renderHtml([h1Node!]);
-  const bodyHtml = renderHtml(restNodes);
-  const description = metaDescription(nodes);
+  const bodyHtml = renderHtml(restNodes).replace(/href="(\/[^"#?]*)([?#][^"]*)?"/g, (_all, path: string, suffix = '') =>
+    `href="${canonicalPagePath(path, cfg.canonicalOrigin) ?? path}${suffix}"`);
+  const description = id === 'changelog' ? (effLang === 'zh' ? zh : en)['site.changelog_description']! : metaDescription(nodes);
   const brand = brandName(effLang);
 
-  const enPath = `/${meta.slug}`;
-  const zhPath = hasZh ? `/zh/${meta.slug}` : null;
+  const enPath = pagePath(meta.slug, 'en', cfg.canonicalOrigin);
+  const zhPath = hasZh ? pagePath(meta.slug, 'zh', cfg.canonicalOrigin) : null;
   const selfPath = effLang === 'zh' ? zhPath! : enPath;
   const canonical = `${cfg.canonicalOrigin}${selfPath}`;
-
-  const alternates: string[] = [
-    `<link rel="alternate" hreflang="en" href="${esc(cfg.canonicalOrigin + enPath)}" />`,
-  ];
-  if (zhPath) {
-    alternates.push(`<link rel="alternate" hreflang="zh" href="${esc(cfg.canonicalOrigin + zhPath)}" />`);
-  }
-  // x-default always resolves to the English page: it is what a locale that
-  // matches nothing else gets.
-  alternates.push(`<link rel="alternate" hreflang="x-default" href="${esc(cfg.canonicalOrigin + enPath)}" />`);
-
-  // EN | 中文 switcher. An en-only doc has no zh counterpart to switch TO, so its
-  // switcher collapses to a plain "EN" label: a "中文" link to the English page
-  // would read as a language choice where none exists.
+  const indexable = isIndexablePage(meta.slug, effLang, cfg.canonicalOrigin);
+  const counterparts = translatedPageUrls(meta.slug);
+  const alternates = indexable && hasZh ? alternateLinks(counterparts) : '';
+  const enLink = indexable ? counterparts.en : enPath;
+  const zhLink = indexable ? counterparts.zh : zhPath;
   const langSwitcher = hasZh
     ? effLang === 'en'
-      ? `<strong>EN</strong> | <a href="${esc(zhPath!)}">中文</a>`
-      : `<a href="${esc(enPath)}">EN</a> | <strong>中文</strong>`
-    : `<strong>EN</strong>`;
+      ? `<strong>EN</strong> | <a href="${esc(zhLink!)}" hreflang="zh-CN" lang="zh-CN">中文</a>`
+      : `<a href="${esc(enLink)}" hreflang="en" lang="en">EN</a> | <strong>中文</strong>`
+    : '<strong>EN</strong>';
 
   return `<!doctype html>
 <html lang="${effLang === 'zh' ? 'zh-CN' : 'en'}">
@@ -256,7 +212,9 @@ export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
 <meta name="description" content="${esc(description)}" />
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="canonical" href="${esc(canonical)}" />
-${alternates.join('\n')}
+${indexable ? '' : '<meta name="robots" content="noindex, follow" />'}
+${alternates}
+${socialTags(`${title} | ${brand}`, description, canonical, effLang)}
 <style>
 ${STYLE_CSS}
 </style>
@@ -272,7 +230,7 @@ ${h1Html}
 ${updatedLineHtml(id, effLang, cfg)}${bodyHtml}
 </main>
 <footer class="legal">
-<nav>${footerNavHtml(effLang)}</nav>
+<nav>${footerNavHtml(effLang, cfg)}</nav>
 <p>${esc(DISCLAIMER[effLang])}</p>
 ${filingRowsHtml(cfg)}<p>© ${esc(cfg.operatorDisplayName)}</p>
 </footer>
@@ -289,37 +247,25 @@ export interface PlannedPage {
   path: string; // e.g. '/privacy' or '/zh/privacy'
 }
 
-/**
- * The single source of truth for "which pages exist" — sitemapXml and
- * writeAll both derive their page list from this so they can never drift
- * from each other (or from the registry's own zh-presence flags).
- */
-export function pagePlan(): PlannedPage[] {
+/** Page list shared by `writeAll` and the sitemap. */
+export function pagePlan(cfg?: Pick<LegalConfig, 'canonicalOrigin'>): PlannedPage[] {
+  const origin = cfg?.canonicalOrigin ?? DEPLOY_TARGETS.global.canonicalOrigin;
   const pages: PlannedPage[] = [];
   for (const id of ALL_DOC_IDS) {
     const meta = DOCS[id];
-    pages.push({ id, lang: 'en', slug: meta.slug, path: `/${meta.slug}` });
+    pages.push({ id, lang: 'en', slug: meta.slug, path: pagePath(meta.slug, 'en', origin) });
     if (meta.source.zh !== null) {
-      pages.push({ id, lang: 'zh', slug: meta.slug, path: `/zh/${meta.slug}` });
+      pages.push({ id, lang: 'zh', slug: meta.slug, path: pagePath(meta.slug, 'zh', origin) });
     }
   }
   return pages;
 }
 
-/** `sitemap.xml` listing every emitted page with its hreflang alternates. */
+/** Only canonical, indexable pages are listed; hreflang is maintained in HTML alone. */
 export function sitemapXml(cfg: LegalConfig): string {
-  const plan = pagePlan();
-  const urls = plan.map((page) => {
-    const meta = DOCS[page.id];
-    const enHref = `${cfg.canonicalOrigin}/${meta.slug}`;
-    const zhHref = meta.source.zh !== null ? `${cfg.canonicalOrigin}/zh/${meta.slug}` : null;
-    const loc = `${cfg.canonicalOrigin}${page.path}`;
-    const alt: string[] = [`    <xhtml:link rel="alternate" hreflang="en" href="${esc(enHref)}"/>`];
-    if (zhHref) alt.push(`    <xhtml:link rel="alternate" hreflang="zh" href="${esc(zhHref)}"/>`);
-    alt.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${esc(enHref)}"/>`);
-    return `  <url>\n    <loc>${esc(loc)}</loc>\n${alt.join('\n')}\n  </url>`;
-  });
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls.join('\n')}\n</urlset>\n`;
+  const paths = ['/', ...pagePlan(cfg).filter((p) => isIndexablePage(p.slug, p.lang, cfg.canonicalOrigin)).map((p) => p.path)];
+  const urls = paths.map((path) => `  <url><loc>${esc(cfg.canonicalOrigin + path)}</loc></url>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
 }
 
 function robotsTxt(cfg: LegalConfig): string {
@@ -332,7 +278,7 @@ export function securityTxt(cfg: LegalConfig, expires: string): string {
     `Contact: mailto:${cfg.securityContactEmail}\n` +
     `Expires: ${expires}\n` +
     `Canonical: ${cfg.canonicalOrigin}/.well-known/security.txt\n` +
-    `Policy: ${cfg.canonicalOrigin}/security\n` +
+    `Policy: ${cfg.canonicalOrigin}${pagePath('security', 'en', cfg.canonicalOrigin)}\n` +
     `Preferred-Languages: en, zh-CN\n`
   );
 }
@@ -346,9 +292,7 @@ export function computeExpires(now: Date): string {
 
 const UNRESOLVED_TOKEN_RE = /\{[a-zA-Z-]+\}/g;
 
-// Every authored token is resolvable, so ANY surviving `{...}` means a content
-// author left a token the registry does not substitute. Always a build error,
-// never a mode-gated warning.
+// A surviving authored token always indicates an unresolved substitution.
 function assertNoUnresolvedTokens(html: string, context: string): void {
   const matches = html.match(UNRESOLVED_TOKEN_RE) ?? [];
   if (matches.length > 0) {
@@ -363,12 +307,8 @@ function writeTextFile(distDir: string, relPath: string, contents: string): void
 }
 
 /**
- * Renders + writes every static legal page, sitemap.xml, robots.txt,
- * /.well-known/security.txt, and copies licenses/ through, into
- * `distDir`. `mode` mirrors `validateLegalConfig`'s: 'release' throws on any
- * config problem, 'dev' only warns. An unresolved `{...}` token throws in either
- * mode (see `assertNoUnresolvedTokens`). `now` is injected (defaults to the real
- * clock) so the security.txt `Expires` stamp is deterministic under test.
+ * Writes all static legal artifacts to `distDir`.
+ * Release mode rejects configuration problems; unresolved content tokens always fail; injected `now` makes security.txt deterministic.
  */
 export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'dev', now: Date = new Date()): void {
   const problems = validateLegalConfig(cfg, mode);
@@ -380,21 +320,10 @@ export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'd
     for (const p of problems) console.warn(`  - ${p}`);
   }
 
-  for (const id of ALL_DOC_IDS) {
-    const meta = DOCS[id];
-    if (meta.source.en.trim().length === 0) {
-      throw new Error(`legal-pages: missing en doc source for "${id}"`);
-    }
-
-    const enHtml = pageHtml(id, 'en', cfg);
-    assertNoUnresolvedTokens(enHtml, `${id}/en`);
-    writeTextFile(distDir, `/${meta.slug}/index.html`, enHtml);
-
-    if (meta.source.zh !== null) {
-      const zhHtml = pageHtml(id, 'zh', cfg);
-      assertNoUnresolvedTokens(zhHtml, `${id}/zh`);
-      writeTextFile(distDir, `/zh/${meta.slug}/index.html`, zhHtml);
-    }
+  for (const page of pagePlan(cfg)) {
+    const html = pageHtml(page.id, page.lang, cfg);
+    assertNoUnresolvedTokens(html, `${page.id}/${page.lang}`);
+    writeTextFile(distDir, `${page.path.replace(/\/$/, '')}/index.html`, html);
   }
 
   const sitemap = sitemapXml(cfg);

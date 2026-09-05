@@ -1,28 +1,8 @@
 /*
- * map-load.ts — the regional load reading: what one CHUNK of the map is carrying.
- *
- * The game calls this 区域负荷, a REGIONAL load, and that word is the feature: the limit is per
- * chunk, so what decides whether the next placement is refused is what the chunk under the pointer
- * holds, never a total for the island. A map-wide figure would be a number nobody is held to.
- *
- * A CHUNK HAS A NAME ALREADY. The 2D renderer letters the rows down the left edge and numbers the
- * columns along the bottom, so the region at column 4 of row B is "B4" on screen before anything
- * here says so. `chunkName` is that same rule and nothing else, so the reading and the map agree.
- *
- * TWO STATES, not three:
- *
- * * The game's per-item load values are CONFIRMED (`CHUNK_LOAD_ENABLED`, which also arms the
- *   chunk-load rule). The reading is the real one, taken from the same per-chunk figures a
- *   placement is held to, so it can never claim a headroom the editor is not enforcing.
- * * They are not, which is where the project stands: the catalog carries provisional values, the
- *   rule is off, and a production build shows NO indicator at all. An empty ring is not neutral,
- *   it says the region is using none of a budget, and there is no budget.
- *
- * A DEVELOPMENT build reads those provisional values anyway, so the control can be judged before
- * the game publishes anything. That is a stand-in, not a licence: `import.meta.env.DEV` is the
- * literal `false` in a production build, so the guard folds away and esbuild drops what it reached.
- * It is the gate `api/editor-api.ts` puts on `window.__PETIT_API`, used the same way. Nothing here
- * is stored, so no save file or exported image has a field for a reading in the first place.
+ * Per-chunk load reading using the same values and limits as placement validation. Chunk names match
+ * the renderer's row letters and column numbers. Until load values are confirmed, production hides
+ * the indicator and disables the rule; development may display provisional values for evaluation.
+ * The reading is derived and never persisted.
  */
 import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../../core/model/constants';
 import { chunkKey } from '../../../core/model/grid-model';

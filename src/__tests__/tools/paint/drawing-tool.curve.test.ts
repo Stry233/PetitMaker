@@ -107,7 +107,7 @@ describe('editing a placed anchor', () => {
     click(tool, ctx, { x: 18, y: 2 });
     click(tool, ctx, { x: 18, y: 2 });   // double-click to finish
     expect(state.cells[12]?.[10]?.terrain?.type, 'the moved anchor').toBe(TerrainType.Mountain);
-    expect(state.cells[2]?.[10]?.terrain, 'where it used to be').toBeNull();
+    expect(state.cells[2]?.[10]?.terrain, 'the vacated anchor cell').toBeNull();
   });
 
   it('releasing a drag is not a click: it neither adds an anchor nor arms a finish', () => {
@@ -180,6 +180,10 @@ describe('a nav tap while the chain stands', () => {
       placementAllowed: true,
       pendingGesture: tool.hasPending?.() ?? false,
       viewPansLeftDrag: true,
+      clickOnlyStroke: false,
+      toolGrabs: false,
+      toolSelects: false,
+      toolSelectHit: null,
     };
   }
 

@@ -29,6 +29,7 @@ import { LegalBar } from './legal/LegalBar';
 import { ContextMenu } from './ui/chrome/floating/ContextMenu';
 import { DeletePopover } from './ui/chrome/floating/DeletePopover';
 import { SelectionHandles } from './ui/chrome/floating/SelectionHandles';
+import { AnnotationEditor } from './ui/chrome/floating/AnnotationEditor';
 import { useRestoreFade } from './ui/hooks/useRestoreFade';
 
 import { announceArrival } from './core/runtime/arrival-bus';
@@ -105,6 +106,11 @@ export default function App() {
   useEffect(() => {
     if (gridState) scheduleAutosave(gridState);
   }, [gridState]);
+  // Annotation edits mutate gridState in place without a bus event; the epoch is their announce.
+  const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
+  useEffect(() => {
+    if (annotationsEpoch > 0 && gridState) scheduleAutosave(gridState);
+  }, [annotationsEpoch, gridState]);
 
   /* ── Apply a restored camera once the new gridState has committed. Effects fire child-before-
        parent within one commit, so this (App, the parent) always runs AFTER PixiCanvas's own
@@ -150,16 +156,9 @@ export default function App() {
     announceArrival({ kind: 'restored' });
   }, [restoreFade]);
 
-  /* ── THE ARRIVAL NOTICE. Announced HERE because this is where a map arrives: the boot map
-       appearing (the one null → map transition there is) and the saved session coming back. A
-       planet chosen in the New-project window announces from that window, since a template swapped
-       for another of the same shape is not visible from here. Loading a map FILE deliberately
-       announces nothing: a file is work, not a place.
-
-       It does NOT wait for the saved-session offer. The two stand together — the notice says where
-       you are, the card asks whether to pick the work back up — and answering either answers both:
-       resuming re-announces the arrival as 'restored' under a notice already up, and a HAND on the
-       notice declines the offer through the shell's own path (`core/runtime/restore-offer`). ── */
+  /* Announce the first map mounted by the app. The new-project window owns template changes, while
+     file imports do not announce an arrival. The restore offer and notice resolve through the same
+     restore-offer channel. */
   const arrivalAnnounced = useRef(false);
   useEffect(() => {
     if (!gridState || arrivalAnnounced.current) return;
@@ -167,15 +166,11 @@ export default function App() {
     announceArrival({ kind: 'boot' });
   }, [gridState]);
 
-  /* ── The selection ring moves with the active view (2D↔3D). One subscription for both canvases,
-       installed here because this is where both views are mounted. ── */
+  // One subscription keeps the selection ring synchronized across both mounted views.
   useEffect(() => installSelectionViewSync(), []);
 
-  /* ── The macro tool's ghost preview AND its press's build run in the generation worker pool.
-       The tool layer declares the hooks and cannot import the pool (kit sits above it); this is
-       the one place that holds both ends. Guarded, so tests and headless runs keep the
-       synchronous path. The pool is WARMED here too: a worker's first job otherwise pays the
-       module load, under the first hovering pointer. ── */
+  // Install the worker-backed macro runners at the layer seam and warm them before first hover.
+  // Headless environments keep the synchronous fallback when the pool is unavailable.
   useEffect(() => {
     if (!poolAvailable()) return;
     installMacroPreviewRunner(runPreviewInPool);
@@ -183,19 +178,13 @@ export default function App() {
     warmPool();
   }, []);
 
-  /* ── The 3D scene's module, fetched at idle for the same reason: the first press of the 3D
-       button otherwise waits on a download before it can start building. A session that OPENS in
-       3D has already started it eagerly from the entry point, where it can overlap this mount. ── */
+  // Preload the 3D scene at idle; sessions that open in 3D load it eagerly at the entry point.
   useEffect(() => { preloadScene3D({ idle: true }); }, []);
   // Decode the catalog icons at idle, so the object shelf's first open paints already-decoded
   // art instead of paying ~80 PNG decodes in one burst.
   useEffect(() => { warmIconDecodes(); }, []);
 
-  /* ── The assistant's SETTINGS, read in at boot: which provider is armed, which model, how closely
-       the user wants to be asked, and (through the vault, asynchronously) whether a key is held at
-       all. The panel needs the answer before it can show a desk rather than a setup screen, and the
-       character at the entrance needs it to know whether it is asleep. The SESSION LOG is not read
-       here: a conversation is about a map, so it comes back with one (`restoreSession` above). ── */
+  // Hydrate provider, model, supervision and key status at boot. Sessions hydrate with their map.
   useEffect(() => { void useAgentPanelSettings.getState().hydrate(); }, []);
 
   /* ── Install programmatic API on mount ────────────────── */
@@ -297,6 +286,7 @@ export default function App() {
       <LegalBar />
       <PortraitGuard />
       <SelectionHandles />
+      <AnnotationEditor />
       <ContextMenu />
       <DeletePopover />
       </div>

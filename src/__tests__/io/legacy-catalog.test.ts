@@ -54,7 +54,7 @@ describe('a JSON save paved with the plain colour roads', () => {
     ]);
     const state = deserialize(json, template);
     const byId = new Map([...state.objects.values()].map((o) => [o.id, o.catalogId]));
-    expect(byId.get('r1')).toBe('path-overgrown-dirt');
+    expect(byId.get('r1')).toBe('path-rustic-dirt');
     expect(byId.get('r2')).toBe('path-garden-stone');
     expect(byId.get('r3')).toBe('path-lattice-red-brick');
     expect(byId.get('r4')).toBe('path-urban-asphalt');
@@ -125,7 +125,7 @@ describe('a share code written before the retirement', () => {
     const dec = await decodeMapPayload(await legacyFrame());
     const state = deserialize(toSaveJSON(dec.canonical), getMapTemplate(dec.canonical.templateId));
     const ids = [...state.objects.values()].map((o) => o.catalogId);
-    expect(ids).toContain('path-overgrown-dirt');
+    expect(ids).toContain('path-rustic-dirt');
     expect(ids).not.toContain('road-dirt');
   });
 });

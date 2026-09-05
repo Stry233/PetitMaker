@@ -78,6 +78,7 @@ export function scheduleAutosave(state: GridState): void {
     const camera = currentCamera();
     const history = currentHistory();
     let saved = false;
+    let droppedProvenance = false;
     try {
       localStorage.setItem(PREFS.autosave.key, serialize(state, camera));
       saved = true;
@@ -89,21 +90,26 @@ export function scheduleAutosave(state: GridState): void {
         const { provenance: _dropped, ...rest } = state;
         localStorage.setItem(PREFS.autosave.key, serialize(rest as GridState, camera));
         saved = true;
+        droppedProvenance = true;
       } catch {
         // Still failing (storage unavailable / truly full) — drop this autosave;
         // the next edit tries again.
       }
     }
     // Only ever beside a map that landed: a history left over from an older map would be paired
-    // with it on the next resume.
-    writeHistory(saved ? history : null);
+    // with it on the next resume. And never beside a map saved WITHOUT its provenance: the undo
+    // entries carry taint deltas keyed to the tracker that was dropped, and replaying them over
+    // the restored map's fresh legacy taint writes ghosts.
+    writeHistory(saved && !droppedProvenance ? history : null);
   }, DEBOUNCE_MS);
 }
 
-/** A map worth persisting: any terrain, or any object beyond the built-in plaza.
- *  A fresh empty map must never clobber a real save. Exported as the ONE definition of empty,
- *  shared with the startup restore offer and the drag-drop import confirm. */
+/** A map worth persisting: any terrain, any object beyond the built-in plaza, or any plan-notes
+ *  ink — an island still being ANNOTATED is a session too. A fresh empty map must never clobber a
+ *  real save. Exported as the ONE definition of empty, shared with the startup restore offer and
+ *  the drag-drop import confirm. */
 export function autosaveWorthy(state: GridState): boolean {
+  if ((state.annotations?.items.length ?? 0) > 0) return true;
   for (const row of state.cells) {
     // A row is a sparse array in a hand-built or partially-decoded grid, so a hole reads as
     // undefined; this walk runs inside the first-launch check, where a throw would take the app down.

@@ -1,116 +1,10 @@
-/*
- * LayerPanel.tsx — what the layer count opens: the WHOLE stack, every floor at once.
+/**
+ * Expanded layer control for all buildable elevations.
  *
- * The design source draws only the collapsed control, so the panel is drawn in the interface's own
- * language rather than traced: a filled cream plate, ink type, and the floor being built on marked
- * in the shared yellow.
- *
- * THE CONTROL COMES IN THREE SIZES AND THIS FILE DRAWS TWO OF THEM (`frame.ts:LAYER_MODES`). The
- * pill is the design's own dark stepper and lives in `Rail.tsx`; `column` is the stack in one file,
- * scrolling; `grid` is the square plate. They are ONE control at three sizes, not three panels: the
- * same nine floors, the same head, and one number decides how many of them stand on a row.
- *
- * A PRESS ON THE COUNT OPENS THE FILE, AT EVERY WINDOW. The three sizes are a LADDER and the count
- * is its bottom rung, so the way in is the way the arrows go: pill, file, square. Opening on
- * whichever of the two the window had room for made one press give two different panels — the
- * middle rung was skipped on a tall monitor and was the only rung on a laptop, and the file could
- * then only be reached by pressing BACK to it. What the window decides is where the plate STANDS
- * once it is open (`frame.ts:planRail`), which is a different question and is answered below.
- *
- * A TILE'S LAYOUT IS A FACT ABOUT ITS SIZE, because the two sizes are short of different things.
- * The square is three floors deep whatever a tile costs and has no width to spare, so its floors
- * keep the roomier THREE lines the panel was drawn with: the name, the count with the eye and the
- * lock, then the bar, at 80.5 css px a floor. The file's floors stand one above another, so depth
- * is the thing it pays nine times over and width is what it has: everything a floor says in words
- * shares ONE line there and the bar has the other, at 40 css px a floor. Giving the square the
- * file's crowded line so that one number could serve both took it from 415 css px wide to 622, which
- * is a third of the island behind an opaque plate to save a size that was not short of depth. Measured in the
- * browser over a generated island: the square is 415 x 323 and the file is 228 x 285.5.
- *
- * THE FILE IS SHORT AND IT SCROLLS, AND THAT IS ITS ORDINARY STATE. It draws FIVE of the nine
- * floors (`FILE_FLOORS`). Drawing all nine made the LOWER rung of the ladder the DEEPER plate — 470
- * against the square's 323 — so stepping up shrank the panel, and a plate that deep is in the
- * column's lane on no window at all. Where the lane can give less even than five floors, the plate
- * takes what it can give and scrolls inside that: the height follows the room rather than the room
- * being asked to follow the height. So the scrollbar is a fact about the SIZE now — the file has
- * something to scroll to everywhere, and the square only where the lane cannot hand it its 323.
- *
- * THE HEAD DOES NOT SCROLL WITH THE FLOORS. It carries the layer-numbers toggle and the two size
- * arrows, which are the panel's own controls rather than part of the stack, and a control that
- * leaves the plate as the visitor reads down it is a control they have to scroll back for. So the
- * plate is a column of two: the head, and a box that scrolls. It is NOT a sticky head — a sticky
- * element's offsets are measured from the scrollport's own edge, so it would pin over the plate's
- * padding and ride its rounded corner, and it would be inside the projection Framer scrolls when
- * the two sizes travel.
- *
- * ONE CONTROL AT EITHER END OF IT. The two things on the head are unrelated — what the MAP shows,
- * and what size THIS PANEL is — so the numbers toggle takes the left and the panel's own pair takes
- * the right, which is the end the plate hangs off and the end the way back walks toward. They are
- * drawn in one box: two controls at the two ends of a row read as a pair whatever they do, and the
- * `#` at its own narrower size read as the lesser of the two.
- *
- * EVERY FLOOR IS THERE, WHETHER OR NOT ANYTHING STANDS ON IT. The stack is `ELEVATION_MAX` floors
- * over the ground and that is a fact about the map, not about what has been built yet, so the panel
- * lists all of them and the panel is one size for the life of a session. A list that grew a row each
- * time a taller block was laid moved the rows under the pointer and told the visitor how high they
- * had built, which the counts already say.
- *
- * BOTH SIZES READ UPWARD, BY ONE RULE (`colsOf`). The rows are filled from the GROUND up and drawn
- * in reverse, so the bottom row is the bottom of the stack, every floor in a row stands above every
- * floor in the row under it, and each row itself reads left to right the way the language it is
- * written in does. Any floors left over land in the TOP row, where the stack runs out, which is
- * where the empty slots go. At three columns that is the square (nine floors over the ground is
- * exactly three by three); at one it is the stack read straight down. Two arrangements, no branch.
- *
- * The square costs one thing the file does not: two of its eight steps are a carriage return, up and
- * back to the left. It buys the whole stack under the eye at once, which is what the arrow into the
- * map is for.
- *
- * COUNTS ARE CUMULATIVE (`state/map-stats`): terrain at layer 3 is standing on layers 1 and 2, so it
- * is counted on all three. The panel does not say so in words. A line of copy explaining an
- * arithmetic that the bars beside it already draw is a line every visitor reads once and then reads
- * past forever, and it was the widest thing on the plate.
- *
- * IT IS ONE OF THE COLUMN'S OWN ELEMENTS AND IT IS PLACED WITH THEM. Where it stands is not decided
- * here: `frame.ts:planRail` lays out the whole right-hand side in one pass and hands this its right
- * edge and its depth, so the plate takes its turn in the lane the same way the pair and the view kit
- * do. It never stands over a button. A plate is opaque and covering six controls with it leaves six
- * controls nobody can press, whatever keys they also answer to.
- *
- * WHICH MEANS IT IS SOMETIMES IN THE LANE AND SOMETIMES BESIDE IT, and the arithmetic is worth
- * writing down because it is what rules the alternatives out. In the px the frame is laid out in:
- * the plate hangs from the layer control's top edge at 138 and the square stands `PLATE_DEPTH` (323)
- * deep. The column runs from there to the bottom shelf's plate, and the eight round buttons under it
- * come to 424 with their own separations. On a 1600x900 window that run is 489, so whatever is done
- * with the pair there leaves at most 47 px of room above it, which is a head with no stack under it
- * — and bottom-packing both groups at the view kit's shorter 2D height would buy 153, at the cost of
- * the kit's one screen position across a 2D/3D switch. The FILE joins the lane from about 933 device
- * px of window height and the square from about 980, each by folding the kit into two files up to
- * about 1197 and 1244 and by needing no fold above that; there the plate keeps the buttons' own
- * right edge and the pair steps down under it. Below that the plate steps out of the lane by one
- * file of buttons and a group's separation, which is 62 px and leaves the column exactly where it
- * was.
- *
- * WHAT IT WILL NOT DO IS STAND ON THE BOTTOM SHELF. The plate stops where the column stops
- * (`RAIL_FLOOR`) and draws inside that, which is the same edge the view kit hangs off. That bound
- * bites under about 645 device px of window height for the file and 692 for the square, and there
- * it is the plate's own height that gives.
- *
- * IT REPLACES THE CONTROL AND IT STAYS. Nothing closes it but the visitor: no outside click, no
- * escape. A stack you are working against is a thing to leave up beside the map, and a panel that
- * vanished when the pointer went to the map would be a panel you could not use.
- *
- * THE RIGHT ARROW IS THE WAY BACK, and it inherits everything that made the count findable. It is
- * the same filled yellow pill as the collapsed control, at the same size: the arrows are a size
- * ladder and the pill is its bottom rung. The active floor's name is not the control — that would
- * say twice what the marked tile on the plate already says. And whatever stands there has to look
- * pressable before it has to be anything else: styled as type, a way out is the way out nobody
- * finds.
- *
- * It is the RIGHT one because of where the panel is, not because of where it sits in the ladder.
- * The plate hangs off the window's right edge and grows leftward, so the arrow pointing into the
- * map is the one that opens it and the arrow pointing at the edge is the one that puts it away
- * (`SizeArrow`).
+ * Column mode renders one floor per row in a five-row scrollport; grid mode renders three columns.
+ * Both order floors upward from the ground, keep the header outside the scrollport, and show
+ * cumulative occupancy from `state/map-stats`. `frame.ts` supplies the responsive position and
+ * available height. The panel stays open until the user closes it.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -120,12 +14,14 @@ import type { GridState } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
 import { getActiveLayers } from '../../../state/layer-utils';
 import { subscribeMapStats } from '../../../state/map-stats';
+import { helpTargetAttr, openHelp } from '../../chrome/modals/help/targets';
 import { useEditorStore } from '../../../state/store';
 import { IconChevronLeft, IconChevronRight } from '../glyph-icons';
 import { layerName } from '../layer-name';
 import { iconUrl } from '../../primitives/icons';
 import { useScrollFade } from '../../primitives/scroll-fade';
-import { btnReset, cursors, pressable, pressOnly, springs, z } from '../../design/styles';
+import { btnReset, cursors, font, pressable, pressOnly, springs, z } from '../../design/styles';
+import { roleFont } from '../../design/text-weight';
 import { LAYER_PANEL_TOP, stepLayerMode, type LayerMode } from '../frame';
 import { cssMotion, useMotion } from '../motion/use-motion';
 import { frameZoomAttr } from '../motion/zoom-corrected-radius';
@@ -276,10 +172,19 @@ function tileDepth(mode: LayerMode): number {
   return 2 * tile.padY + words + tile.line + tile.bar;
 }
 
-/** What a plate drawing `rows` rows of floors at this size comes to: the head, the rows, and the
- *  plate's own air and edge. */
+/** The pinned plan-notes row between the head and the floors: one line (name, count, eye, lock)
+ *  at either size, since the layer has no per-floor figure to stack. Counted here so both sizes,
+ *  the file's floor budget and the exported `PLATE_DEPTH` all inherit it from one term. */
+const NOTES_ROW = { padY: 5, gap: 6 } as const;
+function notesRowDepth(): number {
+  return 2 * NOTES_ROW.padY + Math.max(TILE.column.icon, TEXT.tab) + NOTES_ROW.gap;
+}
+
+/** What a plate drawing `rows` rows of floors at this size comes to: the head, the notes row, the
+ *  rows, and the plate's own air and edge. */
 function depthOf(mode: LayerMode, rows: number): number {
   return 2 * PANEL.edge + PANEL.pad + (2 * PANEL.headPadY + TEXT.head) + PANEL.headGap
+    + notesRowDepth()
     + rows * tileDepth(mode) + (rows - 1) * tileOf(mode).gap + PANEL.pad;
 }
 
@@ -289,24 +194,10 @@ function fullDepth(mode: LayerMode): number {
   return depthOf(mode, rowsOf(mode));
 }
 
-/** The square, which is three rows of three and shows all nine floors at once. */
+/** Natural depth of the grid with every floor visible. */
 const SQUARE_DEPTH = fullDepth('grid');
 
-/**
- * HOW MANY FLOORS THE FILE SHOWS BEFORE IT SCROLLS, and it is derived rather than picked: as many
- * whole floors as stand inside the square's own depth.
- *
- * THE FILE MUST NOT BE THE DEEPER OF THE TWO SIZES. It is the lower rung of the ladder and it is
- * what a press on the count opens, so a file hanging further down the window than the square does
- * is a ladder that grows downward as it steps up. Showing every floor is what made it that: ten
- * two-row tiles and a head are 470 css px against the square's 323, and a plate that deep is in the
- * column's lane on no window at all.
- *
- * So the file SCROLLS as its normal state rather than as a short window's accident. The stack is
- * nine floors over the ground at both sizes and the file is a window onto it; what a shorter plate
- * costs is how much of the stack is under the eye at once, which is exactly what the square is one
- * press away for.
- */
+/** Maximum whole column rows that fit within the grid's natural depth. */
 function fileFloorsWithin(depth: number): number {
   let floors = 1;
   while (floors < FLOORS && depthOf('column', floors + 1) <= depth) floors++;
@@ -318,19 +209,7 @@ const FILE_FLOORS = fileFloorsWithin(SQUARE_DEPTH);
  *  `FILE_FLOORS` of it. */
 const shownRows = (mode: LayerMode) => (mode === 'grid' ? rowsOf(mode) : FILE_FLOORS);
 
-/**
- * How deep a size draws, in css px, and it is DECLARED because the column has to place it.
- *
- * The rail plans the whole right-hand side against this (`frame.ts:planRail`), so it cannot be
- * measured off the rendered plate: where the plate stands is decided before there is one. It does
- * not vary with the language either — a longer floor name widens a tile's equal track, it does not
- * add a line to it — which is what makes one number honest for all seven.
- *
- * It is the size's NATURAL depth, the one it draws at when something can hold it, and for the file
- * that is already fewer floors than the stack has (`FILE_FLOORS`). The plan reads this, decides
- * whether the lane can hold it, and hands back the depth the window CAN give; the panel draws at
- * whichever is less and scrolls whatever does not fit.
- */
+/** Natural panel depth in CSS pixels; the rail may supply a smaller scrollable height. */
 export function plateDepth(mode: LayerMode): number {
   return depthOf(mode, shownRows(mode));
 }
@@ -347,24 +226,7 @@ interface Row {
   share: number;
 }
 
-/**
- * What a floor's bar is measured AGAINST: how many cells of this map could be built on at all.
- *
- * ABSOLUTE, not relative. A bar drawn against the biggest count on the map says nothing on its
- * own: on an island with one broad ground floor every bar above it is a sliver, on an empty map
- * all nine are equal, and the same floor of the same map draws differently depending on what was
- * built somewhere else. Against the map's own buildable area the
- * bars are one picture of the island's profile — how much of it is covered at each height — and one
- * floor's bar means the same thing on Monday as on Friday.
- *
- * It is the BUILDABLE cells and not `width × height`. Sea, beach, boundary and the plaza refuse
- * every edit (`isBuildableZone`, which is the one place that fact lives), so they are not capacity:
- * measured against the whole template a completely covered floor would still stop a third of the way
- * along its track, and the bar would be unable to say "full" at all.
- *
- * A TEMPLATE FACT, so this walks once per map: zones are fixed when the grid is built and no edit
- * touches them.
- */
+/** Counts buildable cells, the fixed denominator for every floor-occupancy bar. */
 function capacityOf(state: GridState): number {
   let cells = 0;
   for (const row of state.cells) for (const cell of row) if (isBuildableZone(cell.zone)) cells++;
@@ -403,6 +265,122 @@ function TileToggle({ icon, label, testId, size, onPress }: {
     >
       <img src={iconUrl(icon)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
     </motion.button>
+  );
+}
+
+/**
+ * The plan-notes row, pinned between the head and the floor stack: the annotation layer is not a
+ * floor (it has no elevation and no bar), so it stands outside the scroller and outside
+ * `getActiveLayers`. SELECTING it is entering annotation editing — the row writes
+ * `editMode.mode: 'annotate'`, which is the one fact the bottom bar and the pointer follow — and
+ * selecting it while the layer is hidden shows the layer, since arming a pencil over invisible ink
+ * helps nobody. The eye and the lock write the map's own annotation state, PS's grammar.
+ */
+function NotesRow({ lane }: { lane: number }) {
+  const t = useT();
+  const fw = useFrameReadableWeight();
+  const editMode = useEditorStore((s) => s.editMode);
+  const setEditMode = useEditorStore((s) => s.setEditMode);
+  const setAnnotationsVisible = useEditorStore((s) => s.setAnnotationsVisible);
+  const setAnnotationsLocked = useEditorStore((s) => s.setAnnotationsLocked);
+  // The data mutates in place; the epoch is what re-renders this row's count and toggles.
+  useEditorStore((s) => s.annotationsEpoch);
+  const data = useEditorStore((s) => s.gridState)?.annotations;
+  const selected = editMode.mode === 'annotate';
+  const visible = data?.visible !== false;
+  const locked = data?.locked === true;
+  const count = data?.items.length ?? 0;
+  const tileM = TILE.column;
+  const ink = selected ? INK : PLATE_INK;
+  const line = (measurer: boolean) => (
+    <div
+      style={{
+        position: 'relative', display: 'flex', alignItems: 'center', gap: tileM.readingGap,
+        padding: `${NOTES_ROW.padY}px ${tileM.padX}px`, pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        ...(measurer ? { visibility: 'hidden' as const } : {}),
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: tileM.swatchGap }}>
+        {/* The layer's help door: the export controls' own "?" bubble, opening the notes help page. */}
+        <motion.button
+          type="button"
+          {...(measurer ? {} : pressable)}
+          aria-label={t('a11y.help')}
+          data-testid={measurer ? undefined : 'shell-layer-annotation-help'}
+          tabIndex={measurer ? -1 : undefined}
+          onClick={measurer ? undefined : () => openHelp('notes')}
+          style={{
+            // Drawn at 16 but OCCUPYING the floors' 12px swatch slot, so the row's name starts
+            // on the same column as every floor's below it. WHOLE pixels on purpose: a .5 in this
+            // margin made the notes line's intrinsic width fractional, and wherever that line set
+            // the plate's width, every Framer projection in the panel measured a half-pixel box —
+            // which is what Chrome renders as blurred, faintly shaking text at some zooms.
+            ...btnReset, width: 16, height: 16, margin: '0 -2px', flex: 'none', borderRadius: '50%',
+            background: selected ? INK : INSET, color: selected ? ACTIVE : PLATE_INK,
+            fontFamily: font.family, ...roleFont('small'), lineHeight: '16px',
+            textAlign: 'center', pointerEvents: measurer ? 'none' : 'auto', cursor: cursors.clickable,
+          }}
+        >
+          ?
+        </motion.button>
+        <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, whiteSpace: 'nowrap', ...(measurer ? {} : { overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
+          {t('annot.layer')}
+        </span>
+      </div>
+      <span style={{ minWidth: tileM.count, textAlign: 'right', fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: tileM.toggleGap }}>
+        <TileToggle
+          icon={`${visible ? 'eye-open' : 'eye-closed'}-selected`}
+          label={t('a11y.toggle_visibility')}
+          testId={measurer ? 'shell-layer-annotation-eye-width' : 'shell-layer-annotation-eye'}
+          size={tileM.icon}
+          onPress={measurer ? () => {} : () => setAnnotationsVisible(!visible)}
+        />
+        <TileToggle
+          icon={`${locked ? 'lock' : 'unlock'}-selected`}
+          label={t('a11y.toggle_lock')}
+          testId={measurer ? 'shell-layer-annotation-lock-width' : 'shell-layer-annotation-lock'}
+          size={tileM.icon}
+          onPress={measurer ? () => {} : () => setAnnotationsLocked(!locked)}
+        />
+      </div>
+    </div>
+  );
+  return (
+    // This pinned row stands outside the scroller. The hidden twin is the ONLY thing in flow: it
+    // gives the row its height and bids the plate for the line's own width plus the floors'
+    // scrollbar lane, so a long layer name widens the whole plate instead of being cut short.
+    // The visible line lays over it, stopping a lane short of the plate's right edge, which is
+    // where the floors' content ends — alignment by construction, with nothing measured but the
+    // lane itself.
+    <div style={{ position: 'relative', flex: 'none', marginBottom: NOTES_ROW.gap }}>
+      <div aria-hidden style={{ pointerEvents: 'none', paddingRight: lane }}>{line(true)}</div>
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: lane }}>
+      <button
+        type="button"
+        aria-pressed={selected}
+        aria-label={t('annot.layer')}
+        data-testid="shell-layer-annotation"
+        onClick={() => {
+          if (!selected && !visible) setAnnotationsVisible(true);
+          setEditMode({ mode: selected ? null : 'annotate' });
+        }}
+        onPointerEnter={(e) => { if (!selected) e.currentTarget.style.background = INSET; }}
+        onPointerLeave={(e) => { e.currentTarget.style.background = selected ? ACTIVE : 'transparent'; }}
+        style={{
+          ...btnReset, position: 'absolute', inset: 0, borderRadius: tileM.radius,
+          background: selected ? ACTIVE : 'transparent',
+          cursor: cursors.clickable, pointerEvents: 'auto',
+          transition: cssMotion('layer.select.fade', 'background'),
+        }}
+      />
+      {/* THE ROW READS IN THE FILE TILE'S OWN COLUMNS — the same padding, the same figure slot,
+          the same pair gap — so in the 1×9 file the eyes and the locks stand in one line down the
+          panel instead of the notes row sitting a few px off every floor below it. */}
+      {line(false)}
+      </div>
+    </div>
   );
 }
 
@@ -526,10 +504,19 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
         // Pressing the pinned floor again lets go of it, and the water brush is free to follow the
         // ground again. The row that pins is the row that unpins: a pin nothing can release is a
         // trap, and this needs no second control to escape it.
-        onClick={() => selectLayer(row.elevation)}
+        onClick={() => {
+          // Choosing a floor is choosing to work ON a floor, which the plan-notes layer is not:
+          // annotation editing stands down, or the panel would show two selected rows at once.
+          const store = useEditorStore.getState();
+          if (store.editMode.mode === 'annotate') store.setEditMode({ mode: null });
+          selectLayer(row.elevation);
+        }}
         onPointerEnter={(e) => { if (!active) e.currentTarget.style.background = INSET; }}
         onPointerLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-        style={{ ...btnReset, ...behind, background: active ? ACTIVE : 'transparent', cursor: cursors.clickable }}
+        style={{
+          ...btnReset, ...behind, background: active ? ACTIVE : 'transparent', cursor: cursors.clickable,
+          transition: cssMotion('layer.select.fade', 'background'),
+        }}
       />
       {locked ? (
         <motion.span
@@ -723,6 +710,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
   const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
   const setShowLayerNumbers = useEditorStore((s) => s.setShowLayerNumbers);
   const locale = useEditorStore((s) => s.locale);
+  const annotateSelected = useEditorStore((s) => s.editMode.mode === 'annotate');
   const highlight = displayLayer ?? activeLayer;
   // HOW DEEP IT ACTUALLY DRAWS: its own natural depth, or the room the column can give it, whichever
   // is less. The lane is the harder bound of the two — a plate that ran past it would stand on the
@@ -782,6 +770,30 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
   const [refused, setRefused] = useState(false);
   const holdTimer = useRef<number | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
+  /** The one measurement the pinned notes row needs: the LANE the floors' scrollbar takes
+   *  (offset minus client width). The row's visible line hangs `lane` px short of the plate's
+   *  right edge, which is exactly where the floors' content ends, and its hidden twin bids the
+   *  plate for its own line plus the lane. No content width is measured, so the layout cannot
+   *  feed itself: the lane depends only on whether a scrollbar stands, never on widths. */
+  const [lane, setLane] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return undefined;
+    const read = () => setLane((was) => {
+      const next = Math.max(0, el.offsetWidth - el.clientWidth);
+      // HYSTERESIS: under a fractional zoom (and per frame of the UI-scale tween) the integer
+      // client width can flicker the measured lane by one, and a lane that follows it jerks the
+      // whole pinned row sideways every frame. A one-pixel wobble around a standing scrollbar is
+      // noise; only a scrollbar arriving or leaving is a change.
+      if (was !== 0 && next !== 0 && Math.abs(was - next) <= 1) return was;
+      return was === next ? was : next;
+    });
+    read();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scrolls, mode, open]);
   const floorsFade = useScrollFade(scroller, 'y');
   useEffect(() => {
     const onFail = (data: { errors: { ruleId: string }[] }) => {
@@ -805,7 +817,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
       key={row.elevation}
       row={row}
       mode={mode}
-      active={row.elevation === highlight}
+      active={!annotateSelected && row.elevation === highlight}
       visible={layerVisibility[row.elevation] !== false}
       locked={layerLocked[row.elevation] === true}
       refused={refused}
@@ -818,6 +830,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
           <motion.div
             key="shell-layer-panel"
             data-testid="shell-layer-panel"
+            {...helpTargetAttr('layers')}
             role="group"
             aria-label={t('layer.title')}
             initial={{ opacity: 0, scale: 0.9, y: -6 }}
@@ -988,6 +1001,8 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
                 <SizeArrow dir={-1} mode={mode} onMode={onMode} />
               </motion.div>
             </motion.div>
+
+            <NotesRow lane={lane} />
 
             {/* THE FLOORS, AND THE ONLY THING ON THE PLATE THAT SCROLLS.
                 A scrollbar only where there is something to scroll to: the depth both sizes draw at

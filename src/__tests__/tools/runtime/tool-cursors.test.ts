@@ -17,13 +17,13 @@ import { makeStubRenderer } from '../_tool-manager';
 import { setStoreState } from '../../_store';
 import { roadLookup } from '../../../state/object-index';
 
-// registerDefaultTools() (tool-manager.ts) wires up exactly these 5; Scatter/RoadBrush are
+// registerDefaultTools() (tool-manager.ts) wires up exactly these 6; Scatter/RoadBrush are
 // ToolType members with no tool class anywhere in src/ — setActiveTool no-ops for them, so
 // looping Object.values(ToolType) through the manager would silently re-assert whatever tool
 // was already active for those two, which is not "covering" them.
 const REGISTERED_TOOL_TYPES: ToolType[] = [
   ToolType.Hand, ToolType.TerrainBrush, ToolType.Eraser, ToolType.ObjectPlacer, ToolType.EdgeCut,
-  ToolType.Macro,
+  ToolType.Macro, ToolType.Annotate,
 ];
 
 describe('every registered tool names a cursor from the catalogue', () => {

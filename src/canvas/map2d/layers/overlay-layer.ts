@@ -108,6 +108,9 @@ function previewIconTexture(icon: PreviewIcon): PIXI.Texture | null {
 
 export class OverlayLayer {
   public readonly container: PIXI.Container;
+  /** Opens the owning renderer's render window; MapRenderer rebinds it to itself right after
+   *  construction. Defaults to the module broadcast, for an instance nobody has wired yet. */
+  public requestRender: () => void = requestRender;
   private gridGraphics: PIXI.Graphics;
   private errorGraphics: PIXI.Graphics;
   private ghostGraphics: PIXI.Graphics;
@@ -228,7 +231,7 @@ export class OverlayLayer {
     const spans = mergeCellSpans(plain);
     const startTime = performance.now();
     const animate = () => {
-      requestRender();
+      this.requestRender();
       const t = Math.min((performance.now() - startTime) / durationMs, 1);
       const alpha = flashDecay(peakAlpha, t);
       try { g.clear(); } catch { opts.onEnd(); return; }
@@ -382,7 +385,7 @@ export class OverlayLayer {
     // shape the drop will produce: only a rotatable item turns, and the icon is fitted by ONE
     // scale. Sizing width and height separately would stretch the art to the footprint box.
     g.rotation = item.rotatable ? ((rotation % 360) * Math.PI) / 180 : 0;
-    fitSpriteToTexture(g, tex, footprintFit(size.w * TILE_SIZE, size.h * TILE_SIZE));
+    fitSpriteToTexture(g, tex, footprintFit(size.w * TILE_SIZE, size.h * TILE_SIZE), false, this.requestRender);
     g.tint = valid ? 0xffffff : 0xff8a8a;
     return true;
   }
@@ -397,13 +400,13 @@ export class OverlayLayer {
       this.container.addChild(this.placementGhost);
     }
     this.paintGhostSprite(this.placementGhost, catalogId, x, y, rotation, valid);
-    requestRender();
+    this.requestRender();
   }
 
   private dropPlacementGhost(): void {
     if (this.placementGhost) {
       this.placementGhost.visible = false;
-      requestRender();
+      this.requestRender();
     }
   }
 
@@ -430,14 +433,14 @@ export class OverlayLayer {
       const m = members[i]!;
       this.paintGhostSprite(this.groupGhosts[i]!, m.catalogId, m.x, m.y, m.rotation, valid);
     }
-    requestRender();
+    this.requestRender();
   }
 
   private clearGroupPlacementGhost(): void {
     if (this.groupGhosts.length === 0) return;
     for (const s of this.groupGhosts) { this.container.removeChild(s); s.destroy(); }
     this.groupGhosts = [];
-    requestRender();
+    this.requestRender();
   }
 
   clearGhost(): void {
@@ -454,7 +457,7 @@ export class OverlayLayer {
       const p = this.pendingGhost;
       this.pendingGhost = null;
       if (!p) return;
-      requestRender();
+      this.requestRender();
       try { this.ghostGraphics.clear(); } catch { return; }
       this.previewIcon.visible = false;
       if (p === 'clear') return;
@@ -624,7 +627,7 @@ export class OverlayLayer {
     const { durationMs } = animConfig.selectionPop;
     const start = performance.now();
     const animate = () => {
-      requestRender();
+      this.requestRender();
       const t = Math.min((performance.now() - start) / durationMs, 1);
       g.scale.set(1 - amp + amp * easeOutBack(t));
       if (t < 1) {
@@ -649,7 +652,7 @@ export class OverlayLayer {
     const key = `${x},${y},${w},${h},${terrainMode ? 1 : 0}`;
     if (key === this.lastHoverKey) return;
     this.lastHoverKey = key;
-    requestRender();
+    this.requestRender();
     try { this.hoverGraphics.clear(); } catch { return; }
     const offset = terrainMode ? HALF_TILE : 0;
     this.hoverGraphics.lineStyle(1.5, HOVER_LINE_COLOR, 0.5);
@@ -661,7 +664,7 @@ export class OverlayLayer {
   clearHover(): void {
     if (!this.lastHoverKey) return;
     this.lastHoverKey = '';
-    requestRender();
+    this.requestRender();
     try { this.hoverGraphics.clear(); } catch { /* torn down mid-frame */ }
   }
 
@@ -677,7 +680,7 @@ export class OverlayLayer {
    * label.
    */
   showSelection(x: number, y: number, w = 1, h = 1, elevation?: number, terrainMode = false, append = false): void {
-    requestRender();
+    this.requestRender();
     if (!append) { try { this.selectionGraphics.clear(); } catch { /* ignore */ } }
     const offset = terrainMode ? HALF_TILE : 0;
     this.selectionGraphics.lineStyle(2, SELECTION_COLOR, 1);
@@ -717,7 +720,7 @@ export class OverlayLayer {
    * Clear the selection rectangle and any elevation label.
    */
   clearSelection(): void {
-    requestRender();
+    this.requestRender();
     try { this.selectionGraphics.clear(); } catch { /* ignore */ }
     this.lastSelKey = '';
     if (this.selectionLabel) {
@@ -731,7 +734,7 @@ export class OverlayLayer {
   private buildableAdded = false;
 
   showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void {
-    requestRender();
+    this.requestRender();
     if (!this.buildableAdded) {
       this.container.addChildAt(this.buildableGraphics, 0);
       this.buildableAdded = true;
@@ -746,7 +749,7 @@ export class OverlayLayer {
   }
 
   clearBuildableRegion(): void {
-    requestRender();
+    this.requestRender();
     this.endRegionPulse();
     try { this.buildableGraphics.clear(); } catch { /* ignore */ }
   }
@@ -766,11 +769,11 @@ export class OverlayLayer {
    */
   pulseBuildableRegion(durationMs: number, dip: number): void {
     this.endRegionPulse();
-    requestRender();
+    this.requestRender();
     if (isMotionReduced()) return;
     const start = performance.now();
     const step = () => {
-      requestRender();
+      this.requestRender();
       const t = Math.min((performance.now() - start) / durationMs, 1);
       this.buildableGraphics.alpha = 1 - dip * Math.sin(Math.PI * t);
       if (t < 1) { this.regionPulseAnim = requestAnimationFrame(step); return; }
@@ -793,7 +796,7 @@ export class OverlayLayer {
    *  render at −HALF_TILE, so the visible corridor floor between two walls IS the corridor cell's
    *  terrain-shifted rect, and the macro rect would put half the wash under the walls. */
   showRoute(cells: MacroCoord[]): void {
-    requestRender();
+    this.requestRender();
     if (!this.routeAdded) {
       this.container.addChildAt(this.routeGraphics, this.buildableAdded ? 1 : 0);
       this.routeAdded = true;
@@ -806,14 +809,14 @@ export class OverlayLayer {
   }
 
   clearRoute(): void {
-    requestRender();
+    this.requestRender();
     try { this.routeGraphics.clear(); } catch { /* ignore */ }
   }
 
   /** The Ctrl+drag rubber band: a translucent fill + dashed outline over the raw
    *  macro rect (no terrain shift — a band only ever selects objects). */
   showBand(rect: MacroRect): void {
-    requestRender();
+    this.requestRender();
     try { this.bandGraphics.clear(); } catch { return; }
     const x = rect.x * TILE_SIZE, y = rect.y * TILE_SIZE, w = rect.w * TILE_SIZE, h = rect.h * TILE_SIZE;
     this.bandGraphics.beginFill(BAND_COLOR, 0.06);
@@ -823,7 +826,7 @@ export class OverlayLayer {
   }
 
   clearBand(): void {
-    requestRender();
+    this.requestRender();
     try { this.bandGraphics.clear(); } catch { /* ignore */ }
   }
 }

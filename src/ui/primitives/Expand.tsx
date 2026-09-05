@@ -10,7 +10,7 @@ import { useReducedMotionConfig } from 'framer-motion';
  *
  * Children stay mounted (so typed field values persist across a collapse); when
  * collapsed they're marked `inert` so keyboard focus skips the hidden controls.
- * Reduced motion snaps with no transition. Shared by the two export modals.
+ * Reduced motion snaps with no transition.
  */
 const EXPAND_EASE = 'grid-template-rows 0.42s cubic-bezier(0.65, 0, 0.35, 1)';
 

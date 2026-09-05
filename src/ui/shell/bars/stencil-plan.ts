@@ -107,9 +107,54 @@ function samplePalette(material: StencilMaterial): Promise<readonly ColorEntry[]
   })();
 }
 
-/** Forget a decoded picture — for a file the visitor replaces, whose object URL is about to die. */
+/** Forget a decoded picture — for a file the visitor replaces, whose object URL is about to die.
+ *  The built plans go with it: they were rasterized from the picture being replaced, and an object
+ *  URL can be MINTED AGAIN at the same address for different bytes. */
 export function forgetStencilImage(src: string): void {
   decoded.delete(src);
+  builtPlans.clear();
+}
+
+/**
+ * Built plans, keyed by everything a plan is a function of: the sample's own content, the box, and
+ * each input the two raster paths read. A plan is deterministic over those — the fonts, the decoded
+ * picture and the palettes are all module caches already — so re-asking (a kind left and returned
+ * to, the same sample re-dealt) answers without rasterizing. Bounded; a hit refreshes recency.
+ */
+const builtPlans = new Map<string, StencilPlan | null>();
+const BUILT_PLANS_MAX = 24;
+
+function planKey(sample: StencilSample, inputs: PlanInputs): string {
+  // The allow set is region cells; its content matters, its identity does not.
+  let allow = '';
+  if (inputs.allow) {
+    let h = 0x811c9dc5;
+    for (const i of inputs.allow) h = Math.imul(h ^ i, 0x01000193);
+    allow = `${inputs.allow.size}:${h >>> 0}`;
+  }
+  return JSON.stringify([
+    sample.text ?? null, sample.src ?? null, inputs.box, inputs.fill ?? null, inputs.contrast ?? 1,
+    inputs.objects ?? false, inputs.material ?? null, inputs.decor ?? null, inputs.water ?? null, allow,
+  ]);
+}
+
+function fileBuiltPlan(key: string, plan: StencilPlan | null): void {
+  if (builtPlans.size >= BUILT_PLANS_MAX && !builtPlans.has(key)) {
+    builtPlans.delete(builtPlans.keys().next().value!);
+  }
+  builtPlans.set(key, plan);
+}
+
+/** The plan these inputs already built, `null` included (an unreadable picture stays one blank
+ *  card) — or `undefined` where nothing is filed and only `buildStencilPlan` can answer. A
+ *  synchronous read, so a caller can restore a whole batch without rasterizing anything. */
+export function peekStencilPlan(sample: StencilSample, inputs: PlanInputs): StencilPlan | null | undefined {
+  const key = planKey(sample, inputs);
+  if (!builtPlans.has(key)) return undefined;
+  const hit = builtPlans.get(key)!;
+  builtPlans.delete(key);
+  builtPlans.set(key, hit);
+  return hit;
 }
 
 /**
@@ -120,6 +165,15 @@ export function forgetStencilImage(src: string): void {
  * is what makes the two kinds one pipeline: the shelf never has to say which mode it is in.
  */
 export async function buildStencilPlan(sample: StencilSample, inputs: PlanInputs): Promise<StencilPlan | null> {
+  const key = planKey(sample, inputs);
+  const seen = peekStencilPlan(sample, inputs);
+  if (seen !== undefined) return seen;
+  const built = await buildStencilPlanUncached(sample, inputs);
+  fileBuiltPlan(key, built);
+  return built;
+}
+
+async function buildStencilPlanUncached(sample: StencilSample, inputs: PlanInputs): Promise<StencilPlan | null> {
   const { box } = inputs;
   const origin: MacroCoord = box.origin;
 

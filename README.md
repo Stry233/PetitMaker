@@ -7,15 +7,15 @@
 
 **English | [简体中文](./docs/README.zh-CN.md)**
 
-_Cozy, rule-perfect map planning for **[Petit Planet](https://planet.hoyoverse.com/en-us/home)**._
+_A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/en-us/home)**, with validation against the game's building rules._
 
-[![Play at petit-maker.com](https://img.shields.io/badge/%E2%96%B6%20Play-petit--maker.com-FFB347?style=flat-square&labelColor=43413F)](https://petit-maker.com)
+[![Play at petitmaker.cc](https://img.shields.io/badge/%E2%96%B6%20Play-petitmaker.cc-FFB347?style=flat-square&labelColor=43413F)](https://petitmaker.cc/)
 &nbsp;![Release](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&color=8CC9A1&labelColor=43413F)
 &nbsp;[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](./LICENSE)
 
 <img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished island, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
 
-<sub>The island is 鱼松的爱心桃花岛, built cell by cell by 鱼松 (see Credits). You can download and import it further down the page.</sub>
+<sub>The header shows 鱼松的爱心桃花岛, created by project contributor 鱼松. An importable share image is available below.</sub>
 
 </div>
 
@@ -23,7 +23,8 @@ _Cozy, rule-perfect map planning for **[Petit Planet](https://planet.hoyoverse.c
 
 PetitMaker is an independent, **unofficial** fan project. It is **not affiliated** with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.). *Petit Planet* and related names, characters, and material are the property of their respective owners. See [Affiliation & licensing](#affiliation--licensing) below.
 
-- **Live site:** <https://petit-maker.com>
+- **International site:** <https://petitmaker.cc/>
+- **Chinese site:** <https://petitmaker.com.cn/>
 - **Repository:** <https://github.com/Stry233/PetitMaker>
 
 ## Two views, one map
@@ -34,129 +35,139 @@ PetitMaker is an independent, **unofficial** fan project. It is **not affiliated
 <sub>One map, both views: the house in the heart garden, selected with a click, and still selected after the switch.</sub>
 </div>
 
-2D and 3D are both editing views of the same grid, and every tool works in either one: brushes, shapes, the eraser, item placement, edge cuts, region select, undo. Switch views mid-edit and you keep the same map, the same selection and the same history. The 3D side adds animated water, soft shadows, and a model for every placed item. The corner you round in 2D is the corner you orbit in 3D.
+The 2D and 3D editors use the same grid and support the same brushes, shapes, eraser, item placement, edge cutting, region selection, and undo history. Switching views does not change the map or current selection. The 3D view also displays animated water, shadows, and models for placed items; terrain corners edited in 2D appear with the same shape in 3D.
 
-## Draw a mountain, and the rules come with it
+## Draw terrain with building-rule checks
 
-Painting terrain works like any pixel editor: free brush, line, curve, rectangle, circle, a brush-size dial. What differs is what happens after the stroke. Paint water with nowhere to rest, or a peak with nothing under it, and the editor undoes that one stroke and names the rule it broke. Items are checked before they land instead of after: one that cannot stand where you are pointing is refused, with the same message.
+Terrain tools work like those in a pixel editor: free brush, line, curve, rectangle, circle, and brush-size control. After each stroke, the editor checks the result. Invalid changes, such as uncontained water or high terrain without enough support, are reverted with an explanation. Item placement is checked before the item is added, and invalid locations show the applicable reason.
 
 <div align="center">
-<img src="./docs/media/rule-check.gif" alt="Animated editor view: a tree is carried to the lip of a terrace, its preview turns red, and a message appears saying placement requires flat ground with no elevation change or water nearby; the same attempt then repeats in the 3D view, where the step under the tree is visible" width="300">
+<img src="./docs/media/rule-check.gif" alt="Animated editor view: a tree is moved to the edge of a terrace, its preview turns red, and a message states that placement requires flat ground with no elevation change or nearby water; the same attempt repeats in the 3D view, where the step under the tree is visible" width="300">
 
-<sub>The same refusal in both views: a tree cannot stand on the lip of a step. The 3D view is where you can see why.</sub>
+<sub>A tree cannot be placed at the edge of a step. Both views reject the placement, while the 3D view makes the elevation change easier to see.</sub>
 </div>
 
-The rest of the toolbox is for detail work. The edge-cut tool trims mountain corners one click at a time, or auto-trim does it as you paint, in whichever of its two shapes you pick. The eraser takes one layer per pass. Items snap to the grid, rotate on click, and drag to a new spot. A bridge needs two flat banks of equal height and snaps into place once it has them. Autosave keeps your last session, and the interface is available in seven languages. No account, no server.
+Other tools provide more detailed control. The edge-cut tool changes individual terrain corners, while auto-trim applies bevelled or rounded corners as terrain is drawn. The eraser lowers terrain one layer per pass. Items snap to the grid and can be selected, rotated when supported, or moved. Bridges align automatically when both ends are flat and at the same height. The app includes browser-local autosave and a multilingual interface, requires no account, and does not store maps on a project-operated server.
 
-The layers panel opens from the elevation count and grows through three sizes, up to the whole stack at once. Every floor carries its own cell count, visibility eye and lock, so you can hide the canopy while you work on the ground, or lock a finished terrace against a stray stroke.
+The layer readout opens a panel with three display sizes, including a grid of all layers. Each layer shows its cell count and has separate visibility and lock controls, allowing upper layers to be hidden or completed terrain to be protected from further editing.
 
 <div align="center">
-<img src="./docs/media/layer-panel.gif" alt="Animated editor view: the elevation count at the top right is pressed and unfolds into a column of layer rows, each with a cell count, a visibility eye and a lock; an arrow press grows it into a grid holding the whole stack at once with Ground highlighted, then two more presses fold it back down to the count" width="440">
+<img src="./docs/media/layer-panel.gif" alt="Animated editor view: selecting the elevation count at the top right opens a column of layer rows, each with a cell count, visibility control, and lock; selecting an arrow changes it to a grid of all layers with Ground highlighted, then two further selections return it to the compact count" width="440">
 
-<sub>The layers panel at its three sizes: the count, the file, the whole stack, and back. Each press is the panel's own control.</sub>
+<sub>The layer panel switches between a compact readout, a single-column list, and a grid containing every layer.</sub>
 </div>
 
 <div align="center">
 <img src="./docs/media/edge-cut.png" alt="Three panels of the same three-level mountain: on the left every corner is square, in the middle each outer corner is sliced off at 45 degrees, on the right each outer corner is a quarter-circle; the inner corner of the L stays square in all three" width="900">
 
-<sub>One mountain, three settings: auto-trim <b>Off</b>, <b>Bevel</b>, <b>Round</b>. Only the outer corners move. Inner corners stay square, and a trimmed corner opens onto the step behind it.</sub>
+<sub>The same terrain with auto-trim set to <b>Off</b>, <b>Bevel</b>, and <b>Round</b>. Auto-trim changes outer corners and leaves inner corners square.</sub>
 </div>
 
 <div align="center">
-<img src="./docs/media/item-showcase.png" alt="All placeable items arranged on five shelves: cabins and facilities, bridges and ramps, twelve trees, and forty flowers and plants" width="900">
+<img src="./docs/media/item-showcase.png" alt="Placeable cabins, facilities, bridges, ramps, trees, flowers, and plants arranged on shelves" width="900">
 
-<sub>The whole toybox: cabins, facilities, bridges, ramps, trees, and flowers, ready to place. (Plus twenty-five in-game path surfaces you paint like a brush.)</sub>
+<sub>The object shelf contains cabins, facilities, bridges, ramps, trees, flowers, and other plants. In-game path surfaces are drawn with a brush.</sub>
 </div>
 
-## This picture is a map
+## Import a map from its share image
 
 <div align="center">
 <img src="./docs/media/share-map.png" alt="A PetitMaker share image: a title and one line of description, the island on a lettered and numbered grid, a column of per-layer thumbnails beside it, a row of four 3D views under it, the PetitGlyph share-code band below that, and a footer carrying the export date and pixel size" width="480">
 </div>
 
-Not a picture *of* the map. The map. **[Download this image](./docs/media/share-map.png)** (save the file itself, not a screenshot of it), drop it onto **[petit-maker.com](https://petit-maker.com)** → Import, and you are holding 鱼松's island from the top of this page: every terrace, every waterway, all three thousand two hundred placements, cell for cell.
+This share image contains the complete map data. **[Download the original image](./docs/media/share-map.png)** (save the file rather than taking a screenshot), then drop it into the Import window at **[petitmaker.cc](https://petitmaker.cc/)**. The editor will restore 鱼松's island from the header, including its terrain, water, and objects.
 
-The mosaic stripe along the bottom is the **PetitGlyph**: the whole map encoded into visible pixels. Reed-Solomon error correction carries it through compression and re-sharing, and it verifies itself on import, so it either rebuilds the exported map cell for cell or reports that the image is too damaged to read. Nothing is uploaded. The picture is the save file.
+The band at the bottom is a **PetitGlyph**, which stores the map and its planning notes in the image. Error correction helps keep shared maps readable after resizing and JPEG or WebP compression. Import verifies the data before restoring the map. Processing takes place in the browser, and the image is not uploaded.
 
-## The generator: watch an island grow
+## Turn the plan into an illustration
+
+Before exporting a 2D image, the map can be redrawn as an illustration. Built-in procedural and on-device model styles run locally and require no API key. Online styles use your API key to send a rendered map and style instructions directly to the selected image provider. Images created by a model, whether local or online, include an AI disclosure; procedural styles do not. You can compare several versions with the original before exporting, and the image can still include optional PetitGlyph map data.
+
+<div align="center">
+<img src="./docs/media/stylize-samples.webp" alt="Six renderings of one planned map in watercolor, coastal, sakura, autumn, atlas, and night illustration styles" width="900">
+
+<sub>The same map rendered in several styles. Built-in styles run on the device, and model-generated versions are identified as AI-drawn in the exported image.</sub>
+</div>
+
+## Generate a map
 
 <div align="center">
 <img src="./docs/media/island-growth.gif" alt="Animated stages of generation, each captioned in the lower left and wiping left to right into the next: the empty map, terraced hills, lakes and rivers with waterfalls, streets across the island, bridges and ramps and homes, then trees and flowers" width="300">
 
-<sub>One recipe, six steps: the generator terraces the ground, settles the water, lays the streets, then moves everyone in.</sub>
+<sub>The generator creates terrain, water, roads, bridges and ramps, buildings, and vegetation in six stages.</sub>
 </div>
 
-The Generate shelf offers four kinds of island. **Island** and **Maze** build from a recipe number, through the same rules your brush obeys, and the same number always produces the same map, so a number you like is a number you can share. **Letter** and **Picture** build from what you bring: a phrase raised as terrain or tiled with an item you pick, or a dropped image read as ground, water and plantings.
+The generator provides four modes: **Island**, **Maze**, **Letter**, and **Picture**. Island and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
 
 <div align="center">
 <img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Island and Maze: on the left a settled island of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
 
-<sub>One recipe number, two kinds: <b>Island</b> settles a place, <b>Maze</b> fills the same ground with corridors.</sub>
+<sub>The same recipe number produces different results in different modes: <b>Island</b> creates a complete layout, while <b>Maze</b> creates connected corridors.</sub>
 </div>
 
-**Island** designs a whole place before it touches a cell: terrace plates, a few long streets cutting the island into districts, themed places seated along them, water composed into the ground, then homes with roads to every door. Its one style knob is **Scenery richness**: the quiet end is a flat garden town, the full end a terraced island.
+**Island** calculates a complete layout before applying it to the map. It creates terraces, major roads that divide the island into districts, themed areas along those roads, water features, buildings, and connections to each entrance. The **Scenery richness** setting controls terrain variation, water, and vegetation density.
 
 <div align="center">
 <img src="./docs/media/richness-strip.png" alt="The same recipe generated three ways: a flat garden town at scenery richness 0, terraces and ponds appearing at 50, and a fully terraced island with deep greens and stepped water at 100" width="620">
 
-<sub>One recipe, the knob's whole range: <b>Scenery richness</b> 0, 50, 100. A flat garden town on the left, a terraced island on the right.</sub>
+<sub>The same recipe at <b>Scenery richness</b> 0, 50, and 100. Higher values add more elevation changes, water, and vegetation.</sub>
 </div>
 
-**Maze** fills the buildable ground with a recursive backtracker's maze, every corridor reaching every other one. Its walls are ordinary mountain, so you can paint, trim and decorate them afterwards, and a selected region keeps the maze to one corner of the map. You can even drag its entrance and exit where you want them, and ask it to pave the answer.
+**Maze** uses recursive backtracking to create a connected maze on buildable ground. Its walls are ordinary terrain, so they can be edited, trimmed, and decorated after generation. A generation region can restrict the maze to part of the map. Its entrance and exit can be moved, and **Show the way** displays the solution route.
 
 <div align="center">
 <img src="./docs/media/corridor-strip.png" alt="Three panels of the same patch of map, labelled Corridor 1, Corridor 2 and Corridor 3: the maze walls thin out and the passages widen from left to right, with the central plaza in each panel for scale" width="620">
 
-<sub><b>Corridor</b> 1, 2, 3: not three samples, the setting's whole range. Same recipe number, wider passages, fewer walls.</sub>
+<sub>The same recipe with <b>Corridor</b> set to 1, 2, and 3. Wider corridors produce fewer walls.</sub>
 </div>
 
-## An agent that builds beside you
+## Use the agent to edit a map
 
-Bring your own API key. It is encrypted on your device and speaks only to the platform you picked, and the agent reaches your map and nothing else: no storage, no page access, no network of its own.
+The agent requires your own API key. Where supported, the browser key vault encrypts it on the device; otherwise, the app stores an obfuscated copy in the current browser. The key is sent only to the selected provider. The agent's tools can read and modify the current map, but cannot access browser storage, other page content, or the general network. Provider requests use the selected integration.
 
 <div align="center">
-<img src="./docs/media/providers.png" alt="A band of ten tiles in the editor's cream and ink, each carrying the platform's brand mark on a badge in that platform's own colour, and its name: Anthropic, OpenAI, DeepSeek, Google, OpenRouter, Zhipu, Alibaba, Moonshot, Perplexity, and a wider Custom tile with a gear badge reading any OpenAI-compatible endpoint works (Ollama, LiteLLM, a campus gateway)" width="900">
+<img src="./docs/media/providers.png" alt="A band of provider tiles, each carrying the platform's brand mark and name, followed by a Custom tile for OpenAI-compatible endpoints" width="900">
 
-<sub>Ten platforms to pick from, and the last row is anything that speaks the OpenAI protocol, including a model running on your own machine.</sub>
+<sub>Choose a supported provider, or use the Custom option for an OpenAI-compatible service, including a model running on your own machine.</sub>
 </div>
 
-Ask for a cozy village, a terraced hill park, a river crossing, an alpine cascade, a zen garden or a field of rice terraces. It knows what those are made of, and builds one on your map.
+The agent can follow natural-language instructions to create or modify areas such as villages, hill parks, bridges, waterfalls, dry gardens, and terraces.
 
-Point at where you want it: select a hillside, ask for the work *there*, and there is where it happens.
+You can first select a region to restrict the agent's edits to that part of the map.
 
-It writes the plan out before it builds, and waits for your go. While it works you can send it a note to change course, stop it at the end of the step it is on, or send it back to an earlier stage and take a different road from there. Every stage is a rewind point, and the whole run is one undo away.
+The agent presents a plan for approval before execution when the selected oversight level requires it. While a task is running, you can add instructions, pause after the current step, or return to an earlier stage and continue with revised requirements. Each stage is a rollback point, and the complete task can be undone as one operation.
 
 <div align="center">
-<img src="./docs/media/agent-run.png" alt="The assistant panel at three moments of one job, side by side: first the written plan of four stages with an Approve button waiting; then the build under way, the plan's stages ticking off with two placements in flight; then the finished receipt stamped Built, with the map photograph, the cell and object counts, and a How it was built button" width="900">
+<img src="./docs/media/agent-run.png" alt="The agent panel at three points in one task: a four-stage plan awaiting approval, plan execution with two placements in progress, and a completed receipt with a map image, change counts, and a How it was built button" width="900">
 
-<sub>One job, three moments: the plan waits for your go, the build ticks through its stages, and the receipt says what stands, one undo away.</sub>
+<sub>An agent task in three stages: awaiting plan approval, executing the plan, and displaying a receipt that summarizes the changes.</sub>
 </div>
 
-You choose how often it checks in. **Strict** waits for your ok on every edit, **Checkpoint** asks before plans and big steps and lets small edits through, **YOLO** never waits.
+Three oversight levels are available. **Strict** asks before every map change, **Checkpoint** asks before plans and large changes, and **Autopilot** proceeds without step-by-step confirmation. Changes made under any level can be undone.
 
-And it gets told no. It goes through the same checks your brush does, and the editor answers in words:
+Agent edits use the same rule checks as manual edits. If an operation is invalid, the editor reports the reason so the agent can revise its approach:
 
-> **agent** · `paint_terrain` water across the ridge at F6…
+> **Agent:** Placing water along the ridge at F6…
 >
-> **editor** · `REVERTED: Water: waterfall needs mountain caps on both ends`
+> **Editor:** Reverted. Water: waterfall needs mountain caps on both ends.
 >
-> **agent** · "The fall was uncapped. Capping both flanks first, then re-running the water."
+> **Agent:** "The waterfall is missing mountain caps on both sides. I will add them before placing the water again."
 
 ## Under the hood
 
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/media/underhood-dark.svg">
-  <img src="./docs/media/underhood-light.svg" alt="Layered block diagram of the source tree: stacked full-width bands, each packed with the modules it holds. Who edits (your brush, the generator, the AI agent) on top, then ui and legal, agent with io and api, kit, canvas (the 2D editor and the 3D editor), tools, i18n, rules, state, config with assets, and core on the floor. A highlighted channel runs from the three editors down through rules into core/commands, and a rail down the right edge reads: imports only ever point down" width="900">
+  <img src="./docs/media/underhood-light.svg" alt="Layered source-tree diagram. Editors appear at the top, followed by UI and legal, agent with IO and API, kit, canvas, tools, i18n, rules, state, configuration with assets, and core. A highlighted path leads from the editors through rules to core commands, and a side label states that imports point downward." width="900">
 </picture>
 </div>
 
-For readers who want the mechanism, and for contributors: four behaviours the editor holds to, and where each one lives.
+Four design constraints keep map data and editing results consistent:
 
-- **Everyone edits through the same path.** Your brush, the generator and the agent all produce Commands, and every Command goes through one executor (`core/commands/command-executor`) with validation on both sides of it: rules that refuse a command before it applies, and a second pass over the finished stroke that rolls the whole stroke back if the result is illegal. Nothing has a private route in, the agent least of all, so an AI edit cannot leave a map in a state your own hand could not.
-- **A share image imports exactly or not at all.** The PetitGlyph band carries the map through Reed-Solomon error correction, and the payload ends in a SHA-256 of the canonical map. Import decodes, rebuilds and compares: it either hands back the exported map cell for cell, or it says the image is too damaged to read. There is no partial import, and nothing is uploaded to check.
-- **The same recipe always produces the same island.** Every random number in generation comes from one seeded generator (mulberry32) and every tie is broken by index, so a recipe number replays byte for byte on any machine. That is also why a generated map's share code is small: it stores the recipe, not the terrain.
-- **Automated tests hold these in place.** `npm run test:run` covers the rule set, the codec and the generator, and one of its tests imports the share image on this page and fails if that picture ever stops being a working map.
+- **Every editor uses the same command path.** Manual tools, the generator, and the agent all produce commands handled by the same executor (`core/commands/command-executor`). Rules may reject a command before it runs and validate the completed stroke afterward, reverting it if the result is invalid.
+- **A share image imports completely or fails.** The PetitGlyph band carries the map through Reed-Solomon error correction, and its SHA-256 covers the canonical map and planning notes. Import decodes, rebuilds, and compares the data. It either returns the complete exported map or reports that the image is too damaged to read. Validation runs locally.
+- **Generation is reproducible from its complete inputs.** Within the same app version, the recipe, generation kind, and settings drive one seeded generator (mulberry32), with ties broken by index. A share image does not rely on replaying that algorithm: its payload contains the complete canonical map, while an optional recipe note records how the map was generated.
+- **Automated tests verify these constraints.** `npm run test:run` covers the rules, codec, and generator. One test imports the share image on this page and fails if it can no longer restore its map.
 
 The full tour: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) (the engine) and [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md) (build hardening, CSP, the key vault, the agent sandbox).
 

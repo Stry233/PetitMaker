@@ -71,7 +71,7 @@ describe('the road picker', () => {
     // for an item the catalog should not be holding.
     render(<Providers><RoadStyles /></Providers>);
     const swatches = screen.getAllByRole('button');
-    expect(swatches).toHaveLength(25);
+    expect(swatches).toHaveLength(28);
     for (const s of swatches) {
       expect(s.querySelector('img')?.getAttribute('src'), s.getAttribute('aria-label') ?? '').toContain('path-');
     }

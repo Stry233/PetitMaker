@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { radii, font, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
@@ -14,19 +14,31 @@ import { footerTokenValues } from './render-preview-bridge';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { host } from '../../../../kit/host';
 import { paintComposition, CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
+import { brandInfo, loadBrandLockup } from './brand';
 import { DEFAULT_FOOTER, formatFooterDate } from '../../../../io/export/footer-template';
+import { loadRememberedExportOptions, rememberExportOptions } from '../../../../io/export/options-store';
 import { captureMapStills } from '../../../../canvas/map3d/capture';
 import { seedShots } from '../../../../canvas/map3d/shot-list';
 import { loadImage } from '../../../../io/export/canvas-helpers';
 import { renderExport } from '../../../../io/export/render';
 import { originalCaptureRequestPx } from '../../../../io/share';
-import { useShareCode, renderShareCodeCanvas, shareCodeKey, shareCodeIssueKey, type ShareCodeIssue } from './use-share-code';
+import { useShareCode, renderShareCodeAsset, shareCodeKey, shareCodeIssueKey, type ShareCodeIssue } from './use-share-code';
 import type { ExportComposition } from '../../../../io/export/types';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { downloadBlob } from '../../../../io/image-export';
 import { showToast } from '../../floating/Toast';
+import { selectedVersion } from './stylize/use-stylize-versions';
+import { composeStylizedBaseMap } from './stylize/compose-stylized';
 
-const DEFAULT_OPTIONS: ExportOptions = { title: '', description: '', preset: 'share', importable: true, showBadge: true, layerPreview: true, card3d: false, grid: true, footer: true, footerTemplate: DEFAULT_FOOTER, resolution: 'standard' };
+/** What either baseMap producer (a real capture, or a stylized composite) actually is — narrower
+ *  than `CanvasImageSource` so `.width`/`.height` stay plain numbers downstream. */
+type BaseMapSource = HTMLImageElement | HTMLCanvasElement;
+
+/** Exported: the Help Center's share figure pictures the window under these same defaults. */
+/** How long the shell's opening spring (`springs.stiff`) takes to come to rest, in ms. */
+const ENTRANCE_SETTLE_MS = 360;
+
+export const DEFAULT_OPTIONS: ExportOptions = { title: '', description: '', preset: 'share', importable: true, showBadge: true, layerPreview: true, card3d: false, grid: true, footer: true, annotations: true, footerTemplate: DEFAULT_FOOTER, resolution: 'standard' };
 
 /** Minimum dimension (px) to consider a 3D still usable. */
 const MIN_3D_PX = 32;
@@ -59,8 +71,22 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const summary = useEditorStore((s) => (open ? s.commandExecutor?.getProvenanceSummary() : undefined));
   const gridState = useEditorStore((s) => s.gridState);
   const locale = useEditorStore((s) => s.locale);
-  const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
+  // The window opens the way it was left: every choice but the map's own words is remembered.
+  const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_OPTIONS, ...loadRememberedExportOptions() }));
   const [exporting, setExporting] = useState(false);
+
+  // THE ENTRANCE COMES FIRST. The preview's capture, its paint and the share-code encode are all
+  // synchronous main-thread work that would land inside the card's opening spring and stall it, so
+  // the picture starts once the spring has settled; a reduced-motion open has no spring to protect.
+  const reduced = useReducedMotionConfig() === true;
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!open) { setSettled(false); return; }
+    if (reduced) { setSettled(true); return; }
+    const id = setTimeout(() => setSettled(true), ENTRANCE_SETTLE_MS);
+    return () => clearTimeout(id);
+  }, [open, reduced]);
+  const ready = open && settled;
 
   // One timestamp per modal session: it goes into the code's payload, so fixing it at open makes
   // the PREVIEWED band pixel-identical to the exported one (the export reuses the cached asset).
@@ -87,6 +113,11 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   // fresh object per keystroke would repaint the very picture the settle exists to hold still.
   const { title: _liveTitle, description: _liveDescription, ...optionRest } = options;
   const optionRestKey = JSON.stringify(optionRest);
+  // Remembered on CHANGE, not on opening: the slot fills only once the user has chosen something.
+  const openedWith = useRef(optionRestKey);
+  useEffect(() => {
+    if (optionRestKey !== openedWith.current) rememberExportOptions(options);
+  }, [optionRestKey]); // eslint-disable-line react-hooks/exhaustive-deps -- the remembered fields ARE optionRest
   const previewOptions = useMemo(
     () => ({ ...optionRest, title: settledText.title, description: settledText.description }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- optionRest rides under its content key
@@ -97,7 +128,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   // never per keystroke, because a synchronous build is heavy enough to freeze the modal's
   // entrance. While it builds, the preview keeps its last picture (or its loading state when
   // there is none yet — no placeholder band).
-  const code = useShareCode(open, gridState ?? null, summary ?? null, options.importable, settledText.title, options.resolution, createdAt);
+  const code = useShareCode(ready, gridState ?? null, summary ?? null, options.importable, settledText.title, options.resolution, createdAt);
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
@@ -117,53 +148,62 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       const now = Date.now();
       const sum = executor.getProvenanceSummary();
 
-      // Capture the 2D map. Native mode asks for the map's native resolution (so the composed map
-      // band is full-resolution); presets use a bounded capture. The renderer clamps to GPU
-      // MAX_TEXTURE_SIZE, so the achieved size is read back from the loaded image.
-      const capturePx = options.resolution === 'original' ? originalCaptureRequestPx(gridState.template) : 2400;
-      const baseUrl = host.capture2d(capturePx, options.grid);
-      if (!baseUrl) {
-        setExporting(false);
-        showToast(translate('toast.export_image_failed'), 'error');
-        return;
+      // A selected stylize version REPLACES the map bitmap: the map itself is never captured, and
+      // the user's own ink (if any) is composed back over the generated picture at its own rect.
+      // 原图 (no selection) keeps today's plain capture path byte for byte.
+      const stylizeSelected = selectedVersion();
+      let baseImg: BaseMapSource;
+      let mapAspect: number;
+      let mapPx: { w: number; h: number };
+      if (stylizeSelected) {
+        const inkUrl = options.annotations ? host.capture2dAnnotations(2048) : null;
+        const inkImg = inkUrl ? await loadImage(inkUrl).catch(() => null) : null;
+        const gridUrl = options.grid ? host.capture2dGrid(2048) : null;
+        const gridImg = gridUrl ? await loadImage(gridUrl).catch(() => null) : null;
+        baseImg = composeStylizedBaseMap(stylizeSelected.image, inkImg, stylizeSelected.kind === 'model' ? translate('export.ai_tag') : '', gridImg);
+        mapAspect = (baseImg.width / baseImg.height) || 1.2;
+        mapPx = { w: baseImg.width, h: baseImg.height };
+      } else {
+        // Capture the 2D map. Native mode asks for the map's native resolution (so the composed map
+        // band is full-resolution); presets use a bounded capture. The renderer clamps to GPU
+        // MAX_TEXTURE_SIZE, so the achieved size is read back from the loaded image.
+        const capturePx = options.resolution === 'original' ? originalCaptureRequestPx(gridState.template) : 2400;
+        const baseUrl = host.capture2d(capturePx, options.grid, options.annotations);
+        if (!baseUrl) {
+          setExporting(false);
+          showToast(translate('toast.export_image_failed'), 'error');
+          return;
+        }
+        baseImg = await loadImage(baseUrl);
+        mapAspect = (baseImg.width / baseImg.height) || 1.2;
+        mapPx = { w: baseImg.width, h: baseImg.height };
       }
 
-      const baseImg = await loadImage(baseUrl);
-      const mapAspect = (baseImg.width / baseImg.height) || 1.2;
-      const mapPx = { w: baseImg.width, h: baseImg.height };
-
-      // The PetitGlyph v2 share-code band (a visible, decoder-only mosaic — no pixel-level
-      // steganography) is built INSIDE `capture` below, sized from the POST-FIT `comp.width` —
-      // the same width compose.ts sizes the codeBand rect from, so there is one source of truth
-      // for the width the code is encoded at. `codeTooSmall` defers the toast until after export
-      // completes so it never races the success toast.
+      // The visible PetitGlyph band is built inside `capture` at the exact width reserved by the
+      // composition. `codeTooSmall` defers the toast until after export completes.
       let codeImg: HTMLCanvasElement | null = null;
       let codeTooSmall = false;
       let codeFailed: ShareCodeIssue | null = null;
+      let codeNotice: ShareCodeIssue | null = null;
 
       // Capture function: paints the full composition into an offscreen canvas and returns it.
       // The computed ExportComposition is passed in so we can render the full layout including the 3D card.
       const capture = async (comp: ExportComposition): Promise<HTMLCanvasElement | null> => {
-        // Build the share code (if requested) at the composition's FINAL width — comp.codeBand
-        // is only present when hasShareCode(options) AND the width fit a module base;
-        // comp.codeBandUnavailable is compose.ts's own too-small signal (the source of truth for
-        // the toast, rather than inferring it from buildShareCode returning null).
+        // The reserved band can be narrower than the canvas; encoding at canvas width clips it.
         if (comp.codeBandUnavailable) {
           codeTooSmall = true; // chosen Size can't host a legible code (Compact)
         } else if (comp.codeBand) {
-          // Reuse the previewed asset when it was built for exactly this width + inputs — the
-          // preview then IS the export, and the encode cost is paid once. A stale asset (title
-          // typed within the debounce window, or the Original preset's native width differing
-          // from the preview's) rebuilds with the SAME session createdAt → identical inputs.
-          if (codeAsset && codeAsset.builtWidth === comp.width && codeAsset.builtKey === shareCodeKey(comp.width, options.title, createdAt)) {
+          // Reuse the previewed asset only when its pixel width and payload inputs match this slot.
+          if (codeAsset && codeAsset.canvas.width === comp.codeBand.w && codeAsset.builtKey === shareCodeKey(comp.codeBand.w, options.title, createdAt)) {
             codeImg = codeAsset.canvas;
+            codeNotice = codeAsset.notice;
           } else {
-            // A map the encoder refuses must not take the picture down with it: the code is one
-            // band of the composition, and the person asked for the picture. Drop the band (an
-            // empty labeled one would promise a code that is not there) and say so afterwards.
+            // A failed code leaves the picture export available, with a warning after download.
             try {
-              codeImg = await renderShareCodeCanvas(gridState, sum, { title: options.title, createdAt }, comp.width);
-              if (!codeImg) codeTooSmall = true; // belt+braces: band reserved but the code failed to build
+              const asset = await renderShareCodeAsset(gridState, sum, { title: options.title, createdAt }, comp.codeBand.w);
+              codeImg = asset?.canvas ?? null;
+              codeNotice = asset?.notice ?? null;
+              if (!codeImg) codeTooSmall = true;
             } catch (e) {
               console.error('[export] share code build failed', e);
               codeFailed = shareCodeIssueKey(gridState);
@@ -191,11 +231,13 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
 
+        const brandLockup = await loadBrandLockup(store.locale);
         paintComposition(ctx, comp, {
           baseMap: baseImg,
           card3dAngles,
           codeImg,
           grid: options.grid,
+          brand: brandInfo(store.locale, options, brandLockup),
           footerTemplate: options.footerTemplate,
           footerTokens: footerTokenValues(gridState, options, store.locale, sum),
           state: gridState,
@@ -239,7 +281,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       useEditorStore.getState().markExported();   // this map has now left the browser
       if (codeTooSmall) showToast(translate('export.code_too_small'), 'info');
       if (codeFailed) showToast(translate(codeFailed), 'info');
-      showToast(translate(codeImg ? 'toast.exported_embedded' : 'toast.exported_image'), 'info');
+      showToast(translate(codeNotice ?? (codeImg ? 'toast.exported_embedded' : 'toast.exported_image')), 'info');
       setExporting(false);
       onDone();
     } catch (e) {
@@ -296,7 +338,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           </div>
         </div>
         <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <ExportPreview open={open} options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} />
+          <ExportPreview open={ready} options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} />
         </div>
       </div>
     </div>

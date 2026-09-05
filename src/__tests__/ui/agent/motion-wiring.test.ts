@@ -46,15 +46,8 @@ const files = [...sources(DIR), { path: DOCK_DRIVER, text: readFileSync(DOCK_DRI
 const allText = files.map((f) => f.text).join('\n');
 const panelIds = Object.keys(MOTIONS).filter((id) => id.startsWith('panel.'));
 
-/**
- * DECLARED AHEAD OF THE FAMILY TASK THAT CONSUMES THEM.
- *
- * The vocabulary in `registry.ts` is the whole panel's, fixed against the normative artifact
- * before every card it describes has been built. It is EMPTY: every declared panel motion has a
- * runner.
- * Naming a motion before the card is honest as long as the gap is named here rather than passing
- * silently: an id LEAVES this set the same commit that gives it a call site, never before.
- */
+/** Motion ids may appear here temporarily while their consumer is implemented. The set is empty
+ * when every declared panel motion has a call site. */
 const DECLARED_AHEAD_OF_CONSUMER: ReadonlySet<string> = new Set<string>([]);
 
 describe('every declared panel motion has a runner', () => {

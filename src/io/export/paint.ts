@@ -1,23 +1,19 @@
 // src/io/export/paint.ts
-// Browser-only Canvas-2D drawing for the composed export image. Implements the layout contract
-// computed by compose.ts: rows stack frame → header (title/desc + badge pill) → main map (left)
-// + layer column (right) → optional 3D card → share-code band → footer, every rect positioned in
-// the BASE-800 coordinate system and scaled by S = width/BASE_WIDTH.
-// paintComposition is a thin orchestrator; each band is drawn by its own helper below.
+// Canvas 2D rendering for export compositions. Layout rectangles use the 800-pixel base coordinate
+// system from compose.ts and scale with the final output width.
 
 import type { Badge, ExportComposition, Rect } from './types';
 import type { GridState } from '../../core/model/types';
 import { CHUNK_SIZE } from '../../core/model/constants';
 import { layersFor, paintLayer } from './layer-preview';
-import { fitAspect, COL_GAP_INNER, MAX_PER_COL, BASE_WIDTH, PAD, CARD_3D_H } from './compose';
+import { fitAspect, COL_GAP_INNER, MAX_PER_COL, BASE_WIDTH, PAD, CARD_3D_H, CODE_LABEL_H, LEGEND_LEFT, LEGEND_BOTTOM } from './compose';
+import qrcode from 'qrcode-generator';
 import { resolveFooter, DEFAULT_FOOTER, formatFooterDate } from './footer-template';
 import { rrPath, ellipsize } from './canvas-helpers';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { badgeScale } from './render';
 
-// 3D-card cell geometry (BASE-800). Cells are packed at the 5-up size for ANY count, so a single
-// cell's aspect (below) is fixed — the export shots menu imports it so its thumbnails use the same
-// frame shape and rounded corners as the exported card.
+// 3D-card cells retain the five-column aspect at every item count; the shot picker shares it.
 const CARD_3D_TITLE_H = 30, CARD_3D_SIDE_PAD = 8, CARD_3D_BOTTOM_PAD = 8, CARD_3D_GAP = 6;
 export const CARD_3D_CELLS = 5;
 const CARD_3D_INNER_W = BASE_WIDTH - PAD * 2 - CARD_3D_SIDE_PAD * 2;
@@ -31,8 +27,7 @@ export interface CompositionAssets {
   /** The 3D card's shot thumbnails (empty/omitted skips the card body; caller should unset
    *  comp.card3d when 3D is unavailable). */
   card3dAngles?: CanvasImageSource[];
-  /** The rendered PetitGlyph v2 share-code band (drawn into `comp.codeBand` at native size, no
-   *  resampling). Null leaves the band body blank — callers gate on the code being ready. */
+  /** PetitGlyph raster, drawn below the heading in `comp.codeBand` at native size. */
   codeImg?: CanvasImageSource | null;
   /** When true, draw the chunk index legend beside the (grid-baked) map. */
   grid?: boolean;
@@ -50,6 +45,18 @@ export interface CompositionAssets {
   description: string;
   /** Translator for all visible strings except the user title/description. */
   translate: (key: string, vars?: Record<string, string | number>) => string;
+  /** The maker's band on every export: the locale's lockup art plus an optionally configured site,
+   *  invitation, and QR code. */
+  brand: {
+    /** The locale's logo lockup (public/banner{,-zh}.svg rasterised); null falls back to plain text. */
+    lockup: CanvasImageSource | null;
+    /** Where the QR points; empty when this deployment omits the site mark. */
+    url: string;
+    /** The display form of `url`, without its protocol. */
+    label: string;
+    /** The localized maker line, or import invitation when a site is present. */
+    powerText: string;
+  };
 }
 
 /** Draw the full composition into ctx per the computed layout (band order in the file header).
@@ -62,20 +69,106 @@ export function paintComposition(
 ): void {
   const S = comp.scale;
   const FF = fontFamily();
-  drawFrame(ctx, comp.width, comp.height, S);
+  drawFrame(ctx, comp.width, comp.height, S, comp.bare === true);
   if (comp.header) drawHeader(ctx, comp.header, comp.badges, assets, S, FF);
-  if (comp.map) drawMap(ctx, comp.map, assets, S, FF);
+  if (comp.map) drawMap(ctx, comp.map, assets, S, FF, comp.bare === true);
   if (comp.layerLabel) drawLayerHeader(ctx, comp.layerLabel, assets, S, FF);
   if (comp.layerCol) drawLayerColumn(ctx, comp.layerCol, assets, S, FF);
   if (comp.card3d) draw3dCard(ctx, comp.card3d, assets, S, FF);
-  if (comp.codeBand) drawCode(ctx, comp.codeBand, assets, S, FF);
+  if (comp.codeBand) paintCodeBand(ctx, comp.codeBand, assets, S, FF);
   if (comp.footer) drawFooter(ctx, comp.footer, comp, assets, S, FF);
+  drawBrand(ctx, comp.brand, assets, S, FF, comp.bare === true);
 }
 
-/** Solid full-bleed background (JPEG has no alpha) + a subtle inset rounded border for the frame. */
-function drawFrame(ctx: CanvasRenderingContext2D, width: number, height: number, S: number): void {
+/** Draw the app lockup and, when configured by the deployment, its address and QR code. */
+function drawBrand(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionAssets, S: number, FF: string, bare: boolean): void {
+  // Full-bleed exports add the inset that framed exports receive from their card padding.
+  const inset = bare ? PAD * S : 0;
+  const x0 = rect.x + inset, w = rect.w - 2 * inset;
+  const padY = 8 * S;
+  const contentH = rect.h - 2 * padY;
+  const cy = rect.y + rect.h / 2;
+
+  if (bare) {
+    ctx.fillStyle = '#fffdf5';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  }
+  // An empty URL omits the QR and address text.
+  const hasSite = assets.brand.url.length > 0;
+  const qrSide = hasSite ? contentH : 0;
+  const qrX = x0 + w - qrSide;
+  if (hasSite) drawSiteQr(ctx, assets.brand.url, qrX, rect.y + padY, qrSide, S);
+
+  // Compensate for the transparent margins built into the lockup asset.
+  const LOCKUP_OVERDRAW = 228 / 172;
+  let lockupRight = x0;
+  const art = assets.brand.lockup;
+  const drawH = contentH * LOCKUP_OVERDRAW;
+  const artW = art && 'width' in art && 'height' in art
+    ? drawH * ((art.width as number) / (art.height as number)) : 0;
+  if (art && artW > 0) {
+    const padShareX = 28 / 796; // the art's own left margin, folded back so the mark starts at x0
+    ctx.drawImage(art, x0 - artW * padShareX, cy - drawH / 2, artW, drawH);
+    lockupRight = x0 + artW * (1 - 2 * padShareX);
+  } else {
+    ctx.fillStyle = '#43413F';
+    ctx.font = `900 ${20 * S}px ${FF}`;
+    ctx.fillText(assets.translate('app.name'), x0, cy + 7 * S);
+    lockupRight = x0 + ctx.measureText(assets.translate('app.name')).width;
+  }
+
+  // Fit the address first, then the invitation when both fit beside the lockup.
+  const textRight = hasSite ? qrX - 12 * S : x0 + w;
+  const room = textRight - (lockupRight + 14 * S);
+  ctx.textAlign = 'right';
+  ctx.font = `800 ${14 * S}px ${FF}`;
+  const labelW = ctx.measureText(assets.brand.label).width;
+  ctx.font = `700 ${11 * S}px ${FF}`;
+  const powerW = ctx.measureText(assets.brand.powerText).width;
+  if (!hasSite) {
+    // No site named: no words either. The band is the lockup alone.
+  } else if (Math.max(labelW, powerW) <= room) {
+    ctx.fillStyle = 'rgba(67,65,62,0.62)';
+    ctx.fillText(assets.brand.powerText, textRight, cy - 3 * S);
+    ctx.fillStyle = '#43413F';
+    ctx.font = `800 ${14 * S}px ${FF}`;
+    ctx.fillText(assets.brand.label, textRight, cy + 14 * S);
+  } else if (labelW <= room) {
+    ctx.fillStyle = '#43413F';
+    ctx.font = `800 ${14 * S}px ${FF}`;
+    ctx.fillText(assets.brand.label, textRight, cy + 5 * S);
+  }
+  ctx.textAlign = 'left';
+}
+
+/** Draw an error-level-M QR code with one quiet-zone module on each side. */
+function drawSiteQr(ctx: CanvasRenderingContext2D, url: string, x: number, y: number, side: number, S: number): void {
+  const qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount();
+  const cell = side / (n + 2); // one quiet module each side
+  ctx.fillStyle = '#ffffff';
+  rrPath(ctx, x, y, side, side, 6 * S);
+  ctx.fill();
+  ctx.fillStyle = '#43413F';
+  const ox = x + cell, oy = y + cell;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!qr.isDark(r, c)) continue;
+      // Overdrawn a hair so adjacent modules fuse without antialias seams.
+      ctx.fillRect(ox + c * cell, oy + r * cell, cell + 0.5, cell + 0.5);
+    }
+  }
+}
+
+/** Solid full-bleed background (JPEG has no alpha) + a subtle inset rounded border for the frame.
+ *  A bare export keeps the fill (rounding can leave hairline slivers at the canvas edge) and drops
+ *  the border: there is no card to frame. */
+function drawFrame(ctx: CanvasRenderingContext2D, width: number, height: number, S: number, bare: boolean): void {
   ctx.fillStyle = '#fffdf5';
   ctx.fillRect(0, 0, width, height);
+  if (bare) return;
   ctx.strokeStyle = 'rgba(67,65,62,0.10)';
   ctx.lineWidth = 2;
   rrPath(ctx, 4, 4, width - 8, height - 8, 15 * S);
@@ -130,19 +223,18 @@ function drawHeader(ctx: CanvasRenderingContext2D, rect: Rect, badges: Badge[], 
  *  LEFT of the map, column numbers BELOW it. Shrinking the map band by these keeps map+labels
  *  within the SAME footprint the map-only layout occupies; labels spilling into the padding make
  *  the grid-on map read larger than the grid-off one. */
-const LEGEND_LEFT = 18;
-const LEGEND_BOTTOM = 18;
 
 /** Main map: the captured 2D map letterboxed into its band, plus the chunk index legend (the grid
  *  lines themselves are already baked into the capture). With the legend on, the map is fitted into
  *  a band inset by the legend margins so the map + labels together equal the map-only footprint. */
-function drawMap(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionAssets, S: number, FF: string): void {
+function drawMap(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionAssets, S: number, FF: string, bare = false): void {
   const legendL = assets.grid ? LEGEND_LEFT * S : 0;
   const legendB = assets.grid ? LEGEND_BOTTOM * S : 0;
   const band: Rect = { x: rect.x + legendL, y: rect.y, w: rect.w - legendL, h: rect.h - legendB };
   const { x, y, w, h } = band;
   ctx.save();
-  rrPath(ctx, x, y, w, h, 14 * S);
+  // Bare: the band IS the canvas, so square corners — a rounded clip would notch the picture.
+  rrPath(ctx, x, y, w, h, bare ? 0 : 14 * S);
   ctx.clip();
   if (assets.baseMap) {
     ctx.drawImage(assets.baseMap, ...fitTuple(fitMap(band, assets.baseMap)));
@@ -254,41 +346,37 @@ function draw3dCard(ctx: CanvasRenderingContext2D, rect: Rect, assets: Compositi
   }
 }
 
-/** Share-code band: a labeled row above the PetitGlyph v2 code image, drawn INTO the composed
- *  image so every appearance option still applies. There is NO placeholder — callers gate
- *  painting on the code being ready (the preview stays in its loading state until then), so a
- *  null codeImg just leaves the band body blank. The code image is blitted at NATIVE size with
- *  smoothing off — a code's modules must land on exact device pixels, never fitted/resampled. */
-function drawCode(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionAssets, S: number, FF: string): void {
+/** The heading sits outside the native-size raster so every code module keeps its exact pixels. */
+export function paintCodeBand(
+  ctx: CanvasRenderingContext2D, rect: Rect, assets: Pick<CompositionAssets, 'codeImg' | 'translate'>,
+  S: number, FF = fontFamily(),
+): void {
   const { x, y, w, h } = rect;
-  const labelH = 20 * S;
+  const labelH = Math.round(CODE_LABEL_H * S);
   const cy = y + labelH / 2;
   const isz = 13 * S;
   drawMosaicIcon(ctx, x, cy - isz / 2, isz);
   ctx.fillStyle = '#8A7B72';
   ctx.font = `800 ${13 * S}px ${FF}`;
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(assets.translate('export.code_label').toUpperCase(), x + isz + 8 * S, cy);
   ctx.textBaseline = 'alphabetic';
 
-  const my = y + labelH, mh = h - labelH;
   if (!assets.codeImg) return;
-  // Clip to the band rect so a code image mis-sized upstream can't paint outside its
-  // band. The clip must never introduce scaling — the draw stays an
-  // integer-coord, native-size blit with smoothing off (a code's modules must land on exact
-  // device pixels).
+  const my = y + labelH;
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, my, w, mh);
+  ctx.rect(x, my, w, h - labelH);
   ctx.clip();
-  const smoothed = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(assets.codeImg, Math.round(x), Math.round(my));
-  ctx.imageSmoothingEnabled = smoothed;
+  ctx.drawImage(assets.codeImg, Math.round(x), my);
   ctx.restore();
 }
 
-/** Footer band: the customizable line (literal text + {tokens}); {fill} splits it left/right. */
+/** Footer band: the customizable line (literal text + {tokens}); {fill} splits it left/right.
+ *  The band carries ONLY the user's own template: the AI-illustration disclosure is baked into the
+ *  stylized map band's pixels instead, since this line is the user's to write and to remove. */
 function drawFooter(ctx: CanvasRenderingContext2D, rect: Rect, comp: ExportComposition, assets: CompositionAssets, S: number, FF: string): void {
   const { x, y, w, h } = rect;
   ctx.fillStyle = 'rgba(243,238,232,0.95)';
@@ -334,15 +422,16 @@ function drawGridLegend(ctx: CanvasRenderingContext2D, rect: Rect, cols: number,
   ctx.font = `800 ${12.5 * S}px ${ff}`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
+  // Each label sits at the middle of ITS chunk, the last one at the middle of whatever is left of
+  // it: clamping to the map's edge would centre that label on the edge and clip half of it.
+  const mid = (i: number, total: number) => (i * CHUNK_SIZE + Math.min((i + 1) * CHUNK_SIZE, total)) / 2;
   for (let cr = 0; cr < chunksY; cr++) {
-    const midCell = Math.min(cr * CHUNK_SIZE + CHUNK_SIZE / 2, rows);
-    ctx.fillText(String.fromCharCode(65 + (cr % 26)), x - 7 * S, y + midCell * ch);
+    ctx.fillText(String.fromCharCode(65 + (cr % 26)), x - 7 * S, y + mid(cr, rows) * ch);
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   for (let cc = 0; cc < chunksX; cc++) {
-    const midCell = Math.min(cc * CHUNK_SIZE + CHUNK_SIZE / 2, cols);
-    ctx.fillText(String(cc + 1), x + midCell * cw, y + h + 6 * S);
+    ctx.fillText(String(cc + 1), x + mid(cc, cols) * cw, y + h + 6 * S);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -362,14 +451,12 @@ function drawLayersStackIcon(ctx: CanvasRenderingContext2D, cx: number, cy: numb
   }
 }
 
-/** Draw a tiny 2×2 colored-mosaic icon — for the share-code band header (evokes the code mosaic). */
-function drawMosaicIcon(ctx: CanvasRenderingContext2D, x: number, y: number, sz: number): void {
-  const gap = sz * 0.12, c = (sz - gap) / 2;
-  const cols = ['#d9b86a', '#9ccf6e', '#7fb5d6', '#c8a6d6'];
-  let i = 0;
-  for (let r = 0; r < 2; r++) for (let cc = 0; cc < 2; cc++) {
-    ctx.fillStyle = cols[i++]!;
-    ctx.fillRect(x + cc * (c + gap), y + r * (c + gap), c, c);
+function drawMosaicIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  const gap = size * 0.12, cell = (size - gap) / 2;
+  const colors = ['#d9b86a', '#9ccf6e', '#7fb5d6', '#c8a6d6'];
+  for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
+    ctx.fillStyle = colors[row * 2 + col]!;
+    ctx.fillRect(x + col * (cell + gap), y + row * (cell + gap), cell, cell);
   }
 }
 

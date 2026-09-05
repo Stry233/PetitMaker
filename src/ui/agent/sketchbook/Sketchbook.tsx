@@ -1,30 +1,8 @@
 /*
- * Sketchbook.tsx — the idle dressing: she sketches what THIS island could take, one proposal at a
- * time, on tracing paper over its own photograph (normative artifact `.skwrap` / `.skcard`).
- *
- * THE GROUND IS THE LIVE MAP. `MapShot` photographs the open island through the renderer that draws
- * it, and the figure is laid over that picture in the picture's own cell coordinates
- * (`thumbnail.ts:seaFrame`, the same composition the capture is framed by, which is what puts a
- * dashed lane on the cells it names). While no renderer has answered yet the card WAITS with the
- * house loader: a drawn stand-in island would be a picture of a map nobody has.
- *
- * ONE PROPOSAL AT A TIME, AND THEY ARE REAL. `propose.ts` reads the map and answers with what it
- * finds; this file only draws and rotates. Zero ideas is not an empty state to dress — it renders
- * nothing at all, and the rest state stands without it.
- *
- * THE PENCIL RUNS THE MASK'S DASHOFFSET, not the shape's. Animating a dashed shape's own offset
- * slides the pattern along and reads as a solid line arriving; a mask whose reveal stroke retreats
- * lets the dashes appear tip-first and STAY dashes, which is what makes it read as drawing. Every
- * length is computed from the geometry rather than measured with `getTotalLength`, so the card draws
- * identically wherever it is mounted.
- *
- * ONE ENGINE, GATED BY THE CARD'S OWN PRESENCE. The rotation is one rAF loop in this component: the
- * card mounting starts it and unmounting stops it (the panel only renders the card in an idle rest,
- * so folding the panel stops it too). Reduced motion runs no loop at all and paints the complete
- * still the builder already drew — the first idea, fully in, its caption standing.
- *
- * A PRESS HANDS THE ORDER OVER AND SENDS NOTHING. The composer takes the words, focuses, and waits
- * for the user: the sketch is a suggestion, and dispatching it would be the card deciding.
+ * Idle card cycling through proposals derived from the open map. Sketch geometry uses the live map
+ * capture's cell frame. A mask reveal preserves dashed lines as they draw. The component owns one rAF
+ * loop while mounted; reduced motion shows the first completed sketch. Selecting a proposal fills and
+ * focuses the composer without sending it.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
@@ -40,19 +18,19 @@ import { LoadingDots } from '../../primitives/LoadingDots';
 import { getCharacterHandle } from '../character/Character';
 import { Icon } from '../icons';
 import { MapShot } from '../map-shot';
-import { CARD_PAD, edge, PANEL_PAD, PANEL_WIDTH, withAlpha } from '../tokens';
+import { CARD_PAD, edge, PANEL_PAD, PANEL_WIDTH } from '../tokens';
+import { withAlpha } from '../../design/styles';
 import type { SketchArt, SketchIdea } from './propose';
 import { GARNISH, RITUALS, SCRIBBLE_BADGE_MS, SKETCH, type Beat } from './sketch-motion';
 
-/** The card's picture, in px (artifact `.skthumb`: full width of the card, 172 tall). */
+/** Full-width card thumbnail size in CSS pixels. */
 const THUMB = { width: PANEL_WIDTH - 2 * PANEL_PAD - 2 * CARD_PAD, height: 172 } as const;
 
 /**
  * The tracing-paper wash over the photograph: the sketch reads as an overlay, not as map paint.
  *
- * IT HAS TO ANSWER A REAL ISLAND, which is what the artifact never had to. Its own sketch stands on a
- * drawn pale plate (`.skwrap{background:var(--plate)}`), so a thin wash was all the separation the
- * drawing needed; here the ground is the live map at full saturation, and at 0.16 the wash was
+ * The ground is a full-saturation live map, so the wash must separate pencil marks while leaving the
+ * island legible. At 0.16 the wash was
  * imperceptible — the dashed proposal competed with the map's own road lines and the pencil read as
  * one more thing painted on the island rather than as a plan laid over it. Heavy enough to knock the
  * ground back, light enough that the island is still legible under it, which is the whole point of
@@ -68,9 +46,8 @@ export const WASH_FLOOR = 0.35;
  *
  * Every measure below is a SHARE OF THE PICTURE'S OWN WIDTH rather than a number of cells, because
  * the drawing has to read at the size the card is: a line fixed at a cell is a hairline on a 285-cell
- * frame and a stripe on a 40-cell one. The shares are the artifact's own (its 11-unit stroke and
- * 34/26 dash in a 1160-wide viewBox), so a sketch here has the weight the design was judged at
- * whatever island it is drawn over. `MIN_*` are the floors that keep a small map's figure visible.
+ * frame and a stripe on a 40-cell one. Proportions keep the line weight stable across map sizes;
+ * `MIN_*` floors keep figures visible on small maps.
  */
 const PENCIL = withAlpha(INK, 0.8);
 const PENCIL_SOFT = withAlpha(INK, 0.5);

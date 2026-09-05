@@ -1,5 +1,5 @@
 /**
- * The half-step span items (issue #4) at the TRAIT level: the trait itself, the
+ * Half-step span items at the trait level: the trait itself, the
  * covered-cell expansion in V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid
  * guard. Detection (bridge-span / heightDrop walking the half grid) belongs to
  * `half-step-detection.test.ts` — these fixtures carry `halfStep` paired with
@@ -43,7 +43,7 @@ describe('V-PLACE-TRAIT: off-grid guard', () => {
     expect(errors.some((e) => e.message === 'error.placement_off_grid')).toBe(true);
   });
 
-  it('does not gate a whole-integer position at all (regression)', () => {
+  it('does not gate a whole-integer position', () => {
     const state = makeState();
     const errors = traitPlacementRule.validate(place('tree-apple', 5, 5), state);
     expect(errors.some((e) => e.message === 'error.placement_off_grid')).toBe(false);
@@ -81,7 +81,7 @@ describe('noFloat sweep over covered cells (half-integer anchor)', () => {
     expect(traitPlacementRule.validate(place('hs-pier', 7.5, 5), state)).toHaveLength(0);
   });
 
-  it('integer-anchor noFloat is unchanged (regression)', () => {
+  it('applies noFloat at an integer anchor', () => {
     const state = makeState();
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     const errors = traitPlacementRule.validate(place('hs-pier', 5, 5), state);

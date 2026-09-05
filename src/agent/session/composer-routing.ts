@@ -1,11 +1,4 @@
-/**
- * The composer's four routes as one pure function: what a submitted message DOES depends only on
- * the session phase it lands in (spec 0.2's state-inventory table). idle/aborted/incident have no
- * job running, so a submission STARTS one; the mid-job phases (thinking/streaming/executing/
- * retrying/pausing) queue a steer instead; gated answers the outstanding gate in words; paused
- * appends a resume note AND queues it as a steer, since the note itself is only the log's record
- * of the resume and the caller's re-invoked `runJob` picks up guidance through the steer queue.
- */
+/** Routes submitted text by session phase: new order, steer, gate answer, or resume note. */
 import { answerGate, pendingGate } from '../core/gates';
 import { append, type SessionLog } from '../core/log';
 import type { SessionPhase } from '../core/project-view';
@@ -30,14 +23,7 @@ export function composerRoute(phase: SessionPhase): ComposerRoute {
   }
 }
 
-/** Routes `text` per `composerRoute(phase)` and applies its effect on `log`. Blank text (empty or
- *  whitespace-only) is a no-op on every route: the route is still reported, but nothing is
- *  appended. `opts.mapContext` rides on an `order` event only; the runner supplies the real map
- *  snapshot, and a caller with none yet gets the empty string rather than an optional field.
- *  `opts.region` rides on an `order` event too, and only there — the other three routes append no
- *  event that carries a region at all, so it is ignored by construction rather than by a check.
- *  `opts.mapId` rides the same way: it is the template the order is filed against, and only an
- *  `order` event records one. */
+/** Applies the phase route. Map context, region and template identity attach only to new orders. */
 export function submitComposer(
   log: SessionLog, phase: SessionPhase, text: string,
   opts?: { mapContext?: string; region?: OrderRegion; mapId?: string },
@@ -63,15 +49,13 @@ export function submitComposer(
         answerGate(log, gate.gateId, 'words', trimmed);
         return { route, startsJob: false };
       }
-      // Defensive: the projected phase says gated but the log carries no open gateAsked. Steer
-      // rather than drop the text on the floor.
+      // If projection and log disagree, preserve the submitted text as steering guidance.
       queueSteer(log, trimmed);
       return { route: 'steer', startsJob: false };
     }
     case 'resume-note':
       append(log, { kind: 'resumed', note: trimmed });
-      // The event alone reaches no model: `runJob`'s next request is built fresh, so the note
-      // rides in as a queued steer, which `deliverSteers` folds into the resumed job's first turn.
+      // Queue the note as steering so it reaches the resumed job's first provider turn.
       queueSteer(log, trimmed);
       return { route, startsJob: false };
   }

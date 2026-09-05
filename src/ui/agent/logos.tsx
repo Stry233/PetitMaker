@@ -1,18 +1,10 @@
-/*
- * logos.tsx — platform brand marks, one mono silhouette per provider (lobe-icons,
- * github.com/lobehub/lobe-icons, used verbatim and nominatively to identify which platform a key
- * belongs to). All 24x24 viewBox, single-colour via `fill` — including real marks for Zhipu (Z.ai)
- * and Moonshot (Kimi), and a neutral gear for the custom endpoint.
- *
- * THE PANEL DOES NOT DRAW THESE TODAY: its setup screen names the providers in words. They are kept
- * because they are the marks the project HOLDS for the ten platforms — the README's providers band
- * is built by calling this component rather than redrawing the silhouettes, so the figure and the
- * app cannot disagree, and a chooser that wants a mark beside a name has one to reach for.
+/**
+ * Single-colour provider marks in a 24px view box. Brand silhouettes come from Lobe Icons and the
+ * custom endpoint uses a neutral gear. Generated documentation reuses this component.
  */
 import type { ProviderId } from '../../agent/providers/defaults';
 
-/** Per-mark optical scale (the prototype's lg() compensation table) so every
- *  silhouette reads the same visual size inside its badge. */
+/** Per-mark optical scale so provider silhouettes read at a consistent visual size. */
 const OPTICAL: Partial<Record<ProviderId, number>> = {
   gemini: 1.18, zhipu: 1.06, claude: 0.94, qwen: 0.98, moonshot: 1.06,
 };

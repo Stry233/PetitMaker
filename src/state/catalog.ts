@@ -124,8 +124,10 @@ export function getAllItems(): CatalogItem[] {
   return [...byCategory.values()].flat();
 }
 
-/** Header icon (a basename `iconUrl` resolves) + i18n title key for a placement-shelf category tab.
- *  Road has no entry: it's a brush surface laid from the Build panel, never a point-placed tab. */
+/** Test-support oracle: header icon (a basename `iconUrl` resolves) + i18n title key per placeable
+ *  category. The shelf and the command palette author their own tables; the tests hold all three to
+ *  the same answers. Road has no entry: it's a brush surface laid from the Build panel, never a
+ *  point-placed tab. */
 const CATEGORY_META: Partial<Record<ItemCategory, { icon: string; titleKey: string }>> = {
   [ItemCategory.Building]: { icon: 'building', titleKey: 'menu.place_building' },
   [ItemCategory.Facility]: { icon: 'facility', titleKey: 'menu.place_facility' },

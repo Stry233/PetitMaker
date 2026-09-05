@@ -46,11 +46,6 @@ const TRIM_KEY: Record<string, string> = {
   tri: 'agent2.dc_cs_tri',
   empty: 'agent2.dc_cs_empty',
 };
-const ALGO_KEY: Record<string, string> = {
-  designed: 'agent2.dc_alg_designed',
-  maze: 'agent2.dc_alg_maze',
-};
-
 /** A schema enum the model sends: named for the panel, or printed raw when the
  *  schema grows a value this table has not caught up with. */
 const word = (map: Record<string, string>, v: unknown, t: Translate): string => {
@@ -101,7 +96,7 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
     at: at(i),
     style: word(TRIM_KEY, i.style, t),
   }),
-  build_road: (i, t) => t('agent2.dc_along', { what: String(i.catalogId ?? 'path-overgrown-dirt'), area: shape(i, t, 'line') }),
+  build_road: (i, t) => t('agent2.dc_along', { what: String(i.catalogId ?? 'path-rustic-dirt'), area: shape(i, t, 'line') }),
   scatter_objects: (i, t) => {
     const ids = (i.catalogIds as string[] | undefined) ?? [];
     const pool = ids.length > 2 ? `${ids.slice(0, 2).join(', ')} +${ids.length - 2}` : ids.join(', ');
@@ -134,14 +129,6 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
     const course = t('agent2.dc_river', { w: n(i.width) || 4, n: pts.length });
     if (pts.length < 2) return course;
     return `${course} (${n(pts[0]!.x)},${n(pts[0]!.y)})→(${n(pts[pts.length - 1]!.x)},${n(pts[pts.length - 1]!.y)})`;
-  },
-  run_generator: (i, t) => {
-    const rect = rectInput(i);
-    return [
-      word(ALGO_KEY, i.algorithm ?? 'designed', t),
-      i.seed !== undefined ? t('agent2.dc_seed', { n: n(i.seed) }) : '',
-      rect ? t('agent2.dc_in', { area: shape({ rect }, t) }) : '',
-    ].filter(Boolean).join(' ');
   },
   decorate_zone: (i, t) => t('agent2.dc_zone', {
     theme: t(THEME_KEY[String(i.theme ?? '')] ?? 'agent2.theme_zone'),

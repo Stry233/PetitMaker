@@ -15,6 +15,7 @@
 import { ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/constants';
 import { hexStringToNumber } from '../../../core/model/colors';
 import { ItemCategory, TerrainType, type CatalogItem, type Stencil } from '../../../core/model/types';
+import { isEmojiGrapheme, textGraphemes } from './stencil-text-segments';
 
 export type { Stencil };
 
@@ -64,93 +65,28 @@ export type Script = 'simple' | 'dense' | 'picture';
  * Read from code points rather than from a locale: the string is what is being drawn.
  */
 export function scriptOf(text: string): Script {
-  let dense = false;
-  for (const ch of text) {
-    const cp = ch.codePointAt(0) ?? 0;
-    if (cp >= 0x1f000 || (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x2b00 && cp <= 0x2bff)) return 'picture';
-    if ((cp >= 0x3040 && cp <= 0x30ff) || (cp >= 0x3400 && cp <= 0x4dbf)
-      || (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0xac00 && cp <= 0xd7af)
-      || (cp >= 0xf900 && cp <= 0xfaff)) dense = true;
-  }
-  return dense ? 'dense' : 'simple';
+  if (textGraphemes(text).some(isEmojiGrapheme)) return 'picture';
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text) ? 'dense' : 'simple';
 }
 
 /**
- * How many cells one glyph needs, by what KIND of glyph it is and whether it stands alone.
- *
- * A STENCIL IS EXACTLY AS MANY CELLS AS THE REGION IT FILLS, so a floor is a statement about what
- * this engine can still draw, and it is read off the evaluation matrix rather than picked:
- *
- *  - a LETTER OR DIGIT needs EIGHT, alone or in a row. Eight is where every glyph in the matrix keeps
- *    the strokes the drawing gave it (`separationOf` at 0.73 or better, against 0.53 at five and six),
- *    and it is decided by the letters that are hardest to draw rather than by the easiest: an E is
- *    three bars and two gaps and arrives cell for cell perfect at FIVE, but an M is two stems and a V
- *    in the same square, an a is a bowl with a stem, and at five or six those fuse into a block
- *    whatever weight they are drawn at.
- *
- *    IT IS A BLANKET NUMBER because it answers for a whole SHELF rather than for one letter: one
- *    region serves five dealt cards and the visitor's own at once, so up to six different texts are
- *    asked of it, and this function's only input is the string — it has no per-glyph resolution and
- *    cannot tell an E from an M without drawing one. Where a glyph IS drawn, the measurement is the
- *    better answer and the card gate takes it (`stencil-raster.ts:glyphSurvives`), which is what lets
- *    an E stand in a five-cell region while an M in the same region refuses.
- *  - LETTERS STANDING TOGETHER need TEN each. The side bearings a face leaves between letters are a
- *    fraction of the cap, so they round away before the strokes do: HELLO is three pieces at six cells
- *    a letter and still four at eight, where its L and its O touch. At ten it is five.
- *  - an IDEOGRAPH needs FOURTEEN. 谷 spends its square on six stroke rows where an E spends it on
- *    three, so where the letter needs one cell per bar this needs one per stroke and a gap beside it.
- *    Measured, the pair 谷地 comes out whole at fourteen and merges into two pieces at ten.
- *
- * A picture is not made of strokes and has no such structure to lose; it takes the letter's floor.
- *
- * WHAT THE FLOOR PROMISES, exactly: at or above it every glyph in the evaluation matrix arrives in
- * the number of pieces the face draws it in, with the counters the face's own raster held, carrying
- * the whole of the reference's skeleton, no straight edge more than half a cell off its line, at
- * least 0.7 of the separation the drawing gave its strokes, and under 0.8 of its own box in ink. The
- * last two are what a letter's PATH is made of, and they are why the floor is eight rather than five:
- * below it the diagonals and the bowls fuse — N, Z, X, M, z and a all score 0.53 to 0.62 separation
- * at five and six — while an E, an I and an L are still cell for cell what the face drew.
- *
- * What it does not promise is that a size UNDER it is worthless: it promises nothing there, which is
- * a different claim, and the card gate is what measures the difference for a text that has been
- * typed.
+ * Conservative per-glyph floors derived from the fidelity matrix: isolated simple glyphs need 8
+ * cells, adjacent simple glyphs 10, and dense scripts 14. A rendered card may admit an easier glyph
+ * below these blanket floors through `glyphSurvives`.
  */
 const GLYPH_FLOOR = { alone: 8, together: 10, dense: 14 } as const;
 
 export function textMinSide(text: string): number {
   if (scriptOf(text) === 'dense') return GLYPH_FLOOR.dense;
-  return [...text].length > 1 ? GLYPH_FLOOR.together : GLYPH_FLOOR.alone;
+  return textGraphemes(text).length > 1 ? GLYPH_FLOOR.together : GLYPH_FLOOR.alone;
 }
 
-/**
- * The cells of INK a glyph of this kind needs to be itself: three bars and the two gaps between them
- * for a letter, one row per stroke and a gap beside it for an ideograph. A picture is not made of
- * strokes, so nothing derives a number for one and it takes the letter's.
- *
- * WHAT THIS IS FOR, and it is not deriving the floors above. This is the width the AIR is spent
- * against: a region with room for the ink and a cell besides keeps its air, and one without gives the
- * cell to the glyph. The two agree where the floor is the ink itself — a letter alone is five and
- * gets no air — but `together` is measured from letters TOUCHING rather than from ink, and `dense` is
- * measured whole at fourteen where its ink is thirteen, since thirteen is untested. Read the floors
- * from `GLYPH_FLOOR`, which is what the matrix says; nothing here recomputes them.
- */
+/** Minimum ink span used only to decide whether a glyph can spare an outer air cell. */
 const INK_MIN = { simple: 5, dense: 13, picture: 5 } as const;
 
-/**
- * How much air to leave around a glyph fitted into `box`, in cells.
- *
- * A CELL OF AIR IS A LUXURY, and at the floor it is the letter's own stroke. The rasterizer keeps a
- * cell around the ink so a shape never runs into the region's edge, which costs nothing at twenty
- * cells and is the whole difference at five: a five-cell region less its air leaves four rows for a
- * letter that needs five, so the E built there has no room for its gaps and arrives as a block —
- * which is what put the floor a cell above what the engine can actually draw.
- *
- * So the air is what a region can SPARE. Where dropping it is the difference between a glyph that
- * fits and one that does not, the glyph takes the cell and the ink runs to the region's edge, which
- * is exactly what a visitor painting the smallest region is asking for.
- */
+/** Keep one outer cell only when the remaining box still fits the script's minimum ink span. */
 export function airCells(text: string, box: { width: number; height: number }): number {
-  const glyphs = Math.max(1, [...text].length);
+  const glyphs = Math.max(1, textGraphemes(text).length);
   const withAir = Math.min(box.height - AIR_CELLS, (box.width - AIR_CELLS) / glyphs);
   return withAir >= INK_MIN[scriptOf(text)] ? AIR_CELLS : 0;
 }
@@ -158,76 +94,22 @@ export function airCells(text: string, box: { width: number; height: number }): 
 /** The air a region large enough to spare it leaves around the ink. */
 const AIR_CELLS = 1;
 
-/**
- * The smallest region a glyph of ANY kind has been measured to survive: an E, an I and an L arrive
- * cell for cell identical to the face's own picture at five, and nothing at all does at four.
- *
- * It is the REGION brush's floor rather than a promise about a word. Which texts a region that small
- * can carry is a question about the letters, and the card that holds one answers it by measuring what
- * was drawn (`stencil-raster.ts:glyphSurvives`).
- */
+/** Absolute brush floor; individual glyph acceptance is measured after rasterization. */
 const GLYPH_ABSOLUTE_FLOOR = 5;
 
-/**
- * The smallest region each picture kind is worth running in, as cells on the SHORTER side.
- *
- * TEXT is the absolute floor above, which is what the region brush may paint down to; whether a
- * PARTICULAR text is worth building there is the card's question, and it is measured rather than
- * guessed. `textMinSide` is the blanket answer for a text nobody has drawn yet. IMAGE is where the
- * area sampler's measured reproduction distance is still inside the committed threshold on every
- * fixture (`__tests__/tools/stencil-fidelity.test.ts`).
- *
- * They live here, with the readers, so the shelf's gate and the region brush's floor cannot drift
- * from what the engine can actually do.
- */
+/** Short-side floors shared by the shelf gate and region brush. */
 export const STENCIL_MIN_SIDE = { text: GLYPH_ABSOLUTE_FLOOR, image: 20 } as const;
 
-/**
- * The smallest BOX a word is worth writing in, which is not the same question as the smallest side.
- *
- * A region gate on the shorter side alone says nothing about a row of characters: the rasterizer
- * divides the width between them (`stencil-stroke.ts:glyphExtent`), so six of them in a box twelve
- * cells across leave two cells each and each one is a smudge whatever the shorter side says.
- */
+/** Minimum box accounts for the width divided among all characters. */
 export function textMinBox(text: string): { width: number; height: number } {
   const side = textMinSide(text);
-  return { width: side * Math.max(1, [...text].length), height: side };
+  return { width: side * Math.max(1, textGraphemes(text).length), height: side };
 }
 
 /**
- * Reconnect and de-speckle a rasterized shape, in place.
- *
- * A diagonal or shallow-angled stroke crosses each cell at about half coverage, so the whole-cell
- * threshold drops some of its cells and keeps others: the stroke comes out spotty, and the survivors
- * touch only at corners, which reads as scales. Two promotions repair it, both biased toward the
- * shape reading WHOLE over matching the raster cell for cell:
- *
- *  - a NEAR-threshold cell with two or more covered 4-neighbours joins the shape — it is the gap in
- *    a stroke both of its neighbours belong to;
- *  - a cell the face TOUCHED with three or more covered 4-neighbours joins too — a one-cell notch in
- *    an otherwise solid run, which the eye reads as damage rather than detail.
- *
- * The notch rule asks for that touch because a cell the face left entirely blank is not a notch in a
- * stroke, it is ground: at eight cells the wedge an N leaves between its diagonal and its stem has
- * ink on three sides and nothing of its own in it, and a rule that filled anything three-sided walked
- * up the wedge and closed the letter into a block.
- *
- * Promoted cells keep their own quadrant coverage, so the trim pass bevels them hard — a bridge
- * cell's corners carry little source ink — and the repaired diagonal comes out smooth rather than
- * blocky. Run to a fixpoint: one repair can complete the neighbourhood of the next.
- *
- * NEITHER PROMOTION MAY SHUT GROUND IN. Both rules are dilations, and on a dense character the gaps
- * between strokes are one cell wide: filling one merges two strokes and leaves a sealed pocket where
- * the reader expects daylight — measured at 31% more ink and two counters lost on a two-ideograph
- * word. So a promotion that would cut a piece of ground off from the outside is refused, and the
- * shape keeps the gap the face drew. Connectivity of the INK is not traded away with it: that is
- * guaranteed afterwards, by the pass that joins corner touches (`stencil-stroke.ts:bridgeDiagonals`).
- *
- * NOR MAY ONE BRIDGE DAYLIGHT (`bridgesDaylight`), which is the same thought where the gap runs out
- * to the open air rather than closing on itself. In a small region every gap in a letter is one cell
- * across, and an E six cells tall is three one-cell bars with one-cell channels between them: each
- * cell of those channels has ink on three sides, so without the guard the notch rule fills the lot
- * and the letter arrives as a solid block. Nothing is sealed, so the walk above cannot see it.
+ * Promote near-threshold gaps and touched notches to reconnect strokes, preserving each cell's
+ * quadrant coverage. Iterate to a fixpoint, but reject promotions that enclose ground or bridge an
+ * open channel between strokes; diagonal connectivity is repaired separately.
  */
 export function smoothShape(s: Stencil): void {
   const { width: w, height: h, coverage } = s;
@@ -703,16 +585,7 @@ export function nearestByColor<T extends { rgb: number }>(palette: readonly T[],
   return best;
 }
 
+/** The terrain-ramp match: same arithmetic, non-null for the never-empty ramp. */
 export function nearestTerrain(palette: readonly PaletteEntry[], rgb: number): PaletteEntry {
-  const r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
-  let best = palette[0]!;
-  let bestD = Infinity;
-  for (const entry of palette) {
-    const dr = r - ((entry.rgb >> 16) & 0xff);
-    const dg = g - ((entry.rgb >> 8) & 0xff);
-    const db = b - (entry.rgb & 0xff);
-    const d = 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
-    if (d < bestD) { bestD = d; best = entry; }
-  }
-  return best;
+  return nearestByColor(palette, rgb) ?? palette[0]!;
 }

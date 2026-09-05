@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { redactSecrets } from '../../../agent/security/redact';
-import { sanitizeEndpointUrl } from '../../../agent/security/key-storage';
-import { sealSecret, sealWithKey, openWithKey } from '../../../agent/security/vault';
+import { sanitizeEndpointUrl } from '../../../core/runtime/endpoint-url';
+import { sealSecret, sealWithKey, openWithKey } from '../../../core/runtime/vault';
 
 describe('redactSecrets', () => {
   it('scrubs key-shaped tokens of every supported provider format', () => {

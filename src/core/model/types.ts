@@ -12,6 +12,7 @@
 
 import type { ModelSpec } from './model-spec';
 import type { ProvenanceState } from '../provenance/types';
+import type { AnnotationsState } from './annotations';
 
 // --- Localization ---
 export type Locale = 'en' | 'zh' | 'ja' | 'ru' | 'th' | 'id' | 'fr';
@@ -249,6 +250,9 @@ export interface GridState {
   /** Free-text notes (title/description/author). Round-trips through serialize/deserialize
    *  (json-codec) when present; all other export-json sections are session-only. */
   notes?: MapNotes;
+  /** The plan-notes annotation layer (zones, texts, route arrows) plus its own eye/lock state.
+   *  Saves and PetitGlyph payloads carry it separately from the canonical terrain/object map. */
+  annotations?: AnnotationsState;
 }
 
 // --- Commands ---
@@ -394,6 +398,7 @@ export enum ToolType {
   Hand = 'Hand',
   EdgeCut = 'EdgeCut',
   Macro = 'Macro',
+  Annotate = 'Annotate',
 }
 
 /**
@@ -459,6 +464,8 @@ export type StencilSourceNature = 'flat' | 'photographic';
 export interface Stencil {
   width: number;
   height: number;
+  /** Shape only: grid-fitted edges need no smoothing or corner cuts. */
+  cellAligned?: boolean;
   /** Coverage 0..255 per cell, row-major. */
   coverage: Uint8Array;
   /** Packed 0xRRGGBB per cell, row-major; meaningful where coverage is non-zero. */
@@ -560,9 +567,7 @@ export interface GenerateConfig {
    * water on every layer. It scales the island generator's terrain drama, its water, its theme
    * count and its decoration together.
    *
-   * An older recipe spells this field `naturalness`, and nothing reads that: a recipe rides a save
-   * file and a share code as a NOTE, and a map is reconstructed from its own cells and objects,
-   * never regenerated from its recipe.
+   * The recipe is informational in a share code; map reconstruction uses its cells and objects.
    */
   richness?: number;
 }

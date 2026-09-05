@@ -7,7 +7,7 @@
  */
 export type { Outcome } from './outcome';
 export { newMap, loadMap } from './map';
-export { generateMap, generateCandidate, clearGenerated } from './generate';
+export { generateMap, generateCandidate, peekCandidate, clearGenerated } from './generate';
 export type { Candidate } from './generate';
 export { pressRoadNetwork } from './road-press';
 export type { RoadPress } from './road-press';

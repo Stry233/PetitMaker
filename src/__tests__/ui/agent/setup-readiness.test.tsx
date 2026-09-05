@@ -241,9 +241,8 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     expect(phaseOf()).toBe('confirm');
     expect(store().model.custom).toBe('');
     expect(has('setup-done'), 'no way out into a panel with no model').toBe(false);
-    // The retired dead end: no note, no door, because the routing IS the answer.
-    expect(has('setup-models-unavailable'), 'the dead-end note is retired').toBe(false);
-    expect(has('setup-need-model'), 'and so is its own control').toBe(false);
+    expect(has('setup-models-unavailable'), 'no dead-end note').toBe(false);
+    expect(has('setup-need-model'), 'no dead-end control').toBe(false);
     expect(onManage).toHaveBeenCalledTimes(1);
     expect(onDone).not.toHaveBeenCalled();
   });
@@ -779,13 +778,9 @@ function lies(): string[] {
     || sub === translations.en['agent3.setup_row_asking'];
   if (claimsCheck && !has('setup-row-spin')) bad.push(`the row says "${sub}" with no reading in flight`);
 
-  // NO STEP MAY READ AS PICKING A MODEL. A control offered beside a reported model is read as the
-  // control that chose it, whatever it actually does, so the confirmation carries none — and the
-  // listless dead end is retired outright: its state routes to the settings card instead. The key
-  // screen's own roster door is retired too: the row is the chooser, and the empty field stands
-  // quiet under it.
+  // Setup reports the selected model but leaves model choice to the settings card.
   for (const id of ['setup-rechoose', 'setup-retry-list', 'setup-need-model', 'setup-models-unavailable', 'setup-open-roster']) {
-    if (has(id)) bad.push(`${id} is retired and may not render`);
+    if (has(id)) bad.push(`${id} may not render in setup`);
   }
 
   const note = screen.queryByTestId('setup-model-note')?.textContent ?? '';

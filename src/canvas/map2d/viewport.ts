@@ -2,16 +2,8 @@ import { TILE_SIZE, ZOOM_MIN, ZOOM_MAX, PAN_KEEP_PX } from '../../core/model/con
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 
 /**
- * The 2D camera, and the conversion between the WINDOW's coordinates and the map's.
- *
- * SCREEN MEANS CLIENT PX, which is `ViewProjection`'s contract on both live views: the pointer
- * machine hands `clientX`/`clientY` in unconverted and the React chrome anchors to what comes back.
- * The canvas is not always at the window's corner — the assistant's docked panel takes a strip of
- * the window and the map occupies what is left of it — so every conversion asks WHERE THE CANVAS
- * STANDS NOW (`setOriginSource`, the 3D projection's own per-ray rect read). Read at use, never
- * recorded: the box also MOVES without resizing (the dock slide settles a transform away, a banner
- * above the plane departs), and no resize event marks those moments, so an origin captured at the
- * last resize answers for where the canvas used to be.
+ * The 2D camera and conversion between client pixels and map coordinates. Each conversion reads the
+ * current canvas origin because layout transforms can move the canvas without a resize event.
  */
 export class Viewport {
   private zoom = 1;

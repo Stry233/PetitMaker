@@ -9,8 +9,8 @@
 export interface CameraCaps {
   /** The camera can orbit: a spatial view. */
   canOrbit: boolean;
-  /** A touchpad two-finger scroll should ZOOM rather than pan. The 3D camera asks for this because
-   *  a ground-plane pan there reads as walking forward and back. */
+  /** A wheel or touchpad scroll should ZOOM rather than pan. Both map views ask for this: the wheel
+   *  is the zoom control everywhere, and panning stays on drags and the pan keys. */
   wheelZooms: boolean;
 }
 
@@ -28,7 +28,10 @@ export type WheelKind = 'horizontal' | 'scroll' | 'notch';
 export type WheelVerb = 'yaw' | 'pan' | 'zoom-smooth' | 'zoom-step';
 
 export function wheelVerb(kind: WheelKind, caps: CameraCaps): WheelVerb {
-  if (kind === 'horizontal') return caps.canOrbit && caps.wheelZooms ? 'yaw' : 'pan';
+  if (kind === 'horizontal') {
+    if (caps.canOrbit && caps.wheelZooms) return 'yaw';
+    return caps.wheelZooms ? 'zoom-smooth' : 'pan';
+  }
   if (kind === 'scroll') return caps.wheelZooms ? 'zoom-smooth' : 'pan';
   return 'zoom-step';
 }

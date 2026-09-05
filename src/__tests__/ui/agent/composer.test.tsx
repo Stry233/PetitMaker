@@ -43,14 +43,7 @@ function asBackground(value: string): string {
   return probe.style.background;
 }
 
-/**
- * WHAT THE FIELD WOULD MEASURE, supplied: jsdom lays nothing out, so `scrollHeight` — the one
- * reading the grow clamp and the door both depend on — answers 0 for every element and no amount of
- * text can outgrow the well.
- *
- * A single mutable number behind the prototype getter, so a test can hand in "this much text" and
- * fire a change to have the field read it again. Restored after every test.
- */
+/** jsdom has no layout, so tests supply the textarea's measured height through a temporary getter. */
 let measured = 0;
 const ownScrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
 function measureField(px: number): void {
@@ -362,15 +355,7 @@ describe('Composer: off', () => {
     expect(getByTestId('composer').style.pointerEvents).toBe('');
   });
 
-  /**
-   * THE OFF WELL IS A SURFACE, NOT A FADE (the artifact's `.comp.off`: full opacity, no pointer, the
-   * empty-groove fill, with `.send:disabled` on the house `primary:disabled` idiom).
-   *
-   * The whole of the argument is what the field is still carrying. An off composer's placeholder is
-   * the one line saying WHY it is off and what to do about it — fix the endpoint, change the
-   * provider, the map has the pencil — and a fade over the group is the first thing that takes it
-   * away. The panel then refuses and explains nothing.
-   */
+  /** The disabled state stays legible because its placeholder explains why input is unavailable. */
   it('says the refusal in the tokens, and leaves the words readable', () => {
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} marking onSend={noop} onStop={noop} onDropSuggestion={noop} />,

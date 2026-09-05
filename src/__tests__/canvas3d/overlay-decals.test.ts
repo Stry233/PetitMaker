@@ -55,7 +55,7 @@ describe('rectDecals (a BODY, not a cell set)', () => {
     expect(b.z1 - b.z0).toBeCloseTo(2, 5);
   });
 
-  it('never draws past a fractional edge (the half-cell ring of issue #14)', () => {
+  it('never draws past a fractional edge', () => {
     const s = makeState(20, 20) as GridState;
     const b = bounds(rectDecals(s, [{ x: 5.5, y: 5.5, w: 1.5, h: 1.5 }], false));
     expect(b.x1 - b.x0).toBeCloseTo(1.5, 5);

@@ -1,3 +1,6 @@
+import { anchorHandles, splineSamples, type AnchorTangent, type CurveAnchor } from '../../core/model/spline';
+
+export { anchorHandles, splineSamples, type AnchorTangent, type CurveAnchor };
 import type { MacroCoord } from '../../core/model/types';
 import type { RowSpan } from '../../canvas/map2d/layers/ghost-geometry';
 
@@ -175,69 +178,6 @@ export function curveCells(p0: MacroCoord, p1: MacroCoord, p2: MacroCoord, width
  * point is `anchor + handle`), so the direction line the user drags and the shape of the curve are
  * the same quantity.
  */
-export interface CurveAnchor {
-  x: number;
-  y: number;
-  /** Outgoing handle offset in cells. Absent = derived from the neighbours (see `anchorHandles`). */
-  hx?: number;
-  hy?: number;
-  /** Incoming handle offset in cells. Absent = the mirror of the outgoing one, which is what makes
-   *  the path smooth THROUGH the anchor; set independently, the two sides turn apart and the anchor
-   *  becomes a corner. */
-  ihx?: number;
-  ihy?: number;
-}
-
-/** An anchor's two handle offsets, both measured FROM the anchor. */
-export interface AnchorTangent {
-  hx: number;
-  hy: number;
-  ihx: number;
-  ihy: number;
-}
-
-/** Centripetal knot spacing: |Δp|^0.5. The floor keeps a repeated anchor from dividing by zero. */
-function knots(a: readonly CurveAnchor[]): number[] {
-  const t = [0];
-  for (let i = 1; i < a.length; i++) {
-    t.push(t[i - 1]! + Math.max(1e-4, Math.pow(Math.hypot(a[i]!.x - a[i - 1]!.x, a[i]!.y - a[i - 1]!.y), 0.5)));
-  }
-  return t;
-}
-
-/**
- * Each anchor's handle offset in cells — the user's where they set one, otherwise the one the
- * curve is actually using. The UI draws the direction lines from this, so an untouched anchor shows
- * the tangent the path already has rather than a straight stub that lies about it.
- *
- * The derived value is the non-uniform (centripetal) Catmull-Rom tangent, scaled by a third of the
- * outgoing knot span — the Bezier convention that makes `anchor + handle` a control point.
- */
-export function anchorHandles(anchors: readonly CurveAnchor[]): AnchorTangent[] {
-  const n = anchors.length;
-  const t = knots(anchors);
-  /** The incoming side mirrors the outgoing one unless it was set apart from it. */
-  const both = (a: CurveAnchor, hx: number, hy: number): AnchorTangent => ({
-    hx, hy,
-    ihx: a.ihx !== undefined ? a.ihx : -hx,
-    ihy: a.ihy !== undefined ? a.ihy : -hy,
-  });
-  return anchors.map((a, i) => {
-    if (a.hx !== undefined && a.hy !== undefined) return both(a, a.hx, a.hy);
-    if (n < 2) return both(a, 0, 0);
-    const prev = anchors[Math.max(0, i - 1)]!;
-    const next = anchors[Math.min(n - 1, i + 1)]!;
-    const span = t[Math.min(n - 1, i + 1)]! - t[Math.max(0, i - 1)]!;
-    // Scaled by the SHORTER adjacent span, not the outgoing one. The handle is symmetric — it is
-    // the control point for the segment on either side — so sizing it from a long neighbour lets
-    // that tangent overrun a short segment and swing the path back past its own anchor.
-    const inSpan = i > 0 ? t[i]! - t[i - 1]! : Infinity;
-    const outSpan = i < n - 1 ? t[i + 1]! - t[i]! : Infinity;
-    const k = Math.min(inSpan, outSpan) / (3 * Math.max(1e-4, span));
-    return both(a, (next.x - prev.x) * k, (next.y - prev.y) * k);
-  });
-}
-
 /**
  * A smooth path THROUGH every anchor, sampled to a 4-connected spine.
  *
@@ -252,26 +192,7 @@ export function anchorHandles(anchors: readonly CurveAnchor[]): AnchorTangent[] 
  * replaces that anchor's handle and nothing else, so one adjustment stays local.
  */
 export function splinePath(anchors: readonly CurveAnchor[]): MacroCoord[] {
-  if (anchors.length === 0) return [];
-  if (anchors.length === 1) return [{ x: anchors[0]!.x, y: anchors[0]!.y }];
-
-  const h = anchorHandles(anchors);
-  const samples: MacroCoord[] = [];
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const p0 = anchors[i]!, p1 = anchors[i + 1]!;
-    // Bezier control points: out of p0, and into p1 along p1's own incoming handle.
-    const c0 = { x: p0.x + h[i]!.hx, y: p0.y + h[i]!.hy };
-    const c1 = { x: p1.x + h[i + 1]!.ihx, y: p1.y + h[i + 1]!.ihy };
-    const steps = Math.max(8, Math.ceil(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 2));
-    for (let s = 0; s <= steps; s++) {
-      const u = s / steps, v = 1 - u;
-      const b0 = v * v * v, b1 = 3 * v * v * u, b2 = 3 * v * u * u, b3 = u * u * u;
-      samples.push({
-        x: Math.round(p0.x * b0 + c0.x * b1 + c1.x * b2 + p1.x * b3),
-        y: Math.round(p0.y * b0 + c0.y * b1 + c1.y * b2 + p1.y * b3),
-      });
-    }
-  }
+  const samples: MacroCoord[] = splineSamples(anchors).map(([x, y]) => ({ x: Math.round(x), y: Math.round(y) }));
 
   // Rounded samples can jump a diagonal or skip a cell on a tight bend, and a spine that links only
   // at a corner reads as a broken trail (and breaks water containment). Same stitch as bezier4.

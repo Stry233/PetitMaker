@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { GRID_COLS } from '../../../io/share/glyph/geometry';
 import { computeComposition, fitAspect, RESOLUTION_WIDTHS, BASE_WIDTH, PAD, type ExportOptions, type Rect } from '../../../io/export/compose';
 
-const base: ExportOptions = { title: '', description: '', preset: 'plain', importable: false, showBadge: false, layerPreview: false, card3d: false, grid: true, footer: false, footerTemplate: '{date}{fill} · {dims}', resolution: 'standard' };
+const base: ExportOptions = { title: '', description: '', preset: 'plain', importable: false, showBadge: false, layerPreview: false, card3d: false, grid: true, annotations: true, footer: false, footerTemplate: '{date}{fill} · {dims}', resolution: 'standard' };
 function overlaps(a: Rect, b: Rect) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
 describe('computeComposition', () => {
@@ -14,6 +14,48 @@ describe('computeComposition', () => {
     expect(c.card3d).toBeUndefined();
     expect(c.footer).toBeUndefined();
     expect(c.map.w).toBeGreaterThan(0);
+  });
+  it('bare export IS the map plus the maker band: no card margins', () => {
+    const c = computeComposition({ ...base, grid: false }, 1.2, [], { layerCount: 1 });
+    expect(c.bare).toBe(true);
+    expect(c.map.x).toBe(0);
+    expect(c.map.y).toBe(0);
+    expect(c.map.w).toBe(c.width);
+    expect(Math.abs(c.map.h - c.width / 1.2)).toBeLessThanOrEqual(1);
+    // The maker band spans the full width right under the map and closes the canvas.
+    expect(c.brand.x).toBe(0);
+    expect(c.brand.w).toBe(c.width);
+    expect(c.brand.y).toBe(c.map.h);
+    expect(c.height).toBe(c.brand.y + c.brand.h);
+  });
+  it('bare with the grid on keeps only the legend gutters', () => {
+    const c = computeComposition(base, 1.2, [], { layerCount: 1 });
+    expect(c.bare).toBe(true);
+    expect(c.map.w).toBe(c.width);
+    // Taller than the gridless bare map band: the legend's own gutters, nothing else.
+    expect(c.map.h).toBeGreaterThan(Math.round(c.width / 1.2));
+  });
+  it('the maker band stands LAST on every export, code band included', () => {
+    for (const extra of [{}, { footer: true }, { importable: true, footer: true }] as const) {
+      const c = computeComposition({ ...base, ...extra }, 1.2, [], { layerCount: 1 });
+      for (const band of [c.map, c.header, c.card3d, c.codeBand, c.footer]) {
+        if (band) expect(c.brand.y).toBeGreaterThanOrEqual(band.y + band.h);
+      }
+      expect(c.brand.y + c.brand.h).toBeLessThanOrEqual(c.height);
+    }
+  });
+  it('any extra band brings the card chrome back', () => {
+    for (const extra of [{ footer: true }, { layerPreview: true }, { card3d: true }, { importable: true }, { title: 'Hexia' }] as const) {
+      const c = computeComposition({ ...base, ...extra }, 1.2, [], { layerCount: 1 });
+      expect(c.bare).toBeUndefined();
+      expect(c.map.x).toBeGreaterThan(0);
+    }
+  });
+  it('without the layer strip the band follows the map aspect: no wide side margins', () => {
+    // The footer keeps the composition non-bare while the map retains its 1.2 aspect.
+    const c = computeComposition({ ...base, footer: true, grid: false }, 1.2, [], { layerCount: 1 });
+    const innerW = c.map.w;
+    expect(Math.abs(c.map.h - innerW / 1.2)).toBeLessThanOrEqual(2);
   });
   it('nothing overlaps the map band', () => {
     const o: ExportOptions = { ...base, title: 'Hexia', description: 'desc', showBadge: true, layerPreview: true, card3d: true, footer: true };

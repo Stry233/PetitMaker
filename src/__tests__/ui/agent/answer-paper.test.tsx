@@ -340,8 +340,7 @@ describe('the panel picks the receipt or the paper by what the job was', () => {
     expect(queryByTestId('job-ticket')).toBeTruthy();
   });
 
-  /** THE FILED RECORD'S CARD LEAVES THE JOB ZONE (the artifact's own `ans-settle`): the row in the
-   *  past-jobs list is what the record becomes. */
+  /** Filing replaces the terminal card with its past-jobs row. */
   it('takes the card off the zone once the record is filed, and keeps the history row', () => {
     const view = makeView({ jobs: [ANSWER] });
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(

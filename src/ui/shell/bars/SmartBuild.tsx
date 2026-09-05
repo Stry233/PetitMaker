@@ -36,8 +36,7 @@ import { SMART, SMART_MENU, type SmartAction } from './smart-menu';
 import { ToolCell } from './ToolCell';
 import type { TerrainSurface } from './terrain-cells';
 
-/** One action in the open pill: filled when armed, translucent otherwise (the prototype's own
- *  segment treatment). */
+/** One action in the open pill, filled while armed and translucent otherwise. */
 function Segment({ action, armed, onPress }: {
   action: SmartAction;
   armed: boolean;
@@ -132,6 +131,7 @@ export function SmartBuild({ surface, centre }: {
       active={open}
       centre={centre}
       onSelect={toggle}
+      helpTarget="smart"
       carries={open ? (
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {actions.map((action) => (

@@ -1,16 +1,17 @@
 /*
  * The keymap DATA — every discrete keyboard operation's identity (id, category, label, default
- * combo, reserved, continuous), the user-override layer over it, keymap PRESETS ("shortcut
- * styles"), and JSON import/export of the effective keymap. What a command DOES lives one layer
- * up, in `kit/commands.ts`; the pointer machine's held-key pan loop
+ * combo, continuous), the user-override layer over it, keymap PRESETS ("shortcut styles"), and
+ * JSON import/export of the effective keymap. What a command DOES lives one layer up, in
+ * `kit/commands.ts`; the pointer machine's held-key pan loop
  * (canvas/interaction/use-view-shortcuts) only needs this half, so it sits here where `canvas` can
  * read it downward. Presets/import/export read only ids, categories and combos — never `run` — so
  * they belong beside the rest of the data rather than a layer up.
  *
  * Effective binding of a command = its user override (incl. an explicit null = "unbound") else the
- * registry default. Reserved commands ignore overrides. Rebinding STEALS the combo from any prior
- * holder (which becomes unbound) so a combo maps to exactly one command. All resolution is pure so
- * it unit-tests cleanly.
+ * registry default. EVERY command is rebindable. Rebinding STEALS the combo from any prior holder
+ * (which becomes unbound) so a combo maps to exactly one command. The one combo a rebind is refused
+ * is a shifted twin of a live UI-zoom binding (`uiZoomVariantCombos`). All resolution is pure so it
+ * unit-tests cleanly.
  */
 import { create } from 'zustand';
 import { readPref, writePref } from './prefs';
@@ -23,7 +24,6 @@ export interface CommandMeta {
   category: CommandCategory;
   labelKey: string;
   defaultCombo: string | null;
-  reserved?: boolean;
   /** A HELD-key action (continuous pan), not a discrete one-shot. Shown + rebindable on the keyboard
    *  page, but the discrete engine (useEditorShortcuts) skips it — the held rAF loop in
    *  canvas/interaction/use-view-shortcuts reads its effective key instead. */
@@ -97,10 +97,11 @@ export const COMMAND_META: readonly CommandMeta[] = [
   { id: 'camera.pan_drag', category: 'camera', labelKey: 'shortcut.pan_drag', defaultCombo: 'space', continuous: true },
   { id: 'view.toggle',     category: 'view',   labelKey: 'shortcut.toggle_view', defaultCombo: '`' },
 
-  // History (reserved — not rebindable/stealable). While painting a Generate region, Ctrl+Z/Y undo
-  // the region stroke instead of a map edit (see kit/commands.ts's CommandContext).
-  { id: 'history.undo', category: 'history', labelKey: 'shortcut.undo', defaultCombo: 'ctrl+z',       reserved: true },
-  { id: 'history.redo', category: 'history', labelKey: 'shortcut.redo', defaultCombo: 'ctrl+shift+z', reserved: true },
+  // History. While painting a Generate region, undo/redo pop the region stroke instead of a map edit
+  // (see kit/commands.ts's CommandContext); that reroute keys off the COMMAND, so it follows a
+  // rebind to whatever combo these end up on.
+  { id: 'history.undo', category: 'history', labelKey: 'shortcut.undo', defaultCombo: 'ctrl+z' },
+  { id: 'history.redo', category: 'history', labelKey: 'shortcut.redo', defaultCombo: 'ctrl+shift+z' },
 
   // App actions
   { id: 'app.generate', category: 'app', labelKey: 'menu.generate', defaultCombo: 'ctrl+g' },
@@ -115,14 +116,12 @@ export const COMMAND_META: readonly CommandMeta[] = [
   { id: 'app.help', category: 'app', labelKey: 'menu.help', defaultCombo: null },
   { id: 'app.menu',  category: 'app', labelKey: 'shortcut.toggle_menu', defaultCombo: null },
 
-  // UI scale (the chrome, not the map). Driven by its own always-live listener
-  // (canvas/interaction/use-view-shortcuts.ts:useUiZoomShortcut) so it keeps working behind an open
-  // modal and answers the Cmd and shifted +/_ variants; reserved so a rebind cannot steal the combo
-  // out from under that listener. The listener's shifted variants beyond these two base combos are
-  // reserved too, through `RESERVED_COMBO_EXTRAS` below (the bare `+` variant is inexpressible and
-  // needs no entry). No RUN body: the registry rows exist to be SHOWN and PROTECTED.
-  { id: 'app.ui_zoom_in',  category: 'app', labelKey: 'shortcut.ui_zoom_in',  defaultCombo: 'ctrl+=', reserved: true },
-  { id: 'app.ui_zoom_out', category: 'app', labelKey: 'shortcut.ui_zoom_out', defaultCombo: 'ctrl+-', reserved: true },
+  // UI scale (the chrome, not the map). Carried out by the always-live listener
+  // (canvas/interaction/use-view-shortcuts.ts:useUiZoomShortcut), which reads these two effective
+  // combos and so follows a rebind, and which keeps working behind an open modal. No RUN body: the
+  // discrete engine skips these ids, the listener answers them.
+  { id: 'app.ui_zoom_in',  category: 'app', labelKey: 'shortcut.ui_zoom_in',  defaultCombo: 'ctrl+=' },
+  { id: 'app.ui_zoom_out', category: 'app', labelKey: 'shortcut.ui_zoom_out', defaultCombo: 'ctrl+-' },
 
   // Overlay toggles
   { id: 'overlay.grid',    category: 'overlay', labelKey: 'shortcut.toggle_grid',      defaultCombo: null },
@@ -145,14 +144,8 @@ export const ALIASES: { combo: string; commandId: string }[] = [
   { combo: 'arrowright', commandId: 'camera.pan_right' },
 ];
 
-/** Shifted keycaps of the UI-zoom listener's own combos (`ctrl+=`/`ctrl+-`) that a real
- *  KeyboardEvent can still produce and that the listener answers regardless of the recorded shift
- *  flag — `useUiZoomShortcut` matches on `e.key` alone, so a `_`-producing keycap fires the zoom
- *  whether or not `e.shiftKey` happened to be set. Reserved the same way the base combos are, so a
- *  rebind cannot land on one and double-fire alongside the listener. The bare `+` variant has no
- *  entry here: `+` is `normalizeCombo`'s own segment separator, so a combo ending in it collapses
- *  to no key at all and can never reach the binding index in the first place. */
-export const RESERVED_COMBO_EXTRAS: readonly string[] = ['ctrl+shift+=', 'ctrl+_', 'ctrl+shift+_'];
+/** The two commands the always-live UI-zoom listener carries out. */
+export const UI_ZOOM_IDS: readonly string[] = ['app.ui_zoom_in', 'app.ui_zoom_out'];
 
 /* ── user overrides ──────────────────────────────────────────────────────── */
 
@@ -206,12 +199,32 @@ export function normalizeCombo(combo: string): string {
   return out.join('+');
 }
 
+/** A normalized combo taken apart: modifier flags plus the key it ends on ('' for a bare-modifier
+ *  combo like `ctrl`, which carries no key of its own). */
+function splitCombo(combo: string): { key: string; ctrl: boolean; alt: boolean; shift: boolean } {
+  const parts = normalizeCombo(combo).split('+');
+  const last = parts[parts.length - 1] ?? '';
+  const isMod = last === 'ctrl' || last === 'alt' || last === 'shift';
+  return {
+    key: isMod ? '' : last,
+    ctrl: parts.includes('ctrl'), alt: parts.includes('alt'), shift: parts.includes('shift'),
+  };
+}
+
+function joinCombo(key: string, ctrl: boolean, alt: boolean, shift: boolean): string {
+  const out: string[] = [];
+  if (ctrl) out.push('ctrl');
+  if (alt) out.push('alt');
+  if (shift) out.push('shift');
+  out.push(key);
+  return out.join('+');
+}
+
 /** Effective combo for a command: an explicit override (incl. null=unbound) wins, else the registry
- *  default. Reserved commands always return their default (overrides can't touch them). */
+ *  default. */
 export function effectiveCombo(overrides: Overrides, id: string): string | null {
   const cmd = META_BY_ID.get(id);
   if (!cmd) return null;
-  if (cmd.reserved) return cmd.defaultCombo;
   return id in overrides ? overrides[id]! : cmd.defaultCombo;
 }
 
@@ -234,15 +247,62 @@ export function aliasIndex(): Map<string, string> {
   return m;
 }
 
-/** True if `combo` is a reserved command's default (undo/redo, UI zoom) or one of the UI-zoom
- *  listener's own reserved extras (`RESERVED_COMBO_EXTRAS`) — never stealable/bindable. */
-export function isReservedCombo(combo: string): boolean {
-  const n = normalizeCombo(combo);
-  if (COMMAND_META.some((c) => c.reserved && c.defaultCombo && normalizeCombo(c.defaultCombo) === n)) return true;
-  return RESERVED_COMBO_EXTRAS.includes(n);
+/* ── UI-zoom twins ───────────────────────────────────────────────────────────
+ *
+ * `=`/`+` and `-`/`_` share a keycap, so one physical press produces either character depending on
+ * Shift, and the zoom listener answers both spellings of the key it is bound to. Two consequences
+ * for the rest of the keymap: a command bound to a shifted twin of a live zoom binding would fire
+ * alongside the zoom, and the bare `+` spelling cannot be expressed at all (`+` is normalizeCombo's
+ * segment separator, so a combo ending in it collapses to no key and never reaches the index).
+ */
+
+const PLUS_KEYS = new Set(['=', '+']);
+const MINUS_KEYS = new Set(['-', '_']);
+
+/** The combos a live UI-zoom binding also answers, BESIDE the binding itself: the shifted keycap of
+ *  the key it sits on, and for `-`/`_` the other spelling of that keycap. A zoom binding on any
+ *  other key has no twins and is matched exactly, so it contributes nothing here. Never contains
+ *  the base combos — those are ordinary bindings and stealing one is an ordinary steal. */
+export function uiZoomVariantCombos(overrides: Overrides): Set<string> {
+  const bases = new Set<string>();
+  const variants = new Set<string>();
+  for (const id of UI_ZOOM_IDS) {
+    const combo = effectiveCombo(overrides, id);
+    if (!combo) continue;
+    const { key, ctrl, alt } = splitCombo(combo);
+    if (!key) continue;
+    bases.add(normalizeCombo(combo));
+    const twin = PLUS_KEYS.has(key) ? null : key === '-' ? '_' : key === '_' ? '-' : undefined;
+    if (twin === undefined) continue; // an ordinary key: exact match only
+    variants.add(joinCombo(key, ctrl, alt, true));
+    if (twin) {
+      variants.add(joinCombo(twin, ctrl, alt, false));
+      variants.add(joinCombo(twin, ctrl, alt, true));
+    }
+  }
+  for (const b of bases) variants.delete(b);
+  return variants;
 }
 
-export interface RebindResult { ok: boolean; displaced?: string; reason?: 'reserved-command' | 'reserved-combo' }
+/** Does this keydown press the given UI-zoom combo? Ctrl in the combo answers Ctrl OR Cmd, and a
+ *  combo on a shared keycap (`=`/`+`, `-`/`_`) answers either spelling regardless of Shift, since
+ *  the same physical key reports both. Any other key matches exactly, Shift included. */
+export function matchesUiZoomCombo(
+  combo: string | null,
+  e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+): boolean {
+  if (!combo) return false;
+  const { key, ctrl, alt, shift } = splitCombo(combo);
+  if (!key) return false;
+  if (ctrl !== (e.ctrlKey || e.metaKey)) return false;
+  if (alt !== e.altKey) return false;
+  const pressed = e.key.toLowerCase();
+  if (PLUS_KEYS.has(key)) return PLUS_KEYS.has(pressed);
+  if (MINUS_KEYS.has(key)) return MINUS_KEYS.has(pressed);
+  return pressed === key && shift === e.shiftKey;
+}
+
+export interface RebindResult { ok: boolean; displaced?: string; reason?: 'reserved-combo' }
 
 function load(): Overrides {
   try {
@@ -258,13 +318,14 @@ function persist(o: Overrides): void {
 interface KeybindStore {
   overrides: Overrides;
   /** Assign `combo` to `id`, stealing it from any current holder (which becomes unbound). Returns
-   *  the displaced command id when a steal happened. Refuses reserved commands + reserved combos. */
+   *  the displaced command id when a steal happened. Refuses a shifted twin of a live UI-zoom
+   *  binding (`uiZoomVariantCombos`), which the zoom listener would answer alongside it. */
   rebind: (id: string, combo: string) => RebindResult;
   /** Explicitly unbind a command (override = null). */
   clear: (id: string) => void;
   /** Replace the ENTIRE keymap from a binds map (id → combo|null). Commands absent from `binds` fall
    *  back to their default; a combo equal to the default stores no override. Used by preset-apply +
-   *  JSON import (the caller validates uniqueness first). Reserved commands are left untouched. */
+   *  JSON import (the caller validates uniqueness first). */
   applyBinds: (binds: Record<string, string | null>) => void;
   /** Drop every user override (back to shipped defaults). */
   resetAll: () => void;
@@ -274,10 +335,13 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
   overrides: load(),
   rebind: (id, combo) => {
     const cmd = META_BY_ID.get(id);
-    if (!cmd || cmd.reserved) return { ok: false, reason: 'reserved-command' };
     const n = normalizeCombo(combo);
-    if (!n) return { ok: false, reason: 'reserved-combo' };
-    if (isReservedCombo(n)) return { ok: false, reason: 'reserved-combo' };
+    if (!cmd || !n) return { ok: false };
+    // A zoom command may sit on its own twin (moving the pair around is what a rebind of it means);
+    // anything else landing there would fire together with the zoom.
+    if (!UI_ZOOM_IDS.includes(id) && uiZoomVariantCombos(get().overrides).has(n)) {
+      return { ok: false, reason: 'reserved-combo' };
+    }
     const next: Overrides = { ...get().overrides };
     let displaced: string | undefined;
     for (const [c, holderId] of bindingIndex(next)) {
@@ -291,15 +355,13 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
     return { ok: true, displaced };
   },
   clear: (id) => {
-    const cmd = META_BY_ID.get(id);
-    if (!cmd || cmd.reserved) return;
+    if (!META_BY_ID.has(id)) return;
     const next: Overrides = { ...get().overrides, [id]: null };
     set({ overrides: next }); persist(next);
   },
   applyBinds: (binds) => {
     const next: Overrides = {};
     for (const cmd of COMMAND_META) {
-      if (cmd.reserved) continue;
       const desired = cmd.id in binds ? binds[cmd.id] : cmd.defaultCombo;
       const norm = desired == null ? null : normalizeCombo(desired);
       const defNorm = cmd.defaultCombo == null ? null : normalizeCombo(cmd.defaultCombo);
@@ -314,7 +376,7 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
 
 /* A preset is a set of combos that DIFFER from the shipped defaults; applying one replaces the
  * user overrides so the effective keymap matches it. `detectPreset` names the current keymap (or
- * 'custom' once hand-edited). Reserved commands (undo/redo) are never touched. */
+ * 'custom' once hand-edited). */
 
 export interface KeymapPreset {
   id: string;
@@ -359,22 +421,20 @@ export const PRESETS: KeymapPreset[] = [
   { id: 'numeric', labelKey: 'kbd.preset.numeric', binds: NUMERIC },
 ];
 
-/** Full effective keymap of a preset: every non-reserved command → normalized combo|null. */
+/** Full effective keymap of a preset: every command → normalized combo|null. */
 export function presetBinds(preset: KeymapPreset): Map<string, string | null> {
   const m = new Map<string, string | null>();
   for (const cmd of COMMAND_META) {
-    if (cmd.reserved) continue;
     const raw = cmd.id in preset.binds ? preset.binds[cmd.id] : cmd.defaultCombo;
     m.set(cmd.id, raw == null ? null : normalizeCombo(raw));
   }
   return m;
 }
 
-/** Full effective keymap under the current overrides (non-reserved commands). */
+/** Full effective keymap under the current overrides. */
 function currentBinds(overrides: Overrides): Map<string, string | null> {
   const m = new Map<string, string | null>();
   for (const cmd of COMMAND_META) {
-    if (cmd.reserved) continue;
     const c = effectiveCombo(overrides, cmd.id);
     m.set(cmd.id, c == null ? null : normalizeCombo(c));
   }
@@ -415,9 +475,10 @@ export interface ParseResult {
   error?: 'invalid-json' | 'invalid-shape' | 'invalid-combo' | 'reserved-combo' | 'duplicate-combo' | 'empty';
 }
 
-/** Parse + validate imported keybinds JSON → a binds map limited to known, non-reserved commands.
- *  Accepts either the exported envelope ({binds:{…}}) or a bare id→combo map. Rejects malformed
- *  combos, reserved combos, and duplicates; silently ignores unknown command ids (forward-compat). */
+/** Parse + validate imported keybinds JSON → a binds map limited to known commands. Accepts either
+ *  the exported envelope ({binds:{…}}) or a bare id→combo map. Rejects malformed combos, duplicates,
+ *  and a command parked on a shifted twin of the file's own UI-zoom bindings; silently ignores
+ *  unknown command ids (forward-compat). */
 export function parseKeybinds(text: string): ParseResult {
   let data: unknown;
   try { data = JSON.parse(text); } catch { return { ok: false, error: 'invalid-json' }; }
@@ -428,18 +489,22 @@ export function parseKeybinds(text: string): ParseResult {
   const binds: Record<string, string | null> = {};
   const seen = new Map<string, string>(); // normalized combo → command id
   for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
-    const cmd = META_BY_ID.get(id);
-    if (!cmd || cmd.reserved) continue; // ignore unknown ids + reserved commands
+    if (!META_BY_ID.has(id)) continue; // ignore unknown ids
     if (val === null) { binds[id] = null; continue; }
     if (typeof val !== 'string') return { ok: false, error: 'invalid-combo' };
     const n = normalizeCombo(val);
     if (!n) return { ok: false, error: 'invalid-combo' };
-    if (isReservedCombo(n)) return { ok: false, error: 'reserved-combo' };
     const prev = seen.get(n);
     if (prev && prev !== id) return { ok: false, error: 'duplicate-combo' };
     seen.set(n, id);
     binds[id] = n;
   }
   if (Object.keys(binds).length === 0) return { ok: false, error: 'empty' };
+  // The twins are read from the file's OWN zoom bindings (ids it omits keep their defaults, exactly
+  // as applyBinds resolves them), so a file that moves the zoom keys is judged where it put them.
+  const variants = uiZoomVariantCombos(binds);
+  for (const [id, combo] of Object.entries(binds)) {
+    if (combo && !UI_ZOOM_IDS.includes(id) && variants.has(combo)) return { ok: false, error: 'reserved-combo' };
+  }
   return { ok: true, binds };
 }

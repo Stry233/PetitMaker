@@ -14,6 +14,8 @@ import { resetAllLocalData } from '../../../io/local-reset';
 import { Spinner } from '../../primitives/Spinner';
 import { useEditorStore } from '../../../state/store';
 import { startTour } from '../tour/use-tour';
+import { KeymapMiniature } from './keyboard/KeymapMiniature';
+import { helpTargetAttr } from './help/targets';
 
 // UI-scale slider bounds — mirror the Ctrl+(+/−) shortcut exactly: the store's
 // setUiZoom clamps to [0.6, 1.8] and the shortcut bumps by 0.1, so this slider
@@ -530,6 +532,27 @@ const groupStyle: CSSProperties = {
 
 const rowOfTiles: CSSProperties = { display: 'flex', gap: 12 };
 
+// The keyboard row: the live keymap as one wide pressable tile on the same wash the groups sit
+// on, picture above and label below like every other tile here.
+const keyboardRowStyle: CSSProperties = {
+  background: 'rgba(234, 232, 205, 0.42)',
+  border: 'none',
+  borderRadius: 18,
+  padding: '12px 14px 10px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  textAlign: 'left',
+  cursor: cursors.clickable,
+};
+
+const keyboardFootStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  width: '100%',
+};
+
 // The meta strip: what the app is (drills into About), what it can replay, what it can forget.
 const metaStyle: CSSProperties = { display: 'flex', gap: 10, alignItems: 'stretch' };
 
@@ -594,6 +617,7 @@ export function SettingsModal({
   onClose,
 }: SettingsModalProps) {
   const t = useT();
+  const setModal = useEditorStore((s) => s.setModal);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -721,6 +745,28 @@ export function SettingsModal({
           </div>
         </div>
       </div>
+
+      {/* The keyboard, painted: every keycap wears its command's category color from the live
+          keymap, so a rebind or a preset switch repaints this picture. Clicking opens the full
+          Keyboard Shortcuts window; Settings closes first so the board never opens behind it.
+          The hover is the meta rows' own (scale 1.01/0.985), so the row presses like its
+          neighbours. */}
+      <motion.button
+        type="button"
+        aria-label={t('modal.keyboard_title')}
+        {...helpTargetAttr('shortcuts')}
+        style={keyboardRowStyle}
+        onClick={() => { onClose(); setModal('keyboard', true); }}
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.985 }}
+        transition={springs.stiff}
+      >
+        <KeymapMiniature />
+        <span style={keyboardFootStyle}>
+          <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.plateInk }}>{t('modal.keyboard_title')}</span>
+          <span style={{ marginLeft: 'auto', ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('modal.settings_keyboard_hint')}</span>
+        </span>
+      </motion.button>
 
       <div style={metaStyle}>
         {/* Identity readout — the app and its build, drilling into About. */}

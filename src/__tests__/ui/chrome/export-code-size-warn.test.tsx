@@ -7,7 +7,7 @@ import { DEFAULT_FOOTER } from '../../../io/export/footer-template';
 
 const opts = (over: Partial<ExportOptions>): ExportOptions => ({
   title: '', description: '', preset: 'share', importable: true, showBadge: false, layerPreview: false,
-  card3d: false, grid: true, footer: false, footerTemplate: DEFAULT_FOOTER, resolution: 'standard', ...over,
+  card3d: false, grid: true, footer: false, annotations: true, footerTemplate: DEFAULT_FOOTER, resolution: 'standard', ...over,
 });
 
 function renderControls(options: ExportOptions) {

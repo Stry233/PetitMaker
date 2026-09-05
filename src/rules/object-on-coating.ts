@@ -22,6 +22,7 @@
  */
 import {
   ItemCategory,
+  type CatalogItem,
   type GridState,
   type PostStrokeRule,
   type Rect,
@@ -29,13 +30,11 @@ import {
 } from '../core/model/types';
 import { bodyEvidence, rectsOverlap } from '../core/model/grid-model';
 import { standsOnCoating } from '../core/model/traits';
-import { getCatalogItem } from '../state/catalog';
-import { getObjectIndex } from '../state/object-index';
+import { entriesCovering, getObjectIndex } from '../state/object-index';
 
 /** A crossing's deck is a road SURFACE, so pavement over it is the design, not an overlap. */
-function isCrossing(catalogId: string): boolean {
-  const cat = getCatalogItem(catalogId)?.category;
-  return cat === ItemCategory.Bridge || cat === ItemCategory.Ramp;
+function isCrossing(item: CatalogItem | undefined): boolean {
+  return item?.category === ItemCategory.Bridge || item?.category === ItemCategory.Ramp;
 }
 
 export const objectOnCoatingRule: PostStrokeRule = {
@@ -45,19 +44,19 @@ export const objectOnCoatingRule: PostStrokeRule = {
 
   validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
     const index = getObjectIndex(state);
-    const coatings = index.entries.filter((e) => e.coating);
-    if (coatings.length === 0) return [];
+    if (!index.entries.some((e) => e.coating)) return [];
 
     // Evidence = the region where the standing object meets the road, one rect per pair: an
     // anchor on the half grid (a ramp end, the plaza) makes that region fractional, and whole
-    // cells would shade past both bodies.
+    // cells would shade past both bodies. Candidates come off the cell buckets: an overlap has
+    // area, so it lies in a cell both footprints touch, and the ord sort keeps evidence order.
     const evidence: Rect[] = [];
     for (const e of index.entries) {
-      if (e.coating || isCrossing(e.obj.catalogId)) continue;
+      if (e.coating || isCrossing(e.item)) continue;
       if (opts?.firstOnly && evidence.length > 0) break;
-      const item = getCatalogItem(e.obj.catalogId);
-      for (const road of coatings) {
-        if (standsOnCoating(item, getCatalogItem(road.obj.catalogId)!)) continue;
+      for (const road of entriesCovering(index, e.rect)) {
+        if (!road.coating) continue;
+        if (standsOnCoating(e.item, road.item!)) continue;
         if (!rectsOverlap(e.rect, road.rect)) continue;
         const x0 = Math.max(e.rect.x, road.rect.x), x1 = Math.min(e.rect.x + e.rect.w, road.rect.x + road.rect.w);
         const y0 = Math.max(e.rect.y, road.rect.y), y1 = Math.min(e.rect.y + e.rect.h, road.rect.y + road.rect.h);

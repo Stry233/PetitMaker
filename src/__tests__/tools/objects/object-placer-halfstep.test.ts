@@ -3,7 +3,7 @@
  * `ObjectPlacerTool.onPointerDown` route the hovered anchor through `snapAnchor` for the ARMED
  * item — a halfStep item probes/places at the pointer's nearest half-cell point
  * (`ctx.halfCoord`, from `ViewProjection.screenToHalf`), everything else keeps today's whole-cell
- * `coord` unaffected. Bridge/ramp SPAN detection itself is Task 2's (half-step-detection.test.ts);
+ * `coord` unaffected. Bridge/ramp SPAN detection itself belongs to half-step-detection.test.ts;
  * these fixtures use a plain halfStep item so the anchor-resolution logic is exercised in
  * isolation.
  */

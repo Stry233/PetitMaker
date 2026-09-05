@@ -88,6 +88,11 @@ export function Editor3DCanvas() {
       // the ~0.8s intro fly-in: landing where the user left off beats flying somewhere else first.
       const restored = takePendingCameraAngle();
       if (restored) sceneRef.current.applyCameraAngle(restored);
+      // The plan-notes layer as it stands when the scene arrives; the effect below carries edits.
+      const boot = useEditorStore.getState();
+      sceneRef.current.setAnnotations(boot.gridState?.annotations ?? null, {
+        draft: boot.annotationDraft, selection: boot.annotationSelection,
+      });
       if (useEditorStore.getState().viewMode === '3d') setActiveView(sceneRef.current.asEditorView());
     }, fail);
     return () => { cancelled = true; };
@@ -99,6 +104,26 @@ export function Editor3DCanvas() {
   useEffect(() => {
     sceneRef.current?.setLayerVisibility(hiddenSetFrom(layerVisibility));
   }, [layerVisibility]);
+
+  // The plan-notes layer redraws off the same store facts the 2D layer draws from.
+  const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
+  const annotationDraft = useEditorStore((s) => s.annotationDraft);
+  const annotationSelection = useEditorStore((s) => s.annotationSelection);
+  useEffect(() => {
+    const gs = useEditorStore.getState().gridState;
+    if (!gs) return;
+    sceneRef.current?.setAnnotations(gs.annotations ?? null, {
+      draft: annotationDraft, selection: annotationSelection,
+    });
+  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState]);
+
+  // Note labels bake into canvas textures, so lettering rasterised before the app's fonts landed
+  // must be baked again once they do (the 2D view redraws on the same signal).
+  useEffect(() => {
+    let live = true;
+    document.fonts?.ready?.then(() => { if (live) sceneRef.current?.rebakeAnnotationText(); });
+    return () => { live = false; };
+  }, [active]);
 
   // The passive overlays ride the same settings toggles as 2D.
   const showGrid = useEditorStore((s) => s.showGrid);

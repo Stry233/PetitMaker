@@ -8,6 +8,9 @@ import type { GridState } from '../../../core/model/types';
 
 export class BaseLayer {
   public readonly container: PIXI.Container;
+  /** Opens the owning renderer's render window; MapRenderer rebinds it to itself right after
+   *  construction. Defaults to the module broadcast, for an instance nobody has wired yet. */
+  public requestRender: () => void = requestRender;
   private graphics: PIXI.Graphics;
 
   constructor() {
@@ -23,7 +26,7 @@ export class BaseLayer {
    * the one-time tessellation cost on the opening's first render.
    */
   drawFull(state: GridState): void {
-    requestRender();
+    this.requestRender();
     this.graphics.clear();
     const { width, height } = state.template;
 

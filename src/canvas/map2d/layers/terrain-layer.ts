@@ -34,11 +34,17 @@ export class TerrainLayer {
   private dirtyChunks = new Set<string>();
   private waterfallContainer: PIXI.Container;
   private chunks: ChunkGrid;
+  /** Opens the owning renderer's render window; MapRenderer rebinds it to itself right after
+   *  construction. Defaults to the module broadcast, for an instance nobody has wired yet. */
+  public requestRender: () => void = requestRender;
 
   constructor() {
     this.container = new PIXI.Container();
     this.waterfallContainer = new PIXI.Container();
     this.chunks = new ChunkGrid(this.container);
+    // The overlay is OWNED here (it has no renderer of its own to be wired from), so it forwards
+    // through a closure reading this field live — one that lands after construction still reaches it.
+    this.numbers.requestRender = () => this.requestRender();
   }
 
   /** Toggle chunk visibility against the camera rect (called per viewport change). */
@@ -58,7 +64,7 @@ export class TerrainLayer {
 
   setLayerVisibility(visibility: Record<number, boolean>): void {
     this.hiddenLayers = hiddenSetFrom(visibility);
-    requestRender();
+    this.requestRender();
   }
 
   /**
@@ -73,7 +79,7 @@ export class TerrainLayer {
     for (const l of next) if (!this.hiddenLayers.has(l)) changed.push(l);
     for (const l of this.hiddenLayers) if (!next.has(l)) changed.push(l);
     this.hiddenLayers = next;
-    requestRender();
+    this.requestRender();
     if (changed.length === 0) return;
     this.redrawCells(cellsAffectedByLayerToggle(state, changed), state);
     // Waterfall arrows hide with their cell's layer, so any toggle re-derives them.
@@ -81,7 +87,7 @@ export class TerrainLayer {
   }
 
   drawFull(state: GridState): void {
-    requestRender();
+    this.requestRender();
     this.chunks.clear(); // destroys the chunk graphics with their buckets
     this.chunkGfx.clear();
     this.dirtyChunks.clear();
@@ -102,7 +108,7 @@ export class TerrainLayer {
    *  per COMMAND, dozens of times per brush stroke, and repainting a 256-cell
    *  chunk per command would cost far more than the per-cell path it replaces. */
   redrawCells(coords: MacroCoord[], state: GridState): void {
-    requestRender();
+    this.requestRender();
     for (const { x, y } of coords) {
       const c = macroToChunk(x, y);
       this.dirtyChunks.add(chunkKey(c.cx, c.cy));
@@ -130,7 +136,7 @@ export class TerrainLayer {
       this.waterfallContainer.parent.removeChild(this.waterfallContainer);
     }
     this.container.addChild(this.waterfallContainer);
-    requestRender();
+    this.requestRender();
     return n;
   }
 

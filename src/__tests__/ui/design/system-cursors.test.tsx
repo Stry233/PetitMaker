@@ -76,7 +76,10 @@ describe('system cursors: the DOM', () => {
     for (const id of ids) expect(domProp(id)).toBe(CURSORS[id].fallback);
 
     publishCursorPreference(false);
-    for (const id of ids) expect(domProp(id)).toContain('url(');
+    // `help` has no drawing (the OS help arrow is the design), so its property stays the keyword
+    // on either preference; everything else swaps back to its painted image.
+    for (const id of ids.filter((i) => i !== 'help')) expect(domProp(id)).toContain('url(');
+    expect(domProp('help')).toBe('help');
   });
 
   it('re-publishes when the store flips, without the component being told', () => {

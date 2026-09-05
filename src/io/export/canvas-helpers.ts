@@ -23,8 +23,7 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Trim `text` (in the current ctx.font) to fit `maxW`, adding an ellipsis. With `force`, always
- *  appends the ellipsis (used to mark text dropped by line-clamping). */
+/** Trim `text` in the current font to `maxW`. `force` adds the ellipsis that marks line-clamped text. */
 export function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number, force = false): string {
   if (!force && ctx.measureText(text).width <= maxW) return text;
   const E = '…';

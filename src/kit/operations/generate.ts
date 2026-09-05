@@ -1,40 +1,9 @@
 /**
- * Running the procedural generator, and taking a run back.
- *
- * Generate REPLACES its scope: objects first, because a placement blocks erasing the terrain under
- * it, then terrain, then the run itself, all inside one silenced stroke group. The generator seats
- * its objects by probing and so rejects candidate commands by design, which is why a validation
- * toast per rejection would be noise rather than information.
- *
- * Clear is not an erase-everything. It is bounded by what the last run actually did: that run's
- * region, and the map's own authorship. A cell or object a person made inside the scope stays. A
- * map loaded without a provenance ledger has no authorship to read, so nothing is spared.
- *
- * A CANDIDATE IS THE SAME RUN ON A COPY. `runGeneration` is written against whatever `KitContext`
- * it is handed, so `generateCandidate` hands it a detached one; only `generateMap` records the
- * scope Clear is bounded by, which is module state and belongs to the live map alone.
- *
- * A CANDIDATE IS ALSO THE RUN'S COMMANDS, so landing one costs an apply rather than a second
- * generation. The generator is deterministic, so re-running it for the seed the user clicked
- * produces the same map; it just makes them wait again for a map that has already been built. The
- * commands the copy's executor ACCEPTED are the run, and replaying them through the live executor
- * validates each one again and lands the same map in the time it takes to apply it.
- *
- * WHAT MAKES THE REPLAY THE SAME MAP is that the copy started where the live map is about to. A
- * command was validated against a particular map and the placement traits SNAPPED its footprint
- * against that map, so the same commands on a different map are a different result under the same
- * recipe number, and the picture on the card would be a promise the click did not keep.
- *
- * THE MAP THE COMMANDS WERE BUILT ON IS THE CLEARED ONE, not the one the visitor is looking at. A
- * run REPLACES its scope: it erases the objects and the terrain in scope before it builds anything,
- * so what it builds stands on the map that clearing leaves, and everything the clearing takes is
- * irrelevant to it. `Candidate.base` is therefore the fingerprint of the map AFTER the run's own
- * clearing, and the clearing is left out of `Candidate.commands` — `generateMap` clears the live
- * map itself and replays only the build. This is what lets one card land after another, and a card
- * land after Clear, without generating anything a second time: an island, a cleared island and a
- * blank map all clear to the same ground, so the run built for any of them is the run for all
- * three. A scoped run keeps its surroundings and so keeps depending on them, which the same
- * comparison expresses without a special case.
+ * Runs generation as one silent stroke after clearing its scope. Clear removes only work attributed
+ * to the last run and preserves authored cells and objects. Candidates are generated on detached
+ * cleared maps and retain the accepted build commands plus a fingerprint of that cleared base.
+ * Landing re-clears the live scope, verifies the fingerprint, and replays those commands through the
+ * live executor instead of regenerating.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { applyCommand } from '../../core/commands/command-apply';
@@ -432,17 +401,34 @@ export async function generateCandidate(
 ): Promise<Candidate | null> {
   const region = normalizeRegion(opts.region);
   const config = { ...opts.config, region };
+  const hit = peekCandidate(ctx, { config, region });
+  if (hit) return hit;
   // The map AS IT STANDS, which is what this caller can read without touching it. A batch asks the
   // same question of the same map card after card, and this is the key that answers those.
   const asked = recipeKey(fingerprintOf(ctx.state), config);
-  const hit = candidateCache.get(asked);
-  if (hit) {
-    // Refresh recency: the Map's insertion order is the LRU order.
-    candidateCache.delete(asked);
-    candidateCache.set(asked, hit);
-    return hit;
-  }
   return buildCandidate(ctx, { config, region, signal: opts.signal }, asked);
+}
+
+/**
+ * The cached candidate for this recipe on the map AS IT STANDS, or null — a synchronous read with
+ * no build behind it, so a caller can tell "already answered" from "worth a pending face" before
+ * it blanks anything. The key is the same one `generateCandidate` files under (the live map's
+ * fingerprint plus the whole config, region included), and a hit refreshes LRU recency the same
+ * way.
+ */
+export function peekCandidate(
+  ctx: KitContext,
+  opts: { config: GenerateConfig; region: MacroCoord[] | null },
+): Candidate | null {
+  const region = normalizeRegion(opts.region);
+  const config = { ...opts.config, region };
+  const asked = recipeKey(fingerprintOf(ctx.state), config);
+  const hit = candidateCache.get(asked);
+  if (!hit) return null;
+  // Refresh recency: the Map's insertion order is the LRU order.
+  candidateCache.delete(asked);
+  candidateCache.set(asked, hit);
+  return hit;
 }
 
 /** Build the recipe on a copy and file it. `asked` is an extra key to file it under — the caller's
@@ -494,6 +480,8 @@ export function clearGenerated(ctx: KitContext, opts: { region: MacroCoord[] | n
   const region = normalizeRegion(opts.region) ?? lastRunRegion ?? undefined;
   const prov = executor.getProvenanceTracker();
 
+  // Seam repairs belong to procedural cleanup so a later clear can remove them with the run.
+  executor.pushSource({ source: ProvSource.Procedural, tool: 'clear-generated' });
   try {
     // A BOUNDED CLEAR OWES THE SAME SEAM A GENERATION DOES: erasing terrain inside the scope can take
     // the 3x3 base or the cap that ground outside it stands on, and that violation reverts the whole
@@ -517,5 +505,7 @@ export function clearGenerated(ctx: KitContext, opts: { region: MacroCoord[] | n
   } catch (err) {
     executor.rollbackTo(watermark);
     throw err;
+  } finally {
+    executor.popSource();
   }
 }

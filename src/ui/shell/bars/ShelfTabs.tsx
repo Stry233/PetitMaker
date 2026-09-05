@@ -1,49 +1,15 @@
-/*
- * ShelfTabs.tsx — the row of names that heads a bottom shelf, and one name in it.
- *
- * Both bottom shelves are headed the same way, and it is ONE element used twice rather than two
- * that resemble each other: the names stand on the map above the backing band, at the shelf's own
- * left edge, each as wide as its own word at one constant size, over a mark drawn to that width.
- *
- * The row is ANCHORED. It is the first thing in a shelf that is laid out from the left and from the
- * top of its own block, so nothing that stands beside it or under it — a control that only one
- * algorithm has, a sentence that runs to two lines, a candidate card that is shorter on a laptop —
- * can move a name. A row of tabs that shifted as the visitor moved through it would make the next
- * tab a moving target.
- *
- * `active` is nullable because a row can have nothing in force: the object shelf shows a search
- * result under names that then describe none of what is on screen.
- *
- * THE MARK IS WHAT IS CHOSEN, NOT THE WORD. Every name is the same warm off-white on the same
- * outline, and the yellow bar under one of them is the whole difference — which is how the game
- * marks its own category row. Colouring the chosen word instead puts the one name the eye is meant
- * to find in the interface's lightest colour, over an island whose sand border is nearly that
- * colour already.
- *
- * IT TRAVELS SIDEWAYS RATHER THAN WRAPPING. Six category names at one fixed size are wider than the
- * room left beside the search field in every language but Chinese and Japanese — English included —
- * and wrapping them runs the row onto two lines: the shelf grows upward into the map, the names stop
- * being one line to read along, and the mark under the chosen one can sit under a line the eye has
- * already left. So the row is one line that scrolls. It is a scroller only where there
- * is something to scroll: the generator's two names never fill their row, and every part of this —
- * the fade, the wheel, the reveal — resolves to nothing there.
- *
- * IT TAKES THE WHEEL BY THE SAME RULE THE ITEM ROW DOES (`row-scroll.ts:wheelPush`). The two rows
- * stand one above the other with a band of bare map between them, and the pointer is over one or
- * the other; what would confuse is two rows answering one gesture differently, not each answering
- * it. Withholding the wheel here also takes away the only pointer reach a name pushed off the end
- * has: a scroll container offers a mouse no grip, and the keyboard is not reach.
- *
- * THE CHOSEN NAME IS BROUGHT BACK, and the routes that need it are the ones that are not a click on
- * the name: the shelf opens on the armed item's own category, which can be the last of the six, and
- * clearing a search puts a category back in force. A focused name is brought back too, which is
- * what makes every tab reachable from the keyboard.
+/**
+ * Shared single-line, horizontally scrollable tab row for bottom shelves. The active underline,
+ * focused tab, and externally selected tab are revealed automatically. Wheel behavior matches the
+ * item row. `active` may be null while search results span categories.
  */
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { useLayoutEffect, useRef, type CSSProperties, type Ref } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { btnReset, cursors, pressable } from '../../design/styles';
 import { ACTIVE } from '../../design/tokens';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
+import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import { SHELF_TABS, TEXT } from '../units';
 import { BarText } from './bar-atoms';
 import { reveal, useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
@@ -102,19 +68,22 @@ function fadeAt(row: HTMLElement, edge: number, atEnd: boolean): number {
 export interface ShelfTabEntry<T extends string> {
   id: T;
   label: string;
+  /** Which Help Center page this tab's own kind answers with, where it differs from the shelf's
+   *  own page (the generator's kinds each open a different tool). */
+  helpTarget?: HelpPageId;
 }
 
-function ShelfTabButton({ label, active, buttonRef, onSelect }: {
+function ShelfTabButton({ label, active, onSelect, helpTarget }: {
   label: string;
   active: boolean;
-  buttonRef?: Ref<HTMLButtonElement>;
   onSelect: () => void;
+  helpTarget?: HelpPageId;
 }) {
   return (
     <motion.button
-      ref={buttonRef}
       type="button"
       {...pressable}
+      {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
       role="tab"
       aria-selected={active}
       onClick={onSelect}
@@ -150,7 +119,6 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
   onSelect: (id: T) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
-  const activeRef = useRef<HTMLButtonElement>(null);
   const zoom = useFrameZoom();
   const reducedMotion = useReducedMotionConfig() ?? false;
   const glide = useRef(wheelGlider()).current;
@@ -159,7 +127,13 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
   // resize does, with no extra wiring needed here.
   const fade = useScrollFade(rowRef, 'x', { fadeAt });
 
-  useLayoutEffect(() => { reveal(activeRef.current); }, [active]);
+  // The chosen tab is read out of the row rather than carried by a ref: a motion element's
+  // forwarded ref callback is identity-stable, so a ref prop that CHANGES on a persistent button
+  // is never re-invoked — a conditional ref here stays on whichever tab was active at first mount,
+  // and every later choice brings THAT one back, scrolling the row home under the click.
+  useLayoutEffect(() => {
+    reveal(rowRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'));
+  }, [active]);
 
   return (
     <div
@@ -196,8 +170,8 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
           key={tab.id}
           label={tab.label}
           active={tab.id === active}
-          buttonRef={tab.id === active ? activeRef : undefined}
           onSelect={() => onSelect(tab.id)}
+          {...(tab.helpTarget ? { helpTarget: tab.helpTarget } : {})}
         />
       ))}
     </div>

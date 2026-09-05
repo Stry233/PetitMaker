@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { DOCS, docBody, docNodes, localizeZhSlug, type DocId } from '../../legal/registry';
 import type { Inline, MdNode } from '../../legal/markdown';
 import { LEGAL } from '../../legal/config';
-import { providerDisclosureList } from '../../legal/providers-list';
+import { agentProviderDisclosureList, illustrationProviderDisclosureList } from '../../legal/providers-list';
 import { PROVIDER_IDS, PROVIDER_META } from '../../agent/providers/defaults';
+import { STYLIZE_PROVIDERS } from '../../io/stylize/providers';
+import { en as enStrings } from '../../i18n/locales/en';
+import { zh as zhStrings } from '../../i18n/locales/zh';
 import { parseLegalMarkdown, sanitizeHref } from '../../legal/markdown';
 import { renderHtml } from '../../legal/markdown-html';
 import { APP_NAME } from '../../version';
@@ -344,27 +347,29 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
   });
 });
 
-// The privacy policy's binding factual anchors. These
-// are content phrases (beyond the schema's section headings) that the authored
-// prose MUST carry verbatim so the substance model cannot be quietly softened.
+// Factual anchors for material privacy disclosures beyond the schema's required headings.
 describe('privacy — required substance tokens', () => {
   const PRIVACY_TOKENS_EN = [
-    'not stored on our servers by default',
-    'may contain embedded map data',
-    'may not remove every embedded carrier',
+    'not stored on a project-operated server',
+    'carries a visible PetitGlyph strip',
+    'does not remove them from an importable PetitGlyph',
     'no request carrying your map data or prompts occurs until',
+    'cannot determine from a key which service tier or contract governs it',
     'compromised browser, extension, script, or device',
+    'A child or minor must not connect an AI provider unless',
     'will be reassessed',
     'Depending on where you live',
     'does not delete',
   ];
 
   const PRIVACY_TOKENS_ZH = [
-    '默认不会存储在我们的服务器上',
-    '可能包含嵌入的地图数据',
-    '并不一定能移除所有嵌入的数据载体',
+    '不使用服务器存储你的地图项目',
+    '带有一条可见的 PetitGlyph 色带',
+    '不会从可导入的 PetitGlyph 中移除标注',
     '在你主动触发之前，不会有携带你的地图数据或提示词的请求发出',
+    '无法仅凭密钥判断其所属服务档位或适用合同',
     '被攻陷的浏览器、扩展、脚本或设备',
+    '儿童或未成年人只有在所选提供商的条款允许时',
     '将重新评估',
     '根据你所在地区适用的法律',
     '不会删除',
@@ -386,35 +391,37 @@ describe('privacy — required substance tokens', () => {
 
   it('renders the AI-provider disclosure as a markdown list', () => {
     const en = docBody('privacy', 'en', LEGAL);
-    for (const entry of providerDisclosureList('en')) {
+    for (const entry of agentProviderDisclosureList('en')) {
       expect(en, `privacy.en missing provider entry "${entry}"`).toContain(`- ${entry}`);
     }
+    for (const entry of illustrationProviderDisclosureList('en')) {
+      expect(en, `privacy.en missing illustration provider entry "${entry}"`).toContain(`- ${entry}`);
+    }
+    expect(en).toContain(`offers ${agentProviderDisclosureList('en').length} connection choices`);
+    expect(en).toContain(`offers ${illustrationProviderDisclosureList('en').length} connection choices`);
+
+    const zh = docBody('privacy', 'zh', LEGAL);
+    expect(zh).toContain(`提供 ${agentProviderDisclosureList('zh').length} 种连接选项`);
+    expect(zh).toContain(`提供 ${illustrationProviderDisclosureList('zh').length} 种连接选项`);
   });
 });
 
-// The "Where Your Data Goes" deployment-facts disclosure, authored inline in the privacy body
-// rather than deferred to a token. Pins the human-verified hosting facts so the location
-// disclosure cannot be silently softened, and the plain "operated by {operator}" statement,
-// with no qualifier on the doc surface.
+// Deployment, mail, backend, and operator facts must remain explicit in the rendered policy.
 describe('privacy — deployment-facts disclosure (§8)', () => {
-  // Tokens chosen to sit on a single source line (the raw markdown hard-wraps,
-  // so a phrase that crosses a line break is not a contiguous substring).
   const DEPLOY_TOKENS_EN = [
     'Cloudflare',
     'Workers static asset hosting',
-    // The mainland-China fact is pinned in its NEGATIVE form: this edge network has no locations
-    // there, and softening that to a bare mention of the region is the exact drift this guards.
-    'no locations in mainland China',
+    "does not use Cloudflare's China Network",
     'Microsoft Outlook',
-    'no servers of our own',
+    'operates no application backend',
     'This service is operated by',
   ];
   const DEPLOY_TOKENS_ZH = [
     'Cloudflare',
     'Workers 静态资源托管',
-    '在中国大陆没有节点',
+    '未使用 Cloudflare 中国网络',
     '微软 Outlook',
-    '不运营任何自有服务器',
+    '不运营任何接收、处理或存储你地图项目的应用后端',
     '本服务由',
   ];
 
@@ -429,22 +436,14 @@ describe('privacy — deployment-facts disclosure (§8)', () => {
   });
 });
 
-// The Terms of Use's binding factual anchors. Beyond
-// the fourteen ordered section headings, these are the substance phrases the
-// authored prose MUST carry verbatim so the most legally consequential document
-// cannot be quietly softened: the free/local-tool posture, BYOK, the verbatim
-// user-content and importable-image clauses, the AS-IS / max-extent liability
-// framing that explicitly refuses to exclude the non-excludable, the
-// consumer-law savings clause, the modest "mandatory applicable law controls"
-// governing-law posture, and the honored real-world facts (unofficial fan
-// project, HoYoverse ownership, the [IP] takedown tag, the parent/guardian
-// note).
+// Factual anchors for material terms beyond the schema's required headings.
 describe('terms — required substance tokens', () => {
   const TERMS_TOKENS_EN = [
     'Acceptance',
     'free',
     'local',
     'your own key',
+    'age, territory, account, and permitted-use requirements',
     'Acceptable use',
     'As between you and us',
     'technically accessible',
@@ -470,6 +469,7 @@ describe('terms — required substance tokens', () => {
     '免费',
     '本地',
     '自己的密钥',
+    '年龄、地区、账户及允许用途的要求',
     '可接受使用',
     '在你与我们之间',
     '在技术上可被',
@@ -518,33 +518,28 @@ describe('terms — required substance tokens', () => {
   });
 });
 
-// The About document's binding substance:
-// the unofficial/nominative framing, the mission (plan in the
-// browser → rebuild in-game), the team roster (every pseudonym — role labels
-// carries names and links only, with no role column), a tech-stack
-// line, the config-driven filing note (no fabricated numbers), and the
-// affiliation disclaimer. Parity across en+zh.
+// The rendered About document retains its mission, technology, ownership, and filing facts.
 describe('about — required substance tokens', () => {
   const ABOUT_TOKENS_EN = [
     'unofficial',
     'in your browser',
-    'in-game',
+    'reproduce in *Petit Planet*',
     'PixiJS',
     'not affiliated with',
     'miHoYo',
     'HoYoverse',
-    'when they are configured',
+    'an obtained registration number',
   ];
 
   const ABOUT_TOKENS_ZH = [
     '非官方',
     '浏览器',
-    '游戏中',
+    '可在《星布谷地》中还原',
     'PixiJS',
     '无任何关联',
     '米哈游',
     'HoYoverse',
-    '在配置后',
+    '已经取得的备案号',
   ];
 
   it('carries every en substance token', () => {
@@ -622,12 +617,10 @@ describe('contact — required substance tokens', () => {
   });
 });
 
-// Provider-list drift guard (design spec §8/§18): the disclosed provider list
-// is DERIVED from the app's own registry, so it cannot silently omit a provider
-// the app can actually reach.
-describe('providerDisclosureList — no drift from the agent registry', () => {
+// The disclosure is derived from the provider registry so every reachable provider is represented.
+describe('provider disclosure lists', () => {
   it('represents every provider id in src/agent/providers/defaults.ts', () => {
-    const list = providerDisclosureList('en');
+    const list = agentProviderDisclosureList('en');
     for (const id of PROVIDER_IDS) {
       if (id === 'custom') {
         expect(
@@ -644,15 +637,31 @@ describe('providerDisclosureList — no drift from the agent registry', () => {
   });
 
   it('has exactly one entry per selectable provider', () => {
-    expect(providerDisclosureList('en')).toHaveLength(PROVIDER_IDS.length);
+    expect(agentProviderDisclosureList('en')).toHaveLength(PROVIDER_IDS.length);
   });
 
   it('localizes only the custom-endpoint line, keeping brand names stable', () => {
-    const en = providerDisclosureList('en');
-    const zh = providerDisclosureList('zh');
+    const en = agentProviderDisclosureList('en');
+    const zh = agentProviderDisclosureList('zh');
     // brand entries identical; the final (custom) entry differs by language
     expect(zh.slice(0, -1)).toEqual(en.slice(0, -1));
     expect(zh[zh.length - 1]).not.toBe(en[en.length - 1]);
+  });
+
+  it('derives the illustration list from its provider registry and locale labels', () => {
+    const en = illustrationProviderDisclosureList('en');
+    const zh = illustrationProviderDisclosureList('zh');
+    expect(en).toHaveLength(STYLIZE_PROVIDERS.length);
+    expect(zh).toHaveLength(STYLIZE_PROVIDERS.length);
+    for (const [index, provider] of STYLIZE_PROVIDERS.entries()) {
+      if (provider.id === 'custom') {
+        expect(en[index]).toMatch(/custom endpoint/i);
+        expect(zh[index]).toContain('自定义端点');
+      } else {
+        expect(en[index]).toBe(enStrings[`stylize.provider_${provider.id}`]);
+        expect(zh[index]).toBe(zhStrings[`stylize.provider_${provider.id}`]);
+      }
+    }
   });
 });
 

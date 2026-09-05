@@ -1,65 +1,9 @@
-/*
- * The first-launch tour's one visible surface: a dim over the app, a spotlight on the thing being
- * explained, and a bubble that names it.
- *
- * The machinery only; the CONTENT is the mounted interface's. It hands in its own step list, the
- * drawing that goes above a step's title (`diagram`), and prepares each step from `onStepEnter`,
- * because a step can point at nothing the interface does not draw, and some targets are not in the
- * DOM until the host has revealed them.
- *
- * The dim is ONE element (`TourDim`, an SVG whose hole is masked out) doing both jobs: a plain
- * full-viewport dim until the current step's target has been measured, then that same dim with the
- * target's box cut out of it. One element rather than a scrim plus a spotlight, because two
- * translucent dims stacked over the same pixels read darker than either, and because the lit hole
- * and the dim around it then cannot disagree about where the target is. It stays mounted for as
- * long as the tour runs, so the app never flashes undimmed between steps.
- *
- * The CARD is the opposite of a tracked highlight: it never travels. Which transition a step change
- * gets is POSITIONAL, decided by where the new card lands:
- *
- *   - somewhere else: a NEW card, entering and exiting the way every other floating surface in this
- *     app does (ContextMenu, DeletePopover) — springs.bouncy in, exitTransition out, an asymmetry
- *     styles.ts documents: a panel arrives with life and is put away cleanly. Both are on screen for
- *     the length of the exit, one leaving the control it described as the other pops at its own.
- *   - the same place (the two centred steps at the start): the SAME card, its copy crossing over
- *     inside it. An exit and an entrance in one place accomplish nothing visible.
- *
- * A card's POSITION is never animated either way: one is born at its anchor, and the other stays at
- * its own. A KEPT card's HEIGHT is the exception: it grows or shrinks to the incoming copy's measured
- * size while the copy crosses over inside it (detailed at the block that renders it).
- *
- * It renders the step it is SHOWING, which lags the current step until that step's target has been
- * measured, so nothing is ever put on screen against a box that has not been read yet.
- *
- * Focus is taken by each card as it MOUNTS, which is what keeps the keyboard path unbroken across
- * the remount; the card that is kept never loses focus in the first place.
- *
- * Measuring a step's target only AFTER the app has prepared that step (the bottom bar belongs to the
- * selected build mode, so the step about the tools has nothing to point at until `onStepEnter` has
- * selected one) rests on two invariants, spelled out at the effects that carry them: the
- * announcement is a layout effect, and the measurement is deferred to a rAF.
- *
- * The measurement TRACKS rather than sampling once: getBoundingClientRect reports the TRANSFORMED
- * box and a target animates in under a spring, so a single read lands on a box the target is still
- * leaving. A step is shown from the first frame its target is measurable at all, and the rect goes
- * on being read for a bounded window after that, the spotlight gliding after each new value. The
- * follow IS the correction, which is why a first read taken mid-flight costs nothing. Reading stops
- * once two consecutive frames agree (never before a floor: a target that has not started moving yet
- * agrees with itself) or at the frame cap.
- *
- * A step whose target cannot be measured is passed over rather than drawing a spotlight at the
- * origin. A resize, a map viewport change and a UI-scale change all re-run the same tracking: those
- * are the three things that move a target the tour is already pointing at. A step that names NO target measures
- * nothing at all: it keeps the full-viewport scrim and centres its bubble, and it is on screen from
- * the commit that made it current.
- *
- * The bubble is PLACED, not clamped (`place-bubble`): a step's preferred side is honoured only
- * where the bubble fits beside the lit box, because clamping one that does not fit puts it on top
- * of the control the step is describing.
- *
- * The bubble scales with `useChromeScale()` as css `zoom`, like every other chrome surface here
- * (ContextMenu, DeletePopover, Toast). The spotlight does NOT: it is positioned from the
- * live rect and has to sit exactly on the real element, in visual px.
+/**
+ * First-launch tour overlay: one masked dim provides the scrim and spotlight, while a separate card
+ * presents host-supplied steps. A target is prepared before measurement and tracked across animation,
+ * resize, viewport, and UI-scale changes. Unmeasurable targeted steps are skipped; untargeted steps
+ * use a centered card. Cards remount when their placement changes and cross-fade content in place
+ * otherwise. The card uses chrome zoom, while spotlight coordinates stay in visual pixels.
  */
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode,
@@ -78,13 +22,26 @@ import { measureTarget } from './measure';
 import { useTour } from './use-tour';
 import { type TourStep } from './steps';
 
-const BUBBLE_W = 340; // css px inside the chrome-zoomed subtree; its VISUAL width is this x chrome
-const BUBBLE_H = 200; // the card is content-sized, so this is the estimate the placement fits against
+// CSS pixels inside the chrome-zoomed subtree; reused by the Help Center preview.
+export const BUBBLE_W = 340;
+const BUBBLE_H = 200; // Placement estimate; the rendered card remains content-sized.
 const GAP = 18; // between the spotlight edge and the bubble
-const LIT_INSET = 8; // how far the lit hole is grown past the target on every side, in visual px
 
-/** The box that is actually LIT: the measured target, grown by the inset the ring is drawn at. The
- *  bubble has to clear what is drawn, not what was measured. */
+/** Shared card appearance; live and Help Center callers supply placement and stacking. */
+export const tourCard: CSSProperties = {
+  width: BUBBLE_W,
+  // Keep padding inside the width used by placement calculations.
+  boxSizing: 'border-box',
+  background: colors.white,
+  borderRadius: radii.lg,
+  padding: '18px 20px 14px',
+  boxShadow: shadows.s2,
+  fontFamily: font.family,
+};
+/** Visual-pixel padding around the highlighted target. */
+export const LIT_INSET = 8;
+
+/** Measured target expanded to the visible spotlight boundary. */
 function litBox(rect: DOMRect): Box {
   return {
     left: rect.left - LIT_INSET,
@@ -93,19 +50,10 @@ function litBox(rect: DOMRect): Box {
     height: rect.height + LIT_INSET * 2,
   };
 }
-/** Frames that must be READ before two agreeing reads are allowed to STOP the tracking. An
- *  animation writes its t=0 keyframe on the animator's first tick, and this loop is registered
- *  during the commit, ahead of that tick: frames 1 and 2 can therefore both read the pre-animation
- *  box and agree on it, letting go of a target that has not moved yet. A third read puts a live
- *  frame into the compared pair. Exported because a test waits on frames read, not on wall time. */
+/** Minimum reads before stability may end tracking; the third frame includes animation progress. */
 export const TRACK_MIN_FRAMES = 3;
 
-/** Hard cap on how long the loop follows a target before letting go. 30 frames is ~0.5s at 60Hz,
- *  SHORTER than springs.bouncy takes to reach its rest thresholds (~0.9s), so for a target riding
- *  that spring the cap is the normal exit and the last box read can sit a pixel or two short of the
- *  resting one — invisible, since the spotlight is already on the target and only stops following
- *  it those last two pixels. It is also the window a target has to become measurable AT ALL: one
- *  that never does releases its step, which is what passes the step over. */
+/** Maximum tracking and target-discovery window in animation frames. */
 export const TRACK_MAX_FRAMES = 30;
 
 /** Rects are compared by value: getBoundingClientRect allocates a new object per call, so identity
@@ -237,6 +185,113 @@ function StepTitle({ text, name }: { text: string; name: string }) {
       {text.slice(0, at)}
       <Wavy>{name}</Wavy>
       {text.slice(at + name.length)}
+    </>
+  );
+}
+
+export interface TourBubbleProps {
+  step: TourStep;
+  /** This step's place in the run, for the progress line ("3 of 10"). */
+  index: number;
+  total: number;
+  isLast: boolean;
+  onSkip: () => void;
+  onNext: () => void;
+  /** The gesture drawing above the title (`TourOverlayProps.diagram`'s answer for this step). */
+  drawn?: { node: ReactNode; height: number } | null;
+  /** Left-aligned against the control the step describes, or centred where the step names no
+   *  target (`TourOverlay`'s own `centred = placed == null`). */
+  centred?: boolean;
+  reduced?: boolean;
+  /** The height a KEPT card crossfades its content to, from the caller's own per-card measurement;
+   *  absent, the content stands at its natural height with no crossfade. */
+  contentH?: { card: number; h: number } | null;
+  /** Which card this bubble is inside, so a stale `contentH` from a card already replaced is not
+   *  applied to this one. */
+  cardId?: number;
+  /** The content node, so the caller can measure it for `contentH` above. */
+  contentRef?: (el: HTMLDivElement | null) => void;
+}
+
+/**
+ * The callout's own content: the gesture (where the step has one), the brand mark or the title,
+ * the body, and the skip/progress/next footer. `TourOverlay` supplies the card around it (position,
+ * entrance/exit, the height crossfade a KEPT card plays between steps); this is what the card says.
+ */
+export function TourBubble({
+  step, index, total, isLast, onSkip, onNext, drawn, centred = false, reduced = false,
+  contentH, cardId = 0, contentRef,
+}: TourBubbleProps) {
+  const t = useT();
+  const align = centred ? 'center' : 'left';
+  return (
+    <>
+      {/* A step change that KEEPS the card crosses its copy over in place, and the card GROWS or
+          SHRINKS to the incoming copy while it does. The height is animated to a measured value
+          rather than left to the flow. Both copies stand in the SAME grid cell, which is what
+          takes the outgoing one out of the height story (a stack overlaps; a flow sums) — the
+          job `mode="popLayout"` would do, but framer 12's PopChild reads the child's
+          `props.ref` for React 19 and React 18 answers that read with a dev warning
+          on every render.
+          The clip holds a taller outgoing copy inside the shrinking card. It is also why the
+          copy only FADES: anything that offsets it would be cut off by that same clip.
+          `initial={false}` on both: a card that has just MOUNTED is already its own entrance,
+          so neither its copy nor its height may play a second one. */}
+      <motion.div
+        style={{ position: 'relative', overflow: 'hidden', display: 'grid' }}
+        initial={false}
+        animate={contentH?.card === cardId ? { height: contentH.h } : {}}
+        transition={reduced ? { duration: 0 } : springs.stiff}
+      >
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={step.id}
+            style={{ gridArea: '1 / 1' }}
+            initial={reduced ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, transition: exitTransition }}
+            transition={reduced ? { duration: 0 } : springs.gentle}
+          >
+            {/* The measured element is this plain box rather than the motion element around it:
+                AnimatePresence reads its children's `ref` prop, which React 18 does not carry. */}
+            <div ref={contentRef}>
+              {/* The gesture, performed, above the words that name it. Centred like the title:
+                  a drawing standing off to one side of a card this narrow reads as an
+                  illustration that missed its place. */}
+              {drawn && (
+                <div style={{ display: 'flex', justifyContent: 'center' }}>{drawn.node}</div>
+              )}
+              {step.brand && (
+                <div style={{ marginBottom: 12, display: 'flex', justifyContent: centred ? 'center' : 'flex-start' }}>
+                  <BrandLockup size={54} logoOnly />
+                </div>
+              )}
+              <div style={{ ...modalTitle, textAlign: align, lineHeight: 1.15, marginBottom: 6 }}>
+                <StepTitle text={t(step.titleKey)} name={t('app.name')} />
+              </div>
+              {/* brownText, not textSecondary: this text is normal-size, and textSecondary sits
+                  below the 4.5:1 AA floor on white (see legal/a11y.test.tsx). */}
+              <div style={{ ...font.body, color: colors.brownText }}>{t(step.bodyKey)}</div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </motion.div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>
+        <button
+          type="button"
+          onClick={onSkip}
+          style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: colors.brownText, padding: 0 }}
+        >{t('tour.skip')}</button>
+        <span style={{ fontFamily: font.family, ...roleFont('chip'), color: colors.brownText }}>
+          {t('tour.progress', { n: index + 1, total })}
+        </span>
+        <motion.button
+          type="button"
+          onClick={onNext}
+          {...pressable}
+          style={{ border: 'none', background: colors.tileYellow, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
+        >{isLast ? t('tour.start') : t('tour.next')}</motion.button>
+      </div>
     </>
   );
 }
@@ -490,22 +545,13 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   // and reads as a masthead: the logo, the title and the body all centre. A step that points at a
   // control keeps its copy left-aligned, against the edge nearest what it is describing.
   const centred = placed == null;
-  const align = centred ? 'center' : 'left';
   const position: CSSProperties = placed
     ? { left: placed.left / chrome, top: placed.top / chrome }
     : { left: '50%', top: '50%' };
 
   const bubble: CSSProperties = {
     position: 'fixed',
-    width: BUBBLE_W,
-    // BUBBLE_W is what the placement is told the card occupies, so the padding has to be inside it:
-    // under content-box the card is 40px wider than that and creeps back over the spotlight.
-    boxSizing: 'border-box',
-    background: colors.white,
-    borderRadius: radii.lg,
-    padding: '18px 20px 14px',
-    boxShadow: shadows.s2,
-    fontFamily: font.family,
+    ...tourCard,
     zIndex: z.tour + 1,
   };
 
@@ -545,72 +591,20 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
           exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { scale: 0.4, opacity: 0, transition: exitTransition }}
           transition={reduced ? { duration: 0 } : { ...springs.bouncy, ...scaleRest }}
         >
-          {/* A step change that KEEPS the card crosses its copy over in place, and the card GROWS or
-              SHRINKS to the incoming copy while it does. The height is animated to a measured value
-              rather than left to the flow. Both copies stand in the SAME grid cell, which is what
-              takes the outgoing one out of the height story (a stack overlaps; a flow sums) — the
-              job `mode="popLayout"` would do, but framer 12's PopChild reads the child's
-              `props.ref` for React 19 and React 18 answers that read with a dev warning
-              on every render.
-              The clip holds a taller outgoing copy inside the shrinking card. It is also why the
-              copy only FADES: anything that offsets it would be cut off by that same clip.
-              `initial={false}` on both: a card that has just MOUNTED is already its own entrance,
-              so neither its copy nor its height may play a second one. */}
-          <motion.div
-            style={{ position: 'relative', overflow: 'hidden', display: 'grid' }}
-            initial={false}
-            animate={contentH?.card === cardTag.id ? { height: contentH.h } : {}}
-            transition={reduced ? { duration: 0 } : springs.stiff}
-          >
-            <AnimatePresence initial={false}>
-              <motion.div
-                key={shown.step.id}
-                style={{ gridArea: '1 / 1' }}
-                initial={reduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, transition: exitTransition }}
-                transition={reduced ? { duration: 0 } : springs.gentle}
-              >
-                {/* The measured element is this plain box rather than the motion element around it:
-                    AnimatePresence reads its children's `ref` prop, which React 18 does not carry. */}
-                <div ref={setContentNode}>
-                  {/* The gesture, performed, above the words that name it. Centred like the title:
-                      a drawing standing off to one side of a card this narrow reads as an
-                      illustration that missed its place. */}
-                  {drawn && (
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>{drawn.node}</div>
-                  )}
-                  {shown.step.brand && (
-                    <div style={{ marginBottom: 12, display: 'flex', justifyContent: centred ? 'center' : 'flex-start' }}>
-                      <BrandLockup size={54} logoOnly />
-                    </div>
-                  )}
-                  <div style={{ ...modalTitle, textAlign: align, lineHeight: 1.15, marginBottom: 6 }}>
-                    <StepTitle text={t(shown.step.titleKey)} name={t('app.name')} />
-                  </div>
-                  {/* brownText, not textSecondary: this text is normal-size, and textSecondary sits
-                      below the 4.5:1 AA floor on white (see legal/a11y.test.tsx). */}
-                  <div style={{ ...font.body, color: colors.brownText }}>{t(shown.step.bodyKey)}</div>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </motion.div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>
-            <button
-              type="button"
-              onClick={skip}
-              style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: colors.brownText, padding: 0 }}
-            >{t('tour.skip')}</button>
-            <span style={{ fontFamily: font.family, ...roleFont('chip'), color: colors.brownText }}>
-              {t('tour.progress', { n: shownIndex + 1, total })}
-            </span>
-            <motion.button
-              type="button"
-              onClick={() => advanceFrom(shown.step)}
-              {...pressable}
-              style={{ border: 'none', background: colors.tileYellow, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
-            >{shownIsLast ? t('tour.start') : t('tour.next')}</motion.button>
-          </div>
+          <TourBubble
+            step={shown.step}
+            index={shownIndex}
+            total={total}
+            isLast={shownIsLast}
+            onSkip={skip}
+            onNext={() => advanceFrom(shown.step)}
+            drawn={drawn}
+            centred={centred}
+            reduced={!!reduced}
+            contentH={contentH}
+            cardId={cardTag.id}
+            contentRef={setContentNode}
+          />
         </motion.div>
       </AnimatePresence>
     </>

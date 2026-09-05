@@ -48,12 +48,12 @@ describe('exec/executor', () => {
     }
   });
 
-  it('isWide is exactly the four wide names, delegation among them', () => {
+  it('isWide is exactly the three wide names, delegation among them', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const wide = TOOL_SCHEMAS.filter((s) => executor.isWide(s.name)).map((s) => s.name).sort();
-    expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task', 'run_generator']);
-    expect(WIDE_TOOLS).toEqual(new Set(['run_generator', 'clear_area', 'build_road_network', 'delegate_task']));
+    expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task']);
+    expect(WIDE_TOOLS).toEqual(new Set(['clear_area', 'build_road_network', 'delegate_task']));
   });
 
   it('checkpoint oversight gates delegate_task: the helper burst gets the one approval there is', () => {

@@ -161,7 +161,8 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
           cam.pan(e.deltaX * lineToPx, horizontal ? 0 : e.deltaY * lineToPx);
           return;
         case 'zoom-smooth':
-          cam.zoomBy(pinchWheelFactor(e.deltaY), e.clientX, e.clientY);
+          // A sideways-only scroll carries its magnitude in deltaX; a vertical one in deltaY.
+          cam.zoomBy(pinchWheelFactor(horizontal ? e.deltaX : e.deltaY), e.clientX, e.clientY);
           return;
         case 'zoom-step':
           cam.zoomStep(e.deltaY > 0 ? -1 : 1, e.clientX, e.clientY);

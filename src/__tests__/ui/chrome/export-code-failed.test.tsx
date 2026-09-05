@@ -15,7 +15,7 @@ import type { GridState } from '../../../core/model/types';
 
 const opts: ExportOptions = {
   title: '', description: '', preset: 'share', importable: true, showBadge: false, layerPreview: false,
-  card3d: false, grid: true, footer: false, footerTemplate: DEFAULT_FOOTER, resolution: 'standard',
+  card3d: false, grid: true, annotations: true, footer: false, footerTemplate: DEFAULT_FOOTER, resolution: 'standard',
 };
 
 /** A map with `n` dirt roads stacked on one cell. */

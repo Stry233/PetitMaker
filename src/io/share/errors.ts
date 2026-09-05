@@ -22,6 +22,8 @@ export interface ShareLimits {
   maxCanonicalBytes: number;
   /** Decompressed/compressed bomb guard; inflate aborts past this ratio. */
   maxInflateRatio: number;
+  /** Pixel allocation limit for the PNG byte reader. Browser raster imports use the browser decoder. */
+  maxRasterPixels?: number;
 }
 
 export const DEFAULT_LIMITS: ShareLimits = {

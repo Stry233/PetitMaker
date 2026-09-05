@@ -7,7 +7,7 @@ import { CellZone, CommandType, TerrainType, type Command, type MacroCoord } fro
 import { circleCells, lineCells, bezier4, expandLine } from '../../tools/paint';
 import { edgeCutGeneratedTerrain } from '../../tools/edge-cut';
 import { makeRng } from '../../core/model/rng';
-import { type AgentToolDeps, type ToolResultBody, argError, clamp, runStroke } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError, clamp, clipBuildable, clipOccupied, runStroke } from './tools-common';
 
 /**
  * The armed region as a membership test, or null with none armed. The organic generators CLIP what
@@ -16,7 +16,7 @@ import { type AgentToolDeps, type ToolResultBody, argError, clamp, runStroke } f
  * model chooses itself (waypoints, centers, every other tool's cells) stay under the stroke
  * runners' all-or-nothing region rule.
  */
-function regionClip(deps: AgentToolDeps): Set<string> | null {
+export function regionClip(deps: AgentToolDeps): Set<string> | null {
   const region = deps.getRegion();
   if (region.length === 0) return null;
   return new Set(region.map((c) => `${c.x},${c.y}`));
@@ -51,7 +51,9 @@ export function sculptTerrace(deps: AgentToolDeps, input: Record<string, unknown
   const baseRadius = clamp(Number(input.baseRadius) || 5, 3, 12);
   const tiers = clamp(Number(input.tiers) || 2, 1, 3);
   const smooth = input.smooth === 'rect' ? 'rect' : 'round';
-  const seed = Number.isFinite(Number(input.seed)) && input.seed !== undefined ? Number(input.seed) : Math.floor(Math.random() * 99999);
+  // The default seed comes from the site itself: the same terrace at the same spot replays
+  // exactly, and a terrace elsewhere draws its own shape.
+  const seed = Number.isFinite(Number(input.seed)) && input.seed !== undefined ? Number(input.seed) : ((cx * 7919 + cy * 104729 + baseRadius * 31) | 0);
   const rng = makeRng(seed);
   const state = deps.getState();
 
@@ -64,7 +66,7 @@ export function sculptTerrace(deps: AgentToolDeps, input: Record<string, unknown
   for (let L = 0; L < tiers; L++) {
     const r = baseRadius - step * L;
     if (r < 2) break;
-    let blob = blobCells(cx, cy, r, rng);
+    let blob = clipBuildable(blobCells(cx, cy, r, rng), state).cells;
     if (clip) {
       const kept = blob.filter((c) => clip.has(`${c.x},${c.y}`));
       if (kept.length < blob.length) clippedAny = true;
@@ -162,6 +164,7 @@ export function sculptWall(deps: AgentToolDeps, input: Record<string, unknown>):
     for (let y = y1 + inset; y <= y2 - inset; y++) {
       for (let x = x1 + inset; x <= x2 - inset; x++) {
         if (clip && !clip.has(`${x},${y}`)) continue;
+        if (state.cells[y]?.[x]?.zone !== CellZone.Grass) continue;
         finalElev.set(`${x},${y}`, e);
       }
     }
@@ -200,12 +203,8 @@ export function sculptWall(deps: AgentToolDeps, input: Record<string, unknown>):
 }
 
 /**
- * A SUNK POOL COURT in one call: a raised bench (mountain at `elevation`) whose interior holds
- * water at the bench's own height — the containment V-WTR-02 demands, laid in one legal stroke.
- * Live runs burned double-digit reverts trying to compose this from paint_terrain (water first
- * fails uncontained; bench first then water misses a rim cell and the stroke rolls back), so the
- * construction is the tool. `islets:true` leaves a step-3 lattice of bench cells inside the water,
- * the parterre grid, ready for a matching scatter_objects pattern "grid".
+ * Build a raised bench and its contained pool in one legal stroke. `islets:true` keeps a step-three
+ * lattice of bench cells inside the water for a matching `scatter_objects` grid.
  */
 export function sinkPool(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const state = deps.getState();
@@ -279,8 +278,9 @@ export function carveRiver(deps: AgentToolDeps, input: Record<string, unknown>):
   const inBounds = expandLine(path, width).filter((c) => c.x >= 1 && c.y >= 1 && c.x < mw - 1 && c.y < mh - 1);
   if (inBounds.length === 0) return argError(`the river path lies entirely off the ${mw}x${mh} map, pass points inside it.`);
   const clip = regionClip(deps);
-  const cells = clip ? inBounds.filter((c) => clip.has(`${c.x},${c.y}`)) : inBounds;
-  if (cells.length === 0) return argError('the river path lies entirely outside the selected region, pass points inside it.');
+  const zoned = clipOccupied(clipBuildable(inBounds, state).cells, state).cells;
+  const cells = clip ? zoned.filter((c) => clip.has(`${c.x},${c.y}`)) : zoned;
+  if (cells.length === 0) return argError('the river path lies entirely outside the selected region or the buildable grass zone, pass points inside it.');
   const clipNote = cells.length < inBounds.length ? ', clipped to the selected region' : '';
   return runStroke(
     deps,

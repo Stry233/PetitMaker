@@ -1,33 +1,8 @@
 /**
- * The map as `route.ts` reads it: analysis, validated crossing sites, the standing roads and the
- * learned style, assembled once and handed to `planRoute`/`routeOffers` as pure data.
- *
- * Built on a DETACHED CLONE, because `scanPortals` proves each candidate by placing a crossing and
- * taking it back again and a live map must not be written to for a question — a
- * caller may hand this the LIVE `MacroContext` directly (the route ghost does, to answer a pointer
- * question without running the whole macro build).
- *
- * MEMOIZED ON THE MAP'S OWN VERSION COUNTERS, one slot per `GridState`. The scan is two full-grid
- * passes with a dry-run placement per candidate, and the route ghost asks a question per pointer
- * cell: without this the first hover would cost what the whole roads macro costs and every hover
- * after it would pay again for an answer that cannot have changed.
- *
- * Keyed by the STATE OBJECT ITSELF (a `WeakMap`), not merely its version numbers: two DIFFERENT
- * maps can both read `cellsVersion`/`objectsVersion` as 0 (a freshly generated or loaded map, or
- * two of this module's own test fixtures), and a plain version-string key would then hand one
- * map's scan to the other's question. A `WeakMap` also means an abandoned clone (the preview's own,
- * built once and dropped) is never kept alive by this cache — the two live slots the design wants
- * (the gesture's own map, the preview's clone) fall out for free, one per state, with no eviction
- * bookkeeping at all.
- *
- * `style` RIDES OUTSIDE THE CACHED SLOT. `readRoadStyle`'s "nearest standing street" reading is a
- * function of `near` (`road-style.ts:nearestMaterial`), which changes on every tap/hover without
- * moving either version counter — caching it under a key that doesn't carry `near` would answer a
- * second call's different `near` with the first call's material. It is cheap relative to the scan
- * (one pass over `state.objects`, not a portal dry-run), so it is simplest to just never cache it:
- * read fresh off the LIVE `state` every call, hit or miss. A fresh read cannot disagree with a
- * cached world: the hit only fires when `state`'s own versions match the cached key, so its objects
- * are, by construction, exactly what they were when the rest of the world was built.
+ * Builds the pure routing view on a detached clone because portal discovery performs dry-run
+ * placements. Each `GridState` owns a version-keyed cache, preventing equal version counters on
+ * different maps from sharing data and allowing abandoned maps to be collected. Road style stays
+ * outside the cache because it also depends on the current pointer location.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
@@ -44,12 +19,7 @@ import { readRoadStyle } from '../placement/road-style';
 import type { RouteWorld } from '../placement/route';
 import type { MacroContext } from './context';
 
-/** An AIMED route CHOOSES a crossing by where its two taps are, so it needs candidates ALONG the
- *  whole seam between two regions rather than the handful generation's cheap spanning tree keeps.
- *  The cap is taken in scan order, so a small one is not a sample of a river: with four kept, every
- *  candidate for a north-south region pair sat in the island's north, and a route between two
- *  southern taps walked fifteen cells up to one of them and twenty back. The scan this pays for runs
- *  once per map version and is then cached. */
+/** Candidate crossings retained per region pair; aimed routes need coverage along the full seam. */
 const ROUTE_PORTALS_PER_PAIR = 32;
 
 /** Everything BUT `style` — the part that only depends on the map's own versions + region, so it
@@ -68,9 +38,7 @@ export function routeWorld(
 ): RouteWorld {
   const { state } = ctx;
   const key = `${state.cellsVersion ?? 0}|${state.objectsVersion ?? 0}|${regionKey(opts.region)}`;
-  // Read fresh every call — see the file header. Off the LIVE state, not the (possibly not-yet-
-  // built) clone: on a cache hit there is no clone at all, and `state`'s objects already equal
-  // what the clone would hold whenever the version-keyed hit fires.
+  // Style depends on `near`, so read it from the live state even when the structural cache hits.
   const style = readRoadStyle(state, opts.near);
 
   const hit = cache.get(state);

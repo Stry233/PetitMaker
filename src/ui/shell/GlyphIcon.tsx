@@ -16,7 +16,7 @@ import { apparentSize, opticalCentre } from './frame';
  * its button, because a glyph's box is the artist's canvas and not the picture.
  */
 export function GlyphIcon({ glyph, size, flip }: { glyph: Glyph; size: number; flip?: boolean }) {
-  const k = size / apparentSize(glyph.ink);
+  const k = (size * (glyph.ink.trim ?? 1)) / apparentSize(glyph.ink);
   const centre = opticalCentre(glyph.ink);
   // Mirroring moves the optical centre to the other side of the box, so the correction mirrors too.
   const dx = (glyph.w / 2 - centre.x) * k * (flip ? -1 : 1);

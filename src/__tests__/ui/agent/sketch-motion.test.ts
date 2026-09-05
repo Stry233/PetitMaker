@@ -1,16 +1,8 @@
-/**
- * sketch-motion.test.ts — the idle dressings' beat sheet, pinned against the normative artifact's
- * own `sketchEngine`/`dreamEngine`.
- *
- * A DATA TEST, not an engine one: the file header claims every number here is the artifact's own,
- * so a pin on the numbers is what makes that claim checkable without a real WAAPI to run the loops
- * against (jsdom has none). Where a number here drifts from the artifact's source, one of these
- * fails.
- */
+/** Timing and keyframe contracts for the sketchbook and sleeping-screen animations. */
 import { describe, it, expect } from 'vitest';
 import { DREAM, SKETCH } from '../../../ui/agent/sketchbook/sketch-motion';
 
-describe('the caption swap (sketchEngine.swapCap)', () => {
+describe('the caption swap', () => {
   it('fades out with no easing of its own, the WAAPI default', () => {
     // `capEl.animate([...], { duration: 140, fill: 'forwards' })` — no `easing` key, so the
     // default applies, which is `linear`. A curve written in here would be a beat this file never
@@ -25,19 +17,15 @@ describe('the caption swap (sketchEngine.swapCap)', () => {
   });
 });
 
-describe('the dream board row leaving (dreamEngine.rotateOnce)', () => {
+describe('the dream board row leaving', () => {
   it('matches the ghost row\'s own fade-and-drift', () => {
     // `ghost.animate([...], { duration: 260, easing: PUNCHY, fill: 'forwards' })`.
     expect(DREAM.rowOut).toEqual({ dur: 260, easing: 'cubic-bezier(.2,0,0,1)' });
   });
 });
 
-describe('the sleeper\'s twitch (dreamEngine.twitch)', () => {
-  it('is the artifact\'s own 220ms counter-swing, not a slower one-way lean', () => {
-    // function twitch(){ hero.parts.body.animate([
-    //   { transform: 'rotate(0deg)' }, { transform: 'rotate(2.8deg)', offset: .4 },
-    //   { transform: 'rotate(-1.2deg)', offset: .7 }, { transform: 'rotate(0deg)' },
-    // ], { duration: 220, easing: CURVE_OUT, composite: 'add' }); }
+describe('the sleeper\'s twitch', () => {
+  it('uses a 220ms composited counter-swing', () => {
     expect(DREAM.twitchFrames.dur).toBe(220);
     expect(DREAM.twitchFrames.easing).toBe('cubic-bezier(.2,.8,.3,1)');
     expect(DREAM.twitchFrames.composite).toBe('add');
@@ -51,12 +39,9 @@ describe('the sleeper\'s twitch (dreamEngine.twitch)', () => {
 });
 
 /**
- * THE SWAP IS THREE MOVES (`dreamEngine.rotateOnce`): the top order departs, the two under it GLIDE
- * UP into the places that opened, and the new one lands softly after them. Drop the glide and the two
- * survivors teleport one slot while a ghost fades over the top of them, which is the whole rotation
- * reading as a jump cut.
+ * A board rotation moves the top row out, glides the remaining rows up, then lands the new row.
  */
-describe('the dream board turning over (dreamEngine.rotateOnce)', () => {
+describe('the dream board turning over', () => {
   it('carries the survivors\' own glide', () => {
     // `rowEls[i].animate([{transform:`translateY(${dy}px)`},{transform:'none'}],
     //   { duration: 480, easing: 'cubic-bezier(.3,0,.1,1)' })`.
@@ -75,11 +60,9 @@ describe('the dream board turning over (dreamEngine.rotateOnce)', () => {
 });
 
 /**
- * SHE RESETTLES INSIDE THE HOLD, every second cycle (`dreamEngine.render`'s `p === 3 && b % 2 === 1`).
- * A declared beat that nothing plays is a beat the screen does not have: the sleep read as a still
- * image of a sleeper between twitches.
+ * The sleeping character resettles every second cycle while the board holds.
  */
-describe('the sleeper resettling (dreamEngine.resettle)', () => {
+describe('the sleeper resettling', () => {
   it('is a composited settle rather than a replacement of the sleeping pose', () => {
     expect(DREAM.resettleFrames.part).toBe('pose');
     expect(DREAM.resettleFrames.dur).toBe(950);

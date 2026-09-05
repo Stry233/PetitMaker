@@ -1672,6 +1672,47 @@ describe('the delivery nudge', () => {
     expect(adapter.requests).toHaveLength(2);
   });
 
+  it('a close with plan stages standing is sent back once, then the next close is final', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a garden town');
+    append(log, { kind: 'plan', stages: [{ label: 'streets' }, { label: 'courts' }, { label: 'planting' }], revision: 0 });
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { shape: 'rect' } }]),
+      textTurn('All done.'),
+      textTurn('The remaining stages need ground the map does not have.'),
+    ]);
+    const deps = makeDeps({ adapter, executor: writeExecutor(), tools: BUILD_TOOLS });
+
+    const outcome = await runJob(log, deps);
+
+    expect(outcome).toBe('done');
+    const notes = systemNotes(log);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.kind === 'systemNote' && notes[0].note).toBe('plan-close');
+    expect(notes[0]?.kind === 'systemNote' && notes[0].text).toMatch(/3 of 3 stages not finished/);
+    expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({
+      kind: 'jobEnd', outcome: 'done',
+      summary: 'The remaining stages need ground the map does not have.',
+    });
+  });
+
+  it('a close on the plan\'s last stage settles without the plan guard', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a garden town');
+    append(log, { kind: 'plan', stages: [{ label: 'streets' }, { label: 'courts' }], revision: 0 });
+    append(log, { kind: 'stage', index: 1 });
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { shape: 'rect' } }]),
+      textTurn('All stages stand.'),
+    ]);
+    const deps = makeDeps({ adapter, executor: writeExecutor(), tools: BUILD_TOOLS });
+
+    const outcome = await runJob(log, deps);
+
+    expect(outcome).toBe('done');
+    expect(systemNotes(log)).toHaveLength(0);
+  });
+
   it('a reverted write is not delivery: the close is still nudged', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'raise a hill');
@@ -1955,12 +1996,29 @@ describe('the review beat', () => {
     });
   });
 
-  it('a close that ends by asking the user something is waiting on them, not reviewed', async () => {
+  it('a question close over a LANDED build still owes the review; the next close keeps its question', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a hamlet');
     const adapter = createScriptedAdapter([
       writeBatch(REVIEW_MIN_WRITES),
       textTurn('The hamlet stands. Shall I add the orchard?'),
+      textTurn('Verified against the order; the well was missing and stands now. Shall I add the orchard?'),
+    ]);
+    const deps = makeDeps({ adapter, executor: writeExecutor(), tools: BUILD_TOOLS, sleep: instantSleep });
+
+    await runJob(log, deps);
+
+    const notes = systemNotes(log);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.kind === 'systemNote' && notes[0].note).toBe('review');
+    expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', question: true });
+  });
+
+  it('a question close with NO writes behind it is a genuine ask: waiting on the user, never nudged', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a hamlet');
+    const adapter = createScriptedAdapter([
+      textTurn('The map already holds a hamlet by the bay. Extend that one, or start fresh elsewhere?'),
     ]);
     const deps = makeDeps({ adapter, executor: writeExecutor(), tools: BUILD_TOOLS, sleep: instantSleep });
 

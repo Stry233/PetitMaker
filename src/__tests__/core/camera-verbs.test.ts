@@ -5,8 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import { navDragVerb, wheelVerb } from '../../core/interaction/camera-verbs';
 
-const FLAT = { canOrbit: false, wheelZooms: false };   // the 2D map
+const FLAT = { canOrbit: false, wheelZooms: true };    // the 2D map
 const SPATIAL = { canOrbit: true, wheelZooms: true };  // the 3D editor
+const NO_ZOOM = { canOrbit: false, wheelZooms: false }; // a surface that keeps the wheel on pan
 
 describe('navDragVerb', () => {
   it('orbits where the view can, and pans where it cannot', () => {
@@ -16,14 +17,16 @@ describe('navDragVerb', () => {
 });
 
 describe('wheelVerb', () => {
-  it('yaws a sideways scroll in 3D and pans it in 2D', () => {
+  it('yaws a sideways scroll in 3D and zooms it in 2D', () => {
     expect(wheelVerb('horizontal', SPATIAL)).toBe('yaw');
-    expect(wheelVerb('horizontal', FLAT)).toBe('pan');
+    expect(wheelVerb('horizontal', FLAT)).toBe('zoom-smooth');
+    expect(wheelVerb('horizontal', NO_ZOOM)).toBe('pan');
   });
 
-  it('zooms a touchpad scroll where a ground pan would read as walking, and pans it otherwise', () => {
+  it('zooms a touchpad scroll in both map views, and pans it only where the surface opts out', () => {
     expect(wheelVerb('scroll', SPATIAL)).toBe('zoom-smooth');
-    expect(wheelVerb('scroll', FLAT)).toBe('pan');
+    expect(wheelVerb('scroll', FLAT)).toBe('zoom-smooth');
+    expect(wheelVerb('scroll', NO_ZOOM)).toBe('pan');
   });
 
   it('keeps a mouse notch on stepped zoom in both views', () => {

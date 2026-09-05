@@ -60,6 +60,9 @@ export function useShellCommands({ toggleMenu, regionUndo, regionRedo }: ShellCo
       if (region) s.setRegionTool(region);
       return;
     }
+    // The plan-notes bar has its own cells and no bindings yet: a terrain tool key pressed there
+    // must not yank the user onto a terrain surface mid-annotation.
+    if (s.editMode.mode === 'annotate') return;
     const surface = terrainSurface(s.editMode.mode) ?? MODE_FOR_CONTENT[s.contentType];
     setEditMode({ mode: surface, ...designModeToEditInputs(design) });
   }, [setEditMode]);

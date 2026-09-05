@@ -295,8 +295,7 @@ describe('the whole hold as one undo entry', () => {
       .map((o) => `${o.catalogId}@${o.position.x},${o.position.y}`).sort();
     expect(shapeNear(travel)).toEqual(freshShape);
 
-    // The regression this pins: a stale anchorSeed (the rest point's, 1) draws the rest point's
-    // composition instead of its own — no fairy ring, a few ordinary wild plants.
+    // A stale rest-point anchor seed produces a different composition from the travel point.
     const stale = setup();
     applyMacro(stale, 'patch-flora', { seed: 13, at: travel as MacroCoord, radius: 8, anchorSeed: 1 });
     const staleShape = [...stale.state.objects.values()]

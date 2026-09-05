@@ -1,35 +1,8 @@
-/*
- * The standing quick-hints card. It renders whatever the resolver and the catalogue say about the
- * CURRENT state, so it holds no hint knowledge of its own: keys come from the keybind store, camera
- * verbs from the active view's caps, the scenario from store facts.
- *
- * Geometry: a fixed element at `right: 74` carrying the chrome zoom itself, never a wrapper. That
- * inset was measured to clear a 46px-wide control cluster at `right: 18` with a 10px gutter between
- * them; nothing stands there in this interface, so the number describes no neighbour until the card
- * is mounted beside one.
- *
- * Which map the hints describe comes from the ACTIVE VIEW, never from the store's `viewMode`: the
- * two are not simultaneous, since the 3D scene builds lazily and registers a frame or more after
- * the flip. Reading both from one source is what keeps the panel's promises honest in that window,
- * where a right-drag still pans. The caps and the 2D/3D split are the same fact asked twice.
- *
- * The two corner buttons write `hintLevel` through the store's own setter, the same field and the
- * same setter the Settings row uses, so the level has one home and the persistence comes with it.
- * They sit INSIDE the card, in a top padding band deepened to make room for them, rather than
- * overhanging its top-right corner: the gutter beside that corner is only as wide as whatever the
- * card is set next to leaves, which is not the card's to spend. Only they take a pointer; the card
- * stays `pointerEvents: 'none'` so a brush drag that starts over it reaches the map.
- *
- * The row swap's AnimatePresence key is the SCENARIO alone. A level change keeps the same list and
- * only reveals or hides its tail, so putting the level in the key would slide it sideways for a
- * change that is not a scenario change.
- *
- * The measurement is `scrollHeight`, never `getBoundingClientRect`: this subtree sits under the
- * chrome-scale CSS `zoom`, and rect-derived values are already multiplied by it, so a spring fed
- * from a rect converges on a height the zoomed ancestor then scales AGAIN. `scrollHeight` is in the
- * same local CSS-px space an inline `height` is read in. The target is arithmetic over two pieces
- * measured independently (the kept rows, and the tail), because the tail is still IN FLOW while it
- * fades out and measuring the live block would keep reporting the height the card is leaving.
+/**
+ * Contextual quick-hints card driven entirely by the resolver, live keybindings, store facts, and
+ * the registered active view's camera capabilities. Only its corner controls accept pointers.
+ * Scenario changes replace the row set; detail-level changes reveal its tail in place. Heights use
+ * local `scrollHeight` values because the card sits under CSS zoom.
  */
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -52,7 +25,7 @@ import { resolveHintScenario, type SingleSelectionKind } from './scenario';
 import { CONCISE_ROWS, rowsFor } from './catalogue';
 import { HintTokens } from './tokens';
 
-const FALLBACK_CAPS: CameraCaps = { canOrbit: false, wheelZooms: false };
+const FALLBACK_CAPS: CameraCaps = { canOrbit: false, wheelZooms: true };
 
 function activeCaps(): CameraCaps {
   const cam = getActiveView()?.camera;
@@ -177,15 +150,8 @@ export function HintPanel() {
   const collapsed = level === 'concise';
   const showTail = !collapsed && tail.length > 0;
 
-  // The card's animated height. The two blocks are measured separately so the tail's height is known
-  // while it is fading OUT, when it is still in flow but no longer part of the target. Before the
-  // first measure lands (the first paint, or jsdom, which has no layout) both readings are 0 and the
-  // card renders at the chrome-only height until real numbers arrive.
-  //
-  // The blocks are held as STATE through callback refs, not in a ref object: AnimatePresence can
-  // swap the row block without re-rendering this component, and a plain ref would leave both the
-  // measurement and the observer pointed at the node that just left. State means the attach itself
-  // is the trigger.
+  // Measure the fixed rows and fading tail separately so the card animates to its final height.
+  // Callback-ref state follows nodes that AnimatePresence replaces without a parent render.
   const [keptEl, setKeptEl] = useState<HTMLDivElement | null>(null);
   const [tailEl, setTailEl] = useState<HTMLDivElement | null>(null);
   const tailHeight = useRef(0);

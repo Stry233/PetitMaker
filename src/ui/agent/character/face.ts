@@ -2,7 +2,7 @@
  * face.ts — where her eyes ARE in the drawing, and the closed-eye lid derived from it.
  *
  * THE LID IS NOT ART: it is one oval per eye, drawn over `base.png` and grown out of `scaleY(0)` when
- * she closes her eyes (`Character.tsx`, prototype `.lid`). So it only covers the eye if its own box
+ * she closes her eyes (`Character.tsx`). It only covers the eye if its own box
  * is stated in the SAME space the eye is drawn in, and that is what `EYE_DOTS` is: the two dots'
  * bounding boxes measured off the shipped PNG's own pixels (every pixel darker than the fur at the
  * dot's soft rim, flood-filled so the head outline stays a separate blob), in the art's pixels.
@@ -41,9 +41,7 @@ export const EYE_DOTS: Record<'l' | 'r', ArtBox> = {
  *  enough that the closed eye still reads as an eyelid rather than a patch of fur. */
 export const LID_MARGIN = 1.18;
 
-/** The lash's share of the lid's own height: the dark line along the bottom of the oval. Read off the
- *  prototype's 2px lash at the size its own hero is drawn (`.lid` + `.charN`), as a ratio rather than
- *  a length so it holds at every other size. */
+/** The lash's share of the lid height, kept proportional at every rendered size. */
 export const LID_LASH = 0.3;
 
 /** A box as the percentages a CSS `position: absolute` child of the drawing takes. */

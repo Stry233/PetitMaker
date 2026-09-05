@@ -18,6 +18,10 @@ const facts = (over: Partial<PressFacts> = {}): PressFacts => ({
   armedItemId: null,
   selection: [],
   selectingRegion: false,
+  toolGrabs: false,
+  toolSelects: false,
+  toolSelectHit: null,
+  clickOnlyStroke: false,
   panDragHeld: false,
   multiSelectHeld: false,
   macro: { x: 4, y: 5 },
@@ -254,6 +258,17 @@ describe('cursorFactsFor: the cursor reads the plan the press executes', () => {
     expect(locked.overSelected).toBe(false);
   });
 
+  it('promises a grab where the TOOL owns the pickup (the annotate select state over a note)', () => {
+    const grab = cursorFactsFor(facts({ tool: ToolType.Annotate, toolGrabs: true }));
+    expect(grab.overSelected).toBe(true);
+    // Ctrl toggles membership and never arms the drag, so no grab is promised under it.
+    const ctrl = cursorFactsFor(facts({ tool: ToolType.Annotate, toolGrabs: true, multiSelectHeld: true }));
+    expect(ctrl.overSelected).toBe(false);
+    // Empty ground: nothing to grab, the drag is the camera's.
+    const empty = cursorFactsFor(facts({ tool: ToolType.Annotate, toolGrabs: false }));
+    expect(empty.overSelected).toBe(false);
+  });
+
   it('promises a select where an armed press would select instead of place', () => {
     const c = cursorFactsFor(facts({
       tool: ToolType.ObjectPlacer, armedItemId: ARMED,
@@ -321,5 +336,54 @@ describe('the cursor promises a grab only where the press would pick something u
       placementAllowed: true,
     }));
     expect(c.overSelected).toBe(false);
+  });
+});
+
+describe('a click-only stroke leaves the drag to the camera', () => {
+  it('the press still strokes, and the drag arms a machine pan instead of dying', () => {
+    const p = resolvePress(facts({ tool: ToolType.Annotate, clickOnlyStroke: true }));
+    expect(p.down).toEqual([{ kind: 'tool-stroke' }]);
+    expect(p.onDrag).toEqual([{ kind: 'pan-camera', by: 'machine', source: 'left-drag' }]);
+  });
+
+  it('a dragging stroke keeps the drag', () => {
+    const p = resolvePress(facts({ tool: ToolType.Annotate, clickOnlyStroke: false }));
+    expect(p.down).toEqual([{ kind: 'tool-stroke' }]);
+    expect(p.onDrag).toEqual([]);
+  });
+});
+
+describe('a tool-owned select state answers the modifier as the map select mode does', () => {
+  const annotate = (over: Partial<PressFacts> = {}): PressFacts =>
+    facts({ tool: ToolType.Annotate, toolSelects: true, clickOnlyStroke: true, ...over });
+
+  it('a ctrl press reaches the tool (its own toggle) and the drag is a band, never a pan', () => {
+    const p = resolvePress(annotate({ multiSelectHeld: true }));
+    expect(kinds(p.down)).toEqual(['tool-stroke']);
+    expect(kinds(p.onDrag)).toEqual(['band-select']);
+  });
+
+  it('over a note the band still arms: a press toggles, the drag is what the band means', () => {
+    const p = resolvePress(annotate({
+      multiSelectHeld: true, clickOnlyStroke: false, toolGrabs: true,
+      toolSelectHit: { id: 'n1', selected: false },
+    }));
+    expect(kinds(p.down)).toEqual(['tool-stroke']);
+    expect(kinds(p.onDrag)).toEqual(['band-select']);
+  });
+
+  it('the modifier cursor badges membership through toolSelectHit, and the band elsewhere', () => {
+    const add = cursorFactsFor(annotate({
+      multiSelectHeld: true, clickOnlyStroke: false, toolGrabs: true,
+      toolSelectHit: { id: 'n1', selected: false },
+    }));
+    expect(add.ctrlHint).toBe('select-add');
+    const remove = cursorFactsFor(annotate({
+      multiSelectHeld: true, clickOnlyStroke: false, toolGrabs: true,
+      toolSelectHit: { id: 'n1', selected: true },
+    }));
+    expect(remove.ctrlHint).toBe('select-remove');
+    expect(cursorFactsFor(annotate({ multiSelectHeld: true })).ctrlHint).toBe('marquee');
+    expect(cursorFactsFor(annotate()).ctrlHint).toBeNull();
   });
 });

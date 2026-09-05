@@ -14,8 +14,7 @@
  *
  * The scan covers all three ways a value can be produced — the declaration in a stylesheet or an
  * inline-style object, `el.style.cursor = …`, and `setProperty('cursor', …)` — and it reads a
- * declaration to the END of its value rather than to the end of the line, because a prettier-
- * wrapped ternary is the likeliest shape a regression actually arrives in.
+ * declaration to the end of its value so multiline and ternary expressions are covered.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)

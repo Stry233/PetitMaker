@@ -1,17 +1,6 @@
-// Headers-policy generator CLI: renders security/headers-policy.ts into every
-// derived surface — public/_headers, vercel.json, docs/internal/deployment/esa-headers.md
-// — and rewrites index.html's CSP <meta> line (+ its explanation comment) in
-// place.
-//
-// This file is CLI-ONLY (side-effecting: reads/writes real files, may set
-// process.exitCode) and unconditionally runs `main()` at the bottom — it is
-// never imported for its exports. The pure/testable core (rewriteIndexHtmlCsp,
-// stringifyVercelJson) lives in ./generate-headers-core.mts, and the policy +
-// per-platform string/object generators (toNetlifyHeaders, toVercelJson,
-// toEsaDoc, toCspMeta) live in ../security/headers-policy.ts — both are
-// imported directly by src/__tests__/legal/headers-policy.test.ts instead of
-// this file. scripts/license-audit.mts's doc comment says why a main-module
-// guard cannot host both under `vite-node`.
+// CLI that renders the canonical headers policy into the committed host configurations, deployment
+// reference and index CSP meta tag. Pure renderers live in generate-headers-core.mts and
+// security/headers-policy.ts so tests can import them without running this file's filesystem writes.
 //
 // Usage (see package.json):
 //   vite-node scripts/generate-headers.mts            regenerate all outputs
@@ -27,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { HEADERS_POLICY, toEsaDoc, toNetlifyHeaders, toVercelJson, type VercelJsonLike } from './../security/headers-policy';
 // The site's domains live in the legal config (the single source for canonicalOrigin);
 // the ESA runbook lists the legacy-domain 301s from there rather than repeating them.
-import { LEGAL } from '../src/legal/config';
+import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
 import { rewriteIndexHtmlCsp, stringifyVercelJson } from './generate-headers-core.mts';
 
 declare const process: { argv: string[]; cwd(): string; exitCode?: number };
@@ -59,10 +48,10 @@ async function main(): Promise<void> {
   const nextVercel = stringifyVercelJson(toVercelJson(existingVercel, HEADERS_POLICY));
   writeIfChanged(vercelPath, nextVercel, drift, check);
 
-  // docs/internal/deployment/esa-headers.md
+  // Deployment-operator copy of the ESA headers.
   const esaPath = join(rootDir, 'docs', 'internal', 'deployment', 'esa-headers.md');
   writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY, {
-    canonicalOrigin: LEGAL.canonicalOrigin, legacyOrigins: LEGAL.legacyOrigins,
+    canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins,
   }), drift, check);
 
   // index.html — surgical CSP <meta> (+ comment) rewrite only.

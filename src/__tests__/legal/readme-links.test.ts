@@ -3,15 +3,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { LEGAL } from '../../legal/config';
 
-// SINGLE-SOURCE URL drift guard. README.md and
-// README.zh-CN.md are plain GitHub markdown — they cannot be token-processed
-// like the src/legal/content/* docs (which use the `{origin}` token) or read
-// `cfg.canonicalOrigin` like the static-page generator. To keep
-// `src/legal/config.ts` the SOLE edit point for the live-site + repository
-// URLs, this test pins every literal site/repo URL in both READMEs to the
-// config values: change `canonicalOrigin` or `repoUrl` in config and this test
-// fails until the READMEs follow. See config.ts's "SINGLE-SOURCE URL POLICY".
+import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
+import { canonicalPagePath } from '../../legal/site-paths';
 
+// README links must name canonical production pages on either deployment.
 const read = (p: string) => readFileSync(p, 'utf8');
 const README_EN = read('README.md');
 const README_ZH = read('docs/README.zh-CN.md');
@@ -20,7 +15,6 @@ const READMES: Array<[string, string]> = [
   ['docs/README.zh-CN.md', README_ZH],
 ];
 
-const CANON = new URL(LEGAL.canonicalOrigin);
 const REPO = new URL(LEGAL.repoUrl);
 // The owner path segment (e.g. "/Stry233") — any repo-host URL under this owner
 // is treated as "the project repository URL" and must equal LEGAL.repoUrl.
@@ -32,19 +26,19 @@ function urlsIn(md: string): string[] {
 }
 
 describe('README URL single-source drift guard', () => {
-  it('every site-host URL in each README equals LEGAL.canonicalOrigin exactly', () => {
+  it('every production link goes directly to a canonical page on its deployment', () => {
+    const targets = Object.values(DEPLOY_TARGETS);
+    const legacyHosts = targets.flatMap((t) => t.legacyOrigins.map((o) => new URL(o).host));
     for (const [name, md] of READMES) {
       for (const u of urlsIn(md)) {
-        let host = '';
-        try {
-          host = new URL(u).host;
-        } catch {
-          continue;
-        }
-        if (host === CANON.host) {
-          expect(u, `${name}: site URL "${u}" must equal LEGAL.canonicalOrigin`).toBe(LEGAL.canonicalOrigin);
-        }
+        const parsed = new URL(u);
+        expect(legacyHosts, `${name}: legacy link ${u}`).not.toContain(parsed.host);
+        const target = targets.find((t) => new URL(t.canonicalOrigin).host === parsed.host);
+        if (!target) continue;
+        expect(parsed.origin).toBe(target.canonicalOrigin);
+        expect(parsed.pathname).toBe(canonicalPagePath(parsed.pathname, target.canonicalOrigin));
       }
+      for (const target of targets) expect(md).toContain(target.canonicalOrigin + '/');
     }
   });
 

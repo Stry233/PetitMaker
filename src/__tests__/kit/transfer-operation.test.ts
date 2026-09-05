@@ -285,3 +285,31 @@ describe('a planet the code has never seen', () => {
     for (const c of kept) expect(getCell(dest.cells, c.x - 3, c.y)?.terrain?.elevation).toBe(1);
   });
 });
+
+describe('provenance moves with the work', () => {
+  it('a generated map stays disclosed as procedural after changing planet', async () => {
+    newMap('hexia');
+    await generateMap(currentKit()!, { config: config(99), region: null });
+    const source = currentKit()!.state;
+    const beforeSummary = currentKit()!.executor.getProvenanceSummary();
+    expect(beforeSummary.containsProcedural).toBe(true);
+    // A generated object to follow across: pick one and remember its author.
+    const someId = [...source.objects.keys()].find((id) => id !== PLAZA_ID)!;
+    const beforeAuthor = currentKit()!.executor.getProvenanceTracker().objectAuthor(someId);
+
+    const outcome = transferMap(currentKit()!, { target: 'tafa' });
+    expect(outcome.carried).toBe(true);
+    const kit = currentKit()!;
+    const after = kit.executor.getProvenanceSummary();
+    expect(after.containsProcedural).toBe(true);
+    // The carried object keeps its author instead of arriving as "imported".
+    if (kit.state.objects.has(someId)) {
+      expect(kit.executor.getProvenanceTracker().objectAuthor(someId)).toBe(beforeAuthor);
+    }
+    // Cell taint arrived shifted with the ground: some carried cell reports a procedural author.
+    const t = kit.state.provenance!;
+    const anyProcedural = t.cellTaint.some((row) => row.some((c) => c !== null && c.contribution.procedural > 0.5));
+    expect(anyProcedural).toBe(true);
+  });
+});
+

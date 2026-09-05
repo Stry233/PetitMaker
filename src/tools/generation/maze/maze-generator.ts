@@ -332,7 +332,8 @@ export function generateMaze(
   }
 
   let placed = 0, skipped = 0;
-  const elev = Math.min(maxElevation, 3); // Max 3 per rule 2.1
+  // A wall straight off flat ground tops out 3 above it: the game's 3×3 base-support window reaches 3 tiers.
+  const elev = Math.min(maxElevation, 3);
   for (let e = 1; e <= elev && live.length > 0; e++) {
     const cmd: Command = { type: CommandType.PaintTerrain, timestamp: Date.now(), cells: live, terrainType: TerrainType.Mountain, elevation: e };
     if (executeCommand(cmd).success) { placed += live.length; continue; }

@@ -36,6 +36,9 @@ export const MIN_NUMBER_ZOOM = 0.3;
  */
 export class NumberOverlay {
   public readonly container = new PIXI.Container();
+  /** Opens the owning renderer's render window. Owned by TerrainLayer, which wires this to its
+   *  own field on construction; defaults to the module broadcast until then. */
+  public requestRender: () => void = requestRender;
 
   private chunks = new Map<string, NumberChunk>();
   private numbersVisible = false;
@@ -77,7 +80,7 @@ export class NumberOverlay {
    * caller re-mounts the container.
    */
   drawNumbers(state: GridState, hiddenLayers: Set<number>, cull?: CullRect | 'all'): boolean {
-    requestRender();
+    this.requestRender();
     // Hidden — toggled off, OR zoomed out far enough that numbers are illegible
     // clutter. Free everything so a zoomed-out (or editing) map pays nothing.
     if (!this.numbersVisible || this.numberZoom < MIN_NUMBER_ZOOM) {

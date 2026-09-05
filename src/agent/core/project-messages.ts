@@ -11,31 +11,22 @@ export type ProviderMessage =
 export interface ProjectOptions {
   budgetTokens: number;
   estimate?: (text: string) => number;
-  /** A caller-composed `(system) ...` note (a budget warning, an empty-turn nudge, the cap
-   *  message): appended as one trailing user message, outside the budget window so it always
-   *  reaches the next request regardless of how much history that request had room for. */
+  /** Loop-authored note appended after budget trimming so it always reaches the next request. */
   appendSystemNote?: string;
 }
 
 const defaultEstimate = (s: string): number => Math.ceil(s.length / 4);
 
-/** A denial must never read as a retryable error: `isError: false` tells the model the call
- *  simply didn't happen by the user's choice, so it moves on rather than treating this as
- *  transient tool failure worth another attempt. */
+/** User-denied calls are successful control outcomes rather than retryable tool failures. */
 const SKIP_RESULT_MESSAGE = 'The user chose not to run this call. Continue without it, or ask what they would prefer.';
 
 type ToolCall = { callId: string; name: string; args: Record<string, unknown> };
 type ToolResultEntry = { callId: string; name: string; content: string; isError: boolean; image?: string };
 
-/** A flat message plus whether it OPENS a new exchange group (an order, a delivered steer, or
- *  the compaction summary) versus continuing the group in progress. Every opener is a `user`-role
- *  message, so a surviving window (whole groups kept from the back) always starts on one. */
+/** Provider message plus whether it starts an exchange group kept atomically during trimming. */
 interface Tagged { message: ProviderMessage; opensGroup: boolean }
 
-/** Projects the append-only log into the flat message list a provider call sends: replay hygiene
- *  (dropping aborted/error/length-truncated turns and their results), orphan repair (a call with
- *  no result gets a synthesized one), the compaction cutover, budget trimming by whole exchange,
- *  and single-image retention all happen here so every caller sees one already-legal wire shape. */
+/** Projects the log into a replay-safe, compacted and budgeted provider message sequence. */
 export function deriveMessages(log: SessionLog, opts: ProjectOptions): ProviderMessage[] {
   const tagged = buildTagged(eventsOf(log));
   const groups = groupBy(tagged);
@@ -46,25 +37,12 @@ export function deriveMessages(log: SessionLog, opts: ProjectOptions): ProviderM
     : [...messages, { role: 'user', text: opts.appendSystemNote }];
 }
 
-/**
- * Whether every assistant turn whose provider `raw` this log holds was produced by `model` — the
- * one honest answer to an adapter's `sameModel` question, which is what licenses replaying those
- * bytes verbatim (see the gate in providers/anthropic.ts). A log outlives the armed model, so the
- * question cannot be answered from the connection alone.
- *
- * Deliberately conservative in two ways: a turn that carries `raw` without a `rawModel` (recorded
- * before the field existed, or by a path that does not report it) counts as NOT this model, and a
- * turn old enough that no request would replay it (dropped by `DROPPED_STOPS` or left behind a
- * compaction) still counts. Both err toward `false`, whose only cost is that an Anthropic history
- * is rebuilt from the neutral text/tool_use fields instead of echoed.
- */
+/** True when every retained raw provider block identifies the requested model as its producer. */
 export function rawIsAllFrom(log: SessionLog, model: string): boolean {
   return eventsOf(log).every((e) => e.kind !== 'assistant' || e.raw === undefined || e.rawModel === model);
 }
 
-/** A callId alone is not a stable key: a provider can reissue one across turns (a synthesized id
- *  colliding, or a real one a buggy gateway repeats), so every callId-keyed lookup below binds to
- *  the OCCURRENCE that minted it rather than the bare id. */
+/** Scopes a provider call ID to the assistant turn that emitted it. */
 function occurrenceKey(callId: string, assistantSeq: number): string {
   return `${callId}#${assistantSeq}`;
 }
@@ -74,20 +52,10 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
   const retainedFromSeq = compaction?.retainedFromSeq ?? 0;
   const kept = events.filter((e) => e.seq >= retainedFromSeq && e.kind !== 'compaction');
 
-  // `currentOccurrenceSeq` tracks, per callId, the seq of the nearest PRECEDING assistant event
-  // that carries it — updated the instant an assistant event is visited, so a toolResult/gateAsked
-  // logged right after binds to THAT occurrence. If an assistant event later reissues the same
-  // callId, this map moves forward and every later result/gate binds to the NEW occurrence
-  // instead, exactly as the spec asks: process in order, rebind on reissue.
+  // Rebind repeated call IDs to the nearest preceding assistant event during the forward scan.
   const currentOccurrenceSeq = new Map<string, number>();
   const resultsByOccurrence = new Map<string, Extract<SessionEvent, { kind: 'toolResult' }>>();
-  // A STEER'S IDENTITY AND FATE ARE READ FROM THE WHOLE LOG, not the retained window, because a
-  // `steer` is logged when the user types it and DELIVERED later: its own event therefore always
-  // sits before a compaction cut that lands on the delivery, which is the boundary `compaction.ts`
-  // deliberately prefers. Read from the window, the text lookup missed and the delivery emitted
-  // nothing at all, silently dropping the user's steering words from the very exchange they opened.
-  // The recall set widens with it and must: reading one half of the same fact from the whole log
-  // and the other from the window is what would let a recalled steer be delivered after all.
+  // Steering text and recall state precede delivery and may sit before the compaction boundary.
   const steerTextBySeq = new Map<number, string>();
   const recalledSteerSeqs = new Set<number>();
   for (const e of events) {
@@ -102,9 +70,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
         if (p.kind === 'tool') currentOccurrenceSeq.set(p.callId, e.seq);
       }
     } else if (e.kind === 'toolResult') {
-      // The `?? e.seq` fallback only matters for a toolResult with no assistant event ever having
-      // carried its callId (a malformed/synthetic log): it then keys to itself, which no real
-      // lookup below can ever match, so it is read back exactly as "no result for this call".
+      // Orphan results use their own sequence and therefore cannot bind to a real call occurrence.
       resultsByOccurrence.set(occurrenceKey(e.callId, currentOccurrenceSeq.get(e.callId) ?? e.seq), e);
     } else if (e.kind === 'gateAsked' && e.callId !== undefined) {
       gateIdByOccurrence.set(occurrenceKey(e.callId, currentOccurrenceSeq.get(e.callId) ?? e.seq), e.gateId);
@@ -114,12 +80,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
   const tagged: Tagged[] = [];
   if (compaction) {
     tagged.push({ message: { role: 'user', text: `(conversation summary) ${compaction.summary}` }, opensGroup: true });
-    // A playbook the cut evicted is re-issued whole behind the summary: the model needs the STEPS,
-    // not the name, and a summary that mentions neither leaves it citing steps it can no longer
-    // see. Newest load per skill name only, and never a name the RETAINED window loads too (that
-    // one replays natively, and re-issuing it would put the same body in the request twice). A
-    // body is 280-1100 tokens, so the three loads the prompt asks for cost less than the ledger
-    // sentence they replace.
+    // Reissue the newest evicted body for each skill unless the retained window loads it again.
     const newestBySkill = new Map<string, Extract<SessionEvent, { kind: 'toolResult' }>>();
     const reloaded = new Set<string>();
     for (const e of events) {
@@ -139,25 +100,18 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
       const text = `<map_context>${e.mapContext}</map_context>\n${e.text}`;
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'steerDelivered') {
-      if (recalledSteerSeqs.has(e.steerSeq)) continue; // recalled: never delivered to the model
+      if (recalledSteerSeqs.has(e.steerSeq)) continue;
       const text = steerTextBySeq.get(e.steerSeq);
-      if (text === undefined) continue; // no matching steer event: nothing to deliver
+      if (text === undefined) continue;
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'systemNote') {
-      // The loop's own between-turn note (a delivery or review nudge), replayed exactly where it landed.
+      // Loop-authored notes replay in their original event position.
       tagged.push({ message: { role: 'user', text: e.text }, opensGroup: true });
     } else if (e.kind === 'assistant') {
-      // A turn the provider itself cut short cannot be replayed as a finished one, so it and
-      // whatever results it produced are dropped together rather than resent. A 'length' stop is
-      // included: the assembler's badCalls for that turn are truncation-poisoned and never
-      // survive into the persisted event, so there is nothing here to tell a truncated call apart
-      // from a clean one except the stop reason itself.
+      // Drop interrupted turns and their results rather than replaying partial output as complete.
       if (DROPPED_STOPS.has(e.stop)) continue;
       const text = e.parts.filter((p) => p.kind === 'text').map((p) => p.text).join('');
-      // A call whose args never parsed (`rawInput` set) replays with its PARTIAL input rather than
-      // being dropped: the loop filed a reissue result for it, and only a replayed call carries a
-      // result message. Dropped, the turn went back out as an empty assistant message, the
-      // correction reached the model as nothing at all, and it reissued the same bad call forever.
+      // Parsed calls replay so their reissue results retain a matching assistant call.
       const toolCalls: ToolCall[] = e.parts
         .filter((p): p is Extract<typeof p, { kind: 'tool' }> => p.kind === 'tool' && p.argsDone)
         .map((p) => ({ callId: p.callId, name: p.name, args: p.input }));
@@ -170,9 +124,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
         const results: ToolResultEntry[] = toolCalls.map((call) => {
           const r = resultsByOccurrence.get(occurrenceKey(call.callId, e.seq));
           if (r === undefined) {
-            // A skipped or words-declined gate reads as the user's own choice, never as a tool
-            // failure: only a call with NO gate pair at all (or an allowed one, which should have
-            // run and produced a real result) falls to the generic orphan message.
+            // A skipped or typed-answer gate is a user choice; other missing results are errors.
             const gateId = gateIdByOccurrence.get(occurrenceKey(call.callId, e.seq));
             const answer = gateId !== undefined ? answerByGateId.get(gateId) : undefined;
             if (answer?.answer === 'skip' || answer?.answer === 'words') {
@@ -186,8 +138,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
         });
         tagged.push({ message: { role: 'tool', results }, opensGroup: false });
 
-        // The one gate answer with a message of its own: a 'words' answer echoes the steering words
-        // back as a user turn right after the call's own result, wherever that result came from.
+        // Typed gate answers replay as user context immediately after the call result.
         for (const call of toolCalls) {
           const gateId = gateIdByOccurrence.get(occurrenceKey(call.callId, e.seq));
           const answer = gateId !== undefined ? answerByGateId.get(gateId) : undefined;
@@ -197,9 +148,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
         }
       }
     }
-    // toolResult/steer/steerRecalled/gateAsked/gateAnswered/plan/stage/checkpoint/pauseRequested/
-    // paused/resumed/retry/incident/jobEnd carry no message of their own; they were folded into
-    // the lookups above or are not provider-visible at all.
+    // Remaining event kinds contribute through lookups or remain local-only.
   }
   return tagged;
 }
@@ -235,9 +184,7 @@ function applyBudget(groups: ProviderMessage[][], opts: ProjectOptions): Provide
 
   const remaining = groups.slice();
   let total = remaining.reduce((sum, g) => sum + groupCost(g), 0);
-  // The newest exchange is never dropped, even if it alone exceeds the budget: what happens to a
-  // single turn too big to fit is the retry/overflow ladder's call, not this projection's, and
-  // shipping it whole over budget carries more information than answering with nothing at all.
+  // Keep the newest exchange intact; provider overflow handling owns a single oversized group.
   while (remaining.length > 1 && total > opts.budgetTokens) {
     const dropped = remaining.shift();
     if (dropped) total -= groupCost(dropped);

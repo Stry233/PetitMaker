@@ -1,25 +1,7 @@
-/*
- * AskDeck.tsx — the answered ask cards standing as ONE DECK in the record.
- *
- * A gate-heavy job leaves a settled ask card behind every answer, and a record read weeks of the
- * way into one is mostly questions that no longer need anyone. The deck folds a RUN OF CONSECUTIVE
- * ANSWERED ASKS into one card-sized pile standing exactly where the run stood: the record is a
- * paper trail, so the pile never moves a card past another entry, and a STANDING ask (open or held)
- * never joins it — that one needs attention, and it keeps its full card after the pile.
- *
- * THE DECK IS A PRESENTATION OF EXISTING ENTRIES, nothing more: `deckRuns` is a pure grouping over
- * the projection's own `AskRecord[]`, the face restates two facts the records already carry (the
- * count, the newest verdict), and expanded/collapsed is view state held here — default collapsed,
- * gone on a reload, because a fresh look at the record starts from the pile.
- *
- * THE FACE WEARS THE ASK CARDS' OWN CHROME (the plate, the retired spine), with two card edges
- * peeking under it so the pile reads as the cards it holds rather than as a new kind of row. A
- * press fans the cards into the list in place (`panel.gate.deck`, one motion both ways, height so
- * the record below moves rather than being jumped over); a second press restacks. Under reduced
- * motion the swap is instant: the cards carry no exit at all, so nothing lingers.
- *
- * A pile needs `DECK_MIN` cards: below it the face plus its edges stands nearly as tall as the
- * cards themselves, so the fold saves nothing and costs a press — two answered asks simply list.
+/**
+ * Collapses consecutive settled approval cards into an in-place deck without reordering the log.
+ * Open or held questions remain standalone. Expansion is transient view state, and reduced motion
+ * swaps the deck and cards without transitions.
  */
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
@@ -93,8 +75,7 @@ export function faceMark(ask: AskRecord): { mark: VerdictMark; word?: string } |
   return { mark: markFor(ask, ask.quickAnswers)!, ...word };
 }
 
-/** The face's card box: the ask cards' own chrome with the spine already retired, since everything
- *  in the pile is answered. */
+/** Deck face using the settled approval-card treatment. */
 const FACE_STYLE: CSSProperties = {
   background: PLATE,
   border: edge,

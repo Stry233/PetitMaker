@@ -22,9 +22,7 @@
  * pairing this file defaults to needs nothing: with an end inside, entering is the only way to arrive,
  * and the carve's spanning tree makes that route unique for free.
  */
-import { getCell, isBuildableZone } from '../../../core/model/grid-model';
-import { realSurface, surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
-import { TerrainType, type GridState, type MacroCoord } from '../../../core/model/types';
+import type { MacroCoord } from '../../../core/model/types';
 
 /** What an end turned out to be. */
 export type EndKind = 'hole' | 'target';
@@ -43,31 +41,6 @@ export interface MazeField {
 }
 
 const STEPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-/**
- * The field as the FINISHED MAP shows it: a walker's own ground inside the maze's rectangle.
- *
- * ONE DEFINITION of what a corridor is once the run has landed, so the marks, the walk readout and
- * a drop all read the same map. Ground level with nothing on it: a maze's walls are the raised part,
- * and there is no ramp in a maze, so a walk that starts on the ground stays on it. `realSurface` is
- * the only correct read of the height — a patch is cosmetic above its base, and a raw elevation
- * would see a fillet as a full block and call walkable ground a wall.
- */
-export function fieldOnMap(
-  state: GridState,
-  at: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } },
-): MazeField {
-  return {
-    origin: at.origin,
-    dims: at.dims,
-    walkable: (x, y) => {
-      const cell = getCell(state.cells, x, y);
-      if (!cell || !isBuildableZone(cell.zone)) return false;
-      if (realSurface(cell.terrain)?.type === TerrainType.Water) return false;
-      return surfaceElevation(cell.terrain) === 0;
-    },
-  };
-}
 
 /** Inside the maze's rectangle at all. */
 export function inField(field: MazeField, x: number, y: number): boolean {

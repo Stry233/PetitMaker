@@ -20,7 +20,7 @@ import { TerrainType, type EditorEvents, type GridState, type ObjectsDelta, type
 import { getCatalogItem } from './catalog';
 import { footprintCells, getPlacedObjectSize } from './object-geometry';
 
-export interface ChunkStat { objects: number; load: number }
+interface ChunkStat { objects: number; load: number }
 
 /** A LIVE view, not a snapshot: `getMapStats`'s cached instance is MUTATED IN PLACE by the
  *  object-delta patch path (`applyObject`), so a held reference keeps reading current values

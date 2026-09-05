@@ -1,29 +1,7 @@
-/*
- * frame.ts — the clusters that stand around the map, as data.
- *
- * The art is the design source's, the LAYOUT is not: a cluster is placed in fixed css px against
- * the viewport edge it belongs to (`units.ts`), and only a drawing's own proportions come from the
- * design canvas. So a rect here is a SIZE, in design px, and `units.ts:SCALE` is what it is worth
- * on screen; where the drawing sat on the 3754 x 1918 canvas no longer decides where it lands.
- *
- * THE FIVE MODE BLOCKS STAND ON ONE LINE. Each is a grass block with a different thing on top, so
- * the drawings differ in height by up to 25 design px and none of them is the interesting edge:
- * what the eye reads as the row is the bottom of the blocks. The design source's own pressed
- * drawings already share a bottom edge; the resting ones do not, which is what makes the row look
- * ragged. Every drawing is therefore placed ON that line, and the row's box is tall enough for the
- * tallest of them to stand over it.
- *
- * THE ASSISTANT IS A SIXTH BLOCK ON A SECOND ROW, at the modes' own left edge — where the design
- * source stands its character, 115 against the first mode's 116. It is built as a block and not as
- * an illustration: the same slot, the same splat behind it when it is the active thing and the same
- * caption under it. So it is a button of the same family, one row down, and the two rows share a
- * column. What it does NOT share is the width: it is sized by its ink instead, since it is the one
- * drawing with no cube in it (`CHARACTER_FIT`).
- *
- * A BLOCK'S BOX IS TALLER THAN ITS DRAWING. The box has to hold the bigger SELECTED drawing over
- * the shared baseline, so a resting drawing starts well inside the box's top and the row's apparent
- * margin is not its box's. `MODE_ROW_TOP` is what puts the ink at the same margin from the window
- * as every other cluster keeps.
+/**
+ * Layout data for chrome around the map. Asset rectangles describe design-space size only;
+ * `units.ts` converts them to fixed CSS-pixel edge placement. Mode blocks share an ink baseline,
+ * while the assistant occupies a second aligned row and is sized by its visible character art.
  */
 import type { BuildMode } from '../../core/model/edit-mode';
 import {
@@ -53,6 +31,7 @@ import railZoomInMark from '../../assets/shell/rail/zoom-in/roundrect.svg';
 import railZoomOutLens from '../../assets/shell/rail/zoom-out/ellipse-2.svg';
 import railZoomOutMark from '../../assets/shell/rail/zoom-out/roundrect.svg';
 import railHideEye from '../../assets/shell/rail/hide-ui/ellipse-2.svg';
+import layersStack from '../../assets/shell/rail/layers/polygon.svg';
 
 /** A drawing: how big it is in design px, and what it is called. */
 export interface FrameArt {
@@ -461,30 +440,7 @@ export function railCell(i: number, count: number, files: number): RailCell {
   return { column: files - orphans + 1 + (i - full), row: full / files + 1 };
 }
 
-/**
- * How the column gives up its single files, in the order it gives them up.
- *
- * TWO GROUPS CAN FOLD AND THEY DO NOT FOLD AT ONCE. The kit is seven buttons and the pair is two,
- * so a kit in two files buys the column 159 css px where a folded pair buys 53: the expensive group
- * goes first, and the pair is only asked once that is not enough. The third kit file is last
- * because a group three buttons wide has stopped reading as a file at all.
- *
- * Written as a ladder rather than as two loops, since the two are one decision: what fits is a
- * property of the pair of numbers, and choosing them one at a time is how a column ends up in an
- * arrangement no line of code decided on.
- *
- * TWO FILES IS THE MOST EITHER GROUP RUNS IN, and that is a limit on the ladder rather than a rung
- * nobody reaches. A group three buttons wide has stopped reading as a file of the column at all: it
- * is a block sitting where a column was, and the kit's seven buttons in three files are a slab
- * against the map. The ladder therefore ends at two and two, and a window too short for its last
- * rung is a window where the plate steps aside instead (`planRail`).
- *
- * WHAT ASKS FOR A RUNG IS NOT ONLY THE WINDOW (see `planRail`). Read as a window-height ladder alone
- * it is nearly dead: the first rung is only left behind under about 965 device px and the pair only
- * folds under 766, which is a laptop and smaller. The case that actually happens is the open
- * layer plate, which wants the column's own lane and cannot always have it — and folding is exactly
- * what buys that lane, since a shallower group hangs lower and leaves more above it.
- */
+/** Fold order for fitting the view kit, history pair, and optional layer panel into one lane. */
 export const RAIL_FOLDS: readonly { kit: number; history: number }[] = [
   { kit: 1, history: 1 },
   { kit: 2, history: 1 },
@@ -529,55 +485,9 @@ export interface RailPlan {
 }
 
 /**
- * The whole right-hand column for one window, the open layer plate included.
- *
- * ONE FUNCTION PLACES EVERY GROUP, AND THE PLATE IS ONE OF THE THINGS IT PLACES. The column is a run
- * from `RAIL_TOP` down to the bottom shelf's plate (`RAIL_FLOOR`), and what has to fit in that run
- * is not a constant: the kit carries two more buttons in 3D than in 2D, and the open plate is seven
- * buttons deep. So the run is measured first and the arrangement falls out of it.
- *
- * Three things give, and each gives only where the arithmetic says it must:
- *
- * THE KIT RUNS IN TWO FILES rather than reaching past the shelf. A 720-tall window leaves 263 css px
- * of column against the 459 the kit and the pair need in single files, so the seven cannot be one
- * file there: they would hang well below the window's bottom edge, which is the last of them off
- * the screen entirely and the one before it on the shelf's own band.
- *
- * THEN THE PAIR FOLDS THE SAME WAY, for the same reason and by the same rule (`RAIL_FOLDS`). Below
- * about 766 device px of window height a folded kit is no longer enough, and undo and redo standing
- * side by side is the next 53 px the column can find. They are two buttons, so a 2x1 row is the
- * whole of their folding, and two files is the whole of the kit's: the ladder stops there.
- *
- * AND THE OPEN PLATE ASKS FOR A RUNG TOO, which is the demand that actually happens. Read off the
- * window's height alone the ladder is nearly dead: the kit only breaks up under about 965 device px
- * and the pair only under 766, which is a laptop and smaller. What every window has is
- * the plate, and the plate wants the column's OWN LANE — where it cannot have it, it steps out over
- * the map instead. So once the pair has dropped as low as the column allows and there is still not
- * room, the column keeps walking the same ladder until there is. Both groups are candidates and the
- * order is unchanged, since what a rung costs and what it buys have not changed either.
- *
- * NOTHING FOLDS THAT THE WINDOW HAD ROOM TO LEAVE ALONE. The search starts at the rung the window
- * itself requires and stops at the FIRST one that gets the plate its lane; a plate too deep for any
- * of them folds nothing at all and steps aside, exactly as before. Closing the plate withdraws the
- * demand, so a column at rest is the arrangement its own height asks for and no other.
- *
- * AND THE PAIR STEPS DOWN BY WHAT THE PLATE NEEDS, not by everything it could give. Seating the
- * plate is asked of the room the pair COULD yield, which is the lowest it can stand; where it stands
- * is a separate question with a smaller answer, since a plate that clears the pair where it already
- * is has asked for nothing. The two were one number, so a tall window with 150 px of slack still in
- * the lane pushed undo and redo down against the kit anyway and the column read as two groups
- * instead of three.
- *
- * THE PLATE STANDS ONE FILE IN rather than over the buttons where the ladder cannot seat it. It is
- * `plateDepth` deep and the eight buttons under it come to 424 css px with their separations, so an
- * unfolded column holds the square only past about 1244 device px of window height. Below that the
- * ladder is tried, and below what the ladder can reach the plate steps out of the lane, which is the
- * whole width of one file plus a group's separation: a covered button is a button that cannot be
- * pressed, and bounding the plate to the 47 px the lane can spare instead would leave a head with no
- * stack under it.
- *
- * `vh` is the viewport's height in the css px the frame is laid out in, which is the window's own
- * height divided by the frame's zoom.
+ * Place the right rail within the CSS-pixel run between `RAIL_TOP` and `RAIL_FLOOR`. The first fold
+ * that fits the window is the baseline. An open layer panel may request later folds; if none leaves
+ * enough lane, the panel moves one file toward the map. History moves only as far as the panel needs.
  */
 export function planRail(vh: number, opts: { open: boolean; plateDepth: number }): RailPlan {
   const layerBottom = RAIL_TOP + RAIL.layer.h;
@@ -657,6 +567,10 @@ export interface GlyphInk {
   gx: number; gy: number;
   /** Covered area, design px squared. */
   area: number;
+  /** What the EYE said about the size the formula arrived at, as a factor on it: `apparentSize`
+   *  discounts area, so a sparse drawing beside dense neighbours comes out enlarged (lettering next
+   *  to filled figures). Kept apart from the measurements so they stay measurements. */
+  trim?: number;
 }
 
 /**
@@ -731,6 +645,10 @@ export const GLYPHS = {
     [{ src: railHideEye, x: 0, y: 0, w: 76, h: 50 }],
   ),
 } as const;
+
+/** The layer stack's drawing (the readout pill's own glyph). Exported here beside the GLYPHS so
+ *  every picture of the control (the rail, the Help Center's inline art) draws the one file. */
+export const LAYERS_STACK_SRC = layersStack;
 
 /** The fit-to-view stroke icon's ink in its own 24-unit box, measured the same way, so the one
  *  glyph the design source never drew is sized and centred by the same rule as the four it did. */

@@ -1,17 +1,5 @@
-/**
- * sketchbook.test.tsx — the idle dressing: what the card does, where it may stand, and what it does
- * not do.
- *
- * THE FOUR FACTS THIS FILE EXISTS FOR. Zero ideas renders NOTHING (the rest state stands honestly
- * without a card rather than dressing an empty analysis); a press FILLS the composer and sends
- * nothing; reduced motion is the complete still with no animation started at all; and the engine
- * stops with the card, so a folded panel leaves no rAF running for the app's life.
- *
- * jsdom has no Web Animations, so `Element.prototype.animate` is installed as a SPY for the length
- * of the file. That is what makes "no animation ran" an assertion rather than an accident of the
- * environment: without it every `animate` call is skipped by the component's own guard and the
- * reduced-motion case would pass over a component that animates everything.
- */
+/** Sketchbook behavior, lifecycle, and reduced-motion coverage. jsdom has no Web Animations, so
+ * the suite installs an `Element.prototype.animate` spy to observe whether animation was requested. */
 import { useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
@@ -134,19 +122,13 @@ describe('the card only stands where there is something to say', () => {
     expect(shot.childElementCount, 'the house loader stands in the empty frame').toBeGreaterThan(0);
   });
 
-  /**
-   * AND THE TRACING PAPER HAS TO ANSWER A REAL ISLAND. The artifact's sketch stands on a drawn pale
-   * plate, so a thin wash was all the separation its pencil needed; here the ground is the live map
-   * at full saturation, and at 0.16 the wash was imperceptible — the dashed proposal competed with
-   * the map's own road lines and read as one more thing painted on the island. The floor is exported
-   * beside the value so a later tidy cannot walk it back to invisible in silence.
-   */
+  /** The wash must separate proposal marks from a full-color map without hiding the map. */
   it('lays enough tracing paper for the pencil to read over a built island', () => {
     const { getByTestId } = mount([LANE]);
     const alpha = Number(/rgba?\([^)]*?([\d.]+)\s*\)$/.exec(getByTestId('sketch-wash').style.background)?.[1]);
     expect(Number.isFinite(alpha), getByTestId('sketch-wash').style.background).toBe(true);
     expect(alpha).toBeGreaterThanOrEqual(WASH_FLOOR);
-    // And still a wash: an opaque plate would be the drawn stand-in island this card refuses.
+    // The upper bound keeps the live map visible beneath the wash.
     expect(alpha).toBeLessThan(0.75);
   });
 });

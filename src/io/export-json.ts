@@ -171,7 +171,13 @@ function assemble(state: GridState, opts: ExportJsonOptions): SaveFile {
   }
 
   if (opts.includeGeneration && state.generation) out.generation = state.generation;
-  if (opts.history) out.history = encodeHistory(opts.history.entries, opts.history.depth);
+  if (opts.history) {
+    // History taint deltas require provenance; ordinary undo entries remain valid without them.
+    const entries = opts.includeProvenance
+      ? opts.history.entries
+      : opts.history.entries.map((e) => ({ ...e, taint: undefined }));
+    out.history = encodeHistory(entries, opts.history.depth);
+  }
   if (opts.session) out.session = opts.session;
   if (opts.includeStats) out.stats = buildStats(state);
   if (opts.includeCatalogInfo) out.catalogInfo = buildCatalogInfo(state);

@@ -189,13 +189,7 @@ describe('PanelShell: the four zones', () => {
 });
 
 describe('PanelShell: what the job zone shows', () => {
-  /**
-   * THE KEYLESS REST IS THE DREAMING OFFICE, and setup is one press further in.
-   *
-   * The form asks for a credential, so it stands one press in rather than being the keyless state
-   * itself. Connect is what walks into it, and until it is pressed the zone shows the rest the
-   * artifact draws for a panel with no key: she sleeps, and the board says what she would take.
-   */
+  /** The disconnected rest precedes credential entry, which opens only after Connect is pressed. */
   it('shows the keyless rest, and stands its Connect where the composer would be', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
@@ -235,13 +229,7 @@ describe('PanelShell: what the job zone shows', () => {
     expect(scroll.style.minHeight).toBe('0');
   });
 
-  /**
-   * THE CONNECT PRESS REACHES THE ONE LIVE CHARACTER, which is the prototype's own `connect`
-   * handler: the press is acknowledged on her body and, from the sleeping rest, the wake beat rises
-   * her out of the sleep pose as the key screen lands. Whether either actually plays (she must be
-   * asleep; reduced motion skips both) is the character's own gate, pinned in `character.test.tsx`;
-   * what the shell owes is the two calls.
-   */
+  /** Connect acknowledges and wakes the mounted character before opening credential entry. */
   it('hands the Connect press to the character: one acknowledgement, one wake', () => {
     const { getByTestId, unmount } = renderWithI18n(
       <>
@@ -351,8 +339,7 @@ describe('PanelShell: what the job zone shows', () => {
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_setup_awake']);
   });
 
-  /** A key going away lands on the keyless REST, which is the state the artifact names for exactly
-   *  that trigger ("a key cleared in settings"). The form comes back when it is asked for. */
+  /** Clearing the active key returns the panel to its disconnected rest. */
   it('puts the keyless rest back the moment the key goes away', () => {
     const view = makeView();
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
@@ -1162,15 +1149,7 @@ describe('PanelShell: how tall it stands', () => {
     expect(style.minHeight.replace(/\s+/g, '')).toBe(`min(${PANEL_MIN_HEIGHT}px,${cap})`.replace(/\s+/g, ''));
   });
 
-  /**
-   * A SCREEN BRINGS ITS OWN HEIGHT, so the want is not asked for over one.
-   *
-   * The want is what keeps a desk with one short record under it reading as a column. A connection
-   * screen is not that: it fills the zone and pins its own foot to the bottom of it, so a plate
-   * standing 430 tall around a 300px form opens a hole between the last field and the verb that
-   * leaves the step, which is the gap the normative prototype does not have (its panel hugs on the
-   * same steps). The cap still bounds it.
-   */
+  /** Connection screens supply their own height and remain bounded by the caller's cap. */
   it('hugs a connection screen instead of standing at the want', () => {
     const cap = 'calc(100vh - 480px)';
     const rest = renderWithI18n(
@@ -1325,10 +1304,7 @@ describe('PanelShell: the three zones', () => {
     expect(floor).toContain(`calc(100px-${PINNED_HEIGHT}px)`); // whitespace already stripped above
   });
 
-  /** The waiver: a rest state whose whole record is the closed past-jobs row owes no floor at all —
-   *  the 72px showed as a dead strip under one 40px row. That state is a settled job whose card has
-   *  been FILED (the terminal card stands in the zone until it is), which is the state the artifact
-   *  waives it in too. */
+  /** A lone closed history row needs no job-zone floor beneath it. */
   it('waives the floor for a lone closed history row', () => {
     const done = makeJob({ outcome: 'done', kind: 'build' });
     const rest = renderWithI18n(
@@ -1366,12 +1342,8 @@ describe('PanelShell: the three zones', () => {
   });
 });
 
-/**
- * The record follows the work, which the normative prototype does on every change to the job zone:
- * without it the newest op row, an open gate's two buttons and the closing summary arrive below the
- * fold. jsdom lays nothing out, so `scrollHeight` is 0 and only the CALL can be observed — which is
- * the part with a decision in it.
- */
+/** The job zone follows projection changes so new operations, gates, and summaries remain visible.
+ * jsdom has no layout, so these tests observe writes to `scrollTop`. */
 describe('PanelShell: the record follows the work', () => {
   function watchScroll() {
     const writes: number[] = [];
@@ -1799,13 +1771,8 @@ describe('panel copy, in every locale', () => {
     }
   });
 
-  /**
-   * Two keyless faces, and the difference is whether the panel is ASKING.
-   *
-   * At rest it says it is not connected, which is what the artifact's disconnected card says over a
-   * sleeping character. Once the form is up she is awake and asking with it, and neither face ever
-   * says "Ready for orders" over a panel that cannot take one.
-   */
+  /** The disconnected rest and credential form use distinct status messages; neither claims the
+   * panel is ready for orders. */
   it('says not connected at the keyless rest, and awake once the form is asking', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,

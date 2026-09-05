@@ -1,44 +1,9 @@
 /**
- * The SCULPTOR: the ground the design stands on, realized from the composition's plates.
- *
- * Stage A decides where the mass sits and cuts the island into terrace plates; stage B lays the
- * streets and the flights that carry them between tiers; stage C hands every district a treatment.
- * This module writes all of that as terrain, and it writes nothing the earlier stages did not decide
- * — the tier of a cell is `composition.cellTiers`, not a reading of its own. What it adds is the
- * ground the plan could not state as a tier: the landings a flight steps down, the water.
- *
- * WATER IS A SYSTEM HERE, not a budget spent over the island. `cascade-stair.ts` stacks bands down a
- * flank of the mass, `water-story.ts` walks ONE course on from a stair's foot to a pond or the coast,
- * `water-forms.ts` draws the few large composed figures most of a map's water stands in, and
- * `fountain.ts` composes the artificial courts; this module cuts the ambient cascades off the terrace
- * steps and the ACCENT pools beside them, and that is all the water a map gets. What it does not do is
- * drop rectangles: a bed grown to the room its terrace offers comes out framed by mountain on every
- * side, and a quarter of an island spent on those reads as a field of boxes rather than as water.
- * The order is COURTS, STAIRS, STORY, FIGURES, ambient falls, accents — anchored things first,
- * then the things that need a whole flank, then the ones that fit what is left.
- * NOTHING IS EVER PLANTED IN WATER and nothing needs to be: 0 of the 2690 plants on the two reference
- * maps stand in it. The look is dry ground FRAMED by water, and it falls out of the geometry —
- * a plant validates its own cell plus one column right and one row below, so the ground beside a
- * bank is plantable everywhere except the row and column facing the water, which is exactly how the
- * reference's own beds are inset.
- *
- * EVERY SHAPE IS LEGAL BY CONSTRUCTION, not by repair:
- *  - V-MTN-03 (a mountain at N >= 4 needs a full 3x3 of support at >= N-3) is `cellTiers`'s own
- *    argument: a plate stands at most three tiers above its neighbour and at most three per cell of
- *    distance from ground no block may stand on. A flight's landing steps ONE tier under a corridor
- *    whose walls are the two plates the flight joins, so it is inside the same window.
- *  - V-WTR-02 (a water cell showing a lower face is capped at exactly its own elevation on both
- *    perpendicular ends) is satisfied two ways: a body whose whole rim stands at its own tier or
- *    above shows no face at all, and a FALL band shows exactly one, along the terrace step it is cut
- *    on, with a cell of standing terrace left at each end as its caps. The tests are shared with the
- *    story and the courts, in `water-cut.ts`.
- *  - V-WTR-03 (the row a fall pours onto is uniform) holds because the row below a step is the plate
- *    below it, one surface at one tier.
- * The caller still runs the decrease-only repair fixpoint before committing, as every generator
- * does: a backstop, not the mechanism.
- *
- * Pure and deterministic per (seed, template, composition, streets, plan, richness): no state, no
- * commands, no browser API. `pipeline.ts` commits it and places what stands on it.
+ * Materializes planned plates, street flights, water systems, and district treatments as terrain.
+ * Water is carved in dependency order: courts, stairs, a connected course, large figures, ambient
+ * falls, then accents. Plate spacing satisfies mountain support; water bodies either expose no lower
+ * face or terminate each fall with same-tier caps over a uniform receiving row. The module is pure
+ * and deterministic; the caller still applies the shared decrease-only repair before commit.
  */
 import { distanceField, flatIndex, NEIGHBORS4 } from '../../../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../../../core/model/constants';
@@ -626,21 +591,7 @@ function raiseStrip(
   ];
 }
 
-/**
- * Raise a rect to `tier`, CHAMFERED at its corners, marking what it took so no later pass raises the
- * same ground again.
- *
- * A TERRACE IS NOT A BOX. An unchamfered lift is a full rectangle, and each lift is its own terrace
- * component on the finished map: over ten full-richness seeds of both templates the median component
- * fills its bounding box exactly, with 26 to 47 components per map at 0.90 fill or above, against 0.58
- * on the decoded terraced reference. Stepping the plate seams alone does not move that reading, since
- * the boxes it counts are these lifts and not the plates.
- *
- * The corners come off instead, each by its own seeded depth, which reads as a mound or a shoulder
- * rather than as a slab. IT ONLY EVER LIFTS FEWER CELLS than the rect the caller had cleared, so
- * every legality argument the caller made still holds — a chamfered cell keeps the tier it stood at,
- * one step below its neighbour inside the shape, and one step is what V-MTN-03 asks nothing about.
- */
+/** Raise a rectangle with seeded corner chamfers and reserve its cells from later lifts. */
 function liftRect(t: TerrainPlan, raised: Uint8Array, rect: Rect, tier: number, salt?: number): void {
   const cut = salt === undefined ? null : chamfers(rect, salt);
   for (let y = rect.y; y < rect.y + rect.h; y++) {
@@ -654,29 +605,9 @@ function liftRect(t: TerrainPlan, raised: Uint8Array, rect: Rect, tier: number, 
 }
 
 /**
- * THE TERRACE EDGES ARE EATEN INTO: a seam between two tiers loses cells off its upper side wherever
- * nothing is built against it.
- *
- * This is the map-scale half of not drawing boxes (`liftRect`'s chamfers are the place-scale half). A
- * plate is planned as a rectangle, so an unbitten seam between two of them is ruled: over ten
- * full-richness seeds of both templates the median terrace component fills its own bounding box
- * exactly, against 0.58 on the terraced reference. The bite is taken with a smooth noise field, so an
- * edge scallops in and out over ten or so cells rather than jogging on a period.
- *
- * IT RUNS AFTER EVERYTHING THAT NEEDS STRAIGHT GROUND AND BEFORE EVERYTHING THAT NEEDS LEVEL GROUND.
- * The alternative is ruled out by measurement: stepping the seams in the composition itself, where the
- * plates are cut, moves ground the STREETS are then planned on — a coating needs its whole 2x2 window
- * at one tier, so a jogged seam cuts the long lines stage B lays along it into stubs. Over six
- * full-richness seeds it takes the paved share from 13.9% to 4.6% on `hexia/777`, its access reading
- * from 70% to 15%, and one seed of six fails the hard ledger outright. Here the streets, the lots,
- * the doorsteps and the map's own figure are already reserved, so the bite is only ever taken out of
- * ground nothing stands on.
- *
- * LEGAL BY EXPLICIT TEST, not by construction. A cell drops to the highest tier below it among its
- * own edge neighbours, and only where no neighbour in its 3x3 would then stand more than V-MTN-03's
- * window above it — a step of exactly three tiers is common on this generator, and eroding a cell
- * beside one would leave the taller side unsupported. Water is excluded outright, its 3x3 included: a
- * cell lowered beside a pool is a face nobody composed, and V-WTR-02 asks for a cap at every one.
+ * Erode unused upper seam cells with smooth noise after street planning. Each cell drops only to the
+ * highest lower edge-neighbor tier, subject to the 3x3 mountain-support window. Water and its 3x3
+ * neighborhood are excluded so erosion cannot create an uncapped water face.
  */
 function erodeSeams(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, raised: Uint8Array, seed: number,

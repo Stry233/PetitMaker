@@ -100,6 +100,75 @@ describe('evaluateMap: stamped pools + plaza apron', () => {
   });
 });
 
+describe('evaluateMap: repetition tells', () => {
+  it('an orchard lattice the size of a district is named as wallpaper; a court-bound one passes', () => {
+    const state = makeState(50, 50);
+    for (let y = 4; y <= 40; y += 2) for (let x = 4; x <= 40; x += 2) {
+      state.objects.set(`t${x}-${y}`, { id: `t${x}-${y}`, catalogId: 'tree-peach', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+    }
+    expect(evaluateMap(state).decoration.hints.join(' ')).toMatch(/orchard lattice blankets the district/);
+    const court = makeState(50, 50);
+    for (let y = 4; y <= 14; y += 2) for (let x = 4; x <= 18; x += 2) {
+      court.objects.set(`t${x}-${y}`, { id: `t${x}-${y}`, catalogId: 'tree-peach', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+    }
+    expect(evaluateMap(court).decoration.hints.join(' ')).not.toMatch(/wallpaper|blankets/);
+  });
+
+  it('five identical plots are named as stamped; four pass', () => {
+    const state = makeState(60, 60);
+    const plot = (ox: number, oy: number) => {
+      for (let y = oy; y < oy + 4; y++) for (let x = ox; x < ox + 4; x++) {
+        state.objects.set(`p${x}-${y}`, { id: `p${x}-${y}`, catalogId: 'flower-lily', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+      }
+    };
+    plot(4, 4); plot(4, 14); plot(4, 24); plot(4, 34);
+    expect(evaluateMap(state).decoration.hints.join(' ')).not.toMatch(/identical .* plots/);
+    plot(4, 44);
+    expect(evaluateMap(state).decoration.hints.join(' ')).toMatch(/5 identical 4x4 plots/);
+  });
+
+  it('four homes packed within a cell are named; spaced homes pass', () => {
+    const state = makeState(60, 60);
+    const home = (x: number, y: number, i: string) => {
+      state.objects.set(i, { id: i, catalogId: 'building-myhouse', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+    };
+    home(4, 4, 'a'); home(20, 4, 'b'); home(36, 4, 'c'); home(4, 24, 'd');
+    expect(evaluateMap(state).decoration.hints.join(' ')).not.toMatch(/packed/);
+    home(4, 40, 'e'); home(12, 40, 'f'); home(4, 46, 'g'); home(12, 46, 'h');
+    expect(evaluateMap(state).decoration.hints.join(' ')).toMatch(/4 homes stand packed/);
+  });
+});
+
+describe('evaluateMap: junction grammar', () => {
+  const road = (state: ReturnType<typeof makeState>, x: number, y: number, i: string) => {
+    state.objects.set(i, { id: i, catalogId: 'path-cobblestone', position: { x, y }, rotation: 0, elevation: 0, locked: false });
+  };
+
+  it('a four-way crossing is named with its cell; a tee is not', () => {
+    const state = makeState(20, 20);
+    state.objects.set('b', { id: 'b', catalogId: 'building-myhouse', position: { x: 2, y: 2 }, rotation: 0, elevation: 0, locked: false });
+    // A plus: vertical x=10 y 6..14, horizontal y=10 x 6..14 -> crossing core at (10,10).
+    for (let y = 6, i = 0; y <= 14; y++, i++) road(state, 10, y, `v${i}`);
+    for (let x = 6, i = 0; x <= 14; x++, i++) if (x !== 10) road(state, x, 10, `h${i}`);
+    const crossed = evaluateMap(state);
+    expect(crossed.roads.hints.join(' ')).toMatch(/four-way crossing\(s\) at \(10,10\)/);
+    // Break one arm into a tee: the crossing dissolves.
+    for (let y = 11; y <= 14; y++) state.objects.delete(`v${y - 6}`);
+    const teed = evaluateMap(state);
+    expect(teed.roads.hints.join(' ')).not.toMatch(/four-way/);
+  });
+
+  it('a 2-wide road interior is not a crossing: the diagonal test holds', () => {
+    const state = makeState(20, 20);
+    state.objects.set('b', { id: 'b', catalogId: 'building-myhouse', position: { x: 2, y: 2 }, rotation: 0, elevation: 0, locked: false });
+    let i = 0;
+    for (let y = 8; y <= 9; y++) for (let x = 4; x <= 15; x++) road(state, x, y, `w${i++}`);
+    for (let y = 4; y <= 15; y++) for (let x = 8; x <= 9; x++) { if (y === 8 || y === 9) continue; road(state, x, y, `w${i++}`); }
+    const r = evaluateMap(state);
+    expect(r.roads.hints.join(' ')).not.toMatch(/four-way/);
+  });
+});
+
 describe('evaluateMap: degenerate maps', () => {
   it('never emits NaN scores, even on a zero-size map', () => {
     const r = evaluateMap(makeState(0, 0));

@@ -11,7 +11,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join, resolve } from 'node:path';
-import { metaInk, PANEL_WIDTH, statePaper, tickInk, withAlpha } from '../../../ui/agent/tokens';
+import { metaInk, PANEL_WIDTH, statePaper, tickInk } from '../../../ui/agent/tokens';
+import { withAlpha } from '../../../ui/design/styles';
 import { PANEL_COLUMN_W } from '../../../ui/shell/panel-frame';
 import { colors, radii } from '../../../ui/design/styles';
 import { INK } from '../../../ui/design/tokens';
@@ -158,10 +159,7 @@ describe('the panel draws one primary', () => {
 
   it('reaches every radius it draws out of the house table', () => {
     const family = new Set(Object.values(radii).map(Number));
-    // The panel's own finer ladder, which the house table has no rung for and the artifact does:
-    // `.ib` 8, `.hact` 9, `.thoughtsBox` 10, `.thumb` 8, `.tkreg .vg` 5, the hairline details under
-    // 4, and the stadium. A value outside BOTH sets is a value nobody chose — the character's seat
-    // carried a 20 on a box with no fill, which is how one reads.
+    // The panel also uses a small local ladder for compact controls, hairlines, and stadium shapes.
     const panelLadder = new Set([1, 2, 5, 6, 8, 9, 10, 999]);
     const offenders: string[] = [];
     for (const { rel, text } of panelSources()) {

@@ -1,5 +1,6 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { transformHomepage } from './scripts/site-html.mts';
 import { execSync } from 'node:child_process';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,7 @@ import {
   HEADERS_POLICY,
   parseExtraConnectSrc,
   toCspMeta,
-  withExtraConnectSrc,
+  withExtraConnectSrc, withExtraFontSrc,
 } from './security/headers-policy';
 import { activeTarget } from './src/legal/deploy-targets';
 
@@ -22,14 +23,15 @@ import { activeTarget } from './src/legal/deploy-targets';
  * build, so the extra origins never reach a committed adapter output or a
  * production bundle. See docs/THREAT_MODEL.md "Custom (BYO-endpoint) provider".
  */
-function devCspExtensionPlugin(raw: string | undefined) {
-  const extras = parseExtraConnectSrc(raw);
+function devCspExtensionPlugin(rawConnect: string | undefined, rawFont: string | undefined) {
+  const connect = parseExtraConnectSrc(rawConnect);
+  const fonts = parseExtraConnectSrc(rawFont);
   return {
       name: 'petit-dev-csp-extension',
       apply: 'serve' as const,
       transformIndexHtml(html: string) {
-        if (extras.length === 0) return html;
-        const metaContent = toCspMeta(withExtraConnectSrc(HEADERS_POLICY, extras));
+        if (connect.length === 0 && fonts.length === 0) return html;
+        const metaContent = toCspMeta(withExtraFontSrc(withExtraConnectSrc(HEADERS_POLICY, connect), fonts));
         return html.replace(
           /(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/,
           `$1${metaContent}$2`
@@ -38,52 +40,13 @@ function devCspExtensionPlugin(raw: string | undefined) {
     };
   }
 
-/**
- * The crawler-facing head of index.html. The app's entry page is an empty React container, so
- * the tags a search engine and a link preview read have to be injected at build time; the
- * prerendered legal pages get theirs from build-legal-pages.mts instead.
- *
- * A build served from a PATH rather than a domain root carries `noindex` in place of them. That
- * is the dev site (yuetian.me/Apollonius/) and any future preview: a second host serving the same
- * app competes with production for the same results, and shows unreleased work. robots.txt cannot
- * express it — a crawler only reads robots.txt at the domain root, which for a path deployment
- * belongs to a different site. Keyed on the base path rather than the release marker because
- * `npm run build:release` is run locally to check a release, and a local tree is never stamped
- * as published — that would make every local release build noindex itself.
- */
+/** Deployment-specific initial HTML is also used by the development server. */
 function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: string) {
-  const origin = target.canonicalOrigin.replace(/\/$/, '');
   return {
     name: 'petit-index-head',
-    apply: 'build' as const,
-    transformIndexHtml(html: string) {
-      // The title, the description, the document language and the boot loader's masthead belong
-      // to the DEPLOYMENT (see src/legal/deploy-targets): the two sites want different ones, and a
-      // crawler reads them out of the static file, so they are written in here rather than chosen
-      // at runtime. The masthead swap covers the pre-React loading screen; the splash reads the
-      // same target row at runtime.
-      html = html
-        .replace(/<html lang="[^"]*"/, `<html lang="${target.htmlLang}"`)
-        .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
-        .replace('src="/banner.svg"', `src="/${target.bootBanner}"`);
-      const title = target.title;
-      const tags = basePath === '/'
-        ? [
-            ...target.verificationMetas.map((m) => `<meta name="${m.name}" content="${m.content}" />`),
-            `<meta name="description" content="${target.description}" />`,
-            `<meta name="keywords" content="${target.keywords}" />`,
-            `<link rel="canonical" href="${origin}/" />`,
-            `<meta property="og:type" content="website" />`,
-            `<meta property="og:url" content="${origin}/" />`,
-            `<meta property="og:title" content="${title}" />`,
-            `<meta property="og:description" content="${target.description}" />`,
-            `<meta property="og:image" content="${origin}/logo-256.png" />`,
-            `<meta property="og:locale" content="${target.htmlLang === 'zh-CN' ? 'zh_CN' : 'en_US'}" />`,
-            `<meta property="og:locale:alternate" content="${target.htmlLang === 'zh-CN' ? 'en_US' : 'zh_CN'}" />`,
-            `<meta name="twitter:card" content="summary" />`,
-          ]
-        : ['<meta name="robots" content="noindex, nofollow" />'];
-      return html.replace('</head>', `  ${tags.join('\n    ')}\n  </head>`);
+    transformIndexHtml: {
+      order: 'pre' as const,
+      handler: (html: string) => transformHomepage(html, target, basePath),
     },
   };
 }
@@ -143,14 +106,32 @@ function stampWatchPlugin() {
   };
 }
 
+/** onnxruntime-web's module names every runtime variant by URL, so Vite emits all of their binaries.
+ *  Two are loaded (the single-threaded WASM build and the asyncify build the WebGPU backend runs
+ *  on); the legacy jsep and the jspi variants never are, and the 27 MB jsep one alone would push
+ *  the deploy over the static hosts' 25 MiB per-file limit. */
+function dropUnusedOrtBinariesPlugin(): Plugin {
+  return {
+    name: 'drop-unused-ort-binaries',
+    generateBundle(_opts, bundle) {
+      for (const name of Object.keys(bundle)) {
+        if (/ort-wasm-simd-threaded\.(jsep|jspi)[^/]*\.wasm$/.test(name)) delete bundle[name];
+      }
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
-    // An unstamped PRODUCTION build would ship a build number that identifies nothing,
-    // so it fails here instead. Dev/test only warns.
-    if (!BUILD_IS_STAMPED) {
-      if (mode === 'production') throw new Error(unstampedMessage(true));
-      console.warn(unstampedMessage(false));
-    }
-    return {
+  const viteEnv = loadEnv(mode, process.cwd(), 'VITE_');
+  const petitEnv = loadEnv(mode, process.cwd(), 'PETIT_');
+  const exportSiteMark = (process.env.PETIT_EXPORT_SITE_MARK ?? petitEnv.PETIT_EXPORT_SITE_MARK) === '1';
+  // An unstamped PRODUCTION build would ship a build number that identifies nothing,
+  // so it fails here instead. Dev/test only warns.
+  if (!BUILD_IS_STAMPED) {
+    if (mode === 'production') throw new Error(unstampedMessage(true));
+    console.warn(unstampedMessage(false));
+  }
+  return {
     // Where the app will be served from. Production is a domain root; the dev site is a
     // PROJECT Pages site under a path (yuetian.me/Apollonius/), and every bundled asset,
     // chunk and font URL has to carry that prefix or the page loads a blank screen. Set by
@@ -161,9 +142,13 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       bundleReportPlugin(),
-      devCspExtensionPlugin(loadEnv(mode, process.cwd(), 'VITE_').VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC),
+      devCspExtensionPlugin(
+        viteEnv.VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC,
+        viteEnv.VITE_EXTRA_FONT_SRC ?? process.env.VITE_EXTRA_FONT_SRC,
+      ),
       indexHeadPlugin(TARGET, process.env.PETIT_BASE_PATH || '/'),
       stampWatchPlugin(),
+      dropUnusedOrtBinariesPlugin(),
     ],
     resolve: {
       alias: {
@@ -172,22 +157,17 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       /**
-       * DIRECTORIES INSIDE THE ROOT THAT ARE NOT THE APP.
-       *
-       * An agent working in a git worktree under `.claude/worktrees/` writes a whole second copy of
-       * this tree inside the dev server's root, and one of the files in it is a `tsconfig.json`: the
-       * watcher answers that with "changed tsconfig file detected, forcing full-reload", which
-       * reloads whatever page is open. A live session in the assistant panel does not survive a
-       * reload it did not ask for (a session belongs to a map, and an unsaved map has none to come
-       * back to), so a run in a shared checkout lost a job to a sibling's commit. Scratch notes
-       * under `.superpowers/` are the same class of write and never source the bundle reads.
-       *
-       * Vite merges these with its own defaults (`.git`, `node_modules`, the cache dir).
+       * Ignore nested worktrees and scratch metadata. Their config-file writes would otherwise
+       * trigger full dev-server reloads and interrupt live assistant sessions. Vite adds its own
+       * defaults for dependency, cache and version-control directories.
        */
       watch: { ignored: ['**/.claude/**', '**/.superpowers/**'] },
     },
     define: {
       __PETIT_TARGET__: JSON.stringify(TARGET.id),
+      // Deployments opt into the export footer's public URL and QR code explicitly. Keeping this
+      // build-time prevents an exported image's attribution target from becoming a user setting.
+      __PETIT_EXPORT_SITE_MARK__: JSON.stringify(exportSiteMark),
       __APP_VERSION__: JSON.stringify(APP_VERSION),
       __BUILD_NUMBER__: JSON.stringify(BUILD_INFO.buildNumber),
       __BUILD_SHA__: JSON.stringify(BUILD_INFO.sha),
@@ -196,6 +176,9 @@ export default defineConfig(({ mode }) => {
     // Strip console/debugger from the PRODUCTION bundle only (kept in dev for debugging) — less code
     // shipped, no stray logging that could leak internals.
     esbuild: { drop: mode === 'production' ? ['console', 'debugger'] : [] },
+    // Module workers: the stylize inference worker code-splits (it loads one of two ONNX runtime
+    // builds), which Rollup cannot do inside an IIFE.
+    worker: { format: 'es' },
     build: {
       sourcemap: false, // never ship source maps (would hand attackers the readable source); also Vite's default — locked explicitly
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict

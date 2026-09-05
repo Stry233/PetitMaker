@@ -1,0 +1,31 @@
+{
+  "id": "path-rustic-dirt",
+  "category": "road",
+  "icon": "path-rustic-dirt",
+  "name": {
+    "en": "Rustic Dirt Path",
+    "zh": "乡村土路",
+    "ja": "素朴な土の道",
+    "ru": "Деревенская грунтовая дорожка",
+    "th": "ทางดินชนบท",
+    "id": "Jalan Tanah Pedesaan",
+    "fr": "Chemin de terre rustique"
+  },
+  "color": "#eaa36b",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    },
+    {
+      "type": "plantable"
+    }
+  ]
+}

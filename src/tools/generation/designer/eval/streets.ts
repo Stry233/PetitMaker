@@ -6,7 +6,7 @@
  * carries (`scorecard.ts:connectivity`) counts paved cells with at most one paved neighbour, and on
  * a network built out of 2-cell-wide stamps it can only ever read zero: the two cells at the end of
  * a 2-wide street each have two paved neighbours, so a stub of street stopping in open grass is
- * invisible to it. The user saw dead ends on maps that metric scored 0.
+ * invisible to it.
  */
 import { ItemCategory, type GridState } from '../../../../core/model/types';
 import { categoryOf } from '../../../../state/catalog';
@@ -49,8 +49,7 @@ export interface RampDiscipline {
  * above is measured against the reference under THIS reading, so unifying the two conventions moves the
  * threshold with it.
  */
-export function rampDiscipline(state: GridState): RampDiscipline {
-  const g = readGrid(state);
+export function rampDiscipline(state: GridState, g = readGrid(state)): RampDiscipline {
   let ramps = 0, onPavement = 0, overlapCells = 0;
   for (const o of state.objects.values()) {
     if (categoryOf(o) !== ItemCategory.Ramp) continue;
@@ -106,8 +105,7 @@ export interface StreetStraightness {
  * that street reads. Both references are grids of long straight streets, so the reading is banded
  * between them rather than minimized.
  */
-export function streetStraightness(state: GridState): StreetStraightness {
-  const g = readGrid(state);
+export function streetStraightness(state: GridState, g = readGrid(state)): StreetStraightness {
   const { W, H } = g;
   const run = (x: number, y: number, horiz: boolean): number => {
     let n = 1;
@@ -151,8 +149,7 @@ export function streetStraightness(state: GridState): StreetStraightness {
  * The tip-cell measure beside it (`connectivity`) counts paved cells with at most one paved
  * neighbour, and on a network built out of 2-cell-wide stamps it can only ever read zero: the two
  * cells at the end of a 2-wide street each have two paved neighbours, so a stub of street stopping
- * in open grass is invisible to it. The user saw dead ends on maps the metric scored 0. This measure
- * is re-derived from what a person calls one.
+ * in open grass is invisible to it. This measure is re-derived from what a person calls one.
  *
  * A TERMINUS is the end FACE of a street: a run of paved cells with nothing paved in front of them,
  * street behind them for `TERMINUS_DEPTH`, and unpaved ground at both flanks — which is what
@@ -218,8 +215,7 @@ export function streetTermini(state: GridState): Terminus[] {
 }
 
 /** Every street end on a finished map, and what each one arrives at. */
-export function streetArrivals(state: GridState): StreetArrivals {
-  const g = readGrid(state);
+export function streetArrivals(state: GridState, g = readGrid(state)): StreetArrivals {
   let termini = 0, arrived = 0;
   const where: { x: number; y: number }[] = [];
   eachTerminus(g.paved, g.W, g.H, (face, dx, dy) => {

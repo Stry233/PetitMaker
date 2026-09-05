@@ -11,7 +11,7 @@
  * agent/tokens-ssot.test.ts` fails the build on one anywhere under `ui/agent/` bar the character art.
  */
 import { ACTIVE, INK, PANEL_EDGE, PLATE_INK, TRACK } from '../design/tokens';
-import { colors } from '../design/styles';
+import { colors, withAlpha } from '../design/styles';
 import { PANEL_COLUMN_W, PANEL_PLATE_PAD } from '../shell/panel-frame';
 
 /**
@@ -75,12 +75,6 @@ export const tape = {
  * On the danger paper the fact takes the destructive emphasis ink, softened: at full strength a
  * 12px line in it competes with the word above, which is the one thing on that card that must lead.
  */
-/** A 6-digit hex colour with an alpha channel appended, as a `#rrggbbaa` string. The byte is always
- *  TWO hex digits: an unpadded `toString(16)` drops the leading zero below 0x10 (alpha under ~0.063),
- *  which emits a 7-character string neither a 6- nor an 8-digit colour parses as. */
-export function withAlpha(color: string, alpha: number): string {
-  return `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
-}
 
 export const metaInk = {
   fact: PLATE_INK,

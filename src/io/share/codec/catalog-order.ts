@@ -1,27 +1,6 @@
-/**
- * The catalog's WIRE ORDER: the index a share code stores for an object's `catalogId`.
- *
- * APPEND ONLY. A position in this list is part of the share format — a code written today says
- * "item 34", and the reader has to resolve that to the same item forever. Inserting, removing or
- * reordering an entry renumbers every entry after it, which turns previously-shared images into
- * different maps (the payload's content hash then rejects them, so they fail to import rather
- * than decode wrongly, but they are lost either way).
- *
- * A new catalog item goes at the END, whatever its id sorts to and whatever category it joins.
- * `catalog-order.test.ts` holds every entry resolvable against the live catalog, and holds the
- * historical prefix fixed.
- *
- * A RETIRED id keeps its slot and no longer names a catalog item (`io/legacy-catalog.ts` says what
- * each one reads as). Its index still has to resolve, and it still has to resolve to the same NAME:
- * the content hash covers the ids the decoder produced, so a code written before the retirement
- * verifies only if the decoder hands back what was encoded. The substitution happens later, where
- * the decoded save becomes a GridState.
- *
- * The index is written with an 8-bit tree model, so this list may hold at most 256 entries.
- * The width costs about 0.2% of a full map's code and buys headroom the catalog will need.
- */
+/** Stable, append-only wire order for object catalog ids. Retired ids keep their slots and are mapped after decoding. */
 export const SHARE_CATALOG_ORDER: readonly string[] = [
-  // — the 62 items of the first PetitGlyph v2 release, in the order that format shipped —
+  // Fixed wire prefix.
   'bridge-iron',
   'bridge-light-wood',
   'bridge-park-arch',
@@ -84,7 +63,7 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'tree-mango',
   'tree-peach',
   'tree-plum',
-  // — flower colourways added after that release —
+  // Appended flower colourways.
   'flower-daisy-yellow',
   'flower-daisy-cyan',
   'flower-sunflower-red',
@@ -104,10 +83,10 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'flower-agapanthus-blue',
   'flower-rose-cyan',
   'flower-rose-blue',
-  // — road surfaces added after that release, all four road ids retired since —
+  // Retired road-surface wire ids.
   'road-brick',
   'road-slate',
-  // — the 25 in-game path surfaces, in the road barrel's authored order —
+  // In-game path surfaces in authored catalog order.
   'path-blue-board',
   'path-classic-basketweave-brick',
   'path-classic-mosaic-brick',
@@ -133,6 +112,9 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'path-square-brick',
   'path-urban-asphalt',
   'path-wavy-terracotta',
+  'path-maizeglow-brick',
+  'path-tilled-soil',
+  'path-rustic-dirt',
 ];
 
 /** How many entries the index can address. */

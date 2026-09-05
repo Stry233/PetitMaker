@@ -618,7 +618,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     const { getByTestId } = renderFace('gated');
     const dock = getByTestId('dock');
     expect(dock.dataset.solo).toBe('true');
-    // The clock rides the word line on a solo face (the artifact's `e1`).
+    // A solo face keeps its clock on the word line because it has no metadata row.
     expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).not.toBeNull();
   });
 
@@ -884,6 +884,22 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(filed.getByTestId('dock-meta').textContent).toBe('on Hexia');
   });
 
+  /** A trailing question over a LANDED build is a finished job with one question in the record:
+   *  the word says done, the meta carries the ask, and the paper is the resting one — the ask dress
+   *  stays reserved for a question with nothing built behind it. */
+  it('reads done with a question meta when the question close landed edits', () => {
+    const view = makeView({
+      jobs: [makeJob({ outcome: 'done', kind: 'build', question: true, ops: [{
+        callId: 'c1', name: 'place_object', status: 'ok', summary: 'placed a bench', isRead: false,
+        detail: { objects: 1 },
+      }] })],
+    });
+    const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={0} />);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_done']);
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent3.dock_one_question']);
+    expect(getByTestId('dock').getAttribute('data-paper')).not.toBe('ask');
+  });
+
   /** The reachable n=1 case: a build that changed exactly one cell or object names it as one edit. */
   it('names a single-cell build as one edit, not the plural', () => {
     const view = makeView({
@@ -979,8 +995,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     });
   });
 
-  /** THE EXCEPTION, and the artifact draws it as its own state: a job that did not FINISH is still
-   *  owed, so filing its card does not put the fact away with it. */
+  /** Filing does not hide an unfinished job or an unanswered question. */
   it('keeps a capped job\'s reading after its card is filed, and a standing question\'s too', () => {
     const plan = { stages: PLAN, currentIndex: 3, doneCount: 3, revision: 1 };
     const capped = renderWithI18n(
@@ -1415,15 +1430,8 @@ describe('the flip keys on state identity alone, never on the repaint', () => {
   });
 });
 
-/**
- * THE OFFLINE WAIT IS A FACE OF ITS OWN, and it has to stay reachable.
- *
- * The prototype tells "no connection, retries on return" apart from "the provider asked us to wait
- * N seconds": the first draws a plain press because there is nothing to count down. A branch on
- * `delayMs > 0` cannot reach it — a ladder always computes a delay, so the untimed side would be
- * dead code and the offline card would count down to an attempt that would fail again, then count
- * again.
- */
+/** Network loss offers an immediate retry without a countdown. Provider throttling shows the
+ * computed delay, so the retry face branches on cause rather than `delayMs`. */
 describe('the retry face branches on the CAUSE, not on whether a delay was computed', () => {
   const offline = (delayMs: number) => makeView({
     phase: 'retrying', current: makeJob(),
@@ -1462,7 +1470,7 @@ describe('the retry face branches on the CAUSE, not on whether a delay was compu
   });
 });
 
-/** The two key faces the prototype draws, and the datum that says whose key it is. */
+/** Authentication failures and missing credentials are distinct faces that name their provider. */
 describe('the key faces name their provider, and a key that is GONE is not one that was refused', () => {
   const refused = makeView({
     phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'auth' })],
@@ -1535,9 +1543,8 @@ describe('the key faces name their provider, and a key that is GONE is not one t
   });
 });
 
-describe('the marks and the rhythms the prototype puts on an act face', () => {
-  /** The prototype suppresses the session mark wherever the card has no session behind it, and the
-   *  keyless sleep is the panel's setup surface standing in the card's place. */
+describe('the marks and spacing on an action face', () => {
+  /** The disconnected setup surface has no session and therefore no session-level allow mark. */
   it('keeps the allow-always mark off the keyless sleep', () => {
     const asleep = makeView({ allowAll: true });
     const { queryByTestId } = renderWithI18n(
@@ -1559,38 +1566,23 @@ describe('the marks and the rhythms the prototype puts on an act face', () => {
     expect(asking.getByTestId('dock-deck-word').parentElement!.style.paddingTop).toBe('12px');
   });
 
-  /**
-   * THE CARD'S 74 IS THE WHOLE OF THE CARD, padding included.
-   *
-   * The word/act column asks for `height: 100%` and then adds 10px of padding above the word line.
-   * At the default `content-box` that is a box of 84 in a card of 74 — measured live: the dock's
-   * `scrollHeight` 79 against a `clientHeight` of 74, the column's own `offsetHeight` 84, and the
-   * row's `align-items: center` shaving 5px off the top of the word and 5 off the bottom of the act
-   * pill on every two-row face. `border-box` is what makes the declared height the whole box.
-   */
-  it('keeps the act face s own column inside the card', () => {
+  /** `border-box` keeps the padded, full-height action column inside the 74px card. */
+  it('keeps the action face\'s own column inside the card', () => {
     const act = renderFace('error.auth');
     const column = act.getByTestId('dock-col-words');
     expect(column.style.boxSizing).toBe('border-box');
     expect(column.style.height).toBe('100%');
   });
 
-  /**
-   * THE FIGURE IS SHORT, WHICH IS WHY THE SENTENCE FITS. Spending the datum's width instead was
-   * measured against the real card (`--locale fr`, the rig) and is worse: the fr datum is about
-   * 45px, so giving it up buys the sentence one character and leaves "2 s…" where a count was. What
-   * the sentence wanted was the noun the prototype has never had in its own datum. The flex is
-   * therefore the prototype's, and the ellipsis is a last resort against a card that clips.
-   */
-  it('keeps the datum at its own width, the way the prototype does', () => {
+  /** The compact datum keeps its width; ellipsis is the final fallback for a clipped card. */
+  it('keeps the datum at its own width', () => {
     const { getByTestId } = renderWithI18n(<DeskHeader view={FACES.retrying!.view} now={RETRY_MID} />);
     const datum = getByTestId('dock-datum');
     expect(datum.style.flexShrink).toBe('0');
     expect(datum.style.textOverflow).toBe('ellipsis');
   });
 
-  /** And it carries no noun the prototype's own does not: the sentence beside it already says what
-   *  the figure counts, and that noun was the whole of what starved it. */
+  /** The adjacent sentence supplies the noun, so the datum contains only the attempt figure. */
   it('says the attempt as a bare figure, in every locale', () => {
     for (const locale of Object.keys(translations) as Locale[]) {
       const value = translations[locale]['agent3.dock_try_of']!;
@@ -1624,11 +1616,7 @@ describe('a numbed seat reports rather than refuses', () => {
   });
 });
 
-/**
- * THE CONFIRM IS A FACE, so the card TURNS into the question and turns back out of it — the
- * prototype keys it as its own face for exactly that. A swap in place is the calmer choice and
- * not the declared one.
- */
+/** Stop confirmation is a separate keyed face, so entering and leaving it turns the card. */
 describe('the stop confirm turns the card', () => {
   function NeverWrapper({ children }: { children: React.ReactNode }) {
     return (

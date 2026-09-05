@@ -12,6 +12,7 @@ import { EraserTool } from '../paint/eraser';
 import { ObjectPlacerTool } from '../objects/object-placer';
 import { EdgeCutTool } from '../edge-cut/edge-cut-tool';
 import { MacroTool } from '../macros/macro-tool';
+import { AnnotateTool } from '../annotate';
 import type { Tool, ToolContext } from './types';
 
 export class ToolManager {
@@ -57,6 +58,7 @@ export class ToolManager {
     this.registerTool(new ObjectPlacerTool());
     this.registerTool(new EdgeCutTool());
     this.registerTool(new MacroTool());
+    this.registerTool(new AnnotateTool());
   }
 
   setActiveTool(type: ToolType): void {
@@ -171,6 +173,15 @@ export class ToolManager {
     this.ctx.placementRotation = s.placementRotation;
     this.ctx.armedMacro = s.armedMacro;
     this.ctx.armingEpoch = s.armingEpoch;
+    this.ctx.annotations = this.gridState.annotations ?? null;
+    this.ctx.annotationTool = s.annotationTool;
+    this.ctx.annotationZoneShape = s.annotationZoneShape;
+    this.ctx.annotationColor = s.annotationColor;
+    this.ctx.annotationTextStyle = s.annotationTextStyle;
+    this.ctx.annotationTextSize = s.annotationTextSize;
+    this.ctx.annotationRouteDashed = s.annotationRouteDashed;
+    this.ctx.annotationSelection = s.annotationSelection;
+    this.ctx.annotationDraft = s.annotationDraft;
   }
 
   /** The active tool's cursor, from a context refreshed first (`getContext()`): the push happens on
@@ -213,6 +224,24 @@ export class ToolManager {
       armedMacro: s.armedMacro,
       armingEpoch: s.armingEpoch,
       macroContext: { state: this.gridState, executor: this.executor, registry: this.executor.getRegistry() },
+      annotations: this.gridState.annotations ?? null,
+      annotationTool: s.annotationTool,
+      annotationZoneShape: s.annotationZoneShape,
+      annotationColor: s.annotationColor,
+      annotationTextStyle: s.annotationTextStyle,
+      annotationTextSize: s.annotationTextSize,
+      annotationRouteDashed: s.annotationRouteDashed,
+      annotationSelection: s.annotationSelection,
+      annotationDraft: s.annotationDraft,
+      annotationEdit: {
+        begin: () => useEditorStore.getState().beginAnnotationStroke(),
+        apply: (fn) => useEditorStore.getState().applyAnnotationEdit(fn),
+        add: (a) => useEditorStore.getState().addAnnotation(a),
+        remove: (id) => useEditorStore.getState().removeAnnotation(id),
+        select: (ids) => useEditorStore.getState().setAnnotationSelection(ids),
+        setDraft: (a) => useEditorStore.getState().setAnnotationDraft(a),
+        setNaming: (id) => useEditorStore.getState().setAnnotationNaming(id),
+      },
     };
   }
 }

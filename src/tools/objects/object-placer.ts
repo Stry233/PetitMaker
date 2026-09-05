@@ -156,7 +156,7 @@ export function removeObjectCommand(obj: PlacedObject): RemoveObjectCommand {
  * Strip every coating (road/tile) object covering any of `footprint`, so the caller can coat
  * over it. The overlap set is resolved BEFORE the removals, so the commands cannot disturb
  * the iteration. A coating that `forItem` may STAND ON (flora on the plantable dirt path) is
- * kept — the pair coexists, which is issue #11's in-game behaviour.
+ * kept — the pair coexists in-game.
  */
 export function removeOverlappingCoatings(
   footprint: MacroCoord[], ctx: ToolContext, forItem?: CatalogItem,

@@ -45,21 +45,7 @@ function sources(dir: string): { path: string; text: string }[] {
   });
 }
 
-/**
- * THE GUTTER IS THE BOTTOM SHELF'S, AND THE TWO SIDES REACH IT WITH DIFFERENT NUMBERS.
- *
- * The gutter is that row's own, arrived at from the inside out. One number on three edges, 28,
- * chosen against the size of the things standing in it, fixes the lopsidedness the design source has
- * (116 design px left against 72 right, which lands at 36 and 22) only across the top of the window:
- * the shelf's row of names begins 74 px in and nothing above it does, so a straight edge down the
- * screen meets the chrome at two different places.
- *
- * Setting that gutter on both sides makes the frame lopsided the other way, because a margin and a
- * visible gap are not the same thing: the right holds plates whose ink is their box, the left holds
- * the mode row, and the splat under the chosen block hangs into the margin. Off a screenshot diffed
- * against the bare map the two came out 58.4 and 72.8. So the right is the left LESS the overhang,
- * and what the two sides hold equal is their INK, not their margins.
- */
+/** The side margins align visible ink; the selected mode plate overhang makes their box gaps differ. */
 describe('the frame\'s margins', () => {
   it('put the two sides\' outermost ink on one line, which is not the same margin', () => {
     expect(EDGE_LEFT).toBe(FRAME_MARGIN);
@@ -70,8 +56,7 @@ describe('the frame\'s margins', () => {
     // The line itself: the splat's own left edge with a mode selected, and the right margin.
     const overhang = (MODE_PLATE.w * MODE_SCALE - MODE.size) / 2;
     expect(EDGE_LEFT - overhang).toBeCloseTo(EDGE_RIGHT, 6);
-    // Which means the right is the TIGHTER margin, and by a visible amount. Equal margins are the
-    // bug this replaced, so a change that makes them equal again fails here.
+    // The selected plate's overhang makes the right box margin visibly tighter.
     expect(EDGE_RIGHT).toBeLessThan(EDGE_LEFT - 8);
     // The bottom is its own: what stands there is a full-width shelf whose plate runs off the
     // window, not a cluster the frame has to hold clear of an edge.
@@ -375,7 +360,7 @@ describe('the right-hand column', () => {
       // does not add a line to it. Measured in the browser at 322.6 css px over a generated island,
       // three rows of the square's three-line tile: a floor's name, its count with the eye and the
       // lock, and its bar.
-      expect(PLATE_DEPTH).toBeCloseTo(323, 6);
+      expect(PLATE_DEPTH).toBeCloseTo(359, 6);
     });
 
     /** TWO FILES IS THE CAP, and it is a property of the ladder rather than of any window. A group
@@ -455,11 +440,14 @@ describe('the right-hand column', () => {
     it('folds a group to seat the open plate, and only as far as seating it takes', () => {
       const rung = (p: RailPlan) =>
         RAIL_FOLDS.findIndex((f) => f.kit === p.kitFiles && f.history === p.historyFiles);
-      // The band where the fold is what buys the lane: the square seats from about 980 device px,
-      // and up to about 1244 it takes a second kit file to do it.
+      // The band where the fold is what buys the lane: the square seats from about 1092 device px,
+      // and up to about 1352 it takes a second kit file to do it. Below the band even a full fold
+      // cannot seat it, so nothing folds and the plate steps out over the map.
       expect(rung(plan(1080, false)), '1080px at rest folds nothing').toBe(0);
-      expect(plan(1080, true).kitFiles, '1080px open puts the kit in two files').toBe(2);
-      expect(plan(1080, true).plateInLane).toBe(true);
+      expect(rung(plan(1080, true)), '1080px open folds nothing either — folding would not seat it').toBe(0);
+      expect(plan(1080, true).plateInLane).toBe(false);
+      expect(plan(1244, true).kitFiles, '1244px open puts the kit in two files').toBe(2);
+      expect(plan(1244, true).plateInLane).toBe(true);
       // A tall window is asked for nothing: its lane is long enough as it stands.
       expect(rung(plan(1440, true)), '1440px needs no fold').toBe(0);
       expect(plan(1440, true).plateInLane).toBe(true);

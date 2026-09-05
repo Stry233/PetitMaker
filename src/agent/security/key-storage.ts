@@ -1,20 +1,11 @@
 /**
- * Persistence for the agent's BYOK settings (provider, per-provider model, keys).
- *
- * SECURITY: keys are sealed AT REST with the WebCrypto vault (vault.ts — AES-GCM
- * under a non-extractable CryptoKey held in IndexedDB), so localStorage carries
- * only ciphertext once the async upgrade lands. Where the vault is unavailable
- * (old browsers, some private windows, jsdom), keys fall back to base64
- * OBFUSCATION — NOT encryption. Either way, anything executing in this origin
- * (devtools, XSS, a storage-capable extension) can still obtain keys — see
- * vault.ts + docs/THREAT_MODEL.md for the honest threat model. The structural protections
- * remain primary: BYOK keeps keys OFF any server, keys are sent ONLY to the
- * selected provider's HTTPS API (CSP connect-src allowlists those), never logged
- * (error text is redacted — redact.ts), and the UI discloses "stored locally in
- * this browser only". Users on shared machines should clear site data.
+ * Agent provider settings and key persistence. Keys are sealed with the browser vault when
+ * available and otherwise stored with reversible base64 obfuscation. Client-side code can use any
+ * locally stored key; `docs/THREAT_MODEL.md` describes that boundary.
  */
 import { PROVIDER_META, PROVIDER_IDS, providerBaseUrls, type ProviderId } from '../providers/defaults';
-import { sealSecret, openSecret, type SealedBlob } from './vault';
+import { sealSecret, openSecret, type SealedBlob } from '../../core/runtime/vault';
+import { sanitizeEndpointUrl } from '../../core/runtime/endpoint-url';
 import { PREFS } from '../../core/runtime/prefs';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
@@ -23,17 +14,13 @@ export interface AgentSettings {
   provider: ProviderId;
   model: Record<ProviderId, string>;
   keys: Partial<Record<ProviderId, string>>;
-  /** Legacy approval flag, kept as a back-compat mirror of `oversight==='strict'`. */
+  /** Compatibility mirror of `oversight === 'strict'`. */
   askBeforeEdits: boolean;
-  /** Gate policy (Site Log): strict = every edit asks; checkpoint = plans and
-   *  wide/destructive steps ask; yolo = only sketches wait. */
+  /** Approval policy: every edit, checkpoints, or sketches only. */
   oversight: Oversight;
-  /** Base URL of the 'custom' provider's OpenAI-compatible endpoint (e.g. an
-   *  Open WebUI/LiteLLM gateway). Not a secret — stored plain. */
+  /** OpenAI-compatible custom endpoint. Stored as a non-secret field. */
   customBaseUrl?: string;
-  /** Which regional deployment a key belongs to, for the platforms that run more than one
-   *  (Moonshot, Qwen, Zhipu). Filled in when the key is connected; absent means the provider's
-   *  primary host. Not a secret — stored plain. */
+  /** Registry URL that accepted each region-specific provider key. Stored as a non-secret field. */
   regionBaseUrl?: Partial<Record<ProviderId, string>>;
 }
 
@@ -46,28 +33,20 @@ const dec = (s: string): string => {
   }
 };
 
-/** The stored record: non-secret fields plain; keys either obfuscated (`keys`,
- *  the fallback + the brief window before the async seal lands) or encrypted
- *  (`keysSealed`). */
+/** Non-secret fields plus either obfuscated or vault-sealed keys. */
 interface StoredRecord {
   provider?: ProviderId;
   model?: Record<ProviderId, string>;
   keys?: Record<string, string>;
   keysSealed?: SealedBlob;
   askBeforeEdits?: boolean;
-  /** Wider than `Oversight`: a stored record may hold a retired name (RENAMED_OVERSIGHTS). */
+  /** Wider than `Oversight` so renamed stored values can be migrated. */
   oversight?: string;
   customBaseUrl?: string;
   regionBaseUrl?: Record<string, string>;
 }
 
-/**
- * Stored regional hosts, keeping only a URL the provider itself declares.
- *
- * The key travels to whatever this names, and localStorage is writable by anything running in
- * the origin, so an arbitrary string here would be an arbitrary destination for a key. The
- * declared host list is the allowlist — same posture as json-codec dropping unknown catalogIds.
- */
+/** Accept stored regional hosts only when the provider registry declares them. */
 function readRegionBaseUrl(rec: StoredRecord['regionBaseUrl']): AgentSettings['regionBaseUrl'] {
   if (!rec || typeof rec !== 'object') return undefined;
   const out: Partial<Record<ProviderId, string>> = {};
@@ -80,14 +59,10 @@ function readRegionBaseUrl(rec: StoredRecord['regionBaseUrl']): AgentSettings['r
 
 const OVERSIGHTS: readonly string[] = ['strict', 'checkpoint', 'yolo'];
 
-/** Oversight names retired from the type but still on users' disks. Dropping one
- *  would fall back to the default, so a user who asked never to be interrupted
- *  would start being interrupted with no indication why. Read-only: the loader
- *  maps forward and the next save writes the current name. */
+/** Stored names mapped to their current approval policy on load. */
 const RENAMED_OVERSIGHTS: Record<string, Oversight> = { autopilot: 'yolo' };
 
-/** Stored oversight → current name. Falls back through the legacy boolean
- *  (askBeforeEdits true → strict) to the default. */
+/** Read the current policy, then the compatibility mirror, then the default. */
 function readOversight(rec: Pick<StoredRecord, 'oversight' | 'askBeforeEdits'>): Oversight {
   const stored = rec.oversight;
   if (stored) {
@@ -98,43 +73,10 @@ function readOversight(rec: Pick<StoredRecord, 'oversight' | 'askBeforeEdits'>):
   return rec.askBeforeEdits === true ? 'strict' : 'checkpoint';
 }
 
-/**
- * Normalize a user-typed custom endpoint: add a missing scheme, force https
- * for anything that is not loopback (an http endpoint would carry the API key
- * in cleartext), drop non-http(s) schemes, drop embedded credentials, trim
- * trailing slashes. Returns '' for unusable input.
- */
-export function sanitizeEndpointUrl(raw: string): string {
-  let u = raw.trim();
-  if (!u) return '';
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) u = `https://${u}`;
-  try {
-    const url = new URL(u);
-    // CSP cannot express an IPv6 literal (its host grammar is letters, digits and hyphens), so an
-    // endpoint written that way is unreachable however it is stored. `localhost` is the spelling
-    // that connect-src can name, and it resolves to the same loopback interface.
-    if (url.hostname === '[::1]') url.hostname = 'localhost';
-    if (url.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
-      url.protocol = 'https:';
-    }
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
-    // A password in `https://user:pass@host` would sit in a field persisted in the clear, beside
-    // a key the vault seals; a browser also refuses to fetch a URL carrying credentials.
-    url.username = '';
-    url.password = '';
-    return url.toString().replace(/\/+$/, '');
-  } catch {
-    return '';
-  }
-}
-
 function defaultAgentSettings(): AgentSettings {
   return {
     provider: 'claude',
-    // No seeded model: a model is only real once a live listModels() picks it (or
-    // the user enters one). Seeding a per-provider default would show a "fake"
-    // model for a platform whose key isn't effective, and let the user start a
-    // chat against a model that may not exist.
+    // Models remain empty until discovered from a connected provider or entered by the user.
     model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
     keys: {},
     askBeforeEdits: false,
@@ -149,8 +91,7 @@ export function loadAgentSettings(): AgentSettings {
     if (!raw) return defaultAgentSettings();
     const parsed = JSON.parse(raw) as StoredRecord;
     const base = defaultAgentSettings();
-    // Synchronous path only decodes the obfuscated fallback; vault-sealed keys
-    // arrive via hydrateSealedKeys() (async) — the store merges them in.
+    // Vault-sealed keys arrive asynchronously through `hydrateSealedKeys`.
     const keys: AgentSettings['keys'] = {};
     for (const [k, v] of Object.entries(parsed.keys ?? {})) {
       const decoded = dec(v);
@@ -163,10 +104,7 @@ export function loadAgentSettings(): AgentSettings {
       keys,
       askBeforeEdits: oversight === 'strict',
       oversight,
-      // Re-normalized on the way in, not trusted for having been stored: a custom endpoint is a
-      // free-text destination for a key, and localStorage is writable by anything in the origin,
-      // so a value put there by hand gets exactly the treatment a typed one does (the allowlist
-      // `readRegionBaseUrl` applies below is the same posture for the declared hosts).
+      // Stored free-text endpoints receive the same normalization as newly typed values.
       customBaseUrl: typeof parsed.customBaseUrl === 'string' ? sanitizeEndpointUrl(parsed.customBaseUrl) || undefined : undefined,
       regionBaseUrl: readRegionBaseUrl(parsed.regionBaseUrl),
     };
@@ -175,30 +113,19 @@ export function loadAgentSettings(): AgentSettings {
   }
 }
 
-/** True once the startup hydration finished — from then on an empty key set in
- *  a save means "deliberately cleared", not "not yet loaded". */
+/** Distinguishes a deliberately empty keyring from one awaiting startup hydration. */
 let keysHydrated = false;
 export function markKeysHydrated(): void {
   keysHydrated = true;
 }
 
 /**
- * A sealed blob sits on disk that the vault DECLINED to open (IndexedDB blocked in a private
- * window, a profile carried to another machine, a browser with no SubtleCrypto). Hydration
- * finished, so `keysHydrated` is up, but the keys are not in memory — and "hydrated with an
- * empty keyring" is what tells a save that the user cleared them. So the blob is carried
- * through every save verbatim until an unseal succeeds and can replace it; without this, one
- * press on any settings row after such a boot wrote a record with no `keysSealed` and the
- * user's keys were gone.
- *
- * Residual: while the blob is unread, a revocation cannot reach the ciphertext, so a key
- * forgotten in that state can return once the vault opens. The session shows nothing
- * connected meanwhile; the alternative is erasing keys we cannot read.
+ * An unread sealed blob is preserved across settings saves until it can be opened. A key removed
+ * while its blob is unread may reappear if vault access later returns.
  */
 let sealedUnread = false;
 
-/** Decrypt the vault-sealed keys, if any. The store calls this once at startup
- *  and merges the result under any keys the user has already typed this session. */
+/** Decrypt stored keys for the startup merge. */
 export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
   if (typeof localStorage === 'undefined') return null;
   try {
@@ -216,11 +143,7 @@ export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, st
   }
 }
 
-/**
- * Replace the record's obfuscated keys with a vault-sealed blob. Runs after
- * every save; re-reads the record at completion so a save that landed during
- * sealing is never clobbered (its own upgrade is in flight and wins).
- */
+/** Seal obfuscated keys without overwriting a newer settings save. */
 async function upgradeToSealed(): Promise<void> {
   const raw = localStorage.getItem(PREFS.agentSettings.key);
   if (!raw) return;
@@ -232,9 +155,7 @@ async function upgradeToSealed(): Promise<void> {
     const decoded = dec(v);
     if (decoded) plain[k] = decoded;
   }
-  // A blob the vault refused to open holds keys this session never saw, so sealing what is in
-  // hand would drop them. Open it here (the vault may have become available since) and fold it
-  // in UNDER the live keys, or leave both it and the obfuscated keys standing.
+  // Merge a newly readable old blob under the live keyring before resealing.
   if (sealedUnread && rec.keysSealed) {
     const reopened = await openSecret(rec.keysSealed);
     if (!reopened) return;
@@ -246,9 +167,9 @@ async function upgradeToSealed(): Promise<void> {
     sealedUnread = false;
   }
   const sealed = await sealSecret(JSON.stringify(plain));
-  if (!sealed) return; // vault unavailable → obfuscated fallback stays
+  if (!sealed) return; // Keep the obfuscated fallback when the vault is unavailable.
   const cur = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
-  if (!cur || JSON.stringify(cur.keys) !== JSON.stringify(rec.keys)) return; // newer save owns the upgrade
+  if (!cur || JSON.stringify(cur.keys) !== JSON.stringify(rec.keys)) return; // A newer save owns the upgrade.
   delete cur.keys;
   cur.keysSealed = sealed;
   localStorage.setItem(PREFS.agentSettings.key, JSON.stringify(cur));
@@ -258,11 +179,7 @@ export function saveAgentSettings(s: AgentSettings): void {
   if (typeof localStorage === 'undefined') return;
   const keys: Record<string, string> = {};
   for (const [k, v] of Object.entries(s.keys)) if (v) keys[k] = enc(v);
-  // Carry the existing sealed blob forward: a save that fires BEFORE the async
-  // key hydration completes has empty in-memory keys, and dropping the blob
-  // there would destroy the stored keys. The same holds after a hydration that
-  // could not OPEN the blob (`sealedUnread`). When this save carries keys of its
-  // own, the upgrade below re-seals and replaces the carried blob anyway.
+  // Preserve sealed keys while hydration is pending or the blob is unreadable.
   let keysSealed: SealedBlob | undefined;
   if (!keysHydrated || sealedUnread || Object.keys(keys).length > 0) {
     try {
@@ -271,13 +188,12 @@ export function saveAgentSettings(s: AgentSettings): void {
       /* corrupted record → write fresh */
     }
   }
-  // Sync write keeps the obfuscated form so a mid-seal tab close never loses
-  // keys; the async upgrade then swaps it for the encrypted blob.
+  // Write synchronously before the asynchronous vault upgrade.
   localStorage.setItem(
     PREFS.agentSettings.key,
     JSON.stringify({
       provider: s.provider, model: s.model, keys, keysSealed,
-      askBeforeEdits: s.oversight === 'strict',   // back-compat mirror
+      askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
       oversight: s.oversight,
       customBaseUrl: s.customBaseUrl,
       regionBaseUrl: s.regionBaseUrl,

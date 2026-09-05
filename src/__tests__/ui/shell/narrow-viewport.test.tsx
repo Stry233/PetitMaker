@@ -34,6 +34,11 @@ import { RestoreShelf, RESTORE_AFTER_S } from '../../../ui/shell/bars/RestoreShe
 import { Shell } from '../../../ui/shell/Shell';
 import { captionShift, EDGE_LEFT } from '../../../ui/shell/units';
 
+vi.mock('../../../canvas/thumbnail', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../canvas/thumbnail')>()),
+  renderThumbnail: () => new Promise<null>(() => {}),
+}));
+
 /** The autosave the shell is offered at mount. A real one would mean serializing a map through the
  *  codec, which is a different subject entirely: what these tests need is that there IS one. */
 const offered = vi.hoisted(() => ({ save: null as unknown }));

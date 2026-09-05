@@ -8,7 +8,7 @@
 import * as PIXI from 'pixi.js-legacy';
 import { animConfig } from '../../../core/runtime/anim-config';
 import { isMotionReduced } from '../motion-state';
-import { requestRender } from '../render-scheduler';
+import { requestRender as broadcastRender } from '../render-scheduler';
 
 /** Concurrent live-particle count across every burst (place + delete). */
 let live = 0;
@@ -39,7 +39,12 @@ const jitter = (i: number): number => {
  * "new-burst-yields" rule: if this burst would exceed the budget, it is dropped
  * whole rather than evicting particles already settling.
  */
-export function spawnPuff(container: PIXI.Container, cx: number, cy: number, opts: PuffOpts): void {
+export function spawnPuff(
+  container: PIXI.Container, cx: number, cy: number, opts: PuffOpts,
+  /** Opens the render window of the renderer the burst lives on — the caller's own field, or the
+   *  module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
+): void {
   if (isMotionReduced() || opts.count <= 0) return;
   if (live + opts.count > animConfig.puff.globalCap) return; // new-burst-yields
 
@@ -76,6 +81,12 @@ export function spawnPuff(container: PIXI.Container, cx: number, cy: number, opt
   const start = performance.now();
 
   const tick = (ts: number) => {
+    // The host can be torn down mid-burst (a view unmounts, a world swaps): destroying the
+    // container destroys `g` with it, and a destroyed Graphics has no geometry left to clear.
+    if (g.destroyed) {
+      live = Math.max(0, live - n);
+      return;
+    }
     requestRender();        // render-on-demand: keep drawing while the puff lives
     const elapsed = ts - start;
     g.clear();

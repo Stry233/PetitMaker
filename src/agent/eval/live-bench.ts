@@ -1,41 +1,8 @@
 /**
- * The bench's live seam: what a dev-only bench run against a REAL gateway needs that the scripted
- * and played rigs never touch. Web-standard globals only (fetch, Headers, Response, TextDecoder),
- * no node imports, so `played-adapter.ts` stays the one node-only file under `src/`; the sink a
- * caller passes in is where the filesystem happens.
- *
- * - `parseLiveEnv` reads the `AGENT_LIVE_*` triple (plus an optional headers JSON, a dialect, and
- *   `AGENT_LIVE_THINKING`, an anthropic-dialect extended-thinking budget) and fails loudly naming
- *   what is missing. The key may be a placeholder for a gateway authed by
- *   headers, or a short-lived Bearer session token — an expired one answers 401, which classifies
- *   `auth` and ends the run honestly rather than retrying blind.
- * - `redactKey` scrubs the key to `first4…last3` anywhere it could surface.
- * - `wireFetch` is the wire shim: it injects the gateway's own headers into every request (and
- *   drops named ones — a Bearer-authed proxy must not also see the SDK's `x-api-key`), rewrites a
- *   pinned SDK default host onto the gateway's base (the Anthropic-dialect adapter accepts no
- *   base URL, so its requests leave aimed at the SDK's own host), drops an EMPTY `tools` array
- *   from a JSON body (the OpenAI dialect serializes one when a request offers no tools, and an
- *   endpoint without tool support may refuse even the empty list), runs the caller's body
- *   transform (`withThinkingBudget` is the one the bench wires, turning the adapter's adaptive
- *   thinking into an enabled budget for a seat that supports it), and appends every request,
- *   response and stream chunk to a jsonl sink, redacted — the wire log a silent routing bug is
- *   caught in.
- * - `probeToolsMode` sends one minimal request WITH the `tools` parameter and reads the answer:
- *   accepted is native mode, a tools-unsupported refusal is prose mode, anything else throws
- *   (with a VPN hint where the host never resolved, the usual meaning for a tailnet-only gateway).
- * - `probeVision` sends one tiny solid-color image and asks for its color: the named color is a
- *   vision seat, a refusal OR an answer that never names it is text-only (a gateway can silently
- *   drop image parts, which to the harness is the same blindness as refusing them), and a failure
- *   that is not about the image (auth, rate, network) throws.
- * - `redactImagePayloads` reduces base64 image payloads in a wire line to a size + FNV-1a stamp,
- *   both dialect shapes (`image_url` data URLs, Anthropic base64 source blocks): the log must
- *   record that an image rode, never the megabytes themselves.
- * - `createPacedAdapter` keeps `stream()` starts a floor apart, for a gateway whose limit is known
- *   before the first 429 teaches the loop's own pace (`core/retry.ts:pacingFloorMs`).
- *
- * An http:// base URL is reachable from HERE by construction and only here: the app's own settings
- * path (`security/key-storage.ts:sanitizeEndpointUrl`) forces https for every non-loopback host,
- * and this seam never goes through it.
+ * Web-only support for live evaluation: parse the `AGENT_LIVE_*` configuration, redact credentials
+ * and image bodies, inject or remove gateway headers, rewrite SDK hosts, record a JSONL wire trace,
+ * probe native tools and vision, and pace request starts. The caller owns filesystem output. Unlike
+ * product endpoint settings, this developer harness permits an explicit HTTP base URL.
  */
 import type { StreamEvent, TurnError } from '../core/types';
 import type { Adapter, AdapterRequest } from '../providers/types';

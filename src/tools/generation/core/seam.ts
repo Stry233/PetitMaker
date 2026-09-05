@@ -1,39 +1,8 @@
 /**
- * A SCOPED RUN AND THE GROUND AROUND IT: giving back whatever the map outside the region leans on.
- *
- * A run confined to a painted region REPLACES its scope — it erases the terrain inside and builds its
- * own there — and the ground OUTSIDE is not its to touch. But the outside LEANS ON the inside. A
- * mountain one cell beyond the boundary at layer 6 needs a full 3x3 of mass at layer 3 under it, and
- * three of those nine cells are inside the region; an elevated pond is capped by mountain at exactly
- * its own layer, and the cap can be inside. Erase either and the map is illegal at a cell the run
- * never touched. Both rules are POST-stroke, so the violation arrives at commit time and the executor
- * unwinds the stroke until the state is clean again — which means unwinding the run's own clearing,
- * the very thing that broke it. The whole run disappears, every time, whatever it built.
- *
- * SO THE SEAM IS SETTLED BEFORE THE COMMIT, AND IT IS SETTLED BY GIVING GROUND BACK. The map as it
- * stood was legal, so the terrain each in-region cell HELD is a legal answer for the ground outside by
- * construction — which is why no rule is re-implemented here. The repair validates through the live
- * registry and moves the cells the registry flags, the same way `repair.ts` certifies a plan.
- *
- *   - a flagged cell OUTSIDE the region cannot be edited, so the ground INSIDE the region around it
- *     moves ONE TIER back towards what it was.
- *   - a flagged cell INSIDE the region gives up a tier instead (`repair.ts`'s decrease-only step),
- *     unless the seam has already claimed it, in which case it moves towards what it was as well.
- *
- * ONE TIER AT A TIME, AND NOT STRAIGHT BACK TO WHAT IT WAS, because the least that satisfies the
- * outside is usually far less than the whole cell: a layer-8 mountain over the boundary asks for
- * layer 5 under it and nothing more, and 5 asks for 2 one cell further in, so a seam two cells deep
- * settles a massif of any height. Handing back the cell's full height instead demands ITS full
- * support one ring deeper, and that ring the next — measured, a region across a tall picture gave back
- * a quarter of itself, and a region inside a plateau gave back all of it. Every cell still ends at
- * what it held if that is what it takes, so the worst case is the map the run started from, which is
- * legal; the loop simply stops at the first legal state on the way there.
- *
- * The moves cannot fight each other: each cell walks towards ONE value (the ground it had), a tier per
- * pass, and a cell the seam has claimed is never asked to give mass up again. So the loop terminates,
- * and it terminates on a map the rules accept unless the region genuinely has nothing left to offer —
- * a region painted deep inside a layer-8 massif is a place where flat ground is not legal at all, and
- * there the honest answer is the ground that was already there.
+ * Repairs the boundary of a scoped replacement before commit. Outside terrain may depend on support
+ * or water caps inside the region, so flagged inside cells move one tier at a time toward their saved
+ * values; other flagged inside cells may lower. Claimed support never lowers again. The live registry
+ * decides when the seam is legal, avoiding a duplicate implementation of post-stroke rules.
  */
 import { CommandType, TerrainType } from '../../../core/model/types';
 import type {
@@ -45,11 +14,11 @@ import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
 import { entriesNear, getObjectIndex } from '../../../state/object-index';
 import { removeObjectCommand } from '../../objects/object-placer';
 
-/** The ground a run is about to replace, read before it clears anything. */
+/** Snapshot of buildable cells before a scoped generation run clears them. */
 export interface RegionBase {
   width: number;
   height: number;
-  /** 1 where a cell is inside the region AND buildable: the only cells the repair may edit. */
+  /** 1 for buildable cells inside the region; seam repair edits only these cells. */
   mask: Uint8Array;
   /** What each in-region cell held before the run, by flat index. */
   before: (TerrainCell | null)[];
@@ -62,36 +31,29 @@ export interface SeamContext {
 }
 
 export interface SeamOptions {
-  /** Objects the caller has undertaken to leave standing (Clear spares the person's own work). A cell
-   *  one of them covers is left alone: terrain cannot be painted under an object, and the clearing
-   *  spared that cell for the same reason, so the seam never needs it. */
+  /** Objects the caller preserves; their occupied cells are not edited. */
   spare?: (obj: PlacedObject) => boolean;
 }
 
 export interface SeamRepair {
-  /** How many in-region cells the seam claimed: cells moved back towards the ground they held,
-   *  counted once each however many tiers they walked. */
+  /** Distinct in-region cells moved toward their saved terrain. */
   restored: number;
   /** In-region cells that gave up a tier instead, counted the same way. */
   lowered: number;
-  /** In-region cells the seam CLAIMED for the ground outside, whether or not the paint that walked
-   *  them back landed. What the outside was owed, as opposed to what was handed over: a region whose
-   *  every cell is claimed is a region the run had nothing left to build on. */
+  /** In-region cells reserved to satisfy outside dependencies, whether restoration landed or not. */
   claimed: number;
   passes: number;
-  /** What is still wrong. Empty on a settled seam, which is the point: the executor's auto-revert
-   *  stays a backstop rather than the way a scoped run ends. */
+  /** Remaining violations after the repair bound is reached. */
   violations: ValidationError[];
 }
 
-/** A cell walks back one tier per pass, so a layer-8 seam takes eight; a few rings of that, plus the
- *  headroom a pathological map needs. A safety bound, not a working budget (measured: 7). */
+/** Safety bound for tier-by-tier restoration across expanding support rings. */
 const MAX_PASSES = 64;
 /** How far into the region a flagged cell outside it may reach for support. Grown one ring at a time
  *  and only when a pass achieved nothing, so the usual answer (V-MTN-03's own 3x3) costs one ring. */
 const MAX_REACH = 12;
 
-/** The ground inside the region, as it stands. Call BEFORE the run clears its scope. */
+/** Captures buildable terrain before a run clears its scope. */
 export function readRegionBase(state: GridState, region: readonly MacroCoord[]): RegionBase {
   const { width, height } = state.template;
   const mask = new Uint8Array(width * height);
@@ -116,23 +78,9 @@ function signature(terrain: TerrainCell | null): string {
 }
 
 /**
- * Is there nothing of the run's own left in its region? Read AFTER the commit.
- *
- * TRUE means the press built nothing, and there are two reasons a scoped press ends that way. The
- * ground may never have been the run's to build on: a region painted inside a tall massif is ground
- * the outside leans on, so the seam claims it and hands it back, and flat ground is not legal there
- * at any tier. Or the region may have been perfectly free and the island's design simply put nothing
- * in it. The caller tells the two apart by whether the seam claimed anything (`SeamRepair.claimed`)
- * and says which, because a press that appears to do nothing and says nothing reads as a broken
- * button.
- *
- * WHAT THE READING TESTS is that no cell holds MORE than it held before the run and no object stands
- * in the region at all. Not equality with the ground before: the seam settles at the least the outside
- * needs, which is usually LOWER than the cell's own height, so a region handed back is a region full
- * of cells that differ from what they were. What only the run can produce is mass ABOVE what a cell
- * held, or a placement of any kind — its own clearing emptied the scope first, so whatever stands
- * there afterwards arrived with it. A cell walked back through a tier of mountain where it used to
- * hold water reads as built, which keeps the notice off a press whose result is not plainly nothing.
+ * Reports whether a completed run left no generated content in its region.
+ * Any object, new terrain type, new occupied cell, or mass above the pre-run snapshot counts as generated content.
+ * Same-type terrain at or below its prior mass may be seam support and does not count.
  */
 export function regionUnbuilt(state: GridState, base: RegionBase): boolean {
   const { width: W, height: H, mask, before } = base;
@@ -149,7 +97,7 @@ export function regionUnbuilt(state: GridState, base: RegionBase): boolean {
       if (y > y2) y2 = y;
     }
   }
-  if (x2 < 0) return true;   // no buildable cell in scope: nothing was ever going to be built
+  if (x2 < 0) return true;
   for (const entry of entriesNear(getObjectIndex(state), { x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 })) {
     const { rect } = entry;
     for (let y = Math.max(y1, Math.floor(rect.y) - 1); y <= Math.min(y2, Math.ceil(rect.y + rect.h)); y++) {
@@ -178,8 +126,7 @@ function lowerOf(terrain: TerrainCell | null): TerrainCell | null | undefined {
   return top > 1 ? { type: TerrainType.Mountain, elevation: top - 1 } : null;
 }
 
-/** The in-region cells within `reach` of a flat index, in raster order so a repair is one function of
- *  the map rather than of the order the region was painted in. */
+/** In-region cells within `reach`, returned in deterministic raster order. */
 function within(i: number, reach: number, base: RegionBase): number[] {
   const { width: W, height: H, mask } = base;
   const cx = i % W, cy = (i / W) | 0;
@@ -194,17 +141,8 @@ function within(i: number, reach: number, base: RegionBase): number[] {
 }
 
 /**
- * Put `targets` on the map, bottom-up.
- *
- * BOTTOM-UP FOR THE SAME REASON `commit.ts` IS: painting layer N wants layer N-1 already under it
- * (V-MTN-02/V-WTR-01), so a cell coming back at layer 6 is painted at 1, 2, 3… up to its own height.
- * The layers are emitted over the target list rather than through `planToCommands`, which walks the
- * whole grid per layer — the right shape for an island plan and the wrong one for a seam.
- *
- * Objects go first, because terrain cannot be painted under one (V-PLACE-BLOCK) and what stands on the
- * ground being given back is the run's own placement. A spared object keeps its cell instead.
- *
- * Returns the targets that reached the state they were asked for.
+ * Applies seam targets bottom-up so each terrain tier has support, removing non-spared objects first.
+ * Returns target indices that reached the requested terrain state.
  */
 function applyTargets(
   ctx: SeamContext, targets: Map<number, TerrainCell | null>, W: number, spare?: (obj: PlacedObject) => boolean,
@@ -269,20 +207,13 @@ function applyTargets(
   return landed;
 }
 
-/**
- * Make the map legal again at the seam of a scoped run, editing nothing outside the region.
- *
- * Run after the build and before the commit. Every command goes through the caller's own door, so the
- * repair joins the run's stroke group (one undo entry) and its record (a candidate replays it).
- */
+/** Repairs a scoped run after generation and before commit, using the caller's command path and undo group. */
 export function repairRegionSeam(ctx: SeamContext, base: RegionBase, opts: SeamOptions = {}): SeamRepair {
   const { state, reg } = ctx;
   const { width: W, height: H, mask, before } = base;
-  /** 1 where the seam has claimed a cell: it walks towards the ground it had and is never asked to
-   *  give mass up again, which is what keeps the two moves from undoing each other. */
+  /** 1 where restoration owns the cell, preventing a later lowering step from reversing it. */
   const claimed = new Uint8Array(W * H);
-  /** Cells this repair actually moved, so a caller hears how much of the region the seam cost rather
-   *  than how many tiers it walked. */
+  /** Distinct changed cells; repeated tier steps count once. */
   const movedBack = new Set<number>(), movedDown = new Set<number>();
   let violations = reg.validatePostStroke(state);
   let reach = 1, passes = 0;

@@ -1,29 +1,8 @@
 /**
- * Stage A2 of the methodology pipeline: THE MOVEMENT LINE.
- *
- * The walk is its own step, beside the direction and before any ground is shaped: a map decides where a
- * visitor WALKS before it decides what stands there. Without it a map comes out with its districts in no
- * order, its lakes wherever the budget landed them, and nothing to walk along.
- *
- * The line is one primary trunk from the plaza outward, turning at a SEQUENCE of stops and ending at
- * a look-out on the composition's own high ground. Everything else is composed AROUND it:
- *
- *  - `streets.ts` lays the line FIRST, wider than a trunk, and takes a flight at every tier step it
- *    runs into, so the walk is continuous over the terraces (the climb). It also picks the one place
- *    the line steps over water, and a deck spans it.
- *  - `terrain-sculpt.ts` reads `waterWants`: the lake a waterside stop skirts, the cascade beside the
- *    climb. Water is placed IN RELATION to the walk instead of wherever the budget fell.
- *  - `districts.ts` gives the block at each stop that stop's own theme, so the districts read in the
- *    order they are met, and draws the set-piece stops at a larger scale than their neighbours.
- *
- * THE SEQUENCE IS DRAWN, NOT WRITTEN DOWN. Each stop takes a role — market, garden, waterside, climb,
- * look-out — from a weighted draw over the theme library conditioned on how far along the walk the
- * stop stands and how high its ground is, so a map's story is its own rather than one narrative
- * repeated on every seed. Only the two ends are fixed: the walk leaves the plaza through a market and
- * ends at a look-out, which is what makes it a walk rather than a list.
- *
- * Pure and deterministic per (seed, template, composition, richness): data in, data out, no state, no
- * commands, no browser API, so it runs inside the worker pool.
+ * Plans a primary walk from the plaza market to a high-ground lookout before terrain is shaped.
+ * Seeded intermediate roles guide street width, terrace crossings, nearby water, district themes,
+ * and set-piece scale. The result is pure and deterministic for its seed, template, composition,
+ * and richness.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';

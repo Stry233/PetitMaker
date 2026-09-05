@@ -298,8 +298,7 @@ function probeElement(html: string): Element {
 
 describe('the elements a UA stylesheet gives a cursor to', () => {
   it('is a derived list, not a handful of guesses', () => {
-    // A shrunken table is the regression this file guards. `label` is named because it is the case
-    // a by-eye reading misses.
+    // The lower bound catches an incomplete derived table; `label` covers a commonly missed case.
     expect(UA_STYLED.length).toBeGreaterThanOrEqual(64);
     expect(UA_STYLED.map((e) => e.probe)).toContain('label');
     expect(new Set(UA_STYLED.map((e) => e.probe)).size).toBe(UA_STYLED.length);

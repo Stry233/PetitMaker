@@ -42,7 +42,7 @@ export function normalizeGeometry(input: Record<string, unknown>, flatDefault: F
 }
 
 /** A rect given either nested or as flat corners, for the tools whose only
- *  shape is a rect (scatter_objects, run_generator). */
+ *  shape is a rect (scatter_objects). */
 export function rectInput(input: Record<string, unknown>): { x1: number; y1: number; x2: number; y2: number } | undefined {
   if (input.rect) return input.rect as { x1: number; y1: number; x2: number; y2: number };
   const x1 = num(input.x1), y1 = num(input.y1), x2 = num(input.x2), y2 = num(input.y2);

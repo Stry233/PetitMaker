@@ -4,12 +4,13 @@
  * applied over the user OVERRIDE store, and rebuilds whenever a rebinding changes. No keymap is
  * hardcoded here: adding or binding an operation happens in the registry.
  *
- * Continuous camera keys (WASD/arrow pan, Ctrl± UI scale) stay in canvas/interaction/use-view-
- * shortcuts (held-key rAF loops, a different concern); their key sets are disjoint from the registry.
+ * Two kinds of key are carried out elsewhere while still being registry rows a user can rebind: the
+ * held pan keys (a rAF loop) and the UI-scale keys (live behind an open modal), both in
+ * canvas/interaction/use-view-shortcuts. Both are skipped here, so each key fires once.
  */
 import { useEffect } from 'react';
 import { ShortcutManager } from '../../core/runtime/shortcut-manager';
-import { COMMANDS, COMMAND_BY_ID, type CommandContext } from '../../kit/commands';
+import { COMMANDS, COMMAND_BY_ID, RUN, type CommandContext } from '../../kit/commands';
 import { effectiveCombo, useKeybinds, ALIASES } from '../../core/runtime/keybindings';
 import { setBreakHandleKey, setConstrainKey, setMultiSelectKey, setPanDragKey } from '../../core/runtime/modifier-state';
 
@@ -24,6 +25,10 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
       const overrides = useKeybinds.getState().overrides;
       for (const cmd of COMMANDS) {
         if (cmd.continuous) continue; // held-key pan — driven by use-view-shortcuts, not the one-shot engine
+        // The UI-scale rows have no RUN body; their own listener answers them. Registering their
+        // combo here would swallow the press (a match preventDefaults and stops the scan) for a
+        // command that does nothing.
+        if (!RUN[cmd.id]) continue;
         const combo = effectiveCombo(overrides, cmd.id);
         if (combo) sc.register(combo, () => cmd.run(ctx));
       }

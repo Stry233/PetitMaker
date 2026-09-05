@@ -24,6 +24,7 @@ import { roadLookup } from '../object-index';
 import { catalogLoadValue } from '../catalog';
 import { sameRef } from '../selection';
 import type { EditSlice } from './edit';
+import { ANNOTATION_SESSION_RESET, type AnnotationsSlice } from './annotations';
 
 export interface EngineSlice {
   gridState: GridState | null;
@@ -47,7 +48,8 @@ export interface EngineSlice {
   clearSelection: () => void;
 }
 
-type Deps = Pick<EditSlice, 'activeLayer' | 'layerPinned' | 'displayLayer' | 'layerVisibility' | 'layerLocked'>;
+type Deps = Pick<EditSlice, 'activeLayer' | 'layerPinned' | 'displayLayer' | 'layerVisibility' | 'layerLocked'>
+  & Pick<AnnotationsSlice, 'annotationsEpoch' | keyof typeof ANNOTATION_SESSION_RESET>;
 
 export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineSlice> = (set, get) => ({
   gridState: null,
@@ -69,7 +71,7 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
     };
     const { eventBus } = get();
     const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
-    set({
+    set((s) => ({
       gridState,
       commandExecutor: executor,
       activeLayer: 0,      // a fresh map opens with Ground selected, not an empty Layer 1
@@ -80,13 +82,17 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       // change) and hide fresh paint with no visible cause.
       layerVisibility: {},
       layerLocked: {},
-    });
+      // The annotation SESSION follows the map the same way; the bump is what tells the
+      // annotation views the data under them was swapped, not edited.
+      ...ANNOTATION_SESSION_RESET,
+      annotationsEpoch: s.annotationsEpoch + 1,
+    }));
   },
 
   loadMap: (gridState, registry) => {
     const { eventBus } = get();
     const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
-    set({
+    set((s) => ({
       gridState,
       commandExecutor: executor,
       // Per-map, exactly as in `initMap`: a floor chosen for the map being left, and a hand's pin
@@ -97,7 +103,9 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       displayLayer: null,
       layerVisibility: {},
       layerLocked: {},
-    });
+      ...ANNOTATION_SESSION_RESET,
+      annotationsEpoch: s.annotationsEpoch + 1,
+    }));
   },
 
   selection: [],

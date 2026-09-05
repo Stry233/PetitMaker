@@ -8,7 +8,7 @@ import type { MapProvenanceSummary } from '../../core/provenance/types';
 
 export interface RenderArgs {
   summary: MapProvenanceSummary;
-  /** The live grid (used to size the per-layer construction strip). */
+  /** The live grid that sizes the per-layer construction strip. */
   gridState?: GridState;
   options: ExportOptions; mapAspect: number;
   /** Actual captured map pixel size (loaded base image dims). Drives Original 1:1 layout. */
@@ -25,9 +25,7 @@ export interface RenderArgs {
 
 export interface RenderResult { blob: Blob | null; composition: ExportComposition }
 
-/** Compose → capture → encode. No image-watermarking: the share code (PetitGlyph v2) is a
- *  visible band painted into the composed image, not pixel-nudged steganography. The composition
- *  is returned so the caller can report sizing (e.g. Original 1:1). */
+/** Compose, capture, and encode an export whose optional share code is already visible in the canvas. */
 export async function renderExport(args: RenderArgs): Promise<RenderResult> {
   const badges = badgesFor(args.summary);
   const layerCount = args.gridState ? layersFor(args.gridState).length : 1;

@@ -484,20 +484,8 @@ describe('agent session store', () => {
   });
 });
 
-/**
- * THE LEAVE VERBS' OWN SEAM (escape invariant 2 of 4: a leave verb everywhere).
- *
- * Every terminal card, every fault banner and every opened past ticket carries a way OUT that is not
- * "answer the question" — filing the record away, or clearing it. The buttons belong to those cards;
- * what belongs here is the FACT they write, because it has to outlive the card: a record filed and
- * then re-shown by the next reload would make the leave verb a no-op with a delay.
- *
- * IT IS NOT AN EVENT ON THE LOG. The log is what the MODEL and the record are folded from, and
- * whether the user has put a card away is neither: a filed record still happened, still counts in
- * the history, and still carries its checkpoints. So the marks live beside the log, keyed by
- * `orderSeq` — and because a seq only means something WITHIN one log, they are dropped whenever the
- * log they were made against is (a fresh session, a discarded storage envelope).
- */
+/** Filing and clearing are session metadata keyed by `orderSeq`, not model-visible log events.
+ * The marks reset whenever the log identity changes because sequence numbers are local to a log. */
 describe('the leave verbs: filing a settled record away, and clearing one', () => {
   const marks = () => {
     const s = useAgentSession.getState();

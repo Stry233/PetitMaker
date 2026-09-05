@@ -27,7 +27,7 @@ export async function decodePng(bytes: Uint8Array, limits: ShareLimits = DEFAULT
   if (bitDepth !== 8 || interlace !== 0 || (colorType !== 2 && colorType !== 6)) {
     throw new ShareError('decode-failed', `Unsupported PNG format (bitDepth ${bitDepth}, colorType ${colorType}, interlace ${interlace}).`);
   }
-  if (width <= 0 || height <= 0 || width * height > 64 * 1024 * 1024) {
+  if (width <= 0 || height <= 0 || width * height > (limits.maxRasterPixels ?? 64 * 1024 * 1024)) {
     throw new ShareError('corrupt', 'PNG dimensions out of range.');
   }
   const bpp = colorType === 6 ? 4 : 3;

@@ -1,11 +1,10 @@
-// src/__tests__/io/share/import-export.test.ts — E2E for the PetitGlyph v2 raster-first
-// orchestrators (export.ts/import.ts). Exercises buildShareCode → importFromRaster on the
-// rendered code band ALONE (no PNG/pixels-through-capture round trip — e2e.test.ts covers that).
+// Raster-first orchestration tests exercise a rendered PetitGlyph directly. The full PNG and
+// composition path is covered separately by e2e.test.ts.
 import { describe, it, expect } from 'vitest';
 import { buildShareCode, type ShareCode } from '../../../io/share/export';
 import { importFromRaster } from '../../../io/share/import';
 import { canonicalize, canonicalBytes } from '../../../io/share/canonical';
-import { GRID_ROWS, TOP_ROWS } from '../../../io/share/glyph/geometry';
+import { CURRENT_GRID_ROWS, CURRENT_TOP_ROWS } from '../../../io/share/glyph/geometry';
 import type { ShareCodeMeta } from '../../../io/share/codec/payload';
 import { corpusCases } from './corpus';
 
@@ -21,8 +20,8 @@ function rng(seed: number): () => number {
  *  rows) hard: xor 0x80 on all 3 color channels. */
 function tamperDataRegion(code: ShareCode, count: number, seed: number): Uint8Array {
   const out = new Uint8Array(code.rgba);
-  const mb = code.height / GRID_ROWS;
-  const y0 = Math.ceil(TOP_ROWS * mb);
+  const mb = code.height / CURRENT_GRID_ROWS;
+  const y0 = Math.ceil(CURRENT_TOP_ROWS * mb);
   const rand = rng(seed);
   for (let i = 0; i < count; i++) {
     const x = Math.floor(rand() * code.width);
@@ -35,7 +34,7 @@ function tamperDataRegion(code: ShareCode, count: number, seed: number): Uint8Ar
   return out;
 }
 
-describe('PetitGlyph v2 raster-first import/export', () => {
+describe('PetitGlyph raster-first import/export', () => {
   it('buildShareCode → importFromRaster round-trips a hand-edited corpus map exactly', async () => {
     const cases = await corpusCases();
     const { state } = cases.find((c) => c.name === 'hand-edit-small')!;

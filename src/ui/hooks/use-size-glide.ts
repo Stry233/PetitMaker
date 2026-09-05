@@ -1,34 +1,8 @@
 /**
- * Ease an element's box to whatever its content has just made it.
- *
- * For a surface whose CONTENT changes in place: a greeting whose words and picture are replaced by
- * another arrival's, a window that grows a row when there is something to ask. The change itself is
- * what carries the information; the box arriving at its new size in one frame is the part that reads
- * as a fault, and this is the only thing that moves.
- *
- * IMPERATIVE, NOT `layout`. Framer's layout animation measures in real px (`getBoundingClientRect`)
- * and writes transforms in the element's own coordinate space. Every surface here is drawn inside a
- * CSS `zoom` — the chrome scale — which Framer does not read, so its correction would be out by that
- * factor on every monitor but the one where the scale happens to be 1. Layout projection also scales
- * children for the length of the animation, which is exactly the mid-glide reflow a caller reaches
- * for this to avoid. So the size is measured and sprung by hand, and nothing else about the element
- * is touched: the caller's own enter/exit motion (opacity, scale, y) composes with it untouched.
- *
- * NOTHING EVER LEAVES AN INLINE SIZE BEHIND, which is what keeps the measurement honest: the natural
- * size is read straight off the element on every change, so a glide can never head for a stale
- * target, and a change landing mid-glide takes over from where the box actually stands.
- *
- * ONE AXIS AT A TIME, because that is what the surfaces need and because two would need either two
- * springs or one clock driving both, and no caller has asked which.
- *
- * WHAT THE CALLER OWES IT: clip the box while `gliding` (it is briefly smaller or larger than what
- * stands in it) and keep the content from re-laying itself out inside — for a row, children that do
- * not shrink. Reduced motion is handled here: the new size is taken outright, since the change has
- * already said what it had to say.
- *
- * NOT THE SAME THING AS `ModalShell`'s `motionSize`, which morphs a card BETWEEN two views whose
- * sizes the consumer already knows. This is for content that changes where it stands and a size
- * nobody can name in advance.
+ * Animates one box axis to its content's newly measured size. It avoids Framer layout projection
+ * because that projection does not account for the shell's CSS `zoom` and temporarily scales
+ * children. Inline size is removed after each glide so later measurements remain natural. Callers
+ * clip overflow while gliding; reduced motion applies the target immediately.
  */
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
@@ -48,12 +22,7 @@ export type GlideAxis = 'width' | 'height';
 
 export interface SizeGlideOptions {
   axis: GlideAxis;
-  /**
-   * How the box travels. `springs.gentle` by default rather than a bouncier one: a box that
-   * overshoots its own size shows, for the length of the overshoot, a surface bigger than anything
-   * in it. A CARD-sized traveller should pass the modal family's own tween (`SIZE_MORPH_TWEEN`),
-   * whose comment has the rest of that argument.
-   */
+  /** Motion transition; callers may use a non-overshooting tween for card-sized surfaces. */
   transition?: Transition;
 }
 

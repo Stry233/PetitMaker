@@ -11,9 +11,7 @@ import { PLAZA_ID } from '../../../core/model/constants';
 import { CellZone, TerrainType, type GridState, type MapTemplate, type EditorEvents, type GenerateConfig, type Command } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
 
-// Generate on the REAL shipped maps (which have a fractional locked plaza + real zones) — the synthetic
-// makeState grids used elsewhere have no plaza, so they miss plaza-interaction bugs (e.g. terrain being
-// rejected over the plaza, which once produced an entirely empty map).
+// Shipped maps include fractional locked plazas and production zone boundaries absent from makeState.
 function realState(file: string): GridState {
   const template = JSON.parse(readFileSync(`src/config/maps/${file}`, 'utf8')) as MapTemplate;
   const cells = createGrid(template);
@@ -41,8 +39,7 @@ function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
     const t = state.cells[y]![x]!.terrain;
     if (t?.type === TerrainType.Mountain) mtn++; else if (t?.type === TerrainType.Water) water++;
   }
-  // No placed object (incl. a snapped ramp/bridge) may sit on a non-grass cell — an illegal ramp on the
-  // beach once slipped through because V-ZONE-01 ran before the heightDrop snap.
+  // Snapped ramps and bridges remain subject to the final grass-zone placement rule.
   let onNonGrass = 0;
   for (const o of state.objects.values()) {
     if (o.locked) continue;
@@ -79,7 +76,7 @@ describe('generate on the real shipped maps (default config)', () => {
       expect(mixed.onNonGrass, 'mixed: no object on a non-grass cell').toBe(0);
     });
   }
-  it('seed 53689 earth places no object (ramp/bridge) on a non-grass cell (regression)', () => {
+  it('seed 53689 earth places no ramp or bridge on a non-grass cell', () => {
     for (const file of ['hexia.json', 'tafa.json']) {
       const r = generate(file, 'earth', 53689);
       expect(r.onNonGrass, `${file} seed 53689: no object on non-grass`).toBe(0);

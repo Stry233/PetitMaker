@@ -34,9 +34,22 @@ export interface WaterBody {
   fill: number;
 }
 
+/** Memo per grid: the ledger, the fountain reading, the stream reading and the figure all decompose
+ *  the same finished map in one evaluation pass. Callers share the bodies, so a WaterBody coming out
+ *  of here is read, never mutated (a merge clones its host first). */
+const bodiesMemo = new WeakMap<EvalGrid, WaterBody[]>();
+
 /** Every body on the map, largest first. The state is read too, because whether a body presents a
  *  CAPPED waterfall face is the shared reader's answer and not a shape question. */
 export function waterBodies(g: EvalGrid, state: GridState): WaterBody[] {
+  const hit = bodiesMemo.get(g);
+  if (hit) return hit;
+  const out = waterBodiesUncached(g, state);
+  bodiesMemo.set(g, out);
+  return out;
+}
+
+function waterBodiesUncached(g: EvalGrid, state: GridState): WaterBody[] {
   const { W, H } = g;
   const facedCells = new Set<number>();
   for (const fall of detectWaterfalls(state)) {

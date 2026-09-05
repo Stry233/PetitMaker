@@ -227,25 +227,6 @@ describe('agent tools', () => {
     expect(state.objects.size).toBe(0); // whole scatter is one step
   });
 
-  it('run_generator (maze) builds terrain in the rect as one undo step and flashes', async () => {
-    const { state, exec, deps } = setup(24, 24);
-    const flashed: unknown[] = [];
-    deps.onFlash = (cells) => flashed.push(cells);
-    const r = await executeToolCall(
-      call('run_generator', { algorithm: 'maze', maxElevation: 2, seed: 7, rect: { x1: 2, y1: 2, x2: 20, y2: 20 } }),
-      deps,
-    );
-    expect(r.isError).toBe(false);
-    expect(r.content).toContain('seed 7');
-    let mountains = 0;
-    for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) if (state.cells[y]![x]!.terrain) mountains++;
-    expect(mountains).toBeGreaterThan(10);
-    expect(flashed.length).toBe(1);
-    exec.undo();
-    let after = 0;
-    for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) if (state.cells[y]![x]!.terrain) after++;
-    expect(after).toBe(0); // whole generation is one undo step
-  });
 });
 
 describe('bridge sites + roads', () => {
@@ -405,6 +386,18 @@ describe('clear_area, skills, delegation stub', () => {
     expect(r.isError).toBe(false);
     expect(r.content).toContain('noisy planting patch');
     expect(r.content).not.toContain('(2,2)-(7,5)'); // the bed is order, not noise
+  });
+
+  it('a road run that crosses another street names the four-way as it lays it', async () => {
+    const s = setup(30, 30);
+    const roadId = getCatalogByCategory(ItemCategory.Road)[0]!.id;
+    const first = await executeToolCall(call('build_road', { catalogId: roadId, x1: 5, y1: 12, x2: 24, y2: 12, smooth: 'off' }), s.deps);
+    expect(first.isError, first.content).toBe(false);
+    expect(first.content).not.toContain('FOUR-WAY');
+    const crossing = await executeToolCall(call('build_road', { catalogId: roadId, x1: 14, y1: 5, x2: 14, y2: 20, smooth: 'off' }), s.deps);
+    expect(crossing.isError, crossing.content).toBe(false);
+    expect(crossing.content).toContain('FOUR-WAY');
+    expect(crossing.content).toContain('(14,12)');
   });
 
   it('scatter fill skips road cells instead of standing objects on them', async () => {
@@ -670,6 +663,22 @@ describe('rejection diagnostics', () => {
 });
 
 describe('subagent schema set', () => {
+  it('the surface carries no procedural generator: composing is the agent\'s job', () => {
+    expect(TOOL_SCHEMAS.map((s) => s.name)).not.toContain('run_generator');
+  });
+
+  it('scatter replays: the same call over the same ground lands identically', async () => {
+    const flora = getCatalogByCategory(ItemCategory.Flora);
+    const args = { catalogIds: [flora[0]!.id, flora[1]!.id], count: 14, rect: { x1: 2, y1: 2, x2: 14, y2: 12 } };
+    const positions = async () => {
+      const s = setup(20, 20);
+      const r = await executeToolCall(call('scatter_objects', args), s.deps);
+      expect(r.isError, r.content).toBe(false);
+      return [...s.state.objects.values()].map((o) => `${o.catalogId}@${o.position.x},${o.position.y}`).sort();
+    };
+    expect(await positions()).toEqual(await positions());
+  });
+
   it('SUBAGENT_TOOL_SCHEMAS excludes both delegate_task and update_plan', () => {
     const names = SUBAGENT_TOOL_SCHEMAS.map((s) => s.name);
     expect(names).not.toContain('delegate_task');

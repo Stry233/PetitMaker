@@ -74,6 +74,24 @@ export function applyOpToTaint(prev: UnitTaint | null, source: ProvSource, kind:
 }
 
 /**
+ * A unit re-seated WHOLE — moved or rotated, the thing itself unchanged. The work is where it was,
+ * only somewhere else, so the contribution vector stays the author's: a spatial edit is not
+ * authorship, and letting it re-create the unit under the mover's source laundered an AI planting
+ * into human work (and the reverse) on every drag. The mover still enters the FLAGS — an AI that
+ * relocated a person's plant has modified the map, and disclosure reads the flags — and the ledger
+ * records the op under the mover's own source.
+ */
+export function applyMoveToTaint(prev: UnitTaint, source: ProvSource, opId: string): UnitTaint {
+  const cls = sourceClass(source);
+  return {
+    ...prev,
+    contribution: { ...prev.contribution },
+    lastModifiedByOp: opId,
+    flags: prev.flags | deriveFlags(prev.contribution, cls, source),
+  };
+}
+
+/**
  * Whose work a unit is: the source holding the largest share of its authorship, or null for a unit
  * nothing has touched. Ties go to 'human' — the caller is deciding what it may take back, and a
  * shared cell is the person's as much as the machine's.

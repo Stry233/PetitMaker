@@ -1,27 +1,20 @@
 /**
- * THE SIX CONTRACTS, CHECKED OVER A FINISHED LOG.
+ * Checks the six model-authored copy contracts over a completed session log. The scripted CI actor
+ * and the opt-in gateway test share this reader, so both exercise the same measurements.
  *
- * Every string the panel renders that a MODEL wrote has a shape the interface was drawn for, and the
- * prompt and the tool descriptions state each one. This file is
- * the other half of that: given a log a job actually produced, it reports which of those shapes the
- * model's own output does not wear. One reader, two drivers — the env-gated live run against a real
- * gateway, and the model-shaped ACTOR that runs in CI without a key — so a live pass and a scripted
- * pass answer the same question rather than two similar ones.
+ * Findings are returned as data because an external model may miss a copy constraint without making
+ * the harness itself invalid. Each finding includes enough context to read without the source log.
  *
- * IT REPORTS RATHER THAN THROWS. A live model is allowed to be imperfect and the run is evidence
- * either way; the caller decides what a finding costs. Each finding names the contract, the string
- * and the measurement, so the report is readable without the log beside it.
+ * UI bounds:
+ *   1 says line      point within about 90 characters; two lines before expansion
+ *   2 summary        one to four sentences in a self-sizing receipt
+ *   3 stage label    about 30 authored characters; 45 measured; wraps
+ *   4 delegate task  `label ?? firstLine(task)`; sliced at 96; two lines
+ *   5 suggest_reply  hard-clipped at about 30 Latin or 15 CJK characters
+ *   6 quick answers  about 20 per pill; `GateOption.cap` about 40
  *
- * THE BOUNDS ARE THE UI'S, and each one is measured rather than adopted:
- *   1 says line      the point inside ~90 characters, two-line clamp that EXPANDS on a tap
- *   2 summary        the whole body of the receipt, which sizes itself to it: 1-4 sentences
- *   3 stage label    one rail row: ~30 authored, 45 measured, and it WRAPS rather than clipping
- *   4 delegate task  the lane's name is `label ?? firstLine(task)`, sliced at 96 and two-line clamped
- *   5 suggest_reply  a HARD CLIP inside the composer's field: ~30 Latin, ~15 CJK
- *   6 quick answers  ~20 per pill; a `GateOption.cap` ~40 (no producer yet — checked if one appears)
- *
- * A CJK GLYPH IS A FULL EM, so a bound stated in Latin characters is worth roughly 45% of itself in
- * Chinese or Japanese. Only contract 5 truncates, so only contract 5 measures the script.
+ * CJK text uses roughly twice the horizontal space of Latin text here. Only contract 5 truncates by
+ * script, so the other bounds measure characters directly.
  */
 import { eventsOf, type SessionLog } from '../../agent/core/log';
 import type { SessionEvent } from '../../agent/core/types';
@@ -195,7 +188,7 @@ function checkCalls(ev: Assistant, out: ContractFinding[]): void {
   }
 }
 
-/** The findings as report lines, for a live run's own console. */
+/** Format findings for the gateway harness console. */
 export function reportContracts(findings: readonly ContractFinding[]): string {
   if (findings.length === 0) return 'every model-authored string wore its designed shape';
   return findings.map((f) => `- [${f.contract}] ${f.measured}\n    "${f.text}"`).join('\n');

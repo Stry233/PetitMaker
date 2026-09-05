@@ -16,13 +16,14 @@
  * rasterizer is the only part that needs one.
  */
 import { bridgesDaylight, COVERAGE_ON, sealsGround, scriptOf, smoothShape, type Stencil } from './stencil';
+import { textGraphemes } from './stencil-text-segments';
 
 /** The region a glyph is fitted into, in cells. */
 export interface GlyphBox { width: number; height: number }
 
-/** How many characters a string draws, counted in CODE POINTS so one emoji is one of them. */
+/** Joined emoji and combining marks occupy one character's share of the line. */
 function glyphCount(text: string): number {
-  return Math.max(1, [...text].length);
+  return Math.max(1, textGraphemes(text).length);
 }
 
 /**
@@ -97,9 +98,8 @@ function strokeShare(text: string, box: GlyphBox): number {
  * instances of the Latin and four of the CJK, so the share behind this number picks between them and
  * the drawing is then kept as it came.
  *
- * NOTHING IN THE ENGINE CALLS THIS. The pass that held a stroke to it was removed on measurement, so
- * what remains is a reading of the design intent for the evaluation harness to report a built letter
- * against — kept because a weight table that has drifted from the faces it describes shows up here
+ * NOTHING IN THE ENGINE CALLS THIS. It is a reading of the design intent for the evaluation harness
+ * to report a built letter against — kept because a weight table that has drifted from the faces it describes shows up here
  * first, and it is already telling: the table predicts a 5-cell stroke at 47 cells where the built
  * letters carry 7 to 8. `stencil-stroke.test.ts` holds it to the shape of the curve; if a round ever
  * finds nothing to say with it, the honest move is to delete it rather than to keep it current.

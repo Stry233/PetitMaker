@@ -1,41 +1,15 @@
-/*
- * FloatMenu.tsx — the house dropdown, for wherever a choice list is really ONE choice.
- *
- * Closed it is a single row carrying the current value and a chevron; open it is a plate card in a
- * BODY-LEVEL layer. THE SURFACE THAT OWNS THE ROW NEVER MAKES ROOM FOR THE LIST: no
- * reserved box, no height tween, no scroller growing under it. A panel that resized itself around
- * an open menu would move every control below the row at the moment the hand is travelling to one.
- *
- * WHAT THE CARD IS ANNOUNCED AS FOLLOWS WHAT IT HOLDS: a list of `items` is a `menu` of
- * `menuitemradio` rows, and a `body` the caller filled is a labelled `group` — its rows are not
- * menuitems (they carry a second control, which is the whole reason `body` exists), and a menu that
- * claimed they were would be announced as an empty one.
- *
- * THE PORTAL IS LOAD-BEARING AND MUST NOT BE SIMPLIFIED INTO THE ROW'S SUBTREE. The surfaces this
- * opens over stand under a css `zoom` and inside an entrance fade, and each of those is a stacking
- * context; the transform or filter versions of the same thing are also the containing block for a
- * `position: fixed` descendant. A card rendered under the row therefore cannot reach the viewport's
- * own edges to clamp against them, and cannot take the popover rung however high its number is.
- * Rendered at the body it can do both.
- *
- * The card ANCHORS to the row it belongs to, measured live: a rect read at open time, in real
- * viewport px whatever zoom the row itself stands under. `zoom` is what the CARD should draw at —
- * it applies it to the layer and divides it back out of the anchor coordinates, the same
- * divide-out every fixed popover here does.
- *
- * WHERE THERE IS NO ROOM BELOW, IT STANDS ABOVE. A list that opened downward off the bottom of the
- * window would be a list whose last rows do not exist.
- *
- * TWO WAYS OUT, and the menu takes them BEFORE the surface under it does: Escape is caught in the
- * capture phase at the window and stopped there, so a panel listening for the same key folds only
- * on the next press; the shared `ClickCatcher` takes an outside click and, like every other popover
- * here, CONSUMES it — the press that closes a menu does nothing else.
+/**
+ * Shared single-choice dropdown. The open card portals to `body` so ancestor zoom and stacking
+ * contexts cannot clip it, anchors in viewport coordinates, and opens above when needed. Escape and
+ * outside presses close and consume the event. UI previews render the card inline with no global
+ * listeners. Item lists use menu radio semantics; caller-defined bodies use a labelled group.
  */
 import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { ClickCatcher, clampLeft } from './ClickCatcher';
+import { useUiPreview } from './ui-preview';
 import { colors, cursors, font, radii, shadows, springs, UNAVAILABLE, z } from '../design/styles';
 import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
@@ -92,11 +66,16 @@ export function FloatMenu({
 }: FloatMenuProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const [place, setPlace] = useState<Placement | null>(null);
+  // A PICTURED menu holds still: `PreviewFrame`'s `inert`/`pointer-events` containment is a
+  // property of the real DOM tree, so a body-level portal and a window listener both stand OUTSIDE
+  // it — an invisible catcher over the live app, an Escape eaten app-wide. Pictured, no listener is
+  // attached and the open card renders in flow under its row instead of in the portal layer.
+  const pictured = useUiPreview();
 
   // Measured in a LAYOUT effect: the card is positioned from the row's rect, and reading it after
   // paint would show one frame of the card at the top-left corner of the window.
   useLayoutEffect(() => {
-    if (!open) { setPlace(null); return undefined; }
+    if (!open || pictured) { setPlace(null); return undefined; }
     const measure = () => { if (rowRef.current) setPlace(placeCard(rowRef.current.getBoundingClientRect(), zoom)); };
     measure();
     // The anchor moves with the page, and a card left behind is a card pointing at nothing.
@@ -106,13 +85,13 @@ export function FloatMenu({
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
-  }, [open, zoom]);
+  }, [open, zoom, pictured]);
 
   // Capture at the window, which is earlier than every keydown listener the app registers, and the
   // press is STOPPED: the menu is what the Escape was aimed at, and the surface behind it keeps
   // standing until the next one.
   useLayoutEffect(() => {
-    if (!open) return undefined;
+    if (!open || pictured) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
@@ -120,7 +99,43 @@ export function FloatMenu({
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  }, [open, onClose, pictured]);
+
+  const card = (box: CSSProperties, origin: string) => (
+    <motion.div
+      // A CARD OF `menuitem` ROWS IS A MENU; a card the caller filled itself is not. The
+      // rows a `body` brings carry a second control of their own (that is what `body` is
+      // for), so calling it a menu would promise every child is a menuitem and leave a
+      // screen reader announcing an empty one. A labelled GROUP is what it is.
+      role={body ? 'group' : 'menu'}
+      aria-label={ariaLabel}
+      initial={{ opacity: 0, scale: 0.94 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={springs.stiff}
+      style={{ ...cardStyle, ...box, transformOrigin: origin }}
+    >
+      {header ? <div style={headStyle}>{header}</div> : null}
+      {body}
+      {items.map((item) => (
+        <Fragment key={item.id}>
+          {item.separated ? <div style={dividerStyle} /> : null}
+          <motion.button
+            type="button"
+            role="menuitemradio"
+            aria-checked={item.id === activeId}
+            disabled={item.disabled}
+            onClick={() => { onPick?.(item.id); onClose(); }}
+            whileHover={item.disabled ? undefined : { backgroundColor: hoverFill(item.id === activeId) }}
+            transition={springs.stiff}
+            style={floatMenuItemStyle(item.id === activeId, item.disabled)}
+          >
+            <span>{item.label}</span>
+            {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
+          </motion.button>
+        </Fragment>
+      ))}
+    </motion.div>
+  );
 
   return (
     <>
@@ -137,43 +152,16 @@ export function FloatMenu({
         <span style={rowValue}>{row}</span>
         <Chevron open={open} />
       </button>
+      {open && pictured ? (
+        <div style={{ position: 'relative', marginTop: ANCHOR_GAP }}>
+          {card({ position: 'static', maxHeight: MAX_HEIGHT }, 'top center')}
+        </div>
+      ) : null}
       {open && place ? createPortal(
         <>
           <ClickCatcher onDismiss={onClose} zIndex={z.popover} />
           <div style={{ ...layerStyle, zoom }}>
-            <motion.div
-              // A CARD OF `menuitem` ROWS IS A MENU; a card the caller filled itself is not. The
-              // rows a `body` brings carry a second control of their own (that is what `body` is
-              // for), so calling it a menu would promise every child is a menuitem and leave a
-              // screen reader announcing an empty one. A labelled GROUP is what it is.
-              role={body ? 'group' : 'menu'}
-              aria-label={ariaLabel}
-              initial={{ opacity: 0, scale: 0.94 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={springs.stiff}
-              style={{ ...cardStyle, ...place.box, transformOrigin: place.above ? 'bottom center' : 'top center' }}
-            >
-              {header ? <div style={headStyle}>{header}</div> : null}
-              {body}
-              {items.map((item) => (
-                <Fragment key={item.id}>
-                  {item.separated ? <div style={dividerStyle} /> : null}
-                  <motion.button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={item.id === activeId}
-                    disabled={item.disabled}
-                    onClick={() => { onPick?.(item.id); onClose(); }}
-                    whileHover={item.disabled ? undefined : { backgroundColor: hoverFill(item.id === activeId) }}
-                    transition={springs.stiff}
-                    style={floatMenuItemStyle(item.id === activeId, item.disabled)}
-                  >
-                    <span>{item.label}</span>
-                    {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
-                  </motion.button>
-                </Fragment>
-              ))}
-            </motion.div>
+            {card(place.box, place.above ? 'bottom center' : 'top center')}
           </div>
         </>,
         document.body,

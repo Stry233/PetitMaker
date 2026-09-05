@@ -6,7 +6,6 @@
 // planner's own arithmetic. Three of the stage's load-bearing claims live here: ramps never stand on
 // pavement, the streets read straight rather than random, and the blocks they cut front onto them.
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error — node builtins, test-only (no @types/node in this project)
 import { existsSync, readFileSync } from 'fs';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { createGrid, createPlazaObject } from '../../../../../core/model/grid-model';

@@ -479,12 +479,12 @@ export function evaluateMap(state: GridState, options: EvalOptions = {}): MapEva
   for (let i = 0; i < N; i++) if (g.land[i] && g.covered[i]) covered++;
   const decorDensity = (trees + flora) / land;
 
-  const thin = networkOneWide(g.paved, g.plaza, g.crossing, g.W, g.H);
-  const network = networkShape(g.paved, g.land, g.W, g.H);
+  const thin = networkOneWide(g.paved, g.plaza, g.crossing, g.W, g.H, widthsOpen);
+  const network = networkShape(g.paved, g.land, g.W, g.H, widthsOpen);
   const deadEndShare = paved ? conn.deadEnds / paved : 0;
   const widthMix = { w1: paved ? w1 / paved : 0, w2: paved ? w2 / paved : 0, w3plus: paved ? w3 / paved : 0 };
 
-  const arrivals = streetArrivals(state);
+  const arrivals = streetArrivals(state, g);
   const atPlace = placeArrivals(state, g);
   const hard: HardLedger = {
     pass: false,
@@ -554,11 +554,11 @@ export function evaluateMap(state: GridState, options: EvalOptions = {}): MapEva
   };
 
   const legibility: LegibilityReadings = {
-    ramps: rampDiscipline(state),
-    streets: streetStraightness(state),
+    ramps: rampDiscipline(state, g),
+    streets: streetStraightness(state, g),
     network,
-    districts: districtLegibility(state),
-    frontage: districtFrontage(state),
+    districts: districtLegibility(state, g),
+    frontage: districtFrontage(state, g),
   };
 
   return {

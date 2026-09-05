@@ -1,10 +1,10 @@
 # Legal document bodies
 
-The markdown in this directory is **authored for the app**: `privacy`, `terms`, `about`, and `contact`, as `<id>.en.md` + `<id>.zh.md` pairs. They are imported `?raw` by `../registry.ts`, which is also the structural contract they write into (required sections, effective date, policy version) and the only place that resolves their `{app}` / `{origin}` / `{email}` / `{operator}` / `{team}` / `{providers}` tokens. Never hardcode a value a token already resolves, and never hand-copy data that lives in `../config.ts` (`LEGAL`).
+The markdown in this directory is **authored for the app**: `privacy`, `terms`, `about`, and `contact`, as `<id>.en.md` + `<id>.zh.md` pairs. They are imported `?raw` by `../registry.ts`, which defines their structural contract and resolves tokens for application identity, deployment facts, contacts, repository links, team members, and provider rosters. Never hardcode a value that the registry can derive from its canonical configuration or provider data.
 
 Write one line per paragraph, list item, or table row. Hard-wrapping a paragraph across several lines is a manual line feed the renderer has to undo, and it makes every later edit rewrap the block.
 
-## The app renders six more documents that are NOT here
+## Other documents rendered from repository sources
 
 Each of the following IS a repo file that exists for its own sake, so the app renders that file directly and the GitHub view, the static page, and the in-app doc view cannot drift from one another. Copying them here would mean two files per document plus a guard to hold them equal.
 

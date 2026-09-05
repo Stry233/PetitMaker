@@ -1,6 +1,6 @@
 /**
- * The contract Task 5 makes explicit for both road macros, driven through `applyMacro` exactly as
- * a press reaches them: `roads` (whole-map) and `road-link` (two-tap). One describe per clause.
+ * The contract both road macros hold, driven through `applyMacro` exactly as a press reaches
+ * them: `roads` (whole-map) and `road-link` (two-tap). One describe per clause.
  */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';

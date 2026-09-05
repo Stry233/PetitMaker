@@ -12,7 +12,7 @@
  * var()-free literal though the two agree in meaning.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { act, render, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { useEditorStore } from '../../../state/store';
@@ -278,16 +278,14 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     const { getAllByTestId, queryAllByTestId } = renderWithI18n(<JobTicket job={job} live />);
     const stages = getAllByTestId('plan-stage');
     const connectors = queryAllByTestId('stage-connector');
-    // 3 stages, 2 connecting spines: every stage but the last grows one (prototype
-    // `.stage:last-child::before{display:none}`).
+    // Three stages produce two connecting spines; the last stage has no continuation.
     expect(connectors.length).toBe(2);
     expect(stages[0]!.querySelector('[data-testid="stage-connector"]')).not.toBeNull();
     expect(stages[1]!.querySelector('[data-testid="stage-connector"]')).not.toBeNull();
     expect(stages[2]!.querySelector('[data-testid="stage-connector"]')).toBeNull();
   });
 
-  /** The exception the prototype writes as `:not(:has(.ops.nested))`: a LAST stage that is the
-   *  active one nests its op rows, and the spine runs down the side of the work. */
+  /** An active last stage keeps its spine beside the nested operation rows. */
   it('grows the last stage a spine when it is the one nesting the work', () => {
     const onLast: NonNullable<JobView['plan']> = {
       stages: [{ label: 'A' }, { label: 'B' }], currentIndex: 1, doneCount: 1, revision: 1,
@@ -351,7 +349,7 @@ describe('OpRow: a reverted row', () => {
     ['zh', '放置：'],
     ['fr', 'Placement :'],
   ] as const)('says the rule in the reader s own language (%s)', (locale, category) => {
-    useEditorStore.setState({ locale });
+    act(() => useEditorStore.setState({ locale }));
     const op = makeOp({
       name: 'place_object',
       status: 'error',
@@ -367,7 +365,7 @@ describe('OpRow: a reverted row', () => {
       .filter((el) => el.style.fontWeight === '800')
       .map((el) => el.textContent);
     expect(bolded).toEqual([category]);
-    useEditorStore.setState({ locale: 'en' });
+    act(() => useEditorStore.setState({ locale: 'en' }));
   });
 
   /** Every locale says the app sent something TO the model; ru's genitive said the model had
@@ -609,8 +607,7 @@ describe('JobTicket: the says-line', () => {
     expect(line.textContent).toContain('- The lake goes in first\n- Then the pines');
   });
 
-  /** REASONING NEVER REACHES THIS LINE. `thought` is a reading about effort spent, not something the
-   *  assistant said, and the artifact gives it its own bounded box. */
+  /** Reasoning metadata is separate from the assistant's user-facing summary. */
   it('says nothing about the thinking a job did', () => {
     const job = makeJob({ says: 'Boardwalk first.', thought: { chars: 4096, turns: 3, marks: [], ms: 0 } });
     const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
@@ -692,9 +689,7 @@ describe('JobTicket: a job on hold', () => {
     expect(running.queryByTestId('ticket-actions')).toBeNull();
   });
 
-  /** Resume on the HOLD's own ticket is an action on a held job, not the dock's "this needs you"
-   *  ask, so it takes the artifact's dark ink primary rather than the amber `active` pill (the same
-   *  ruling `ResumeCard` already applies to its own Resume/Fix-key buttons). */
+  /** Resuming a held job uses the standard dark primary, not the attention color used for asks. */
   it('paints the hold\'s own Resume with the dark ink primary, never the ask colour', () => {
     const { getByTestId } = renderWithI18n(
       <JobTicket job={makeJob()} live paused onResume={() => {}} onStop={() => {}} />,

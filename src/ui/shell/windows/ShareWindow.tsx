@@ -17,7 +17,7 @@
  * What visiting buys is that the expensive work (the provenance scan, the share-code build, the
  * map and 3D captures) never starts for a section the user did not ask for.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -29,7 +29,8 @@ import { SegmentedControl } from '../../primitives/SegmentedControl';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { windowCard, windowTitle } from '../../design/window-skin';
 
-type Section = 'keep' | 'friend' | 'game';
+export type ShareSection = 'keep' | 'friend' | 'game';
+type Section = ShareSection;
 
 const SECTIONS: readonly Section[] = ['keep', 'friend', 'game'];
 
@@ -38,6 +39,26 @@ const LABEL: Record<Section, string> = {
   friend: 'share.tab_friend',
   game: 'share.tab_game',
 };
+
+/** The window's own head, title over the three purpose tabs: the live window turns its pages with
+ *  it, and a Help figure poses the same head over the same panels. */
+export function ShareWindowHead({ section, onPick }: { section: ShareSection; onPick: (s: ShareSection) => void }) {
+  const t = useT();
+  return (
+    <>
+      <div style={{ ...windowTitle, marginBottom: 12, flex: '0 0 auto' }}>{t('share.title')}</div>
+      <div style={{ marginBottom: 14, flex: '0 0 auto' }}>
+        <SegmentedControl<ShareSection>
+          idPrefix="share-section"
+          value={section}
+          options={SECTIONS}
+          render={(s) => t(LABEL[s])}
+          onChange={onPick}
+        />
+      </div>
+    </>
+  );
+}
 
 /** Each section's own card size. The share picture needs its preview column; the other two are
  *  reading width. The card morphs between them, the same motion the About window's drill-in uses. */
@@ -64,16 +85,19 @@ export function ShareWindow() {
   const [visited, setVisited] = useState<readonly Section[]>([]);
 
   // The section is chosen on the closed-to-open edge only: after that the tabs own it, so an
-  // opener's flag still standing must not drag the user back to its section.
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (open && !wasOpen.current) {
+  // opener's flag still standing must not drag the user back to its section. Chosen DURING the
+  // render that opens, not in an effect after it: the card takes the section's size at its first
+  // frame, and an effect would have it mount at the last section's size and morph to this one
+  // while the entrance is still in flight.
+  const [openEdge, setOpenEdge] = useState(open);
+  if (open !== openEdge) {
+    setOpenEdge(open);
+    if (open) {
       const first: Section = modals.export ? 'friend' : 'keep';
       setSection(first);
       setVisited([first]);
     }
-    wasOpen.current = open;
-  }, [open, modals.export]);
+  }
 
   const show = useCallback((next: Section) => {
     setSection(next);
@@ -99,16 +123,7 @@ export function ShareWindow() {
       cardStyle={{ ...windowCard, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '24px 26px 20px' }}
       ariaLabel={t('share.title')}
     >
-      <div style={{ ...windowTitle, marginBottom: 12, flex: '0 0 auto' }}>{t('share.title')}</div>
-      <div style={{ marginBottom: 14, flex: '0 0 auto' }}>
-        <SegmentedControl<Section>
-          idPrefix="share-section"
-          value={section}
-          options={SECTIONS}
-          render={(s) => t(LABEL[s])}
-          onChange={show}
-        />
-      </div>
+      <ShareWindowHead section={section} onPick={show} />
 
       {visited.includes('keep') && (
         <div style={slot(section === 'keep')}>

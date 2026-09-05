@@ -112,10 +112,10 @@ export class EdgeCutTool implements Tool {
       // A notch-fill (branch A) materialises EMPTY ground or raises/cycles a SAME-type hidden block INTO
       // the wrapping structure's type. Two guards:
       //   - never overwrite a DIFFERENT real surface — a water cell tucked beside a taller mountain keeps
-      //     its water and rounds its OWN outer corner via branch B (Bug 3); and
+      //     its water and rounds its OWN outer corner via branch B; and
       //   - only a MOUNTAIN fills a notch this way. A WATER notch (a ground island, or lower land, tucked
       //     into water) must NOT be flooded — the island rounds out via the water's concave cut (branch B,
-      //     a free notch corner), the water staying its inner fill. (Bug 1.)
+      //     a free notch corner), the water staying its inner fill.
       const cellIsDifferentReal = !!cellTerr && !cellTerr.patchOnly && !!hi && cellTerr.type !== hi.type;
 
       // (A) This corner is CONCAVE relative to a HIGHER MOUNTAIN → it's that taller structure's gamma

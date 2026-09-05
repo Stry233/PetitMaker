@@ -1,44 +1,22 @@
 /**
- * The Anthropic adapter — official @anthropic-ai/sdk, browser mode. The ONLY file in
- * providers/ that imports the SDK, so the loop and every other adapter stay SDK-free.
- *
- * Wire-shape facts (tool_result batching into one user message, image nesting inside a
- * tool_result block, the system cache_control breakpoint, adaptive thinking,
- * `dangerouslyAllowBrowser`) are production-proven. The generator
- * NEVER throws (every failure, abort included, ends the stream with one terminal event instead
- * of rejecting); the raw content-block echo is gated on `sameModel` — a Claude turn's
- * raw bytes (thinking signatures, exact tool_use shape) are provider-specific and replaying them
- * against a different provider or model would misreport what actually produced them; and the
- * conversation carries a cache breakpoint of its own (`withConversationBreakpoint`) beside the
- * system prefix's.
- *
- * The raw-failure/retry-after mapping (`./http-failure`, which redacts the detail through
- * `../security/redact`) is shared verbatim with the OpenAI-dialect adapter, since neither a
- * leaked key nor a `Retry-After` header's shape is an Anthropic-specific risk.
- *
- * This dialect carries no `Quirks` value of its own: `imageInToolResult` exists in the quirks
- * table only to describe the OpenAI dialect's per-provider variation, and this file's wire shape
- * (image nested inside a tool_result block) serves exactly one provider, whose value is fixed
- * true, so there is nothing here for a quirks flag to select between.
+ * Anthropic's browser SDK adapter and the sole provider module that imports its SDK.
+ * It owns Anthropic's tool-result, image, thinking and cache-control wire shapes. Raw content
+ * blocks replay only to the same model because their signatures and tool-use shapes are
+ * provider-specific. Errors and aborts become terminal stream events.
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { classify } from '../core/errors';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, Usage } from '../core/types';
-import { toRawFailure } from './http-failure';
+import { streamFailureEvent } from './http-failure';
 import type { Adapter, AdapterRequest } from './types';
 
-/** Thinking and the answer share this budget. Adaptive thinking is sent unconditionally, so a
- *  ceiling low enough for the answer alone stops a long think at `max_tokens` — the turn ends
- *  'length' with nothing usable in it, and the next one re-thinks the same wall. */
+/** Adaptive thinking and the answer share this budget. */
 const DEFAULT_MAX_TOKENS = 32000;
 
-/** The block types that accept `cache_control`. `thinking` does not, so a raw echo ending in one
- *  cannot hold the breakpoint. */
+/** Anthropic permits `cache_control` on these content block types. */
 const MARKABLE = new Set(['text', 'tool_result', 'tool_use', 'image']);
 
-/** `data:<mime>;base64,<data>` -> its two parts; an unrecognized shape is treated as already-bare
- *  base64 data (never throws on a malformed string, since a bad image is not worth failing the turn). */
+/** Splits a data URL; an unrecognized value is treated as bare PNG base64. */
 function parseDataUrl(dataUrl: string): { mediaType: string; data: string } {
   const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl);
   return match ? { mediaType: match[1] ?? 'image/png', data: match[2] ?? '' } : { mediaType: 'image/png', data: dataUrl };
@@ -64,7 +42,6 @@ function assistantContent(
   return blocks.length > 0 ? blocks : '(no text)';
 }
 
-/** Exported for tests. */
 export function toAnthropicMessages(messages: ProviderMessage[], sameModel: boolean): Anthropic.MessageParam[] {
   return messages.map((m): Anthropic.MessageParam => {
     if (m.role === 'user') return { role: 'user', content: userContent(m.text, m.images) };
@@ -85,14 +62,8 @@ export function toAnthropicMessages(messages: ProviderMessage[], sameModel: bool
 }
 
 /**
- * The second cache breakpoint, on the LAST markable block of the history (the first is on the
- * system+tools prefix). A breakpoint caches everything BEFORE it, so one that moves to the tail
- * each turn writes the turn just added and reads everything older — the incremental-prefix
- * pattern. Without it only tools+system were cached and the whole conversation was reprocessed at
- * full price every turn. Two breakpoints total, against an API ceiling of four.
- *
- * Copy-on-write: `raw` echo blocks are the same objects the log holds, so the marked block is a
- * fresh spread and the input array is never touched. Exported for tests.
+ * Places the conversation's cache breakpoint on its last eligible block. The system prefix owns
+ * the other breakpoint. Raw echo blocks may be shared with the log, so marking is copy-on-write.
  */
 export function withConversationBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -119,7 +90,7 @@ export function withConversationBreakpoint(messages: Anthropic.MessageParam[]): 
 function mapStop(reason: Anthropic.Message['stop_reason']): StopReason {
   if (reason === 'tool_use') return 'tool-calls';
   if (reason === 'max_tokens') return 'length';
-  return 'stop'; // end_turn, stop_sequence, pause_turn, refusal, null
+  return 'stop'; // All remaining terminal reasons end the turn without tool calls.
 }
 
 function usageOf(u: Anthropic.Message['usage']): Usage {
@@ -153,11 +124,8 @@ export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
           { signal },
         );
 
-        // Text/thinking/tool-arg deltas all stream live off the raw wire events. A tool_use
-        // block's `index` is the only handle its later input_json_delta chunks carry, so the
-        // index->callId map recorded at content_block_start is what lets each chunk name its
-        // call; finalMessage() below is authoritative ONLY for the parsed `final` args + `raw`,
-        // never for what already went out live.
+        // Input JSON deltas carry only a block index, so retain the tool ID from block start.
+        // finalMessage() supplies the parsed arguments and raw echo after live deltas are emitted.
         const callIdByIndex = new Map<number, string>();
         for await (const event of sdkStream) {
           if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
@@ -190,9 +158,7 @@ export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
           final: finalCalls,
         };
       } catch (err) {
-        const error = classify(toRawFailure(err, signal.aborted));
-        if (error.cls === 'abort') yield { t: 'done', stop: 'aborted' };
-        else yield { t: 'error', error };
+        yield streamFailureEvent(err, signal.aborted);
       }
     },
 

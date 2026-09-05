@@ -8,7 +8,7 @@ import { iconUrl } from '../../../assets/icon-urls';
 import { animConfig, easeOutBack } from '../../../core/runtime/anim-config';
 import { arcMotion, arcOffset, spinOffset, type GroupRotation } from '../../group-arc';
 import { isMotionReduced } from '../motion-state';
-import { requestRender } from '../render-scheduler';
+import { requestRender as broadcastRender } from '../render-scheduler';
 import { spawnPuff } from '../draw/particles';
 import { iconColor } from '../draw/icon-color';
 
@@ -24,6 +24,9 @@ export function lerpColor(a: number, b: number, t: number): number {
 export function fadeLayer(
   lc: PIXI.Container, elev: number, show: boolean,
   layerFadeAnim: Map<number, number>,
+  /** Opens the render window of the renderer the layer container lives on — the caller's own
+   *  field, or the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   const prev = layerFadeAnim.get(elev);
   if (prev !== undefined) { cancelAnimationFrame(prev); layerFadeAnim.delete(elev); }
@@ -69,6 +72,9 @@ export function selectionPopAmplitude(spanPx: number): number {
  */
 export function animateSquash(
   objectMap: Map<string, PIXI.Container>, objectId: string, sizeCells = 1,
+  /** Opens the render window of the renderer the wrapper lives on — the caller's own field, or
+   *  the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   if (isMotionReduced()) return;
   const wrapper = objectMap.get(objectId);
@@ -129,6 +135,9 @@ export function animateSquash(
 export function animateRotation(
   objectMap: Map<string, PIXI.Container>, id: string, fromDeg: number, toDeg: number,
   onFrame?: (eased: number) => void,
+  /** Opens the render window of the renderer the wrapper lives on — the caller's own field, or
+   *  the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   if (isMotionReduced()) return;
   const wrapper = objectMap.get(id);
@@ -179,6 +188,9 @@ export function animateRotation(
 export function animateGroupRotation(
   objectMap: Map<string, PIXI.Container>, turn: GroupRotation,
   onFrame?: (eased: number) => void,
+  /** Opens the render window of the renderer the members live on — the caller's own field, or
+   *  the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   if (isMotionReduced()) return;
   const sweepRad = (turn.sweepDeg * Math.PI) / 180;
@@ -233,6 +245,9 @@ export function animateGroupRotation(
  */
 export function animateRemove(
   objectMap: Map<string, PIXI.Container>, container: PIXI.Container, id: string,
+  /** Opens the render window of the renderer the wrapper lives on — the caller's own field, or
+   *  the module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   if (isMotionReduced()) return;
   const wrapper = objectMap.get(id);
@@ -276,7 +291,7 @@ export function animateRemove(
         count: poofCount, color, spreadPx: del.spreadMul * TILE_SIZE * 0.5,
         lifetimeMs: del.lifetimeMs, risePx: del.risePx, gravity: del.gravity,
         arcSpread: del.arcSpread, maxRadiusPx: del.maxRadiusPx,
-      });
+      }, requestRender);
     }
     if (t < 1) {
       requestAnimationFrame(tick);

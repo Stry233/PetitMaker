@@ -27,6 +27,7 @@ import { clearRegionSelection } from '../../../core/runtime/region-brush';
 import { useT } from '../../../i18n/context';
 import { host } from '../../../kit/host';
 import { useEditorStore } from '../../../state/store';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { btnReset, buttonMotion, cursors, UNAVAILABLE, z } from '../../design/styles';
 import { ACTIVE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, QUAD, TEXT } from '../units';
@@ -140,6 +141,7 @@ export function ScopeScreen({ onDone, tools, minSide }: {
   return (
     <div
       data-testid="shell-scope-screen"
+      {...helpTargetAttr('region')}
       style={{
         position: 'fixed', left: QUAD.left, right: EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
         display: 'flex', flexDirection: 'column',

@@ -236,10 +236,7 @@ describe('sanitizeHref — allowed', () => {
   });
 });
 
-// headingSlug implements the GitHub anchor algorithm the docs' authors
-// assumed when they wrote hrefs like [Share Images](#share-images) — these
-// cases are lifted verbatim from the actual privacy.en/zh hrefs (see
-// src/legal/content/privacy.{en,zh}.md) so a regression here is a dead-anchor bug.
+// These cases mirror anchors used by the English and Chinese privacy documents.
 describe('headingSlug', () => {
   it('lowercases and hyphenates a simple heading', () => {
     expect(headingSlug('Share Images')).toBe('share-images');

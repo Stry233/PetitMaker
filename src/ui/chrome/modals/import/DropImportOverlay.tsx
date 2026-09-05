@@ -1,33 +1,8 @@
 /**
- * Window-level drag-and-drop import: dropping a save file or a share image anywhere over the app
- * imports it without opening the Import modal first. Four states: idle -> hover (dragging a file
- * over the window) -> either an immediate import (empty map) or `confirm` (map has content) ->
- * `importing`. Renders through the same `ModalShell` chrome `ImportModal` does, sharing
- * `IMPORT_CARD_WIDTH`/`IMPORT_CARD_PADDING` from `ImportDropZone.tsx`. Only `confirm` is a modal
- * question, so the shell renders `passive` for the other phases.
- *
- * ENTER/LEAVE TRACKING: a depth COUNTER, not `relatedTarget === null`. `dragleave` fires every time
- * the pointer crosses from a parent into a child element (the bubbling target changes), so a naive
- * "leave = hide" handler flickers as the drag crosses the app's nested layers.
- *
- * DOUBLE-IMPORT GUARD: the ImportModal owns its own drop zone, so this handler no-ops while the
- * modal is open. `dragover` still calls preventDefault() regardless: that line alone is what stops
- * the browser from navigating to the dropped file, and it must fire for every file-carrying drag
- * anywhere on the page.
- *
- * PHASE REF: the window-listener effect below does not depend on `phase` (it would tear down and
- * rebuild all four listeners on every flip), so a closure read of `phase` there is stale. The
- * listeners and `runImport` read the synchronous `phaseRef` instead; only the JSX reads `phase`.
- *
- * REENTRANCY: `onDrop` ignores a file while a decision is pending or an import is running — a
- * second decode would race the first (`loadMap` runs twice, last to resolve wins). `runImport`
- * carries the same guard, so a fast double-click on Replace can't fire it twice.
- *
- * STUCK-OVERLAY RESET: a drag can leave the viewport without ever firing a matching `dragleave`
- * (the pointer exits over OS chrome, another application, or a second monitor), leaving `depthRef`
- * positive and the hint covering the app. `window.blur` and the tab going hidden force the counter
- * to 0 and the phase to `idle`, but ONLY from `hover`: `confirm` is a pending decision and
- * `importing` is in flight, so neither may be torn down by losing focus.
+ * Window-level file import with idle, hover, confirm, and importing phases. Nested drag targets are
+ * tracked with a depth counter. The synchronous phase ref prevents stale window-listener closures
+ * and duplicate imports. Blur or a hidden tab clears only a hover overlay; pending confirmation and
+ * active imports remain intact. `dragover` always prevents browser file navigation.
  */
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';

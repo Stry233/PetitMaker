@@ -1,7 +1,7 @@
 /**
- * The store is four slice factories composed at one `create()` call (`state/store.ts`). This
+ * The store is five slice factories composed at one `create()` call (`state/store.ts`). This
  * pins the shape of that split: each file exports its factory, the composed store carries every
- * field the four slices declare, and — the one that matters — `shell.ts` imports nothing from
+ * field the five slices declare, and — the one that matters — `shell.ts` imports nothing from
  * `engine.ts`. A shell field reaching for an engine handle (`gridState`/`commandExecutor`) is
  * exactly the coupling this split exists to prevent.
  */
@@ -15,6 +15,7 @@ import { createEngineSlice } from '../../state/slices/engine';
 import { createEditSlice } from '../../state/slices/edit';
 import { createPrefsSlice } from '../../state/slices/prefs';
 import { createShellSlice } from '../../state/slices/shell';
+import { createAnnotationsSlice } from '../../state/slices/annotations';
 import { useEditorStore } from '../../state/store';
 
 declare const __dirname: string;
@@ -22,30 +23,41 @@ declare const __dirname: string;
 // The fields the composed store is expected to expose. Checked in so that losing one fails here:
 // comparing the slices against the store only proves the two agree, and they shrink together.
 const EXPECTED_STORE_FIELDS: readonly string[] = [
+  'addAnnotation', 'annotationColor', 'annotationDraft', 'annotationNaming', 'annotationRedoLane',
+  'annotationRouteDashed', 'annotationSelection', 'annotationTextSize', 'annotationTextStyle',
+  'annotationTool', 'annotationUndoLane', 'annotationZoneShape', 'annotationsEpoch',
+  'applyAnnotationEdit', 'beginAnnotationStroke', 'mergeAnnotationZones', 'redoAnnotation', 'removeAnnotation',
+  'removeAnnotations',
+  'setAnnotationColor', 'setAnnotationDraft', 'setAnnotationNaming', 'setAnnotationRouteDashed',
+  'setAnnotationSelection', 'setAnnotationTextSize', 'setAnnotationTextStyle', 'setAnnotationTool',
+  'setAnnotationZoneShape',
+  'setAnnotationsLocked', 'setAnnotationsVisible', 'undoAnnotation',
+  'updateAnnotation',
   'activeLayer', 'activeTool', 'armedMacro', 'armingEpoch', 'assistantDockSide', 'assistantOpen', 'assistantPinned', 'autoEdgeCut', 'brushSize', 'clearSelection',
   'commandExecutor', 'contentType', 'contextMenu', 'deletePopover', 'designMode', 'displayLayer',
-  'editMode', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'hintLevel', 'initMap',
+  'editMode', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'helpTarget', 'hintLevel', 'initMap',
   'layerLocked', 'layerPinned', 'layerVisibility', 'loadMap', 'locale', 'markExported', 'modals',
   'motionPref', 'placementRotation', 'portraitBlocked', 'preview3DEdit', 'region', 'regionBrushSize',
   'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',
   'setAutoEdgeCut',
   'setBrushSize', 'setContextMenu', 'setDeletePopover', 'setDisplayLayer',
   'setEditMode', 'setEraserShape', 'setExport3dShots', 'setHintLevel', 'setLayerLocked', 'setLayerVisibility',
-  'setLocale', 'setModal', 'setMotionPref', 'setPlacementRotation',
+  'setHelpTarget', 'setLocale', 'setModal', 'setMotionPref', 'setPlacementRotation',
   'setPortraitBlocked', 'setPreview3DEdit', 'setRegion', 'setRegionBrushSize', 'setRegionTool',
   'selectLayer',
   'setSelectingRegion', 'setSelection', 'setShowChunkBounds', 'setShowGrid', 'setShowLayerNumbers',
-  'setQuality3d', 'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode',
+  'setQuality3d', 'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode', 'setWhatsThis',
   'quality3d', 'showChunkBounds', 'showGrid', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
-  'toggleSelection', 'tourRunning', 'uiZoom', 'viewMode',
+  'toggleSelection', 'tourRunning', 'uiZoom', 'viewMode', 'whatsThis',
 ];
 
-describe('the store composes four slices', () => {
+describe('the store composes five slices', () => {
   it('each slice file exports a factory function', () => {
     expect(typeof createEngineSlice).toBe('function');
     expect(typeof createEditSlice).toBe('function');
     expect(typeof createPrefsSlice).toBe('function');
     expect(typeof createShellSlice).toBe('function');
+    expect(typeof createAnnotationsSlice).toBe('function');
   });
 
   it('the composed store carries every field the four slices declare', () => {
@@ -56,7 +68,8 @@ describe('the store composes four slices', () => {
     const editFields = Object.keys(createEditSlice(bare().setState, bare().getState, bare()));
     const prefsFields = Object.keys(createPrefsSlice(bare().setState, bare().getState, bare()));
     const shellFields = Object.keys(createShellSlice(bare().setState, bare().getState, bare()));
-    const declared = new Set([...engineFields, ...editFields, ...prefsFields, ...shellFields]);
+    const annotationFields = Object.keys(createAnnotationsSlice(bare().setState, bare().getState, bare()));
+    const declared = new Set([...engineFields, ...editFields, ...prefsFields, ...shellFields, ...annotationFields]);
 
     const composed = new Set(Object.keys(useEditorStore.getState()));
     expect(composed).toEqual(declared);

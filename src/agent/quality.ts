@@ -56,6 +56,7 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
   const groups = new Map<number, number[]>();
   plants.forEach((_, i) => { const r = find(i); (groups.get(r) ?? groups.set(r, []).get(r)!).push(i); });
   const findings: SpeckleFinding[] = [];
+  const solidFloraBlocks: { w: number; h: number; at: string }[] = [];
   for (const members of groups.values()) {
     if (members.length < 4) {
       // A lone, paired or tripled TREE is a specimen moment; flowers that small are strays — a
@@ -93,14 +94,30 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
     // ground. A broad panel (a flower field) is a legitimate block, so only bands 3x as long as
     // they are wide count.
     const allFlora = members.every((i) => categoryOf(plants[i]!) === ItemCategory.Flora);
+    if (solid && allFlora && members.length >= 9) solidFloraBlocks.push({ w, h, at: `(${x1},${y1})-(${x2},${y2})` });
     const wideBed = solid && allFlora && Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h);
-    if (ordered && !mixed && !wideBed) continue;
+    // A lattice the size of a district is wallpaper, not an orchard: the reference bounds an
+    // orchard to one court (~6x8) beside the homes it belongs to.
+    const wallpaper = onGrid && !allFlora && area >= 300;
+    if (ordered && !mixed && !wideBed && !wallpaper) continue;
     const why = [
       ...(!ordered ? ['scattered (no fill, row or lattice)'] : []),
       ...(mixed ? [counts.size > 2 ? `${counts.size} species mixed` : 'two species interleaved near-parity'] : []),
       ...(wideBed ? [`a ${w}x${h} solid flower band — edging is 1-2 cells wide, this reads as a fill`] : []),
+      ...(wallpaper ? [`a ${w}x${h} orchard lattice blankets the district — the reference bounds an orchard to a court (~6x8); keep 2-3 bounded patches and clear the rest`] : []),
     ].join(', ');
     findings.push({ rect: `(${x1},${y1})-(${x2},${y2})`, n: members.length, why });
+  }
+  // FIVE OR MORE plots stamped at one size read as a machine tell even in the formal dialect:
+  // the reference's side-by-side plots carry slight size differences and their own rims.
+  const dims = new Map<string, { n: number; at: string }>();
+  for (const g of solidFloraBlocks) {
+    const k = `${g.w}x${g.h}`;
+    const cur = dims.get(k) ?? { n: 0, at: g.at };
+    dims.set(k, { n: cur.n + 1, at: cur.at });
+  }
+  for (const [k, v] of dims) {
+    if (v.n >= 5) findings.push({ rect: v.at, n: v.n, why: `${v.n} identical ${k} plots — vary one or two (a different size, a water rim) so the field reads tended, not stamped` });
   }
   findings.sort((a, b) => b.n - a.n);
   return { findings, plantCount: plants.length };
@@ -389,7 +406,20 @@ function decoration(state: GridState): QualityDimension {
   // Noise costs the grade: what the sweep names as speckle is disorder, not decoration.
   const { findings } = speckleFindings(state);
   for (const f of findings.slice(0, 3)) hints.push(`Noisy planting at ${f.rect} (${f.why}) -- clear it or replant as one bed.`);
-  const noisePenalty = Math.min(4, findings.length);
+  // HOMES PACKED WALL-TO-WALL read as one stamped block: the reference spaces each home with its
+  // own composed yard. Counted as buildings standing within a cell of another building.
+  const homes = [...state.objects.values()].filter((o) => !o.locked && categoryOf(o) === ItemCategory.Building).map((o) => objectRect(o));
+  const packed = new Set<number>();
+  for (let i = 0; i < homes.length; i++) for (let j = i + 1; j < homes.length; j++) {
+    const a = homes[i]!, b = homes[j]!;
+    const gapX = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w));
+    const gapY = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h));
+    if (Math.max(gapX, gapY) <= 1) { packed.add(i); packed.add(j); }
+  }
+  if (packed.size >= 4) {
+    hints.push(`${packed.size} homes stand packed within a cell of each other -- the reference gives every home its own spaced, composed yard; spread them and dress each one.`);
+  }
+  const noisePenalty = Math.min(4, findings.length) + (packed.size >= 4 ? 1 : 0);
   // A locked set piece (the plaza) keeps a grass apron on every face; roads may touch it at
   // discrete points, but planting or buildings pressed against its wall smother the icon.
   for (const lk of state.objects.values()) {
@@ -433,7 +463,22 @@ function roads(state: GridState): QualityDimension {
   const frac = connected / buildingsArr.length;
   const hints: string[] = [];
   if (frac < 1) hints.push(`${buildingsArr.length - connected} of ${buildingsArr.length} buildings have no road within 6 cells -- build_road to connect them.`);
-  return { score: clamp10(frac * 10), hints };
+  // FOUR-WAY CROSSINGS are the reference's one banned junction: side streets tee INTO a trunk at
+  // staggered points, they never run straight across it. A crossing core is a road cell with all
+  // four orthogonal neighbors road and at most one diagonal road neighbor -- the diagonal test is
+  // what keeps a 2-wide road's interior (all diagonals paved too) from reading as a crossing.
+  const road = (x: number, y: number) => roadCells.has(`${x},${y}`);
+  const crossings: string[] = [];
+  for (const key of roadCells) {
+    const [x, y] = key.split(',').map(Number) as [number, number];
+    if (!(road(x + 1, y) && road(x - 1, y) && road(x, y + 1) && road(x, y - 1))) continue;
+    const diag = [road(x + 1, y + 1), road(x + 1, y - 1), road(x - 1, y + 1), road(x - 1, y - 1)].filter(Boolean).length;
+    if (diag <= 1) crossings.push(`(${x},${y})`);
+  }
+  if (crossings.length > 0) {
+    hints.push(`${crossings.length} four-way crossing(s) at ${crossings.slice(0, 4).join(' ')}${crossings.length > 4 ? ' and more' : ''} -- the reference never crosses two streets: stagger one so it tees INTO the other and stops (T or offset junctions only).`);
+  }
+  return { score: clamp10(frac * 10 - Math.min(3, crossings.length)), hints };
 }
 
 export function evaluateMap(state: GridState): QualityReport {

@@ -1,23 +1,7 @@
 /*
- * SteerQueue.tsx — the notes queued for the next step (normative prototype `.zSteer`).
- *
- * THE QUEUE IS A LIST AND EVERY NOTE RENDERS. Drawing one member of it (`queuedSteers[0]`) shows a
- * user who typed a second note while the first was still waiting the first chip and nothing else:
- * the second is queued, will be delivered, and has no take-back anywhere on screen. Three stand at
- * a time and the rest read as a count, which is a cap on the SPACE rather than on the queue.
- *
- * THE COUNT LINE IS THE LAST THING TO CLIP, and that is a layout rule rather than an ordering: the
- * CHIPS scroll in their own strip (`flex: 0 1 auto` + `overflow-y: auto`) and the count line stands
- * below it in the stack's flow at `flex: 0 0 auto`. So a squeezed panel takes chip rows away one at
- * a time and the affordance that says how many are hidden is the one thing it cannot take. Put the
- * count INSIDE the scroller and it is the first thing to go, exactly when it is most needed.
- *
- * TWO EXITS, BECAUSE TWO THINGS HAPPEN TO A CHIP. Taken back, it shrinks the way it grew
- * (`panel.steer.chip` in reverse): the user is undoing their own press. DELIVERED, it lifts clear
- * and shrinks past its own size (`panel.steer.deliver`) — the words are not disappearing, they are
- * going into the step that is about to read them. The panel cannot ask the projection which
- * happened, so it remembers the seq of the chip it just recalled: that one leaves as a take-back,
- * and every other departure is a delivery.
+ * Renders every note queued for the next step, showing three until the user expands the list. Chips
+ * scroll separately so the hidden-count control remains visible. Recalled notes shrink in place;
+ * delivered notes lift as they leave.
  */
 import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
@@ -37,8 +21,7 @@ const GAP = 6;
 /** The count line's own height: its two 5px gutters over a `small` line. */
 const MORE_HEIGHT = 27;
 
-/** The stack's cap, DERIVED so the three numbers above are the only ones written: the chips box owns
- *  its three-chip whole, and the count line plus the stack's own gap stand under it. */
+/** Height for three chips, their gaps and the expand control. */
 const ZONE_MAX = STEER_VISIBLE_CAP * CHIP_HEIGHT + (STEER_VISIBLE_CAP - 1) * GAP + GAP + MORE_HEIGHT;
 
 const CHIP_GROWTH = amplitude('panel.steer.chip') ?? 0;
@@ -116,9 +99,7 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
   const [expanded, setExpanded] = useState(false);
-  /** The seq the user just took back, so its own departure reads as a take-back rather than as a
-   *  delivery. A ref: it is read during the exit that the press itself causes, and re-rendering for
-   *  it would be a render whose only output is which curve the chip leaves on. */
+  /** Identifies a recalled note so its exit differs from normal delivery. */
   const recalled = useRef<number | null>(null);
 
   const recall = useCallback((seq: number) => {
@@ -129,13 +110,11 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
   const cap = expanded ? steers.length : STEER_VISIBLE_CAP;
   const shown = steers.slice(0, cap);
   const hidden = steers.length - shown.length;
-  // The line is the way BACK once it has been used, and it stands only while it has something to
-  // say: with every note showing and no expansion behind it there is nothing to press.
+  // Keep the collapse control only when expansion changed what is visible.
   const more = hidden > 0 ? 'expand' : expanded && steers.length > STEER_VISIBLE_CAP ? 'collapse' : null;
 
   return (
-    // The zone stands whether or not a note is queued: a row that appeared here would shorten the
-    // record under the pointer that is reading it.
+    // Preserve the zone in the layout while the queue is empty.
     <div data-testid="panel-steer-zone" style={ZONE_STYLE}>
       <div data-testid="steer-chips" style={CHIPS_STYLE}>
         <AnimatePresence initial={false}>

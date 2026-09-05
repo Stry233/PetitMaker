@@ -289,8 +289,21 @@ describe('the plan gate lists what it is asking about', () => {
     expect(settled.getByTestId('plan-gate').getAttribute('data-settled')).toBe('true');
     expect(settled.getByTestId('gate-verdict').textContent).toBe('you said no');
     expect(settled.queryByTestId('gate-approve')).toBeNull();
-    // The plan itself stays readable after the answer: the record holds what was approved.
+    // A declined plan keeps its list: no rail exists, so the card is the one record of what was
+    // turned down. The ask-voice notes never survive the answer.
     expect(settled.getAllByTestId('plan-stage')).toHaveLength(4);
+    expect(settled.queryAllByTestId('plan-note')).toHaveLength(0);
+  });
+
+  it('an approved plan collapses to its receipt: the stat and the verdict, no second stage list', () => {
+    const { getByTestId, queryAllByTestId } = renderWithI18n(
+      <PlanGate ask={makeAsk({ scope: 'plan', stages: HILL_STAGES, verdict: 'approved' })} onAnswer={() => {}} />,
+    );
+    expect(getByTestId('plan-gate').getAttribute('data-settled')).toBe('true');
+    expect(getByTestId('plan-stat').textContent).toBe('4 stages, 2 checkpoints');
+    expect(getByTestId('gate-verdict').getAttribute('data-verdict')).toBe('approved');
+    expect(queryAllByTestId('plan-stage')).toHaveLength(0);
+    expect(queryAllByTestId('plan-note')).toHaveLength(0);
   });
 });
 

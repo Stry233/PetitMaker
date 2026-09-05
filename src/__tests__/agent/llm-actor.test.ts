@@ -1,22 +1,7 @@
 /**
- * THE MODEL-SHAPED ACTOR: one small job driven through the REAL loop, the REAL tool surface and the
- * REAL rules, by a scripted actor whose every string is written the way a model writes one — at the
- * lengths and in the formats the six contracts state.
- *
- * IT IS THE LIVE RUN'S TWIN. `contracts.live.test.ts` beside this file drives the same job shape
- * against a real gateway and asks the same question of the log it produces; that test needs a key and
- * skips without one, so this is the half that runs in CI. Between them the assertion set is exercised
- * on every commit and re-confirmed against a real model whenever a key is present.
- *
- * WHY IT IS NOT JUST ANOTHER LOOP TEST. `core/loop.test.ts` drives the loop with a stub executor and
- * placeholder text — it is about the loop's own control flow. This one runs the actual write tools
- * against an actual map with the actual rule registry behind them, and its strings are the ones a
- * panel would render: a plan whose stage labels fit a rail row, a says line whose point lands in its
- * first sentence, a suggestion inside the composer's clip, a summary the receipt can size itself to.
- * So it fails on a contract the UI cannot hold, not on a control-flow regression.
- *
- * NO PLACEHOLDER TEXT: every string below describes the actual situation at a realistic length.
- * That is the point of the fixture, not a nicety of it.
+ * Drives one scripted job through the real loop, tool surface, map, and rule registry. Its realistic
+ * model-authored strings exercise the same six UI copy contracts as the opt-in gateway test, while
+ * remaining deterministic in CI. The lower-level loop suite covers control flow separately.
  */
 import { describe, expect, it } from 'vitest';
 

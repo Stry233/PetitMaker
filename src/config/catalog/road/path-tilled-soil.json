@@ -1,0 +1,28 @@
+{
+  "id": "path-tilled-soil",
+  "category": "road",
+  "icon": "path-tilled-soil",
+  "name": {
+    "en": "Tilled Soil Path",
+    "zh": "翻耕土路",
+    "ja": "耕した土の道",
+    "ru": "Вспаханная грунтовая дорожка",
+    "th": "ทางดินไถพรวน",
+    "id": "Jalan Tanah Garapan",
+    "fr": "Chemin de terre labourée"
+  },
+  "color": "#915a28",
+  "width": 1,
+  "height": 1,
+  "loadValue": 10,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    }
+  ]
+}

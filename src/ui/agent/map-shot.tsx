@@ -1,11 +1,6 @@
 /*
- * map-shot.tsx — a REAL photograph of the live map, framed on the cells a card is about.
- *
- * A GATE'S THUMBNAIL IS THE MAP, NOT A DRAWING OF ONE. The artifact's gate cards carry a little
- * island vignette; the honest equivalent in the running app is the map itself, captured by the
- * renderer that draws it (`canvas/thumbnail.ts:renderThumbnail`, over `MapRenderer.captureState`).
- * So a card can never promise a shape the click does not build: the colours, the trims, the road
- * shapes and the icons are the map's own by construction.
+ * Captures the live map for cards that refer to a location. The thumbnail uses the same renderer as
+ * the editor, so terrain, trims, roads and objects match the map the action will affect.
  *
  * IT IS THE MINIMAL PATH, AND THE REGION FAMILY'S VIGNETTE IS THE SAME MOVE PLUS AN OVERLAY: this
  * captures the live grid framed on a cell rect, memoized per grid identity by `renderThumbnail`
@@ -31,7 +26,8 @@ import { focusFrame, renderThumbnail, seaFrame, type CellFrame } from '../../can
 import { WATER_COLOR } from '../../core/model/constants';
 import { useEditorStore } from '../../state/store';
 import { ACTIVE, INK } from '../design/tokens';
-import { edge, withAlpha } from './tokens';
+import { edge } from './tokens';
+import { withAlpha } from '../design/styles';
 
 /** A macro-cell rectangle a shot is framed on, in the shape `focusFrame` reads. */
 export interface ShotBox { origin: { x: number; y: number }; width: number; height: number }

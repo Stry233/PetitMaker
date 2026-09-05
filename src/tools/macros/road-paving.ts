@@ -143,31 +143,9 @@ export function joinRoute(
 }
 
 /**
- * Grow each freshly laid road into a `width`-sized block of the same surface. Both road macros widen
- * through this one pass, or the bar's size slider means two things.
- *
- * Every added tile goes through the executor, so a tile the rules refuse (water, a footprint, a
- * cliff edge) is skipped and the widening narrows there — a wide road necks down where the ground
- * does. A dilated cell can already carry a coating — another fresh road's own dilation overlapping
- * it, or a road already standing there — and V-PLACE-OVERLAP exempts coatings from the block, so an
- * unguarded place would stack a second road object on top rather than replace the first.
- * `stripCoatingsFor` is the placer's own strip-then-place contract, folded into the caller's own
- * stroke.
- *
- * A DECORATION (tree/flora) is not a coating, so V-PLACE-OVERLAP blocks the tile outright and an
- * unguarded place would just fail there — a hole in the pavement with the plant standing in the
- * middle of a wide street. So a standing planting STOPS the dilation at its cell, whoever put it
- * there, and that cell is counted in the returned narrowed count instead of paved: a wide road necks
- * around a planting exactly as it necks around a shore.
- *
- * NO AUTHORSHIP TEST DECIDES THAT, because on the path a press takes there is nothing to ask. Every
- * macro builds against a detached clone whose executor carries a FRESH provenance ledger
- * (`scratch.ts`), and the worker path hands the builder a bare `GridState`, so a ledger read inside
- * the build knows nothing about anything: sparing "the human-authored ones" meant sparing none, and
- * a width-3 press deleted hand-placed plants. Sweeping only generation's own planting would need an
- * answer this side of the build cannot have, and both callers already refuse to sweep anything a
- * hand may have placed (`sweep`/`clearance: 'refuse'`) — one policy over the whole run rather than
- * two that disagree.
+ * Widens freshly laid roads through the rule-aware executor. Existing coatings are replaced rather
+ * than stacked. Invalid ground and any standing decoration stop dilation at that cell, narrowing the
+ * result without deleting objects whose authorship is unavailable on detached build state.
  */
 export function widenRoads(ctx: MacroContext, roadId: string, width: number, fresh: readonly PlacedObject[]): number {
   const w = Math.floor(width);
@@ -456,26 +434,9 @@ export interface StandingNodes {
 }
 
 /**
- * THE NODES A LIVE MAP IMPLIES: the hub, plus one hamlet per standing thing the network should
- * SERVE, anchored on the cell a road would MEET it at (the gate approach for a house, else the
- * nearest routable ring cell) rather than its own centre — a footprint cell is occupied, so it is
- * open in no region and the node would be dropped. A `Node` is a plain `{kind, pos, region}` struct,
- * so filling it from existing objects duplicates no settlement logic and re-runs no settlement stage.
- *
- * The excluded four are the plaza (locked, and the hub already stands for it), decorations, the
- * network itself, and anything the network already touches. Those last two are the whole reason this
- * derivation is here rather than inline in the caller, and both are the same mistake: reading a
- * finished map as a list of errands.
- *
- * A press lays a few hundred road tiles, so a node list that reads them back as doorsteps gives the
- * NEXT press a few hundred destinations, and it plans crossings between the regions they imply. And
- * an anchor is the first OPEN ring cell, so once a street runs beside a house the near ring is paved
- * (paved is occupied, and occupied is not open) and the anchor jumps to whatever open cell is next —
- * a plateau over the fence, in another region, which the spanning tree then bridges to in order to
- * reach a house the street is already at. Four presses on one island grew five ramps into thirty-six,
- * most of them in bare grass with no pavement within reach, and `changes` never fell to zero so the
- * honest "this is already the plan" report could not fire. Anything that asks a live map for its
- * nodes asks here.
+ * Derives routing nodes from a live map: the hub plus one unserved, non-decoration object. Buildings
+ * use their gate approach; other objects use the nearest open footprint-ring cell. Locked plaza
+ * objects, network pieces, decorations, and objects already touching pavement are excluded.
  */
 export function standingNodes(state: GridState, analysis: PlacementAnalysis): StandingNodes {
   const W = analysis.width, H = analysis.height;

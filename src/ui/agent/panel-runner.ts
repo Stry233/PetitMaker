@@ -1,41 +1,8 @@
-/*
- * panel-runner.ts — what the panel hands the runner: the live tool dependencies, and the config
- * object the runner reads at every job start.
- *
- * IT LIVES BESIDE `PanelColumn.tsx` AND IS IMPORTED BY NOTHING ELSE, so it stays inside the panel's
- * lazy chunk (`__tests__/ui/eager-bundle.test.ts` guards the boundary). It is a separate file for one
- * reason: both halves are decisions a test can check without mounting a React tree, and both fail
- * SILENTLY when they are wrong — a dropped dependency loses the agent a tool at run time, and a
- * config field left standing sends the next job to the wrong host.
- *
- * THE CONFIG IS MUTATED, NOT REPLACED. The runner holds the in-flight job's abort controller, so a
- * rebuilt runner is a job nobody can stop; it reads its provider, key and model off this object when
- * a job starts, and its OVERSIGHT at every gate decision, so keeping the object current is how a
- * settings change reaches the next job (and, for the tier, the next tool call of the one running).
- * That makes `refreshRunnerConfig` responsible for what NO LONGER APPLIES as much as for what does —
- * see its own note.
- *
- * WHICH MAKES THIS THE SEAM WHERE "WHEN DOES A CHANGE APPLY" IS DECIDED, and the answer is not one
- * rule but four, by what KIND of fact the user moved. A RUNNING JOB IS ONE CONTRACT is the spine:
- *
- *   CONNECTION facts (provider, key, endpoint, model, region) apply FROM THE NEXT JOB. The runner
- *     freezes them at launch (`exec/runner.ts:launch` builds the adapter and copies the model), so
- *     every turn of a job reaches one host as one author; a mid-thought model swap would change the
- *     author mid-sentence, and on the Anthropic dialect it would feed one model's signed thinking
- *     blocks to another. `ManageScreen` says so at the moment of the change.
- *   BEHAVIOURAL facts (oversight) stay LIVE. `LoopDeps.oversight` is a getter through this object:
- *     a tightening reaches the next write of the job already running, which is the whole point of a
- *     control reachable mid-run.
- *   ENVIRONMENTAL facts (UI zoom, window size, the pin, the display locale) apply IMMEDIATELY to the
- *     interface and touch no running job. The locale is the one with a foot in both: it re-renders
- *     every surface at once, and its OTHER role — the system prompt's opening language — is a
- *     connection fact, read per launch like the rest of them.
- *   DESTRUCTIVE facts refuse or settle rather than applying. Revoking the armed key aborts the job
- *     first (`settings.ts:forgetKey`), swapping the session's log aborts it (the runner's own
- *     log-identity watch), and a past job built on another map cannot be rolled back from here.
- *
- * The MAP a job edits is frozen at launch too, and by the same argument — `makePanelToolDeps` below
- * reads the store ONCE per job — so it is a connection fact in everything but name.
+/**
+ * Supplies the panel runner with its connection and live editor dependencies.
+ * Provider, key, endpoint, model, region, locale, and map dependencies are sampled at job launch;
+ * oversight remains live for each gate. The config object is updated in place so the runner retains
+ * ownership of the active job and its abort controller.
  */
 import { callApproved } from '../../agent/core/gates';
 import type { RunnerConfig } from '../../agent/exec/runner';
@@ -61,16 +28,7 @@ interface Live {
   uiLocale: string;
 }
 
-/**
- * Folds the armed connection and the live pieces into `cfg`, IN PLACE.
- *
- * EVERY FIELD IS ASSIGNED, INCLUDING THE ONES THAT ARE NOW UNDEFINED. `runnerSettings` omits
- * `customBaseUrl` and `region` when they do not apply, and a merge that only copies present keys
- * leaves the previous answer standing: a session that resolved a CN-hosted Zhipu key keeps
- * `region: 1` after the user arms a globally-keyed provider, and the next job goes to the CN host
- * with a key that host never issued (the same for a custom endpoint the user has cleared). So the
- * two are written unconditionally, and forgetting is as much a job here as remembering.
- */
+/** Overwrites optional fields as well, so cleared endpoint and region values cannot survive. */
 export function refreshRunnerConfig(cfg: RunnerConfig, armed: Armed, live: Live): void {
   cfg.providerId = armed.providerId;
   cfg.apiKey = armed.apiKey;

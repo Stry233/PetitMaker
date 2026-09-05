@@ -518,9 +518,17 @@ export class Overlay3D implements ToolOverlay {
     this.selection = [];
   }
 
+  private lastHoverKey = '';
+
+  /** Keyed so a stationary hover — pointermove fires per pixel — doesn't rebuild geometry. The
+   *  sampled surface top rides in the key, so a terrain edit under a still cursor still rebuilds. */
   showHover(x: number, y: number, w = 1, h = 1, terrainMode = false): void {
+    const top = this.surfaceTop(x, y, w, h, terrainMode);
+    const key = `${x},${y},${w},${h},${terrainMode ? 1 : 0},${top}`;
+    if (this.hover && key === this.lastHoverKey) return;
+    this.lastHoverKey = key;
     this.clearHover();
-    this.hover = this.makeBox(x, y, w, h, terrainMode, 0xf5f5f5, 0.08, 0.5);
+    this.hover = this.makeBox(x, y, w, h, terrainMode, 0xf5f5f5, 0.08, 0.5, top);
   }
 
   clearHover(): void {
@@ -547,17 +555,24 @@ export class Overlay3D implements ToolOverlay {
    *  The height is sampled at the CENTRE of each cell the box actually covers
    *  (`spanCellCentres`), which is not the same set of points as stepping in whole cells from the
    *  box's own — possibly fractional — origin. */
-  private makeBox(x: number, y: number, w: number, h: number, terrainMode: boolean, color: number, fillA: number, edgeA: number) {
+  private surfaceTop(x: number, y: number, w: number, h: number, terrainMode: boolean): number {
     const s = this.state();
     const off = mapCenterOffset(s.template.width, s.template.height);
     const shift = terrainMode ? -0.5 : 0;
-    const x0 = x - off.x + shift, z0 = y - off.z + shift;
     let top = 0;
     for (const cz of spanCellCentres(y, h)) {
       for (const cx of spanCellCentres(x, w)) {
         top = Math.max(top, surfaceHeightAt(s, cx - off.x + shift, cz - off.z + shift));
       }
     }
+    return top;
+  }
+
+  private makeBox(x: number, y: number, w: number, h: number, terrainMode: boolean, color: number, fillA: number, edgeA: number, top = this.surfaceTop(x, y, w, h, terrainMode)) {
+    const s = this.state();
+    const off = mapCenterOffset(s.template.width, s.template.height);
+    const shift = terrainMode ? -0.5 : 0;
+    const x0 = x - off.x + shift, z0 = y - off.z + shift;
     const yTop = top + DECAL_LIFT * 2;
     const geo = new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2);
     geo.translate(x0 + w / 2, yTop, z0 + h / 2);

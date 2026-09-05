@@ -645,7 +645,7 @@ describe('TourOverlay', () => {
     skipBtn.focus();
     expect(document.activeElement).toBe(skipBtn);
     const before = framesRead;
-    useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
+    act(() => { useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 }); });
     await waitFor(() => expect(framesRead).toBeGreaterThanOrEqual(before + TRACK_MIN_FRAMES));
     expect(document.activeElement).toBe(skipBtn);
   });

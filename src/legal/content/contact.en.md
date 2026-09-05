@@ -4,14 +4,14 @@ We are a small volunteer team behind {app}, an unofficial fan tool. To reach the
 
 | Reason | Where to reach us |
 | --- | --- |
-| General questions & bug reports | GitHub issues (once the public repository is published) or {email} |
+| General questions & bug reports | [GitHub issues]({repo}/issues) or {email} |
 | Security vulnerabilities | {securityEmail} with the subject `[SECURITY]` (see [Security Policy](/security)) |
 | Intellectual property / takedown | {email} with the subject `[IP]` |
 | Community & updates | our Bilibili spaces (listed below) |
 
 ## General Inquiries
 
-For general questions, feedback, or bug reports, please open a GitHub issue on the public repository, labeled as a question or a bug, once that repository is published. Until then, or for any matter you would prefer not to post publicly, please email {email}. We read every message and aim to respond within 14 days, though a volunteer team can be slower during busy periods.
+For general questions, feedback, or bug reports, please open an issue in the [public repository]({repo}/issues) and label it as a question or bug. For anything you would prefer not to post publicly, email {email}. We read every message and aim to respond within 14 days, though a volunteer team can be slower during busy periods.
 
 When you report a bug, a report we can reproduce reaches a fix fastest. Where you can, please include:
 
@@ -19,7 +19,7 @@ When you report a bug, a report we can reproduce reaches a fix fastest. Where yo
 - the browser, operating system, and device you were using;
 - whether the map was generated, imported, or built by hand, and any steps to reach the same state;
 - a screenshot or a short screen recording, and any console errors;
-- if the AI Agent was involved, which provider you used (but never your API key).
+- if the AI Agent or illustration studio was involved, which provider you used (but never your API key).
 
 ## Security Reports
 
@@ -31,7 +31,7 @@ If you believe that material in {app} infringes your intellectual-property right
 
 ## Privacy Requests
 
-For privacy questions or requests, such as to access, correct, or delete personal information, please email {email}. The [Privacy Policy](/privacy) explains what we store and the rights you may have. Because we hold very little that identifies you, most such requests are quick to resolve; we may first confirm that the request comes from you.
+For privacy questions or requests, such as to access, correct, or delete personal information, please email {email}. The [Privacy Policy](/privacy) explains what we store and the rights you may have. Because we hold little information that identifies users, we may have no record that can be linked to you; we may first confirm that the request comes from you.
 
 ## Community
 

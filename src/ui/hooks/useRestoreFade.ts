@@ -1,39 +1,14 @@
 /**
- * The resume-from-last fade.
- *
- * A restore swaps the map AND both cameras, so the view arrives somewhere else with no travel: an
- * instant jump. This covers that with a short fade of the VIEW rather than a flight of the camera —
- * a camera easing from the default framing to the restored one takes time proportional to the
- * distance and sweeps across the whole map on the way, while a fade hides the change entirely and
- * reads as arriving. Same 0.35s vocabulary as the 2D↔3D crossfade.
- *
- * WHAT THE FADE MUST COVER is the whole restore, and a restore is not one commit. `begin()` hides
- * the view in the same commit that applies the map; the camera lands in a LATER effect (App's, so
- * the 2D fitToMap cannot clobber it); the renderer draws later still, and in 3D only after an async
- * scene rebuild. Releasing on a frame count therefore lands mid-sequence — it showed the EMPTY map
- * fading in and left the camera to snap into place afterwards, exactly the discontinuity the fade
- * exists to hide. So the release is GATED on the restored map being painted: `settle()` hands the
- * new state to `whenActiveViewPainted` (see canvas/view-settled for the full event order), and only
- * the ACTIVE view has to be right — a saved 3D camera with no 3D scene mounted is deferred by
- * design and must not hold the fade open.
- *
- * Two safety nets, neither of them the mechanism:
- *  - `begin()` with no `settle()` in the same flush means the restore threw before the map changed;
- *    there is nothing to wait for, so the effect releases on the next frame.
- *  - a view that never reports a paint (a torn-down renderer, a headless test) releases after
- *    RELEASE_SAFETY_MS. Both renderers flush their waiters on teardown, so this is a last resort.
- *
- * Reduced motion skips the hide altogether: `hidden` never goes true, so the restore simply arrives.
- * (Collapsing the transition instead would still flash one transparent frame.)
+ * Hides a restored map until the active view has painted both its state and restored camera. A
+ * next-frame fallback covers a failed restore that never calls `settle`; a timeout covers renderers
+ * that never report paint. Reduced motion skips the fade and its transparent frame entirely.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMotionReduced } from '../../canvas/map2d/motion-state';
 import { whenActiveViewPainted } from '../../canvas/view-settled';
 import type { GridState } from '../../core/model/types';
 
-/** Upper bound on the hide, for the case where no paint is ever reported. Generous: a real rebuild
- *  of a full map in the 3D view is the slowest honest path through the gate, and cutting it short
- *  brings back the visible snap. */
+/** Upper bound on the hide when no renderer reports a completed paint. */
 const RELEASE_SAFETY_MS = 4000;
 
 export interface RestoreFade {

@@ -106,10 +106,8 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(baseSupportRule.validate(state).length).toBeGreaterThan(0);
   });
 
-  // Regression: on complex (heavily edge-cut) maps a Γ patch/fillet provides STRUCTURAL support via
-  // its patchBase. The rule must read the structural surface (realSurface/structuralTop), not raw
-  // elevation, and must NOT exclude patchOnly cells — otherwise it false-flags legal terrain and,
-  // being post-stroke + whole-grid, reverts every subsequent stroke. (Repro'd from a real map.)
+  // A Γ patch or fillet provides structural support through patchBase. The rule reads the structural
+  // surface and includes patch-only cells when checking the 3×3 base.
   it('counts a Γ-patch base cell as structural support (no false 3x3 violation)', () => {
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
@@ -172,7 +170,7 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(rim(7).length).toBeGreaterThan(0); // needs E >= 4, the water stops at 3 ✗
   });
 
-  it('a plunge pool may be dug at the foot of a tall waterfall (issue #19)', () => {
+  it('allows a plunge pool at the foot of a tall waterfall', () => {
     // A steep wall to 4 on a tier-1 skirt, a water channel at 4 between caps at 4: converting the
     // skirt cell at the fall's foot to water must not collapse the caps — the conversion is
     // support-neutral, and the pool is the shape the game expects at a fall's foot.

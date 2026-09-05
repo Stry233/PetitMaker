@@ -1,102 +1,23 @@
-/*
- * TimedButton.tsx — a button that presses itself, and says so while it counts.
+/**
+ * Button with a visible countdown around its measured shape.
  *
- * For a DEFAULT: an action a visitor would almost always take, offered rather than performed, and
- * taken for them if they say nothing. The countdown is the offer's honesty — it is the only warning
- * that something is about to happen without a hand on it, so it is drawn rather than merely timed.
- *
- * THE COUNTDOWN IS THE BUTTON'S OWN OUTLINE. It runs around the shape the button already is, taken
- * from the button rather than assumed: the corner comes off the rendered element's computed radius,
- * so a pill's outline and a circle's are one path at different radii and a caller never declares a
- * shape. A separate bar beside the button would be a second control to read.
- *
- * A DRAWING THE HOST ALREADY MAKES BEATS THE OUTLINE. Where the button is a picture rather than a
- * chip, an outline hugging it is a shape that interface draws nowhere else; the `stadium` clock is
- * the mark a shelf's row of names puts under the chosen name, standing under the button and
- * shortening. Same clock, same pauses, same press — only the path is different.
- *
- * IT DEPLETES. The outline starts whole and is spent down to nothing, which is a FUSE and not a
- * loading bar. A filling track is progress being made toward something and invites waiting; what is
- * actually happening here is the opposite, a chance to choose running out before the default takes
- * it. EMPTY MEANS FIRED, exactly: the same rAF tick that finds the clock spent draws the outline
- * away and clicks, so there is no frame where a stub is still on screen and no frame where the ring
- * has gone and nothing has happened. Two clocks would disagree by a frame or two and that is what
- * the disagreement would look like. Nothing redraws it while it is held, so a pointer arriving
- * stops the outline where it stands, which is how the pause is discovered rather than trusted.
- *
- * IT IS INTERRUPTIBLE, AND THAT IS THE WHOLE OF WHETHER IT IS USABLE. A control that fires while
- * someone is still reading defeats whatever it was attached to:
- *
- *   POINTER OVER IT — pauses, and resumes on leave. A pointer resting on a control is someone
- *     deciding; it is also ambiguous (a pointer crosses things), so it holds the clock rather than
- *     stopping it.
- *   THE HOST'S OWN EVIDENCE (`paused`) — the same, for a surface that knows better than the button
- *     does. The reading happens over the notice, not over its dismiss.
- *   KEYBOARD FOCUS — CANCELS, for good. Focus is not ambiguous: someone has put the keyboard on
- *     this control and is about to choose, and a control that chooses for them under their hands is
- *     worse than one that never fires at all. There is no way back into the countdown, which is the
- *     point: the offer has been declined by being considered.
- *   A HIDDEN TAB — pauses, for free. The clock is a rAF loop and a background tab does not raise
- *     frames, so time a visitor was not present for is not counted against them.
- *
- * COMPLETION IS A REAL PRESS. It calls `click()` on the element, so the browser runs the same path
- * a finger does — the handler, the focus and active states, anything listening above it. Calling
- * the handler directly would be a second way to press this button, and two ways diverge.
- *
- * WHICH LEAVES ONE THING ONLY THIS BUTTON KNOWS: whether the press that just happened was the
- * clock's or a hand's. Nothing in the event says so, and a host must not have to guess from its
- * internals, so `onPress` is TOLD (`byClock`). Most callers ignore it, and should: the whole point
- * of a default is that the two mean the same thing (the restore offer resumes either way). A caller
- * reads it only where the press carries a SECOND meaning that belongs to the hand alone — the
- * arrival notice answers the saved-session offer standing beside it when someone presses OK, and a
- * countdown running out is not somebody answering anything.
- *
- * REDUCED MOTION KEEPS IT. The ring is not decoration: it is the warning. What changes is how it is
- * drawn — a continuous sweep is motion, so under the preference the ring steps once a second, which
- * carries the same fact without anything gliding.
- *
- * ── AND ONE MODE WHERE THE CLOCK IS SOMEBODY ELSE'S (`external`) ──────────────────────────────
- *
- * Where the countdown belongs to a PROCESS rather than to the offer — a retry backoff a loop is
- * already running, whose length it recomputes per attempt — the button draws that clock instead of
- * keeping one. The caller hands in the fraction spent and the drawing is the same fuse: whole,
- * spent to nothing, EMPTY MEANS FIRED, and at empty the pill flashes lit for the beat the loop
- * takes to relight it.
- *
- * EVERY INTERRUPTION ABOVE IS DELIBERATELY INVERTED HERE, and that is the whole reason the mode is
- * a mode. The pointer does not pause, focus does not cancel, and the button never presses itself:
- * the loop retries whether a hand is resting on the pill or not, so a ring that paused under the
- * pointer would be a drawing of something that is not happening. The press this button still
- * carries is a hand's — retry NOW, ahead of the clock — and the clock is not the button's to stop.
- *
- * AND THE FUSE RUNS BETWEEN THE CALLER'S SAMPLES. A process clock is sampled at whatever rate its
- * owner repaints — a retry face reads its backoff once a second — and a ring redrawn only on those
- * samples is a nine-step staircase, which is the REDUCED-motion drawing of a countdown, not the
- * full-motion one. So `external.spanMs` (how long the whole of the caller's clock lasts) turns the
- * handed fraction into a RATE, and a rAF walks the outline on from the sample toward empty until
- * the next sample re-seats it. Under reduced motion the walk is dropped and the ring steps at the
- * caller's own rate, which is exactly the fallback that behaviour was already delivering.
+ * In automatic mode, hover or `paused` suspends the timer, keyboard focus cancels it, and expiry
+ * invokes the element's normal `click()` path. Reduced motion updates the indicator once per second.
+ * External mode interpolates a caller-owned process countdown; it neither pauses nor auto-clicks.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
+import { useUiPreview } from './ui-preview';
 import { useT } from '../../i18n/context';
 import { buttonMotion, colors } from '../design/styles';
 import { ACTIVE } from '../design/tokens';
 
-/** The ring's thickness, and the air between it and the button's own edge, in css px. Thin enough
- *  to read as the button's outline rather than as a collar around it. */
+/** Ring thickness and inset gap, in CSS pixels. */
 const RING = 2;
 const RING_GAP = 2;
 
-/**
- * The stadium's thickness, and the air between it and the button's foot, in css px.
- *
- * It is the mark a shelf's row of names wears under the chosen name, at that mark's own
- * proportions — a drawing this interface already makes, rather than a second one invented for a
- * clock. The numbers are restated rather than read from the shell's layout: a primitive that
- * reached into one surface's units would stop being one.
- */
+/** Stadium-indicator thickness and gap, in CSS pixels. */
 const STADIUM = 8;
 const STADIUM_GAP = 7;
 
@@ -158,10 +79,15 @@ export interface TimedButtonProps {
 }
 
 export function TimedButton({
-  after, onPress, paused = false, ring = colors.accentPrimary, clock = 'ring', external,
+  after, onPress, paused: pausedProp = false, ring = colors.accentPrimary, clock = 'ring', external,
   pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
   const t = useT();
+  // A pictured button keeps its face and loses its clock (`ui-preview.tsx`). Read BEFORE the `||`:
+  // a short-circuit would skip the context hook whenever the prop is true, and a hook that comes
+  // and goes between renders breaks every hook after it.
+  const pictured = useUiPreview();
+  const paused = pausedProp || pictured;
   const reduced = useReducedMotionConfig();
   const btn = useRef<HTMLButtonElement>(null);
   const arc = useRef<SVGRectElement | SVGLineElement>(null);

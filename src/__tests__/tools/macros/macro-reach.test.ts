@@ -84,9 +84,8 @@ describe('a macro reaches the map a person has', () => {
   const rates = reach(7, 8);
 
   /**
-   * Every one of them lands almost everywhere it is asked. The floor sits far below what they measure
-   * (82 to 100 per cent): this is a "the feature is reachable" gate, not a regression test on a number
-   * that moves with the generator.
+   * Every one of them lands almost everywhere it is asked. The floor sits below the observed 82 to
+   * 100 per cent range and guards reachability rather than an exact generator rate.
    *
    * THE STREAM IS THE ONE WHOSE RATE IS THE GROUND'S, not the macro's. Its honesty rule reverts a course
    * whole where it cannot walk downhill all the way to open water, because half a stream on a hillside is

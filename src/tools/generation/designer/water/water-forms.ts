@@ -1,42 +1,8 @@
 /**
- * THE LARGE COMPOSED BODIES: a few hundred-cell water figures, drawn from a shape vocabulary.
- *
- * WHAT THE REFERENCE'S WATER SAYS is not how much of it there is, it is how it is DISTRIBUTED over
- * shapes: the style target holds 26% of its land under water in 83 bodies, but 7 bodies hold 63% of it
- * and the other 76 are accents. A map drawn the other way reads as wallpaper — 85% to 95% of its bodies
- * solid rectangles with one size class dominating. So a map wants FEW LARGE FIGURES, each a different
- * shape, and the long tail of small pools around them.
- *
- * The vocabulary is the reference's own, the six forms a construction can be named for:
- *  - `basin`: a wide organic body with two or more dry ISLETS standing in it. The figured-field and
- *    pool-with-island classes, which between them hold 68% of the target's water.
- *  - `cove`: the organic one, its outline lobed off-axis and its islets where the seed put them.
- *  - `ring`: a moat around a dry platform, the target's own 14x14 ring.
- *  - `medallion`: the target's one three-layer nesting — moat, platform, basin, island.
- *  - `trough`: the long thin 3:1-to-7:1 channel cut into a terrace, of which the target has five.
- *  - `comb`: a bar with teeth off it, the water garden's own shape.
- * WHICH OF THEM A REAL ISLAND CARRIES IS THE GROUND'S ANSWER, and it is not all six: over twenty
- * measured maps, the basin, the trough and the comb land on most seeds and the ring on some, while
- * the MEDALLION needs a 19x15 room for its three bands and their island and finds one on almost no
- * seed. The vocabulary is kept whole rather than trimmed to what today's terrain offers — a wider
- * summit terrace is one crown change away, and the form that has nowhere to stand costs a map nothing.
- * Every one of them ACCOUNTS FOR ITSELF in the water ledger by construction rather than by exemption:
- * a basin and a medallion enclose two or more islands, a ring encloses one and mirrors about both of
- * its own axes, and a trough is long and thin enough to read as a course. None of them fills its own
- * box the way a dropped rectangle does, so none of them moves the ledger's tofu reading.
- *
- * NON-REPETITION IS THE POINT: the reference's most repeated shape appears 3 times. A form is
- * drawn at most `FORM_REPEAT_MAX` times per map and a second instance is drawn at a different span, so
- * no two composed bodies on one island are congruent.
- *
- * LEGALITY is the same single argument every still body here is cut by: the figure is judged as ONE
- * body on ONE terrace (`cellsFit`), so everything around it — its own islets included, which stand at
- * the terrace's tier — is at its level or above, it shows no face, and V-WTR-02 asks it for no caps.
- * A figure that does not fit is offered a smaller span and then abandoned; nothing is ever trimmed
- * side by side, because a trimmed lozenge comes back a rectangle.
- *
- * Pure over its inputs: a `TerrainPlan` and masks in, cells out, and the same (seed, plan) draws the
- * same figures.
+ * Draws a few large water bodies from basin, cove, ring, medallion, trough, and comb grammars. Forms
+ * are seeded, repetition-limited, and resized rather than clipped. Every body occupies one terrace;
+ * its dry islands and outer rim stay at the water tier or above, so it exposes no uncapped face.
+ * Pure planning only: terrain and masks in, cells out.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';

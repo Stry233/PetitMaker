@@ -1,39 +1,8 @@
 /**
- * Moving to another planet, and taking the build along.
- *
- * A transfer is PLAZA-ANCHORED and ASSUMPTION-FREE. Every template declares exactly one plaza, so
- * the whole build translates by the difference of the two plaza centres (rounded to the macro grid)
- * and is replayed on the destination template through the live rules. A different SIZE only moves
- * the edges (off-map refuses like a coast), a different COASTLINE is zone data the rules already
- * read, and a moved plaza vanishes into the translation — which is what lets a planet that does not
- * exist yet arrive as one JSON file with no code beside it.
- *
- * THE REPLAY IS THE GENERATOR'S OWN MASS-COMMIT, not a second one. The carried terrain becomes a
- * `TerrainPlan`, `repair.ts:repairPlan` makes it rule-valid against the destination by the same
- * decrease-only fixpoint the generator trusts, and `commit.ts:planToCommands` turns it into the
- * bottom-up cumulative paints the no-floating rule requires. Corners ride behind the mass as their
- * own silhouette-only commands, and objects last of all — solids before coatings, so a road lands on
- * the surface it coats rather than under a house.
- *
- * NOTHING IS REFUSED WHOLE. A paint the destination will not take is split in half and retried, so
- * one coastal cell costs one cell rather than a whole layer, and every object is offered on its own.
- * What any stage refuses is COUNTED AT THE END, from the two states: a repair pass can take back
- * what a command placed, so a tally of refusals would report a map that is not the one standing.
- *
- * A LOSS STAYS WHERE IT HAPPENED, because `commitStroke` resolves a violation by unwinding the
- * stroke FROM THE TOP, one command at a time, until the map is legal again — so in one stroke, a
- * cell of water the destination's coast will not hold is paid for by every object above it in the
- * stroke. Two things hold the loss to the cell it belongs to. The land and the build are SEPARATE
- * STROKES, which bounds any unwind to one kind of content and lets the surface settle before
- * anything is asked to stand on it. And each stroke ARRIVES LEGAL: the plan is certified before a
- * command is issued, and `settleArrival` answers for whatever the commit's own reconcile passes
- * disturb afterwards, so the unwind never starts.
- *
- * THE BUILD HAPPENS ON A DETACHED MAP and is installed once it stands, so a transfer that throws
- * leaves the visitor on the planet they were already on. The provenance ledger lives on the
- * `GridState` (`ProvenanceRecorder`'s constructor parks it there), so it rides along into the live
- * executor, which adopts it. The carried work records as `Imported`: this ledger cannot know who
- * authored what on the planet it came from, and `Imported` is the honest answer for that.
+ * Transfers a build by aligning source and destination plaza centers, repairing terrain against the
+ * new template, and replaying terrain, corners, then objects through live rules. Paint batches split
+ * on refusal and land and build use separate strokes. Work occurs on a detached map and installs only
+ * when complete. Existing cell/object provenance is translated with the content.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
@@ -200,6 +169,16 @@ export function transferMap(kit: KitContext, opts: TransferOptions): TransferOut
     }
   } finally {
     executor.popSource();
+  }
+
+  // The work's own history comes along with the work: what the replay dropped stays behind
+  // (`keepCell`/`keepObject` read the arrival), and what landed keeps its author.
+  if (source.provenance) {
+    executor.getProvenanceTracker().adoptTransplant(
+      source.provenance, offset,
+      (x, y) => !!getCell(dest.cells, x, y)?.terrain,
+      (id) => dest.objects.has(id),
+    );
   }
 
   // The notes are the BUILD's (its title, who made it), not the planet's, so they come along. The

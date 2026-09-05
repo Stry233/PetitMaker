@@ -41,7 +41,6 @@ export const TOOL_META: Record<string, { icon: IconId; verbKey: string }> = {
   find_bridge_sites: { icon: 'pw-bridge', verbKey: 'agent3.verb_find_bridge_sites' },
   find_ramp_sites: { icon: 'pw-ramp', verbKey: 'agent3.verb_find_ramp_sites' },
   build_road: { icon: 'pw-road', verbKey: 'agent3.verb_build_road' },
-  run_generator: { icon: 'pw-generator', verbKey: 'agent3.verb_run_generator' },
   list_skills: { icon: 'pw-skill', verbKey: 'agent3.verb_list_skills' },
   load_skill: { icon: 'pw-skill', verbKey: 'agent3.verb_load_skill' },
   delegate_task: { icon: 'pw-subagent', verbKey: 'agent3.verb_delegate_task' },

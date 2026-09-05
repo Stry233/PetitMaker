@@ -1,32 +1,11 @@
 /**
- * The OpenAI-dialect adapter — official `openai` SDK, browser mode. Serves all nine
- * OpenAI-compatible providers in the quirks table (OpenAI itself, DeepSeek, Gemini, OpenRouter,
- * Zhipu, Qwen, Moonshot, Perplexity's Router, and a self-hosted `custom` endpoint) off one
- * `Quirks` value per call; the ONLY file in providers/ besides `anthropic.ts` that imports an SDK.
+ * Browser adapter for the registered OpenAI-compatible providers.
  *
- * Wire-shape facts (two-pass tool-result mapping, the image-as-follow-up-user-message trick with
- * its `(tool attachment: <name>)` label, tool-call accumulation by chunk `index` (falling back to
- * the call id where a gateway streams whole calls with no index), and the
- * `x-stainless-*` header strip for CORS) are production-proven against real gateways. The
- * generator never throws (mirrors `anthropic.ts`), and a missing
- * tool-call id is synthesized unconditionally rather than silently dropping the call (a gateway
- * proxying an arbitrary backend sometimes omits ids; synthesizing one for a platform that always
- * sends them is simply a no-op, so there is no per-provider flag gating it).
- *
- * A TOOL CALL CAN ARRIVE IN THE WRONG CHANNEL, and this file is where that is settled. An Open
- * WebUI-style gateway in front of a local runtime answers a STREAMED request by typing the call into
- * `delta.content` with `finish_reason: "stop"` and no `tool_calls` anywhere in the SSE, while
- * answering the identical body unstreamed with a proper `tool_calls` array. So a text-only turn whose
- * whole body is one `{name, arguments}` object naming a requested tool is delivered as that call
- * (`toolCallInProse`, marked `tool-call-as-prose` on the `done` event), and the endpoint is
- * remembered so its next request is sent unstreamed — the same self-heal shape `stream_options`
- * already has, and the reason the text is HELD rather than published as it streams.
- *
- * ONE ASYMMETRY WITH `anthropic.ts`: a history assistant turn's `raw` field is never replayed here,
- * even when `sameModel` is true. Anthropic's raw content-block array carries a thinking
- * signature the API needs back verbatim; the OpenAI dialect has no equivalent field, and DeepSeek's
- * own docs say a replayed `reasoning_content` is rejected on the next turn. So every assistant
- * turn is rebuilt from its neutral text/toolCalls fields regardless of `sameModel`.
+ * Tool results precede any follow-up image messages. Streamed tool-call fragments are joined by
+ * chunk index, with call id as a fallback. A response containing only a requested tool-call object
+ * is normalized to a tool call, and that endpoint uses non-streaming requests thereafter.
+ * Assistant history is rebuilt from neutral text and tool calls because this dialect has no
+ * portable equivalent of Anthropic's signed raw content blocks.
  */
 import OpenAI from 'openai';
 import { classify, NO_ENDPOINT_ADDRESS, PROVIDER_SILENCE } from '../core/errors';
@@ -34,7 +13,7 @@ import { parseArgs } from '../core/json';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, TurnQuirk, Usage } from '../core/types';
 import type { Quirks } from './defaults';
-import { toRawFailure } from './http-failure';
+import { streamFailureEvent } from './http-failure';
 import type { Adapter, AdapterRequest } from './types';
 
 /**
@@ -56,12 +35,7 @@ function userContent(text: string, images: string[] | undefined): OpenAI.ChatCom
   return [{ type: 'text', text }, ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } }))];
 }
 
-/**
- * Exported for tests. `imageInToolResult` is a quirks-table FACT, not a hypothesis: it defaults
- * false because every one of today's nine OpenAI-dialect providers rejects an image inside a
- * tool message, but a future provider whose wire allows it flips the branch below to nest the
- * image in its own tool_result content instead of a follow-up user message.
- */
+/** Converts neutral session history to the provider wire format. */
 export function toOpenAIMessages(system: string, messages: ProviderMessage[], imageInToolResult = false): OpenAI.ChatCompletionMessageParam[] {
   const out: OpenAI.ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
@@ -459,9 +433,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
           ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
         };
       } catch (err) {
-        const error = classify(toRawFailure(err, signal.aborted));
-        if (error.cls === 'abort') yield { t: 'done', stop: 'aborted' };
-        else yield { t: 'error', error };
+        yield streamFailureEvent(err, signal.aborted);
       }
     },
 

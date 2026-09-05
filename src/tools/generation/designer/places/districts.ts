@@ -189,9 +189,9 @@ export function planDistricts(
     // reaches, then a block already spoken for, then any block at all, and finally the plaza's own
     // plate — ground the composition guarantees is level, buildable and beside the hub, so the last
     // fallback cannot itself be refused.
-    const pick = pickAnchorBlock(open, anchorBlocks, spec, paved, pavable, centre, W, H, taken)
-      ?? pickAnchorBlock(open, new Map(), spec, paved, pavable, centre, W, H, taken)
-      ?? pickAnchorBlock(blocks, new Map(), spec, paved, pavable, centre, W, H, taken);
+    const pick = pickAnchorBlock(open, anchorBlocks, spec, paved, pavable, W, H, taken)
+      ?? pickAnchorBlock(open, new Map(), spec, paved, pavable, W, H, taken)
+      ?? pickAnchorBlock(blocks, new Map(), spec, paved, pavable, W, H, taken);
     const found = pick
       ?? hubLot(spec, composition, template, tiers, pavable, taken, centre, W, H);
     if (!found) { unplaced.push(spec.id); continue; }
@@ -334,14 +334,14 @@ function stopBlocks(
  */
 function pickAnchorBlock(
   blocks: readonly Block[], used: ReadonlyMap<string, Block>, spec: RegionSpec,
-  paved: Uint8Array, pavable: Uint8Array, centre: { x: number; y: number }, W: number, H: number,
+  paved: Uint8Array, pavable: Uint8Array, W: number, H: number,
   taken: ReadonlySet<number>,
 ): { block: Block; lot: Rect; entry: Direction } | null {
   const spent = new Set([...used.values()].map((b) => b.d.id));
   let best: { block: Block; lot: Rect; entry: Direction; score: number } | null = null;
   for (const block of blocks) {
     if (spent.has(block.d.id)) continue;
-    const lot = frontedLot(block, spec, paved, pavable, centre, W, H, taken);
+    const lot = frontedLot(block, spec, paved, pavable, W, H, taken);
     if (!lot) continue;
     // Farthest from the blocks already spoken for, so the buildings spread coast to coast rather
     // than crowding the plaza's own ring. A block the WALK stops at is worth a bonus: a home met on
@@ -371,18 +371,23 @@ function pickAnchorBlock(
  */
 function frontedLot(
   block: Block, spec: RegionSpec, paved: Uint8Array, pavable: Uint8Array,
-  centre: { x: number; y: number }, W: number, H: number, taken: ReadonlySet<number>,
+  W: number, H: number, taken: ReadonlySet<number>,
 ): { rect: Rect; entry: Direction } | null {
   const floor = spec.minSize ?? spec.size;
   const free = freeArea(block, taken, W);
   for (const need of ['edge', 'touch', 'any'] as const) {
+    // The shrink ladder's rounding repeats sizes (every step, for a fixed-size spec), and a size
+    // already scanned under this need answers the same for the same block.
+    const tried = new Set<number>();
     for (let step = 0; step <= 4; step++) {
       const t = step / 4;
       const w = Math.round(spec.size.w - t * (spec.size.w - floor.w));
       const h = Math.round(spec.size.h - t * (spec.size.h - floor.h));
+      const size = w * 4096 + h;
+      if (tried.has(size)) continue;
+      tried.add(size);
       for (const entry of ['south', 'north', 'east', 'west'] as const) {
         const found = lotAgainstPavement(block, w, h, entry, paved, pavable, need, W, H, free);
-        void centre;
         if (found) return { rect: found, entry };
       }
     }
@@ -394,40 +399,82 @@ function frontedLot(
  * A w x h lot inside the block whose `entry` edge meets pavement to the degree `need` asks for.
  *
  * `free` (see `freeArea` below) answers both rect questions — is the lot inside the block, does it
- * stand on ground another region took — in one subtraction each.
+ * stand on ground another region took — in one subtraction each. The frontage reads the same way:
+ * the doorstep run one cell past the entry edge comes whole out of `frontageSums`, so a candidate
+ * position costs three subtractions however long its edge. A DOORSTEP MUST BE GROUND A ROAD CAN BE
+ * LAID ON, whether or not a street already runs there: the pipeline paves what the lot's own
+ * frontage does not provide, and it can only pave a cell whose whole dual-grid window stands at one
+ * tier. The column immediately west or north of a terrace step never does, so a lot facing one has
+ * doors that can never open on a road — that is the `open` run's test, with paved cells counting
+ * as open ground a street already covers.
  */
 function lotAgainstPavement(
   block: Block, w: number, h: number, entry: Direction, paved: Uint8Array, pavable: Uint8Array,
   need: 'edge' | 'touch' | 'any', W: number, H: number, free: FreeArea,
 ): Rect | null {
   const { rect } = block.d;
-  const step = STEP[entry];
+  const sums = frontageSums(paved, pavable, W, H);
+  const horizontal = entry === 'north' || entry === 'south';
   for (let y = rect.y; y + h <= rect.y + rect.h; y++) {
     for (let x = rect.x; x + w <= rect.x + rect.w; x++) {
-      const lot = { x, y, w, h };
       // The MARGIN is the dual grid: an object validates its footprint plus one column right and one
       // row below, so a building flush against the block's east or south edge is judged partly on the
       // next terrace down and the placement is refused.
       if (free.count(x, y, w + 1, h + 1) !== (w + 1) * (h + 1)) continue;
-      let fronted = 0, cells = 0, open = true;
-      for (const c of edgeCells(lot, entry)) {
-        cells++;
-        const nx = c.x + step.dx, ny = c.y + step.dy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) { open = false; break; }
-        const i = flatIndex(nx, ny, W);
-        if (paved[i]) fronted++;
-        // A DOORSTEP MUST BE GROUND A ROAD CAN BE LAID ON, whether or not a street already runs
-        // there: the pipeline paves what the lot's own frontage does not provide, and it can only
-        // pave a cell whose whole dual-grid window stands at one tier. The column immediately west
-        // or north of a terrace step never does, so a lot facing one has doors that can never open
-        // on a road.
-        else if (!pavable[i]) { open = false; break; }
+      let fronted: number;
+      let cells: number;
+      if (horizontal) {
+        const ny = entry === 'north' ? y - 1 : y + h;
+        if (ny < 0 || ny >= H) continue;
+        cells = w;
+        const row = ny * (W + 1);
+        if (sums.openRow[row + x + w]! - sums.openRow[row + x]! !== cells) continue;
+        fronted = sums.pavedRow[row + x + w]! - sums.pavedRow[row + x]!;
+      } else {
+        const nx = entry === 'west' ? x - 1 : x + w;
+        if (nx < 0 || nx >= W) continue;
+        cells = h;
+        const col = nx * (H + 1);
+        if (sums.openCol[col + y + h]! - sums.openCol[col + y]! !== cells) continue;
+        fronted = sums.pavedCol[col + y + h]! - sums.pavedCol[col + y]!;
       }
-      if (!open) continue;
-      if (need === 'any' || (need === 'edge' ? fronted === cells : fronted > 0)) return lot;
+      if (need === 'any' || (need === 'edge' ? fronted === cells : fronted > 0)) return { x, y, w, h };
     }
   }
   return null;
+}
+
+/**
+ * Row and column prefix sums over `paved` and over paved-or-`pavable` ground, memoized on the paved
+ * mask's identity: both masks are fixed for a whole planning pass (the streets are painted into
+ * `paved` before the first lot is asked for), and the anchor search reads thousands of candidate
+ * frontages from them.
+ */
+interface FrontageSums { pavedRow: Int32Array; openRow: Int32Array; pavedCol: Int32Array; openCol: Int32Array }
+
+const frontageCache = new WeakMap<Uint8Array, FrontageSums>();
+
+function frontageSums(paved: Uint8Array, pavable: Uint8Array, W: number, H: number): FrontageSums {
+  const hit = frontageCache.get(paved);
+  if (hit) return hit;
+  const pavedRow = new Int32Array((W + 1) * H);
+  const openRow = new Int32Array((W + 1) * H);
+  const pavedCol = new Int32Array((H + 1) * W);
+  const openCol = new Int32Array((H + 1) * W);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = flatIndex(x, y, W);
+      const p = paved[i] ? 1 : 0;
+      const o = p === 1 || pavable[i] ? 1 : 0;
+      pavedRow[y * (W + 1) + x + 1] = pavedRow[y * (W + 1) + x]! + p;
+      openRow[y * (W + 1) + x + 1] = openRow[y * (W + 1) + x]! + o;
+      pavedCol[x * (H + 1) + y + 1] = pavedCol[x * (H + 1) + y]! + p;
+      openCol[x * (H + 1) + y + 1] = openCol[x * (H + 1) + y]! + o;
+    }
+  }
+  const sums = { pavedRow, openRow, pavedCol, openCol };
+  frontageCache.set(paved, sums);
+  return sums;
 }
 
 /** The lot's cells along one side. */

@@ -1,76 +1,14 @@
 /*
- * ManageScreen.tsx — the gear's ONE door, and everything behind it.
+ * The panel's post-setup settings surface. It edits provider, custom endpoint, model and oversight
+ * without changing the current session phase.
  *
- * THERE IS EXACTLY ONE SETTINGS SURFACE FOR THE PANEL, reached by exactly one press from every
- * connected face: provider, model, oversight, forget-the-key, clear-past-jobs, and the held job's own
- * verbs. A second place to change the model is a second answer to "what is this panel connected to",
- * and the two drift.
+ * Custom endpoint checks are debounced, with Enter checking immediately. A check triggered by an
+ * address edit may invalidate the saved model; a background refresh only reports its result. The
+ * dependency order is provider, endpoint, then model.
  *
- * THE ENDPOINT ADDRESS IS ONE OF THEM, and only while `custom` is the armed provider. The connection
- * screen owns FIRST entry — the step whose whole business is the server being named before the key
- * can be read against it — and this card owns every change after, which is the difference between two
- * copies of one field and one field with two moments. Without it a filed address was unreachable for
- * the rest of the panel's life: a connection whose gateway had moved could only be repaired by
- * dropping the key.
- *
- * AND THE CHECK RUNS ITSELF: there is no verify button, because the machine already takes that step.
- * A CHANGED address files itself once the hands are still (Enter is the same act, immediately), and
- * the filing asks the new address what it can run under the same deadline the connection screen asks
- * under; the card's mount asks too where the session has no answer yet. So a saved address that
- * answers nothing says so here rather than on the next order, and the readiness gate on Done is the
- * enforcement.
- *
- * WHICH TRIGGER ASKED DECIDES THE CHECK'S AUTHORITY, and `justChecked` is that boundary. An
- * address-CHANGE check is the user changing the connection, so its outright failure is ACTED ON, not
- * merely said: an address nothing answers cannot stand behind a model, so the filed model CLEARS
- * (the row empties and its sub-line says the address must answer first), the dead endpoint's
- * remembered list goes with it, and the endpoint becomes the connection's named gap — Done blocks
- * until the address answers and the user picks a model again. The fetch a mere gear press makes is a
- * GLANCE: its failure says so in the sub-line and clears nothing, since a transient blip under a
- * glance must not empty a pick the user made. The boundary between an outright failure and a server
- * that merely lists nothing is `endpointCheckVerdict`, whichever trigger asked.
- *
- * WHICH ALSO MAKES THIS THE WHOLE OF A CUSTOM CONNECTION'S REVIEW: the address and the model are both
- * here, so the connection screen hands `custom` over rather than confirming it, and this card's Done
- * is that journey's door to idle — gated on the same readiness test as every other door out of setup.
- *
- * IT IS CHROME OVER THE SESSION, NOT A STATE OF IT. Nothing here replaces the log, pauses the loop
- * or moves the phase: the card stands in the job zone for as long as it is open, and Done takes it
- * away, so the session the gear was pressed from is the session that comes back — the exact held
- * job, its gate, its tape, unchanged, because it was never touched (escape invariant 4).
- *
- * OVERSIGHT LIVES HERE AND NOWHERE ELSE. Setup does not ask for it — a visitor pasting their first
- * key has no way to judge the answer, so it defaults quietly to `checkpoint` — and this is where its
- * own words explain the three choices to a user who has come looking for them.
- *
- * AND SO DOES THE MODEL. Setup files a DEFAULT (the first id the endpoint names, or the one already
- * filed for that provider) and never asks; every later choice is this dropdown, and the typed id is
- * the fallback for an endpoint that lists nothing at all. One place to pick, for the panel's whole
- * life.
- *
- * THE ROWS READ TOP-DOWN IN THE ORDER THEY DEPEND ON EACH OTHER: provider, then the address, then the
- * model. The address decides which models exist, so a model row above it would ask the user to choose
- * from a list the row below has not established yet — and a filed model is RE-JUDGED whenever the
- * address changes (`reconcileModel`: kept where the new list names it, replaced and SAID where the
- * list answers without it, kept unverified where the list names nothing).
- *
- * WHAT A CHANGE HERE APPLIES TO is `panel-runner.ts`'s rule, not this card's: a connection fact
- * reaches the NEXT job, oversight reaches the next tool call of the one running. This card's part is
- * to SAY so at the moment of the press, through the house toast — never through a row that appears,
- * which would move the card at the instant it was being used.
- *
- * THE TWO DESTRUCTIVE VERBS BECOME THEIR OWN QUESTION (`SelfConfirm`): one press turns the button's
- * words into the locale's question form and its fill danger, a second press is the answer, and a
- * press anywhere else cancels. NOTHING IN THE CARD MOVES FOR IT — no control appears, each verb owns
- * a line ending in a spacer that absorbs the label's own width, and the held job's verbs are hushed
- * at exactly the rects they already had.
- *
- * THE HELD JOB'S VERBS ARE STOP AND SET-ASIDE, AND DELIBERATELY NOT PAUSE. The loop honours a pause
- * only at a call boundary and a pause WITHHOLDS the gate card, so a pause offered over a job that is
- * waiting on the user's own answer is a deadlock with two locked doors: the gate cannot be answered
- * because the card is gone, and the pause cannot land because the call has not returned. Set-aside is
- * offered only where the job is waiting on a CLOCK (a retry backoff), which is the one hold that
- * parks and replays cleanly; a gate offers stop alone.
+ * Connection changes apply to the next job, while oversight changes apply at the next tool call.
+ * Destructive actions use inline two-step confirmation. Stop is available for any running job;
+ * set-aside is limited to retry backoff, the hold state that can be resumed safely.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
@@ -86,8 +24,9 @@ import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
 import { windowFooterPrimary } from '../design/window-skin';
 import { useFrameZoom } from '../shell/use-frame-zoom';
 import { Icon } from './icons';
-import { Pill } from './atoms';
-import { CONFIRM_ARM } from './motion';
+import { Pill, zoneEnter } from './atoms';
+import { motion, useReducedMotionConfig } from 'framer-motion';
+import { CONFIRM_ARM, framerMotion } from './motion';
 import { forgetRoster, forgetRosters, rememberedRoster, rememberRoster, rosterKey } from './model-roster';
 import { prettyModel } from './pretty-model';
 import { defaultListModels, IDLE_MS, type ListModels } from './SetupScreen';
@@ -99,8 +38,7 @@ import { connectionGaps, runnerSettings, useAgentPanelSettings } from './setting
 import type { LiveConnection } from '../../agent/exec/runner';
 import { showToast } from '../../core/runtime/toast-bus';
 
-/** Which of the two questions is standing. One at a time: two open confirms in one card is two
- *  destructive answers a stray Enter could give at once. */
+/** The destructive action awaiting its second confirmation. */
 type Asking = 'forget' | 'clear' | null;
 
 export interface ManageScreenProps {
@@ -108,25 +46,17 @@ export interface ManageScreenProps {
   jobCount: number;
   /** Whether a job is in flight at all, which is what a Stop has to have. */
   stoppable?: boolean;
-  /** Whether the job is waiting on a CLOCK rather than on the user — the one hold that parks. */
+  /** Whether the job is in a retry backoff that can be set aside. */
   parkable?: boolean;
   onDone?: () => void;
   onStopJob?: () => void;
-  /** Parks a retry backoff: the ticket holds and the request replays later. Never a pause over a
-   *  gate — see the file header. */
+  /** Parks a retry backoff so the request can be resumed later. */
   onSetAside?: () => void;
   /** Removes every settled record. The map keeps what was built. */
   onClearJobs?: () => void;
   /** Injected for tests; the default reaches an SDK adapter by dynamic import. */
   listModels?: ListModels;
-  /**
-   * The connection the job in flight is bound to, or undefined where none is running.
-   *
-   * THE CARD'S ROWS AND A RUNNING JOB CAN DISAGREE, and only this says so. A connection change
-   * applies from the NEXT job (`panel-runner.ts` states the rule and why), so the rows show what is
-   * armed while the loop goes on using what it launched with; without the launched answer the card
-   * would silently claim a model the requests are not using.
-   */
+  /** The immutable connection captured by the running job, if any. */
   liveConnection?: LiveConnection;
 }
 
@@ -137,6 +67,7 @@ export function ManageScreen({
   const t = useT();
   const zoom = useFrameZoom();
   const settings = useAgentPanelSettings();
+  const reduced = useReducedMotionConfig() === true;
   const [provOpen, setProvOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [models, setModels] = useState<readonly string[]>([]);
@@ -144,28 +75,19 @@ export function ManageScreen({
   const [modelDraft, setModelDraft] = useState('');
   const [urlDraft, setUrlDraft] = useState(settings.customBaseUrl);
   const [urlBad, setUrlBad] = useState(false);
-  /** Bumped by the address check, so pressing it on an UNCHANGED address still re-asks: the store
-   *  value is what the roster effect keys on, and re-writing the same string moves nothing. */
+  /** Forces the roster effect to rerun when the stored address itself did not change. */
   const [checkSeq, setCheckSeq] = useState(0);
-  /** Whether the roster request is out, and what the last settled one said. `null` is "nothing has
-   *  been asked yet", which is neither a wait nor a verdict. */
+  /** `null` means no endpoint result has settled in this mount. */
   const [listing, setListing] = useState(false);
   const [reached, setReached] = useState<boolean | null>(null);
 
-  /** Whether the standing list came from an address the user has just FILED on this card. Only that
-   *  moment re-judges the filed model: a plain gear press must not re-pick one the user typed. */
+  /** Marks checks caused by an address edit, which may reconcile the saved model. */
   const justChecked = useRef(false);
-  /** Whether the next-job note has already been said for the job now running. Once per job, not once
-   *  per press: a model typed a character at a time is one change, and forty toasts is not a note. */
+  /** Limits the next-job notification to once per running job. */
   const noted = useRef(false);
   useEffect(() => { if (!liveConnection) noted.current = false; }, [liveConnection]);
 
-  /**
-   * SAYS THAT A CONNECTION CHANGE LANDS ON THE NEXT JOB, and only while one is running.
-   *
-   * The house toast rather than a line on the card: the fact is about a MOMENT (the press just made),
-   * and a row appearing here would move the card under the pointer that had just used it.
-   */
+  /** Reports that a connection change will not affect the running job. */
   const noteNextJob = useCallback(() => {
     if (!liveConnection || noted.current) return;
     noted.current = true;
@@ -174,32 +96,14 @@ export function ManageScreen({
 
   const provider = settings.provider;
   const model = settings.model[provider] ?? '';
-  // The key never enters state or a render tree: `runnerSettings` is the sanctioned reader and its
-  // answer is handed straight to the request (`settings.ts`'s own rule).
+  // Read the credential only for the request that needs it; never put it in component state.
   const armedKey = runnerSettings(settings).apiKey;
   const customBaseUrl = settings.customBaseUrl;
 
   /**
-   * THE ENDPOINT DECIDES WHICH MODELS EXIST, so a newly filed address is asked whether it serves the
-   * one on file, and the answer is acted on rather than filed for the next order to discover.
-   *
-   * FOUR OUTCOMES. A model stands in the first three; the fourth is the one place readiness DROPS:
-   *   the list NAMES it        — it is kept, and the arriving list is what confirms it.
-   *   the list ANSWERS without it — replaced by the address's own first offer, and the swap is SAID.
-   *     Left alone, the connection would point at a model this host refuses and fail on the next
-   *     order instead of here, where the row that caused it is under the pointer.
-   *   the list NAMES NOTHING but the SERVER ANSWERED — an empty catalogue, or a refusal that proves
-   *     the address is there (`endpointCheckVerdict`'s `no-list`) — proof of nothing (a gateway that
-   *     will not enumerate still runs what it is given), so the typed id stands and the address row
-   *     says it is unverified.
-   *   the check FAILS OUTRIGHT (`unreachable`: nothing answered, or no request could be built) — a
-   *     model no server stands behind is not a pick, so the row EMPTIES (`recordEndpointCheck`), the
-   *     endpoint becomes the named gap and Done blocks until the address answers and the user picks
-   *     again. The cleared pick is offered back visibly once a list arrives, never restored silently.
-   *
-   * ONLY AFTER A CHECK ON THIS CARD. A gear press re-reads the same list, and re-picking (or
-   * clearing) a model the user chose deliberately because a fetch failed under a glance at the card
-   * would be the card overruling them.
+   * Reconciles a filed model only after this screen checks the endpoint. A listed model remains; a
+   * missing one switches visibly to the first offered model. An answered but unavailable catalogue
+   * keeps a typed id unverified. An unreachable endpoint clears readiness through the check recorder.
    */
   const reconcileModel = useCallback((ids: readonly string[]) => {
     if (!justChecked.current) return;
@@ -216,8 +120,8 @@ export function ManageScreen({
 
   // THE LIST IS A CONVENIENCE HERE, NOT A GATE. Setup already proved the key; a manage card whose
   // list will not load still lets the provider, the oversight and both verbs be used, so a failure
-  // simply leaves the dropdown holding the model already filed. Cancelled per request rather than
-  // per mount: switching provider twice quickly would otherwise let the first answer land last.
+  // simply leaves the dropdown holding the model already filed. Cancellation follows each request
+  // so rapidly switching providers cannot let an older answer land last.
   //
   // AND ASKED ONCE PER ENDPOINT PER SESSION (`model-roster.ts`). This is the panel's one settings
   // door, so a request per visit is a request per glance at the oversight caption — and the answer
@@ -279,7 +183,7 @@ export function ManageScreen({
   useEffect(() => { setUrlDraft(settings.customBaseUrl); }, [settings.customBaseUrl]);
 
   /** Files the typed address and re-asks it what it runs. The sanitizer is the one authority on
-   *  whether a string is usable (`key-storage.ts:sanitizeEndpointUrl`), so an empty answer is the
+   *  whether a string is usable (`core/runtime/endpoint-url.ts:sanitizeEndpointUrl`), so an empty answer is the
    *  refusal and the field says so. */
   const checkEndpoint = useCallback(() => {
     const stored = settings.setCustomBaseUrl(urlDraft);
@@ -333,9 +237,15 @@ export function ManageScreen({
   /** No list AND nothing filed: there is nothing to choose from, so the id is typed. A down endpoint
    *  is NOT that case — its repair is the address row above, and the sub-line under the model says so. */
   const typeIt = !down && models.length === 0 && model === '';
+  /** The verdict under the address field; empty where the address answered. */
+  const endpointNote = urlBad ? t('agent3.setup_endpoint_invalid')
+    : reached === false ? t('agent3.setup_manage_endpoint_failed')
+      : reached === true && models.length === 0 && model !== ''
+        ? t('agent3.setup_manage_endpoint_unlisted')
+        : '';
 
   return (
-    <div data-testid="manage-screen" style={WRAP_STYLE}>
+    <motion.div {...zoneEnter(reduced)} data-testid="manage-screen" style={WRAP_STYLE}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <FloatMenu
           data-testid="manage-prov-row"
@@ -372,6 +282,10 @@ export function ManageScreen({
             <div style={LABEL_STYLE}>
               {t('agent3.setup_manage_endpoint')}
             </div>
+            {/* The field and its verdict note are one flex child: an empty note has no height, so
+                the model row stands the column's own 8px below the field, and a verdict opens its
+                line under the field when it arrives. */}
+            <div>
             <label
               className={FIELD_WRAP_CLASS}
               style={urlBad ? { ...FIELD_STYLE, borderColor: colors.dangerText } : FIELD_STYLE}
@@ -400,19 +314,25 @@ export function ManageScreen({
                   opt-out. */}
               {listing && !urlBad && <Spinner size={13} color={INK} />}
             </label>
+            {/* The verdict line opens on the shared unfold beat rather than pushing the model row
+                down in one frame; the node stays mounted either way (the quiet IS a verdict). */}
+            <motion.div
+              initial={false}
+              animate={{ height: endpointNote === '' ? 0 : 'auto' }}
+              transition={framerMotion('panel.detail.unfold')}
+              style={{ overflow: 'hidden' }}
+            >
             <div
               data-testid="manage-endpoint-note"
               style={{
                 ...NOTE_STYLE,
-                minHeight: '1.45em',
+                ...(endpointNote !== '' ? { marginTop: 3 } : {}),
                 ...(urlBad || reached === false ? { color: colors.dangerText } : {}),
               }}
             >
-              {urlBad ? t('agent3.setup_endpoint_invalid')
-                : reached === false ? t('agent3.setup_manage_endpoint_failed')
-                  : reached === true && models.length === 0 && model !== ''
-                    ? t('agent3.setup_manage_endpoint_unlisted')
-                    : ''}
+              {endpointNote}
+            </div>
+            </motion.div>
             </div>
           </>
         )}
@@ -572,7 +492,7 @@ export function ManageScreen({
           {t('agent3.setup_done')}
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

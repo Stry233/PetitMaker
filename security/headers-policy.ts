@@ -1,77 +1,33 @@
 /**
- * Canonical security-headers / CSP policy — ONE typed source of truth for every
- * surface that needs to express it: Netlify (`public/_headers`, preview host),
- * Vercel (`vercel.json`, preview host), Alibaba ESA (the production edge — no
- * repo-file format, so the generator emits a documented rule set instead), and
- * the CSP `<meta>` fallback in `index.html` (a portable subset for
- * hosts/contexts without header support).
- *
- * Regenerate every derived output with `npx vite-node scripts/generate-headers.mts`
- * (drift-guarded by `src/__tests__/legal/headers-policy.test.ts`, the same pattern
- * as `npm run legal:licenses:check`). To add a new agent-provider origin: edit
- * `cspDirectives['connect-src']` HERE ONLY, then regenerate — never hand-edit
- * `public/_headers`, `vercel.json`, the ESA rule-set document, or the
- * `index.html` CSP `<meta>` line; the drift guard will catch it if you do.
- *
- * See docs/THREAT_MODEL.md's "Headers / CSP" + "Maintenance" sections.
+ * Canonical response-header and CSP policy for static hosts, the ESA rule set, and `index.html`.
+ * Provider origins are derived from their registries; custom endpoints use the scheme sources below.
+ * Run `npx vite-node scripts/generate-headers.mts` after changing this policy or either provider registry.
  */
 
-/** Origins the app may fetch: the named BYOK providers are listed for
- *  documentation, and `connect-src` ALSO carries the broad `https:` scheme
- *  source (plus loopback http for local gateways like Ollama) so a user's
- *  Custom BYO endpoint works on the DEPLOYED site, not only in dev — a fixed
- *  origin allowlist would block every user gateway in production.
- *
- *  The residual risk is bounded: `script-src 'self'` still forbids foreign
- *  code, the agent tool sandbox never touches the network, and `connect-src
- *  https:` only widens where in-page code could POST, which the key vault +
- *  redaction already treat as hostile surface. See docs/THREAT_MODEL.md
- *  "Custom (BYO-endpoint) provider". The dev-only `VITE_EXTRA_CONNECT_SRC`
- *  hook (vite.config.ts) covers non-https experiments. */
-const PROVIDER_ORIGINS: readonly string[] = [
-  'https://api.anthropic.com',
-  'https://api.openai.com',
-  'https://api.deepseek.com',
-  'https://generativelanguage.googleapis.com',
-  'https://openrouter.ai',
-  // Zhipu, Qwen and Moonshot each run a second regional deployment; both hosts are named because
-  // which one serves a user is decided by which one issued their key.
-  'https://open.bigmodel.cn',
-  'https://api.z.ai',
-  'https://dashscope-intl.aliyuncs.com',
-  'https://dashscope.aliyuncs.com',
-  'https://api.moonshot.cn',
-  'https://api.moonshot.ai',
-  'https://api.perplexity.ai',
-];
+import { PROVIDER_IDS, providerNetworkUrls } from '../src/agent/providers/defaults';
+import { STYLIZE_PROVIDERS } from '../src/io/stylize/providers';
 
-/** Broad sources that make the Custom endpoint reachable everywhere:
- *  any https origin + loopback http (Ollama / LiteLLM on localhost). */
+/** Named provider origins, derived from both provider registries. Custom endpoints are admitted by
+ *  the scheme and loopback sources below. */
+export const PROVIDER_ORIGINS: readonly string[] = Array.from(new Set([
+  ...PROVIDER_IDS.flatMap((id) => providerNetworkUrls(id)),
+  ...STYLIZE_PROVIDERS.filter((provider) => !provider.needsBaseUrl).map((provider) => provider.baseUrl),
+].map((url) => new URL(url).origin)));
+
+/** HTTPS custom endpoints and HTTP loopback gateways. */
 const CUSTOM_ENDPOINT_SOURCES: readonly string[] = [
   'https:',
   'http://localhost:*',
   'http://127.0.0.1:*',
-  // CSP's host-source grammar admits only letters, digits and hyphens, so no IPv6 literal can
-  // appear here; `sanitizeEndpointUrl` writes such an endpoint as `localhost`, the spelling that
-  // names the same interface and that this grammar can express.
+  // CSP host sources cannot express an IPv6 literal; endpoint normalization maps ::1 to localhost.
 ];
 
 export interface HeadersPolicy {
-  /** CSP directive name -> ordered list of sources. Includes EVERY directive
-   *  this app's CSP carries, including header-only ones (`frame-ancestors`) —
-   *  the full record is what the response-header adapters (Netlify/Vercel/ESA)
-   *  emit. Code that needs the meta-safe subset must go through `toCspMeta()`,
-   *  never read this record directly. */
+  /** Ordered CSP sources, including response-header-only directives. */
   cspDirectives: Record<string, string[]>;
-  /** Directive/header names a `<meta http-equiv="Content-Security-Policy">` tag
-   *  can never express: `frame-ancestors` (a real CSP directive that browsers
-   *  ignore when delivered via meta — CSP spec, not a bug) and
-   *  `Strict-Transport-Security` (not a CSP directive at all — a distinct
-   *  response header with no meta equivalent). `toCspMeta()` always excludes
-   *  both; it throws if a caller explicitly forces one in. */
+  /** Names that cannot be enforced by a CSP meta tag. */
   headerOnlyDirectives: readonly string[];
-  /** Non-CSP static response headers (nosniff, frame options, referrer policy,
-   *  permissions policy, HSTS). Header-only by nature — none has a meta form. */
+  /** Non-CSP response headers. */
   staticHeaders: Record<string, string>;
 }
 
@@ -80,9 +36,9 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'default-src': ["'self'"],
     'base-uri': ["'self'"],
     'object-src': ["'none'"],
-    'script-src': ["'self'"],
-    // 'unsafe-inline' is required for React inline styles. The fonts are self-hosted
-    // (src/assets/fonts/fonts.css), so no font-CDN origin appears here or in `font-src`.
+    // The bundled on-device illustration runtime requires WebAssembly compilation, not JavaScript eval.
+    'script-src': ["'self'", "'wasm-unsafe-eval'"],
+    // React uses inline styles; fonts are self-hosted.
     'style-src': ["'self'", "'unsafe-inline'"],
     'font-src': ["'self'"],
     'img-src': ["'self'", 'data:', 'blob:'],
@@ -101,8 +57,7 @@ export const HEADERS_POLICY: HeadersPolicy = {
   },
 };
 
-/** Fixed directive order, so a regeneration diff shows the directive that changed
- *  rather than a reshuffled one-line CSP. */
+/** Stable directive order for generated output. */
 const CSP_ORDER = [
   'default-src',
   'base-uri',
@@ -126,27 +81,16 @@ function buildCspString(policy: HeadersPolicy, opts: { includeHeaderOnly: boolea
   return names.map((name) => `${name} ${policy.cspDirectives[name]!.join(' ')}`).join('; ');
 }
 
-/** The full CSP string (every directive, including header-only ones) as shipped
- *  in a response header — used by the Netlify/Vercel/ESA adapters. */
+/** Full response-header CSP, including header-only directives. */
 export function fullCspString(policy: HeadersPolicy = HEADERS_POLICY): string {
   return buildCspString(policy, { includeHeaderOnly: true });
 }
 
-/** The comment marker the generator stamps immediately above the CSP `<meta>`
- *  line in `index.html`, so anyone reading the file sees the limitation without
- *  having to know to look here. Also asserted by the drift-guard test. */
+/** Marker immediately above the generated CSP meta tag. */
 export const CSP_META_MARKER =
   '<!-- CSP fallback subset — production headers are authoritative (see security/headers-policy.ts) -->';
 
-/**
- * The meta-expressible CSP subset for `index.html`'s `<meta http-equiv=
- * "Content-Security-Policy">` fallback. Always excludes `headerOnlyDirectives`
- * (`frame-ancestors`, and `Strict-Transport-Security` — which was never a CSP
- * directive to begin with, so it never appears in `cspDirectives`).
- *
- * Throws if `opts.forceInclude` names a header-only directive: such a meta tag
- * would LOOK like it enforces frame-ancestors/HSTS while structurally it cannot.
- */
+/** CSP subset enforceable by a meta tag. Rejects attempts to include header-only names. */
 export function toCspMeta(
   policy: HeadersPolicy = HEADERS_POLICY,
   opts?: { forceInclude?: readonly string[] }
@@ -154,8 +98,8 @@ export function toCspMeta(
   for (const name of opts?.forceInclude ?? []) {
     if (policy.headerOnlyDirectives.includes(name)) {
       throw new Error(
-        `toCspMeta: "${name}" is a header-only directive (see CSP meta limitations, spec §13) and cannot be ` +
-          'expressed in a <meta> CSP tag — production response headers (security/headers-policy.ts adapters) ' +
+        `toCspMeta: "${name}" is a header-only directive and cannot be expressed by a CSP meta tag; ` +
+          'production response headers (security/headers-policy.ts adapters) ' +
           'remain authoritative.'
       );
     }
@@ -163,22 +107,16 @@ export function toCspMeta(
   return buildCspString(policy, { includeHeaderOnly: false });
 }
 
-/** Ordered [key, value] pairs for every response header this policy emits
- *  (CSP first, then the static headers in `staticHeaders`'s own key order) —
- *  shared by the Netlify/Vercel/ESA adapters so their header SET and ORDER
- *  never drift from one another. */
+/** Ordered response-header entries, with CSP first. */
 export function headerEntries(policy: HeadersPolicy = HEADERS_POLICY): Array<[string, string]> {
   return [['Content-Security-Policy', fullCspString(policy)], ...Object.entries(policy.staticHeaders)];
 }
 
 // ---------------------------------------------------------------------------
-// Dev-only connect-src extension (NEVER shipped)
+// Dev-only connect-src / font-src extensions (NEVER shipped)
 // ---------------------------------------------------------------------------
 
-/** Parses a `VITE_EXTRA_CONNECT_SRC` value (space- or comma-separated origins)
- *  into a clean list. Empty / whitespace-only → `[]`. Used ONLY by the Vite dev
- *  server (see vite.config.ts) so a maintainer can reach a personal Custom
- *  endpoint locally without adding its origin to the canonical, public policy. */
+/** Parse space- or comma-separated development-only origins. */
 export function parseExtraConnectSrc(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
@@ -187,21 +125,36 @@ export function parseExtraConnectSrc(raw: string | undefined): string[] {
     .filter((s) => s.length > 0);
 }
 
-/** Returns a policy clone with `extraOrigins` appended to `connect-src`. Pure;
- *  used by the dev-server CSP-meta rewrite only. A no-op when `extraOrigins` is
- *  empty. */
-export function withExtraConnectSrc(
-  policy: HeadersPolicy = HEADERS_POLICY,
-  extraOrigins: readonly string[] = []
+/** Clone a policy with development-only origins appended to one directive. */
+export function withExtraSources(
+  policy: HeadersPolicy,
+  directive: 'connect-src' | 'font-src',
+  extraOrigins: readonly string[]
 ): HeadersPolicy {
   if (extraOrigins.length === 0) return policy;
   return {
     ...policy,
     cspDirectives: {
       ...policy.cspDirectives,
-      'connect-src': [...(policy.cspDirectives['connect-src'] ?? []), ...extraOrigins],
+      [directive]: [...(policy.cspDirectives[directive] ?? []), ...extraOrigins],
     },
   };
+}
+
+/** Development-server `connect-src` extension. */
+export function withExtraConnectSrc(
+  policy: HeadersPolicy = HEADERS_POLICY,
+  extraOrigins: readonly string[] = []
+): HeadersPolicy {
+  return withExtraSources(policy, 'connect-src', extraOrigins);
+}
+
+/** Development-server `font-src` extension for injected browser tooling. */
+export function withExtraFontSrc(
+  policy: HeadersPolicy = HEADERS_POLICY,
+  extraOrigins: readonly string[] = []
+): HeadersPolicy {
+  return withExtraSources(policy, 'font-src', extraOrigins);
 }
 
 // ---------------------------------------------------------------------------

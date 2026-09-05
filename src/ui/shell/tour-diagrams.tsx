@@ -1,44 +1,7 @@
-/*
- * tour-diagrams.tsx — the tour's gesture diagrams: a step that teaches a GESTURE performs it.
- *
- * A tour made of prose asks a beginner to translate words into a hand movement they have never made.
- * These are the movement itself, drawn small inside the bubble: the app's own pointer, the button it
- * holds, the trail it leaves, and what the map does while it does.
- *
- * ONE DIAGRAM PER GESTURE, AND NONE ANYWHERE ELSE. A step that names a panel (the mode row, the
- * assistant, the menu) gets no drawing: there is no movement to show, and an animation invented for
- * one would be exactly the decoration this is not.
- *
- * THE PICTURE IS A LITTLE MAP UNDER A HAND, and the card's frame is an unmoving viewport: the grid
- * and the island travel, turn and zoom TOGETHER inside it, because a camera moves a scene rather
- * than the things in it. The trail is a straight self-drawing line, the path the hand really takes.
- *
- * ONE REP IS ONE COMPLETE DEMONSTRATION: rest, press, drag, the wheel beat where a step has one,
- * release. A step that teaches SEVERAL buttons runs a rep per button, each with one key filled, so
- * "any button" never reads as a chord. The 2D map answers every rep the same way; the 3D scene does
- * not — a left drag slides it and the other two turn it, which is the difference the words alone
- * kept failing to place.
- *
- * DRIVEN BY CSS KEYFRAMES, not by the animator. A framer loop per moving part left a bubble full of
- * independent clocks that drifted and, on a card that mounts and remeasures under the visitor, could
- * be caught mid-restart; the loops here are one declared stylesheet, so every part of a rep is
- * phase-locked to the same clock by construction and a diagram costs no renders while it plays. The
- * durations and travels come from the motion registry; the keyframe PERCENTAGES are the
- * choreography's own structure and live here, beside the drawing they shape.
- *
- * EVERY DIAGRAM READS WITHOUT MOVING. Under reduced motion `animations.css` collapses the loops and
- * the `[data-reduced-motion='1']` rules below stand each drawing at the END of its gesture: the map
- * carried across, the island turned, the plane standing up, the trail drawn, the ground laid, and
- * ONE key filled on a cycle rather than three. That is what lets these be `inform` motions rather
- * than ambient ones (see the registry's `tour.gesture.*` entries).
- *
- * The drawings live HERE, beside `tour-steps.ts`, because they are the same kind of thing: what the
- * tour says about this interface. `ui/chrome/tour/` holds the machinery, which renders whatever
- * drawing the host hands it and knows nothing about mice or islands.
- *
- * The keys they draw are MOUSE keys only. A keyboard combination this app lets the visitor rebind
- * (the pan keys) is named in the step's own text instead, where it can say the live binding, since a
- * drawn keycap would keep promising the default long after someone changed it.
+/**
+ * Animated gesture diagrams for tour steps. Every demonstration uses one phase-locked CSS timeline
+ * so the pointer, trail, and scene stay synchronized without React renders. Reduced motion displays
+ * the completed gesture state. Only fixed mouse buttons are drawn; rebindable keys remain text.
  */
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
@@ -52,39 +15,32 @@ import { CSS_CURVES } from './motion/curves';
 import { MOTIONS } from './motion/registry';
 import type { TourStep, TourStepId } from '../chrome/tour/steps';
 
-/* ── What the registry decides ──────────────────────────────
-   A duration or a travel is named here and nowhere else in this file. */
+/* Timing and travel come from the motion registry. */
 
 const REP = MOTIONS['tour.gesture.drag'].duration;
 const CYCLE = MOTIONS['tour.gesture.cycle'].duration;
 const EASE = CSS_CURVES[MOTIONS['tour.gesture.drag'].curve];
 /** How far the hand carries the map, each way. */
 const DRAG = MOTIONS['tour.gesture.drag'].amplitude;
-/** How far the brush runs, each way: a longer travel than a pan, since the point is the row of
- *  ground it leaves behind. */
+/** Brush travel, longer than pan travel so the painted row remains legible. */
 const RUN = MOTIONS['tour.gesture.stroke'].amplitude;
 /** How much the wheel beat brings the map closer, as a fraction. */
 const ZOOM = MOTIONS['tour.gesture.wheel'].amplitude;
 /** How far a left drag slides the 3D scene. */
 const SLIDE = MOTIONS['tour.gesture.orbit'].amplitude;
 
-/** How far a right or middle drag turns the 3D scene, in degrees: the travel the registry has no
- *  unit for. Wide enough that the turn is unmistakably a turn, and short of the angle at which the
- *  island's own silhouette stops being recognisable as the same island. */
+/** Right/middle-drag yaw in degrees. */
 const YAW_DEG = 13;
 /** Where the flat map stands once it has tipped into the 3D one. */
 const TIP_DEG = 46;
-/** And where a card that is ALREADY in 3D stands: a little shallower, so the row of cells a stroke
- *  lays on it still reads as a row rather than foreshortening into a band. */
+/** Shallower 3D angle used where a painted row must remain legible. */
 const STAND_DEG = 42;
-/** The viewing distance the tips are drawn at. Near enough that the far edge narrows visibly, which
- *  is what says the surface has depth rather than having been squashed. */
+/** Perspective distance for the miniature 3D scene. */
 const PERSPECTIVE = 600;
 
 /* ── The drawing's own measurements ─────────────────────────── */
 
-/** The little map. Wider than tall, like the window it stands for, and narrow enough to leave the
- *  bubble's own margins alone. */
+/** Miniature map dimensions. */
 const CARD_W = 240;
 const CARD_H = 92;
 /** The 3D step's card is narrower: the button it is being switched by stands beside it. */
@@ -98,25 +54,18 @@ const GRID = 24;
  *  edge into view. */
 const BLEED = 40;
 
-/** The whole drawing's height, and the room between it and the title under it. `TourOverlay` adds
- *  the sum to the card estimate it fits against the spotlight, so a card carrying a diagram cannot
- *  creep back over the control it is describing. */
+/** Diagram height consumed by tour-card placement. */
 const DRAW_H = 96;
 const TITLE_GAP = 12;
 export const TOUR_DIAGRAM_H = DRAW_H + TITLE_GAP;
 
-/** The pointer's tile, in css px, per set: the two sets fill their tile by different amounts, and
- *  what has to match between them is the ARROW the visitor sees. The classic one runs corner to
- *  corner of its tile; the painted one covers about half of its own, so it is delivered in a bigger
- *  tile to arrive at the same size. Both land the arrow near 20 css px tall. */
+/** Cursor tile size adjusted so both art sets show a roughly 20 CSS-pixel arrow. */
 const CURSOR_PX = USE_CLASSIC_CURSORS ? 22 : 24;
-/** The mouse badge that pops beside the pointer, and where it sits relative to the pointer's tip:
- *  clear of the arrow's right edge, low enough to read as attached to it. */
+/** Mouse badge dimensions and offset from the cursor tip. */
 const BADGE_W = 16;
 const BADGE_X = 15;
 const BADGE_Y = 14;
-/** The press ring, centred on the arrow's body rather than on its tip: a ring around a point that
- *  is drawn as a point reads as a target, not as a press. */
+/** Press ring position around the cursor body. */
 const RIPPLE = 34;
 const RIPPLE_X = 7;
 const RIPPLE_Y = 9;

@@ -1,26 +1,17 @@
 /**
- * badges.tsx — the character's shoulder badge, one per `PoseSpec.badge` (poses.ts). Two are the
- * PSD-extracted PNG art beside `base.png` (idea/ask); the other six are drawn as SVG, transcribed
- * verbatim from the normative prototype's `SVG_BADGES` table — including its stroke tables
- * `BST`/`BSG` (the two outline treatments every drawn badge uses) and each drawing's own rotation,
- * which the prototype bakes into the artwork rather than the pose's transform.
- *
- * REFRESH IS ONE DRAWN LOOP, NOT A PNG. It was classified with the two PNGs and rendered from
- * `badge-refresh.png`, which depicts a TWO-arrow sync mark; the prototype's own art table has no
- * `refresh` entry at all, so every working pose it drives showed two overlapping circular arrows
- * where the design has one arc with one arrowhead. Its path data is the prototype's, like the other
- * five drawn badges'.
+ * Character shoulder badges selected by `PoseSpec.badge`. Idea and ask use PNG assets; the other six
+ * are SVG drawings with shared warm and gray outline treatments. Refresh is a single circular arrow.
  */
 import { characterArt } from '../../../assets/agent/agent-art';
 
 export type BadgeId = 'idea' | 'refresh' | 'ask' | 'zzz' | 'pause' | 'exclaim' | 'spark' | 'note';
 
-/** Prototype `BST` — the warm-tan outline the yellow (`#FFDA7E`) badges draw. */
+/** Warm-tan outline used by yellow badges. */
 const BST = { stroke: '#B5884F', strokeWidth: 2.6, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
-/** Prototype `BSG` — the grey outline the taupe (`#C9C2B4`) badges draw. */
+/** Gray outline used by taupe badges. */
 const BSG = { stroke: '#8F8778', strokeWidth: 2.4, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
 
-/** Prototype `.badge img,.badge svg{max-width:100%;max-height:100%}`. */
+/** Constrains PNG and SVG badges to their shared wrapper. */
 const FIT: React.CSSProperties = { maxWidth: '100%', maxHeight: '100%', display: 'block' };
 
 function RefreshBadge() {

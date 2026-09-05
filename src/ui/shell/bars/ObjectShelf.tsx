@@ -1,38 +1,11 @@
 /*
- * ObjectShelf.tsx — the bottom bar for 物品 mode: six category tabs, a search box, and a scrolling
- * row of item cards.
- *
- * A card writes through `setEditMode({ mode: 'object', itemId })`, the only writer of the four tool
- * facts, and a null id in object mode resolves to rest — so arming and disarming are one call with
- * one argument, and what the row draws as selected is the store's own `selectedItemId` rather than
- * a second copy of it.
- *
- * IT IS A SHELF, WHICH IS WHY ITS PLATE IS A BAND. The design's `底边栏` is one shape running past
- * both side edges and past the bottom of the canvas, with its top edge partway UP the item cards:
- * the cards stand on it, half on the dark and half over the map, and the row of category names and
- * the search field sit above it on the map. A plate wrapped around every row instead would make
- * this a card with rows in it, which is a different object.
- *
- * THE SHELF SPANS THE VIEWPORT. Its three rows stack off the bottom edge at fixed css px and take
- * whatever width the window has: the tab row flows, so a tab is as wide as its own word and the
- * Russian row is simply longer than the Chinese one, and the card row scrolls, so the room it has
- * decides how many cards are in view rather than how big they are.
- *
- * The row SCROLLS. The drawing's eleven cards are a sample: 40 items sit in the flora category
- * alone, and the catalog is expected to reach hundreds, so the row is a native scroll container
- * (wheel, trackpad, touch and keyboard focus all move it) with the design's own bar drawn under it.
- *
- * Search reads the active locale AND English, so "apple" finds the apple tree with the interface in
- * Chinese. While a query stands it replaces the category and no tab reads as active, since a tab
- * that looked chosen while the row showed something else would be a lie; clicking one clears it.
- *
- * The hovered card's NAME is drawn HERE rather than on the card, in the gap above the row: the row
- * is a scroll container, so it clips on both axes and a label standing above a tile inside it would
- * be cut in half. The card reports where it is in the row's own coordinates and the scroll offset
- * is taken back off, so the name tracks the tile it belongs to while the row moves under it.
+ * Object-mode shelf with localized category tabs, bilingual search, and a native scrolling card
+ * row. Selection comes directly from edit state. Search clears the active category, and hovered
+ * names render outside the clipped scroller while tracking their card's scroll-adjusted position.
  */
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties,
+  useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState,
+  type CSSProperties, type HTMLAttributes,
 } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { ItemCategory } from '../../../core/model/types';
@@ -61,6 +34,7 @@ import { ShelfScrollbar } from './ShelfScrollbar';
 import { ShelfTabs, TAB_ROW } from './ShelfTabs';
 
 import searchArt from '../../../assets/shell/shelf-object/search-field.svg';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { MOTIONS } from '../motion/registry';
 import { useMotion } from '../motion/use-motion';
 
@@ -86,6 +60,62 @@ type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
  * caret and the drag-select highlight to the field's full height, which is a real job of its own.
  */
 const SEARCH_PAD_TOP = 4;
+
+/**
+ * The search capsule as ONE part: the drawn plate, its silhouette hairline and the field laid over
+ * it, at the sizes `SEARCH` declares. The shelf mounts it live; the Help Center's search figure
+ * mounts the same part read-only, so the pictured field is this field rather than a copy of its
+ * values.
+ */
+export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, readOnly, wrapStyle, wrapAttrs }: {
+  value: string;
+  onChange?: (next: string) => void;
+  placeholder?: string;
+  ariaLabel?: string;
+  readOnly?: boolean;
+  /** The room the capsule keeps in the row it stands in; the box itself is `SEARCH`'s. */
+  wrapStyle?: CSSProperties;
+  wrapAttrs?: HTMLAttributes<HTMLDivElement>;
+}) {
+  const { fw } = usePx();
+  const searchStyle: PwStyle = {
+    position: 'relative', display: 'block', boxSizing: 'border-box',
+    width: '100%', height: '100%',
+    paddingLeft: SEARCH.padX, paddingRight: SEARCH.padX,
+    paddingTop: SEARCH_PAD_TOP, paddingBottom: 0,
+    background: 'transparent', border: 'none', outline: 'none',
+    fontSize: SEARCH.text, fontWeight: fw(800), color: PLATE_INK,
+    lineHeight: `${SEARCH.h}px`, cursor: cursors.text,
+    '--pw-placeholder': MUTED_INK,
+  };
+  return (
+    // The focus ring goes on the BOX, not on the input: an outline follows its own element's
+    // corner, and the input is a rectangle laid over the drawn capsule. The pair is declared in
+    // `design/focus-source.ts`, which is where the whole rule reads.
+    <div
+      className={FIELD_WRAP_CLASS}
+      style={{ position: 'relative', width: SEARCH.w, height: SEARCH.h, borderRadius: SEARCH.radius, ...wrapStyle }}
+      {...wrapAttrs}
+    >
+      {/* The plate wears the hairline every drawing standing on the map wears
+          (`shape-edge.tsx:ShapeEdge`), on the art itself rather than on the box, so what is
+          outlined is the capsule's own silhouette and not the rectangle around it. */}
+      <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
+        <Plate src={searchArt} style={{ inset: 0, width: '100%', height: '100%' }} />
+      </ShapeEdge>
+      <input
+        type="search"
+        className={`pw-search-field ${FIELD_INPUT_CLASS}`}
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        readOnly={readOnly}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        style={searchStyle}
+      />
+    </div>
+  );
+}
 
 /** What the row's own box says about how far it scrolls. Both come from the element itself, never
  *  from a design width: the row is as wide as the window leaves it. */
@@ -133,18 +163,44 @@ function patchIdFor(category: ItemCategory): MacroId | null {
 export interface ObjectShelfProps {
   only?: (item: CatalogItem) => boolean;
   pick?: { current: string | null; onPick: (catalogId: string) => void };
+  /** A query the pictured shelf shows as typed, standing in for the field's own state; the live
+   *  shelf never passes this and keeps typing into its own. */
+  posedQuery?: string;
 }
 
-export function ObjectShelf({ only, pick }: ObjectShelfProps = {}) {
+/**
+ * The shelf's backing, as the design draws it: a band at the bottom that the item cards stand UP
+ * out of, not a box around the rows. See `units.ts:PLATE_BAND`. Exported so the Help Center's shelf
+ * figure stands its cards on this SAME band rather than a plate drawn to guess at it.
+ */
+export function ShelfBand() {
+  return (
+    <span
+      data-testid="bar-plate"
+      style={{
+        position: 'absolute',
+        left: -PLATE_BAND.overhang, right: -PLATE_BAND.overhang,
+        bottom: -PLATE_BAND.radius, height: PLATE_BAND.top + PLATE_BAND.radius,
+        borderRadius: PLATE_BAND.radius, background: BAR.fill,
+        // The plate is SOLID: the shelf's root is pointer-transparent so the map stays reachable
+        // around the shelf, but input over the visible dock belongs to the dock — without this a
+        // drag across it panned the map underneath.
+        pointerEvents: 'auto',
+      }}
+    />
+  );
+}
+
+export function ObjectShelf({ only, pick, posedQuery }: ObjectShelfProps = {}) {
   return (
     <ScaleProvider value={SHELF_SCALE}>
-      <ObjectShelfBody only={only} pick={pick} />
+      <ObjectShelfBody only={only} pick={pick} posedQuery={posedQuery} />
     </ScaleProvider>
   );
 }
 
-function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
-  const { px, fw, scale } = usePx();
+function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
+  const { px, scale } = usePx();
   const swapMotion = useMotion('shelf.category.swap');
   const t = useT();
   const locale = useEditorStore((s) => s.locale);
@@ -155,7 +211,10 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
   const eventBus = useEditorStore((s) => s.eventBus);
 
   const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId, armedMacro));
-  const [query, setQuery] = useState('');
+  const [innerQuery, setInnerQuery] = useState('');
+  // The one point `query` is read from: a posed figure overrides it for both ranking and display,
+  // and the field itself keeps typing into `innerQuery` untouched, so the live shelf never sees it.
+  const query = posedQuery ?? innerQuery;
   const [reached, setReached] = useState<{ name: string; centre: number } | null>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [reach, setReach] = useState<Reach>({ viewportW: 0, contentW: 0 });
@@ -196,8 +255,10 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
   );
   const counts = gridState ? getObjectIndex(gridState).countByCatalog : null;
 
-  const all = shelfItems(query, category, locale);
-  const items = only ? all.filter(only) : all;
+  // The row re-renders per card hover and per scroll tick; the catalog ranking only owes the
+  // renders where its own inputs moved.
+  const all = useMemo(() => shelfItems(query, category, locale), [query, category, locale]);
+  const items = useMemo(() => (only ? all.filter(only) : all), [all, only]);
   /** The categories that still hold something under `only`. */
   const shownTabs = useMemo(
     () => (only ? TABS.filter((tab) => getCatalogByCategory(tab.category).some(only)) : TABS),
@@ -239,41 +300,17 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
     return () => ro.disconnect();
   }, [items.length, category, scale]);
 
-  const searchStyle: PwStyle = {
-    position: 'relative', display: 'block', boxSizing: 'border-box',
-    width: '100%', height: '100%',
-    paddingLeft: SEARCH.padX, paddingRight: SEARCH.padX,
-    paddingTop: SEARCH_PAD_TOP, paddingBottom: 0,
-    background: 'transparent', border: 'none', outline: 'none',
-    fontSize: SEARCH.text, fontWeight: fw(800), color: PLATE_INK,
-    lineHeight: `${SEARCH.h}px`, cursor: cursors.text,
-    '--pw-placeholder': MUTED_INK,
-  };
-
   return (
     <div
       ref={rootRef}
+      {...helpTargetAttr('objects')}
       style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: z.panel, pointerEvents: 'none',
         display: 'flex', flexDirection: 'column', alignItems: 'stretch',
         padding: `0 ${SHELF_BOX.right}px ${SHELF_BOX.bottom}px ${SHELF_BOX.left}px`,
       }}
     >
-      {/* The shelf's backing, as the design draws it: a band at the bottom that the item cards
-          stand UP out of, not a box around the rows. See `units.ts:PLATE_BAND`. */}
-      <span
-        data-testid="bar-plate"
-        style={{
-          position: 'absolute',
-          left: -PLATE_BAND.overhang, right: -PLATE_BAND.overhang,
-          bottom: -PLATE_BAND.radius, height: PLATE_BAND.top + PLATE_BAND.radius,
-          borderRadius: PLATE_BAND.radius, background: BAR.fill,
-          // The plate is SOLID: the shelf's root is pointer-transparent so the map stays reachable
-          // around the shelf, but input over the visible dock belongs to the dock — without this a
-          // drag across it panned the map underneath.
-          pointerEvents: 'auto',
-        }}
-      />
+      <ShelfBand />
 
       {/* The names and the field are ONE row, the field just past the last name: that is where the
           drawing puts it, and it is what makes the field read as this row's search rather than as a
@@ -303,7 +340,7 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
           // Switching TO the armed item's own category is not a mismatch — that is how the shelf
           // re-opens on an armed item at all (`initialCategory` above).
           onSelect={(next) => {
-            setQuery('');
+            setInnerQuery('');
             setCategory(next);
             if (selectedItemId && getCatalogItem(selectedItemId)?.category !== next) {
               setEditMode({ mode: 'object', itemId: null });
@@ -313,38 +350,22 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
           }}
         />
 
-        {/* The focus ring goes on the BOX, not on the input: an outline follows its own element's
-            corner, and the input is a rectangle laid over the drawn capsule. The pair is declared in
-            `design/focus-source.ts`, which is where the whole rule reads. */}
-        <div
-          className={FIELD_WRAP_CLASS}
-          style={{
-            position: 'relative', flex: 'none', marginLeft: SEARCH.inset,
+        <ShelfSearchField
+          value={query}
+          onChange={setInnerQuery}
+          ariaLabel={t('shelf.search')}
+          // The drawing writes the placeholder with a trailing ellipsis, which invites typing. It
+          // is not part of the field's NAME, so a reader hears "Search" and not the dots.
+          placeholder={t('shelf.search_ph')}
+          wrapStyle={{
+            flex: 'none', marginLeft: SEARCH.inset,
             // The row's own bottom edge is the mark's, and the field stands off the names' INK
             // above it (`SEARCH.bottom`), not off the line box that carries them.
             marginBottom: SEARCH.bottom,
-            width: SEARCH.w, height: SEARCH.h, borderRadius: SEARCH.radius,
             pointerEvents: 'auto',
           }}
-        >
-          {/* The plate wears the hairline every drawing standing on the map wears
-              (`shape-edge.tsx:ShapeEdge`), on the art itself rather than on the box, so what is
-              outlined is the capsule's own silhouette and not the rectangle around it. */}
-          <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
-            <Plate src={searchArt} style={{ inset: 0, width: '100%', height: '100%' }} />
-          </ShapeEdge>
-          <input
-            type="search"
-            className={`pw-search-field ${FIELD_INPUT_CLASS}`}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label={t('shelf.search')}
-            // The drawing writes the placeholder with a trailing ellipsis, which invites typing. It
-            // is not part of the field's NAME, so a reader hears "Search" and not the dots.
-            placeholder={t('shelf.search_ph')}
-            style={searchStyle}
-          />
-        </div>
+          wrapAttrs={helpTargetAttr('search')}
+        />
 
       </div>
 
@@ -459,7 +480,7 @@ function ObjectShelfBody({ only, pick }: ObjectShelfProps) {
             <motion.button
               type="button"
               {...pressable}
-              onClick={() => setQuery('')}
+              onClick={() => setInnerQuery('')}
               style={{
                 ...btnReset, cursor: cursors.clickable, pointerEvents: 'auto',
                 display: 'flex', alignItems: 'center', padding: '7px 20px',

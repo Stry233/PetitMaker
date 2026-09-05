@@ -73,8 +73,7 @@ describe('generation through the real CommandExecutor', () => {
    *
    * EARTH IS DRY, and this is the surface that can still ask for it: the shelf offers ONE island kind
    * and `generate-shelf.ts:modeFor` answers `mixed` for every one, so a kind other than mixed reaches
-   * the engine only from a recipe saved before the kinds collapsed or from the agent's
-   * `run_generator`, whose schema still names all three. It is dry BY GATE and not by luck — every
+   * the engine only from a recipe saved before the kinds collapsed. It is dry BY GATE and not by luck — every
    * water pass, the landmark figure included, sits behind `waterScale > 0` in `terrain-sculpt.ts`.
    */
   it('the island kinds order by how much water they hold, and earth holds none', () => {

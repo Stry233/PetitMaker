@@ -1,5 +1,5 @@
 /**
- * Different road materials never CONNECT (issue #10): in the game, two surfaces meet with a
+ * Different road materials never connect: in the game, two surfaces meet with a
  * hairline of ground between them, so for every connectivity question — which side a road's
  * drawing faces, whether a cell is an endpoint of its run, whether a cut is legal — a neighbour
  * of another material is no neighbour at all. A trimmed endpoint keeps its cut when a different

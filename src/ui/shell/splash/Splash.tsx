@@ -13,12 +13,11 @@
  * A transform on the app's root breaks `position: fixed` anchoring for its duration, so this one
  * lives only during the boot hand-off, before any interaction, and ends at `transform: none`.
  *
- * The brand is the README's own masthead SVG, per locale (the zh art carries the Chinese
+ * The brand is the README's own masthead SVG, per deployment (the zh art carries the Chinese
  * wordmark); the file embeds its logo, so the lockup is one <img>.
  */
 import { useEffect, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { useEditorStore } from '../../../state/store';
 import { useT } from '../../../i18n/context';
 import { colors, font, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
@@ -27,14 +26,13 @@ import { cssMotion, useMotion, useMotionAllowed } from '../motion/use-motion';
 import { activeTarget } from '../../../legal/deploy-targets';
 import { markSplashDone, preloadAssets } from './preload';
 
-// The SAME URLs the boot loader and the preload use (public/, unhashed): the loader has already
-// downloaded its target's masthead by the time this mounts, so the slide-up starts with the art on
-// screen — a hashed src/ copy of the same file was a second download, and the banner slid up as
-// alt text while it fetched. On the mainland deployment the Chinese wordmark leads whatever the
-// locale, matching the boot loader and the site's own title; on the global one the locale decides.
-const BANNER_EN = `${import.meta.env.BASE_URL}banner.svg`;
-const BANNER_ZH = `${import.meta.env.BASE_URL}banner-zh.svg`;
-const CN_TARGET = activeTarget().id === 'cn';
+// The SAME URL the boot loader uses (public/, unhashed): the loader has already downloaded its
+// target's masthead by the time this mounts, so the slide-up starts with the art on screen — a
+// hashed src/ copy of the same file was a second download, and the banner slid up as alt text
+// while it fetched. THE DOMAIN ALONE PICKS THE ART (`deploy-targets.ts:bootBanner`): index.html's
+// static loader shows the masthead before any setting can be read, so a splash that then chose by
+// locale would swap wordmarks mid-boot on every visitor whose language crosses the domain's.
+const BANNER = `${import.meta.env.BASE_URL}${activeTarget().bootBanner}`;
 
 /** The island, in the editor's own palette: s = sand shore, g = grass, m/M = the first two
  *  mountain greens, p = pond. '.' is open ground (no tile). */
@@ -84,7 +82,6 @@ export interface SplashProps {
 
 export function Splash({ onHandoff, onDone }: SplashProps) {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
   const reduced = useReducedMotionConfig();
   const plopTransition = useMotion('splash.tile.plop');
   const handoffTransition = useMotion('splash.handoff');
@@ -166,7 +163,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
       }}
     >
       <motion.img
-        src={CN_TARGET || locale === 'zh' ? BANNER_ZH : BANNER_EN}
+        src={BANNER}
         alt={t('app.name')}
         initial={arriveAllowed ? { y: BANNER_TRAVEL_Y } : false}
         animate={{ y: 0 }}

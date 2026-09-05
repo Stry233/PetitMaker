@@ -4,9 +4,8 @@
  * The design draws the sheet as a filled plate with one rule across it, and nothing else: no
  * gradient, no stroke, no effect (see tokens.ts). So it is DRAWN rather than placed as art, which is
  * what lets a row be as wide as its own label: the drawing's plate is 229 design px, measured
- * against the Chinese it was drawn in, and "Настройки клавиатуры" is not that. The sheet takes the
- * width of its widest row and the rule stays where the design puts it, between the second row and
- * the third.
+ * against the Chinese it was drawn in, and a Russian row is not that. The sheet takes the width of
+ * its widest row and the rule stays where the design puts it, between the second row and the third.
  *
  * Opening is `setModal`, the one home every overlay's open state has, so a keyboard command or an
  * agent tool opens the same window this sheet does.
@@ -16,11 +15,21 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore, type ModalId } from '../../../state/store';
 import { ClickCatcher } from '../../primitives/ClickCatcher';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
+import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import { btnReset, cursors, springs, z } from '../../design/styles';
 import { useReadableWeight } from '../../design/scale';
 import { MODE_ROW_BASE } from '../frame';
 import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, TEXT } from '../units';
+
+/** The Help Center page each row that opens a WINDOW teaches. `help` and `about` open a window that
+ *  is not itself a taught topic, so neither carries one. */
+const ROW_HELP: Partial<Record<ModalId, HelpPageId>> = {
+  newProject: 'planet',
+  import: 'save',
+  settings: 'settings',
+};
 
 /** A row: a window it opens, or an action it runs in place of one. */
 type MenuRow = { labelKey: string; rule?: boolean } & (
@@ -106,6 +115,7 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
                 <button
                   type="button"
                   role="menuitem"
+                  {...('modal' in row && ROW_HELP[row.modal] ? helpTargetAttr(ROW_HELP[row.modal]!) : {})}
                   onClick={() => {
                     if ('modal' in row) setModal(row.modal, true);
                     else row.run();

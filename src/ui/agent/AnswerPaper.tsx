@@ -1,41 +1,8 @@
 /*
- * AnswerPaper.tsx — a job whose product is WORDS, as its own card (normative prototype `.apaper`).
- *
- * A done job that issued no write is not a small build receipt: there is no tape to fill, no step to
- * rewind, nothing built to count and nothing to turn the card over for. So it gets a paper of its
- * own — the order at the SUBJECT rung, the model's own text at the BODY rung, and a quiet stamp
- * saying what the job WAS. The words are the product, which is why they are never set at the muted
- * rung the build receipt's summary uses: there the summary explains a thing the card already shows,
- * and here it IS the thing.
- *
- * THE BOUNDARY IS THE PROJECTION'S, AND THIS FILE DERIVES NOTHING. `JobView.kind` decides it once
- * (`project-view.ts:settle`) — 'build' the moment a write was ISSUED, whatever became of it, so a
- * construction whose every command was refused still gets its receipt; 'answer' when words were the
- * whole product; 'quiet' when there were not even words. A card that counted write-shaped ops for
- * itself would be a second answer to that question, and the two would disagree the first time a
- * write was skipped at its gate.
- *
- * READ-ONLY OPS COLLAPSE INTO ONE LINE. A question answered from three map reads is one fact ("it
- * looked, then it told you"), not three rows of machinery: the reads line reports the count and the
- * ops themselves are not drawn.
- *
- * ONE GRAMMAR FOR "A QUESTION IS STANDING". While the closing words are a question to the user the
- * paper wears the gate family's own dress — the `ACTIVE` spine down its left edge and the quick row
- * under the text — rather than a second visual language for the same fact. Those parts come from
- * `GateBlock` unchanged. The quick ANSWERS have no carrier on THIS card's event: a gate's offer
- * rides `gateAsked.quickAnswers`, but a closing question is a `jobEnd`, which carries none — so the
- * row stands reserved and empty until that event grows an offer field; the same shape `GateBlock`'s
- * own `quick` prop ships in.
- *
- * THE THINKING IS REACHABLE AFTER THE TURN THAT DID IT. The live face's thoughts pill belongs to the
- * turn in flight and retires with it, so a settled paper with no rows of its own left a transcript in
- * the log that nothing on screen could open. The rows are the op list's own marks
- * (`ThoughtsBox:ThoughtRow`) rather than a second affordance, and they stand UNDER the answer: the
- * words are the product, and a chain of thought is working material.
- *
- * AND THE SILENT GIVEUP SPEAKS IN THE PANEL'S VOICE. A job that ended with no text and no ops has
- * nothing of the model's to show, so the panel says so itself, at the muted rung: putting a
- * first-person sentence there that the model never said would be worse than saying nothing.
+ * Terminal card for answer-only and quiet jobs, as classified by `JobView.kind`. It presents model
+ * text as the primary result, summarizes read-only operations in one line and keeps reasoning below
+ * the answer. A closing question reuses the gate spine and quick-answer row. Quiet jobs use explicit
+ * panel-authored fallback copy rather than attributing words to the model.
  */
 import { useState, type CSSProperties } from 'react';
 import { Pill } from './atoms';

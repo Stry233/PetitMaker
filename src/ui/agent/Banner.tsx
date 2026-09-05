@@ -1,42 +1,8 @@
 /*
- * Banner.tsx — one banner for every trouble class, in three dresses (normative prototype `.banner`/
- * `.banner.terminal`/`.banner.recover`/`.banner.standing`).
- *
- * `BannerClass` is `ErrorClass` (`agent/core/types.ts`, what a `TurnError` carries) widened by the
- * non-provider kinds — the three STORAGE readings and the two standing map notices — troubles the
- * harness never classifies as a `TurnError` because they never touched a provider, plus `key-cleared`,
- * which is the `auth` class read a second way (see its row). `BANNER_SPEC` is typed as a
- * `Record<BannerClass, BannerSpec>` and is therefore exhaustive over the WHOLE `ErrorClass` union
- * too: a class the union grows fails `tsc` here before it can render as a silent blank banner.
- *
- * THE THREE STORAGE READINGS ARE THREE SENTENCES, one per outcome `session/persist.ts:StorageHealth`
- * and `hydrate` can actually produce, because the three ask different things of the reader: a save
- * that landed only after older steps were dropped, a save that could not be made at all (so nothing
- * survives a reload), and a saved session that came back unreadable and was set aside. They shipped
- * as ONE key carrying the middle sentence, so a pruned save would have claimed the session was lost
- * and a corrupt one would have blamed a full disk — and none of the three could reach the screen at
- * all, since nothing read the store's own notice.
- *
- * `ErrorClass` members share a group where the user reads them the same way, and only there. The
- * three transient classes (`agent/core/errors.ts:isRetryable`) split two ways rather than one:
- * `network` and `overloaded` are both "the connection could not be made to work", and once the
- * harness's own retries exhaust they say so together — but `rate-limit` is not a connection that
- * failed, it is one that WORKED and was told to wait, so it keeps its own sentence in waiting terms
- * and the `pw-retry-clock` the retry dock wears while it counts down. That continuity is the point:
- * the banner is the same wait having run out of attempts, and two glyphs for one cause would read as
- * two different troubles. `overflow`/`abort`/`unknown` have no dedicated affordance to offer, so
- * they fall to a plain "something went wrong" incident notice. `auth`/`quota`/`cors` and each
- * storage reading keep their own sentence and icon, since each names a specific, actionable cause.
- *
- * TERMINAL VS. RECOVERABLE PAPER is a property of the GROUP, not a computed one: `auth`/`quota`/
- * `cors`/the generic incident stand on the danger paper (something the user must fix), the
- * `network` family and the storage readings stand on the wait paper (matches the prototype's own
- * tone choice for its two storage-banner examples: `tone:'recover'`). The paper's own ink follows
- * suit, and NOT the same
- * pair `tickInk`/`statePaper` uses elsewhere: the prototype's terminal banner text/icon is
- * `--danger-deep` (`colors.dangerDeep`), a shade deeper than the plain `--danger` `colors.dangerText`
- * that a reverted op's tick reads in, so terminal banner ink is spelled out here rather than
- * imported from `tokens.ts:tickInk`.
+ * Maps provider, storage, credential and map-history trouble classes to localized banners. The
+ * exhaustive `BANNER_SPEC` assigns each class its icon, severity, message and actionable controls.
+ * Retry exhaustion and storage conditions use wait styling; conditions that require user repair use
+ * danger styling. Rate limits keep their distinct waiting language and retry-clock icon.
  */
 import { Icon, type IconId } from './icons';
 import { edge, statePaper } from './tokens';
@@ -56,8 +22,7 @@ export type BannerClass =
   | 'storage-pruned' | 'storage-full' | 'storage-corrupt' | 'other-map' | 'unknown-map';
 
 /**
- * WHAT A BANNER OFFERS, and at most two of them per class (the primary repair, then the way to put
- * the trouble down) — the prototype never shows a banner with more.
+ * What a banner offers, with at most two actions per class: the primary repair and a dismissal.
  *
  * EVERY ONE OF THESE IS A REAL VERB SOMEWHERE, which is the whole point of the id being a union: a
  * pill is drawn because the panel can route its press, and a class whose repair nothing can perform

@@ -81,6 +81,29 @@ const badgeStyle = (type: ToastType): CSSProperties => ({
   lineHeight: '18px',
 });
 
+/** The toast's own face: card, status dot, text and repeat badge. No timers, no presence:
+ *  `ToastContainer` plays it live and the Help Center's figure stands it still (the one motion
+ *  here, the badge's pop, re-keys on the count, so a static count never moves). */
+export function ToastFace({ text, type, count }: { text: string; type: ToastType; count: number }) {
+  return (
+    <div data-testid="toast" style={toastStyle}>
+      <span style={dotStyle(type)} />
+      {text}
+      {count > 1 && (
+        <motion.span
+          key={count}
+          style={badgeStyle(type)}
+          initial={{ scale: 1.4 }}
+          animate={{ scale: 1 }}
+          transition={springs.stiff}
+        >
+          {count}
+        </motion.span>
+      )}
+    </div>
+  );
+}
+
 let nextId = 0;
 
 export function ToastContainer() {
@@ -142,8 +165,6 @@ export function ToastContainer() {
         {toasts.map((toast) => (
           <motion.div
             key={toast.id}
-            data-testid="toast"
-            style={toastStyle}
             initial={{ opacity: 0, y: -20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             // Exit uses its own non-bouncy ease so the toast slides out cleanly
@@ -152,19 +173,7 @@ export function ToastContainer() {
             exit={{ opacity: 0, y: -10, scale: 0.95, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
             transition={springs.bouncy}
           >
-            <span style={dotStyle(toast.type)} />
-            {toast.text}
-            {toast.count > 1 && (
-              <motion.span
-                key={toast.count}
-                style={badgeStyle(toast.type)}
-                initial={{ scale: 1.4 }}
-                animate={{ scale: 1 }}
-                transition={springs.stiff}
-              >
-                {toast.count}
-              </motion.span>
-            )}
+            <ToastFace text={toast.text} type={toast.type} count={toast.count} />
           </motion.div>
         ))}
       </AnimatePresence>

@@ -25,7 +25,7 @@
  * macros take their surface from the map instead.
  */
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties, type RefObject, type WheelEvent } from 'react';
 import { iconUrl } from '../../../assets/icon-urls';
 import { localizedName, useT } from '../../../i18n/context';
 import { getRoadMaterials } from '../../../state/catalog';
@@ -98,19 +98,54 @@ const NAME_LIFT = ROW.pad * SHELF_SCALE;
  *  the same size and sits at the same pitch, so there is no gutter for a fixed width to land in. */
 const fadeAt = (): number => FADE;
 
-export function RoadStyles() {
-  const t = useT();
-  const locale = useEditorStore((s) => s.locale);
-  const tileMaterial = useEditorStore((s) => s.tileMaterial);
-  const setTileMaterial = useEditorStore((s) => s.setTileMaterial);
-  const [reached, setReached] = useState<CardNameReach | null>(null);
-  const rowRef = useRef<HTMLDivElement>(null);
+/** The strip SHELL, shared with the annotation bar's colour row (which wears this strip's dress
+ *  already): the native scroll container, the wheel glide, the travelling-edge fades, the `SLACK`
+ *  overhang for a grown plate, and the solid pointer surface that keeps a wheel aimed between two
+ *  tiles off the map underneath. The tiles standing in it belong to each caller. */
+export function useSwatchStripRow(): {
+  rowRef: RefObject<HTMLDivElement>;
+  rowProps: { className: string; onWheel: (e: WheelEvent<HTMLDivElement>) => void; style: CSSProperties };
+} {
+  const rowRef = useRef<HTMLDivElement>(null!);
   const zoom = useFrameZoom();
   const reducedMotion = useReducedMotionConfig() ?? false;
   const glide = useRef(wheelGlider()).current;
   // Only an end the row can still travel toward is shaded, so at either stop the outermost swatch —
   // grown plate, `SLACK` overhang and all — meets the edge at full strength.
   const rowFade = useScrollFade(rowRef, 'x', { fadeAt });
+  return {
+    rowRef,
+    rowProps: {
+      className: 'pw-noscroll',
+      onWheel: (e) => {
+        const row = e.currentTarget;
+        // A row that fits its content has no room to give the wheel, same rule the shelf rows
+        // answer it by.
+        const room = row.scrollWidth - row.clientWidth;
+        const push = room > 0 ? wheelPush(e, row.clientWidth, zoom) : null;
+        if (push) glide.wheel(row, push.by, reducedMotion);
+      },
+      style: {
+        position: 'relative', display: 'flex', alignItems: 'flex-end', flexWrap: 'nowrap',
+        gap: GAP, overflowX: 'auto', overflowY: 'hidden',
+        padding: SLACK, margin: -SLACK,
+        // The row is SOLID, gaps between tiles included: the bar's root is pointer-transparent
+        // (the map stays reachable around the bar), so without this a wheel aimed between two
+        // tiles lands on the canvas underneath and zooms the map instead of gliding the row.
+        pointerEvents: 'auto',
+        ...rowFade,
+      },
+    },
+  };
+}
+
+export function RoadStyles() {
+  const t = useT();
+  const locale = useEditorStore((s) => s.locale);
+  const tileMaterial = useEditorStore((s) => s.tileMaterial);
+  const setTileMaterial = useEditorStore((s) => s.setTileMaterial);
+  const [reached, setReached] = useState<CardNameReach | null>(null);
+  const { rowRef, rowProps } = useSwatchStripRow();
 
   const reach = (el: HTMLButtonElement, name: string): void => {
     const scrollLeft = rowRef.current?.scrollLeft ?? 0;
@@ -125,25 +160,7 @@ export function RoadStyles() {
         ref={rowRef}
         role="group"
         aria-label={t('design.road_surface')}
-        className="pw-noscroll"
-        onWheel={(e) => {
-          const row = e.currentTarget;
-          // A row that fits its content has no room to give the wheel, same rule the shelf rows
-          // answer it by.
-          const room = row.scrollWidth - row.clientWidth;
-          const push = room > 0 ? wheelPush(e, row.clientWidth, zoom) : null;
-          if (push) glide.wheel(row, push.by, reducedMotion);
-        }}
-        style={{
-          position: 'relative', display: 'flex', alignItems: 'flex-end', flexWrap: 'nowrap',
-          gap: GAP, overflowX: 'auto', overflowY: 'hidden',
-          padding: SLACK, margin: -SLACK,
-          // The row is SOLID, gaps between tiles included: the bar's root is pointer-transparent
-          // (the map stays reachable around the bar), so without this a wheel aimed between two
-          // tiles lands on the canvas underneath and zooms the map instead of gliding the row.
-          pointerEvents: 'auto',
-          ...rowFade,
-        }}
+        {...rowProps}
       >
         {getRoadMaterials().map((item) => {
           const active = item.id === tileMaterial;

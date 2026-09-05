@@ -21,7 +21,9 @@
  * An entry is permanent: nothing rewrites a file in place, so the oldest save must still resolve.
  */
 export const RETIRED_CATALOG_IDS: Readonly<Record<string, string>> = {
-  'road-dirt': 'path-overgrown-dirt',
+  // Plain dirt reads as the game's own plain dirt track, which arrived in the catalog after the
+  // retirement had already settled for the weedy one.
+  'road-dirt': 'path-rustic-dirt',
   'road-stone': 'path-garden-stone',
   'road-brick': 'path-lattice-red-brick',
   'road-slate': 'path-urban-asphalt',

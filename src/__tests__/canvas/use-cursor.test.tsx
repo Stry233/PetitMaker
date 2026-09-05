@@ -17,10 +17,8 @@ function Host({ active = true }: { active?: boolean }) {
   return <div ref={ref} data-testid="surface" />;
 }
 
-// Mounts both views' hosts in the SAME tree, in App.tsx's tree order (the 2D-equivalent host
-// first, the 3D-equivalent second), each with its own ref and its own active flag derived from
-// the store the way PixiCanvas/Editor3DCanvas really do — so a regression in ownership (surface
-// following mount/effect order instead of visibility) shows up here exactly as it would in the app.
+// Mounts both view hosts in App.tsx order, with independent refs and store-derived active flags.
+// Cursor ownership must follow visibility, not mount or effect order.
 function TwoHosts() {
   const viewMode = useEditorStore((s) => s.viewMode);
   const ref2d = useRef<HTMLDivElement>(null);
@@ -59,6 +57,20 @@ describe('useCursor', () => {
     registerToolManager(tm);
     act(() => { setStoreState({ activeTool: ToolType.Hand }); });
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('move'));
+  });
+
+  it('follows the annotation ARMING, which switches without ever touching activeTool', () => {
+    // All five annotate armings are the ONE ToolType.Annotate, and the tool's cursorFor answers by
+    // ctx.annotationTool: a dep array missing it leaves the drawing arming's pen on screen while
+    // the select state grabs notes.
+    const tm = makeTestToolManager();
+    tm.setActiveTool(ToolType.Annotate);
+    registerToolManager(tm);
+    act(() => { setStoreState({ activeTool: ToolType.Annotate, annotationTool: 'zone' }); });
+    const { getByTestId } = render(<Host />);
+    expect(getByTestId('surface').style.cursor).toBe(cursorCss('place'));
+    act(() => { setStoreState({ annotationTool: 'none' }); });
+    expect(getByTestId('surface').style.cursor).toBe(cursorCss('select'));
   });
 
   it('follows the build MATERIAL, which switches without ever touching activeTool', () => {
@@ -122,9 +134,7 @@ describe('useCursor', () => {
   });
 
   it('gives the surface to the VISIBLE view, not whichever mounted or re-ran its effect last', () => {
-    // Both canvases are permanently mounted in the real app; only `viewMode` says which one is
-    // on screen. Regression guard for the surface-ownership bug: a blind `register(null)` on
-    // deactivation would let the view being hidden wipe the claim the view being shown just made.
+    // Both canvases stay mounted; only `viewMode` identifies the visible cursor owner.
     const { getByTestId } = render(<TwoHosts />);
     expect(getByTestId('surface-2d').style.cursor).toBe(cursorCss('eraser'));
     expect(getByTestId('surface-3d').style.cursor).toBe('');

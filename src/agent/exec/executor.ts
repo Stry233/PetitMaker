@@ -1,17 +1,5 @@
-/**
- * The executor: the carried legacy tool layer (tools/tools.ts) behind the v3 loop's ONE
- * interface, `ToolExecutor` (core/loop.ts). It adapts the legacy per-call `executeToolCall`
- * (returns a `ToolResult`, keyed by `toolCallId`) onto the loop's `ExecutedResult`, and the
- * legacy JSON-schema `ToolSchema[]` onto the loop's flat `{name, description, parameters}`
- * wire shape.
- *
- * `delegate_task` runs a CHILD job (depth 1: the child's own executor is built with no
- * `delegate` opt, so `wireSchemas({subagent:true})`'s exclusion of `delegate_task` from its
- * schema means a scripted child that calls it anyway falls straight to the `allowed` check
- * above and gets the ordinary unknown-tool error). With no `opts.delegate` supplied (no
- * adapter to run a child turn on) it reports itself unwired rather than falling through to the
- * legacy handler's different wording.
- */
+/** Adapts editor tool schemas and results to the agent loop's `ToolExecutor` contract.
+ * `delegate_task` runs at depth one; child executors omit delegation from their allowed tools. */
 import type { ToolExecutor, ExecutedResult, LoopDeps } from '../core/loop';
 import { runJob } from '../core/loop';
 import { append, createLog, eventsOf, subscribe, type SessionLog } from '../core/log';
@@ -22,16 +10,10 @@ import type { Adapter } from '../providers/types';
 import {
   TOOL_SCHEMAS, SUBAGENT_TOOL_SCHEMAS, WRITE_TOOLS, buildMapContext, executeToolCall, type AgentToolDeps,
 } from '../tools/tools';
-import { describeToolArgs } from '../describe-call';
+import { describeToolCall } from '../describe-call';
 import { translate } from '../../i18n/context';
 
-/** The per-job pieces `delegate_task` needs that a bare `AgentToolDeps` cannot carry: the
- *  adapter/model/system to actually run a child TURN on, and the parent's own oversight/signal/
- *  log so the child answers to the SAME restrictions and can be cancelled and gated through the
- *  ONE surface a human watches. `oversight`/`signal`/`log` ride the parent's live `LoopDeps` /
- *  session, which is why they live here rather than on `AgentToolDeps` (a pure map/executor
- *  handle with no notion of a running job) — the runner wires this at job-launch time, where all
- *  five are already in scope together. */
+/** Runtime context needed to execute and surface a delegated child job. */
 export interface DelegateOpts {
   adapter: Adapter;
   model: string;
@@ -39,23 +21,16 @@ export interface DelegateOpts {
   oversight: Oversight;
   signal: AbortSignal;
   log: SessionLog;
-  /** Live child progress for the panel's helper lane: latest op name + running count; null when
-   *  the delegate call ends, however it ends. `label` rides through unchanged from the call's own
-   *  args — `task` still carries the model's complete instructions in full, since the lane (not
-   *  this layer) is what decides which of the two to show as the helper's name. */
+  /** Latest child operation and count; null after the child settles. */
   onChildProgress?: (p: { task: string; opName?: string; ops: number; label?: string } | null) => void;
 }
 
-/** A subagent delegate gets the same default per-job budget the runner gives an ordinary job
- *  (`exec/runner.ts`'s `DEFAULT_BUDGET_TOKENS`); kept as its own constant since importing the
- *  runner here would run the wrong way (`exec/executor.ts` sits below `exec/runner.ts`). */
+/** Kept local to preserve the executor-to-runner import direction. */
 const DELEGATE_BUDGET_TOKENS = 128_000;
 
 type AssistantEvent = Extract<SessionEvent, { kind: 'assistant' }>;
 
-/** The child's own summary, or a plain fallback when the job ended (capped/aborted/incident)
- *  before ever producing one: only the LAST assistant turn is asked, since an earlier turn's
- *  text was superseded by whatever came after it. */
+/** Returns the final assistant text, or a plain fallback if the child produced none. */
 function childFinalText(childLog: SessionLog): string {
   const assistants = eventsOf(childLog).filter((e): e is AssistantEvent => e.kind === 'assistant');
   const last = assistants[assistants.length - 1];
@@ -67,15 +42,7 @@ function childFinalText(childLog: SessionLog): string {
   return text.length > 0 ? text : '(the helper task finished with no summary)';
 }
 
-/** THE CHILD LOG'S WHOLE LEGACY, read once at return: the child's edit counts summed (the same
- *  fields every write tool's result carries, so a delegate's report reads like one
- *  of the parent's own ops rather than an opaque paragraph), its ops listed in order, and the class
- *  of the incident that ended it. The child log itself is garbage-collected with this call — it is
- *  never persisted, never projected and never shown — so anything not lifted here is gone, which
- *  is why the op list is kept even for a run that FAILED: those edits are on the map.
- *
- *  `undefined` only when the child never ran an op at all and ended cleanly (an immediately-aborted
- *  delegate), matching how an ordinary tool omits `detail` rather than carrying an empty one. */
+/** Summarizes edits, operation outcomes, and terminal error class from the ephemeral child log. */
 function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
   let cells = 0;
   let objects = 0;
@@ -120,13 +87,7 @@ function childIncidentMessage(childLog: SessionLog): string {
   return `(system) The helper run failed before it finished. ${tail}`;
 }
 
-/** THE ONE TRICKY PIECE. The child's own loop gates on ITS OWN log exactly like any job
- *  (`loop.ts`'s ordinary `askGate`/`awaitGate` over `childLog`) — it has no idea a parent exists.
- *  A human only ever watches the PARENT log, so every `gateAsked` the child appends is mirrored
- *  onto the parent log (prefixed so it reads as the helper's own ask, not the parent's), and once
- *  the mirrored gate is answered THERE, that same answer is forwarded onto the child's original
- *  gate id, which is exactly what unblocks the child loop's own `awaitGate` wait. Scoped to this
- *  one `execute()` call and torn down in its `finally` — no module state, no leak past the job. */
+/** Mirrors child approval gates into the visible parent log and forwards each answer back. */
 function bridgeChildGates(childLog: SessionLog, parentLog: SessionLog, signal: AbortSignal): () => void {
   const mirrored = new Set<string>();
   let scanned = 0;
@@ -223,12 +184,10 @@ async function delegateTask(
  *  fresh context, so this one approval covers that whole burst and is the only place a user in
  *  checkpoint oversight can decline it. */
 export const WIDE_TOOLS: ReadonlySet<string> = new Set([
-  'run_generator', 'clear_area', 'build_road_network', 'delegate_task',
+  'clear_area', 'build_road_network', 'delegate_task',
 ]);
 
-/** The wire-format schema list for the model: every carried tool, or (for a subagent, which
- *  never owns the parent's plan/export/reply surfaces or a further delegation) the same
- *  SUBAGENT exclusion the legacy schema list already carries. */
+/** Returns the wire schemas allowed at the requested execution depth. */
 export function wireSchemas(opts?: { subagent?: boolean }): { name: string; description: string; parameters: Record<string, unknown> }[] {
   const schemas = opts?.subagent ? SUBAGENT_TOOL_SCHEMAS : TOOL_SCHEMAS;
   return schemas.map((s) => ({ name: s.name, description: s.description, parameters: s.inputSchema }));
@@ -259,8 +218,7 @@ export function createExecutor(
     describe(call) {
       // The gate summary stands in front of a human, so it reads in whatever locale they are
       // using right now (imperative `translate`, not a locale pinned at executor construction).
-      const args = describeToolArgs({ name: call.name, input: call.args }, translate);
-      return args ? `${call.name}: ${args}` : call.name;
+      return describeToolCall({ name: call.name, input: call.args }, translate);
     },
   };
 }

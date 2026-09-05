@@ -70,27 +70,9 @@ export function plantPatch(ctx: MacroContext, input: PatchInput): number {
 const TIER_DRAWS = 12;
 
 /**
- * The planting a smart-build press runs: every elevation TIER of the disc planted as its own
- * confined ecology run.
- *
- * One run over a terraced slope starves — `analyzeTerrain` splits the tiers into narrow regions
- * and the stand noise's glades swallow a band two cells wide — so each tier gets its own run and
- * its own seed, which is what a hillside planted by hand looks like. The ANALYSIS is shared: it
- * is a whole-map scan and by far the run's dominant cost, so it is computed once for the disc and
- * each tier narrows a COPY of the open mask to its own cells. Water never buckets: nothing
- * plants on it.
- *
- * THE ECOLOGY DECIDES WHERE; THE COMMUNITY DECIDES WHAT. `placeNature`'s own stands, glades and
- * drifts still choose the cells, and the habitat field (`habitat.ts`) chooses the species that goes
- * in each: one seed-derived dominant over most of the stand, habitat-sorted accents through the
- * rest. The community is built ONCE per call, from the press seed and the disc's own centre, so a
- * disc spanning four terraces plants one community across all of them rather than four unrelated
- * ones — the tier loop below and its retries all share it.
- *
- * EACH TIER INSISTS ON AN ANSWER. A draw can put a glade exactly where the user pointed and plant
- * nothing on ground that would carry an orchard; taking the next draw is honest where reporting
- * that a lawn cannot be planted is not, and the user's own seed still decides which draw lands, so
- * two presses are still two different plantings.
+ * Plants each elevation tier as a separate ecology run while sharing one terrain analysis and one
+ * seed-derived community across the disc. Water is excluded. Empty randomized draws retry within a
+ * bounded budget so narrow terrace bands are not mistaken for unplantable ground.
  */
 export function plantPatchTiers(ctx: MacroContext, input: PatchInput & { cells: MacroCoord[] }): number {
   const { state, executor, registry } = ctx;
@@ -202,31 +184,10 @@ function capFloorToMass(
 }
 
 /**
- * `plantPatchTiers`, scoped to one of the shelf's two cards.
- *
- * A FLORA scope is a single filtered run — `placeNature` already skips its tree branch outright
- * when `trees.length` is zero, so no species picker ever sees a tree id. A TREE scope is NOT one
- * run filtered to both categories: `plantPatchTiers`'s per-tier retry (`TIER_DRAWS`) stops at its
- * FIRST successful draw, and a lucky flora hit can end a tier's draws before any tree lands — the
- * "dominant" species would then be whichever the noise happened to place first, not a policy. So
- * a tree-led press runs the tree MASS on its own (its retries answer only to itself) and then a
- * decoupled, lower-density flora FLOOR pass for the accent a grove's ground wants — capped
- * afterwards (`capFloorToMass`) so trees stay strictly the majority whatever the two draws land.
- *
- * No trees at all means no floor either: a flora floor with nothing over it is not a floor, it is
- * the whole planting, which is what the flora-led card already is for — and skipping the second
- * pass here is also what keeps a starved press cheap rather than a wasted `TIER_DRAWS` budget.
- *
- * A HELD press then AGES what stands (`input.stage` > 1, see `succession.ts`): every burst plants as
- * above and then advances the stand's maturity one ring, so the disc fills outward while its heart
- * grows old. The ageing runs whatever the planting did — a burst over ground already full plants
- * nothing new and still grows what is there.
- *
- * ALL OF THAT IS THE WILD PRESS, and it is the third thing this function considers. What the press
- * is BESIDE comes first (`grammar.ts`: a bed around a building, a border along a road), then the
- * rare set piece (`delights.ts`). Both are COMPOSITIONS and neither ages: a design that matured into
- * a wood would be a different design, so a hold over one lays it again — refused cell by cell where
- * it already stands — instead of climbing the succession ladder. Only the wild stand grows.
+ * Runs contextual compositions before wild planting. Flora scope is one filtered tier run. Tree
+ * scope plants the tree mass first, then a lower-density flora floor capped below the tree count;
+ * without trees, no floor is added. Held wild presses advance succession, while composed beds,
+ * borders, and rare set pieces keep their authored form.
  */
 export function plantScopedPatch(
   ctx: MacroContext, input: PatchInput & { cells: MacroCoord[] }, scope: PatchScope,

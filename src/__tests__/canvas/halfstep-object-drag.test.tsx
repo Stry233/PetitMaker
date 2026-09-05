@@ -1,5 +1,5 @@
 /**
- * Dragging a halfStep object through the REAL pointer path (issue #4) must step in HALF cells, not
+ * Dragging a halfStep object through the real pointer path must step in half cells, not
  * whole ones. The failure mode: a drag site that computes `screenToMacro(...) + grabOffset` —
  * `screenToMacro` floors, and the offset is fixed at press time, so the raw value is ALREADY
  * whole-stepped before any snap runs, which makes the snap a no-op. With `screenToHalf` never

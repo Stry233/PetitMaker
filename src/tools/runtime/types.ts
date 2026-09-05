@@ -2,6 +2,7 @@ import type {
   MacroCoord, MicroCoord, ToolType, TerrainType, AutoEdgeCut, EraserShape,
   Command, ValidationError, ValidationResult, GridState,
 } from '../../core/model/types';
+import type { AnnotationsState, AnnotationTool, AnnotationZoneShape, MapAnnotation } from '../../core/model/annotations';
 import type { ContentType } from '../../core/model/edit-mode';
 import type { ToolOverlay, ViewProjection } from '../../canvas/view-projection';
 import type { CursorId } from '../../core/runtime/cursor-spec';
@@ -87,6 +88,31 @@ export interface ToolContext {
    * wraps, and a macro run from the map cannot diverge from one the agent runs.
    */
   macroContext: MacroContext;
+
+  /** The plan-notes layer's data (null before a map) and arming, mirrored like the fields above. */
+  annotations: AnnotationsState | null;
+  annotationTool: AnnotationTool;
+  annotationZoneShape: AnnotationZoneShape;
+  annotationColor: string;
+  annotationTextStyle: 'label' | 'chip';
+  annotationTextSize: 's' | 'm' | 'l';
+  annotationRouteDashed: boolean;
+  annotationSelection: string[];
+  annotationDraft: MapAnnotation | null;
+  /** The annotation slice's verbs, one handle the way `macroContext` is one handle. */
+  annotationEdit: AnnotationEditVerbs;
+}
+
+export interface AnnotationEditVerbs {
+  /** One lane entry for the gesture about to apply, however many `apply` calls follow. */
+  begin(): void;
+  apply(fn: (data: AnnotationsState) => void): void;
+  add(a: MapAnnotation): void;
+  remove(id: string): void;
+  select(ids: string[]): void;
+  setDraft(a: MapAnnotation | null): void;
+  /** Open (or close, with null) the name editor over this note or the standing draft. */
+  setNaming(id: string | null): void;
 }
 
 export interface Tool {
@@ -116,8 +142,24 @@ export interface Tool {
   undoPendingStep?(ctx: ToolContext): boolean;
   /** Whether a multi-tap gesture is standing, for a nav tap to end it (`core/interaction/
    *  press-plan.ts:resolveNavTap`) — right/middle drag is the camera, so a right press that never
-   *  moved is the one press with no camera meaning left in it. Tools with no such gesture omit it. */
-  hasPending?(): boolean;
+   *  moved is the one press with no camera meaning left in it. Takes the context because a pending
+   *  gesture can live in the STORE (the annotate tool's route draft, which the bar can clear
+   *  without this tool hearing) — an answer mirrored on the instance outlives the thing it
+   *  mirrors. Tools whose gesture is their own state ignore the argument; tools with no such
+   *  gesture omit the hook. */
+  hasPending?(ctx: ToolContext): boolean;
+  /** Whether a plain press HERE picks up something the tool itself owns, so the drag that follows
+   *  moves it (the annotate select state grabbing a note). The machine mirrors an object drag's
+   *  cursor while such a drag lasts, and the press-plan keeps the camera off it; where the answer
+   *  is no, a bare left drag falls to the camera the way an empty-handed mode pans. */
+  grabAt?(coord: MacroCoord, ctx: ToolContext): boolean;
+  /** Whether the tool is standing in ITS OWN select state: its presses pick, toggle and drag
+   *  things the tool owns rather than painting. The press-plan gives such a state the map select
+   *  mode's own modifier grammar — Ctrl toggles on press and a Ctrl drag is a band. */
+  selects?(ctx: ToolContext): boolean;
+  /** What the tool's select state finds under the pointer, and whether it is already a member of
+   *  the tool's own selection — the facts behind the modifier cursor's add/remove badge. */
+  selectHit?(coord: MacroCoord, ctx: ToolContext): { id: string; selected: boolean } | null;
   onPointerDown(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
   onPointerMove(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
   onPointerUp(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;

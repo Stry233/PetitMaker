@@ -31,6 +31,7 @@ import { ACTIVE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
 import { CARD, CHOSEN, SEED_DIGITS, TEXT_MAX_CHARS } from './generate-shelf';
+import { limitTextGraphemes } from '../../../tools/generation/stencil';
 
 import cardPlate from '../../../assets/shell/shelf-generate/candidates/roundrect-1.svg';
 import picturePlate from '../../../assets/shell/shelf-generate/candidates/roundrect-2.svg';
@@ -460,6 +461,7 @@ export function CustomCard({
    *  slot whether to show the hint (nobody is here) or the caret alone (somebody just arrived and
    *  has not typed yet). */
   const [focused, setFocused] = useState(false);
+  const composing = useRef(false);
   /** The field is showing whenever there is no number yet, or the number is being typed over. */
   const value = isGlyph ? glyph : (seed === null ? null : String(seed));
   const typing = value === null || draft !== null;
@@ -490,16 +492,18 @@ export function CustomCard({
               inputMode={isGlyph ? 'text' : 'numeric'}
               autoFocus={seed !== null}
               value={typed}
-              // As many digits as the GENERATOR takes, which is a uint32 and not the five the
-              // drawing captions a card with. A field that silently refuses a sixth digit teaches
-              // that the app is broken.
-              // A glyph field is capped in CODE POINTS, not UTF-16 units: an emoji is two of the
-              // latter and several more once a skin tone or a zero-width joiner is in it, so a plain
-              // slice would cut a face in half. `[...text]` walks code points.
+              // IME preedit can contain more characters than the final Chinese or Japanese word.
               onChange={(e) => onDraft(isGlyph
-                ? [...e.target.value].slice(0, TEXT_MAX_CHARS).join('')
+                ? composing.current ? e.target.value : limitTextGraphemes(e.target.value, TEXT_MAX_CHARS)
                 : e.target.value.replace(/\D/g, '').slice(0, SEED_DIGITS))}
-              onKeyDown={(e) => { if (e.key === 'Enter') onCommit(); }}
+              onCompositionStart={() => { composing.current = true; }}
+              onCompositionEnd={(e) => {
+                composing.current = false;
+                if (isGlyph) onDraft(limitTextGraphemes(e.currentTarget.value, TEXT_MAX_CHARS));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !(isGlyph && (composing.current || e.nativeEvent.isComposing || e.keyCode === 229))) onCommit();
+              }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               aria-label={name}

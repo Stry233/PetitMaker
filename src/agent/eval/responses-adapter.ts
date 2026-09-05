@@ -1,42 +1,9 @@
 /**
- * The Responses-dialect adapter: the harness's `Adapter` contract over the OpenAI Responses API's
- * item grammar, for a gateway (the agent-proxy's `/openai/v1/responses` route) that serves its
- * frontier seats only in that wire shape. An eval-seam rig like its siblings here — nothing in the
- * product imports it — and web-standard globals only (fetch, Headers, TextDecoder), read at CALL
- * time so the bench's wire shim on `globalThis.fetch` is what every request goes through.
- *
- * REQUEST SIDE, all of it wire-verified against the live gateway. The system prompt rides the
- * top-level `instructions` field; the history is projected into `input` items: a user message is
- * `{role, content: [{type: "input_text"}, {type: "input_image", image_url: <data URL>}...]}`, an
- * assistant turn is one `{role: "assistant", content: [{type: "output_text"}]}` message item (only
- * where it said anything) plus one `{type: "function_call", call_id, name, arguments}` item per
- * call, and a tool result answers its call by `call_id` as `{type: "function_call_output",
- * call_id, output}` — the wire has no error flag, so a failed result is named in its own text, and
- * a result's image rides an immediate follow-up user message, both exactly as the Chat-Completions
- * dialect does it. Tools go up flat: `{type: "function", name, description, parameters}`.
- *
- * Like the OpenAI dialect and unlike Anthropic's, `raw` is never replayed regardless of
- * `sameModel`: every assistant turn is rebuilt from its neutral fields. The gateway accepts a
- * `function_call` replayed without the reasoning item that preceded it (both shapes probed), so
- * nothing requires the echo, and the response items carry gateway-minted `id`s whose reuse across
- * turns is nothing this seam needs to litigate.
- *
- * RESPONSE SIDE. The request streams; the SSE grammar observed live is `response.created`,
- * `response.output_item.added/done`, `response.output_text.delta`,
- * `response.function_call_arguments.delta`, `response.reasoning_summary_text.delta`, and a
- * terminal `response.completed` carrying the whole response snapshot (`response.failed` /
- * `response.incomplete` / `error` are the published grammar's other endings and are handled).
- * Reasoning items stream as their SUMMARY text where the gateway sends any; this gateway's
- * summaries arrive EMPTY (the thought itself is an opaque `encrypted_content` blob), and an empty
- * summary is dropped rather than published as a blank thought — reasoning is narrated only where
- * the wire carries words. A non-SSE 200 (a gateway answering a stream request with one JSON body)
- * is read as the completed response it is.
- *
- * Gateway facts a reader of a run needs: truncation at `max_output_tokens` comes back as status
- * `completed` with the text simply cut (the stop can then only honestly read `stop`); the gemini
- * seat pads a `function_call` turn with an empty-text message item (dropped here) and reports
- * `input_tokens: 0`, recorded as sent; `/v1/models` is 404 on the agent-proxy, so `listModels`
- * throws naming the status.
+ * Evaluation adapter for the OpenAI Responses item grammar, implemented with web-standard globals
+ * so a harness can intercept `globalThis.fetch`. It rebuilds neutral history into message,
+ * function-call, and function-call-output items, streams text/tool/reasoning-summary deltas, handles
+ * terminal failure states, and accepts a non-SSE JSON response. Empty reasoning summaries and text
+ * items are omitted; tool-result images become a following user message.
  */
 import { classify, PROVIDER_SILENCE } from '../core/errors';
 import { parseArgs } from '../core/json';
@@ -46,7 +13,7 @@ import { redactSecrets } from '../security/redact';
 import { retryAfterMsOf, toRawFailure } from '../providers/http-failure';
 import type { Adapter, AdapterRequest } from '../providers/types';
 
-/* ── the wire's item grammar, as probed ─────────────────────────────────────────────────────── */
+/* Responses wire item grammar. */
 
 export type ResponsesContentPart =
   | { type: 'input_text'; text: string }

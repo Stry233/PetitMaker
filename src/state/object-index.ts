@@ -24,7 +24,7 @@
  * order scan produced.
  */
 import { CHUNK_SIZE } from '../core/model/constants';
-import { chunkKey, cellKey, type Rect } from '../core/model/grid-model';
+import { chunkKey, cellKey, rectsOverlap, type Rect } from '../core/model/grid-model';
 import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
 import type { RoadLookup } from '../core/model/road-lookup';
 import { getCatalogItem } from './catalog';
@@ -92,7 +92,7 @@ function forEachCell(rect: Rect, fn: (key: string) => void): void {
 
 function makeEntry(obj: PlacedObject, ord: number): ObjectIndexEntry {
   const item = getCatalogItem(obj.catalogId);
-  return { obj, rect: objectRect(obj), item, coating: !!item && isCoating(item), ord };
+  return { obj, rect: objectRect(obj, item), item, coating: !!item && isCoating(item), ord };
 }
 
 /** First position in the ord-ascending `entries` whose ord is >= `ord`. Both the
@@ -295,6 +295,19 @@ export function entriesCovering(index: ObjectIndex, rect: Rect): ObjectIndexEntr
  *
  * An entry spanning two of the buckets appears in both, so equal ords are consumed together.
  */
+/** Surface-coating objects (roads/paths) whose footprint overlaps `rect`. The
+ *  overlap rule exempts coatings so an object CAN be placed over a road; the
+ *  intended editor behavior is to strip the covered road and place. Interactive
+ *  placement (manual placer, agent place_object) uses this to remove the roads it
+ *  covers (and to tell the user/agent it happened). Returns [] when clear. */
+export function coatingsUnder(state: GridState, rect: Rect): PlacedObject[] {
+  const hit: PlacedObject[] = [];
+  for (const e of entriesCovering(getObjectIndex(state), rect)) {
+    if (e.coating && rectsOverlap(rect, e.rect)) hit.push(e.obj);
+  }
+  return hit;
+}
+
 export function entriesNear(index: ObjectIndex, rect: Rect): ObjectIndexEntry[] {
   const buckets: ObjectIndexEntry[][] = [];
   forEachChunk(rect, k => {

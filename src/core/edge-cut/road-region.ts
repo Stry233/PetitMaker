@@ -62,6 +62,12 @@ const BRIDGE_STEP = Math.PI / 8;
 
 const key = (p: RoadPt): string => `${Math.round(p[0] * 4096)},${Math.round(p[1] * 4096)}`;
 
+/** The same quantized point as ONE number: coordinates live in [-1, map] cells, so the 1/4096
+ *  quanta fit 21 bits each with room, and a numeric key spares the cancellation pass a template
+ *  string per edge — the hottest allocation in a whole-network rebuild. */
+const pid = (p: RoadPt): number =>
+  (Math.round(p[0] * 4096) + 0x8000) * 0x200000 + (Math.round(p[1] * 4096) + 0x8000);
+
 const sub = (a: RoadPt, b: RoadPt): Vec => [a[0] - b[0], a[1] - b[1]];
 const cross = (u: Vec, v: Vec): number => u[0] * v[1] - u[1] * v[0];
 const dot = (u: Vec, v: Vec): number => u[0] * v[0] + u[1] * v[1];
@@ -344,6 +350,57 @@ function ringPoints(ring: RoadEl[], junctions: Junction[], t: number): RoadPt[] 
  * Every road surface on the map: `all` is the full road-tile list (the caller filters by
  * category, which core cannot see), `roads` the usual lookup over the same state.
  */
+/**
+ * How far a change can reach into road geometry, in cells. A tile's pieces read its immediate
+ * neighbourhood — its own cut states, the neighbours it joins, the cut foreign tiles it feeds — so
+ * two cells is already one more than any read; a region whose every cell is further away than this
+ * from every changed cell is the region a full rebuild would produce again.
+ */
+const REGION_REACH = 2;
+
+/**
+ * `buildRoadRegions`, incrementally. `prev` is a previous build over the same map and `dirty` the
+ * flat indices (`y * width + x`) of every cell whose road tile was added, removed or edited since;
+ * regions standing beyond `REGION_REACH` of every dirty cell are handed back as-is — rings,
+ * signature and all — and only the remaining tiles are re-derived. Paving one road on a map that
+ * already carries thousands re-derives one surface instead of every surface on the island.
+ *
+ * A caller that cannot name what changed passes null for either and gets the full build. The
+ * equivalence with the full build is pinned by `road-region-update.test.ts`.
+ */
+export function updateRoadRegions(
+  prev: readonly RoadRegion[] | null,
+  dirty: ReadonlySet<number> | null,
+  all: readonly PlacedObject[],
+  roads: RoadLookup,
+  width: number,
+): RoadRegion[] {
+  if (!prev || !dirty) return buildRoadRegions(all, roads);
+  if (dirty.size === 0 && prev.reduce((n, r) => n + r.members.length, 0) === all.length) return [...prev];
+  const reachable = new Set<number>();
+  for (const i of dirty) {
+    const x = i % width;
+    const y = Math.floor(i / width);
+    for (let dy = -REGION_REACH; dy <= REGION_REACH; dy++) {
+      for (let dx = -REGION_REACH; dx <= REGION_REACH; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= width || ny < 0) continue;
+        reachable.add(ny * width + nx);
+      }
+    }
+  }
+  const kept: RoadRegion[] = [];
+  const keptMemberIds = new Set<string>();
+  for (const region of prev) {
+    if (region.cells.some((c) => reachable.has(c.y * width + c.x))) continue;
+    kept.push(region);
+    for (const m of region.members) keptMemberIds.add(m.id);
+  }
+  const rebuildTiles = all.filter((o) => !keptMemberIds.has(o.id));
+  return rebuildTiles.length ? [...kept, ...buildRoadRegions(rebuildTiles, roads)] : kept;
+}
+
 export function buildRoadRegions(all: readonly PlacedObject[], roads: RoadLookup): RoadRegion[] {
   const pieces = collectPieces(all, roads);
   // Group by surface identity first, so cancellation can never join two materials.
@@ -360,28 +417,30 @@ export function buildRoadRegions(all: readonly PlacedObject[], roads: RoadLookup
     // both sides cover — the surface continues across it. Cancelling every such pair is the
     // union. Arcs and interior diagonals never lie on a cell line, so only lines participate.
     const uf = new UnionFind(pieces.length);
-    const open = new Map<string, TaggedEl[]>();
+    const open = new Map<number, Map<number, TaggedEl[]>>();
     const survivors: TaggedEl[] = [];
-    const ekey = (a: RoadPt, b: RoadPt): string => `${key(a)}|${key(b)}`;
     for (const i of indices) {
       for (const el of pieces[i]!.els) {
         if (el.kind === 'line') {
-          const rev = open.get(ekey(el.b, el.a));
+          const a = pid(el.a);
+          const b = pid(el.b);
+          const rev = open.get(b)?.get(a);
           const match = rev?.pop();
           if (match) {
             uf.union(i, match.piece);
             continue;
           }
-          const k = ekey(el.a, el.b);
           const tagged = { el, piece: i };
-          const list = open.get(k);
-          if (list) list.push(tagged); else open.set(k, [tagged]);
+          let from = open.get(a);
+          if (!from) { from = new Map(); open.set(a, from); }
+          const list = from.get(b);
+          if (list) list.push(tagged); else from.set(b, [tagged]);
           continue;
         }
         survivors.push({ el, piece: i });
       }
     }
-    for (const list of open.values()) survivors.push(...list);
+    for (const from of open.values()) for (const list of from.values()) survivors.push(...list);
 
     // One region per connected component of pieces.
     const byRoot = new Map<number, { pieceIdx: number[]; els: TaggedEl[] }>();

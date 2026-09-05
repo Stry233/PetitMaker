@@ -1,22 +1,5 @@
-/**
- * trouble.test.tsx — the faults, the holds, and what a user can actually DO about either.
- *
- * A PILL DRAWN AND DEAD IS THE FAILURE SHAPE HERE. `Banner` offers "Fix key", "Change provider" and
- * "Edit endpoint", and a caller that passes only a dismiss handler leaves three named
- * repairs answering a press with nothing at all. Most of this file is therefore about the WIRING: a
- * pill calls its verb, and a verb that is not wired draws no pill rather than a dead one.
- *
- * A DISMISSED FAULT DEMOTES, IT DOES NOT UNMOUNT (the artifact's `.banner.standing`): the sentence
- * stays on a muted strip with its repair still reachable, which is also what keeps the record from
- * jumping under the pointer that just pressed Dismiss.
- *
- * A SET-ASIDE ALWAYS FILES (escape invariant 2). The job is not dropped and the panel does not jump
- * to a disconnected rest while a key is held: the record becomes a row in the past-jobs list, so
- * "the job waits" is a visible fact rather than a promise.
- *
- * AND A BLOCKED OFFER DRAWS NO RESUME. Where a hold cannot be lifted (the key went away), the reason
- * line plus the repair ARE the card: a Resume that would refuse is worse than no Resume.
- */
+/** Fault and hold behavior. Repair controls render only when wired, dismissed faults remain as
+ * muted notices, setting a job aside files it, and an unavailable resume action is not shown. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -114,8 +97,8 @@ describe('Banner: what each trouble offers', () => {
     }
   });
 
-  /** Each of these is a class whose repair the artifact names, and the id the panel must route. */
-  it('names the artifact-declared repair on each fault it can be fixed by', () => {
+  /** Each actionable fault maps to the repair id the panel routes. */
+  it('names the repair for each actionable fault', () => {
     const wanted: [Parameters<typeof Banner>[0]['cls'], BannerActionId][] = [
       ['auth', 'fix-key'],
       ['quota', 'change-provider'],
@@ -281,13 +264,7 @@ describe('ResumeCard: a held job offered back', () => {
     expect(queryByTestId('resume-set-aside')).toBeNull();
   });
 
-  /**
-   * THE DOCK ALONE WEARS THE ASK PAPER (`GateBlock.tsx`'s own rule).
-   * Resume and Fix key are actions on a held job, not the dock's own "this needs you" ask, so they
-   * take the artifact's `.primary` ink fill rather than the amber `active` pill; the second button
-   * (`For later` / `Set aside`) is the artifact's `.ghost`, the plate fill one step off the card's
-   * own wait paper.
-   */
+  /** Held-job actions use the standard primary and quiet fills, not the attention color for asks. */
   it('paints Resume and Fix key with the dark ink primary, never the ask colour', () => {
     const resuming = renderWithI18n(
       <ResumeCard order="Plant a forest along the ridge" onResume={() => {}} onSetAside={() => {}} />,
@@ -313,12 +290,7 @@ describe('ResumeCard: a held job offered back', () => {
 /* ── the panel's own wiring ───────────────────────────────── */
 
 describe('PanelShell: a fault names its repair and the repair acts', () => {
-  /**
-   * THE BANNER NAMES THE TROUBLE, THE CARD NAMES THE ORDER, and both stand. Filing the job away on
-   * an incident reduces the artifact's own incident face — the order's own words over a stalled tape
-   * band, its step count and its side stamps — to a notice over ~112px of empty cream, with the
-   * order it is about nowhere on screen. The card carries no verbs; the banner holds both.
-   */
+  /** The incident card preserves order context and progress; repair actions belong to the banner. */
   it('stands the order the trouble is about, under the banner and without verbs of its own', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell
@@ -331,7 +303,7 @@ describe('PanelShell: a fault names its repair and the repair acts', () => {
     );
     const card = getByTestId('incident-card');
     expect(card.textContent).toContain('Plant a forest along the ridge');
-    // The stalled tape band, the step count and the stamp the artifact draws.
+    // The card retains its stalled progress, step count, and stamps.
     expect(card.querySelector('[data-testid="tape-bar"]')).not.toBeNull();
     expect(card.querySelector('[data-testid="ops-count-pill"]')!.textContent).toBe('64 steps, last 0');
     expect(card.textContent).toContain(t('agent3.stamp_compaction'));
@@ -464,16 +436,7 @@ describe('PanelShell: the OFF composer says the one instruction', () => {
     expect(input.placeholder).toBe(t('agent3.composer_shorter'));
   });
 
-  /**
-   * NEVER A GROUP FADE, AND NOT A FADE AT ALL — the off composer is a SURFACE.
-   *
-   * The artifact's own `.comp.off` keeps full opacity, drops the pointer and steps the well down to
-   * the empty-groove tone, with `.send:disabled` taking the house `primary:disabled` fill. The reason
-   * is the one thing this composer is still carrying: the placeholder is the repair, and a fade is
-   * the first thing that takes a sentence away. A fade over the send is the same mistake one control
-   * smaller — the 0.35 UNAVAILABLE dim belongs to a GATED PILL, whose label the reader has already
-   * read, not to a filled control whose whole face is one glyph.
-   */
+  /** A disabled composer stays fully legible because its placeholder communicates the repair. */
   it('says the refusal with the tokens, never with a fade', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell view={incidentView('cors')} connected now={0} {...VERBS} />,
@@ -756,8 +719,7 @@ describe('PanelShell: the storage warnings', () => {
 });
 
 describe('PanelShell: the holds keep their verbs', () => {
-  /** The artifact's own rule: the hold's controls stand AFTER the card that produced the hold, so a
-   *  skip's answered ask is read before the two answers to it. */
+  /** Hold controls follow the card that explains why the job stopped. */
   it('stands the hold\'s controls after the ask that produced it', () => {
     const gateDenied = makeView({
       phase: 'paused',
@@ -888,7 +850,7 @@ describe('PanelShell: the resume offer', () => {
     expect(onResume.mock.calls.length).toBe(1);
   });
 
-  /** For later FILES it (escape invariant 2 again): the offer goes and the record survives. */
+  /** “For later” files the offer without deleting its record. */
   it('files the offer away rather than dropping it', () => {
     const onSetAside = vi.fn();
     const { getByTestId } = renderWithI18n(

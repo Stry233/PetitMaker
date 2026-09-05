@@ -195,9 +195,12 @@ function crossingAt(
     const a = bank(place.state, x, y, -dx, -dy);
     const b = bank(place.state, x, y, dx, dy);
     if (!a || !b) continue;
+    // One bank at a time: the search is pure, and most sites fail on their first bank, so the
+    // second course is only routed for a crossing that still can exist.
     const connectA = connector(place, pavable, surface, a, -dx, -dy);
+    if (!connectA) continue;
     const connectB = connector(place, pavable, surface, b, dx, dy);
-    if (!connectA || !connectB) continue;
+    if (!connectB) continue;
     // The two banks are searched independently and against the same network, so a course that loops
     // round the water's end can name a cell the other already named; each cell is asked for once.
     const seen = new Set<number>();

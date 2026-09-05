@@ -31,3 +31,12 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
     Object.defineProperty(globalThis, name, { value: memoryStorage(), configurable: true });
   }
 }
+
+// Canvas tests install the context they need; the default stub suppresses jsdom's unsupported-context diagnostic.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    writable: true,
+    value: () => null,
+  });
+}

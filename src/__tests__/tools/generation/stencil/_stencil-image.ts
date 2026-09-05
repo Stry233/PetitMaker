@@ -27,8 +27,7 @@ import { detectFeatures, featureBudget, planFeatureMarks, FEATURE_MAX } from '..
 import { getCatalogItem } from '../../../../state/catalog';
 import { makeState } from '../../../rules/_helpers';
 
-/** Where the decoded pictures live. INTERNAL: absent from the public snapshot, so a reader of this
- *  file self-skips rather than failing (`existsSync` at the top of the test). */
+/** Optional decoded-image fixtures. The dependent cases skip when the fixture set is absent. */
 export const IMAGE_FIXTURE_FILE = 'docs/internal/generator_iteration_guide/stencil-fixtures/decoded.json';
 
 export interface FixtureImage extends SourcePixels { name: string; what: string }
@@ -40,12 +39,7 @@ export const GROUND = hexStringToNumber(ZONE_COLORS[CellZone.Grass]!);
 /** What the map draws water in, which is what `waterShare` counts. */
 export const WATER = hexStringToNumber(WATER_COLOR);
 
-/**
- * The committed fixture file, unpacked back into RGBA.
- *
- * Stored palette-indexed and run-length coded (`scripts/internal/stencil-fixtures.py`) because it is
- * committed and pictures are large; unpacking is a few lines and costs a millisecond.
- */
+/** Unpack the palette-indexed, run-length-coded fixture data into RGBA. */
 export function loadImageFixtures(json: string): FixtureImage[] {
   const file = JSON.parse(json) as {
     images: Record<string, { width: number; height: number; palette: string; runs: string; what: string }>;

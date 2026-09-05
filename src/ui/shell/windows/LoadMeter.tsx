@@ -22,9 +22,11 @@
  * against the visible surface, the pointer machine already runs one per move for its own hover, and
  * a readout does not need sixty answers a second.
  */
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { getActiveView } from '../../../canvas/active-view';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
+import { useUiPreview } from '../../primitives/ui-preview';
 import { useT } from '../../../i18n/context';
 import { getMapStats, subscribeMapStats } from '../../../state/map-stats';
 import { useEditorStore } from '../../../state/store';
@@ -45,8 +47,8 @@ import { INK, LOAD_FILL } from '../../design/tokens';
  * top. That is the game's drawing, not an oversight: the cap is what makes the filled part read as
  * a soft bean rather than as a slice of pie.
  */
-const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
-const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
+export const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
+export const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
 
 /**
  * The track's opacity over whatever is behind it.
@@ -56,7 +58,7 @@ const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
  * flat colour that read correctly on water would go wrong on an island. So the map shows through,
  * which is also why the hole is a hole.
  */
-const TRACK_ALPHA = 0.44;
+export const TRACK_ALPHA = 0.44;
 
 /** Unique per document, and there is one of these. */
 const HOLE_MASK = 'shell-load-hole';
@@ -67,6 +69,9 @@ const SAMPLE_MS = 100;
 
 export function LoadMeter({ art }: { art: FrameArt }) {
   const t = useT();
+  // A pictured meter shows the reading and samples nothing (`ui-preview.tsx`): its global
+  // pointermove would be a second surface pick per pointer step for a figure that cannot be hovered.
+  const preview = useUiPreview();
   const eventBus = useEditorStore((s) => s.eventBus);
   // The grid is MUTATED in place, so this is not an edit signal — it is which map is loaded, and a
   // map that arrives after the frame is mounted has to be read once without waiting for an edit.
@@ -105,6 +110,7 @@ export function LoadMeter({ art }: { art: FrameArt }) {
       const next = chunkAt(cell.x, cell.y);
       setPointerRegion(next.cx, next.cy);
     };
+    if (preview) return undefined;
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
   }, []);
@@ -123,6 +129,7 @@ export function LoadMeter({ art }: { art: FrameArt }) {
   return (
     <motion.button
       type="button"
+      {...helpTargetAttr('load')}
       {...pressable}
       data-testid="shell-load"
       // The reading is in the NAME, not only in the drawing: the disc is a proportion of a limit
@@ -137,25 +144,39 @@ export function LoadMeter({ art }: { art: FrameArt }) {
         display: 'block', cursor: cursors.clickable,
       }}
     >
-      <svg aria-hidden viewBox="0 0 100 100" style={{ display: 'block', width: '100%', height: '100%' }}>
-        <mask id={HOLE_MASK}>
-          <rect x="0" y="0" width="100" height="100" fill="#fff" />
-          <circle cx="50" cy="50" r={DISC.hole} fill="#000" />
-        </mask>
-        <circle
-          cx="50" cy="50" r={DISC.r}
-          fill={INK} fillOpacity={TRACK_ALPHA} mask={`url(#${HOLE_MASK})`}
-        />
-        {filled > 0 ? (
-          <circle
-            cx="50" cy="50" r={DISC.arc}
-            fill="none" stroke={LOAD_FILL} strokeWidth={DISC.band} strokeLinecap="round"
-            strokeDasharray={`${filled * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
-            transform="rotate(-90 50 50)"
-            style={{ transition: 'stroke-dasharray 0.25s ease' }}
-          />
-        ) : null}
-      </svg>
+      <LoadDiscSvg fill={filled} maskId={HOLE_MASK} animated style={{ display: 'block', width: '100%', height: '100%' }} />
     </motion.button>
+  );
+}
+
+/** The disc drawing alone, so exactly one place draws it (the Help figure renders it too).
+ *  `maskId` must be unique among the instances a document mounts. */
+export function LoadDiscSvg({ fill, maskId, animated = false, style }: {
+  fill: number;
+  maskId: string;
+  animated?: boolean;
+  style?: CSSProperties;
+}) {
+  const filled = Math.min(1, Math.max(0, fill));
+  return (
+    <svg aria-hidden viewBox="0 0 100 100" style={style}>
+      <mask id={maskId}>
+        <rect x="0" y="0" width="100" height="100" fill="#fff" />
+        <circle cx="50" cy="50" r={DISC.hole} fill="#000" />
+      </mask>
+      <circle
+        cx="50" cy="50" r={DISC.r}
+        fill={INK} fillOpacity={TRACK_ALPHA} mask={`url(#${maskId})`}
+      />
+      {filled > 0 ? (
+        <circle
+          cx="50" cy="50" r={DISC.arc}
+          fill="none" stroke={LOAD_FILL} strokeWidth={DISC.band} strokeLinecap="round"
+          strokeDasharray={`${filled * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
+          transform="rotate(-90 50 50)"
+          style={animated ? { transition: 'stroke-dasharray 0.25s ease' } : undefined}
+        />
+      ) : null}
+    </svg>
   );
 }

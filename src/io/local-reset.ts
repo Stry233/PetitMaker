@@ -8,7 +8,7 @@
  * drifts the day someone adds a new persisted key, and "brand new startup" is
  * exactly localStorage.clear() semantics.
  */
-import { deleteVault } from '../agent/security/vault';
+import { deleteVault } from '../core/runtime/vault';
 
 /** The wipe half, separated from the reload so it is unit-testable. */
 export async function wipeLocalData(): Promise<void> {

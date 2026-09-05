@@ -100,13 +100,8 @@ export function waterfallFacesAt(state: GridState, x: number, y: number): Waterf
 }
 
 /**
- * Is (x,y) inside some waterfall face's dependency footprint, judged from the CURRENT state?
- * Every cell a face depends on — the water cell itself, its 4-neighbours (the height-drop
- * elevations), the same-elevation trace cells, and both cap terminators — is water or cardinally
- * adjacent to water in any state where the face exists. So an edit at (x,y) can only create or
- * destroy a face if this is true NOW, or if (x,y) previously carried a face (the erase-a-whole-
- * water-body-in-one-command case) — callers gating a detectWaterfalls recompute must check that
- * second half against the face set they last computed.
+ * Tests whether a cell can affect a waterfall face in the current state. Callers handling a bulk
+ * water erase must also consult their cached face set because the dependency water may be gone.
  */
 export function touchesWaterfallDependency(state: GridState, x: number, y: number): boolean {
   const isWater = (cx: number, cy: number): boolean =>

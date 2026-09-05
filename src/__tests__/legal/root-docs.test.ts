@@ -81,11 +81,11 @@ describe('docs/THREAT_MODEL.md — developer threat-model (split out of SECURITY
     expect(TM).toContain('Developer documentation');
   });
 
-  it('carries the annex content moved out of SECURITY.md', () => {
-    expect(TM).toContain('Technical threat model');
-    expect(TM).toContain('Agent (LLM) threat model');
-    // A load-bearing invariant that code comments reference.
-    expect(TM).toContain('Tool sandbox invariant');
+  it('covers the browser, Agent, and illustration security boundaries', () => {
+    expect(TM).toContain('## Build and browser controls');
+    expect(TM).toContain('## Agent threat model');
+    expect(TM).toContain('## Illustration threat model');
+    expect(TM).toContain('Tool boundary');
   });
 
   it('points back to the public reporting policy', () => {
@@ -242,8 +242,8 @@ describe('CONTRIBUTING.md — DCO + inbound=outbound', () => {
     expect(C).toMatch(/retain/i);
   });
 
-  it('requires a written permission record for art contributions, without naming internal paths', () => {
-    expect(C).toContain('written permission record');
+  it('requires written permission for art contributions, without naming internal paths', () => {
+    expect(C).toContain('written permission');
     // public docs must never reference the internal tree (absent from the public repo)
     expect(C).not.toContain('docs/internal');
   });
@@ -348,7 +348,7 @@ describe('README.md — public front page', () => {
       '3D editor',
       'PetitGlyph',
       'autosave',
-      'languages',
+      'multilingual',
     ]) {
       expect(R.toLowerCase()).toContain(feature.toLowerCase());
     }
@@ -415,8 +415,7 @@ describe('README.zh-CN.md — authored equivalent + parity', () => {
 });
 
 describe('public docs never reference the internal tree', () => {
-  // docs/internal/** and the private records it holds are absent from the public
-  // repository export, so no public-facing document may point readers at them.
+  // Public-facing documents must not point readers toward files withheld from the export.
   const PUBLIC_DOCS = [
     'README.md',
     'CONTRIBUTING.md',

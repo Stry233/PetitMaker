@@ -1,46 +1,8 @@
 /**
- * Turns a CursorId into a CSS `cursor` value: the image, the hotspot, and a keyword fallback.
- *
- * This is the ONE place an id becomes art, so both canvases, the DOM custom properties and every
- * component that styles itself follow the same set and the same preference without branching of
- * their own.
- *
- * The trailing keyword is required by the CSS grammar, and is what the browser falls back to if
- * the image is unusable. Values are memoised; the controller asks for one on every hover change.
- *
- * EVERY CURSOR IS ONE SVG at an intrinsic 32px, and the value wraps it as
- * `image-set(url(…) <density>)` where the engine reads image-set in `cursor`. What the density
- * does to a VECTOR cursor is the one thing the engines disagree on, so the density is per-engine
- * and this header is where the verified facts live:
- *
- * - BLINK AND WEBKIT DIVIDE THE DRAWN SIZE BY THE DENSITY, vector or not, and rasterise an SVG
- *   at the screen's own scale first (Blink `event_handler.cc` SelectCursor multiplies the SVG's
- *   raster scale by the device scale factor and divides both the drawn size and the 32px
- *   fallback cap by the image-set scale; WebKit `EventHandler.cpp` selectCursor mirrors it).
- *   So a 32px SVG declared 2x drew 16 CSS px on every retina screen (observed: Chrome and
- *   Safari on a dpr-2 Mac), and 1x is the one density that draws the intrinsic 32 at 32 CSS px
- *   on every screen — sharp at dpr 2 and at the fractional Windows scales alike, because the
- *   vector is rasterised at the live device scale, not at the declared density.
- * - GECKO SIZES A VECTOR CURSOR AT ITS INTRINSIC WIDTH WHATEVER THE DENSITY (the css-images-4
- *   reading: a resolution divides pixel dimensions, which a vector image does not have), and
- *   reads the density as a pure RASTERISATION hint that is LOAD-BEARING: a plain url rasterises
- *   soft whenever the hovered element stands under CSS zoom (the app's chrome always does),
- *   while 2x rasterises sharp at every zoom probed and matches the resolution the embedded
- *   painted renders carry; a fractional density rasterises slightly soft (Firefox 152 at
- *   dpr 2). Gecko is told apart by the `-moz-appearance` alias only it parses
- *   (probed: Firefox 154 true, Chrome 151 false), and an engine the probe does not recognise
- *   gets 1x, the density that can never change the drawn size.
- *
- * NO ENGINE scales a cursor's drawn size by the element's CSS zoom, and the hotspot stays in the
- * intrinsic 32px grid in every engine at either density.
- *
- * A browser without image-set in `cursor` gets the plain url — right size, engine-chosen
- * sharpness — because a value the engine cannot parse is a DROPPED declaration and the element
- * would fall back to the platform arrow rather than to our art.
- *
- * `busy` is the one ANIMATED cursor: a long operation is running, and a static custom cursor
- * reads as stuck, so the art is a frame ring (`busyFrame`) the controller cycles while the state
- * holds. `frame` picks one; the plain ask resolves frame 0.
+ * Resolves a cursor id to memoized SVG art, hotspot, and required keyword fallback. Blink and WebKit
+ * divide SVG display size by `image-set` density, so they use 1x; Gecko preserves intrinsic vector
+ * size and uses 2x for sharp rasterization under CSS zoom. Unsupported engines receive a plain URL.
+ * Hotspots always use the intrinsic 32-pixel grid. `busy` selects an animated frame.
  */
 import { busyFrame, cursorArt } from './cursor-art';
 import { classicCursorArt } from './cursor-art-classic';

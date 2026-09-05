@@ -189,9 +189,56 @@ export function reviewNudge(): string {
   return '(system) Before this close stands, re-read the order and judge the map against its own '
     + 'words, nothing else. Look with view_map at the ground the order names, and name the one '
     + 'thing the order asked for that is weakest or missing. Fix that one thing with a few aimed '
-    + 'edits. Do not add anything the order did not ask for: on an order with exact counts or a '
-    + 'repair order, verify its constraints hold and mend only what fails them. Then close. Your '
+    + 'edits. Then run find_speckle and evaluate_map ONCE each and act on what they name: clear or '
+    + 'replant every patch the sweep lists, and fix the hints (a four-way crossing, a stamped pool '
+    + 'pair, a building with no road) before closing: a finding left standing is the first thing '
+    + 'the user sees. Do not add anything the order did not ask for: on an order with exact counts '
+    + 'or a repair order, verify its constraints hold and mend only what fails them. Then close; if '
+    + 'your close was asking the user something, restate that question at its end. Your '
     + 'next close is final whatever it says.';
+}
+
+/** Where the job's filed plan stands: how many stages it names and which one is current.
+ *  `undefined` where no plan was filed. The fold mirrors `loop.ts:advanceStageAtBoundary`. */
+export function planProgress(log: SessionLog): { stageCount: number; current: number; nextLabel: string } | undefined {
+  let stages: { label: string }[] | null = null;
+  let current = 0;
+  for (const e of jobEvents(log)) {
+    if (e.kind === 'plan') { stages = e.stages; current = 0; }
+    else if (e.kind === 'stage') current = e.index;
+  }
+  if (!stages || stages.length === 0) return undefined;
+  return { stageCount: stages.length, current, nextLabel: stages[Math.min(current, stages.length - 1)]!.label };
+}
+
+/** How many writes a build may land before the loop asks for a plan: below this the job may still
+ *  be a one-burst small request; past it the work is multi-stage in fact, planned or not. */
+export const PLAN_OWED_AT = 6;
+/** Where the nagging stops: a model that has been asked across this many further writes and still
+ *  files no plan is answered by the close-time guard instead. */
+const PLAN_OWED_UNTIL = 12;
+
+/** Asks a build that has grown past a small request to file its stages, while none stand. Fires on
+ *  every turn inside the write window until a plan lands, then never again. */
+export function planOwedNudge(log: SessionLog): string | undefined {
+  if (planProgress(log) !== undefined) return undefined;
+  const writes = landedWriteCount(log);
+  if (writes < PLAN_OWED_AT || writes > PLAN_OWED_UNTIL) return undefined;
+  return `(system) ${writes} edits have landed with no plan filed. This is multi-stage work in fact: `
+    + 'call update_plan now with the remaining stages (3-6 short noun phrases) — the stage list is '
+    + 'what the user follows, and what keeps the build finishing everything it started.';
+}
+
+/** The answer a close with plan stages still standing gets INSTEAD of settling: finish them, or say
+ *  plainly which stage cannot be done and why. Sent once per job; the close after it is final. */
+export function unfinishedPlanNudge(log: SessionLog): string | undefined {
+  const plan = planProgress(log);
+  if (!plan || plan.current >= plan.stageCount - 1) return undefined;
+  const remaining = plan.stageCount - plan.current;
+  return `(system) The filed plan has ${remaining} of ${plan.stageCount} stages not finished (current: `
+    + `"${plan.nextLabel}"). A close with stages standing is an unfinished job: keep building them in `
+    + 'order (evaluate_map at each boundary marks the stage done), or state plainly which stage cannot '
+    + 'be done and why. Your next close is final whatever it says.';
 }
 
 /** Escalates once a call has already failed with these exact arguments once before in this job
@@ -218,8 +265,7 @@ export function revertNudge(log: SessionLog, toolName: string): string | undefin
     if (ev.kind === 'toolResult' && ev.name === toolName && ev.detail?.reverted) reverts++;
   }
   if (reverts < 1) return undefined;
-  // Past a handful the polite form has demonstrably failed (a live run pushed the same tool
-  // through eighteen reverts), so the register changes to an instruction with a precondition.
+  // Four reverts make inspection a precondition for another call.
   if (reverts >= 4) {
     return `(system) STOP: ${reverts} ${toolName} edits have reverted in this job. Do not call it `
       + 'again until you have LOOKED — inspect_region or view_map the exact target — and are acting '

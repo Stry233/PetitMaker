@@ -3,10 +3,7 @@ import { append, eventsOf, subscribe, type SessionLog } from './log';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 
-/** Whether a call needs a gate before it runs. `allowAll` (a session-wide "always allow" answer)
- *  and a non-write call never gate; `yolo` never gates; `strict` gates every write; `checkpoint`
- *  gates only a WIDE write, and only while no plan is approved yet (an approved plan already
- *  covers the wide moves it lists). */
+/** Applies the selected supervision level to a prospective tool call. */
 export function shouldGate(input: {
   tool: string; isWrite: boolean; isWide: boolean; oversight: Oversight;
   planApproved: boolean; allowAll: boolean;
@@ -16,11 +13,7 @@ export function shouldGate(input: {
   return input.isWide && !input.planApproved;
 }
 
-/** Appends `gateAsked` and returns its gateId. The id is minted from `nextSeq` (the seq `append`
- *  is about to assign), which the log already guarantees unique and monotonic within it.
- *
- *  `quickAnswers`/`options` ride through untouched: whatever the ask carries is what the record
- *  shows it offered, and this function invents neither. */
+/** Appends a question with a log-sequence-derived ID and returns that ID. */
 export function askGate(
   log: SessionLog,
   ask: {
@@ -49,20 +42,7 @@ export function pendingGate(
   return undefined;
 }
 
-/**
- * Appends the answering half of the pair. Throws on an unknown gateId, on an already-answered one,
- * and on one whose JOB HAS SETTLED under it — three ways the answer would mean nothing, and the
- * caller turns each into a visible refusal.
- *
- * THE SETTLE CASE IS THE REACHABLE ONE. A double answer cannot happen through the panel (the
- * buttons unmount the moment the verdict lands), but the ask card's handler stays live for the frame
- * between `jobEnd` reaching the log and React committing the render that removes it — a provider
- * timeout, a turn cap, or the user's own Stop landing as their finger comes down. The pair was still
- * (asked, unanswered), so the append was legal; the fold attaches a `gateAnswered` to the job that
- * asked, and there is no longer one, so the event landed in the persisted session and folded into
- * nothing. A PAUSE is not a settle: `loop.ts:existingGateId` re-enters the same gate on resume, so
- * the question is being held and an answer to it still reaches a loop.
- */
+/** Appends an answer only while its known gate is unanswered and its job remains active. */
 export function answerGate(log: SessionLog, gateId: string, answer: GateAnswer, words?: string): void {
   const events = eventsOf(log);
   const askedAt = events.findIndex((ev) => ev.kind === 'gateAsked' && ev.gateId === gateId);
@@ -74,23 +54,13 @@ export function answerGate(log: SessionLog, gateId: string, answer: GateAnswer, 
   append(log, { kind: 'gateAnswered', gateId, answer, words });
 }
 
-/**
- * WHETHER A HUMAN EXPLICITLY ALLOWED THIS CALL, at its own gate.
- *
- * The export disclosure distinguishes an edit a person APPROVED from one the model simply made under
- * a standing permission (`core/provenance/types.ts`: `AiAccepted` vs `AiWrite`), and the panel's
- * whole gate machinery exists to obtain the first. `allow-always` is NOT one of them: it is the
- * session-wide standing answer `shouldGate` reads as `allowAll`, which is exactly what the
- * disclosure means by an AI write. A call that was never gated answers false too — there was no
- * approval to report, and inventing one would be the disclosure claiming a press nobody made.
- */
+/** True only for a call explicitly approved at its own gate; standing permission is not explicit approval. */
 export function callApproved(log: SessionLog, callId: string): boolean {
   const events = eventsOf(log);
   const gateIds = new Set<string>();
   for (const ev of events) if (ev.kind === 'gateAsked' && ev.callId === callId) gateIds.add(ev.gateId);
   if (gateIds.size === 0) return false;
-  // The LAST answer for this call's gates: a re-entered gate (a reload mid-wait) can leave more than
-  // one ask behind the one answer that let the call run.
+  // A resumed wait can leave multiple gate questions; the latest answer controls the call.
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i]!;
     if (ev.kind === 'gateAnswered' && gateIds.has(ev.gateId)) return ev.answer === 'allow';
@@ -99,17 +69,14 @@ export function callApproved(log: SessionLog, callId: string): boolean {
 }
 
 function abortError(): Error {
-  // DOMException exists in browsers and in jsdom; a bare Error with the same `name` is the
-  // documented fallback for environments (plain Node without jsdom) that lack it.
+  // Plain Node environments may not provide DOMException.
   if (typeof DOMException !== 'undefined') return new DOMException('The gate wait was aborted.', 'AbortError');
   const err = new Error('The gate wait was aborted.');
   err.name = 'AbortError';
   return err;
 }
 
-/** Resolves once `gateId` is answered, reading from history first (a reload can resume a wait on
- *  an already-answered gate) and otherwise subscribing to the log rather than polling. Rejects if
- *  `signal` aborts first; the subscription is always torn down on either path. */
+/** Resolves from a persisted or future answer and rejects if the signal aborts first. */
 export function awaitGate(
   log: SessionLog,
   gateId: string,

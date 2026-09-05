@@ -100,12 +100,12 @@ describe('the dreaming board reserves one height', () => {
   afterEach(() => {
     Element.prototype.getBoundingClientRect = realRect;
     vi.useRealTimers();
-    useEditorStore.setState({ locale: 'en' });
+    act(() => { useEditorStore.setState({ locale: 'en' }); });
   });
 
   for (const locale of ['en', 'ru', 'th'] as Locale[]) {
     it(`holds its height across two rotations in ${locale}`, () => {
-      useEditorStore.setState({ locale });
+      act(() => { useEditorStore.setState({ locale }); });
       const { container } = mount();
       const expected = boardHeight(measuredPool(container));
       expect(expected, 'the pool is measured').toBeGreaterThan(0);

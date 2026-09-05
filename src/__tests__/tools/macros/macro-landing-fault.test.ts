@@ -1,17 +1,5 @@
-/**
- * A LANDING THAT THROWS, on the path production runs: the build happens off-thread and the landing
- * runs on the main thread against the live map.
- *
- * `landMacroRun` rolls its own work back and RETHROWS, deliberately, so a rule or executor fault is
- * not mistaken for a broken worker. That throw arrives at the tool as a rejected promise on the
- * queue every press lands in order through, and a rejected queue is skipped by every press chained
- * onto it afterwards. What must hold: the faulted press leaves the map alone and says so, the next
- * press still builds, and a held planting whose burst faulted still settles.
- *
- * Its own file because `installMacroBuildRunner` has no uninstall — a runner installed here would
- * make every later test in a shared file asynchronous.
- */
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+/** Pins rollback, queue recovery, and held-tool settlement when a main-thread landing rejects. */
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
@@ -36,6 +24,7 @@ let waiting: (() => void)[] = [];
 /** Every toast the tool posted, in order. */
 let toasts: { text: string; type: ToastType }[] = [];
 let unpresent: (() => void) | null = null;
+let errorSpy: ReturnType<typeof vi.spyOn>;
 
 installMacroBuildRunner((state: GridState, id: MacroId, opts: MacroOpts): Promise<MacroBuild | null> =>
   new Promise((resolve) => {
@@ -94,9 +83,10 @@ const raised = (state: GridState): number =>
 beforeEach(() => {
   waiting = [];
   toasts = [];
+  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   unpresent = setToastPresenter((text, type) => { toasts.push({ text, type }); });
 });
-afterEach(() => { unpresent?.(); unpresent = null; live = null; __resetRouteSession(); });
+afterEach(() => { errorSpy.mockRestore(); unpresent?.(); unpresent = null; live = null; __resetRouteSession(); });
 
 describe('a macro landing that throws', () => {
   it('leaves the map alone, says the press built nothing, and lets the next press build', async () => {
@@ -114,6 +104,7 @@ describe('a macro landing that throws', () => {
     await flush();
 
     expect(faults.left, 'the fault was reached').toBe(0);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(raised(state), 'the faulted landing took its own work back').toBe(0);
 
     tool.onPointerDown({ x: 20, y: 20 }, { x: 20, y: 20 }, ctx);
@@ -141,6 +132,7 @@ describe('a macro landing that throws', () => {
     await flush();
 
     expect(faults.left).toBe(0);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(state.objects.size, 'the faulted burst planted nothing').toBe(0);
     expect(toasts.map((t) => t.text), 'a hold that grew nothing is reported once').toEqual(['smart.empty']);
 
@@ -167,6 +159,7 @@ describe('a macro landing that throws', () => {
     await flush();
 
     expect(faults.left).toBe(0);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(state.objects.size, 'the faulted commit paved nothing').toBe(0);
     expect(getRouteSession(), 'and nothing offers to nudge a route the map does not have').toBeNull();
     expect(toasts.map((t) => t.text), 'the commit reports its own refusal').toContain('smart.empty_link');

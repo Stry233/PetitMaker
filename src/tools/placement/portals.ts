@@ -158,18 +158,6 @@ export function routeRegions(from: number, to: number, regionAdj: Map<number, Po
   return routeRegionsMulti(new Set([from]), to, regionAdj, weight);
 }
 
-/** The set of regions reachable from `start` through the portal graph (BFS). The settlement places its
- *  nodes only in these regions, so every node is road/bridge/ramp-connectable to the hub. */
-export function reachableRegions(start: number, regionAdj: Map<number, Portal[]>): Set<number> {
-  const seen = new Set<number>([start]);
-  const q = [start];
-  while (q.length) {
-    const r = q.pop()!;
-    for (const p of regionAdj.get(r) ?? []) { const nb = p.regionA === r ? p.regionB : p.regionA; if (!seen.has(nb)) { seen.add(nb); q.push(nb); } }
-  }
-  return seen;
-}
-
 /** Multi-source variant: cheapest portal sequence from ANY region in `sources` to `to`. [] if `to` is
  *  already a source, null if unreachable. (Used by the router to attach a node to the growing network.) */
 export function routeRegionsMulti(

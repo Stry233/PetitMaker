@@ -1,9 +1,4 @@
-/**
- * The curve's adjust handles: what is on screen after a curve is drawn, and what dragging one does.
- *
- * The component projects through the ACTIVE view, so the test registers a trivial 1-cell-per-10px
- * projection and reads the handles back in those coordinates.
- */
+/** Curve-handle projection, drag behavior, and zoom-scaled hit targets. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act, screen } from '@testing-library/react';
 import { CurveHandles } from '../../../ui/chrome/floating/CurveHandles';
@@ -69,8 +64,10 @@ beforeEach(() => {
   setActiveView(view);
 });
 afterEach(() => {
-  __resetCurveSession();
-  setActiveView(null);
+  act(() => {
+    __resetCurveSession();
+    setActiveView(null);
+  });
 });
 
 describe('what is on screen', () => {

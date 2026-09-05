@@ -1,26 +1,8 @@
 /*
- * Shell.tsx — the game-style interface: the frame that stands around the map.
- *
- * The five mode blocks pick what is being built and the bottom bar follows: the mode is the store's
- * own `editMode.mode`, so which bar is showing and what the map is armed with are one fact rather
- * than two. The assistant is a sixth block of the same family on a SECOND ROW under them, sharing
- * their left edge, and it is NOT a sixth mode: the five are mutually exclusive because each arms a
- * tool and the map can hold one, where pressing the assistant only opens its own panel. So it
- * stands beside whichever mode is selected rather than clearing it — the panel's own floor is
- * measured from the bar the current mode is showing, which is a measurement that only means
- * anything while a mode is still selected under it. The load / share / menu cluster is the
- * top-right corner and the three right-edge groups are `Rail`.
- *
- * THE CHROME IS LAID OUT IN FIXED CSS PIXELS (`units.ts`), not through the menu scale: a button is
- * one size at every window size and the map takes the extra room, which is what a game's frame does.
- * The whole frame sits under one `zoom` — the frame's own page zoom times the user's UI
- * zoom — so Ctrl +/- still resizes everything and nothing else has to know about it. The drawn art
- * keeps the design source's proportions through `units.ts:SCALE`, which is the fixed value the
- * shell provides to `usePx` in place of the viewport-derived one.
- *
- * The tour's machinery is `ui/chrome/tour/` and its content is `tour-steps.ts` plus the gesture
- * drawings in `tour-diagrams.tsx`: the overlay is mounted here, and each step's host action — which
- * mode is selected, which map view is showing — is applied here.
+ * Application shell around the map. Edit state drives the five mutually exclusive mode bars; the
+ * assistant opens independently without changing the armed mode. Chrome uses fixed CSS dimensions
+ * under one combined page/UI zoom. This component also hosts the tour and applies its requested mode
+ * and view changes.
  */
 import {
   Suspense, lazy, useCallback, useEffect, useRef, useState,
@@ -36,7 +18,10 @@ import { useEditorStore, type ViewMode } from '../../state/store';
 import { TourDoneModal } from '../chrome/tour/TourDoneModal';
 import { TourOverlay } from '../chrome/tour/TourOverlay';
 import { tourTargetAttr, type TourStep, type TourTargetId } from '../chrome/tour/steps';
+import { helpTargetAttr } from '../chrome/modals/help/targets';
+import type { HelpPageId } from '../chrome/modals/help/page-schema';
 import { useFirstLaunchTour } from '../chrome/tour/use-tour';
+import { useUiPreview, useUiPreviewPose } from '../primitives/ui-preview';
 import { useEditorShortcuts } from './use-editor-shortcuts';
 import { useRegionBrush } from './use-region-brush';
 import { ScaleProvider, useDenseScript, useDevicePixelRatio, useViewportSize } from '../design/scale';
@@ -49,6 +34,7 @@ import { CHARACTER_SEAT, PINNED_COLUMN_W, PINNED_DOCK_REF_W, frameZoomAt } from 
 import { dockAside, useDockDriver, useDockStage } from './use-dock';
 import { isConnected, useAgentPanelSettings } from '../agent/settings';
 import { GenerateShelf } from './bars/GenerateShelf';
+import { AnnotationBar } from './bars/AnnotationBar';
 import { ObjectShelf } from './bars/ObjectShelf';
 import { TerrainBar } from './bars/TerrainBar';
 import { terrainSurface, type TerrainSurface } from './bars/terrain-cells';
@@ -76,6 +62,10 @@ import { Windows } from './windows/Windows';
 /** Which top-right control a tour step points at. Only the two that DO something are named: the
  *  load readout is a readout. */
 const TOP_RIGHT_TOUR: Partial<Record<string, TourTargetId>> = { share: 'share', menu: 'menu' };
+/** The help page each top-right button teaches; the load disc marks its own. */
+const TOP_RIGHT_HELP: Partial<Record<string, HelpPageId>> = { share: 'share', menu: 'frame' };
+/** The help page each mode block teaches: the three terrain surfaces share one page. */
+const MODE_HELP: Record<string, HelpPageId> = { object: 'objects', road: 'terrain', mountain: 'terrain', water: 'terrain', generate: 'generate' };
 
 /** The corner a top-right control's focus ring takes, for a drawing that is not the rounded
  *  rectangle `FOCUS_SHAPE_RADIUS` assumes: the menu is a disc, and the load meter draws itself. */
@@ -155,11 +145,12 @@ function ShapeEdgeFilter() {
  * (`tokens.ts:mapShape` / `shape-edge.tsx:ShapeEdge`), which is why the masked span stands inside
  * the edge's own box.
  */
-function Piece({ art, onPress, expanded, tourTarget }: {
+function Piece({ art, onPress, expanded, tourTarget, helpTarget }: {
   art: FrameArt & { src: string };
   onPress?: () => void;
   expanded?: boolean;
   tourTarget?: TourTargetId;
+  helpTarget?: HelpPageId;
 }) {
   const t = useT();
   const h = topRightHeight(art);
@@ -178,6 +169,7 @@ function Piece({ art, onPress, expanded, tourTarget }: {
       type="button"
       {...pressable}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
+      {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
       aria-label={t(art.labelKey)}
       aria-expanded={expanded}
       onClick={onPress}
@@ -234,36 +226,12 @@ function BlockPlate({ centre }: {
 }
 
 /**
- * One block of the top-left row.
- *
- * The block stands on the row's shared baseline — its box's bottom — so six drawings of six heights
- * read as one row. The selected drawing is bigger than the slot and the splat behind it bigger
- * again; both are centred on the slot and allowed to spill, which is what the design does.
- *
- * `expanded` is for the block that opens something rather than arming something: it takes the
- * aria attribute the assistant's panel needs, and its absence is what makes a block report itself
- * as pressed instead.
- *
- * ONE BLOCK NAMES ITSELF, AND IT IS THE CHOSEN ONE. The caption answers "what am I building", so it
- * belongs to the mode in force and to nothing else. A name that also came up under whatever the
- * pointer crossed would put a word on the map five times on the way to the sixth block, and none of
- * those five is an answer to anything: these are five fixed pictures a visitor learns once. The item
- * cards go the other way for the opposite reason — a card is one of dozens in a scrolling row and
- * its name is the only thing telling it from its neighbour, so there hover is how the row is read.
- *
- * The caption stands on the MAP with nothing behind it, on the outline that replaces a plate
- * (`tokens.ts:MAP_LABEL`). It hangs BELOW the row's baseline and out of the flow, so the row's own
- * height never had to make room for it.
- *
- * A BLOCK IS A TOGGLE, NOT A RADIO. Pressing the mode already in force puts it away: the bar goes,
- * the plate goes, and the map is back at REST with nothing armed — the same state the editor opens
- * in. That is what makes rest a place a visitor can go on purpose rather than one they can only
- * leave, and it is what the assistant's own block has always done with its panel.
- *
- * The splat it stands on is NOT the block's: the row draws it (`BlockPlate`), so it can travel
- * behind the blocks between them.
+ * One top-left mode or assistant block. Drawings share a bottom baseline and may overflow their
+ * slots. Active modes show a map-side caption and toggle back to rest when pressed again. `expanded`
+ * gives panel triggers disclosure semantics; ordinary modes use pressed semantics. The row owns the
+ * traveling selection plate.
  */
-function RowBlock({ art, on, centre, expanded, tourTarget, slot, onPress }: {
+function RowBlock({ art, on, centre, expanded, tourTarget, helpTarget, slot, onPress }: {
   art: BlockArt;
   on: boolean;
   centre: number;
@@ -272,6 +240,7 @@ function RowBlock({ art, on, centre, expanded, tourTarget, slot, onPress }: {
   /** A block that draws something of its own where the row's art would stand, instead of the art.
    *  Only the assistant's does: its picture is the one live character, which stands in a layer of
    *  its own (`agent/character/CharacterHost`) and needs a BOX here rather than a drawing. */
+  helpTarget?: HelpPageId;
   slot?: ReactNode;
   /** Called for either half of the toggle: the caller owns what "on" and "off" mean for it. */
   onPress: () => void;
@@ -286,6 +255,7 @@ function RowBlock({ art, on, centre, expanded, tourTarget, slot, onPress }: {
       type="button"
       {...pressable}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
+      {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
       aria-label={t(art.labelKey)}
       {...(expanded === undefined ? { 'aria-pressed': on } : { 'aria-expanded': expanded })}
       onClick={onPress}
@@ -354,7 +324,10 @@ const ENTRANCE_SLOT: CSSProperties = {
 function RegionBadge() {
   const t = useT();
   const cells = useEditorStore((s) => s.region.length);
-  if (cells === 0) return null;
+  const selecting = useEditorStore((s) => s.selectingRegion);
+  // While the marking screen is open the count lives on the screen itself; a second bubble at the
+  // shoulder would shadow every stroke of the brush.
+  if (cells === 0 || selecting) return null;
   return (
     <div
       data-testid="shell-assistant-region-badge"
@@ -405,6 +378,9 @@ function RegionBadge() {
 function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement> }) {
   const open = useEditorStore((s) => s.assistantOpen);
   const setOpen = useEditorStore((s) => s.setAssistantOpen);
+  // A pictured shell mounts no character layer (it positions itself from measured window rects,
+  // which a zoomed picture breaks), so the block draws her still art in the box instead.
+  const preview = useUiPreview();
   return (
     // DEAF WHILE THE PANEL IS OPEN, which is the block's own note above made true rather than assumed:
     // the panel stands where this box is and the character in her own layer is the press, so this one
@@ -424,7 +400,8 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
         expanded={open}
         centre={blockCentre(0)}
         tourTarget="assistant"
-        slot={<div ref={entranceRef} data-testid="entrance-plate-anchor" style={ENTRANCE_SLOT} />}
+        helpTarget="agent-setup"
+        slot={preview ? undefined : <div ref={entranceRef} data-testid="entrance-plate-anchor" style={ENTRANCE_SLOT} />}
         onPress={() => setOpen(!open)}
       />
       <RegionBadge />
@@ -535,7 +512,8 @@ function ModeBar({ mode, surface }: { mode: BuildMode; surface: TerrainSurface |
   const reduced = useReducedMotionConfig();
   const bar = surface ? <TerrainBar surface={surface} />
     : mode === 'object' ? <ObjectShelf />
-      : mode === 'generate' ? <GenerateShelf /> : null;
+      : mode === 'generate' ? <GenerateShelf />
+        : mode === 'annotate' ? <AnnotationBar /> : null;
   return (
     <AnimatePresence>
       {bar ? (
@@ -565,7 +543,12 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   hidden: boolean;
   onHide: () => void;
 }) {
-  const mode = useEditorStore((s) => s.editMode.mode);
+  const preview = useUiPreview();
+  const pose = useUiPreviewPose();
+  const liveMode = useEditorStore((s) => s.editMode.mode);
+  // A picture holds the mode its figure poses (or rest), not whatever the live editor is doing:
+  // a figure's claim about the selected icon and its toolbar must not depend on the reader's state.
+  const mode = preview ? (pose?.mode ?? null) : liveMode;
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const assistantOpen = useEditorStore((s) => s.assistantOpen);
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
@@ -608,6 +591,11 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   // than merely covering it. Without this, the card was WITHHELD while the panel stood (the render
   // condition below) but never actually dismissed, so closing the panel brought it straight back.
   useEffect(() => { if (assistantOpen && candidate) dismissRestore(); }, [assistantOpen, candidate, dismissRestore]);
+  // And so is opening any window at all. Most are reached through the menu, which already answers,
+  // but the save-and-share window has its own button on the bar, and a visitor who is exporting
+  // this map has stopped considering the last one just as surely.
+  const anyWindowOpen = useEditorStore((s) => Object.values(s.modals).some(Boolean));
+  useEffect(() => { if (anyWindowOpen && candidate) dismissRestore(); }, [anyWindowOpen, candidate, dismissRestore]);
   // And the same dismissal, offered to the one surface that stands over the map beside this card:
   // the arrival notice's OK is a hand saying where it is, which answers this offer too
   // (`core/runtime/restore-offer`), so the notice never has to ask whether the offer is up.
@@ -676,6 +664,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
             art={art}
             on={mode === art.id}
             centre={blockCentre(i)}
+            helpTarget={MODE_HELP[art.id]}
             onPress={() => setEditMode({ mode: mode === art.id ? null : art.id })}
           />
         ))}
@@ -706,6 +695,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
             }
             expanded={art.id === 'menu' ? menuOpen : undefined}
             tourTarget={TOP_RIGHT_TOUR[art.id]}
+            helpTarget={TOP_RIGHT_HELP[art.id]}
           />
         )))}
       </div>
@@ -722,7 +712,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
           assistant is a decision about what to do next, same as opening the menu or a mode, so the
           card must not reappear once the panel is put away. */}
       <AnimatePresence>
-        {candidate && !assistantOpen && (
+        {candidate && !assistantOpen && !preview && (
           <RestoreShelf
             key="restore"
             state={candidate.state}
@@ -752,6 +742,7 @@ export interface ShellProps {
 }
 
 export function Shell({ children, onRestoreSession, splashActive = false }: ShellProps) {
+  const preview = useUiPreview();
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const mode = useEditorStore((s) => s.editMode.mode);
   const portraitBlocked = useEditorStore((s) => s.portraitBlocked);
@@ -763,7 +754,9 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   // apply to it. The key's PRESENCE is the whole question here: only a map with content is ever
   // written, and this shell has nothing else to do with the save, so it never parses one.
   const [hadSave] = useState(hasAutosave);
-  useFirstLaunchTour(portraitBlocked, hadSave);
+  // A pictured shell never opens the first-launch offer: `hadSave` true is the hook's own
+  // no-op path, and a preview claims it.
+  useFirstLaunchTour(portraitBlocked, hadSave || preview);
   // NOT persisted, and not in the store: nothing outside the frame has a stake in it, and a browser
   // that opened with the interface already gone would be a browser that opened broken.
   const [hidden, setHidden] = useState(false);
@@ -958,26 +951,9 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   // document: `fonts.css` declares the faces and every other component names the stack itself, so a
   // frame element that did not name it inherited the browser's own default, which is a serif.
   /*
-   * THE FRAME'S PLANE, and it is a real box because the assistant's dock needs it to be one.
-   *
-   * Every cluster in here is a `fixed` element placed in the frame's own px, and `contain: layout`
-   * makes THIS the box they are placed against instead of the viewport. With the sheet lying flat the
-   * two are the same box, so nothing moves; SLID ASIDE the plane is inset from the DOCK'S OWN SIDE by
-   * the column's width and the whole interface — the mode row's margin, the bars' centre, the corner
-   * clusters, the room the panel measures — is that same arithmetic against the window that is left.
-   * One origin rather than an offset threaded through every placement, and that one inset is what
-   * SLIDES.
-   *
-   * `contain` RATHER THAN A TRANSFORM, which would do the same job: a transform promotes the whole
-   * frame to its own compositing layer, and text drawn on one loses subpixel antialiasing. This
-   * needs the containing block and nothing else.
-   *
-   * NO TRANSITION ON THE INSET. The travel is a multiple of the one animated fraction
-   * (`use-dock.ts`), which the fit rides too, so a clock of its own here would be a second one.
-   *
-   * DEAF AS A PLANE. A full-window box would otherwise take every pointer event the map is meant to
-   * get, so the plane passes them through and each cluster turns them back on for its own box — the
-   * pattern the bottom shelves already use for their own full-width wrappers.
+   * `contain: layout` makes this inset frame the containing block for fixed chrome without promoting
+   * all text to a transformed compositing layer. Dock motion comes from the shared fraction; the
+   * plane itself is pointer-transparent and each interactive cluster opts back in.
    */
   const frameStyle = {
     zoom, '--shell-zoom': String(zoom), fontSize: TEXT.label, fontFamily: font.family,
@@ -993,35 +969,11 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   } as CSSProperties;
   return (
     <>
-      {/* THE PANEL FIRST, because docked it is the GROUND: the desk everything below it in this
-          fragment is a sheet of paper lying on. It is out here rather than in the frame's plane so
-          that the plane can slide off it without taking it along. */}
+      {/* The docked panel stays outside the sliding frame plane. */}
       <Assistant hidden={hidden} />
-      {/* THE MAP'S OWN PLANE, and the map is part of the sheet rather than the page under it.
-          Docked, the assistant's panel stands beneath everything at the window's left and the whole
-          interface — this plane included — is inset past it, so the map genuinely OCCUPIES what is
-          left of the window instead of being covered at one edge. Both views fill this box and both
-          read their own rect for it (the 2D projection is told where its canvas stands, the 3D one
-          measures), so a press lands on the cell under it either way.
-
-          `contain: layout` makes this the box the views' own positioning resolves against, and the
-          RUNG is what puts it over the desk.
-
-          IT TRAVELS BY TRANSFORM AND SETTLES INTO AN INSET, which is the one place this plane is not
-          the frame's. An animated inset changes the views' box every frame, and a box change is a
-          renderer resize: a full reallocation of the drawing buffer, eighteen times over a 300ms
-          slide, and the compositor picks up the frames where it has not been drawn into yet (black
-          canvas, measured live). A transform moves the pixels already drawn.
-
-          TWO TRACKS, BECAUSE THE DRAWING AND ITS EDGE DO NOT TRAVEL THE SAME DISTANCE (`mapTravel`
-          above carries the argument): the transform takes the world half the dock's width, which is
-          where the new box's centre is, and the clip takes the visible edge the other half, onto the
-          dock's own seam. The clip leaves the box alone, so the swap at each end costs exactly one
-          resize and moves nothing on screen.
-
-          AND IT IS DEAF WHILE IT MOVES. The 2D projection's origin is refreshed when the box
-          changes, which under the transform is only at the ends, so mid-slide it would answer for
-          where the canvas was. A press during a rearrangement has no cell it can honestly mean. */}
+      {/* The map plane transforms and clips during docking, then settles to an inset. This avoids
+          resizing renderer buffers on every animation frame. Pointer input stays disabled in transit
+          because view projections update when the containing box settles. */}
       <div
         ref={mapPlaneRef}
         data-testid="shell-map-plane"
@@ -1107,20 +1059,24 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
           coordinates in zoomed space while a measured rect is in the window's (see
           `agent/character/CharacterHost`). It goes away with the frame all the same — it is part of
           the interface, not of the map. */}
-      <CharacterHost
-        entranceRef={entranceRef}
-        open={assistantOpen}
-        connected={connected}
-        hidden={hidden}
-        size={ENTRANCE_CHAR_W}
-        onOpen={openAssistant}
-        onToggle={toggleAssistant}
-      />
+      {!preview && (
+        <CharacterHost
+          entranceRef={entranceRef}
+          open={assistantOpen}
+          connected={connected}
+          hidden={hidden}
+          size={ENTRANCE_CHAR_W}
+          onOpen={openAssistant}
+          onToggle={toggleAssistant}
+        />
+      )}
       {/* Outside the frame's zoom: a window sizes itself through `useChromeScale`, which carries the
           same window fit as the frame without the frame's own page zoom. */}
-      <Windows />
-      <TourOverlay steps={SHELL_TOUR_STEPS} onStepEnter={handleTourStep} diagram={tourDiagram} />
-      <TourDoneModal />
+      {/* The acting surfaces stay with the LIVE shell: a pictured one has no windows to open, no
+          tour to run, and no second copy of either belongs in the document. */}
+      {!preview && <Windows />}
+      {!preview && <TourOverlay steps={SHELL_TOUR_STEPS} onStepEnter={handleTourStep} diagram={tourDiagram} />}
+      {!preview && <TourDoneModal />}
     </>
   );
 }

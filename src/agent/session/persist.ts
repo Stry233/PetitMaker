@@ -1,15 +1,6 @@
 /**
- * Persists the session log under one versioned localStorage envelope
- * (`core/runtime/prefs.ts:agentLogV3`). A stored event drops `raw` (whatever kind carries one:
- * an opaque provider SDK object, not JSON-safe and potentially large) and a `toolResult`'s
- * `image` (a data URL that would bloat storage) — a reasoning/tool-call round trip that leans on
- * `raw` therefore does not survive a reload, by design. An assistant event's reasoning parts are
- * stored as digests rather than transcripts (`digestReasoning`).
- *
- * ONE THING IS STORED BESIDE THE LOG RATHER THAN IN IT: the LEAVE MARKS (`RecordMarks`, which
- * settled records the user has put away or removed). They are not events — nothing the model or the
- * record is folded from — and they name order seqs, which mean nothing outside the log they were
- * made against, so they live under their own key and are dropped whenever that log is.
+ * Persists a versioned session envelope. Provider raw blocks and result images are omitted; reasoning
+ * is stored as bounded digests. Record visibility marks live beside the log and share its lifecycle.
  */
 import { PREFS, readPref, writePref } from '../../core/runtime/prefs';
 import { append, deepFreeze, eventsOf, type SessionLog } from '../core/log';
@@ -20,12 +11,7 @@ export const LOG_VERSION = 3;
 
 interface StoredEnvelope { v: number; events: SessionEvent[] }
 
-/** A stored thought is a DIGEST: a head of the text plus how long it really was. Nothing replays
- *  reasoning to a provider (`project-messages.ts` sends text and tool args only) and nothing reads
- *  it back at length, so the transcript would be quota spent for no reader — a single extended think
- *  runs to tens of KB against a localStorage budget shared with the map itself. `chars` is preserved
- *  when already set, so a load-then-save cycle cannot re-measure an excerpt as the whole thought.
- *  `done` stores true: whatever was still streaming when the log was written gets no further delta. */
+/** Stores a reasoning excerpt with its original length and marks the persisted part complete. */
 function digestReasoning(p: Part): Part {
   if (p.kind !== 'reasoning') return p;
   return {
@@ -39,7 +25,7 @@ function digestReasoning(p: Part): Part {
 function stripForStorage(e: SessionEvent): SessionEvent {
   const copy: Record<string, unknown> = { ...e };
   delete copy.raw;
-  delete copy.rawModel; // rides with `raw` and only with it, across this boundary too
+  delete copy.rawModel; // Meaningful only with the omitted raw blocks.
   if (copy.kind === 'toolResult') delete copy.image;
   if (copy.kind === 'assistant') copy.parts = (copy.parts as Part[]).map(digestReasoning);
   return copy as unknown as SessionEvent;
@@ -62,11 +48,7 @@ export function deserializeLog(raw: string | null, now: () => number = Date.now)
   return { events: frozen, now, nextSeq: maxSeq + 1, listeners: new Set() };
 }
 
-/** The last `compaction` onward, which becomes the retry's new head, PLUS the playbook loads from
- *  before it that `deriveMessages` re-issues after the summary. Dropping those is a second eviction
- *  route to the same defect the re-issue exists to fix: the log would restore without the bodies and
- *  the model would carry on citing steps it can no longer see. Newest non-error load per skill name
- *  only, in seq order, so the stored array stays ascending and costs at most a few KB. */
+/** Keeps the latest compacted window plus the newest pre-window load of each active skill. */
 function prunedBeforeLastCompaction(events: readonly SessionEvent[]): SessionEvent[] {
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i]?.kind !== 'compaction') continue;
@@ -80,26 +62,17 @@ function prunedBeforeLastCompaction(events: readonly SessionEvent[]): SessionEve
   return [...events];
 }
 
-/** What `saveLog` managed: `'saved'` on the plain write, `'pruned'` when the first write failed
- *  (quota, most likely) and the compaction-pruned retry landed, `'lost'` when both failed and the
- *  session will not offer a resume on the next load. The store surfaces this as the storage
- *  banner's notice rather than letting any of the three happen quietly. */
+/** Outcome of the normal write and its one quota-pruned retry. */
 export type StorageHealth = 'saved' | 'pruned' | 'lost';
 
 export function saveLog(log: SessionLog): StorageHealth {
   if (writePref('agentLogV3', serializeLog(log))) return 'saved';
-  // Quota (or storage gone mid-session): prune back to the last compaction and retry once, the
-  // whole recovery budget.
+  // Retry once with the compacted window if the full log cannot be stored.
   const pruned: SessionLog = { ...log, events: prunedBeforeLastCompaction(eventsOf(log)) };
   return writePref('agentLogV3', serializeLog(pruned)) ? 'pruned' : 'lost';
 }
 
-/**
- * Which settled records the user has put away: `filed` (the card is off the job zone) and `cleared`
- * (the record itself is gone). Both are ORDER SEQS, which are unique only within one log — so these
- * are stored under their own key beside the envelope and are only ever read back for the log that
- * came WITH them. `store.ts` drops them whenever it adopts a log these seqs did not come from.
- */
+/** Settled record IDs filed out of the job zone or removed from history. */
 export interface RecordMarks { filed: readonly number[]; cleared: readonly number[] }
 
 export const NO_MARKS: RecordMarks = { filed: [], cleared: [] };
@@ -114,8 +87,7 @@ export function saveMarks(marks: RecordMarks): void {
   writePref('agentMarksV3', JSON.stringify(envelope));
 }
 
-/** The stored marks, or none for anything absent, unparseable or written by another version — the
- *  same all-or-nothing reading `deserializeLog` gives the log they belong to. */
+/** Reads matching-version marks, otherwise returns the empty set. */
 export function loadMarks(): RecordMarks {
   const raw = readPref('agentMarksV3');
   if (raw === null) return NO_MARKS;
@@ -127,22 +99,13 @@ export function loadMarks(): RecordMarks {
   return { filed: seqList(filed), cleared: seqList(cleared) };
 }
 
-/** Removes the key outright rather than storing an empty envelope, the way `io/autosave` retires
- *  its own pair: absent and empty read the same here, and absent leaves nothing behind. */
+/** Removes the marks envelope. */
 export function clearMarks(): void {
   if (typeof localStorage === 'undefined') return;
   try { localStorage.removeItem(PREFS.agentMarksV3.key); } catch { /* storage is gone */ }
 }
 
-/**
- * The stored session, and the two facts the caller needs about how it came back.
- *
- * `corruptRaw` IS THE EVIDENCE, and it is handed up because it is about to be destroyed: the store
- * adopts a fresh log after an unreadable read, and the very next save writes over the bytes that
- * failed. The notice says the session was "set aside", and keeping them is what makes that sentence
- * true — the corrupt banner's own Export writes exactly this out for a bug report. Nothing else may
- * read it: it is a discarded blob of unknown shape, never a log.
- */
+/** Reads the stored session and preserves unreadable source bytes for the recovery export. */
 export function loadLog(): { log: SessionLog | null; corrupt: boolean; corruptRaw?: string } {
   const raw = readPref('agentLogV3');
   const log = deserializeLog(raw);
@@ -152,10 +115,7 @@ export function loadLog(): { log: SessionLog | null; corrupt: boolean; corruptRa
   if (isJobActive(log)) {
     const events = eventsOf(log);
     const last = events[events.length - 1];
-    // A trailing `pauseRequested` never finished pausing (the crash landed before the loop's own
-    // `paused` append) and would otherwise strand the session in phase 'pausing' forever, with no
-    // loop left to run and deliver the composer's steer into: it gets the synthetic `paused` tail
-    // like any other active-but-not-yet-paused log. Only a trailing `paused` is already settled.
+    // An active restored job is held in a resumable paused state.
     if (last?.kind !== 'paused') {
       append(log, { kind: 'paused' });
     }

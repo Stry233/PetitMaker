@@ -7,8 +7,8 @@
  * accessible name, and the way a repaint loses one is not a crash but a control that quietly
  * stops being wired. The pin is "the control is there AND the handler fires".
  *
- * There is no classic-cursors control: the classic set is a build constant. The Painted/System
- * cursor pair is the accessibility opt-out and stays.
+ * Classic cursor art and export branding are build choices, not user settings. The
+ * Painted/System cursor pair is the accessibility opt-out and stays.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
@@ -16,6 +16,7 @@ import { I18nProvider } from '../../../i18n/context';
 import { SettingsModal, type SettingsModalProps } from '../../../ui/chrome/modals/SettingsModal';
 import { en } from '../../../i18n/locales/en';
 import { setStoreState } from '../../_store';
+import { useEditorStore } from '../../../state/store';
 
 /** The English string a control shows. `en` reads as possibly-absent by index, and a key that is
  *  not there is a test bug rather than a missing assertion. */
@@ -59,6 +60,7 @@ const CONTROLS = [
   ['radiogroup', 'modal.settings_quality3d'],
   ['radiogroup', 'modal.settings_motion'],
   ['radiogroup', 'modal.settings_cursor'],
+  ['button', 'modal.keyboard_title'],
   ['button', 'modal.settings_tour'],
   ['button', 'modal.settings_ok'],
 ] as const;
@@ -79,6 +81,12 @@ describe('the Settings panel still offers every control', () => {
   it('and no other cursor control: the classic-cursors setting is gone, not hidden', () => {
     renderModal();
     expect(screen.queryByText(/classic/i)).toBeNull();
+  });
+
+  it('does not expose the deploy-time export branding choice', () => {
+    renderModal();
+    expect(screen.queryByText('Logo only')).toBeNull();
+    expect(screen.queryByText('Logo, site and QR code')).toBeNull();
   });
 });
 
@@ -144,6 +152,15 @@ describe('and each control still writes its preference', () => {
     // The readout reads "<Build> <number>" — matched by its leading word so the number can move.
     fireEvent.click(screen.getByText(new RegExp(`^${label('about.build')} \\S+`)));
     expect(handlers.onAbout).toHaveBeenCalled();
+  });
+
+  it('the keyboard picture closes the panel and opens the shortcuts window', () => {
+    renderModal();
+    expect(useEditorStore.getState().modals.keyboard).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: label('modal.keyboard_title') }));
+    expect(handlers.onClose).toHaveBeenCalled();
+    expect(useEditorStore.getState().modals.keyboard).toBe(true);
+    useEditorStore.getState().setModal('keyboard', false);
   });
 
   it('the tour pill closes the panel before it starts the tour', () => {

@@ -23,9 +23,10 @@ describe('every target', () => {
     // Two sites means each has an audience. A bilingual tab title reads as a mistake to whichever
     // reader you actually have, and it is the first thing they see — before the app has loaded and
     // retitled for their locale.
-    expect(DEPLOY_TARGETS.global.title).toMatch(/^[\x20-\x7E]+$/);
+    expect(DEPLOY_TARGETS.global.title).toContain('Petit Planet Map Editor & Island Planner');
     expect(DEPLOY_TARGETS.global.description).toMatch(/^[\x20-\x7E]+$/);
-    expect(DEPLOY_TARGETS.cn.title).not.toMatch(/[A-Za-z]/);
+    expect(DEPLOY_TARGETS.cn.title).toContain('2D/3D');
+    expect(DEPLOY_TARGETS.cn.title).toBe('谷地工坊 - 星布谷地地图编辑器｜岛建规划与 2D/3D 预览');
     // The one Latin run the zh description may carry is the game's own name: it is the term a
     // cross-language search arrives by, and a name is not a language switch.
     expect(DEPLOY_TARGETS.cn.description.replace(/Petit Planet/g, '')).not.toMatch(/[A-Za-z]{4}/);
@@ -67,7 +68,7 @@ describe('filing rows', () => {
 
 describe('search verification metas', () => {
   it('the mainland build carries the Baidu ownership proof; the global build claims none', () => {
-    expect(DEPLOY_TARGETS.cn.verificationMetas).toContainEqual({ name: 'baidu-site-verification', content: 'codeva-LFo4rScSrF' });
+    expect(DEPLOY_TARGETS.cn.verificationMetas).toContainEqual({ name: 'baidu-site-verification', content: 'codeva-jY3ZDA0Q7F' });
     expect(DEPLOY_TARGETS.global.verificationMetas).toEqual([]);
   });
 });

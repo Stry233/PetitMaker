@@ -1,43 +1,8 @@
 /**
- * THE CASCADE STAIR: one water composition stacked down a flank of the mass, band over band.
- *
- * The style target's clearest water figure is a terraced cascade: seven stacked bands, one per terrace,
- * each 2 to 4 rows deep and 30 to 40 cells wide, separated by 1 to 3 rows of mountain, one composition
- * accounting for a large share of the island's 780 capped-face cells. Half that map's bodies present a
- * capped face and a quarter span terraces, so its water is a VERTICAL system, and a stair is the form
- * that says so from inside the map: a visitor at the foot sees every tier at once.
- *
- * The stair is a STRIP walked down the fall line, and each of the terrace steps it meets is cut as a
- * BAND with its landing. THE WHOLE OF IT IS ONE CONNECTED BODY: the crossing between one band's landing
- * and the next band is flooded too, and a crossing the ground does not offer ENDS the stair rather than
- * letting it carry on past a dry terrace. A SPLIT STAIR IS INVISIBLE: a stair cut as two 2-tier pools
- * reads as two ordinary ponds, and bands allowed to stand apart arrive as one body on 0 of 16 hexia
- * stairs and 1 of 14 tafa ones, which puts the figure the pass exists to draw on no map at all. Held
- * connected, both templates read a stair on 10 seeds of 10, every one a single body. The
- * 1-to-3-rows-of-mountain separation between the target's own bands is the RISER between two terraces,
- * which the landing row already crosses; a whole dry terrace between two pools is a different thing.
- *
- * WHAT THE GROUND GIVES, THE STAIR TAKES. A designed island's terrace FLOORS carry its streets, its lots
- * and their doorsteps, so a rigid strip has to find its whole width free on every row of a descent and
- * almost never does: it reaches a second band on 12 attempts of 5127 over twenty measured maps. Three
- * things answer that, and together they cut a stair on every seed of both templates — the band takes the
- * widest CAPPED RUN inside the band above it rather than one fixed width, the CROSSING between two
- * treads may be narrower still (`CHUTE_MIN`), and the floor on a band's width is five cells, not seven.
- *
- * LEGAL BY CONSTRUCTION, band by band, on the same two arguments the rest of the water is cut by:
- *  - a REACH row shows no face — its flanks and the row ahead of it stand at its own level or above —
- *    so V-WTR-02 asks it for no caps (`cellsFit`).
- *  - a BAND's front row is the one place a face is wanted. Its two flanks are mountain at EXACTLY the
- *    band's tier, which is the cap V-WTR-02 names, and `traceToMountain` walks the whole strip through
- *    same-level water to reach them, so one cap at each end serves a band of any width. The row it
- *    pours onto, caps included, is read for uniformity first (V-WTR-03) and then flooded at its own
- *    level, so the fall arrives in water rather than on a shelf.
- *  - EVERY ATTEMPT IS TRANSACTIONAL, like the story's: a strip that runs out of steps is put back cell
- *    for cell and the next candidate is tried.
- *
- * Pure over its inputs (a `TerrainPlan` and two masks): no state, no rules consulted, no browser API,
- * and the same plan cuts the same stairs — nothing here is seeded, the lips are ranked by the ground
- * itself and the first strip that descends is the stair.
+ * Carves connected water bands down a terrace flank. Each band chooses the widest capped run still
+ * available; narrower chutes may join adjacent treads, while a long dry crossing ends the feature.
+ * Reach rows expose no face, front rows terminate against same-tier caps, and receiving rows must be
+ * uniform. Attempts are transactional and deterministic over the terrain plan and masks.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';

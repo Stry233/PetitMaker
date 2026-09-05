@@ -87,7 +87,7 @@ export function generateTerrain(
           if (t && (t.type === TerrainType.Mountain || t.type === TerrainType.Water)) touched.push(c);
         }
       }
-      if (touched.length) {
+      if (touched.length && !(config.stencilPlan.read === 'shape' && stencil.cellAligned)) {
         const pick = stencilChooser(origin, stencil);
         if (pick) edgeCutTerrainWith({ gridState: state, executeCommand }, touched, pick);
         else edgeCutGeneratedTerrain({ gridState: state, executeCommand }, touched, 'round');

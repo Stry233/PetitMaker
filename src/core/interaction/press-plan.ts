@@ -54,6 +54,17 @@ export interface PressFacts {
   hit: PressHit | null;
   /** The active tool's own `canActAt` answer for this cell. */
   placementAllowed: boolean;
+  /** The active tool's own `grabAt` answer for this cell: a plain press picks up something the
+   *  TOOL owns and the drag moves it (the annotate select state's note). False where the tool
+   *  keeps no such gesture. */
+  toolGrabs: boolean;
+  /** The active tool's `selects` answer: it stands in its own select state, so the modifier means
+   *  here what it means in the map's select mode — the press toggles (through the tool's own
+   *  stroke) and the drag is a band. */
+  toolSelects: boolean;
+  /** The active tool's `selectHit` answer for this cell — what its select state finds under the
+   *  pointer and whether it is already a member, for the modifier cursor's add/remove badge. */
+  toolSelectHit: { id: string; selected: boolean } | null;
   /** Whether the active tool has a multi-tap gesture standing (`Tool.hasPending`) — the macro tool's
    *  road-link mark, the curve's chain of anchors. A tool that does not implement it is unaffected
    *  by the branch below. */
@@ -61,6 +72,10 @@ export interface PressFacts {
   /** The view pans a left drag through its own tool path (2D, through the Hand tool). False where
    *  the pointer machine must pan it (the 3D editor). */
   viewPansLeftDrag: boolean;
+  /** The armed stroke is a CLICK and uses no drag (the annotate tool's text/route/erase armings):
+   *  the press acts, and a hand that then pulls is asking to move the map, not the tool — so the
+   *  drag goes to the camera instead of dying in a stroke that ignores it. */
+  clickOnlyStroke: boolean;
 }
 
 export interface PressPlan {
@@ -209,6 +224,23 @@ export function resolvePress(f: PressFacts): PressPlan {
       down: [{ kind: 'select', block: { kind: 'object', id: f.hit.id } }],
     });
   }
+  // A tool standing in its own select state answers the modifier as the map's select mode does:
+  // the press still reaches the tool (whose own stroke toggles the thing it hit), and the drag is
+  // a band — never a pan, never a move.
+  if (f.toolSelects && f.multiSelectHeld) {
+    return plan({
+      down: [{ kind: 'tool-stroke' }],
+      onDrag: [{ kind: 'band-select', from: f.macro }],
+    });
+  }
+  if (f.clickOnlyStroke) {
+    return plan({
+      down: [{ kind: 'tool-stroke' }],
+      // By the MACHINE in both views: the tool path's pan is the Hand tool's, which is not the
+      // tool standing here.
+      onDrag: [{ kind: 'pan-camera', by: 'machine', source: 'left-drag' }],
+    });
+  }
   return plan({ down: [{ kind: 'tool-stroke' }] });
 }
 
@@ -231,12 +263,19 @@ export function cursorFactsFor(f: PressFacts): CursorFacts {
   let ctrlHint: CursorFacts['ctrlHint'] = null;
   if (toggle && toggle.kind === 'toggle-select' && toggle.block.kind === 'object') {
     ctrlHint = isMember(f.selection, toggle.block.id) ? 'select-remove' : 'select-add';
+  } else if (f.multiSelectHeld && f.toolSelects && f.toolSelectHit) {
+    // The tool's own select state: its toggle runs inside the tool stroke, so the membership fact
+    // arrives through `toolSelectHit` rather than a toggle intent.
+    ctrlHint = f.toolSelectHit.selected ? 'select-remove' : 'select-add';
   } else if (p.onDrag.some((i) => i.kind === 'band-select')) {
     ctrlHint = 'marquee';
   }
   return {
     ctrlHint,
     pressSelects: p.down.some((i) => i.kind === 'select') && !p.down.some((i) => i.kind === 'tool-stroke'),
-    overSelected: p.onDrag.some((i) => i.kind === 'move-selection'),
+    // A press that would pick something up: the machine's own move gesture, or a tool-owned grab
+    // (the annotate select state's note) — the open hand promises the same closed hand either way.
+    overSelected: p.onDrag.some((i) => i.kind === 'move-selection')
+      || (f.toolGrabs && !f.multiSelectHeld && p.down.some((i) => i.kind === 'tool-stroke')),
   };
 }

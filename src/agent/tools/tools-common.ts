@@ -18,6 +18,7 @@
  *   converses in any language but reasons over stable rule feedback.
  */
 import {
+  CellZone,
   CommandType,
   type CatalogItem,
   type Command,
@@ -29,8 +30,10 @@ import {
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { translateFor } from '../../i18n/context';
 import { footprintCells, getPlacedObjectSize } from '../../state/object-geometry';
+import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { regionBounds } from '../../state/region-bounds';
 import { circleCells, lineCells } from '../../tools/paint';
+import { rectsOverlap } from '../../core/model/grid-model';
 import { normalizeGeometry, missingScalars, type FlatDefault } from './geometry';
 import { regionTokens } from '../serialize';
 import { RULE_HINTS } from '../../rules';
@@ -79,6 +82,42 @@ export type ToolResultBody = { content: string; isError: boolean; image?: { data
 import { clamp } from '../../core/model/math';
 export { clamp };
 export const dedupe = (xs: string[]): string[] => [...new Set(xs)];
+
+/** The cells a WRITE may actually reach: the buildable grass zone. Sea, beach, the plaza and the
+ *  boundary refuse every edit (V-ZONE-01), and the zone map is static — so a write's geometry is
+ *  clipped up front and the result names the count, instead of one off-zone corner failing or
+ *  reverting the whole stroke. Read tools never clip: a look at the sea is a legitimate look. */
+export function clipBuildable(cells: MacroCoord[], state: GridState): { cells: MacroCoord[]; offZone: number } {
+  const kept = cells.filter((c) => state.cells[c.y]?.[c.x]?.zone === CellZone.Grass);
+  return { cells: kept, offZone: cells.length - kept.length };
+}
+
+/** The one sentence a clipped write appends where anything was clipped. */
+export function offZoneNote(offZone: number): string {
+  return offZone > 0 ? ` ${offZone} cell(s) outside the buildable grass zone were skipped.` : '';
+}
+
+/** The paint cells a NON-coating object footprint covers, filtered out: terrain under a standing
+ *  object is never paintable (V-PLACE-BLOCK), and the rule's own fix is clear_area first. Roads
+ *  and other coatings ride surface changes and do not block. */
+export function clipOccupied(cells: MacroCoord[], state: GridState): { cells: MacroCoord[]; occupied: number } {
+  const index = getObjectIndex(state);
+  const kept = cells.filter((c) => {
+    const fp = { x: c.x - 0.5, y: c.y - 0.5, w: 1, h: 1 };
+    for (const e of entriesNear(index, fp)) {
+      if (e.coating) continue;
+      if (rectsOverlap(e.rect, fp)) return false;
+    }
+    return true;
+  });
+  return { cells: kept, occupied: cells.length - kept.length };
+}
+
+/** The sentence an occupied-clipped paint appends where anything was clipped. */
+export function occupiedNote(occupied: number): string {
+  return occupied > 0 ? ` ${occupied} cell(s) under standing objects were skipped (clear_area removes object and terrain together).` : '';
+}
+
 
 /* ── error formatting (the LLM feedback) ─────────────────────────────── */
 
@@ -435,8 +474,6 @@ export function runStroke(
  * own REVERTED string (the seven call sites word that message differently). It names
  * the same author runStroke does — a model wrote this content either way, and the
  * export disclosure and clearGenerated's sparing both read that authorship.
- * run_generator delegates to kit/operations instead, which pushes its own
- * Procedural source.
  *
  * The painted region binds here exactly as it binds runStroke, over the same
  * `firstStray` test. The body issues its own commands, so the check reads them back

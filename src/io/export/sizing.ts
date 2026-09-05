@@ -10,11 +10,29 @@ import { TILE_SIZE } from '../../core/model/constants';
 
 export interface PixelSize { w: number; h: number }
 
-/** Native pixel size of the 2D map capture region (matches MapRenderer.captureMapImage:
- *  a half-tile border is added on top/left). At capture resolution 1.0 this is 64 px/cell. */
+/** The map band's frame, in CELLS.
+ *
+ *  ONE definition, because two things must agree about it to the pixel: the 2D capture
+ *  (`MapRenderer.captureMapImage`, which frames `(-half, -half, w*TILE + half, h*TILE + half)`) and
+ *  any renderer that draws the same band from the map data instead. They are composited over each
+ *  other at export time — the plan-notes ink is stretched across the band's full rect — so a
+ *  renderer that framed the cells alone would land the user's ink half a cell off. */
+export interface BandGeometry {
+  /** Top-left of the frame in cell coordinates. A half cell of bleed is kept on top and left. */
+  originX: number;
+  originY: number;
+  widthCells: number;
+  heightCells: number;
+}
+export function bandGeometry(t: { width: number; height: number }): BandGeometry {
+  const half = 0.5;
+  return { originX: -half, originY: -half, widthCells: t.width + half, heightCells: t.height + half };
+}
+
+/** Native pixel size of the 2D map capture region. At capture resolution 1.0 this is 64 px/cell. */
 export function mapNativePx(t: { width: number; height: number }): PixelSize {
-  const half = TILE_SIZE / 2;
-  return { w: t.width * TILE_SIZE + half, h: t.height * TILE_SIZE + half };
+  const band = bandGeometry(t);
+  return { w: band.widthCells * TILE_SIZE, h: band.heightCells * TILE_SIZE };
 }
 
 /** Capture request (long side, px) that asks for native resolution. The renderer clamps this

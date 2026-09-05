@@ -1,7 +1,7 @@
 /**
  * THE GENERATION FLOOR: what every generator here stands on, and its door.
  *
- * Behind it, three files and nothing else — a cell-set helper answers to no generator and belongs to
+ * Behind it, four files and nothing else — a cell-set helper answers to no generator and belongs to
  * `core/model/geometry` rather than here:
  *
  *   types.ts     what a finished terrain plan IS — two Int8Arrays over the grid, tier and water

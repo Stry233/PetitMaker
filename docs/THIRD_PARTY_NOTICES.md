@@ -55,9 +55,19 @@ This project includes the following third-party open-source packages, resolved f
 | @pixi/ticker | 7.4.3 | MIT | Mat Groves | http://pixijs.com/ |
 | @pixi/unsafe-eval | 7.4.3 | MIT | Matt Karl <matt@mattkarl.com> | http://pixijs.com/ |
 | @pixi/utils | 7.4.3 | MIT | Mat Groves | http://pixijs.com/ |
+| @protobufjs/aspromise | 1.1.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/base64 | 1.1.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/codegen | 2.0.5 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/eventemitter | 1.1.1 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/fetch | 1.1.1 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/float | 1.0.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/path | 1.1.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/pool | 1.1.0 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
+| @protobufjs/utf8 | 1.1.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
 | @stablelib/base64 | 1.0.1 | MIT | Dmitry Chestnykh | https://github.com/StableLib/stablelib/tree/master/packages/base64 |
 | @types/css-font-loading-module | 0.0.12 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/css-font-loading-module |
 | @types/earcut | 2.1.4 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/earcut |
+| @types/node | 26.4.0 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node |
 | call-bind-apply-helpers | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bind-apply-helpers#readme |
 | call-bound | 1.0.4 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bound#readme |
 | dunder-proto | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/dunder-proto#readme |
@@ -67,25 +77,33 @@ This project includes the following third-party open-source packages, resolved f
 | es-object-atoms | 1.1.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-object-atoms#readme |
 | eventemitter3 | 4.0.7 | MIT | Arnout Kazemier | — |
 | fast-sha256 | 1.3.0 | Unlicense | Dmitry Chestnykh | — |
-| framer-motion | 12.40.0 | MIT | Matt Perry | — |
+| flatbuffers | 25.9.23 | Apache-2.0 | The FlatBuffers project | https://google.github.io/flatbuffers/ |
+| framer-motion | 12.43.0 | MIT | Matt Perry | — |
 | function-bind | 1.1.2 | MIT | Raynos <raynos2@gmail.com> | https://github.com/Raynos/function-bind |
 | get-intrinsic | 1.3.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/get-intrinsic#readme |
 | get-proto | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/get-proto#readme |
 | gopd | 1.2.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/gopd#readme |
+| guid-typescript | 1.0.9 | ISC | nicolas | — |
 | has-symbols | 1.1.0 | MIT | Jordan Harband <ljharb@gmail.com> (http://ljharb.codes) | https://github.com/ljharb/has-symbols#readme |
 | hasown | 2.0.3 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/inspect-js/hasOwn#readme |
 | ismobilejs | 1.1.1 | MIT | Kai Mallea <kmallea@gmail.com> | https://github.com/kaimallea/isMobile |
 | js-tokens | 4.0.0 | MIT | Simon Lydell | — |
 | json-schema-to-ts | 3.1.1 | MIT | Thomas Aribart | https://github.com/ThomasAribart/json-schema-to-ts#readme |
+| long | 5.3.2 | Apache-2.0 | Daniel Wirtz <dcode@dcode.io> | — |
 | loose-envify | 1.4.0 | MIT | Andres Suarez <zertosh@gmail.com> | https://github.com/zertosh/loose-envify |
 | math-intrinsics | 1.1.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/math-intrinsics#readme |
-| motion-dom | 12.40.0 | MIT | Matt Perry | — |
+| motion-dom | 12.43.0 | MIT | Matt Perry | — |
 | motion-utils | 12.39.0 | MIT | Matt Perry | — |
 | object-inspect | 1.13.4 | MIT | James Halliday <mail@substack.net> (http://substack.net) | https://github.com/inspect-js/object-inspect |
+| onnxruntime-common | 1.29.0 | MIT | fs-eire | — |
+| onnxruntime-web | 1.29.0 | MIT | fs-eire | — |
 | openai | 6.42.0 | Apache-2.0 | OpenAI <support@openai.com> | — |
 | pixi.js | 7.4.3 | MIT | Mat Groves | http://www.pixijs.com/ |
 | pixi.js-legacy | 7.4.3 | MIT | Mat Groves | http://www.pixijs.com/ |
+| platform | 1.3.6 | MIT | Benjamin Tan <demoneaux@gmail.com> | — |
+| protobufjs | 7.6.5 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | https://protobufjs.github.io/protobuf.js/ |
 | punycode | 1.4.1 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/punycode |
+| qrcode-generator | 2.0.4 | MIT | Kazuhiko Arase | — |
 | qs | 6.15.2 | BSD-3-Clause | — | https://github.com/ljharb/qs |
 | react | 18.3.1 | MIT | — | https://reactjs.org/ |
 | react-dom | 18.3.1 | MIT | — | https://reactjs.org/ |
@@ -98,6 +116,7 @@ This project includes the following third-party open-source packages, resolved f
 | three | 0.169.0 | MIT | mrdoob | https://threejs.org/ |
 | ts-algebra | 2.0.0 | MIT | Thomas Aribart | https://github.com/ThomasAribart/ts-algebra#readme |
 | tslib | 2.8.1 | 0BSD | Microsoft Corp. | https://www.typescriptlang.org/ |
+| undici-types | 8.3.0 | MIT | — | https://undici.nodejs.org |
 | url | 0.11.4 | MIT | defunctzombie | — |
 | use-sync-external-store | 1.6.0 | MIT | — | — |
 | zustand | 4.5.7 | MIT | Paul Henschel | https://github.com/pmndrs/zustand |

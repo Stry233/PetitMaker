@@ -23,7 +23,7 @@ METHOD
 3. Beds: one scatter_objects call per bed, one species each, placed at the spots people look at (in front of doors, beside the plaza, at a pond's viewing side).
 4. Orchards/rows: one species per block or line, at region scale.
 5. Specimens last, at the composition's focal points.
-6. END EVERY PLANTING PASS WITH find_speckle and clear or replant each patch it names BEFORE moving to the next stage — a sweep saved for the deathbed meets the turn cap instead (a live run was handed 12 noisy rects at turn 68 and could fix none). After a clean sweep, STOP.
+6. END EVERY PLANTING PASS WITH find_speckle and clear or replant each named patch BEFORE moving to the next stage. Delayed cleanup can exhaust the turn budget. After a clean sweep, STOP.
 
 FAILURE MODES
 - One scatter over the whole map: confetti by construction. Every call gets a small rect and one species.

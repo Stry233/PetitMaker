@@ -138,12 +138,7 @@ export function previewMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): M
       }
     }
   }
-  // What it PLANTS is part of what it builds, and a planting is nothing else. `objects` is a Map,
-  // so it is walked as one.
-  //
-  // `removed`, the mirror walk: every id the LIVE map holds that the run's own copy no longer does —
-  // a coating this run replaced. Both walks read the SAME two object maps, so `added`/`removed` can
-  // never disagree about which side an id fell on.
+  // Compare object IDs in the input and preview maps to include placements and replaced coatings.
   const before = new Set(ctx.state.objects.keys());
   const after = new Set(state.objects.keys());
   for (const [objectId, obj] of state.objects) {

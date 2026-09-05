@@ -597,7 +597,9 @@ describe('a collapse over a dock', () => {
 
     // Past the floating exit's own length, solidly inside the sheet's return: the ground must still
     // be standing in its live docked form, not an exiting clone of the free card.
-    await new Promise((resolve) => { setTimeout(resolve, seconds('panel.close') * 1000 + 60); });
+    await act(async () => {
+      await new Promise((resolve) => { setTimeout(resolve, seconds('panel.close') * 1000 + 60); });
+    });
     const plate = screen.getByTestId('panel-shell');
     expect(plate.style.width).toBe(`${PANEL_WIDTH + DOCK_CHROME_W}px`);
 

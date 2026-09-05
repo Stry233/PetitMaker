@@ -1,34 +1,8 @@
 /**
- * Stage A of the methodology pipeline: WHERE the mass sits, and the coarse terraced structure the whole
- * island is built on.
- *
- * The direction is fixed FIRST and drawn at random: a map decides where its high ground is before it
- * decides what stands on it. This module is that decision plus its consequence:
- *
- *  - the ARCHETYPE — a wall on one of the four sides, a highland in one of the four corners, a
- *    raised rim, scattered massifs, or a low-relief island. Drawn per seed against richness-scaled
- *    weights, so the composition varies across a batch instead of repeating one arrangement.
- *  - the PLATES — continuous terrace surfaces that TILE the buildable island: every buildable cell
- *    belongs to exactly one plate, each plate is 4-connected and stands at one tier. The plates are
- *    rectilinear because a terrace step is what makes a district read as a district (the decoded
- *    references partition at two scales: the garden town by its streets, 17-24 blocks of median
- *    ~250 cells; the terraced island by its terrace steps, 69 places of median 48 nested inside
- *    those bands). Streets and places are cut INTO this structure by the later stages.
- *
- * NEAR-LOW-FAR-HIGH is read along the ARCHETYPE'S OWN AXIS, measured from the plaza: the
- * plaza's plate is the low one and the archetype's mass rises away from it. A compass direction is
- * never assumed — the axis is part of what the seed chooses.
- *
- * TIER LEGALITY IS BY CONSTRUCTION. Touching plates step at most `PLATE_STEP_MAX` tiers, which is
- * V-MTN-03's own window (a mountain at N >= 4 needs a full 3x3 of support at >= N-3: the cells along
- * a boundary of a plate at N have their whole 3x3 either on their own plate or on a plate at N-3, so
- * the support the rule asks for is there). Touching is read over the 3x3, diagonals included, since
- * that is the window the rule reads. A plate's tier is capped further by how
- * far its cells stand from the coast, at the same three tiers per cell of distance the sculptor
- * gives itself.
- *
- * Pure and deterministic per (seed, template, richness): no state, no commands, no browser API, so
- * it runs inside the worker pool. `terrain-sculpt.ts` is what turns tiers into commands.
+ * Plans the island's coarse terrace mass before streets and places are assigned. Every buildable
+ * cell belongs to one 4-connected, single-tier plate. The seeded archetype chooses an axis relative
+ * to the low plaza plate; adjacent tiers and coast-facing heights are capped to satisfy the terrain
+ * support rules. Pure and deterministic for `(seed, template, richness)` so it can run in a worker.
  */
 import { ELEVATION_MAX } from '../../../../core/model/constants';
 import { distanceField, flatIndex } from '../../../../core/model/grid-model';
@@ -166,51 +140,12 @@ const PEAK_TIER = { low: 2, high: ELEVATION_MAX } as const;
  *  each plate's share of the top reading. Above 1 the rise is kept to the very top of the mass (the
  *  garden town is 99% ground level); at 1 the whole slope terraces, which is the target island. */
 const RELIEF_GAMMA = { low: 3, high: 1 } as const;
-/**
- * The low-relief archetype's ceiling, at richness 0 and 1.
- *
- * The quiet end is the garden town's own reading: 99% of it stands at ground level and what is
- * raised stands at 1 or 2. The RICH end is not zero, because low relief is a SHAPE — a broad gentle
- * rise instead of a wall against one side — and a full-richness island with nothing to climb comes back
- * single-storey on one seed in ten, scoring 0.34 bits of pavement entropy against the reference's 2.65.
- * Four tiers is the floor for a full-richness map.
- */
+/** Low-relief remains a broad rise: one tier at minimum richness and four at maximum richness. */
 const LOW_RELIEF_PEAK = { low: 1, high: 4 } as const;
 
 /**
- * THE SUMMIT'S OWN TERRACES: the fewest cells one may hold, and how many a composition may stack.
- *
- * A plate is one surface at one tier and neighbouring plates step at most `PLATE_STEP_MAX`, so the
- * tallest tier the cut alone can reach is `PLATE_STEP_MAX` per plate the mass stands deep from the
- * plaza's — two or three plates on a real island, which is a peak of six or nine however tall the
- * caller asked for, and less again where the skirt is short. The answer is the terraced massif the
- * reference island actually is: nested surfaces inside the top ground, each stepping up over a ring
- * of the one below.
- *
- * THE RING IS SIZED BY THE CLIMB, not by legality. V-MTN-03 is satisfied by an inset of one cell
- * (it reads a cell's 3x3, and the ring is that support), but a terrace nobody can walk up onto is
- * scenery: the ring has to hold the flight that climbs it, which is `RAMP_RUN` cells of run per tier
- * plus the one cell before the step that no coating may be laid on. So a crown climbs as many tiers
- * as its own ring can carry a flight for, and no more.
- *
- * THE FLIGHT NEEDS ITS RUN ON ONE SIDE, NOT ON FOUR, and that is what `CROWN_RING_MIN` is for. An
- * inset taken uniformly pays the whole run on every side of the terrace, which on a real island costs
- * the crown most of its area: the ring is eroded from a mass a hundred cells across, so five cells all
- * round is a fifth of it and thirteen cells all round leaves a cap. The reference island's upper
- * terraces hold 700 to 1000 cells against the ~100 ours held, and a wide terrace is what the walk
- * needs to stand ON the high ground rather than to visit a knoll. So the run is kept on the side the
- * walk climbs from — the plaza's — and every other side keeps the legal minimum.
- *
- * MEASURED, over twenty maps at full richness, as ring minimum 1 / 2 / 3 / uniform / none:
- * peaks reaching the asked cap 18 / 18 / 17 / 17 / 18 of 20, pavement above level 4 9.3% / 9.3% / 9.3%
- * / 9.1% / 9.5%, water share of land 9.3% / 9.2% / 9.3% / 9.3% / 9.4%, the largest top-terrace surface
- * at a median of 422 / 422 / 422 / 410 / 486 cells, per-map time 590 / 608 / 606 / 588 / 669 ms. So the
- * width of the ring is very nearly a WASH on this generator, and the reason is measured too: the cut
- * and the skirt already reach the asked cap on most seeds, so the crown pass runs on a minority of them
- * and its own footprint moves only those. A ring of 1 is legal (it is V-MTN-03's own window), reads no
- * worse than any other variant on the four readings, and costs nothing in time; dropping the flight's
- * run altogether reads the widest terraces of all and is rejected anyway, both because it costs 80 ms a
- * map and because a terrace with no run for a flight is one nobody can climb onto.
+ * Summit terraces nest inside the top plate. The plaza-facing side reserves enough run for its
+ * ramp flight; the other sides keep the one-cell support ring required by the terrain rule.
  */
 const CROWN_INSET_MARGIN = 1;
 const CROWN_MIN_CELLS = 60;
@@ -221,16 +156,7 @@ const CROWN_RING_MIN = 1;
  *  FLIGHT CLIMBS. */
 const crownInset = (tiers: number): number => RAMP_RUN * tiers + CROWN_INSET_MARGIN;
 
-/**
- * Plates including the summit's own terraces: what the CUT may produce, plus what the crown pass adds
- * on top of it — terraces of one massif rather than districts of their own, which is why they are
- * counted apart from the partition's coarseness.
- *
- * MEASURED, not derived. A crown adds its own plate per step it climbs, and one MORE for every piece
- * it cut a donor plate into (`splitDonors`), so the arithmetic bound is the step count times the
- * plates a ring can sever rather than the step count itself. Twenty seeds on both templates run
- * 23 to 27 plates against the 33 here.
- */
+/** Maximum base plates plus the additional nested summit terraces. */
 export const PLATE_TOTAL_MAX = PLATE_COUNT_BAND.max + CROWN_STEPS_MAX;
 /**
  * The potential every buildable cell carries whatever the archetype says, at richness 0 and 1.
@@ -752,11 +678,9 @@ function massifCentres(
  * may claim, and the neighbours' neighbours after them.
  *
  * THE READING IS RELATIVE TO THE COMPOSITION'S OWN TOP, not to the raw potential. A plate takes the
- * MEAN potential over its cells, and the archetype's potential is a ramp or a cone: a mean over a
- * plate's worth of it never reads 1, so multiplying it by the asked peak spends only three quarters
- * of the height on the tallest plate and less on every other. That is the arithmetic behind the
- * user's Max-Height bug — 8 asked, 6 planned, and the sculptor's own passes brought it to 7 — so the
- * readings are scaled by the highest of them and the shape of the composition is what survives.
+ * MEAN potential over its cells, and the archetype's potential is a ramp or a cone. Normalizing by
+ * the highest plate mean makes the requested peak reachable while preserving the composition's
+ * relative shape.
  */
 function assignTiers(
   plates: Plate[], plateOf: Int16Array, W: number, H: number,
@@ -779,14 +703,8 @@ function assignTiers(
     plate.relief = plate.cells.length ? sum / plate.cells.length : 0;
     if (plate.id !== plazaPlateId) top = Math.max(top, plate.relief);
   }
-  // THE READING IS RELATIVE TO THE COMPOSITION'S OWN TOP, and how far down the slope the height is
-  // spread is the style axis itself. A plate takes the MEAN potential over its cells and the
-  // archetype's potential is a ramp or a cone, so a mean never reads 1: multiplying it by the asked
-  // peak spends three quarters of the height on the tallest plate and less on every other, which is
-  // the arithmetic behind the user's Max-Height bug (8 asked, 6 planned, 7 built). Scaling by the
-  // top is what makes the cap reachable. The exponent is what keeps the quiet end of the axis a flat
-  // garden town: at richness 0 only the very top of the composition rises at all, and at richness 1
-  // the whole slope is terraced.
+  // Normalize plate means so the requested peak is reachable. The exponent controls how far height
+  // spreads down the slope: low richness raises only the top, while high richness terraces it all.
   const gamma = lerp(RELIEF_GAMMA.low, RELIEF_GAMMA.high, richness);
   const scale = massif && top > 0 ? 1 / top : 1;
   for (const plate of plates) {

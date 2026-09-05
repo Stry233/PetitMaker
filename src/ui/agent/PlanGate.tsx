@@ -1,19 +1,7 @@
 /*
- * PlanGate.tsx — the plan as the thing being approved (normative prototype `.plangate`).
- *
- * A PLAN ASK IS AN ASK CARD LIKE ANY OTHER, on the panel's plate under the same retiring spine
- * (`GateBlock.tsx:AskCard`), with no plan tint of its own: a proposed plan reads as a question the
- * record is holding rather than as a surface of its own.
- *
- * IT LISTS THE STAGES IT IS ASKING ABOUT, which the gate's own sentence cannot: the describer folds
- * a plan down to "4 stages: a, b, c +1" for the dock, and a checkpoint flag survives neither the
- * count nor the ellipsis. The list comes off `AskRecord.stages`, which the projection reads from the
- * `update_plan` call the gate is holding — the `plan` event lands only once the ask is approved, so
- * at ask time the call's arguments are the only place the plan exists.
- *
- * The two notes are the panel's own voice, not the model's: they explain what approving DOES (a plan
- * is filed, and the flagged steps will come back to the user), which is the one thing the stage list
- * cannot say for itself.
+ * Presents a proposed plan in the shared gate card. Stages come from the held `update_plan` call
+ * because the plan event is recorded only after approval. The list preserves checkpoint flags that
+ * the dock's compact summary cannot show, and the explanatory notes are panel-authored copy.
  */
 import { AskActions, AskCard, HeldNote, VerdictChip, markFor } from './GateBlock';
 import { Icon } from './icons';
@@ -90,6 +78,14 @@ export function PlanGate({
   const flags = list.filter((s) => s.checkpoint).length;
   const mark = markFor(ask);
   const settled = mark !== undefined;
+  /**
+   * AN APPROVED PLAN'S CARD COLLAPSES TO ITS RECEIPT: the head's stat plus the verdict chip. The
+   * approval files the plan, so the ticket above grows the rail from these same stages — a card
+   * that kept listing them stood the plan twice on one screen. A DECLINED plan keeps its list: no
+   * rail exists, so the card is the one record of what was turned down. The notes never survive
+   * the answer either way — they explain what approving will do, which the answer has settled.
+   */
+  const approved = mark === 'approved' || mark === 'approved-always';
 
   const stat = [
     t(list.length === 1 ? 'agent3.plan_gate_stages_one' : 'agent3.plan_gate_stages', { n: list.length }),
@@ -135,9 +131,9 @@ export function PlanGate({
         </span>
       </div>
 
-      <Note>{t('agent3.plan_gate_note')}</Note>
+      {!settled && <Note>{t('agent3.plan_gate_note')}</Note>}
 
-      {list.map((stage, i) => (
+      {!approved && list.map((stage, i) => (
         <div
           key={`${i}-${stage.label}`}
           data-testid="plan-stage"
@@ -167,7 +163,7 @@ export function PlanGate({
         </div>
       ))}
 
-      {flags > 0 && <Note>{t('agent3.plan_gate_flagnote')}</Note>}
+      {!settled && flags > 0 && <Note>{t('agent3.plan_gate_flagnote')}</Note>}
 
       {!settled && answerable && (
         <AskActions

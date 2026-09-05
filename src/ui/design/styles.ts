@@ -55,6 +55,13 @@ export const colors = {
  *  is the α=0.12 shortcut. */
 export const inkTint = (alpha: number): string => `rgba(${INK_RGB},${alpha})`;
 
+/** A 6-digit hex colour with an alpha channel appended, as a `#rrggbbaa` string. The byte is always
+ *  TWO hex digits: an unpadded `toString(16)` drops the leading zero below 0x10 (alpha under ~0.063),
+ *  which emits a 7-character string neither a 6- nor an 8-digit colour parses as. */
+export function withAlpha(color: string, alpha: number): string {
+  return `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+}
+
 /* ── Cursors ─────────────────────────────────────────────────
  * The four cursors the DOM shows, as the custom properties `ui/design/cursors/cursor-vars` writes onto
  * <html>. Every component styles a cursor through one of these, not a bare CSS keyword;
@@ -79,6 +86,9 @@ export const cursors = {
   blocked: `var(${DOM_CURSORS.blocked}, not-allowed)`,
   /** A text field or any other caret target. */
   text: `var(${DOM_CURSORS.text}, text)`,
+  /** The what's-this pick mode. Resolves to the OS help arrow until the painted set gains a
+   *  question-mark drawing of its own. */
+  help: `var(${DOM_CURSORS.help}, help)`,
 } as const;
 
 /**
@@ -144,6 +154,9 @@ export const z = {
                      // sheet, the layer stack. Over the column, because the column is what it was
                      // opened from and a press cannot produce a thing its own button covers.
   overlay: 200,      // modal backdrop (cozyOverlay)
+  stylizeWindow: 250, // the stylize window: a full-screen takeover reached from inside the export
+                      // modal's own overlay, so it stands ABOVE that overlay rather than inside it
+                      // (the same standing Preview3D takes, reached from the same modal).
   toast: 300,        // toasts, above modals
   popover: 400,      // dropdowns/bubbles anchored to a control, above a modal's own content
   tour: 500,         // first-launch tour scrim/spotlight/bubble, above a popover so an open

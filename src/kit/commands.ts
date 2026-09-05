@@ -1,6 +1,6 @@
 /*
  * The command RUN bodies — what each keyboard operation does. The identity half (id, category,
- * label, default combo, reserved, continuous) lives in `core/runtime/keybindings.ts`, which
+ * label, default combo, continuous) lives in `core/runtime/keybindings.ts`, which
  * `canvas`'s held-key pan loop reads directly; `COMMANDS` here zips that data with `RUN` so both
  * the shortcut engine (ui/shell/use-editor-shortcuts) and the keyboard page (ui/chrome/modals/keyboard) keep
  * reading one list. Adding an operation is one entry in each of the two files.
@@ -16,12 +16,15 @@ import { ELEVATION_MAX } from '../core/model/constants';
 import { MODE_FOR_CONTENT, type ContentType } from '../core/model/edit-mode';
 import { canHoldSelection } from '../core/interaction/tool-modes';
 import { pressSmartBuild } from '../core/runtime/smart-build';
+import { endCurveSession } from '../tools/paint';
 import { host } from './host';
 import { COMMAND_META, type CommandMeta } from '../core/runtime/keybindings';
 import { rotateGroupAction, rotateObjectAction, deleteSelection } from './group-edit';
 import { translate } from '../i18n/context';
+import { showToast } from '../core/runtime/toast-bus';
 import { ACTION_BY_ID, type EditorAction } from './actions';
 import type { DesignMode } from '../core/model/types';
+import type { AnnotationTool, AnnotationZoneShape } from '../core/model/annotations';
 
 /** Deps the handlers can't get from the global store — supplied by the mounted shell. */
 export interface CommandContext {
@@ -77,8 +80,35 @@ function surfaceKey(c: CommandContext, id: string): void {
 /** A tool key. `designMode` is the tool the map is on, so a key naming the one already there puts it
  *  away instead — written to the store rather than sent through `openBuild`, because that verb also
  *  decides a SURFACE and putting a tool down is not a reason to move to another one. */
+/** What each numbered tool key ARMS while the annotation layer is the mode: a key keeps its
+ *  meaning wherever both modes carry the tool (2 erases, 4 rules a line, 5 bends a curve, 6 and 7
+ *  drag out their shapes), the trim key carries the text, and the smart key carries the route
+ *  (at its own RUN body, since smart is not a DesignMode). Pressing the active one puts the tool
+ *  away, the terrain rows' own toggle. */
+const ANNOTATE_ARM: Partial<Record<DesignMode, { tool: AnnotationTool; shape?: AnnotationZoneShape }>> = {
+  brush: { tool: 'zone', shape: 'free' },
+  line: { tool: 'zone', shape: 'line' },
+  curve: { tool: 'zone', shape: 'curve' },
+  rect: { tool: 'zone', shape: 'rect' },
+  circle: { tool: 'zone', shape: 'circle' },
+  eraser: { tool: 'erase' },
+  'edge-cut': { tool: 'text' },
+};
+
 function toolKey(c: CommandContext, design: DesignMode): void {
-  if (store().designMode === design) { store().setEditMode({ tool: 'none' }); return; }
+  const s = store();
+  // In annotate mode the number keys drive the annotation bar's own cells (the undo keys' mode
+  // reroute, applied to the tool row), so the hands never leave the layer they are working on.
+  if (s.editMode.mode === 'annotate') {
+    const arm = ANNOTATE_ARM[design];
+    if (!arm) return;
+    const active = s.annotationTool === arm.tool && (arm.shape === undefined || s.annotationZoneShape === arm.shape);
+    if (active) { s.setAnnotationTool('none'); return; }
+    if (arm.shape) s.setAnnotationZoneShape(arm.shape);
+    s.setAnnotationTool(arm.tool);
+    return;
+  }
+  if (s.designMode === design) { s.setEditMode({ tool: 'none' }); return; }
   c.openBuild(design);
 }
 
@@ -140,6 +170,15 @@ function pendingGesture(): { cancel: () => boolean; undoStep: () => boolean } {
 function deleteSelected(): void {
   const s = store();
   if (pendingGesture().undoStep()) return;
+  // In annotate mode the key means the selected NOTE; the layer's lock answers here as it does at
+  // the tool, and there is no confirm step — a note is planning ink, one ⌘Z from back.
+  if (s.editMode.mode === 'annotate') {
+    if (s.annotationSelection.length === 0) return;
+    if (s.gridState?.annotations?.locked) { showToast(translate('annot.locked'), 'warning'); return; }
+    endCurveSession();
+    s.removeAnnotations(s.annotationSelection);
+    return;
+  }
   if (s.deletePopover) return;
   // The delete popover confirms ONE block, so a single selection still routes through it.
   const sel = singleSelection(s.selection);
@@ -169,6 +208,13 @@ function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
   if (pendingGesture().cancel()) return;
+  // The annotate analogue of the chain below: the selected note first, then the armed cell.
+  if (s.editMode.mode === 'annotate') {
+    if (s.annotationNaming) { s.setAnnotationNaming(null); return; }
+    if (s.annotationSelection.length > 0) { s.setAnnotationSelection([]); return; }
+    if (s.annotationTool !== 'none') { s.setAnnotationTool('none'); return; }
+    return;
+  }
   if (s.selectedItemId) { s.setEditMode({ itemId: null }); return; }
   if (s.armedMacro) { s.setEditMode({ macro: null, ...(s.editMode.tool === 'smart' ? { tool: 'brush' as const } : {}) }); return; }
   s.clearSelection();
@@ -177,6 +223,16 @@ function deselect(): void {
 function selectAllObjects(): void {
   const s = store();
   if (!s.gridState) return;
+  // In annotate mode the key means the NOTES. The drawing tool goes away first — grabbing lives
+  // in the bare state, and putting a tool down clears the selection, so the set is made after.
+  // A hidden layer offers nothing to select, the same answer it gives the pointer.
+  if (s.editMode.mode === 'annotate') {
+    const notes = s.gridState.annotations;
+    if (!notes?.visible || notes.items.length === 0) return;
+    if (s.annotationTool !== 'none') s.setAnnotationTool('none');
+    s.setAnnotationSelection(notes.items.map((a) => a.id));
+    return;
+  }
   // Select-all MEANS entering selection: with a brush or a macro armed the mode rule would drop
   // the set the moment it was made (`selection-view-sync`), so the command puts the tool away
   // first. The mode itself stays — this is the same "leave the brush, keep the surface" move a
@@ -206,7 +262,16 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   'tool.edgecut': (c) => toolKey(c, 'edge-cut'),
   // Smart build is not a tool the map arms, so there is no armed state to read: it is a proposal
   // the cell opens, and the cell answers a second press by putting it away itself.
-  'tool.smart':  () => pressSmartBuild(),
+  // The smart cell's key: in annotate mode it is the ROUTE (the bar's own eighth cell there);
+  // everywhere else it presses the smart-build pill.
+  'tool.smart':  () => {
+    const s = store();
+    if (s.editMode.mode === 'annotate') {
+      s.setAnnotationTool(s.annotationTool === 'route' ? 'none' : 'route');
+      return;
+    }
+    pressSmartBuild();
+  },
 
   'brush.bigger':  () => { const s = store(); s.setBrushSize(Math.min(5, s.brushSize + 1)); },
   'brush.smaller': () => { const s = store(); s.setBrushSize(Math.max(1, s.brushSize - 1)); },
@@ -225,15 +290,28 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
 
   'view.toggle': () => { const s = store(); s.setViewMode(s.viewMode === '2d' ? '3d' : '2d'); },
 
-  // While painting a Generate region, Ctrl+Z/Y undo the region stroke instead of a map edit (see
+  // While painting a Generate region, undo/redo pop the region stroke instead of a map edit (see
   // CommandContext.regionUndo): the region is a scope for a future generate, not a change to the
   // map, so undoing twice after painting one must never reach back and revert a real edit the user
   // never meant to touch. Scoped to the region for the FULL duration of region-select mode, even
   // once its own stack empties (regionUndo/Redo return false then) — falling through to the map
   // history at that point would be the same surprise one step later, so it stays a no-op instead,
   // exactly like pressing undo on an empty map history already does.
-  'history.undo': (c) => { if (store().selectingRegion) c.regionUndo?.(); else store().commandExecutor?.undo(); },
-  'history.redo': (c) => { if (store().selectingRegion) c.regionRedo?.(); else store().commandExecutor?.redo(); },
+  // Annotate mode scopes them the way region-select does: while the plan-notes layer is being
+  // edited, undo is about notes even once the lane empties — falling through to the map history
+  // would revert an edit the user never meant to touch.
+  'history.undo': (c) => {
+    const s = store();
+    if (s.selectingRegion) { c.regionUndo?.(); return; }
+    if (s.editMode.mode === 'annotate') { endCurveSession(); s.undoAnnotation(); return; }
+    s.commandExecutor?.undo();
+  },
+  'history.redo': (c) => {
+    const s = store();
+    if (s.selectingRegion) { c.regionRedo?.(); return; }
+    if (s.editMode.mode === 'annotate') { endCurveSession(); s.redoAnnotation(); return; }
+    s.commandExecutor?.redo();
+  },
 
   // Generate is one of the mode blocks, so its key toggles like the other four.
   'app.generate':      (c) => doTile(c, store().editMode.mode === 'generate' ? 'move' : 'generate'),

@@ -202,8 +202,7 @@ interface ArmReading {
   armsOf: Map<number, { dx: number; dy: number }[]>;
 }
 
-function armReading(paved: Uint8Array, W: number, H: number): ArmReading {
-  const open = openingWidths(paved, W, H);
+function armReading(paved: Uint8Array, W: number, H: number, open = openingWidths(paved, W, H)): ArmReading {
   const court = new Uint8Array(W * H);
   let pavedCells = 0;
   for (let i = 0; i < W * H; i++) {
@@ -231,8 +230,8 @@ function armReading(paved: Uint8Array, W: number, H: number): ArmReading {
 }
 
 /** The network's junction mix and how much of it spans the island. */
-export function networkShape(paved: Uint8Array, land: Uint8Array, W: number, H: number): NetworkShape {
-  const { paved: pavedCells, node, bend, court, armsOf } = armReading(paved, W, H);
+export function networkShape(paved: Uint8Array, land: Uint8Array, W: number, H: number, open?: Uint8Array): NetworkShape {
+  const { paved: pavedCells, node, bend, court, armsOf } = armReading(paved, W, H, open);
 
   const nodes: Node[] = [];
   let tee = 0, fourWay = 0;
@@ -359,8 +358,8 @@ export interface OneWideReading {
  */
 export function networkOneWide(
   paved: Uint8Array, plaza: Uint8Array, crossing: Uint8Array, W: number, H: number,
+  open = openingWidths(paved, W, H),
 ): OneWideReading {
-  const open = openingWidths(paved, W, H);
   const thin = new Uint8Array(W * H);
   const skeleton = new Uint8Array(W * H);
   let pavedCells = 0, oneWideCells = 0;

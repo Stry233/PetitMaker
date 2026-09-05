@@ -16,7 +16,7 @@ import type { StreamEvent } from '../../../agent/core/types';
 import { baseUrlFor, PROVIDER_META, PROVIDER_IDS, QUIRKS } from '../../../agent/providers/defaults';
 import { AMBIGUOUS_CANDIDATES, detectProviderFromKey } from '../../../agent/providers/detect';
 import type { AdapterRequest } from '../../../agent/providers/types';
-import { providerDisclosureList } from '../../../legal/providers-list';
+import { agentProviderDisclosureList } from '../../../legal/providers-list';
 import { PROVIDER_ROSTER, readKeyShape } from '../../../ui/agent/setup-parts';
 
 const { createMock, ctorMock, listMock } = vi.hoisted(() => ({
@@ -110,8 +110,8 @@ describe('providers/perplexity: the registry entry', () => {
   });
 
   it('is disclosed by name in the privacy policy', () => {
-    expect(providerDisclosureList('en')).toContain('Perplexity');
-    expect(providerDisclosureList('zh')).toContain('Perplexity');
+    expect(agentProviderDisclosureList('en')).toContain('Perplexity');
+    expect(agentProviderDisclosureList('zh')).toContain('Perplexity');
   });
 });
 

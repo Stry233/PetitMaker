@@ -79,11 +79,11 @@ describe('golden hash: what a seed produces is pinned across commits', () => {
   // The island across a few seeds at the shelf's default richness — the matrix a saved "recipe
   // number" most commonly is — plus both ends of the richness axis on one seed.
   it.each([
-    ['mixed seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0.7 } as GenerateConfig, 'cb13595ccccc2b165ec2ab28f2b87d3dc56312ae6bca241d3a52c910ba54a6c8'],
-    ['mixed seed 11', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null, richness: 0.7 } as GenerateConfig, '8ff05c9bd130862ec39ba02b03ecd54fefef35667534b039ba4d11ee26a58fdc'],
-    ['earth seed 42', { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, richness: 0.7 } as GenerateConfig, '8c41c6e68f9d23544128abcb1cfbef391b0f0d4b93f10020c83690ca3bb1f8e0'],
-    ['garden town (richness 0) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0 } as GenerateConfig, 'c2de47a918754f969b36ded1682ed9d9a67051ce1f4e5ee4ee9014677600ead4'],
-    ['terraced island (richness 1) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 1 } as GenerateConfig, 'a6fd5ad279d0bed4db20f5caa7dbbe93330466b353b2c426a78ce42a15bb72df'],
+    ['mixed seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0.7 } as GenerateConfig, 'fafcc0744dcd190bcc6e082d2878547d9ecc4d61c804037b691271bf1e9fbc68'],
+    ['mixed seed 11', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null, richness: 0.7 } as GenerateConfig, '814d7a941a85caac23bd35dd35d9ffa3647e60976a001f08433f068843395432'],
+    ['earth seed 42', { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, richness: 0.7 } as GenerateConfig, '73711716977f4661e2c2cff311e2e2dc400313cc87b08fff688d35d863880d18'],
+    ['garden town (richness 0) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0 } as GenerateConfig, '5694204722d595c2393865c954d33525d9a63873048f3ca58988b2bda352aa73'],
+    ['terraced island (richness 1) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 1 } as GenerateConfig, 'bfd178c573ebb95de098442b18c40d671e3b577d032266bd93ef036f3fc66014'],
   ] as const)('%s', (_label, config, expected) => {
     expect(goldenHash(run(config))).toBe(expected);
   });

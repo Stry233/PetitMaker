@@ -7,9 +7,8 @@
  * The target is instead a FRACTION of the track — gap-aware, since the buttons flex in a
  * `gap`ped row: `left: calc((100% + gap) * i/n)`, `width: calc((100% - gap*(n-1)) / n)` — which a
  * resize cannot move: the fraction is exact by construction and the track carries the pill
- * passively under a resize. What these pin: the fraction is what actually reaches the DOM for a
- * given index/count, a selection change moves only that fraction, and — the regression itself —
- * nothing about the track's own measured width can perturb it.
+ * passively under a resize. These assertions pin the DOM fraction for each index and ensure track
+ * measurements cannot perturb it.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';

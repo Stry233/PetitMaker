@@ -1,28 +1,8 @@
 /**
- * vision-verdict.ts — whether THIS connection can actually read an image, probed once per session.
- *
- * `PROVIDER_META[..].vision(model)` is a PRIOR read off the model id, and on a gateway the id can
- * lie: a proxy can strip or refuse image parts from a model whose name promises them, and a job
- * that trusted the name would then send pictures into refusals. So on the id-opaque providers a
- * vision-TRUE prior is confirmed by the endpoint's own answer before any job relies on it
- * (`providers/vision-probe.ts`, one tiny image through the SAME adapter a job would use).
- *
- * THE PROBE ONLY EVER TAKES VISION AWAY. A vision-FALSE prior is never probed: tokens-only is the
- * safe reading of an unknown model, a probe is one real request on the user's key, and an
- * automatic upgrade probe would spend it on every connection that will never send an image (it
- * also raced the e2e journeys' scripted turns, which is the same surprise in a lab coat). A
- * gateway fronting a multimodal model under a name the table cannot read stays tokens-only until
- * its slug says otherwise. The curated single-vendor platforms keep their authoritative static
- * answers and are never probed at all.
- *
- * KEYED BY ENDPOINT AND MODEL, NEVER BY KEY (`model-roster.ts`'s rule): the secret lives outside
- * the store and nothing here may hold or hash a copy of it.
- *
- * ONLY A COMPLETED PROBE IS AN ANSWER. A probe that THROWS (auth, rate, network) files nothing, so
- * a transient fault never brands a sighted connection blind; the prior stands until a real answer
- * lands, which is exactly the pre-probe behavior. Probes kick when the panel column mounts (the
- * panel opening is the user's intent to work), so a job launched before the answer arrives runs on
- * the prior and the next one runs on the fact.
+ * Session-local vision confirmation for gateways whose model ids are not authoritative. Only a
+ * positive name-based prior is probed, so automatic requests can remove but never add capability.
+ * Verdicts key on endpoint and model without retaining or hashing credentials. Failed probes record
+ * nothing, leaving the prior in force; curated single-vendor providers use static metadata.
  */
 import { PROVIDER_META, type ProviderId } from '../../agent/providers/defaults';
 import { probeVision } from '../../agent/providers/vision-probe';

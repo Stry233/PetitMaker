@@ -52,7 +52,7 @@ describe('edit mode adoption', () => {
    * WHAT THIS CALL ARMS OUTRANKS WHAT WAS CARRIED. The eraser survives a mode switch by design
    * (the tool input rides along), and object mode routes it ahead of the armed item, so clicking a
    * bridge card with the water eraser still armed leaves the ERASER answering the map while the
-   * card reads as chosen (issue #5). Choosing an item is choosing to place it: the arming call puts
+   * card reads as chosen. Choosing an item is choosing to place it: the arming call puts
    * the carried eraser down.
    */
   it('arms the item a card picks even when an eraser rode in from another mode', () => {

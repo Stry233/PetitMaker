@@ -1,13 +1,3 @@
-/**
- * pretty-model.ts — friendly model names for the agent-v3 panel.
- *
- * Copied VERBATIM from `src/ui/agent/atoms.tsx`'s `prettyModel` (the legacy Site Log UI), which is
- * a read-only source here and never imported: the panel is its own module tree, and a shared
- * dependency between the two UIs would make a legacy-side edit reach here unannounced. Re-copy by
- * hand if the legacy function changes; `src/__tests__/ui/agent/pretty-model.test.ts` carries the
- * same cases as the legacy test, against this copy.
- */
-
 /** Friendly model name: "claude-opus-4-8" → "Claude Opus 4 8",
  *  "gpt-5.5" → "GPT 5 5", "glm-4.6" → "GLM 4 6", "kimi-k2-…" → "Kimi K2 …"
  *  (K2 title-cases naturally; GPT/GLM need the acronym fixups). */
@@ -30,7 +20,7 @@ const OSERIES = /^o\d$/;                       // OpenAI o1/o3/o4 stay lowercase
 const INT12 = /^\d{1,2}$/;                     // dash-version parts (4-8 → 4.8)
 
 /**
- * Friendly model name from any id shape the ten platforms emit. The mono id
+ * Friendly model name from the id shapes exposed by registered providers. The mono id
  * always renders alongside it in menus, so this favors readability: vendor
  * prefixes and date snapshots drop, versions keep their dots (and dash
  * versions regain them), sizes/quants uppercase, brands keep their casing.
@@ -87,17 +77,7 @@ export function prettyModel(id: string): string {
   return name || seg || id;
 }
 
-/**
- * The same name with its trailing VERSION dropped: "Claude Sonnet 4.5" → "Claude Sonnet".
- *
- * For the one place a model name shares a line with a second fact and the line may not wrap: the
- * dock's meta deck on the manage face, where "Claude Sonnet 4.5, Checkpoint" ran past the card and
- * ellipsized the oversight word away. The exact id stands in full one row below, in the card's own
- * model row, so the summary above it can afford to be a summary.
- *
- * IT KEEPS TWO WORDS. A version is only noise where a family name survives without it: "GPT 5.1" cut
- * to "GPT" names no model at all.
- */
+/** Drops a trailing version when at least two family-name words remain. */
 export function shortModel(id: string): string {
   const name = prettyModel(id);
   const cut = name.replace(/\s+\d[\d.]*$/, '');

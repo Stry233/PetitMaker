@@ -1,11 +1,8 @@
-// src/__tests__/io/share/corpus.ts — real-map-shaped corpus + adversarial "entropy bomb" builder
-// for the PetitGlyph v2 codec measurement test (codec-measure.test.ts). NOT a test file itself —
-// pure builders, reused by the measurement test and (later) the degradation matrix.
+// Real-map-shaped corpus and adversarial high-entropy builder shared by codec and degradation tests.
 //
 // `genOn`: a silent CommandExecutor stroke group drives generateTerrain, then one
 // commitStrokeGroup collapses it to a single undo entry — exactly the live Generate path.
-// It does NOT set `state.generation` (matching the existing pattern); callers that want the
-// P_REPLAY predictor exercised set it manually afterward.
+// It does not set `state.generation`; callers that need an informational recipe add it explicitly.
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';

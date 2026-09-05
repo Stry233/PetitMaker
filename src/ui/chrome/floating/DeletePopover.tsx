@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties, type ReactElement } from 'react'
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import { roleFont } from '../../design/text-weight';
 import { getActiveView } from '../../../canvas/active-view';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type MotionStyle } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
@@ -37,6 +37,36 @@ const popoverStyle: CSSProperties = {
 const btnRow: CSSProperties = { display: 'flex', gap: 8, justifyContent: 'flex-end' };
 const cancelBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.surfaceSecondary, color: colors.frameDark };
 const deleteBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.statusError, color: colors.textInverse };
+
+/** The question a single object's removal asks, with the piece named in the visitor's language. */
+export function objectDeleteTitle(t: (key: string) => string, name: string): string {
+  return t('delete.confirm').replace('{name}', name);
+}
+
+/** The confirmation card: the question and its two answers. Every surface that raises this
+ *  question mounts THIS — the live card over the map, and the Help Center's figure of it.
+ *  `style` carries the position and the scale the card draws at. */
+export function DeleteConfirmFace({ title, onCancel, onConfirm, style }: {
+  title: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  style?: MotionStyle;
+}) {
+  const t = useT();
+  return (
+    <motion.div
+      initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
+      transition={springs.bouncy}
+      style={{ ...popoverStyle, ...style }}
+    >
+      <span>{title}</span>
+      <div style={btnRow}>
+        <motion.button {...pressable} style={cancelBtn} onClick={onCancel}>{t('delete.cancel')}</motion.button>
+        <motion.button {...pressable} style={deleteBtn} onClick={onConfirm}>{t('delete.confirm_btn')}</motion.button>
+      </div>
+    </motion.div>
+  );
+}
 
 export function DeletePopover() {
   const chrome = useChromeScale();
@@ -90,7 +120,7 @@ export function DeletePopover() {
           screenY = pos.y - 8;
         }
         const name = item ? localizedName(item.name, locale) : obj.catalogId;
-        title = t('delete.confirm').replace('{name}', name);
+        title = objectDeleteTitle(t, name);
         confirm = () => {
           // Routed through deleteSelection (one member) rather than removeObject directly, so a
           // locked object reports through the SAME register any other refused delete does.
@@ -119,18 +149,13 @@ export function DeletePopover() {
     if (confirm) {
       confirmRef.current = confirm;
       content = (
-        <motion.div
+        <DeleteConfirmFace
           key="popover"
-          initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
-          transition={springs.bouncy}
-          style={{ ...popoverStyle, zoom: chrome, ...weights, left: screenX / chrome, top: screenY / chrome, x: '-50%' }}
-        >
-          <span>{title}</span>
-          <div style={btnRow}>
-            <motion.button {...pressable} style={cancelBtn} onClick={dismiss}>{t('delete.cancel')}</motion.button>
-            <motion.button {...pressable} style={deleteBtn} onClick={confirm}>{t('delete.confirm_btn')}</motion.button>
-          </div>
-        </motion.div>
+          title={title}
+          onCancel={dismiss}
+          onConfirm={confirm}
+          style={{ zoom: chrome, ...weights, left: screenX / chrome, top: screenY / chrome, x: '-50%' }}
+        />
       );
     }
   }

@@ -40,7 +40,6 @@ export type ResolvedToken =
 export interface ResolvedRow { tokens: readonly ResolvedToken[]; textKey: string }
 
 const cmd = (id: string, o?: { held?: boolean; x2?: boolean }): TokenSpec => ({ kind: 'cmd', id, ...o });
-const key = (label: string): TokenSpec => ({ kind: 'key', label });
 const mouse = (button: MouseButton, mark?: MouseMark, x2?: boolean): TokenSpec => ({ kind: 'mouse', button, mark, x2 });
 const sep = (s: Sep): TokenSpec => ({ kind: 'sep', sep: s });
 const panKeys: TokenSpec = { kind: 'pan-keys' };
@@ -50,7 +49,7 @@ export const SCENARIO_ROWS: Record<HintScenarioId, readonly HintRow[]> = {
     { tokens: [mouse('right', 'drag'), sep('or'), panKeys], cameraVerb: 'nav-drag' },
     { tokens: [cmd('tool.constrain', { held: true }), sep('plus'), panKeys], textKey: 'hint.map2d.slow' },
     { tokens: [cmd('camera.pan_up', { held: true, x2: true })], textKey: 'hint.map2d.fast' },
-    { tokens: [key('Ctrl'), sep('plus'), mouse('wheel', 'scroll')], textKey: 'hint.map2d.zoom' },
+    { tokens: [mouse('wheel', 'scroll')], textKey: 'hint.map2d.zoom' },
     { tokens: [cmd('selection.multi', { held: true }), sep('plus'), mouse('left', 'drag')], textKey: 'hint.map2d.band' },
     { tokens: [cmd('view.toggle')], textKey: 'hint.map2d.to3d' },
   ],
@@ -176,37 +175,51 @@ export function rowsFor(id: HintScenarioId, overrides: Overrides, caps: CameraCa
   for (const row of SCENARIO_ROWS[id]) {
     const textKey = row.cameraVerb ? cameraRowTextKey(row.cameraVerb, caps) : row.textKey!;
     if (!textKey) continue;
-    const slots: (ResolvedToken[] | null)[] = [];
-    let wanted = 0, resolved = 0;
-    for (const t of row.tokens) {
-      if (t.kind === 'cmd') {
-        wanted++;
-        const combo = effectiveCombo(overrides, t.id);
-        if (!combo) { slots.push(null); continue; }
-        resolved++;
-        slots.push(comboTokens(combo, t.held, t.x2));
-      } else if (t.kind === 'pan-keys') {
-        wanted++;
-        const pan = panKeyToken(overrides);
-        if (!pan) { slots.push(null); continue; }
-        resolved++;
-        slots.push([pan]);
-      } else if (t.kind === 'key') {
-        slots.push([{ kind: 'cap', label: t.label }]);
-      } else {
-        slots.push([t]);
-      }
-    }
-    if (wanted > 0 && resolved === 0) continue; // no key token survived — nothing left to show
-    const tokens: ResolvedToken[] = [];
-    for (const s of slots) {
-      if (!s) continue;
-      const isSep = s.length === 1 && s[0]!.kind === 'sep';
-      if (isSep && (tokens.length === 0 || tokens[tokens.length - 1]!.kind === 'sep')) continue;
-      tokens.push(...s);
-    }
-    while (tokens.length && tokens[tokens.length - 1]!.kind === 'sep') tokens.pop();
+    const tokens = resolveTokenSpecs(row.tokens, overrides);
+    if (!tokens) continue;
     rows.push({ tokens, textKey });
   }
   return level === 'concise' ? rows.slice(0, CONCISE_ROWS) : rows;
+}
+
+/**
+ * One row of token specs resolved against the live keymap. Shared by the hint rows above and by
+ * the Help Center's key tables, so the two can never disagree about what a command is bound to.
+ *
+ * Specs resolve independently: an unbound `cmd`/`pan-keys` token drops ONLY itself, never its row.
+ * The row as a whole returns null only when it wanted at least one key token and NONE resolved
+ * (nothing left to show). A separator left dangling by a dropped neighbour is stripped.
+ */
+export function resolveTokenSpecs(specs: readonly TokenSpec[], overrides: Overrides): ResolvedToken[] | null {
+  const slots: (ResolvedToken[] | null)[] = [];
+  let wanted = 0, resolved = 0;
+  for (const t of specs) {
+    if (t.kind === 'cmd') {
+      wanted++;
+      const combo = effectiveCombo(overrides, t.id);
+      if (!combo) { slots.push(null); continue; }
+      resolved++;
+      slots.push(comboTokens(combo, t.held, t.x2));
+    } else if (t.kind === 'pan-keys') {
+      wanted++;
+      const pan = panKeyToken(overrides);
+      if (!pan) { slots.push(null); continue; }
+      resolved++;
+      slots.push([pan]);
+    } else if (t.kind === 'key') {
+      slots.push([{ kind: 'cap', label: t.label }]);
+    } else {
+      slots.push([t]);
+    }
+  }
+  if (wanted > 0 && resolved === 0) return null;
+  const tokens: ResolvedToken[] = [];
+  for (const s of slots) {
+    if (!s) continue;
+    const isSep = s.length === 1 && s[0]!.kind === 'sep';
+    if (isSep && (tokens.length === 0 || tokens[tokens.length - 1]!.kind === 'sep')) continue;
+    tokens.push(...s);
+  }
+  while (tokens.length && tokens[tokens.length - 1]!.kind === 'sep') tokens.pop();
+  return tokens;
 }

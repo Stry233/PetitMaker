@@ -1,10 +1,4 @@
-// use-share-code.ts — the export modal's cached share-code asset. The
-// preview and the final export draw the SAME rendered band: the code is built once per
-// (map, title, size, createdAt) off the modal-open timestamp, debounced, and
-// handed to both the preview painter and the export capture. Building runs the real encoder
-// (a generated map replays its generator to self-verify), so this must never run per keystroke
-// or on the open animation frame — hence async + debounce. While `pending`, the preview holds
-// its last picture, or its loading state when none stands (no placeholder band is ever drawn).
+// Preview and export share a debounced glyph asset when its pixel width and payload inputs match.
 import { useEffect, useRef, useState } from 'react';
 import { buildShareCode, moduleBaseFor } from '../../../../io/share';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
@@ -17,74 +11,57 @@ import type { ExportOptions } from '../../../../io/export/types';
 
 export interface ShareCodeAsset {
   canvas: HTMLCanvasElement;
-  /** Composition width the code was encoded for — reuse only when it matches comp.width. */
-  builtWidth: number;
-  /** Input fingerprint — reuse only when it matches the inputs at export time. */
+  /** Width and metadata fingerprint within the current map's cache entry. */
   builtKey: string;
+  notice: 'export.code_dense' | null;
 }
 
 /** Fingerprint of everything that changes the encoded band for a given map. */
-export function shareCodeKey(width: number, title: string, createdAt: string): string {
-  return `${width}|${title}|${createdAt}`;
+export function shareCodeKey(bandWidth: number, title: string, createdAt: string): string {
+  return `${bandWidth}|${title}|${createdAt}`;
 }
 
 /** Render a built ShareCode to a canvas (shared by the preview asset and the export path). */
-export async function renderShareCodeCanvas(
+export async function renderShareCodeAsset(
   state: GridState,
   summary: MapProvenanceSummary | null,
   meta: { title: string; createdAt: string },
   width: number,
-): Promise<HTMLCanvasElement | null> {
+): Promise<ShareCodeAsset | null> {
   const code = await buildShareCode(state, summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, title: meta.title, createdAt: meta.createdAt }, width);
   if (!code) return null;
   const gc = document.createElement('canvas');
   gc.width = code.width;
   gc.height = code.height;
   gc.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(code.rgba), code.width, code.height), 0, 0);
-  return gc;
+  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.title, meta.createdAt), notice: code.shareOriginalRecommended ? 'export.code_dense' : null };
 }
 
-/** The composition width a Size preset exports at — what the code must be encoded for. The
- *  'original' preset composes at the map's native width at export time; its PREVIEW composes at
- *  the 'high' width, so the preview asset is built there and the export rebuilds at native. */
+/** Native exports use a High-size preview; the final capture rebuilds at the reserved native width. */
 function shareCodeBuildWidth(resolution: ExportOptions['resolution']): number {
   return resolution === 'original' ? RESOLUTION_WIDTHS.high : RESOLUTION_WIDTHS[resolution];
 }
 
-/** How long a build waits for its inputs to stop moving. The title arrives already SETTLED (the
- *  modal holds typed text until it has been still for a second), so what this absorbs is the rest:
- *  a size preset clicked through, the open animation frame, a map swap. */
+/** Debounce size/map changes; the modal already debounces title input. */
 const BUILD_DEBOUNCE_MS = 250;
 
 export interface ShareCodeState {
   /** The rendered band, once built. Null while pending/unavailable. */
   asset: ShareCodeAsset | null;
-  /** True while a build is scheduled or running — the preview holds its last picture, or its
-   *  loading state when none stands (there is NO placeholder band). */
+  /** While rebuilding, retain the previous preview or show its initial loading state. */
   pending: boolean;
-  /** Set when the encoder REFUSED this map. Distinct from "no code was asked for": the band was
-   *  expected and is not coming, which the preview has to say, or an empty band reads as a
-   *  rendering glitch. Names the line to say, not merely that something went wrong. */
+  /** A build failure or a recommendation to share the original file for a dense map. */
   issue: ShareCodeIssue | null;
 }
 
-/** Which "no code" line a map has earned. */
-export type ShareCodeIssue = 'export.code_overlap' | 'export.code_failed';
+export type ShareCodeIssue = 'export.code_overlap' | 'export.code_failed' | 'export.code_dense';
 
-/**
- * The map is asked, rather than the error: a stack of surface coatings on one cell is what the
- * encoder refuses in practice (V-PLACE-OVERLAP exempts coatings, so nothing stops a tool leaving
- * two road tiles on one cell), and it is the one cause the person can act on. Anything else falls
- * back to the plain line. Called only once a build has failed, so no healthy map pays the scan.
- */
+/** Overlapping coatings are legal placements but cannot share one encoded surface cell. */
 export function shareCodeIssueKey(state: GridState | null | undefined): ShareCodeIssue {
   return state && stackedCoatingIds(state.objects.values()).size > 0 ? 'export.code_overlap' : 'export.code_failed';
 }
 
-/** Cached share-code asset for the export modal. `pending` is true from the moment a build is
- *  needed until it resolves; it stays false when no code will exist (not importable, or the
- *  chosen size is below the module floor), so the preview never waits for a code that cannot
- *  come. Rebuilds when the map, title (debounced), size, or session timestamp change. */
+/** Rebuild on map, metadata, or size changes; unavailable glyphs never enter the pending state. */
 export function useShareCode(
   open: boolean,
   state: GridState | null,
@@ -113,9 +90,9 @@ export function useShareCode(
     setCode({ asset: null, pending: true, issue: null });
     let alive = true;
     const id = setTimeout(() => {
-      void renderShareCodeCanvas(state, summaryRef.current, { title, createdAt }, width)
-        .then((canvas) => {
-          if (alive) setCode({ asset: canvas ? { canvas, builtWidth: width, builtKey: shareCodeKey(width, title, createdAt) } : null, pending: false, issue: null });
+      void renderShareCodeAsset(state, summaryRef.current, { title, createdAt }, width)
+        .then((asset) => {
+          if (alive) setCode({ asset, pending: false, issue: asset?.notice ?? null });
         })
         .catch((e: unknown) => {
           console.error('[export] share code build failed', e);

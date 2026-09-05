@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { motion } from 'framer-motion';
 import { useT, localizedName } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
+import type { GridState } from '../../../core/model/types';
 import { MAP_LIST, getMapTemplate } from '../../../config/maps';
 import { getMapStats } from '../../../state/map-stats';
 import { hasCarriableContent } from '../../../kit/operations';
@@ -44,6 +45,12 @@ export interface ChangePlanetModalProps {
   /** The verb: open `templateId`, carrying this island's build along or leaving it behind. */
   onSwitch: (templateId: string, carry: boolean) => void;
   onClose: () => void;
+  /** A still map to stand in for the live one (the Help Center's figure), so the carry row and
+   *  stats read off it; absent, the modal reads the open map. */
+  subject?: GridState;
+  /** Open with this planet already picked, so a picture can show the chosen state: the carry row
+   *  standing and the confirm button naming its destination. */
+  initialChosen?: string;
 }
 
 // The unsaved-work row and the carry row both come and go with the state, so this card's content
@@ -135,19 +142,20 @@ const quietStyle: CSSProperties = {
 
 type Carry = 'carry' | 'fresh';
 
-export function ChangePlanetModal({ open = true, onSwitch, onClose }: ChangePlanetModalProps) {
+export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, initialChosen }: ChangePlanetModalProps) {
   const t = useT();
   const locale = useEditorStore((s) => s.locale);
   // Changing planet replaces this map, and the browser is the only copy of anything not exported.
   // The undo stack's length at the last export is the mark; anything past it lives only here.
   const exportedAt = useEditorStore((s) => s.exportedAt);
   const executor = useEditorStore((s) => s.commandExecutor);
-  const gridState = useEditorStore((s) => s.gridState);
+  const liveState = useEditorStore((s) => s.gridState);
+  const gridState = subject ?? liveState;
   const setModal = useEditorStore((s) => s.setModal);
   const edits = executor?.getUndoStackSize() ?? 0;
   const unsaved = edits > 0 && edits !== exportedAt;
 
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string | null>(initialChosen ?? null);
   const [carry, setCarry] = useState<Carry>('carry');
   const [busy, setBusy] = useState(false);
   // The guard is a REF, not the busy state: the press yields a macrotask before it acts, and a
@@ -156,11 +164,11 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose }: ChangePlan
   // The window stays mounted between opens, so each opening starts the question over.
   useEffect(() => {
     if (!open) return;
-    setChosen(null);
+    setChosen(initialChosen ?? null);
     setCarry('carry');
     running.current = false;
     setBusy(false);
-  }, [open]);
+  }, [open, initialChosen]);
 
   const stats = gridState ? getMapStats(gridState) : null;
   // WHAT THE VISITOR PLACED, which is what "建设 / pieces built" names: `objectsByLayer` already

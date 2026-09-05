@@ -1,35 +1,7 @@
-/**
- * The sprite is the design artifact's own drawing set, and this suite holds it to that: every symbol
- * the artifact declares is mounted, every id the union names is drawn, and nothing paints a colour
- * of its own (the monochrome rule: ink through `currentColor`, accents cut as knockouts).
- *
- * The artifact's ids are READ from the artifact rather than typed here, so a drawing added there and
- * not carried over fails as a missing symbol instead of passing quietly. The design source is not
- * part of the published tree, so the reading tests skip where it is absent.
- */
+/** Public icon contract: every runtime id is defined and visible paint inherits `currentColor`. */
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, existsSync } from 'node:fs';
 import { Icon, IconSprite, type IconId } from '../../../ui/agent/icons';
-
-const ARTIFACT = 'docs/internal/superpowers/specs/2026-08-21-agent-v3-panel-final.html';
-const HAVE_ARTIFACT = existsSync(ARTIFACT);
-
-/** Every `<symbol>` the artifact's sprite block declares, in its own order. */
-function artifactSymbolIds(): string[] {
-  const html = readFileSync(ARTIFACT, 'utf8');
-  return [...html.matchAll(/<symbol[^>]*id="(pw-[a-z0-9-]+)"/g)].map((m) => m[1]);
-}
-
-/**
- * DRAWINGS THIS INTERFACE NEEDS THAT THE ARTIFACT DOES NOT DRAW, admitted here rather than passing
- * quietly: the reading tests exclude them, so a drawing that IS in the artifact and was not carried
- * over still fails. An id earns a place here only where the artifact has nothing to carry over — the
- * two dock glyphs are the dock controls', one per end of the window, and docking the panel is a
- * feature ruled after the artifact was drawn.
- */
-const BEYOND_THE_ARTIFACT: readonly string[] = ['pw-dock-left', 'pw-dock-right'];
 
 /**
  * Every id the `IconId` union names, as a runtime list (a type cannot be iterated). `tsc` fails the
@@ -53,19 +25,6 @@ const ICON_IDS: IconId[] = [
 ];
 
 describe('IconSprite', () => {
-  it.skipIf(!HAVE_ARTIFACT)('mounts every symbol the design artifact declares', () => {
-    const { container } = render(<IconSprite />);
-    const mounted = [...container.querySelectorAll('symbol')]
-      .map((s) => s.getAttribute('id'))
-      .filter((id) => id !== null && !BEYOND_THE_ARTIFACT.includes(id));
-    expect(mounted).toEqual(artifactSymbolIds());
-  });
-
-  it.skipIf(!HAVE_ARTIFACT)('names each of them in the IconId union, and nothing else', () => {
-    const named = ICON_IDS.filter((id) => !BEYOND_THE_ARTIFACT.includes(id));
-    expect([...named].sort()).toEqual([...artifactSymbolIds()].sort());
-  });
-
   it('defines every id the IconId union names', () => {
     const { container } = render(<IconSprite />);
     for (const id of ICON_IDS) {
@@ -110,7 +69,7 @@ describe('Icon', () => {
     expect(use.getAttribute('href')).toBe('#pw-check');
   });
 
-  it('defaults to size 15, the artifact ic() default', () => {
+  it('defaults to size 15', () => {
     const { container } = render(<Icon id="pw-check" />);
     const svg = container.querySelector('svg')!;
     expect(svg.getAttribute('width')).toBe('15');

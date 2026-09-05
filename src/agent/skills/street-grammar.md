@@ -6,7 +6,7 @@ THE GRADE LADDER (measured from the expert maps)
 - TRUNK: 3 wide (build_road line with width 3), ONE continuous route that passes the daily destinations — the plaza (neighbor center), facility-shop, facility-station, facility-pavilion — and keeps going, widening to 4-6 only at approaches and squares.
 - BRANCH: 2 wide, leaving the trunk toward each district and most doors. Trunk and branch carry roughly equal length overall.
 - PATH: 1 wide is RARE (about 5% of pavement) and means one thing: a stepping-stone garden walk (path-garden-stone through a garden). Never build the network out of 1-wide paths.
-- MATERIAL: one material carries ~90% of the network (path-overgrown-dirt is the humble default); other materials are accents AT places — a brick forecourt at the shop, a stone square at the plaza, slate stones in the garden.
+- MATERIAL: one material carries ~90% of the network (path-rustic-dirt is the humble default); other materials are accents AT places — a brick forecourt at the shop, a stone square at the plaza, slate stones in the garden.
 
 JUNCTIONS AND LINE
 - Prefer T-junctions, Y-forks and OFFSET crossings (split a would-be crossroads into two T-junctions a few cells apart, a Z-shaped jog) over four-way crossings; avoid any large regular grid.

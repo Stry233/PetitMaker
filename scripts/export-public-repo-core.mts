@@ -1,17 +1,6 @@
-// Pure core of the public-repo export pipeline: manifest parsing, a minimal glob matcher,
-// and file-set classification. Split from scripts/export-public-repo.mts (the CLI entry
-// point) SPECIFICALLY so tests (src/__tests__/legal/repo-hygiene.test.ts) can import these
-// functions with zero CLI/fs side effects — the same split license-audit-core.mts,
-// legal-pages-core.mts and generate-headers-core.mts use (see scripts/license-audit.mts for
-// why a main-module guard doesn't work under `vite-node`).
-//
-// IP-CRITICAL: this module is the classification authority behind the export leak check.
-// `docs/internal/deployment/public-repo-manifest.md` is the single source of truth for what is
-// public vs. internal; this file only interprets it. Never hand-classify a file elsewhere.
-//
-// `auditStatus()` is the one fs read here, in the same shape license-audit-core.mts and
-// legal-pages-core.mts use: the pure parsing step is exported separately so a test never
-// needs the disk.
+// Pure export-manifest parsing, glob matching and file-set classification. The manifest content is
+// authoritative; this module interprets it. Keeping these helpers outside the CLI lets tests import
+// them without running copy operations or subprocesses.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, readFileSync } from 'node:fs';
@@ -77,11 +66,8 @@ export interface ManifestGlobs {
   tier1: string[];
   tier23: string[];
   internal: string[];
-  /** Paths this project used to publish and has since dropped: a publish DELETES them from
-   *  the public repository. The ordinary rules cannot decide this — a path that left the
-   *  allowlist reads as "not ours", and the sync leaves what it does not own alone (which is
-   *  what protects the public repository's own files) — so a removal is recorded, not
-   *  inferred. Optional: an older manifest simply has none. */
+  /** Paths removed by the next publish when present. Sync preserves unowned paths, so removals are
+   *  explicit rather than inferred from the allowlist. Optional for manifests without retirements. */
   retired: string[];
 }
 
@@ -111,10 +97,8 @@ export function publicGlobs(manifest: ManifestGlobs): string[] {
   return [...manifest.tier1, ...manifest.tier23];
 }
 
-// An internal glob that OPENS with a doublestar segment withholds a file by NAME at any
-// depth, so it deliberately reaches INSIDE an otherwise-public tree: a module's AGENTS.md
-// sits beside the source that ships, and an .xlsx may be added anywhere. Those WIN over the
-// allowlist.
+// A leading doublestar segment withholds matching basenames inside otherwise-public trees. These
+// patterns take precedence over the allowlist.
 //
 // Every other internal glob names its own path, which no public glob should also claim, so an
 // overlap there stays reported as a manifest authoring bug (`classifyPaths`). The cost of this
@@ -159,23 +143,12 @@ export function selectPublicPaths(paths: readonly string[], manifest: ManifestGl
   return paths.filter((p) => isPublicPath(p, manifest));
 }
 
-/**
- * Leak check: of the paths actually copied into the export, which ones match an internal
- * glob? Should always be empty — a non-empty result means something internal was copied
- * (either a manifest authoring bug, i.e. a glob that is simultaneously public+internal, or a
- * bug in the copy step itself). This re-derives the check from the internal glob list rather
- * than trusting the copy step's own bookkeeping.
- */
+/** Copied paths that also match an internal glob. */
 export function findLeakedPaths(copiedPaths: readonly string[], manifest: ManifestGlobs): string[] {
   return copiedPaths.filter((p) => isInternalPath(p, manifest));
 }
 
-/**
- * Explicit denylist re-scan: named internal files/directories that must NOT exist in the
- * export output, checked directly by name rather than relying only on "it wasn't in the
- * allowlisted copy set" (an omission bug and an explicit-presence bug are different failure
- * modes; this test catches the second even if e.g. a later step re-introduced a file).
- */
+/** Internal paths checked directly in the produced snapshot. */
 export const DENYLIST_SPOTCHECK: readonly string[] = [
   'AGENTS.md',
   'CLAUDE.md',
@@ -197,12 +170,7 @@ export const DENYLIST_SPOTCHECK: readonly string[] = [
   'scripts/internal',
 ];
 
-/**
- * The agent-instruction files. They are the project's own working notes, they name internal
- * paths freely, and one sits in nearly every module directory beside source that DOES ship —
- * so `DENYLIST_SPOTCHECK`'s fixed-path check (which only sees the repo root) is not enough.
- * These names must not appear at ANY depth in the output.
- */
+/** Withheld instruction-document basenames, checked at every output depth. */
 export const AGENT_DOC_NAMES: readonly string[] = ['AGENTS.md', 'CLAUDE.md'];
 
 /** Paths in `paths` whose basename is one of `names`. */
@@ -210,21 +178,13 @@ export function findByBasename(paths: readonly string[], names: readonly string[
   return paths.filter((p) => names.includes(p.slice(p.lastIndexOf('/') + 1)));
 }
 
-/**
- * The files that hold the agent-doc names as DATA: this module (the guard) and its test.
- * Scanning them would report the guard itself. Keep this list at exactly those two — the same
- * two, for the same reason, as `ATTRIBUTION_SCAN_EXEMPT`.
- */
+/** Files that necessarily hold instruction-document names as scanner data. */
 export const AGENT_DOC_SCAN_EXEMPT: readonly string[] = [
   'scripts/export-public-repo-core.mts',
   'src/__tests__/legal/repo-hygiene.test.ts',
 ];
 
-/**
- * Shipped files that POINT AT an agent-instruction file. A public reader has no AGENTS.md and
- * no CLAUDE.md, so "see AGENTS.md" sends them nowhere and publishes the shape of what was
- * withheld. State the fact in the shipped file and keep the pointer in the agent doc.
- */
+/** Finds shipped files that point at a withheld instruction document. */
 export function findAgentDocPointers(
   files: ReadonlyArray<{ path: string; text: string }>,
 ): Array<{ path: string; name: string }> {
@@ -349,18 +309,7 @@ export function isProbablyText(bytes: Uint8Array): boolean {
   return true;
 }
 
-/**
- * The public repository's `.gitignore`: ordinary node/vite/editor ignores and nothing
- * else.
- *
- * It must NOT list this repository's internal paths: a `.gitignore` is a published file, and
- * naming `docs/internal`, `scripts/internal`, `.claude`, `.superpowers`, `CLAUDE.md` or the
- * per-module agent docs in it tells every reader the shape of what is being withheld. As a
- * guard against someone re-adding those by hand it would also be the weakest of the ones that
- * already exist: the export copies an allowlist, re-checks the result against a by-name
- * denylist and a basename walk, and the publish workflow asserts the denylist again.
- * Structure is not worth leaking for one more.
- */
+/** Public `.gitignore` containing general development ignores without private repository paths. */
 export function publicGitignore(): string {
   return [
     '# Dependencies',
@@ -400,56 +349,34 @@ export function publicGitignore(): string {
     '',
   ].join('\n');
 }
-
-
-// ---------------------------------------------------------------------------
-// Asset-provenance audit gate — "no --verify while docs/internal/legal/asset-provenance.md
-// says the audit is OPEN" as code, read from that file's own status line rather than left to
-// whoever runs the export.
-// ---------------------------------------------------------------------------
-
 export interface AuditStatus {
-  /** True while docs/internal/legal/asset-provenance.md's status line marks the audit OPEN. */
+  /** Whether the provenance ledger marks its audit open. */
   open: boolean;
   /** Count of table rows whose permission-basis column is still "none-yet". */
   noneYetCount: number;
 }
 
-/**
- * Pure parse of the asset-provenance ledger's own status line + none-yet row count. Kept
- * separate from `auditStatus()` (which does the fs read) so it's directly unit-testable
- * against fixture strings without touching disk.
- */
+/** Parse the ledger status and count table rows with an unresolved permission basis. */
 export function parseAssetProvenanceStatus(markdown: string): AuditStatus {
-  const open = /audit\s+OPEN\b/.test(markdown);
-  // Match the literal table-cell form "| none-yet |" (padded by the column pipes), not the
-  // status line's own backtick-quoted mention of the phrase (`permission basis:\nnone-yet\``)
-  // — that's prose describing what to look for, not a row value.
-  const noneYetCount = (markdown.match(/\|\s*none-yet\s*\|/g) ?? []).length;
+  const open = /^\*\*STATUS:\s*audit\s+OPEN\b/im.test(markdown);
+  const noneYetCount = markdown.split(/\r?\n/).filter((line) => {
+    if (!/^\s*\|.*\|\s*$/.test(line)) return false;
+    return line.split('|').some((cell) => {
+      const plain = cell.replace(/[*_`]/g, '').trim();
+      return /^(?:permission basis:\s*)?none-yet\b/i.test(plain);
+    });
+  }).length;
   return { open, noneYetCount };
 }
 
-/**
- * Read docs/internal/legal/asset-provenance.md under `repoRoot` and derive the audit gate status.
- *
- * Absent file → `{ open: false, noneYetCount: 0 }`. `docs/internal/legal/**` is internal-only
- * (see DENYLIST_SPOTCHECK above) and never ships in the public export, so the only
- * way this file is missing is running the exporter from a tree that already lacks internal
- * docs — a re-export of the already-public repo, or the public repo itself — which is not the
- * gated path (the audit gate only makes sense for THIS (internal) repo, where the ledger lives
- * and the export is produced).
- */
+/** Reads the optional provenance ledger. Exported snapshots omit it and therefore report no gate. */
 export function auditStatus(repoRoot: string): AuditStatus {
   const path = join(repoRoot, 'docs', 'internal', 'legal', 'asset-provenance.md');
   if (!existsSync(path)) return { open: false, noneYetCount: 0 };
   return parseAssetProvenanceStatus(readFileSync(path, 'utf8'));
 }
 
-/**
- * Pure refusal rule for `--verify`: refuse (return true) while the audit is open and the
- * caller has not explicitly passed `--allow-open-audit`. The dry-run copy itself is never
- * gated by this — only actual publish-readiness verification is.
- */
+/** Refuse publish-readiness verification while an unoverridden audit is open. */
 export function shouldRefuseVerify(status: AuditStatus, allowOpenAudit: boolean): boolean {
   return status.open && !allowOpenAudit;
 }

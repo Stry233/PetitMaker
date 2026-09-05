@@ -1,6 +1,6 @@
 import type { SessionEvent, SessionEventInput } from './types';
 
-/** The append-only session log. Everything model-visible is an event here (spec 4.1); projections
+/** The append-only session log. Everything model-visible is an event here; projections
  *  in project-messages.ts / project-view.ts are the only readers of the array. */
 export interface SessionLog {
   readonly events: SessionEvent[];

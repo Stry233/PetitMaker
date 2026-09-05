@@ -1,17 +1,7 @@
 /**
- * settings.test.ts — the panel's settings slice, and chiefly the one thing it must never do.
- *
- * THE RECORD ON DISK IS SHARED. `agent/security/key-storage.ts` owns one `petit-agent-settings-v1` blob and
- * more than one surface writes it, so this store's job on a write is to MERGE over what is there,
- * and before hydration to write nothing at all: every field it holds is a default until `hydrate()`
- * lands, and a record assembled from defaults is not a smaller version of the user's, it is a
- * different one.
- *
- * `markKeysHydrated()` is a MODULE GLOBAL with no reset, raised by the legacy settings surface at
- * app boot. That is what turns a keyless save from a bug into a data loss: `key-storage` carries a
- * sealed key blob forward past a keyless save only while that flag is DOWN. The blocker probe below
- * raises it deliberately, which is why these tests live in a file of their own — nothing after them
- * in this file may assume it is still down.
+ * Settings persistence shares one record with the key vault. Writes merge only after hydration;
+ * before then they are no-ops. `markKeysHydrated()` is module-global and irreversible for the
+ * process, so tests that raise it cannot later assume an unhydrated vault.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
@@ -84,7 +74,7 @@ describe('an unhydrated store never writes over a record it has not read', () =>
    */
   it('keeps the sealed key blob, the provider and the models through a setting pressed too early', () => {
     seedStoredRecord();
-    markKeysHydrated(); // as the legacy surface does at app boot
+    markKeysHydrated(); // matches application boot after the vault has loaded
 
     useAgentPanelSettings.getState().setOversight('yolo');
 

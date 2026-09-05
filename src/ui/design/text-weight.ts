@@ -1,39 +1,8 @@
-/*
- * text-weight.ts — the weight a run of text is DRAWN at, given how big it will actually be on the
- * glass.
- *
- * A weight is authored for a role ("this names a choice", "this is the title"), and the role does not
- * change with the window. What changes is how many device pixels the glyphs get: the same 800 that
- * reads as emphasis at 18 px is a smear at 11, because the counters and the gaps between strokes are
- * what a reader resolves a glyph BY, and a heavy face spends them on ink. So the SIZE is fixed and
- * the WEIGHT adapts — the other way round would change the layout every time the window did.
- *
- * ONLY THREE WEIGHTS EXIST HERE (`assets/fonts/fonts.css`): PuHuiTi ships 400/500/700/900 and the
- * Latin face 500/700, so an authored 800 already renders as the 900 Heavy file and an authored 600 as
- * the 700 Bold one. The ladder below is therefore Heavy → Bold → Medium, named for the files that
- * draw it rather than for the numbers a stylesheet may ask for.
- *
- * WHERE THE THRESHOLDS COME FROM. Rendered specimens of both scripts at weights 500/700/900 and
- * sizes 8-18 css px, captured from headless Edge at dpr 1 and read at the pixels the screen gets
- * (nearest-neighbour magnification, so the raster is the browser's and not an interpolation). The
- * reading was the near-white share of the text's own box — its counters plus the gaps between
- * strokes — which falls as a heavy face thickens into itself:
- *
- *            9px   10px  11px  12px  13px  14px  16px
- *   CJK      .20   .22   .24   .28   .32   .28   .31    Heavy
- *            .27   .29   .29   .36   .38   .38   .39    Bold
- *   Latin    .50   .49   .52   .51   .53   .53   .55    Heavy
- *            .56   .54   .53   .55   .57   .58   .58    Bold
- *
- * Heavy CJK sits at .20-.24 through 11 px, where 置's four horizontals fuse into a slab and 谷's
- * counter closes; it opens at 12 and resolves from about 14. Heavy Latin holds a wide margin
- * throughout — a cap-height fills two thirds of the em where a CJK glyph fills all of it — and only
- * loses its 'e' and 'g' counters under 12. Hence HEAVY_MIN 12, and DENSE_BUMP 2 on top for a script
- * whose glyphs fill their em. Bold clears Heavy by roughly two sizes at every point, which puts
- * BOLD_MIN two under HEAVY_MIN.
- *
- * `usePx().fw` in `scale.tsx` answers the same question from the design scale rather than from a
- * size, and serves the agent panel's own labels.
+/**
+ * Adapts font weight to rendered device-pixel size without changing layout. The shipped faces form
+ * a Heavy/Bold/Medium ladder. Dense CJK glyphs receive a two-pixel threshold increase because their
+ * counters close earlier at small sizes. UI roles below publish the resolved weights as custom
+ * properties so call sites share one semantic type ladder.
  */
 import type { CSSProperties } from 'react';
 import type { Locale } from '../../core/model/types';
@@ -139,6 +108,12 @@ export const TEXT_ROLES = {
   lead: { px: 20, weight: 700 },
   /** A section heading, and a settings row's own label. */
   head: { px: 16, weight: 700 },
+  /**
+   * LONG-FORM PROSE READ AT LENGTH: the Help Center's sentences. `body` is a line or two inside a
+   * control surface; a page someone sits down to read earns the next size up, and it ranks under
+   * its own `head`ings by weight alone, the same size-sharing the 14px rungs already practice.
+   */
+  reading: { px: 16, weight: 500 },
   /** A footer or confirm button. */
   action: { px: 15, weight: 800 },
   /** The chosen row of a menu. */

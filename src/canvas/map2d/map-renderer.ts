@@ -24,9 +24,11 @@ import { resolveHistoryFlash } from './layers/error-flash';
 import { cullRect } from './layers/chunk-grid';
 import { TerrainLayer } from './layers/terrain-layer';
 import { ObjectLayer, objectSpriteUrl } from './layers/object-layer';
+import { AnnotationLayer } from './layers/annotation-layer';
+import { annotationInkScale } from '../../core/model/annotations';
 import { OverlayLayer } from './layers/overlay-layer';
 import { Viewport } from './viewport';
-import { setRenderRequester } from './render-scheduler';
+import { addRenderRequester } from './render-scheduler';
 
 
 export class MapRenderer {
@@ -35,6 +37,7 @@ export class MapRenderer {
   public readonly baseLayer: BaseLayer;
   public readonly terrainLayer: TerrainLayer;
   public readonly objectLayer: ObjectLayer;
+  public readonly annotationLayer: AnnotationLayer;
   public readonly overlayLayer: OverlayLayer;
   public readonly viewport: Viewport;
 
@@ -56,9 +59,22 @@ export class MapRenderer {
   private showGrid = false;            // current editor grid visibility (restored after a grid capture)
   private showChunks = false;          // current editor chunk-grid visibility
   private static readonly HEARTBEAT_FRAMES = 15; // ~4fps safety floor
+  /** The floor once the scene has PROVEN still (several untouched heartbeats in a row): a dense
+   *  map redrawn 4x a second forever is a standing cost a resting editor has no reason to pay,
+   *  and a hypothetically missed invalidation still self-heals within about a second. */
+  private static readonly HEARTBEAT_REST_FRAMES = 60;
+  private static readonly REST_AFTER_HEARTBEATS = 8;
+  private stillHeartbeats = 0;
+  /** Whether this canvas is the view on screen. The 3D view stands over the 2D canvas while it is
+   *  active, and a scene nobody can see earns no frames: hidden, the loop draws nothing, dirty
+   *  chunks accumulate, and the first presented frame (or a capture) flushes them. */
+  private presenting = true;
 
   /** Handlers registered on the shared bus, detached again in destroy(). */
   private busSubscriptions: Array<() => void> = [];
+
+  /** This instance's entry in the render scheduler's requester set. */
+  private detachRequester: () => void = () => {};
 
   private subscribe<K extends keyof EditorEvents>(event: K, handler: (data: EditorEvents[K]) => void): void {
     this.eventBus.on(event, handler);
@@ -67,7 +83,16 @@ export class MapRenderer {
 
   /** Open the render window for a few frames (coalesced; spam-safe). Called by
    *  every scene mutation + every canvas-animation frame (via render-scheduler). */
-  requestRender = (): void => { this.renderWindow = 4; };
+  requestRender = (): void => { this.renderWindow = 4; this.stillHeartbeats = 0; };
+
+  /** Presented or not, decided by whoever owns the canvas element (`PixiCanvas`, on the view
+   *  mode). Coming back on screen opens the render window, which is what flushes whatever the
+   *  hidden stretch accumulated. */
+  setPresenting(on: boolean): void {
+    if (this.presenting === on) return;
+    this.presenting = on;
+    if (on) this.requestRender();
+  }
 
   /** One-shot waiters for "a frame was actually DRAWN" (see onNextPaint). */
   private paintWaiters: Array<() => void> = [];
@@ -76,15 +101,24 @@ export class MapRenderer {
     if (this.renderWindow > 0) {            // keep-alive window after a mutation/anim
       this.renderWindow--;
       this.framesIdle = 0;
+      // A hidden canvas draws only for a waiter: a paint promised (`onNextPaint`) is owed its
+      // frame whatever stands on top, and everything else can wait for the next presented one.
+      if (!this.presenting && this.paintWaiters.length === 0) return;
       // Edits marked terrain chunks dirty (per command); repaint them once per
       // FRAME, right before the render that shows them. No-op when clean.
       if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
       this.app.render();
       this.notifyPainted();
-    } else if (++this.framesIdle >= MapRenderer.HEARTBEAT_FRAMES) {
+    } else {
+      const floor = this.stillHeartbeats >= MapRenderer.REST_AFTER_HEARTBEATS
+        ? MapRenderer.HEARTBEAT_REST_FRAMES
+        : MapRenderer.HEARTBEAT_FRAMES;
+      if (++this.framesIdle < floor) return;
       this.framesIdle = 0;
+      if (!this.presenting) return;
+      this.stillHeartbeats = Math.min(MapRenderer.REST_AFTER_HEARTBEATS, this.stillHeartbeats + 1);
       if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
-      this.app.render();                      // ~4fps safety floor
+      this.app.render();                      // the safety floor (see HEARTBEAT_FRAMES)
       this.notifyPainted();
     }
   };
@@ -109,10 +143,17 @@ export class MapRenderer {
     container: HTMLElement,
     width: number,
     height: number,
+    opts?: {
+      /** Take pixi's Canvas2D renderer without asking for WebGL. For a figure-sized surface on a
+       *  software rasterizer (`glQuality() === 'lite'`), a GL context plus pixi's capability walk
+       *  costs seconds per canvas while Canvas2D starts at once — and canvas parity is a shipped
+       *  state (the renderer a WebGL-less browser gets). */
+      preferCanvas?: boolean;
+    },
   ) {
     this.eventBus = eventBus;
 
-    const useCanvas = !MapRenderer.isWebGLAvailable();
+    const useCanvas = opts?.preferCanvas === true || !MapRenderer.isWebGLAvailable();
     this.app = new PIXI.Application({
       width,
       height,
@@ -140,14 +181,25 @@ export class MapRenderer {
     this.baseLayer = new BaseLayer();
     this.terrainLayer = new TerrainLayer();
     this.objectLayer = new ObjectLayer();
+    this.annotationLayer = new AnnotationLayer();
     this.overlayLayer = new OverlayLayer();
     this.overlayLayer.setShapeSource((x, y) =>
       (this.currentState ? getCell(this.currentState.cells, x, y)?.terrain : null) ?? null);
+
+    // Each layer asks THIS renderer to repaint rather than broadcasting to every mounted one — a
+    // Help figure's demo animation must not open the standing editor's render window (or every
+    // other figure's) alongside its own.
+    this.baseLayer.requestRender = this.requestRender;
+    this.terrainLayer.requestRender = this.requestRender;
+    this.objectLayer.requestRender = this.requestRender;
+    this.annotationLayer.requestRender = this.requestRender;
+    this.overlayLayer.requestRender = this.requestRender;
 
     this.worldContainer.addChild(this.baseLayer.container);
     this.worldContainer.addChild(this.terrainLayer.container);
     this.worldContainer.addChild(this.chunkGridContainer);
     this.worldContainer.addChild(this.objectLayer.container); // includes the plaza (a self-described locked object)
+    this.worldContainer.addChild(this.annotationLayer.container); // plan notes: over the map, under the tool feedback
     this.worldContainer.addChild(this.overlayLayer.container);
     this.worldContainer.addChild(this.labelsContainer);
 
@@ -204,7 +256,7 @@ export class MapRenderer {
 
     // Drive the render-on-demand loop and route every scene mutation /
     // animation frame (via render-scheduler) to open the render window.
-    setRenderRequester(this.requestRender);
+    this.detachRequester = addRenderRequester(this.requestRender);
     // Pixi's TickerPlugin adds `app.render` to the application ticker inside the `ticker` property
     // setter, i.e. at construction; `autoStart` decides only whether the ticker is STARTED. Starting
     // it here for our own gated tick therefore runs pixi's UNGATED whole-scene render beside it —
@@ -216,7 +268,7 @@ export class MapRenderer {
     this.requestRender();
   }
 
-  initMap(state: GridState, showGrid: boolean, showChunks?: boolean): void {
+  initMap(state: GridState, showGrid: boolean, showChunks?: boolean, opts?: { labels?: boolean }): void {
     this.currentState = state;
     this.showGrid = showGrid;
     this.showChunks = showChunks ?? false;
@@ -225,7 +277,7 @@ export class MapRenderer {
 
     this.baseLayer.drawFull(state);
     this.terrainLayer.drawFull(state);
-    this.objectLayer.sync(state.objects);   // includes the plaza (self-described locked object)
+    this.objectLayer.sync(state.objects, state);   // includes the plaza (self-described locked object)
 
     this.viewport.fitToMap(width, height);
     this.applyViewportTransform();        // first paint: the map (base + terrain + objects incl. plaza)
@@ -241,6 +293,9 @@ export class MapRenderer {
       this.drawChunkGrid(width, height, showChunks ?? false);
       this.overlayLayer.drawGridLines(width, height, showGrid);
       this.requestRender();
+      // A figure-sized view opts out: the labels sit outside the map (never in a crop's frame)
+      // and their 400px text rasters are the deferred pass's whole cost.
+      if (opts?.labels === false) return;
       requestAnimationFrame(() => {
         if (stale()) return;
         this.drawLabels(state);
@@ -348,6 +403,9 @@ export class MapRenderer {
       animateRemove: (id: string) => this.objectLayer.animateRemove(id),
       leftDragPans: true,
       camera: {
+        // The wheel zooms here as it does in 3D: a mouse notch steps, a touchpad scroll glides,
+        // and panning stays on drags and the pan keys.
+        wheelZooms: true,
         pan: (dx, dy) => {
           this.viewport.pan(dx, dy);
           this.applyViewportTransform();
@@ -369,9 +427,7 @@ export class MapRenderer {
     const offset = this.viewport.getOffset();
     this.worldContainer.scale.set(zoom);
     this.worldContainer.position.set(-offset.x, -offset.y);
-    const rect = cullRect(offset.x, offset.y, zoom, this.app.renderer.screen.width, this.app.renderer.screen.height);
-    this.terrainLayer.cull(rect);
-    this.objectLayer.cull(rect);
+    const rect = this.cullLayers(zoom, offset);
     // Re-evaluate the layer-number overlay for the new zoom/camera: it hides (and
     // frees its rasters) when zoomed out, builds newly visible chunks when the
     // camera reaches them, and early-outs when nothing changed on a plain pan.
@@ -391,10 +447,11 @@ export class MapRenderer {
   /** Toggle terrain/object chunk visibility against the camera rect — Pixi has no built-in
    *  culling, so without this every rendered frame traverses every off-screen node too and
    *  pan/zoom cost scales with the map total instead of what's visible. O(chunks). */
-  private cullLayers(zoom: number, offset: { x: number; y: number }): void {
+  private cullLayers(zoom: number, offset: { x: number; y: number }) {
     const rect = cullRect(offset.x, offset.y, zoom, this.app.renderer.screen.width, this.app.renderer.screen.height);
     this.terrainLayer.cull(rect);
     this.objectLayer.cull(rect);
+    return rect;
   }
 
   private lastPageZoom = pageZoom();
@@ -453,6 +510,9 @@ export class MapRenderer {
   captureFullMap(maxPx = 1024): string | null {
     const recull = this.uncullForCapture();
     try {
+      // A hidden canvas defers its chunk repaints to the next presented frame, so a capture baked
+      // from the live containers settles them itself — same contract as `flushNumbers` below.
+      if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
       this.flushNumbers();
       const world = this.worldContainer;
       const b = world.getLocalBounds();
@@ -475,10 +535,17 @@ export class MapRenderer {
    *  fills the image — unlike captureFullMap, whose world-local bounds can include
    *  chrome that extends past the map and leaves it tiny in a corner. Long side
    *  capped at maxPx. Used by the export preview/compose pipeline. */
-  captureMapImage(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }): string | null {
+  captureMapImage(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }, annotations?: boolean): string | null {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
+    // `annotations` overrides the plan-notes layer's eye for this capture. Omitted values preserve
+    // the editor's current visibility.
+    const prevAnnotations = this.annotationLayer.container.visible;
+    if (annotations !== undefined) this.annotationLayer.container.visible = annotations && (this.currentState.annotations?.items.length ?? 0) > 0;
     try {
+      // The live containers again: a hidden canvas holds its chunk repaints, and this bake must
+      // show the map as it IS.
+      this.terrainLayer.flushDirty(this.currentState);
       this.flushNumbers();
       const { width, height } = this.currentState.template;
       const half = TILE_SIZE / 2;
@@ -555,6 +622,93 @@ export class MapRenderer {
     } catch {
       return null;
     } finally {
+      this.annotationLayer.container.visible = prevAnnotations;
+      recull();
+    }
+  }
+
+  /** Export-focused capture of the plan-notes ink ALONE, same template-framed rect and
+   *  transform-reset dance as `captureMapImage`, for the stylize compose step that layers the
+   *  user's ink back over a redrawn map bitmap. Every other layer is hidden (base, terrain,
+   *  object, plus the chrome `captureMapImage` already hides), so nothing but ink can paint —
+   *  `generateTexture`'s render target clears to transparent by construction (a fresh
+   *  `RenderTexture`'s clear color is `[0,0,0,0]`, independent of the app's own background; the
+   *  paper only appears in other captures because `BaseLayer` fills the region opaquely), so
+   *  hiding those layers leaves genuine transparency rather than the app's water-color backdrop.
+   *  An empty annotation layer would capture as a blank sheet the compose step cannot use, so an
+   *  empty map returns null instead of a picture. */
+  captureAnnotationsImage(maxPx: number): string | null {
+    if (!this.currentState) return null;
+    if ((this.currentState.annotations?.items.length ?? 0) === 0) return null;
+    const prevAnnotations = this.annotationLayer.container.visible;
+    this.annotationLayer.container.visible = true;
+    try {
+      this.flushNumbers();
+      return this.bakeLayersImage(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.chunkGridContainer, this.overlayLayer.container, this.labelsContainer]);
+    } finally {
+      this.annotationLayer.container.visible = prevAnnotations;
+    }
+  }
+
+  /** Export-focused capture of the grid ALONE (the sub, cell and chunk lines the editor draws),
+   *  transparent everywhere else: the layer the stylize compose step lays over a redrawn map so a
+   *  stylized export keeps the same grid a plain one bakes in. Forced on for the bake whatever the
+   *  editor shows, and restored after; the chunk labels stay hidden, since the composition draws
+   *  its own legend outside the map. */
+  captureGridImage(maxPx: number): string | null {
+    if (!this.currentState) return null;
+    const { width, height } = this.currentState.template;
+    this.overlayLayer.drawGridLines(width, height, true);
+    this.drawChunkGrid(width, height, true);
+    try {
+      return this.bakeLayersImage(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.annotationLayer.container, this.labelsContainer]);
+    } finally {
+      this.overlayLayer.drawGridLines(width, height, this.showGrid);
+      this.drawChunkGrid(width, height, this.showChunks);
+    }
+  }
+
+  /** The world baked to a transparent PNG with `hidden` layers off: the shared body of the
+   *  single-layer captures. Same template-framed rect, same reset-transform-then-restore dance and
+   *  the same GPU-limit clamp as `captureMapImage` (see its body for why each is there). */
+  private bakeLayersImage(maxPx: number, hidden: PIXI.Container[]): string | null {
+    if (!this.currentState) return null;
+    const recull = this.uncullForCapture();
+    try {
+      const { width, height } = this.currentState.template;
+      const half = TILE_SIZE / 2;
+      const region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      if (region.width <= 0 || region.height <= 0) return null;
+      const prevVisible = hidden.map((c) => c.visible);
+      const sx = this.worldContainer.scale.x, sy = this.worldContainer.scale.y;
+      const px = this.worldContainer.position.x, py = this.worldContainer.position.y;
+      hidden.forEach((c) => { c.visible = false; });
+      this.worldContainer.scale.set(1, 1);
+      this.worldContainer.position.set(0, 0);
+      this.worldContainer.updateTransform();
+      let dataUrl: string | null = null;
+      try {
+        const glr = this.app.renderer as unknown as { gl?: WebGLRenderingContext };
+        const getP = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
+        const maxTex = getP ? (getP.getParameter(getP.MAX_TEXTURE_SIZE) as number) : 0;
+        const maxRb = getP ? (getP.getParameter(getP.MAX_RENDERBUFFER_SIZE) as number) : 0;
+        const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
+        const cap = Number.isFinite(hardMax) ? Math.min(maxPx, hardMax) : maxPx;
+        const resolution = Math.min(1, cap / Math.max(region.width, region.height));
+        const rt = this.app.renderer.generateTexture(this.worldContainer, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
+        const canvas = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement;
+        rt.destroy(true);
+        dataUrl = canvas.toDataURL('image/png');
+      } finally {
+        this.worldContainer.scale.set(sx, sy);
+        this.worldContainer.position.set(px, py);
+        hidden.forEach((c, i) => { c.visible = prevVisible[i]!; });
+        this.requestRender();
+      }
+      return dataUrl;
+    } catch {
+      return null;
+    } finally {
       recull();
     }
   }
@@ -580,7 +734,7 @@ export class MapRenderer {
    * repeating tile (`roadTileCanvas`), and a road whose tile has not been cropped yet photographs
    * as flat colour — a surface the map itself never shows.
    */
-  async captureState(state: GridState, maxPx = 640, frame?: CellFrame): Promise<HTMLCanvasElement | null> {
+  async captureState(state: GridState, maxPx = 640, frame?: CellFrame, opts?: { annotations?: boolean }): Promise<HTMLCanvasElement | null> {
     const icons = new Set<string>();
     const tiles = new Set<string>();
     for (const obj of state.objects.values()) {
@@ -599,6 +753,11 @@ export class MapRenderer {
     const base = new BaseLayer();
     const terrain = new TerrainLayer();
     const objects = new ObjectLayer();
+    // A capture renders explicitly (generateTexture, below) — no draw call here owes anyone a
+    // render window.
+    base.requestRender = () => {};
+    terrain.requestRender = () => {};
+    objects.requestRender = () => {};
     const world = new PIXI.Container();
     world.addChild(base.container, terrain.container, objects.container);
     try {
@@ -608,6 +767,17 @@ export class MapRenderer {
       // sync only QUEUES the road surfaces for the next frame, and this capture has none: the world
       // is rasterized below and destroyed on the way out. Draw them now, as every other capture does.
       objects.flushRoadRegions();
+      // Opt-in plan notes, drawn by the real annotation layer. A fresh layer fades notes in over a
+      // few frames and this capture has exactly one, so every part is settled to opaque by hand.
+      if (opts?.annotations && state.annotations?.items.length) {
+        const notes = new AnnotationLayer();
+        notes.requestRender = () => {};
+        world.addChild(notes.container);
+        notes.draw(state.annotations, { draft: null, selectionIds: [], inkScale: annotationInkScale(state.template) });
+        for (const pass of notes.container.children) {
+          if (pass instanceof PIXI.Container) for (const part of pass.children) part.alpha = 1;
+        }
+      }
 
       const { width, height } = state.template;
       const half = TILE_SIZE / 2;
@@ -645,7 +815,7 @@ export class MapRenderer {
     this.busSubscriptions = [];
     cancelAnimationFrame(this.labelBuildRaf);
     cancelAnimationFrame(this.numbersRefreshRaf);
-    setRenderRequester(null);
+    this.detachRequester();
     const canvas = this.app.view as HTMLCanvasElement;
     this.app.destroy(false, { children: true });
     canvas.parentElement?.removeChild(canvas);
@@ -700,15 +870,28 @@ export class MapRenderer {
     step();
   }
 
+  /** The probe's one answer per page load. A WebGL probe context is not free — on a software
+   *  rasterizer it costs most of a second — and the help figures construct a renderer per demo,
+   *  so an unmemoized probe pays that once per figure. */
+  private static webglProbe: boolean | null = null;
+
   private static isWebGLAvailable(): boolean {
+    if (MapRenderer.webglProbe !== null) return MapRenderer.webglProbe;
+    let ok = false;
     try {
       const c = document.createElement('canvas');
       const gl = c.getContext('webgl2') || c.getContext('webgl');
-      if (!gl) return false;
-      const maxUniforms = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) as number;
-      return maxUniforms > 0;
+      if (gl) {
+        const maxUniforms = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) as number;
+        ok = maxUniforms > 0;
+        // The probe context is done answering; releasing it keeps it from holding one of the
+        // browser's limited live-context slots for the rest of the session.
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+      }
     } catch {
-      return false;
+      ok = false;
     }
+    MapRenderer.webglProbe = ok;
+    return ok;
   }
 }

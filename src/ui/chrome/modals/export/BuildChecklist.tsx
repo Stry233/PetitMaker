@@ -23,6 +23,7 @@ import {
   type BuildChecklist as BuildChecklistData, type ChecklistGroup, type ChecklistItem, type ChecklistLayer,
 } from '../../../../state/build-checklist';
 import { subscribeMapStats } from '../../../../state/map-stats';
+import type { GridState } from '../../../../core/model/types';
 import { useEditorStore } from '../../../../state/store';
 import { btnReset, buttonMotion, exitTransition, radii, shadows, springs } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
@@ -90,14 +91,27 @@ function ItemIcon({ icon, color }: { icon?: string; color?: string }) {
   );
 }
 
+/** One row of the checklist: icon, name, count. What a shelf card lists and what the Help
+ *  Center's built-pieces figure stands are the same row, drawn once. */
+export function ChecklistItemRow({ icon, color, name, countText, testId }: {
+  icon?: string; color?: string; name: string; countText: string; testId?: string;
+}) {
+  return (
+    <div style={itemRowStyle} data-testid={testId}>
+      <ItemIcon icon={icon} color={color} />
+      <span style={itemName}>{name}</span>
+      <span style={itemCount}>{countText}</span>
+    </div>
+  );
+}
+
 function ItemRow({ item, countText }: { item: ChecklistItem; countText: string }) {
   const locale = useEditorStore((s) => s.locale);
   return (
-    <div style={itemRowStyle} data-testid={`checklist-item-${item.catalogId}`}>
-      <ItemIcon icon={item.icon} color={item.color} />
-      <span style={itemName}>{localizedName(item.name, locale)}</span>
-      <span style={itemCount}>{countText}</span>
-    </div>
+    <ChecklistItemRow
+      icon={item.icon} color={item.color} name={localizedName(item.name, locale)}
+      countText={countText} testId={`checklist-item-${item.catalogId}`}
+    />
   );
 }
 
@@ -239,19 +253,22 @@ function CopyChecklistButton({ list }: { list: BuildChecklistData }) {
   );
 }
 
-export function BuildChecklist() {
+export function BuildChecklist({ subject }: { subject?: GridState } = {}) {
   const t = useT();
-  const gridState = useEditorStore((s) => s.gridState);
+  const liveState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
+  // A `subject` is a still: a caller (the Help Center's figure) hands a map that nothing edits,
+  // so the live tick has nothing to say about it. The LIVE list re-reads on the map-changed tick.
   // The grid mutates in place, so no store publication follows an edit: the map-changed tick is
   // what tells this list to read again. It is the shared rAF-coalesced one, which keeps a generate
   // (thousands of objects) to a single recount per frame. Both derivations underneath are memoized
   // per GridState, so a recount that follows nothing is a cache read.
   const [, recount] = useReducer((n: number) => n + 1, 0);
   useEffect(
-    () => subscribeMapStats(eventBus, () => useEditorStore.getState().gridState, recount),
-    [eventBus],
+    () => (subject ? undefined : subscribeMapStats(eventBus, () => useEditorStore.getState().gridState, recount)),
+    [eventBus, subject],
   );
+  const gridState = subject ?? liveState;
   const list = gridState ? buildChecklist(gridState) : null;
 
   if (!list) return null;

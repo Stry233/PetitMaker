@@ -162,17 +162,8 @@ describe('poseForPhase', () => {
   });
 });
 
-/**
- * THE POSE TABLE AND ITS DOCUMENTATION MUST AGREE, which is the artifact's own assert ported here:
- * its design view renders one tile per pose with these two lines beside it, and a pose added without
- * a row draws "undefined / undefined" under its own portrait.
- *
- * The table lives HERE rather than in `poses.ts` because it is a build-failing assertion, not a
- * runtime fact: nothing in the app reads these words, and an exported table of English prose that no
- * code path reaches is bundle weight the panel's own lazy chunk would carry.
- *
- * First line: what the pose DOES. Second: where it is used.
- */
+/** Test-only pose descriptions: the first line describes motion and the second names its use.
+ * Keeping this table outside runtime code avoids adding unreachable prose to the panel bundle. */
 const POSE_DOCS: Record<PoseName, [string, string]> = {
   idle: ['breath, a blink about every 6s, an ear-flick', 'idle, setup at rest, done settled'],
   thinking: ['tilt 6 degrees, metronome sway, idea pop', 'thinking, streaming text'],
@@ -202,25 +193,20 @@ describe('the pose table', () => {
     }
   });
 
-  /** The three new ones, by the fact that made each of them its own pose rather than a reuse. */
+  /** Surface-controlled reading poses carry no verdict; only confirmation carries the spark. */
   it('gives the setup pair the badges its own states call for', () => {
-    // She DOUBLES the provider row rather than carrying the verdict alone, so the two reading poses
-    // wear no badge at all; only the one that reports an OUTCOME does.
     expect(POSES.keylean.badge).toBeNull();
     expect(POSES.watching.badge).toBeNull();
     expect(POSES.pleased.badge).toBe('spark');
   });
 
-  /** A REFUSED KEY WEARS THE ONE TROUBLE FACE. Two droops with one exclaim between them said the
-   *  same thing twice, so the setup channel points its refusal at the pose the rest of the panel
-   *  already uses for something going wrong. */
+  /** Key refusal uses the shared trouble pose and does not define a duplicate error pose. */
   it('has one face for trouble and no second droop beside it', () => {
     expect(POSES.trouble.badge).toBe('exclaim');
     expect(Object.keys(POSES)).not.toContain('keydroop');
   });
 
-  /** `pleased` HOLDS: the confirmation stands until the idle gate moves the screen on, so it is not
-   *  a one-shot that settles itself back to idle mid-reading. */
+  /** Confirmation holds until the setup screen advances it. */
   it('holds the confirmed face instead of settling out of it', () => {
     expect(POSES.pleased.oneShot).toBeUndefined();
     expect(POSES.celebrating.oneShot).toBe(true);
@@ -242,8 +228,7 @@ describe('Character rendering', () => {
     expect(container.querySelector('img[data-badge="ask"]')).not.toBeNull();
   });
 
-  /** ONE DRAWN LOOP, not the two-arrow PNG it was pulled as: the normative prototype draws this
-   *  badge, so the tag is the assertion. */
+  /** The working badge is an inline drawing rather than a raster image. */
   it('shows the drawn refresh badge (SVG, not PNG) while working', () => {
     const { container } = render(<Character pose="working" size={64} />);
     expect(container.querySelector('[data-badge="refresh"]')?.tagName.toLowerCase()).toBe('svg');
@@ -406,22 +391,14 @@ describe('the pose engine under a phase that flaps', () => {
   });
 });
 
-/**
- * SHE ANSWERS A POINTER THE WAY THE ROW SHE STANDS IN DOES.
- *
- * She is a control with no plate and no border, at the end of the five mode blocks, and all five take
- * the app's shared hover and press (`design/styles.ts:pressable`). Her own declaration READS that,
- * so the two cannot come out at two sizes or two speeds — which is what this asserts, since a growth
- * mid-spring is not a number a rendered assertion can hold.
- */
+/** The character control uses the same hover and press feedback as the surrounding mode controls. */
 describe('the character wears the house hover', () => {
   it('grows by the shared amount, on the shared spring', () => {
     expect(amplitude('panel.character.hover')).toBeCloseTo(pressable.whileHover.scale - 1, 12);
     expect(framerMotion('panel.character.hover')).toEqual(pressable.transition);
   });
 
-  /** AND NOTHING ELSE ANSWERS FOR HER: her growth is the house scale, so a css `translate` left on
-   *  the drawing would compose with it rather than replace it. */
+  /** No independent lift composes with the shared scale transform. */
   it('writes no lift of its own on the drawing', () => {
     const { getByTestId } = render(
       <Character pose="idle" size={64} press={{ onPress: () => {}, open: false }} />,
@@ -430,15 +407,7 @@ describe('the character wears the house hover', () => {
   });
 });
 
-/**
- * THE SLEEPING POSE, pinned against the normative prototype's own `POSES.sleeping` — the enter, the
- * breath and the still, the same way the sleeper's twitch is pinned.
- *
- * THE BREATH IS THE PART THAT DRIFTED, and it is the part that carries the state: a scaleY-only rise
- * reads as a body stretched vertically, where the 1% NARROWING against it reads as a chest. At 72px
- * of art the two-axis rise measures 2.8px against 1.9px for a scaleY-only 1.03, so a one-axis breath
- * is both the wrong shape and half the amplitude.
- */
+/** The sleeping pose combines a held droop with a two-axis breathing loop. */
 describe('the sleeping pose', () => {
   it('enters on its own 900ms droop', () => {
     expect(POSES.sleeping.enter).toEqual([
@@ -457,14 +426,8 @@ describe('the sleeping pose', () => {
     expect(POSES.sleeping.loops?.[0]?.at).toBe(POSES.sleeping.enter?.[0]?.dur);
   });
 
-  /**
-   * THE SLUMP IS HELD BY A FINISHED FORWARDS-FILLED ANIMATION, WHICH THE BROWSER MAY AUTO-REMOVE:
-   * a filling animation whose every property a newer animation also targets is "replaceable" and is
-   * dropped outright, however the newer one composites — and the dream board's additive resettle
-   * plays on this same part, so the first resettle left her sleeping bolt upright (measured live:
-   * pose part bare, `transform: none`, before Connect was pressed). `persist()` marks the hold as
-   * load-bearing; what ends it is the next pose's own clear.
-   */
+  /** Browsers may remove a replaceable, forwards-filled animation when a newer animation targets
+   * the same property. Persisting the droop keeps additive sleep details from displacing it. */
   it('persists the droop so an additive garnish cannot sweep it away', () => {
     const { container } = render(<Character pose="sleeping" size={64} />);
     const holds = part(container, 'pose').getAnimations() as unknown as FakeAnimation[];
@@ -508,21 +471,12 @@ describe('the engine under StrictMode\'s double mount', () => {
   });
 });
 
-/**
- * THE CONNECT-PRESS WAKE BEAT, pinned against the normative prototype's own `connect` handler the
- * same way the sleeping pose is pinned: she rises OUT of the sleeping rest as the key screen lands,
- * past neutral with a slight stretch, and settles to plain none on a real overshoot curve.
- *
- * IT YIELDS BY CONSTRUCTION: the beat is played directly on the pose part, outside the pose
- * machine's own animation list, so the landing pose's clear cannot cancel it — and the key screen's
- * rest is `idle`, which drives no pose-part track, so nothing fights it. What takes it over is only
- * a NEWER animation on the same part (a fast paste bringing `keylean` in), which wins the cascade
- * on its own.
- */
+/** The wake beat starts at the sleeping transform, overshoots neutral, and yields to any newer pose
+ * animation on the same part. */
 describe('the Connect-press wake beat', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('is the prototype\'s own three frames on its own overshoot curve', () => {
+  it('uses three frames on an overshoot curve', () => {
     expect(WAKE_BEAT).toEqual({
       part: 'pose', dur: 620, easing: 'cubic-bezier(.2,1.5,.4,1)',
       keyframes: [
@@ -576,14 +530,9 @@ describe('the Connect-press wake beat', () => {
   });
 });
 
-/**
- * THE PRESS ACKNOWLEDGEMENT, pinned against the prototype's `PRESS_SQUASH`/`heroAcknowledge`: one
- * springy squash in place, on her BODY. Composite ADD is the load-bearing part — the breath lives
- * on the same element and property, and a replacing one-shot drops it for its whole duration and
- * snaps back on finish.
- */
+/** Press acknowledgement is additive so it can run over the body's breathing animation. */
 describe('the press acknowledgement', () => {
-  it('is the prototype\'s own squash, additive over the breath', () => {
+  it('is a squash additive over the breath', () => {
     expect(PRESS_SQUASH).toEqual({
       part: 'body', dur: 320, easing: 'linear', composite: 'add',
       keyframes: [
@@ -652,21 +601,14 @@ describe('the sleeper\'s zzz', () => {
   });
 });
 
-/**
- * THE SLEEPER'S PLUME IS THREE THINGS ON ONE SHOULDER, and every number in it is the normative
- * prototype's. The zzz give way to the dreamed order's glyph, the glyph's disc springs up under its
- * own fade, and one breath rises off the lower-left as the zzz come back.
- *
- * IT STANDS OUTSIDE THE POSE, which is the load-bearing part of the arrangement: the sleeper's tilt,
- * squash and resettle move the body UNDER a plume that holds still, and a plume riding the pose leaves
- * no static reference for the twitch to be read against.
- */
+/** The sleeping plume holds its position while the body moves beneath it. It alternates between
+ * sleep marks and a dream glyph, with a breath bubble during the transition. */
 describe('the sleeper\'s plume', () => {
   const plume = (c: HTMLElement) => part(c, 'dream-badge');
 
-  afterEach(() => { setDreamBadge('off'); });
+  afterEach(() => { act(() => { setDreamBadge('off'); }); });
 
-  it('declares the breath as the prototype\'s own three-stop rise', () => {
+  it('declares the breath as a three-stop rise', () => {
     expect(DREAM.puff).toEqual({ dur: 900, easing: 'cubic-bezier(.2,0,0,1)' });
     expect(DREAM.puffFrames).toEqual([
       { opacity: 0, transform: 'none', offset: 0 },
@@ -676,7 +618,7 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('draws the breath bubble at the plume\'s lower-left, in its own inks', () => {
-    setDreamBadge('zzz');
+    act(() => { setDreamBadge('zzz'); });
     const { container } = render(<Character pose="sleeping" size={60} />);
     const puff = part(container, 'dream-puff');
     expect(puff.style.left).toBe('-7px');
@@ -692,7 +634,7 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('stands beside the pose rather than inside it', () => {
-    setDreamBadge('zzz');
+    act(() => { setDreamBadge('zzz'); });
     const { container } = render(<Character pose="sleeping" size={60} />);
     const flip = part(container, 'flip');
     expect(plume(container).parentElement).toBe(flip.parentElement);
@@ -702,7 +644,7 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('keeps the glyph\'s disc mounted so it can arrive, and gives it both declared beats', () => {
-    setDreamBadge('zzz');
+    act(() => { setDreamBadge('zzz'); });
     const { container, rerender } = render(<Character pose="sleeping" size={60} />);
     const disc = part(container, 'dream-glyph');
     expect(disc.style.opacity).toBe('0');
@@ -720,7 +662,7 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('breathes once as the zzz come back, and not on the way out', () => {
-    setDreamBadge('pw-road');
+    act(() => { setDreamBadge('pw-road'); });
     const { container, rerender } = render(<Character pose="sleeping" size={60} />);
     const breaths = () => animateCalls.filter((a) => a.part === 'dream-puff').length;
     expect(breaths()).toBe(0);
@@ -732,7 +674,7 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('cuts every plume beat under reduced motion', () => {
-    setDreamBadge('zzz');
+    act(() => { setDreamBadge('zzz'); });
     const { container } = render(
       <MotionConfig reducedMotion="always"><Character pose="sleeping" size={60} /></MotionConfig>,
     );
@@ -740,4 +682,3 @@ describe('the sleeper\'s plume', () => {
     expect(part(container, 'dream-glyph').style.transition).toBe('none');
   });
 });
-

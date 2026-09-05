@@ -28,8 +28,6 @@ const CALLS: { name: string; input: Record<string, unknown> }[] = [
   { name: 'scatter_objects', input: { catalogIds: ['flora-a'], count: 5, rect: { x1: 1, y1: 1, x2: 6, y2: 6 } } },
   { name: 'sculpt_terrace', input: { cx: 10, cy: 10, baseRadius: 6, tiers: 3 } },
   { name: 'carve_river', input: { points: [{ x: 1, y: 2 }, { x: 9, y: 9 }], width: 3 } },
-  { name: 'run_generator', input: { algorithm: 'maze', seed: 42, rect: { x1: 0, y1: 0, x2: 9, y2: 9 } } },
-  { name: 'run_generator', input: {} },
   ...['orchard', 'farm', 'garden', 'hamlet', 'waterfront', 'peak', 'nonesuch']
     .map((theme) => ({ name: 'decorate_zone', input: { theme, x: 1, y: 2, w: 3, h: 4 } })),
   { name: 'plant_forest', input: { x: 1, y: 2, w: 3, h: 4, density: 0.6 } },

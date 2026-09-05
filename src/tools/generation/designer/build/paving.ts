@@ -52,11 +52,20 @@ export function connector(
   const index = getObjectIndex(place.state);
   /** Whether anything a coating may not go over stands on the cell: a deck, a ramp, a building.
    *  Roads are coatings and are what the course is looking for, so they do not block it. The rect is
-   *  read as the CELLS it covers, since a bridge or a ramp anchors on the half grid. */
-  const solid = (x: number, y: number): boolean =>
-    entriesNear(index, { x, y, w: 1, h: 1 }).some((e) => !e.coating
+   *  read as the CELLS it covers, since a bridge or a ramp anchors on the half grid. Memoized per
+   *  cell for this search's life: neighbouring 2x2 stamps share three cells each, so the BFS asks
+   *  the index the same question several times over. */
+  const solidCache = new Uint8Array(W * H);
+  const solid = (x: number, y: number): boolean => {
+    const i = flatIndex(x, y, W);
+    const known = solidCache[i]!;
+    if (known !== 0) return known === 1;
+    const hit = entriesNear(index, { x, y, w: 1, h: 1 }).some((e) => !e.coating
       && Math.floor(e.rect.x) <= x && x < Math.ceil(e.rect.x + e.rect.w)
       && Math.floor(e.rect.y) <= y && y < Math.ceil(e.rect.y + e.rect.h));
+    solidCache[i] = hit ? 1 : 2;
+    return hit;
+  };
   const stampFree = (x: number, y: number): boolean =>
     x >= 0 && y >= 0 && x + 1 < W && y + 1 < H
     && !!pavable[flatIndex(x, y, W)] && !!pavable[flatIndex(x + 1, y, W)]

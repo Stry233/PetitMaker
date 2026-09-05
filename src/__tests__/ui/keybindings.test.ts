@@ -1,13 +1,15 @@
 /**
  * The keybinding registry is the single source of truth, so guard its invariants + the pure override
- * logic (resolution, conflict/steal, reserved protection, persistence). The visual keyboard page
+ * logic (resolution, conflict/steal, UI-zoom twin protection, persistence). The visual keyboard page
  * reads all of this, so a broken invariant would surface as a wrong/unbindable key.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import { COMMANDS, COMMAND_BY_ID } from '../../kit/commands';
+import { useEditorShortcuts } from '../../ui/shell/use-editor-shortcuts';
 import {
-  ALIASES, normalizeCombo, effectiveCombo, bindingIndex, aliasIndex, isReservedCombo, useKeybinds, META_BY_ID,
-  type Overrides,
+  ALIASES, normalizeCombo, effectiveCombo, bindingIndex, aliasIndex, useKeybinds, META_BY_ID,
+  matchesUiZoomCombo, uiZoomVariantCombos, type Overrides,
 } from '../../core/runtime/keybindings';
 import { KEY_ROWS, NAV, NUMPAD, comboFor, comboFromEvent, type Layer } from '../../ui/chrome/modals/keyboard/layout';
 import { prettyCombo } from '../../core/runtime/keybindings';
@@ -50,9 +52,13 @@ describe('command registry (single source of truth)', () => {
     expect(toggleMenu).toHaveBeenCalledTimes(1);
   });
 
-  it('marks undo/redo reserved', () => {
-    expect(COMMAND_BY_ID.get('history.undo')?.reserved).toBe(true);
-    expect(COMMAND_BY_ID.get('history.redo')?.reserved).toBe(true);
+  it('ships undo/redo on the conventional combos as ordinary editable rows', () => {
+    expect(COMMAND_BY_ID.get('history.undo')?.defaultCombo).toBe('ctrl+z');
+    expect(COMMAND_BY_ID.get('history.redo')?.defaultCombo).toBe('ctrl+shift+z');
+    // Rebindable like anything else: an override moves them, index and all.
+    expect(effectiveCombo({ 'history.undo': 'ctrl+alt+u' }, 'history.undo')).toBe('ctrl+alt+u');
+    expect(bindingIndex({ 'history.undo': 'ctrl+alt+u' }).get('ctrl+alt+u')).toBe('history.undo');
+    expect(bindingIndex({ 'history.undo': 'ctrl+alt+u' }).has('ctrl+z')).toBe(false);
   });
 
   describe('history.undo/redo route to the region brush while selecting a region', () => {
@@ -63,7 +69,8 @@ describe('command registry (single source of truth)', () => {
       vi.restoreAllMocks();
     });
 
-    it('Ctrl+Z calls the region undo, never the map executor, while selectingRegion is on', () => {
+    // The reroute keys off the COMMAND, not off a combo, so it holds wherever undo/redo are bound.
+    it('the undo command calls the region undo, never the map executor, while selectingRegion is on', () => {
       const executorUndo = vi.spyOn(executor, 'undo');
       setStoreState({ selectingRegion: true, commandExecutor: executor });
       const regionUndo = vi.fn(() => true);
@@ -81,7 +88,7 @@ describe('command registry (single source of truth)', () => {
       expect(executorUndo).not.toHaveBeenCalled(); // still a no-op, not a map edit
     });
 
-    it('Ctrl+Z reaches the map executor as usual once selectingRegion is off', () => {
+    it('undo reaches the map executor as usual once selectingRegion is off', () => {
       const executorUndo = vi.spyOn(executor, 'undo').mockImplementation(() => false);
       setStoreState({ selectingRegion: false, commandExecutor: executor });
       const regionUndo = vi.fn(() => true);
@@ -90,7 +97,7 @@ describe('command registry (single source of truth)', () => {
       expect(regionUndo).not.toHaveBeenCalled();
     });
 
-    it('Ctrl+Shift+Z mirrors the same routing for redo', () => {
+    it('the redo command mirrors the same routing', () => {
       const executorRedo = vi.spyOn(executor, 'redo').mockImplementation(() => {});
       setStoreState({ selectingRegion: true, commandExecutor: executor });
       const regionRedo = vi.fn(() => true);
@@ -263,7 +270,8 @@ describe('the pan-drag key', () => {
   });
 
   it('is rebindable, so Space can be recorded as a combo', () => {
-    expect(isReservedCombo('space')).toBe(false);
+    expect(uiZoomVariantCombos({}).has('space')).toBe(false);
+    expect(useKeybinds.getState().rebind('camera.pan_drag', 'space').ok).toBe(true);
   });
 });
 
@@ -282,18 +290,15 @@ describe('effective resolution', () => {
     expect(effectiveCombo({ 'tool.brush': 'j' }, 'tool.brush')).toBe('j');
     expect(effectiveCombo({ 'tool.brush': null }, 'tool.brush')).toBeNull();
   });
-  it('ignores overrides on reserved commands', () => {
-    expect(effectiveCombo({ 'history.undo': 'j' }, 'history.undo')).toBe('ctrl+z');
+  it('honours an override on every command, history included', () => {
+    expect(effectiveCombo({ 'history.undo': 'j' }, 'history.undo')).toBe('j');
+    expect(effectiveCombo({ 'app.ui_zoom_in': 'ctrl+9' }, 'app.ui_zoom_in')).toBe('ctrl+9');
   });
   it('bindingIndex maps effective combos to ids', () => {
     const idx = bindingIndex({});
     expect(idx.get('1')).toBe('tool.brush');
     expect(idx.get('e')).toBe('selection.rotate_cw');
     expect(idx.get('ctrl+z')).toBe('history.undo');
-  });
-  it('flags reserved combos', () => {
-    expect(isReservedCombo('ctrl+z')).toBe(true);
-    expect(isReservedCombo('b')).toBe(false);
   });
 });
 
@@ -325,10 +330,18 @@ describe('rebind store', () => {
     expect(eff('tool.brush')).toBe('1');
   });
 
-  it('refuses to rebind a reserved command or steal a reserved combo', () => {
-    expect(useKeybinds.getState().rebind('history.undo', 'j').ok).toBe(false);
-    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+z').ok).toBe(false);
-    expect(eff('tool.brush')).toBe('1'); // unchanged
+  it('rebinds history like any other command, through to the binding index', () => {
+    const r = useKeybinds.getState().rebind('history.undo', 'ctrl+alt+u');
+    expect(r.ok).toBe(true);
+    expect(eff('history.undo')).toBe('ctrl+alt+u');
+    expect(bindingIndex(useKeybinds.getState().overrides).get('ctrl+alt+u')).toBe('history.undo');
+  });
+
+  it('undo is stealable: taking Ctrl+Z leaves undo unbound', () => {
+    const r = useKeybinds.getState().rebind('tool.brush', 'ctrl+z');
+    expect(r.ok).toBe(true);
+    expect(r.displaced).toBe('history.undo');
+    expect(eff('history.undo')).toBeNull();
   });
 
   it('clear unbinds, resetAll restores defaults', () => {
@@ -346,24 +359,123 @@ describe('rebind store', () => {
   });
 });
 
-describe('UI zoom is registered, reserved, and matches its listener', () => {
-  it('declares both rows reserved on the combos the listener answers', () => {
+/** A keydown as the pure UI-zoom matcher reads it. */
+function press(
+  k: string,
+  mods: { ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean },
+): Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'> {
+  return { key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods };
+}
+
+describe('UI zoom is registered, rebindable, and matched by its listener', () => {
+  beforeEach(() => useKeybinds.getState().resetAll());
+
+  it('ships both rows on the combos the listener answers', () => {
     for (const [id, combo] of [['app.ui_zoom_in', 'ctrl+='], ['app.ui_zoom_out', 'ctrl+-']] as const) {
-      const meta = META_BY_ID.get(id);
-      expect(meta?.reserved, id).toBe(true);
-      expect(meta?.defaultCombo, id).toBe(combo);
+      expect(META_BY_ID.get(id)?.defaultCombo, id).toBe(combo);
     }
   });
-  it('the combos cannot be stolen by a rebind', () => {
-    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+=').ok).toBe(false);
+
+  it('a rebind moves the combo the listener matches', () => {
+    expect(useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+9').ok).toBe(true);
+    const combo = effectiveCombo(useKeybinds.getState().overrides, 'app.ui_zoom_in');
+    expect(combo).toBe('ctrl+9');
+    expect(matchesUiZoomCombo(combo, press('9', { ctrlKey: true }))).toBe(true);
+    expect(matchesUiZoomCombo('ctrl+=', press('9', { ctrlKey: true }))).toBe(false);
   });
-  it('a shifted variant the listener also answers is reserved too', () => {
-    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+shift+=').ok).toBe(false);
+
+  it('a bound = or - answers its shifted keycap and Cmd; any other key matches exactly', () => {
+    // One keycap types both characters, so the listener cannot tell them apart by e.key alone.
+    expect(matchesUiZoomCombo('ctrl+=', press('=', { ctrlKey: true }))).toBe(true);
+    expect(matchesUiZoomCombo('ctrl+=', press('+', { ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(matchesUiZoomCombo('ctrl+=', press('=', { metaKey: true }))).toBe(true);
+    expect(matchesUiZoomCombo('ctrl+-', press('_', { ctrlKey: true, shiftKey: true }))).toBe(true);
+    // No Ctrl/Cmd at all, and Alt that the combo never asked for: neither is this binding.
+    expect(matchesUiZoomCombo('ctrl+=', press('=', {}))).toBe(false);
+    expect(matchesUiZoomCombo('ctrl+=', press('=', { ctrlKey: true, altKey: true }))).toBe(false);
+    // A key with no shifted twin of its own is matched exactly, Shift included.
+    expect(matchesUiZoomCombo('ctrl+9', press('9', { ctrlKey: true }))).toBe(true);
+    expect(matchesUiZoomCombo('ctrl+9', press('9', { ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(matchesUiZoomCombo(null, press('=', { ctrlKey: true }))).toBe(false); // unbound direction
   });
+
+  it('the twins of the shipped bindings are exactly the combos the listener also answers', () => {
+    expect([...uiZoomVariantCombos({})].sort()).toEqual(['ctrl+_', 'ctrl+shift+-', 'ctrl+shift+=', 'ctrl+shift+_']);
+  });
+
+  it('refuses another command onto a live twin, and displaces the zoom itself onto its base', () => {
+    const twin = useKeybinds.getState().rebind('tool.brush', 'ctrl+shift+=');
+    expect(twin.ok).toBe(false);
+    expect(twin.reason).toBe('reserved-combo');
+    // The BASE combo is an ordinary binding: taking it is an ordinary steal.
+    const base = useKeybinds.getState().rebind('tool.brush', 'ctrl+=');
+    expect(base.ok).toBe(true);
+    expect(base.displaced).toBe('app.ui_zoom_in');
+    expect(effectiveCombo(useKeybinds.getState().overrides, 'app.ui_zoom_in')).toBeNull();
+  });
+
+  it('twin protection follows a rebound zoom key', () => {
+    useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+9');
+    // Zoom-in left `=`, so its old twin is free; `9` has no shifted twin to protect.
+    expect(uiZoomVariantCombos(useKeybinds.getState().overrides).has('ctrl+shift+=')).toBe(false);
+    expect(uiZoomVariantCombos(useKeybinds.getState().overrides).has('ctrl+shift+9')).toBe(false);
+    expect(useKeybinds.getState().rebind('tool.brush', 'ctrl+shift+=').ok).toBe(true);
+    // Zoom-out is still on `-`, so its twins stay protected.
+    expect(useKeybinds.getState().rebind('tool.eraser', 'ctrl+_').ok).toBe(false);
+  });
+
+  it('a zoom command may take its own twin', () => {
+    expect(useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+shift+=').ok).toBe(true);
+  });
+
   it('labels resolve in all 7 locales', () => {
     for (const id of ['app.ui_zoom_in', 'app.ui_zoom_out']) {
       const key = META_BY_ID.get(id)!.labelKey;
       for (const [loc, d] of Object.entries(translations)) expect(d[key], `${id} in ${loc}`).toBeTruthy();
+    }
+  });
+});
+
+describe('the shortcut engine wires the registry', () => {
+  const deps = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
+  const send = (init: KeyboardEventInit): KeyboardEvent => {
+    const e = new KeyboardEvent('keydown', { ...init, cancelable: true });
+    act(() => { window.dispatchEvent(e); });
+    return e;
+  };
+
+  beforeEach(() => useKeybinds.getState().resetAll());
+  afterEach(() => {
+    useKeybinds.getState().resetAll();
+    setStoreState({ commandExecutor: null });
+  });
+
+  it('gives Ctrl+Y to a command bound there, over the fixed redo alias', () => {
+    const executor = new CommandExecutor(makeState(), new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(makeState()));
+    const redo = vi.spyOn(executor, 'redo').mockImplementation(() => {});
+    setStoreState({ commandExecutor: executor });
+    useKeybinds.getState().rebind('overlay.grid', 'ctrl+y');
+    const view = renderHook(() => useEditorShortcuts(deps));
+    const before = useEditorStore.getState().showGrid;
+    try {
+      send({ key: 'y', ctrlKey: true });
+      expect(useEditorStore.getState().showGrid).toBe(!before);
+      expect(redo).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      setStoreState({ showGrid: before });
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('leaves the UI-scale combos alone: no RUN body means no match to swallow the press', () => {
+    const view = renderHook(() => useEditorShortcuts(deps));
+    try {
+      expect(send({ key: '=', ctrlKey: true }).defaultPrevented).toBe(false);
+      // The instrument works: a command WITH a run body takes its key.
+      expect(send({ key: 'g', ctrlKey: true }).defaultPrevented).toBe(true);
+    } finally {
+      view.unmount();
     }
   });
 });

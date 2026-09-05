@@ -104,17 +104,8 @@ describe('the motion registry', () => {
 describe('no motion is chosen at a call site', () => {
   const OFFENDER = /duration:\s*[0-9.]+|stiffness:\s*[0-9]+|damping:\s*[0-9]+|cubic-bezier\(|ease:\s*\[/;
 
-  /**
-   * The DECLARATION tables, which are where the numbers are supposed to be.
-   *
-   * `ui/shell/motion/` is the registry itself. The panel's own three are the same kind of thing one
-   * layer down: `ui/agent/motion.ts` is the bridge that reads the registry, `character/poses.ts` is
-   * the character's choreography transcribed WHOLE from the normative prototype (one drawing's WAAPI
-   * tracks, per-track and in ms, which is not a shape the registry speaks), and
-   * `sketchbook/sketch-motion.ts` is the idle dressings' beat sheet — two LOOPS whose numbers are
-   * only meaningful against each other, both ambient and both dropped whole under reduced motion.
-   * What the guard is for either way is a number written where the thing MOVES.
-   */
+  /** Motion parameters belong in the shared registry or in a component's dedicated choreography
+   * table. Call sites select named motions without defining their timing. */
   const TABLES = [
     '/ui/shell/motion/', '/ui/agent/motion.ts', '/ui/agent/character/poses.ts',
     '/ui/agent/sketchbook/sketch-motion.ts',

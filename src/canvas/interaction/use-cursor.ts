@@ -22,6 +22,7 @@ export function useCursor(containerRef: RefObject<HTMLElement | null>, active: b
   const selection = useEditorStore((s) => s.selection);
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const contentType = useEditorStore((s) => s.contentType);
+  const annotationTool = useEditorStore((s) => s.annotationTool);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -63,6 +64,8 @@ export function useCursor(containerRef: RefObject<HTMLElement | null>, active: b
     // `cursorFor(ctx)` — must be a dependency, or the cursor outlives the fact it names.
     // `selection` is here as a CHANGE TRIGGER, not a value read here, so narrowing it to the single
     // member would drop re-pushes. `contentType`: all five shape modes are one ToolType, and
-    // picking River or Tile changes contentType only.
-  }, [activeTool, selectedItemId, selection, selectingRegion, contentType, active]);
+    // picking River or Tile changes contentType only. `annotationTool`: the annotate tool's five
+    // armings are one ToolType too, and its `cursorFor` answers by the arming — without the
+    // trigger the select state keeps the drawing arming's cursor.
+  }, [activeTool, selectedItemId, selection, selectingRegion, contentType, annotationTool, active]);
 }

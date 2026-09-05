@@ -88,7 +88,7 @@ describe('3D shades: a box covers its body exactly', () => {
 });
 
 describe('3D shades: the error flash', () => {
-  it('drapes a BODY as the body — the plaza\'s shade is the plaza (issue #14)', () => {
+  it('drapes the shade over the exact plaza body', () => {
     const gs = state();
     const o = overlayFor(gs);
     const plaza: Rect = { x: 76.5, y: 58.5, w: 20, h: 27 };

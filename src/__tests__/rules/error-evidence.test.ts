@@ -175,10 +175,9 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
     expect(errors[0]!.grid).toBe('macro');
   });
 
-  it('the flashed body is the blocker\'s OWN rect, never larger (issue #14: the plaza)', () => {
-    // The real plaza: a 20x27 body anchored on the half grid. Its whole-cell footprint is
-    // 21x28 — half a cell of slack on every side — and flashing THAT drew a red ring around
-    // the plaza that the plaza itself does not occupy.
+  it('flashes the blocker\'s exact fractional rect', () => {
+    // A 20x27 plaza on the half grid touches a 21x28 whole-cell footprint. Rect evidence must
+    // preserve its fractional body instead of adding half a cell on every side.
     const state = makeState(120, 120);
     const plaza: PlacedObject = {
       id: '__plaza__', catalogId: '__plaza__', position: { x: 76.5, y: 58.5 },

@@ -1,32 +1,8 @@
 /*
- * terrain-cells.ts — the terrain bar's tool row, as data.
- *
- * The three terrain surfaces draw ONE row: draw, erase, trim, then the four shapes, then smart
- * build. Only the first two cells' glyphs differ between them, so the row is one table with a
- * per-surface glyph rather than three tables that would drift apart cell by cell.
- *
- * Every rect is in the design space the art was measured in (3754 x 1918 = `CANVAS`), exactly as
- * `frame.ts` places the frame, and the glyph rects are the extracted manifest's own numbers so a
- * redraw moves the art and its placement together. A glyph is composed of the layers the design
- * source drew it with: several of these controls are two or four shapes, and the extractor emits a
- * file per shape plus a group file that carries the plate as well, so the parts are what a cell can
- * paint over a plate it chooses.
- *
- * THE LINE AND CURVE HANDLES ARE DRAWN, NOT EXTRACTED, the way the road swatches below are. The
- * design source puts an ellipse at each end of both strokes and masks the line's bar to clear a
- * circle where each one sits, but those four layers carry no fill and no stroke, so they paint
- * nothing: Photoshop's own composite of the two cells is a bar cropped square at both ends and a
- * bare arc. The rects, the circle and the ring's outer edge are the document's; what the document
- * never says is how thick the ring is, and that is taken from the trim scissors' finger loops,
- * which are the one ring this row already draws at this radius (outer 21, inner 12 design px).
- *
- * EVERY GLYPH ALSO CARRIES ITS MEASURED INK, because the design's own drawings are not one size:
- * 绘制山体 is a single mass 106 x 81, 绘制地形 is four small shapes spanning 85 x 60, and the line
- * cell is a stroke covering 1062 design px squared where the mountain covers four times that. Drawn
- * at the sizes the document gives them, the row comes out with each cell a different weight. So the
- * bar sizes each one by what it READS as (`frame.ts:apparentSize`) and balances it on its own ink
- * (`opticalCentre`), which is the rule the rail already uses. The numbers are read off a raster of
- * the COMPOSED glyph, in the glyph's own local frame, the same way `frame.ts:GLYPHS` measures.
+ * Shared tool-row data for mountain, water, and road modes. Rects use the shell design coordinate
+ * space. Composite glyphs retain their source layers, while line and curve handles are drawn because
+ * their source ellipses have no visible paint. Measured ink bounds keep dissimilar glyphs optically
+ * balanced through `apparentSize` and `opticalCentre`.
  */
 import type { BuildMode, BuildShape, BuildTool } from '../../../core/model/edit-mode';
 import type { Glyph, GlyphInk } from '../frame';
@@ -53,42 +29,22 @@ import curveArc from '../../../assets/shell/shelf-mountain/tools/curve/rect.svg'
 import rectShape from '../../../assets/shell/shelf-mountain/tools/rect-tool/roundrect-2.svg';
 import circleShape from '../../../assets/shell/shelf-mountain/tools/circle-tool/ellipse.svg';
 
-/** The three surfaces that share this bar: every build mode that lays CONTENT on the map. Written
- *  as the exclusion rather than as three names so a new content surface reaches this bar as a type
- *  error rather than as a bar that silently does not offer it. */
-export type TerrainSurface = Exclude<BuildMode, null | 'object' | 'generate'>;
+/** Build modes that share the terrain tool row. */
+export type TerrainSurface = Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>;
 
 /** The mode's terrain surface, or null for the modes whose bars are their own shape. */
 export function terrainSurface(mode: BuildMode): TerrainSurface | null {
   return mode === 'mountain' || mode === 'water' || mode === 'road' ? mode : null;
 }
 
-/**
- * An endpoint handle of the line and curve strokes: an OPEN ring, at the design's own rect.
- *
- * `box` and `outer` are the ellipse the document places there, measured off it: a 26 design px
- * square holding a circle 20.375 across, the same four times over. `ring` is the only number the
- * document does not give, and it is the trim scissors' loops in this row's own proportion (12 of 21
- * left open), which lands within a tenth of a design px of 4.4 here.
- */
+/** Open endpoint-ring dimensions in design pixels. */
 const HANDLE = { box: 26, outer: 20.375, ring: 4.4 } as const;
 
 /** Where the document centres its two ellipses inside that box, a sixth of a design px apart. Each
  *  handle keeps its own, which also gives a cell's two rings separate art to be keyed by. */
 const HANDLE_CENTRE = { lower: [13.08, 12.85], upper: [12.91, 13.15] } as const;
 
-/*
- * A HANDLE SITS ON THE END OF THE STROKE IT TERMINATES, which is not where the document puts it.
- *
- * The ellipse layers carry zero FILL opacity (a separate property from layer opacity, and the one
- * Photoshop composites), so they draw nothing and the artist never saw where they landed. Taken
- * literally they leave the curve's two rings about 11 design px outboard of the arc's tips and 4
- * below them, floating clear of the stroke they belong to. The line's bar is masked to leave a
- * round gap at each end, which is the document's own evidence that a handle was meant to close it.
- *
- * So the rects below are the stroke's own end centres, less the ring's offset inside its box: the
- * bar's two cap centres, and the midpoints of the arc's two end faces.
- */
+/* Invisible source handles are aligned to the stroke endpoints: bar cap centres and arc end faces. */
 
 /** The ring as a part `GlyphIcon` can place, in the ink every glyph in this row is drawn in. A
  *  stroke straddles its own path, so the radius is the outer edge less half the ring's width. */
@@ -102,20 +58,7 @@ const handleRing = (cx: number, cy: number) => `data:image/svg+xml,${encodeURICo
 const handleAt = (x: number, y: number, [cx, cy]: readonly [number, number]): ArtPart =>
   ({ src: handleRing(cx, cy), x, y, w: HANDLE.box, h: HANDLE.box });
 
-/**
- * A stroke ended at its own handles: the drawing, with a round gap opened where each ring closes it.
- *
- * THE GAPS HAVE TO BE CUT HERE BECAUSE THE HANDLES MOVED. The document masks the line's bar with
- * exactly this, at the ellipse rects it declares — but those rects are the ones the artist never
- * saw (zero fill opacity), and the rings now stand on the stroke's own end centres instead. Keeping
- * the drawing's holes would leave the upper one four design px from the ring meant to fill it,
- * showing as a bright crescent beside a ring that no longer closes anything. The arc has no mask at
- * all in the document, so without this its tips run on into their rings and fill them.
- *
- * One helper for both, so the hole and the ring are the same coordinate by construction rather than
- * by two tables agreeing. The radius is the ring's INNER edge, so the stroke stops where the ring
- * begins and the two read as one figure.
- */
+/** Cuts each stroke at the same coordinates used for its endpoint rings. */
 const cutAtHandles = (
   src: string, w: number, h: number, at: readonly (readonly [number, number])[],
 ) => `data:image/svg+xml,${encodeURIComponent(

@@ -9,6 +9,7 @@ import { host } from '../../../../kit/host';
 import { computeComposition } from '../../../../io/export/compose';
 import { layersFor, maxTerrainElevation } from '../../../../io/export/layer-preview';
 import { paintComposition, CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
+import { brandInfo } from './brand';
 import { loadImage } from '../../../../io/export/canvas-helpers';
 import { badgesFor } from '../../../../io/export/render';
 import { captureMapStills, type CameraAngle } from '../../../../canvas/map3d/capture';
@@ -17,9 +18,15 @@ import type { ExportOptions } from '../../../../io/export/types';
 import { mapNativePx } from '../../../../io/share';
 import type { GridState, Locale } from '../../../../core/model/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
+import { selectedVersion } from './stylize/use-stylize-versions';
+import { composeStylizedBaseMap } from './stylize/compose-stylized';
 
 const MIN_3D_PX = 32;
 const PREVIEW_W = 1440; // cap the preview canvas width; the chosen Size affects only the final export.
+
+/** What either baseMap producer (a real capture, or a stylized composite) actually is — narrower
+ *  than `CanvasImageSource` so `.width`/`.height` stay plain numbers downstream. */
+export type BaseMapSource = HTMLImageElement | HTMLCanvasElement;
 
 /** Live footer token values for a map (date and dims are filled in by the painter from the comp). */
 export function footerTokenValues(state: GridState, options: ExportOptions, locale: Locale, summary: MapProvenanceSummary | null): Record<string, string> {
@@ -49,10 +56,22 @@ const EMPTY_SUMMARY: MapProvenanceSummary = {
   humanAfterAi: false, aiAfterHuman: false, counts: { aiWrites: 0, aiAccepted: 0, proceduralRuns: 0, analysisOnlyCalls: 0 },
 };
 
-/** EXPENSIVE: capture the 2D map at preview resolution. Cache by resolution in the caller.
- *  includeGrid bakes the real 2D grid (sub + cell + chunk lines) into the capture. */
-export async function captureBaseMap(px = 720, includeGrid = false): Promise<HTMLImageElement | null> {
-  const url = host.capture2d(px, includeGrid);
+/** EXPENSIVE: capture the 2D map at preview resolution, OR — when a stylize version is selected —
+ *  compose that version's picture with the user's own ink instead of capturing the map bitmap at
+ *  all. Cache by resolution in the caller. includeGrid bakes the real 2D grid (sub + cell + chunk
+ *  lines) into the capture; 原图 (no selection) keeps that plain path byte for byte. */
+export async function captureBaseMap(px = 720, includeGrid = false, annotations?: boolean, aiTag = ''): Promise<BaseMapSource | null> {
+  const version = selectedVersion();
+  if (version) {
+    const inkUrl = annotations ? host.capture2dAnnotations(px) : null;
+    const ink = inkUrl ? await loadImage(inkUrl).catch(() => null) : null;
+    // The grid is a layer over the picture, as the ink is: the redrawn band carries none of its own.
+    const gridUrl = includeGrid ? host.capture2dGrid(px) : null;
+    const grid = gridUrl ? await loadImage(gridUrl).catch(() => null) : null;
+    // Every model-drawn picture carries the disclosure, whether its model ran locally or remotely.
+    return composeStylizedBaseMap(version.image, ink, version.kind === 'model' ? aiTag : '', grid);
+  }
+  const url = host.capture2d(px, includeGrid, annotations);
   return url ? loadImage(url).catch(() => null) : null;
 }
 /** EXPENSIVE: capture the 3D thumbnails for the export card. `angles` are the user's chosen export
@@ -66,13 +85,26 @@ export async function captureCard3dAngles(state: GridState, angles?: CameraAngle
 /** CHEAP: paint the preview from already-captured assets. Returns a PNG data URL (or null).
  *  Always the SAME composed layout as the export (map dominant + optional restore-strip band),
  *  so the preview matches the final image and every appearance option stays visible. */
-export function paintPreview(args: {
+export interface PaintPreviewArgs {
   options: ExportOptions; summary: MapProvenanceSummary | null; state: GridState; locale: Locale;
-  baseMap: HTMLImageElement; card3dAngles: HTMLImageElement[];
+  baseMap: BaseMapSource; card3dAngles: HTMLImageElement[];
   /** The REAL rendered share-code band (built async by the modal); the caller gates painting on
    *  it being ready, so null here only means "this export carries no code". */
   codeImg?: HTMLCanvasElement | null;
-}): string | null {
+  /** The locale's logo lockup, preloaded by the caller (null = plain-text fallback). */
+  brandLockup?: HTMLImageElement | null;
+}
+
+/** What a painted preview is made of: the picture, and the layout it was painted at, so a reader
+ *  of one band (the Help Center's crops) can slice by the composition's own rects. `scale` maps
+ *  the comp's coordinates onto the returned canvas's pixels. */
+export interface PaintedPreview { url: string; comp: ReturnType<typeof computeComposition>; scale: number }
+
+export function paintPreview(args: PaintPreviewArgs): string | null {
+  return paintPreviewLayout(args)?.url ?? null;
+}
+
+export function paintPreviewLayout(args: PaintPreviewArgs): PaintedPreview | null {
   const { options, summary, state, locale, baseMap, card3dAngles, codeImg } = args;
   const sum = summary ?? EMPTY_SUMMARY;
   const mapAspect = (baseMap.width / baseMap.height) || 1.2;
@@ -104,6 +136,7 @@ export function paintPreview(args: {
     footerTemplate: options.footerTemplate, footerTokens: footerTokenValues(state, options, locale, sum),
     state, summary: sum, title: options.title, description: options.description,
     translate: (k, v) => translateFor(locale, k, v),
+    brand: brandInfo(locale, options, args.brandLockup ?? null),
   });
-  return canvas.toDataURL('image/png');
+  return { url: canvas.toDataURL('image/png'), comp, scale };
 }

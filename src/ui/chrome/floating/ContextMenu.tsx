@@ -1,4 +1,11 @@
-import { useEffect, type CSSProperties, type ReactElement } from 'react';
+/*
+ * ContextMenu.tsx — the menu a right-click on the map opens.
+ *
+ * The store holds WHICH block was clicked and where; the rows it offers for that block and the card
+ * they stand on are `objectMenuRows`/`terrainMenuRows` + `ContextMenuFace` below, so the Help
+ * Center's figure of this menu is this menu rather than a drawing of it.
+ */
+import { Fragment, useEffect, type CSSProperties, type ReactElement } from 'react';
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
@@ -44,6 +51,81 @@ const dividerStyle: CSSProperties = {
   margin: '4px 0',
 };
 
+const anim = {
+  initial: { scale: 0.9, opacity: 0 },
+  animate: { scale: 1, opacity: 1 },
+  exit: { scale: 0.9, opacity: 0, transition: exitTransition },
+  transition: springs.bouncy,
+};
+
+type Resolver = (key: string) => string;
+
+/** One row of the menu: the words on it, and how it stands. */
+export interface ContextMenuRow {
+  id: string;
+  label: string;
+  /** Removal, in the error ink. */
+  danger?: boolean;
+  /** The facing the piece already stands at: ticked, and filled the way a chosen row is. */
+  current?: boolean;
+  /** Nothing left to act on, so the row takes no press (a cell already down to bare ground). */
+  inactive?: boolean;
+  /** Draws a divider ABOVE this row. */
+  separated?: boolean;
+}
+
+/** What the menu offers on an OBJECT: the four facings, where the piece turns at all, then removal. */
+export function objectMenuRows(t: Resolver, rotation: number, rotatable: boolean): ContextMenuRow[] {
+  const rows: ContextMenuRow[] = [];
+  if (rotatable) {
+    for (const a of ANGLES) {
+      rows.push({ id: `rotate_${a}`, label: t(`context.rotate_${a}`), current: rotation === a });
+    }
+  }
+  rows.push({ id: 'delete', label: t('context.delete'), danger: true, separated: rotatable });
+  return rows;
+}
+
+/** What it offers on a TERRAIN cell: removal alone, which peels one layer. */
+export function terrainMenuRows(t: Resolver, isGround: boolean): ContextMenuRow[] {
+  return [{ id: 'delete', label: t('context.delete'), danger: true, inactive: isGround }];
+}
+
+/** The menu itself: the card, its rows and their hover. `style` carries the position and the scale
+ *  the card draws at. */
+export function ContextMenuFace({ rows, onPick, style }: {
+  rows: readonly ContextMenuRow[];
+  onPick: (id: string) => void;
+  style?: CSSProperties;
+}) {
+  return (
+    <motion.div data-context-menu {...anim} style={{ ...menuStyle, ...style }}>
+      {rows.map((row) => {
+        const rest = row.current ? colors.surfaceSecondary : 'transparent';
+        return (
+          <Fragment key={row.id}>
+            {row.separated ? <div style={dividerStyle} /> : null}
+            <button
+              style={{
+                ...itemStyle,
+                ...(row.danger ? { color: colors.statusError } : {}),
+                background: row.current ? colors.surfaceSecondary : 'none',
+                ...(row.inactive ? { opacity: 0.4, pointerEvents: 'none' } : {}),
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = rest; }}
+              onClick={() => onPick(row.id)}
+            >
+              {row.current && <span style={{ color: colors.accentPrimary }}>&#10003;</span>}
+              {row.label}
+            </button>
+          </Fragment>
+        );
+      })}
+    </motion.div>
+  );
+}
+
 export function ContextMenu() {
   const chrome = useChromeScale();
   const weights = useWeightVars();
@@ -85,12 +167,6 @@ export function ContextMenu() {
   }, [menu]);
 
   const close = () => useEditorStore.getState().setContextMenu(null);
-  const anim = {
-    initial: { scale: 0.9, opacity: 0 },
-    animate: { scale: 1, opacity: 1 },
-    exit: { scale: 0.9, opacity: 0, transition: exitTransition },
-    transition: springs.bouncy,
-  };
 
   // Build the menu content (or null) so AnimatePresence can play a close-exit.
   let content: ReactElement | null = null;
@@ -108,16 +184,12 @@ export function ContextMenu() {
         close();
       };
       content = (
-        <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...weights, ...pos }}>
-          <button
-            style={{ ...itemStyle, color: colors.statusError, opacity: isGround ? 0.4 : 1, pointerEvents: isGround ? 'none' : 'auto' }}
-            onMouseEnter={(e) => { if (!isGround) (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-            onClick={handleTerrainDelete}
-          >
-            {t('context.delete')}
-          </button>
-        </motion.div>
+        <ContextMenuFace
+          key="menu"
+          rows={terrainMenuRows(t, isGround)}
+          onPick={handleTerrainDelete}
+          style={{ zoom: chrome, ...weights, ...pos }}
+        />
       );
     } else {
       const obj = gridState.objects.get(menu.target.id);
@@ -140,33 +212,15 @@ export function ContextMenu() {
           close();
         };
         content = (
-          <motion.div key="menu" data-context-menu {...anim} style={{ ...menuStyle, zoom: chrome, ...weights, ...pos }}>
-            {item?.rotatable && (
-              <>
-                {ANGLES.map((a) => (
-                  <button
-                    key={a}
-                    style={{ ...itemStyle, background: obj.rotation === a ? colors.surfaceSecondary : 'none' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = obj.rotation === a ? colors.surfaceSecondary : 'transparent'; }}
-                    onClick={() => handleRotate(a)}
-                  >
-                    {obj.rotation === a && <span style={{ color: colors.accentPrimary }}>&#10003;</span>}
-                    {t(`context.rotate_${a}`)}
-                  </button>
-                ))}
-                <div style={dividerStyle} />
-              </>
-            )}
-            <button
-              style={{ ...itemStyle, color: colors.statusError }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-              onClick={handleDelete}
-            >
-              {t('context.delete')}
-            </button>
-          </motion.div>
+          <ContextMenuFace
+            key="menu"
+            rows={objectMenuRows(t, obj.rotation, !!item?.rotatable)}
+            onPick={(id) => {
+              if (id === 'delete') { handleDelete(); return; }
+              handleRotate(Number(id.slice('rotate_'.length)) as 0 | 90 | 180 | 270);
+            }}
+            style={{ zoom: chrome, ...weights, ...pos }}
+          />
         );
       }
     }

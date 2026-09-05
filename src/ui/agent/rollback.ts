@@ -1,34 +1,8 @@
 /*
- * rollback.ts — ONE SAFETY MODEL for every take-back the panel offers, and the only place that
- * model is written down.
- *
- * Four verbs point at the same undo stack: the history row's roll back, the receipt's Rewind to
- * start, the receipt's per-step rewind, and the live ticket's per-stage one. They were four separate
- * presses with four different amounts of care, which is how one of them came to destroy a dozen
- * hand edits without saying so. What they share is stated here, once:
- *
- * A TAKE-BACK POPS THE OPEN MAP'S UNDO STACK DOWN TO A DEPTH, and everything standing above that
- * depth goes, whoever put it there. So the cost is not "the job's edits" — it is every entry above
- * the watermark, and the honest confirm names it.
- *
- * WHOSE ENTRIES THOSE ARE is knowable from the log alone: a job's first `checkpoint` banks the depth
- * before it wrote anything and its `jobEnd` banks the depth it settled at, so anything above the
- * settle depth was laid down AFTER the job — the user's own work, or a later job's. `mine` is that
- * count. A log written before `jobEnd.undoIndex` existed cannot answer it, and there the confirm
- * names the TOTAL rather than guessing at a split: an unprovable division is worse than none.
- *
- * TWO REFUSALS, TWO TREATMENTS, and the difference is whether the refusal will ever lift:
- *
- *   MAP     (`other-map` / `unknown-map`) — permanent for this record on this map. The control is
- *           ABSENT and a standing notice over the record says why. Handled by the caller's own
- *           `otherMap`/`unknownMap` sets; nothing here decides it.
- *   RUNNING — temporary, and the control must not move under the hand that is about to press it. So
- *           it stands DISABLED with its reason readable, per the interface's layout-stability rule.
- *
- * THE PANEL NEVER REFUSES A TAKE-BACK BECAUSE THE USER'S OWN WORK DOMINATES IT. Naming the cost is
- * the whole answer: it is the user's map, the alternative route (Ctrl+Z) is theirs anyway, and a
- * refusal here would be the panel overruling a deliberate, confirmed press on the grounds that the
- * user had been busy.
+ * Shared rollback accounting for every assistant take-back control. A rollback pops all undo entries
+ * above its watermark, including later manual edits or jobs. `mine` identifies entries above the
+ * recorded job end when that depth is known; otherwise confirmation reports only the total. Controls
+ * for another or unknown map are omitted, while a running job temporarily disables them.
  */
 
 /** What one take-back press would cost, in undo entries. */
@@ -65,9 +39,8 @@ export function rollbackReaches(watermark: number, depth: number | undefined): b
   return depth === undefined || depth > watermark;
 }
 
-/** The words a take-back's confirm stands behind: the pill the user presses, and the sentence a
- *  screen reader is given. Both name the SIZE — the artifact's own rule for a destructive press —
- *  and both name the user's later work separately wherever the record can prove there is any. */
+/** Confirmation copy for a take-back. The visible pill and screen-reader label both state its size
+ *  and separately identify later work when the record can prove there is any. */
 export function rewindConfirmCopy(
   t: (key: string, params?: Record<string, string | number>) => string,
   cost: RollbackCost | null,

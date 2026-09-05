@@ -255,9 +255,8 @@ describe('the generate facade', () => {
 
 describe('the water system, on the committed map', () => {
   // TOFU WATER is a box-shaped lake dropped at a random place with a mountain for a border, and
-  // `waterStoryLedger` is the reading that names one. It is part of the hard ledger above; what is
-  // pinned here is the reading itself, seed by seed, so a regression names the water rather than the
-  // whole ledger.
+  // `waterStoryLedger` names box-shaped lakes. Checking it seed by seed localizes a failure to the
+  // water reading instead of the full quality ledger.
   it('drops no tofu lake, on either template, at any seed', () => {
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS) {

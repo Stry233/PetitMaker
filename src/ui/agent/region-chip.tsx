@@ -1,27 +1,7 @@
 /*
- * region-chip.tsx — the painted region as composer context (normative prototype `.rgbtn` /
- * `.rgchip` / `.vg` / `.tkreg`).
- *
- * THE CHIP IS A VIEW OF THE STORE'S ONE REGION FACT, never a copy of it. `state/slices/edit.ts`
- * holds `region: MacroCoord[]` — `[]` is the ONE representation of "nothing marked", and
- * `region.length` IS the count — and the agent's write tools are bound to exactly that list. So the
- * chip's numbers come off `state/region-bounds.ts:regionBounds`, which is the same derivation the
- * out-of-region refusal quotes back to the model: a chip and a refusal disagreeing about the box
- * would be two answers to one question. The cross clears THE PAINT ITSELF
- * (`core/runtime/region-brush.ts:clearRegionSelection`) rather than any panel-local flag, because
- * the lock reads the store: a panel-only detach leaves every write tool bound while the composer
- * claims otherwise.
- *
- * IT DOCKS INSIDE THE WELL as a leading token, which is a layout decision and not a placement one:
- * the composer is the panel's pinned bottom zone, and a chip standing above it would either move
- * the composer or cover the record. Inside the well it costs the field ~60px of its own width and
- * nothing else moves — which is what the shortened placeholders beside it are for.
- *
- * THE VIGNETTE IS A REAL PHOTOGRAPH. The artifact draws a little id-free island; the honest
- * equivalent in the running app is the map itself (`map-shot.tsx`, over `canvas/thumbnail.ts`) with
- * the marked bounds drawn on top. The rect is placed by the SAME sea-framing math the capture is
- * composed with (`thumbnail.ts:seaFrame`), so the mark lands on the cells it names rather than on an
- * eyeballed fraction of the picture.
+ * Composer controls for the store's active region. Counts and bounds use the same region derivation
+ * as the agent tool lock, and clearing the chip clears the shared selection. The vignette frames the
+ * whole map and overlays the marked bounds using the capture renderer's sea framing.
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { motion } from 'framer-motion';
@@ -32,11 +12,12 @@ import { cursors } from '../design/styles';
 import { Icon } from './icons';
 import { MarkedShot } from './map-shot';
 import { amplitude, framerMotion } from './motion';
-import { edge, withAlpha } from './tokens';
+import { edge } from './tokens';
+import { withAlpha } from '../design/styles';
 
-/** The chip's own vignette, in px (artifact `.rgchip .vg`). */
+/** Composer-chip vignette size in CSS pixels. */
 export const CHIP_VIGNETTE = { width: 34, height: 25 } as const;
-/** The ticket head's, one size down (artifact `.tkreg .vg`). */
+/** Ticket-header vignette size in CSS pixels. */
 export const TICKET_VIGNETTE = { width: 26, height: 18 } as const;
 
 /** How far a queued chip starts short of its own size, per the steer chip's declaration: the region
@@ -49,17 +30,7 @@ function cellsSaid(t: (key: string, params?: Record<string, string | number>) =>
   return t(n === 1 ? 'agent3.region_in_one' : 'agent3.region_in', { n });
 }
 
-/**
- * The live map framed on the WHOLE island with the marked bounds drawn over it.
- *
- * WHOLE ISLAND, NOT THE REGION'S OWN BOX, and that is the whole point of the picture: a crop of the
- * marked cells fills the frame edge to edge and says nothing about WHERE the mark sits. What the
- * user needs at a glance is the corner of the island they pointed at.
- *
- * THE DRAWING ITSELF LIVES IN `map-shot.tsx`, beside the photograph it stands on: the gate
- * family's own thumbs are the same picture without the mark, and the two ways of saying "here" have
- * to be one.
- */
+/** The whole-map capture with the selected bounds drawn in their map position. */
 export function RegionVignette({ bounds, width, height }: {
   bounds: RegionBounds;
   width: number;
@@ -93,13 +64,7 @@ const BUTTON_BASE: CSSProperties = {
   boxShadow: 'none',
 };
 
-/**
- * The frame button in the send cluster: press it and the map takes the pencil.
- *
- * IT STANDS LIT WHILE A REGION DOES, which is the same fact the chip beside it draws — one control
- * reporting a state and one offering the verb that changes it would be two sources for one thing.
- * It is also lit while the marking itself is under way, since that is what a second press ends.
- */
+/** Starts or stops region marking and remains highlighted while a region or marking session exists. */
 export function RegionButton({ bounds, marking, onPress }: {
   bounds: RegionBounds | null;
   marking: boolean;
@@ -124,17 +89,10 @@ export function RegionButton({ bounds, marking, onPress }: {
   );
 }
 
-/**
- * The docked chip: the vignette re-opens marking, the cross clears the paint.
- *
- * TWO BUTTONS, NOT ONE BUTTON WITH A CORNER: the body and the cross do unrelated things (one edits
- * the region, one destroys it), and a nested pressable inside a pressable is a hit area the pointer
- * cannot report honestly.
- */
+/** A two-button chip: the vignette edits the region and the separate cross clears it. */
 export function RegionChip({ bounds, vignette, onMark, onClear }: {
   bounds: RegionBounds;
-  /** The photograph, from the caller that owns a renderer. Absent, the body is the frame glyph: a
-   *  chip with an empty bordered box in it reads as a picture that failed to load. */
+  /** Caller-supplied map capture. The region glyph is the fallback. */
   vignette?: ReactNode;
   onMark(): void;
   onClear(): void;
@@ -199,4 +157,3 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
     </motion.span>
   );
 }
-

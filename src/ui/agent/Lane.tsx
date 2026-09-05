@@ -1,25 +1,8 @@
 /*
- * Lane.tsx — the helper lane: what a `delegate_task` child is doing, inside the parent's own ticket
- * (normative prototype `.lane` / `.lanehead` / `.laneline`).
- *
- * A DELEGATE IS NEVER A BLACK HOLE. The child runs its own loop against its own log, which dies with
- * the call, so without a lane the parent's record carries one row reading "Delegating the task" for
- * minutes and then a result. The lane is that row's work said as it happens: the task as a name, a
- * step count that rises, the tool in flight, and — where the helper hits trouble — the SAME grammar
- * the parent uses for its own, so nothing about a helper's failure needs a second vocabulary.
- *
- * THE CAUSE READS TWICE, and that is deliberate: on the lane, and as the delegate row's own chip
- * (`OpRow`'s `chipFor`). The lane is a nested block that a collapsed op list can hide, and a
- * refusal the user cannot see is a refusal that did not happen as far as they know.
- *
- * IT ROLLS UP WHEN THE HELPER FINISHES (prototype: "the lane rolls up onto the delegate row"). A
- * settled call has no lane at all — the child's log is gone, and what survives it is the record on
- * the result (`ToolResultDetail.childOps`/`childError`), which `laneRollup` says in one chip.
- *
- * `LaneView` IS THE SHAPE, NOT THE CARRIER. `store.childLive` fills the live half of it today
- * (task, step count, the tool in flight); `retry` and `error` are the faces the artifact draws for a
- * helper in trouble and are rendered and tested from a `LaneView` here, awaiting the live carrier
- * that reports them (the child's own newest result knows both).
+ * Shows a `delegate_task` child's live work inside the parent ticket: its name, step count, current
+ * tool and any retry or error. When the child settles, `laneRollup` reduces its retained operation
+ * details to a result chip on the delegate row. Errors remain visible in both places while live
+ * because the nested lane may be hidden by a collapsed operation list.
  */
 import type { ReactNode } from 'react';
 import { Icon, type IconId } from './icons';
@@ -51,8 +34,7 @@ export interface LaneView {
   done?: boolean;
 }
 
-/** How far the lane is indented from the rows it belongs under, in px (prototype `.lane`): far
- *  enough to read as the delegate row's own work rather than as the next step of the parent's. */
+/** Lane indentation in CSS pixels, separating child work from the parent's next step. */
 const LANE_INDENT = 28;
 
 /** The spinner and the glyphs on a lane, in px. */
@@ -105,10 +87,7 @@ function LaneHead({ lane }: { lane: LaneView }) {
 
   return (
     <div data-testid="lane-head" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      {/* THE TASK IS MODEL-AUTHORED, so the name WRAPS rather than ellipsizing (the prototype's
-          `.lanehead .nm` carries no nowrap): a helper's whole job cut off at "Helper: planting
-          the…" names nothing at all, and a long locale reaches that point on the first word. Two
-          lines is the cap, the same one every other clamped line in the panel takes. */}
+      {/* Model-authored helper names wrap to two lines instead of ellipsizing their identifying text. */}
       <span
         data-testid="lane-name"
         style={{
@@ -213,8 +192,7 @@ export function Lane({ lane }: { lane: LaneView }) {
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {phrase}
         </span>
-        {/* On the lane's own paper, so the chip stands off the inset the way it stands off the plate
-            in an op row (prototype `.laneline .rchip{background:var(--plate)}`). */}
+        {/* The plate background separates the result chip from the lane's inset paper. */}
         {erring && <span style={{ marginLeft: 'auto', flex: '0 0 auto', background: PLATE, borderRadius: 999 }}>
           <ResultChip tone="bad">{lane.error}</ResultChip>
         </span>}

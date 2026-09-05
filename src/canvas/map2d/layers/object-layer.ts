@@ -6,7 +6,7 @@ import { ItemCategory } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import { hasTrait } from '../../../core/model/traits';
 import { ROAD_FEATHER, roadBodyPoints, roadCutFeeds, type RoadPt } from '../../../core/edge-cut/road-shape';
-import { buildRoadRegions, type RoadRegion } from '../../../core/edge-cut/road-region';
+import { updateRoadRegions, type RoadRegion } from '../../../core/edge-cut/road-region';
 import { roadLookup } from '../../../state/object-index';
 import { isMotionReduced } from '../motion-state';
 import { objectElevation, getPlacedObjectSize } from '../../../state/object-geometry';
@@ -19,7 +19,10 @@ import { roadTileCanvas, ROAD_TEXTURE_SIZE } from '../../road-tile-texture';
 import { spawnPuff } from '../draw/particles';
 import { getIconTexture, iconColor, iconLodVersion } from '../draw/icon-color';
 import { fitSpriteToTexture, footprintFit, SPRITE_FILL } from '../draw/sprite-fit';
-import { drawRamp, isRampItem } from '../draw/ramp-graphic';
+import { drawRamp } from '../draw/ramp-graphic';
+import { isRampItem, objectSpriteUrl } from '../object-sprite-url';
+
+export { objectSpriteUrl } from '../object-sprite-url';
 import { ChunkGrid, type CullRect } from './chunk-grid';
 import { CULL_MARGIN_PX } from './chunk-cull';
 import { hiddenSetFrom } from './layer-visibility';
@@ -54,11 +57,6 @@ function spriteTurns(item: CatalogItem | undefined): boolean {
  * DECODED before it draws — a capture of a map nobody is looking at, which cannot wait for a
  * texture to arrive and re-draw — has to ask the same question this layer answers.
  */
-export function objectSpriteUrl(obj: PlacedObject, item: CatalogItem | undefined): string | undefined {
-  const name = obj.icon ?? (isRampItem(item) || !item?.color ? item?.icon : undefined);
-  return name ? iconUrl(name) : undefined;
-}
-
 /** Feather steps: the fade is drawn as this many stepped alpha bands between the outline and the
  *  fully-opaque core. At ROAD_FEATHER of a 64px tile each band is ~1.3px — the steps disappear
  *  into the gradient at rest zoom, straight edges and the fans' concentric arcs alike. */
@@ -111,39 +109,43 @@ function drawRegion(
     if (texture) g.beginTextureFill({ texture, alpha: a, matrix: ROAD_FILL_MATRIX });
     else g.beginFill(color, a);
   };
+  // Each ring sampled once per inset level, scaled to px. The point count is fixed across `t` by
+  // construction (road-region.ts), which is what lets a band pair its two rings vertex by vertex.
   const ringSets = region.rings.map((ring) => ({
-    at: (t: number) => ring.points(t).map(([px, py]) => [px * TILE_SIZE, py * TILE_SIZE] as RoadPt),
+    levels: Array.from({ length: FEATHER_STEPS + 1 }, (_, i) =>
+      ring.points(ROAD_FEATHER * (i / FEATHER_STEPS)).map(([px, py]) => [px * TILE_SIZE, py * TILE_SIZE] as RoadPt)),
     outer: ringArea(ring.points(0)) > 0,
   }));
-  for (let i = 0; i <= FEATHER_STEPS; i++) {
-    const solid = i === FEATHER_STEPS;
-    const t0 = ROAD_FEATHER * (i / FEATHER_STEPS);
-    const t1 = ROAD_FEATHER * ((i + 1) / FEATHER_STEPS);
-    fill(solid ? alpha : alpha * ((i + 0.5) / FEATHER_STEPS));
+  // The fade: quad bands between consecutive insets, one strip per ring — outer contours and holes
+  // alike, since every vertex's inset direction already points into the surface. A quad is two
+  // triangles to the triangulator, where a contour-with-hole polygon at every band re-triangulated
+  // the whole surface once per band, and the triangulation is what a paint stroke's per-frame
+  // redraw of a large connected network spends nearly all of its time in.
+  for (let i = 0; i < FEATHER_STEPS; i++) {
+    fill(alpha * ((i + 0.5) / FEATHER_STEPS));
     for (const ring of ringSets) {
-      if (!ring.outer) continue;
-      g.drawPolygon(ring.at(t0).flat());
-      g.beginHole();
-      if (solid) {
-        // The core: the outer contour at full inset, holes at theirs.
-        for (const hole of ringSets) if (!hole.outer) g.drawPolygon(hole.at(ROAD_FEATHER).flat());
-      } else {
-        g.drawPolygon(ring.at(t1).flat());
-      }
-      g.endHole();
-    }
-    if (!solid) {
-      // A hole's band grows outward from the gap: contour at t1 with the t0 contour cut out.
-      for (const ring of ringSets) {
-        if (ring.outer) continue;
-        g.drawPolygon(ring.at(t1).flat());
-        g.beginHole();
-        g.drawPolygon(ring.at(t0).flat());
-        g.endHole();
+      const outer = ring.levels[i]!;
+      const inner = ring.levels[i + 1]!;
+      for (let k = 0; k < outer.length; k++) {
+        const k2 = (k + 1) % outer.length;
+        const [a, b, c, d] = [outer[k]!, outer[k2]!, inner[k2]!, inner[k]!];
+        if ((a[0] === d[0] && a[1] === d[1]) && (b[0] === c[0] && b[1] === c[1])) continue; // no fade here
+        g.drawPolygon([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]);
       }
     }
     g.endFill();
   }
+  // The core: the outer contour at full inset with the holes at theirs — the one shape that still
+  // needs a real triangulation.
+  fill(alpha);
+  for (const ring of ringSets) {
+    if (!ring.outer) continue;
+    g.drawPolygon(ring.levels[FEATHER_STEPS]!.flat());
+    g.beginHole();
+    for (const hole of ringSets) if (!hole.outer) g.drawPolygon(hole.levels[FEATHER_STEPS]!.flat());
+    g.endHole();
+  }
+  g.endFill();
 }
 
 function ringArea(pts: RoadPt[]): number {
@@ -200,6 +202,9 @@ function drawnAs(o: PlacedObject): string {
 
 export class ObjectLayer {
   public readonly container: PIXI.Container;
+  /** Opens the owning renderer's render window; MapRenderer rebinds it to itself right after
+   *  construction. Defaults to the module broadcast, for an instance nobody has wired yet. */
+  public requestRender: () => void = requestRender;
   private objectMap: Map<string, PIXI.Container> = new Map();
   /** What each drawn object looked like when its sprite was built, by id — see `drawnAs`. `sync`
    *  compares against it, which is the only way that pass can notice an object EDITED IN PLACE. */
@@ -236,6 +241,18 @@ export class ObjectLayer {
   private roadIds = new Set<string>();
   private roadRefreshQueued = false;
   private roadState: GridState | null = null;
+  /** The last flush's regions and the map they describe, for the incremental rebuild: a region no
+   *  changed cell can reach survives the next flush whole (`updateRoadRegions`). */
+  private lastRoadRegions: RoadRegion[] | null = null;
+  private lastRoadRegionsFor: GridState | null = null;
+  /** Flat cell indices whose road tile changed since the last flush; null owes a full rebuild. */
+  private roadDirty: Set<number> | null = null;
+  /** Where each drawn road tile stands, so a removal can name the cell its wrapper no longer knows. */
+  private roadCellById = new Map<string, number>();
+  /** The map this layer was last synced to. The fallback for every incremental rebuild: a layer
+   *  can serve a world that is not the store's (a Help figure's demo world), and reading the
+   *  store there rebuilds the roads from a different map than the sprites standing here. */
+  private lastSyncState: GridState | null = null;
   /** Road member ids currently carried by a group tween: their regions stay hidden and their
    *  wrappers wear per-tile flight bodies until the tween lands. */
   private roadsInFlight = new Set<string>();
@@ -247,12 +264,16 @@ export class ObjectLayer {
 
   /** Queue a road-surface rebuild, coalesced to one per frame; a stroke announces several
    *  objects per command and every one lands here. */
-  private scheduleRoadRefresh(forState?: GridState): void {
+  private scheduleRoadRefresh(forState?: GridState, dirtyCells?: readonly number[] | null): void {
     this.roadState = forState ?? null; // a capture's foreign state must not outlive its capture
+    // Dirty cells accumulate until the flush; a caller that cannot name what changed (null) owes
+    // the whole map, and that debt survives any narrower reports queued beside it.
+    if (dirtyCells === null || dirtyCells === undefined) this.roadDirty = null;
+    else if (this.roadDirty) for (const c of dirtyCells) this.roadDirty.add(c);
     if (this.roadRefreshQueued) return;
     this.roadRefreshQueued = true;
     requestAnimationFrame(() => this.flushRoadRegions());
-    requestRender();
+    this.requestRender();
   }
 
   /** Rebuild the road surfaces NOW (captures call this; everything else goes through the
@@ -262,13 +283,21 @@ export class ObjectLayer {
     // A capture flushes synchronously and throws its world away; the frame its sync had queued
     // still arrives, with nothing left to draw into (`repaintMaterial` guards the same way).
     if (this.container.destroyed) return;
-    const gridState = this.roadState ?? useEditorStore.getState().gridState;
+    const gridState = this.roadState ?? this.lastSyncState ?? useEditorStore.getState().gridState;
     if (!gridState) return;
     const roadObjs: PlacedObject[] = [];
     for (const obj of gridState.objects.values()) {
       if (getCatalogItem(obj.catalogId)?.category === ItemCategory.Road) roadObjs.push(obj);
     }
-    const regions = roadObjs.length > 0 ? buildRoadRegions(roadObjs, roadLookup(gridState)) : [];
+    // Incremental against the last flush OF THIS MAP: a capture's foreign state, a map swap, or a
+    // caller that could not name its cells all fall back to the full build inside.
+    const dirty = this.lastRoadRegionsFor === gridState ? this.roadDirty : null;
+    const regions = roadObjs.length > 0
+      ? updateRoadRegions(dirty ? this.lastRoadRegions : null, dirty, roadObjs, roadLookup(gridState), gridState.template.width)
+      : [];
+    this.lastRoadRegions = regions;
+    this.lastRoadRegionsFor = gridState;
+    this.roadDirty = new Set();
     const seen = new Set<string>();
     for (const region of regions) {
       const key = region.signature;
@@ -296,7 +325,7 @@ export class ObjectLayer {
     for (const key of [...this.roadRegionGfx.keys()]) {
       if (!seen.has(key)) this.dropRegion(key);
     }
-    requestRender();
+    this.requestRender();
   }
 
   /**
@@ -334,7 +363,9 @@ export class ObjectLayer {
     for (const [key, entry] of this.roadRegionGfx) {
       if (entry.material === material) this.dropRegion(key);
     }
-    this.scheduleRoadRefresh();
+    // The texture arrived; the geometry did not move. An empty dirty set keeps every region and
+    // only redraws the Graphics dropped above.
+    this.scheduleRoadRefresh(undefined, []);
   }
 
   /** The per-elevation sub-container for `elev`, created (z-ordered, and honoring
@@ -388,7 +419,7 @@ export class ObjectLayer {
   setShowNumbers(show: boolean): void {
     if (show === this.showNumbers) return;
     this.showNumbers = show;
-    requestRender();
+    this.requestRender();
     this.applyLabelVisibility();
     // Labels that never existed build lazily, VISIBLE CHUNKS ONLY — rasterizing a
     // Text per object across a whole generated map in one frame is a toggle hitch
@@ -403,7 +434,7 @@ export class ObjectLayer {
     const ok = zoom >= MIN_NUMBER_ZOOM;
     if (ok === this.numberZoomOk) return;
     this.numberZoomOk = ok;
-    requestRender();
+    this.requestRender();
     this.applyLabelVisibility();
     if (this.labelsVisible()) this.buildVisibleLabels();
   }
@@ -432,7 +463,7 @@ export class ObjectLayer {
     if (!meta) return;
     (child as PIXI.Container).addChild(this.makeElevLabel(meta.text, meta.y));
     this.labelBuilt.add(id);
-    requestRender();
+    this.requestRender();
   }
 
   private makeElevLabel(text: string, y: number): PIXI.Text {
@@ -453,12 +484,12 @@ export class ObjectLayer {
   }
 
   setLayerVisibility(visibility: Record<number, boolean>): void {
-    requestRender();
+    this.requestRender();
     this.hiddenLayers = hiddenSetFrom(visibility);
     // Fade each per-elevation container as a unit (one fade per layer, never
     // per-object). Reduced motion snaps instantly.
     for (const [elev, lc] of this.layerContainers) {
-      fadeLayer(lc, elev, !this.hiddenLayers.has(elev), this.layerFadeAnim);
+      fadeLayer(lc, elev, !this.hiddenLayers.has(elev), this.layerFadeAnim, this.requestRender);
     }
   }
 
@@ -509,12 +540,13 @@ export class ObjectLayer {
    * "which ids exist" agrees with state and leaves the stale sprite standing.
    */
   sync(objects: Map<string, PlacedObject>, forState?: GridState): void {
+    if (forState) this.lastSyncState = forState;
     // Every ordinary removal path (removeObjects, below) drops its own id from this map already;
     // this bulk pass catches an id that left objectMap some OTHER way (see animateRemove, which
     // detaches from objectMap immediately but destroys the sprite later). sync() runs only at bulk
     // moments (load/undo/generate), never per stroke.
     for (const [id, e] of this.lodSprites) if (e.sprite.destroyed) this.lodSprites.delete(id);
-    requestRender();
+    this.requestRender();
     const toRemove: string[] = [];
     for (const id of this.objectMap.keys()) {
       if (!objects.has(id)) {
@@ -547,7 +579,7 @@ export class ObjectLayer {
    * own or its roads are drawn the way the live map's are.
    */
   addObjects(objects: PlacedObject[], forState?: GridState): void {
-    const gridState = forState ?? useEditorStore.getState().gridState;
+    const gridState = forState ?? this.lastSyncState ?? useEditorStore.getState().gridState;
     for (const obj of objects) {
       if (this.objectMap.has(obj.id)) this.removeObjects([obj.id]); // idempotent: re-adding an id replaces, never orphans the old sprite
       const item = getCatalogItem(obj.catalogId);
@@ -564,7 +596,7 @@ export class ObjectLayer {
       wrapper.name = obj.id;
 
       if (ramp && item) {
-        drawRamp(wrapper, obj, item, size, this.labelsVisible());
+        drawRamp(wrapper, obj, item, size, this.labelsVisible(), this.requestRender);
       } else {
         const spriteUrl = objectSpriteUrl(obj, item);
 
@@ -601,7 +633,7 @@ export class ObjectLayer {
           // Self-described objects (the plaza) carry a filled platform image — CONTAIN it within the
           // footprint (no 1.1 overflow) so the icon stays inside its grey backing box.
           const spriteFill = obj.icon ? 1 : SPRITE_FILL;
-          fitSpriteToTexture(sprite, tex, footprintFit(fw, fh, spriteFill));
+          fitSpriteToTexture(sprite, tex, footprintFit(fw, fh, spriteFill), false, this.requestRender);
           const lodEntry = { sprite, url: spriteUrl, footprintPx: Math.max(fw, fh) };
           this.lodSprites.set(obj.id, lodEntry);
           this.pendingLod.push(lodEntry); // starts on the oversized default — next updateLod settles it (O(new))
@@ -615,6 +647,7 @@ export class ObjectLayer {
             // here. The wrapper stays for what is per-tile — the elevation label, and the
             // in-flight body a group tween lends it.
             this.roadIds.add(obj.id);
+            if (gridState) this.roadCellById.set(obj.id, obj.position.y * gridState.template.width + obj.position.x);
           } else {
             const g = new PIXI.Graphics();
             g.beginFill(fillColor, fillAlpha);
@@ -689,10 +722,14 @@ export class ObjectLayer {
             lifetimeMs: place.lifetimeMs, risePx: place.risePx, gravity: place.gravity,
             arcSpread: place.arcSpread, maxRadiusPx: place.maxRadiusPx, behind: true,
           },
+          this.requestRender,
         );
       }
     }
-    if (objects.some((o) => this.roadIds.has(o.id))) this.scheduleRoadRefresh(forState);
+    const roadCells = objects.filter((o) => this.roadIds.has(o.id))
+      .map((o) => this.roadCellById.get(o.id))
+      .filter((c): c is number => c !== undefined);
+    if (roadCells.length) this.scheduleRoadRefresh(forState, roadCells);
   }
 
   /**
@@ -700,7 +737,11 @@ export class ObjectLayer {
    */
   removeObjects(ids: string[]): void {
     for (const id of ids) {
-      if (this.roadIds.delete(id)) this.scheduleRoadRefresh();
+      if (this.roadIds.delete(id)) {
+        const cell = this.roadCellById.get(id);
+        this.roadCellById.delete(id);
+        this.scheduleRoadRefresh(undefined, cell === undefined ? null : [cell]);
+      }
       const wrapper = this.objectMap.get(id);
       if (wrapper) {
         this.unculledWrappers.delete(wrapper);
@@ -728,12 +769,12 @@ export class ObjectLayer {
 
   /** Delegates to object-animations.ts animateSquash — see there for the design notes. */
   animateSquash(objectId: string, sizeCells = 1): void {
-    animateSquash(this.objectMap, objectId, sizeCells);
+    animateSquash(this.objectMap, objectId, sizeCells, this.requestRender);
   }
 
   /** Delegates to object-animations.ts animateRotation — see there for the design notes. */
   animateRotation(id: string, fromDeg: number, toDeg: number, onFrame?: (eased: number) => void): void {
-    animateRotation(this.objectMap, id, fromDeg, toDeg, onFrame);
+    animateRotation(this.objectMap, id, fromDeg, toDeg, onFrame, this.requestRender);
   }
 
   /** Delegates to object-animations.ts animateGroupRotation — see there for the design notes.
@@ -744,7 +785,7 @@ export class ObjectLayer {
   animateGroupRotation(turn: GroupRotation, onFrame?: (eased: number) => void): void {
     const roadMembers = turn.members.filter((m) => this.roadIds.has(m.id));
     if (roadMembers.length === 0 || isMotionReduced()) {
-      animateGroupRotation(this.objectMap, turn, onFrame);
+      animateGroupRotation(this.objectMap, turn, onFrame, this.requestRender);
       return;
     }
     const gridState = useEditorStore.getState().gridState;
@@ -776,12 +817,12 @@ export class ObjectLayer {
       for (const m of roadMembers) this.roadsInFlight.delete(m.id);
       for (const entry of this.roadRegionGfx.values()) entry.g.visible = true;
       this.scheduleRoadRefresh();
-    });
+    }, this.requestRender);
   }
 
   /** Delegates to object-animations.ts animateRemove — see there for the design notes.
    *  Must be called BEFORE the RemoveObject command executes, while the wrapper still exists. */
   animateRemove(id: string): void {
-    animateRemove(this.objectMap, this.container, id);
+    animateRemove(this.objectMap, this.container, id, this.requestRender);
   }
 }

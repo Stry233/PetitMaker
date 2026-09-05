@@ -1,20 +1,8 @@
 /**
- * Character.tsx — the one-character system. ONE instance stands app-wide, in the one seat the frame
- * declares for her (`seat.ts`), whether the panel is open or shut; this component owns only its own
- * choreography, ported from the normative prototype's `makeCharacter`/`setPose`/`setBadge` onto
- * `poses.ts`'s data table.
- *
- * THE RECORDED GOTCHA: a badge swap-out plays `fill:'forwards'` so it holds `scale(0)` after it
- * finishes; swapping the badge again before that hold is released re-asserts `scale(0)` on the
- * INCOMING badge unless every animation already on the badge element is canceled first. `setBadge`
- * below cancels `badgeEl.getAnimations()` at the top of every swap-in for exactly this reason —
- * do not remove it because "nothing is animating there right now".
- *
- * SCHEDULING DEVIATES FROM THE PROTOTYPE IN ONE RESPECT: the prototype's `schedule(fn, at)` always
- * goes through `setTimeout`, even for `at:0` (so a same-tick badge or track start is still one
- * microtask away). Here, `at <= 0` runs its callback SYNCHRONOUSLY instead — the same end state,
- * reachable without a caller having to flush a timer queue for the overwhelmingly common
- * zero-delay case (every pose but the two one-shots badges/tracks at their own pose's start).
+ * Owns the app-wide character's pose and badge choreography; placement belongs to `seat.ts`. Badge
+ * swaps cancel existing Web Animations before mounting the next badge because a completed
+ * `fill: 'forwards'` exit otherwise keeps the incoming badge scaled to zero. Zero-delay pose steps
+ * run synchronously, while later steps use timers.
  */
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
@@ -28,6 +16,7 @@ import { EYE_DOTS, lashWidth, lidBox } from './face';
 import { CURVES, MICRO, POSE_DWELL, POSES, PRESS_SQUASH, PUFF, WAKE_BEAT, type BodyPart, type PoseKeyframe, type PoseName, type PoseTimer, type PoseTrack } from './poses';
 import { amplitude, framerMotion, seconds } from '../motion';
 import { cursors } from '../../design/styles';
+import { useUiPreview } from '../../primitives/ui-preview';
 
 export interface CharacterHandle {
   el: HTMLDivElement;
@@ -57,11 +46,9 @@ let liveHandle: CharacterHandle | null = null;
 /**
  * THE DREAM BADGE, published rather than passed.
  *
- * It is the sleeping screen's own plume and it stands OUTSIDE the pose — a sibling of `.flip`, per
- * the artifact — because the plume is the only thing on that screen that does NOT move, which is
- * what makes a 2.8-degree twitch of the body legible at all. A badge inside the pose would twitch
- * with her. The disconnected screen is in the lazy panel chunk and the character is one eager layer
- * outside it, so the fact travels the same way a surface pose does (`surface-pose.ts`).
+ * It is the sleeping screen's plume and stands outside the pose as a sibling of `.flip`. This keeps
+ * the badge still while the sleeping body twitches. The disconnected screen is in the lazy panel
+ * chunk and the character is in an eager outer layer, so the value travels through an external store.
  *
  * Three states in one primitive, so a caller setting the same thing twice notifies nobody:
  * `'off'` (no dream badge at all), `'zzz'` (she is sleeping), or the glyph of the order she is
@@ -108,7 +95,7 @@ const BADGE_POP_IN_MS = seconds('panel.badge.pop') * 1000;
  * HER HOVER IS THE HOUSE ONE (`design/styles.ts:pressable`'s growth, read through her own
  * declaration), which is what the five blocks she stands beside take — one growth, one spring, one
  * feel across the whole row. HER PRESS IS HER OWN: a character answers a press as a body, so the
- * click plays the prototype's squash on her body part (`poses.ts:PRESS_SQUASH`, additive so the
+ * click plays `poses.ts:PRESS_SQUASH` on her body part, additive so the
  * breath goes on underneath) rather than the generic control shrink.
  *
  * IT RIDES THE ROOT, which is free for it: the pose machine writes its tracks on the three parts
@@ -138,6 +125,7 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
 
   const [shownBadge, setShownBadge] = useState<BadgeId | null>(null);
   const reduced = useReducedMotionConfig() === true;
+  const pictured = useUiPreview();
   const dream = useDreamBadge();
   /** The live pose effect's own `setBadge`, so the published handle can reach it. Re-pointed on
    *  every effect run; the handle itself is built once. Same arrangement for the two press verbs,
@@ -196,8 +184,11 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
 
   // Publish the one live handle for `useCharacterMorph`. Runs once per mount; the app is expected
   // to mount exactly one Character, so the last-mounted instance's cleanup clearing the slot is
-  // safe rather than a race.
+  // safe rather than a race. A PICTURED mount (a help figure's panel drawing its own character)
+  // publishes nothing: the handle is a module-level slot outside the figure's DOM containment, and
+  // writing it would point every placement and press verb at an inert drawing.
   useEffect(() => {
+    if (pictured) return undefined;
     if (!rootRef.current || !flipRef.current || !poseRef.current || !bodyRef.current) return undefined;
     const handle: CharacterHandle = {
       el: rootRef.current,
@@ -209,7 +200,7 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
     };
     liveHandle = handle;
     return () => { if (liveHandle === handle) liveHandle = null; };
-  }, []);
+  }, [pictured]);
 
   useEffect(() => {
     const partEls: Record<BodyPart, HTMLDivElement | null> = {
@@ -372,7 +363,7 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
      * owned — the beat has to survive that to be seen at all, and `idle` drives no pose-part track
      * of its own so nothing replaces it. No fill, so at its end the part is back on the landing
      * pose's own value, and any NEWER pose-part animation (a fast paste bringing `keylean` in)
-     * takes over mid-beat — the wake yields by construction, exactly as the prototype's does.
+     * takes over mid-beat, so the wake yields to the newer pose by construction.
      */
     wakeVerb.current = () => {
       if (reduced || worn.current !== 'sleeping') return;

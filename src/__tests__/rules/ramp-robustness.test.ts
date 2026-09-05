@@ -79,15 +79,7 @@ describe('ramp policy robustness', () => {
   });
 });
 
-/**
- * The four sides of a plateau accept a ramp the SAME way. Two reads used to break that: the cliff
- * detector read elevations at the anchor point, whose half-cell straddle at a cliff's left/top end
- * includes the ground beside the plateau (min goes low, no cliff found — while the right/bottom
- * end, straddling two plateau cells, worked); and a half hover's tie rounded half-up, which is the
- * cliff row on a south/east cliff but the plateau's interior on a north/west one. A ramp must
- * place flush with EITHER end of a cliff, and hover the same depth onto the plateau whichever way
- * the cliff faces.
- */
+/** Ramp detection is symmetric across every cliff face and both ends of each edge. */
 describe('ramp placement is symmetric across the four cliff faces', () => {
   // 10x10 plateau at elev 1, cells (7..16) on both axes, inside a 24x24 map.
   function block(): GridState {
@@ -126,7 +118,7 @@ describe('ramp placement is symmetric across the four cliff faces', () => {
   it('a half hover reaches the same depth onto the plateau from every side', () => {
     // One whole cell in from the visual cliff line, at each face's own tie coordinate.
     expect(tryRamp(8, 15.5).ok).toBe(true);   // south, rot 0
-    expect(tryRamp(8, 7.5).ok).toBe(true);    // north, rot 180: the tie that used to round inward
+    expect(tryRamp(8, 7.5).ok).toBe(true);    // north, rot 180
     expect(tryRamp(15.5, 8).ok).toBe(true);   // east, rot 90
     expect(tryRamp(7.5, 8).ok).toBe(true);    // west, rot 270: same tie, other axis
     expect(tryRamp(8, 7.5).object.rotation).toBe(180);

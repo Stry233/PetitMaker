@@ -5,7 +5,12 @@ import { useEditorStore } from '../../state/store';
 import { clampUiZoom } from '../map2d/zoom-accum';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
-import { bindingIndex, effectiveCombo, normalizeCombo, useKeybinds, ALIASES, type Overrides } from '../../core/runtime/keybindings';
+import {
+  bindingIndex, effectiveCombo, matchesUiZoomCombo, normalizeCombo, useKeybinds, ALIASES, type Overrides,
+} from '../../core/runtime/keybindings';
+
+/** Tags whose focused state means the keys belong to what is being typed, not to a shortcut. */
+const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 const PAN_CMD: Record<Dir, string> = {
@@ -106,7 +111,7 @@ export function useHeldPan(pan: (dx: number, dy: number) => void, enabled: () =>
       const key = e.key.toLowerCase();
       if (!map.has(key)) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+      if (target && TYPING_TAGS.has(target.tagName)) return;
       // Auto-repeat is the SAME press held down, not a second tap.
       if (!e.repeat && !keysDown.has(key)) {
         const since = performance.now() - (lastUp.get(key) ?? -Infinity);
@@ -152,14 +157,23 @@ export function useWasdPan(rendererRef: RefObject<MapRenderer | null>) {
 
 const notOverlaid = () => !anyOverlayOpen();
 
-/** Ctrl/Cmd + (= / + / - / _) scales the UI (panels), VS Code-style — the map
- *  is untouched. Writes the store's uiZoom TARGET directly (the single
- *  persistence path shared with the Settings slider) — one write per press,
- *  no per-frame localStorage churn.
+/** The two UI-scale bindings, read live from the keybind store. */
+function uiZoomCombos(overrides: Overrides): { in: string | null; out: string | null } {
+  return {
+    in: effectiveCombo(overrides, 'app.ui_zoom_in'),
+    out: effectiveCombo(overrides, 'app.ui_zoom_out'),
+  };
+}
+
+/** The UI-scale keys (Ctrl/Cmd += and Ctrl/Cmd +- by default, rebindable) scale the panels,
+ *  VS Code-style — the map is untouched. Writes the store's uiZoom TARGET directly (the single
+ *  persistence path shared with the Settings slider) — one write per press, no per-frame
+ *  localStorage churn.
  *
- *  Registered (not re-wired) as the reserved `app.ui_zoom_in`/`app.ui_zoom_out` rows in
- *  core/runtime/keybindings.ts, so the keyboard modal shows the combo and no rebind can steal it
- *  out from under this listener.
+ *  The `app.ui_zoom_in`/`app.ui_zoom_out` rows in core/runtime/keybindings.ts carry no RUN body:
+ *  this listener is what carries them out, reading their effective combos so a rebind reaches it,
+ *  and `matchesUiZoomCombo` is the match (Cmd counts as Ctrl, and a combo on the `=`/`+` or `-`/`_`
+ *  keycap answers either spelling). An unbound direction simply has no key.
  *
  *  The easing lives at the APPLICATION layer (`ui/design/ui-zoom-anim.ts`),
  *  shared with the Settings slider's release commit and the reset/keyboard
@@ -173,17 +187,24 @@ export function useUiZoomShortcut() {
       const store = useEditorStore.getState();
       store.setUiZoom(clampUiZoom(store.uiZoom + delta)); // accumulate against the persisted TARGET
     };
+    let combos = uiZoomCombos(useKeybinds.getState().overrides);
+    const unsub = useKeybinds.subscribe((s) => { combos = uiZoomCombos(s.overrides); });
     const onKeyZoom = (e: KeyboardEvent) => {
       // NOT suppressed while a modal is open: UI scaling is the one binding that
       // stays live behind an overlay, so the user can resize the whole chrome
       // (modal included — every surface reads the same uiZoom) while a dialog is
       // up. Every OTHER shortcut (map pan, tool keys, delete) still self-suppresses.
-      if (!(e.ctrlKey || e.metaKey)) return;
-      if (e.key === '=' || e.key === '+') { e.preventDefault(); bumpUiZoom(0.1); }
-      else if (e.key === '-' || e.key === '_') { e.preventDefault(); bumpUiZoom(-0.1); }
+      // A text field still wins, the same guard the discrete engine applies: rebound to a plain
+      // letter, this would otherwise scale the chrome while the user types.
+      const target = e.target as HTMLElement | null;
+      if (target && (TYPING_TAGS.has(target.tagName) || target.isContentEditable)) return;
+      // Zoom-in is tested first, so a pair deliberately bound onto each other's twin scales one way
+      // rather than firing both and cancelling out.
+      if (matchesUiZoomCombo(combos.in, e)) { e.preventDefault(); bumpUiZoom(0.1); }
+      else if (matchesUiZoomCombo(combos.out, e)) { e.preventDefault(); bumpUiZoom(-0.1); }
     };
 
     window.addEventListener('keydown', onKeyZoom);
-    return () => window.removeEventListener('keydown', onKeyZoom);
+    return () => { window.removeEventListener('keydown', onKeyZoom); unsub(); };
   }, []);
 }

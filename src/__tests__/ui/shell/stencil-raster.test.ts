@@ -1,12 +1,4 @@
-/**
- * THE ARITHMETIC A GLYPH IS DRAWN BY, which is the part of the rasterizer a test can hold.
- *
- * Drawing needs a canvas and a font, so `drawGlyph` itself is exercised by the evaluation harness
- * against committed font rasters (`__tests__/tools/stencil-glyph.test.ts` over
- * `__tests__/fixtures/stencil-rasters.json`). What decides where every letter in a SMALL region
- * lands is not the drawing though — it is this arithmetic on the air the region can spare, and left
- * unpinned a change to it would pass every suite while moving every small letter.
- */
+/** Canvas-free checks for the text rasterizer and its legibility readings. */
 import { describe, it, expect } from 'vitest';
 import { glyphFrame, glyphSurvives, judgeDrawn } from '../../../ui/shell/bars/stencil-raster';
 import { textMinSide, type Stencil } from '../../../tools/generation/stencil/stencil';
@@ -121,10 +113,7 @@ describe('the verdict on a glyph that has been drawn', () => {
     expect(verdict.ok).toBe(true);
   });
 
-  it('says nothing at all without a drawing surface, which is a refusal', () => {
-    // The real line, not a stand-in for it: jsdom has no 2D context, so this is what the shelf's
-    // gates get here. No measurement means the blanket floor stands, and the caller has already found
-    // the region short of it — an E in five cells is offered in a browser and refused here.
-    expect(glyphSurvives('E', { origin: { x: 0, y: 0 }, width: 5, height: 5 }).ok).toBe(false);
+  it('refuses an unmeasurable outline without a drawing surface', () => {
+    expect(glyphSurvives('谷', { origin: { x: 0, y: 0 }, width: 5, height: 5 }).ok).toBe(false);
   });
 });

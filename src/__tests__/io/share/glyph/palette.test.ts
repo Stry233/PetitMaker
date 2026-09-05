@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   PALETTE16, PALETTE16_V1, PALETTE16_V2, PALETTE8_INDICES, HEADER_LEVELS, Y_LEVELS,
-  BASE_CHROMA_OFFSETS, CHROMA_SCALES, paletteForVersion, rgbToYcc, classify, type RGB,
+  BASE_CHROMA_OFFSETS, CHROMA_SCALES, PRODUCT_FOUR,
+  paletteForVersion, rgbToYcc, classify, type RGB,
 } from '../../../../io/share/glyph/palette';
 import { HEADER_VERSION } from '../../../../io/share/glyph/geometry';
 
@@ -14,8 +15,7 @@ function dist2(a: RGB, b: RGB): number {
   return 2 * (ay - by) ** 2 + (acb - bcb) ** 2 + (acr - bcr) ** 2;
 }
 
-/** Closest pair within each luma band (index layout luma*4+chroma), so within a band only chroma
- *  separates the four entries. */
+/** Closest pair within each four-color luma band. */
 function bandSeparations(pal: readonly RGB[]): number[] {
   return [0, 1, 2, 3].map((band) => {
     let min = Infinity;
@@ -52,16 +52,9 @@ describe('luma-first palette', () => {
       });
       it('8-subset uses all 4 luma bands and beats the full palette on separation', () => {
         expect(new Set(PALETTE8_INDICES.map((i) => i >> 2)).size).toBe(4); // index layout: luma*4+chroma
-        // Chroma columns {0,2} sit nearly opposite, so dropping to 8 colors buys margin at every
-        // band rather than merely leaving the 16-color spacing alone.
         expect(minSeparation(PALETTE8_INDICES.map((i) => pal[i]!))).toBeGreaterThan(minSeparation(pal) * 2);
       });
 
-      // Re-derivation guard: the tables are baked as literal RGB triplets (see palette.ts) so they
-      // read as plain data at the call sites. This re-runs the SAME BT.601-inverse formula from the
-      // module's OWN exported inputs (Y_LEVELS, BASE_CHROMA_OFFSETS, that version's CHROMA_SCALES)
-      // and checks the literals match exactly, so no table can silently drift from its derivation
-      // and no scale can be stated in two places.
       it('literals match their BT.601-inverse derivation exactly', () => {
         const scales = CHROMA_SCALES[version]!;
         const clamp255 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
@@ -79,8 +72,6 @@ describe('luma-first palette', () => {
         expect(derived).toEqual(pal.map((c) => [c[0], c[1], c[2]]));
       });
 
-      // Clipping would drag a row's actual luma off its target, which is what caps each band's
-      // usable chroma scale in the first place.
       it('no channel clips, so every entry sits on its band luma', () => {
         const scales = CHROMA_SCALES[version]!;
         Y_LEVELS.forEach((y, band) => {
@@ -101,46 +92,40 @@ describe('luma-first palette', () => {
     for (let i = 1; i < 4; i++) expect(ys[i]! - ys[i - 1]!).toBeGreaterThan(50);
   });
 
-  it('resolves a palette per released version and refuses any other', () => {
+  it('resolves each supported legacy palette and refuses any other', () => {
     expect(paletteForVersion(1)).toBe(PALETTE16_V1);
     expect(paletteForVersion(2)).toBe(PALETTE16_V2);
     for (const v of [0, 3, 255]) expect(paletteForVersion(v)).toBeNull();
   });
 
-  it('new codes are drawn with HEADER_VERSION\'s palette', () => {
-    expect(PALETTE16).toBe(paletteForVersion(HEADER_VERSION));
+  it('keeps the v2 writer alias on the fixed v2 palette', () => {
+    expect(HEADER_VERSION).toBe(3);
+    expect(PALETTE16).toBe(PALETTE16_V2);
   });
 
-  // The whole point of v2. Within a band only chroma separates the four entries, so a band's
-  // squared separation is 7072·scale² before RGB rounding; v1 left the two extreme bands at a
-  // quarter of the middles' and a chain fails at its weakest link, so the surplus bought nothing
-  // and only made the band garish. v2 brings the middles down to it.
+  it('separates every current symbol by luminance even without chroma', () => {
+    expect(PRODUCT_FOUR).toEqual([[38, 48, 32], [103, 116, 92], [170, 184, 154], [237, 250, 219]]);
+    const levels = PRODUCT_FOUR.map((c) => rgbToYcc(...c)[0]);
+    for (let i = 1; i < levels.length; i++) expect(levels[i]! - levels[i - 1]!).toBeGreaterThan(60);
+  });
+
   it('v2 drops the middles toward the weakest band without weakening it', () => {
     const v1 = bandSeparations(PALETTE16_V1);
     const v2 = bandSeparations(PALETTE16_V2);
     expect(v1).toEqual([1767, 7032, 7032, 1767]);
     expect(v2).toEqual([1801, 3438, 3438, 1801]);
-    // Robustness is the worst band, and v2's is no worse than what already ships.
     expect(Math.min(...v2)).toBeGreaterThanOrEqual(Math.min(...v1));
-    // Not leveled onto the bottleneck: bands that rarely misread keep a real margin over it,
-    // which is what keeps the TOTAL error rate down behind an unchanged headline number.
     expect(Math.max(...v2)).toBeGreaterThan(Math.min(...v2) * 1.5);
-    // ...but no band hoards a surplus the weakest link can never use.
     expect(Math.max(...v2)).toBeLessThan(Math.min(...v2) * 2.5);
     expect(Math.max(...v1)).toBeGreaterThan(Math.min(...v1) * 3.5);
   });
 
-  // Band 0's chroma scale is capped by something outside the classifier: findFinders flood-fills
-  // pixels under a channel sum of 100, and a data module that merges into an adjacent finder square
-  // costs the whole finder pair (no reserved gap row/col separates them). The entry that pushes
-  // both Cb and Cr negative is the one that darkens as band 0's scale rises, so that scale must
-  // stay near the point where band 0 merely clears the bottleneck.
+  // Data colors stay outside the finder detector's dark-component threshold.
   it('keeps the darkest entry clear of the finder flood-fill threshold', () => {
     for (const [, pal] of VERSIONS) {
       const darkest = Math.min(...pal.map((c) => c[0] + c[1] + c[2]));
       expect(darkest).toBeGreaterThan(115);
     }
-    // v2 gives up no more than a rounding step of v1's headroom.
     const sum = (p: readonly RGB[]) => Math.min(...p.map((c) => c[0] + c[1] + c[2]));
     expect(sum(PALETTE16_V1) - sum(PALETTE16_V2)).toBeLessThanOrEqual(2);
   });

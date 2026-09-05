@@ -53,3 +53,9 @@ export interface TourStep {
 export function tourTargetAttr(id: TourTargetId): { 'data-tour-target': TourTargetId } {
   return { 'data-tour-target': id };
 }
+
+/** The selector for a target's carrier, for code that measures the live DOM (the tour's own
+ *  measure, the Help figures): built from the typed id, so a renamed target is a compile error. */
+export function tourTargetSelector(id: TourTargetId): string {
+  return `[data-tour-target="${id}"]`;
+}

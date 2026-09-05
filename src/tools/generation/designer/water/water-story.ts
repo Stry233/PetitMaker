@@ -1,32 +1,8 @@
 /**
- * THE WATER STORY: one connected watercourse per island, with a source and a destination.
- *
- * The game's own guidance on water (水体) is written as a system rather than as four shapes. A pond is
- * where a stream ARRIVES; a stream is DIRECTIONAL and CURVED, changing width with the district it
- * passes and splitting into a tributary that rejoins; a waterfall is a VISUAL FOCUS at a real height difference
- * that CONTINUES downstream, and several of them are staggered in size and position. What it rules
- * out is independent bodies dropped where a budget happens to land them, with no source, no direction
- * and no arrival.
- *
- * So this module walks ONE course. It picks a SPRING on high ground near the walk, heads downhill,
- * runs a REACH along each terrace it crosses, cuts a FALL at every step it meets, and ends in a
- * shaped POND or at the coast. Richness scales its length and how many features it carries — the
- * falls, the tributary, the bays — never the grammar itself.
- *
- * LEGAL BY CONSTRUCTION, HOP BY HOP:
- *  - a reach's cells are judged as ONE body (`cellsFit`): everything outside stands at the reach's
- *    own level or above, so the water shows no face and V-WTR-02 asks it for no caps.
- *  - a fall is the one place a face is wanted. Its band sits on the lip at tier e with a cell of
- *    standing terrace at each perpendicular end — mountain at exactly e, which is the cap V-WTR-02
- *    names — and the row it pours onto, caps included, is read for uniformity first, which is
- *    V-WTR-03. The landing may be several tiers down and may itself be water: a plunge into the
- *    reach below is one body flowing, which is what makes the story read as one thing.
- *  - EVERY ATTEMPT IS TRANSACTIONAL. A spring whose course arrives nowhere is put back cell for cell
- *    and the next spring is tried; a tributary that does not rejoin is never flooded at all. One
- *    chained story or nothing.
- *
- * Pure over its inputs (a `TerrainPlan` and two masks): no state, no rules consulted, no browser
- * API, and the same (seed, plan) gives the same course.
+ * Plans one connected watercourse from a high-ground spring to a pond or coast. Reaches stay within
+ * a uniform tier; falls use supported lips and uniform landing rows. Failed courses restore every
+ * touched cell, and tributaries commit only when they rejoin. Richness changes length and feature
+ * count. The result is pure and deterministic for its terrain, masks, and seed.
  */
 import { distanceField, flatIndex } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';

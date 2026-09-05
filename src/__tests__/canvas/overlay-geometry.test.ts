@@ -138,7 +138,7 @@ describe('overlay shades: the error flash', () => {
     expect(rects[0]).toEqual({ x: 3 * TILE_SIZE - HALF_TILE, y: 4 * TILE_SIZE - HALF_TILE, w: 2 * TILE_SIZE, h: TILE_SIZE });
   });
 
-  it('flashes a BODY as the body: the plaza\'s shade is the plaza, not a cell wider (issue #14)', async () => {
+  it('flashes the plaza body without expanding to whole-cell bounds', async () => {
     const overlay = new OverlayLayer();
     const plaza: Rect = { x: 76.5, y: 58.5, w: 20, h: 27 };
     overlay.flashErrors([bodyErr([plaza], 'macro')], true);

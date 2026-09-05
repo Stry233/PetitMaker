@@ -250,6 +250,29 @@ describe('the row of names travels sideways', () => {
   });
 
   /**
+   * The bring-back must follow the CHOICE: picking a name at the row's far end and having the row
+   * snap home to its first name scrolls the chosen tab out from under the click. A conditional ref
+   * cannot carry this on a motion element — framer memoizes its forwarded ref callback, so a ref
+   * prop that changes on a persistent button never rebinds — which is why the reveal reads the row
+   * for the selected tab instead.
+   */
+  it('brings the tab that was chosen back into view, not the one the shelf opened on', () => {
+    const revealed: HTMLElement[] = [];
+    (HTMLElement.prototype as { scrollIntoView?: (opts?: unknown) => void }).scrollIntoView =
+      function (this: HTMLElement) { revealed.push(this); };
+    try {
+      mount();
+      const tabs = screen.getAllByRole('tab');
+      const far = tabs[tabs.length - 1]!;
+      fireEvent.click(far);
+      const last = revealed[revealed.length - 1];
+      expect(last?.textContent).toBe(far.textContent);
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  /**
    * Six names is not forty cards: the item row below draws the design's own track and thumb, and a
    * second bar directly above it would read as a second control for the same shelf. The row says it
    * continues by fading at the end it can still travel toward, and says nothing when it cannot.

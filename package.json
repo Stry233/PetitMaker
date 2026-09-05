@@ -1,14 +1,19 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.8.39",
+  "version": "0.9.334",
   "type": "module",
+  "homepage": "https://petitmaker.cc/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Stry233/PetitMaker.git"
+  },
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite-node scripts/build-legal-pages.mts",
     "stamp": "vite-node scripts/stamp-build.mts",
     "hooks:install": "git config core.hooksPath .githooks && echo 'git hooks enabled (.githooks)'",
     "stamp:check": "vite-node scripts/stamp-build.mts --check",
@@ -16,6 +21,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "perf": "PETIT_PERF=1 vitest run --no-file-parallelism src/__tests__/perf",
     "lint": "tsc --noEmit",
     "legal:licenses": "vite-node scripts/license-audit.mts",
     "legal:licenses:check": "vite-node scripts/license-audit.mts --check",
@@ -27,9 +33,11 @@
     "@anthropic-ai/sdk": "^0.104.1",
     "@pixi/unsafe-eval": "^7.4.3",
     "earcut": "^2.2.4",
-    "framer-motion": "^12.40.0",
+    "framer-motion": "^12.43.0",
+    "onnxruntime-web": "^1.29.0",
     "openai": "^6.42.0",
     "pixi.js-legacy": "^7.4.3",
+    "qrcode-generator": "^2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.169.0",

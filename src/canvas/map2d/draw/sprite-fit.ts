@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
-import { requestRender } from '../render-scheduler';
+import { requestRender as broadcastRender } from '../render-scheduler';
 
 /**
  * Fit `sprite` to its texture and reveal it: apply the scale from
@@ -35,6 +35,9 @@ export function fitSpriteToTexture(
   /** Mirror the art across its own vertical axis. Applied HERE because the fit re-runs when the
    *  texture finishes decoding, and a flip written by the caller beforehand would be overwritten. */
   flipX = false,
+  /** Opens the render window of the renderer the sprite lives on — the caller's own field, or the
+   *  module broadcast for one with none. */
+  requestRender: () => void = broadcastRender,
 ): void {
   const fit = (rerender: boolean) => {
     if (sprite.destroyed || !sprite.transform) return;

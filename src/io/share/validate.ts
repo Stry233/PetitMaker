@@ -11,8 +11,7 @@ import { ShareError } from './errors';
 
 export interface ValidationOutcome { warnings: string[] }
 
-/** The minimal identity fields `validateImportedState` needs, satisfied directly by the
- *  PetitGlyph v2 `DecodedMapPayload` fields (`templateId`/`templateHash`/`catalogHash`). */
+/** Template and catalog identities needed to validate an imported state. */
 export interface ImportedStateInfo { templateId: string; templateHash: number; catalogHash: number }
 
 /** Security gate over the deserialized GridState. Nothing imported is trusted. Throws a

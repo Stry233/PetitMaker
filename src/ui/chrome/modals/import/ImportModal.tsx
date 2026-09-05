@@ -6,7 +6,19 @@ import { importFile } from '../../../../io/import-file';
 import { getImportFileDeps } from './import-deps';
 import { toastImportOutcome } from './import-toast';
 import { ModalShell } from '../../../primitives/ModalShell';
-import { ImportDropZone, IMPORT_CARD_WIDTH, IMPORT_CARD_PADDING } from './ImportDropZone';
+import { ImportDropZone, IMPORT_CARD_WIDTH, IMPORT_CARD_PADDING, type ImportDropZoneProps } from './ImportDropZone';
+
+/** The Import window's body: its title over the shared drop zone. Exported for the Help Center's
+ *  import figure, which poses the same body inside the modal's own card. */
+export function ImportCardBody(props: ImportDropZoneProps) {
+  const t = useT();
+  return (
+    <>
+      <div style={{ ...windowTitle, marginBottom: 14 }}>{t('import.title')}</div>
+      <ImportDropZone {...props} />
+    </>
+  );
+}
 
 export function ImportModal() {
   const t = useT();
@@ -50,8 +62,7 @@ export function ImportModal() {
 
   return (
     <ModalShell open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING }} ariaLabel={t('import.title')}>
-      <div style={{ ...windowTitle, marginBottom: 14 }}>{t('import.title')}</div>
-      <ImportDropZone
+      <ImportCardBody
         dragOver={dragOver}
         busy={busy}
         onClick={pickFile}

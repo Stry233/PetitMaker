@@ -45,22 +45,23 @@ const ROWS: readonly [label: string, modal: ModalId][] = [
   ['Change a planet', 'newProject'],
   ['Import map', 'import'],
   ['Settings', 'settings'],
-  ['Keyboard Shortcuts', 'help'],
+  ['Help', 'help'],
   ['About', 'about'],
 ];
 
-/** The whole sheet, in order, and it is FIVE WINDOWS AND NOTHING ELSE.
+/** The whole sheet, in order, and it is FIVE WINDOWS AND NOTHING ELSE. The keyboard window is
+ * not among them: its door is the keymap miniature at the bottom of Settings.
  *
  * Clear does not belong here: this menu holds actions about the SESSION, and clearing
  * takes back the last generation, bounded by that run's region and by the map's own authorship.
  * Nobody undoing a generation hunts for it under a menu beside Settings. It stands beside the batch
  * tile in the generate shelf, where the other thing you do to a whole batch already is. */
 const SHEET: readonly string[] = [
-  'Change a planet', 'Import map', 'Settings', 'Keyboard Shortcuts', 'About',
+  'Change a planet', 'Import map', 'Settings', 'Help', 'About',
 ];
 
 describe('the menu', () => {
-  it('opens on the menu button and offers the five windows and the one action', async () => {
+  it('opens on the menu button and offers the five windows and nothing else', async () => {
     await mountShell();
     expect(screen.queryByRole('menu')).toBeNull();
 
@@ -136,9 +137,13 @@ describe('the shell puts every window on screen', () => {
     const { useEditorStore } = await mountShell();
     act(() => { for (const [, id] of ROWS) useEditorStore.getState().setModal(id, true); });
     // Every window is a dialog with its own title as the accessible name. All five at once is not a
-    // real session, but it is the cheapest proof that the shell's tree refuses none of them.
+    // real session, but it is the cheapest proof that the shell's tree refuses none of them. The
+    // Help Center arrives as its own lazy chunk, so the sweep awaits each dialog rather than
+    // demanding it in the same commit.
+    // The Help chunk also builds its welcome figures on arrival, which under a loaded suite can
+    // outlast the default query window; the wait is generous rather than the assertion loose.
     for (const [label] of ROWS) {
-      expect(screen.getAllByRole('dialog', { name: label }).length).toBeGreaterThan(0);
+      expect((await screen.findAllByRole('dialog', { name: label }, { timeout: 5000 })).length).toBeGreaterThan(0);
     }
     act(() => { for (const [, id] of ROWS) useEditorStore.getState().setModal(id, false); });
   });

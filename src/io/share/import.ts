@@ -1,11 +1,10 @@
-// src/io/share/import.ts — raster-first import: locate + decode the visible code band, gate on
-// SHA-256, then feed the save pipeline itself — never a parallel loader.
+// Raster-first import decodes the visible code band, verifies it, and uses the save-file loader.
 import type { GridState } from '../../core/model/types';
 import { migrateToCurrent, type RawSave } from '../save-format';
 import { deserialize } from '../json-codec';
 import { getMapTemplate } from '../../config/maps';
 import { ShareError, DEFAULT_LIMITS, type ShareLimits } from './errors';
-import { decodeGlyph } from './glyph/decode';
+import { decodeGlyphAsync } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
 import { toSaveJSON } from './canonical';
 import { validateImportedState } from './validate';
@@ -17,13 +16,20 @@ export type ImportResult = ImportSuccess | ImportFailure;
 
 export async function importFromRaster(rgba: Uint8Array, width: number, height: number): Promise<ImportResult> {
   try {
-    const payload = decodeGlyph(rgba, width, height);
+    const payload = await decodeGlyphAsync(rgba, width, height);
     if (!payload) return { ok: false, error: new ShareError('no-payload', 'No share code found in this image.') };
     const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
-    const saveJson = toSaveJSON(dec.canonical);
+    const saveJson = toSaveJSON(dec.canonical, dec.annotations);
     migrateToCurrent(JSON.parse(saveJson) as RawSave);
     const state = deserialize(saveJson, getMapTemplate(dec.canonical.templateId));
-    if (dec.generation) state.generation = dec.generation; // sticky replay: re-export stays tiny
+    if (dec.generation) state.generation = dec.generation;
+    // The compact frame-level provenance flags seed disclosure after import; per-cell provenance
+    // is not part of the PetitGlyph payload.
+    if (state.provenance) {
+      if (dec.provenance.aiUsed) state.provenance.session.aiWritesUsed = true;
+      if (dec.provenance.proceduralUsed) state.provenance.session.proceduralRuns = Math.max(1, state.provenance.session.proceduralRuns);
+      state.provenance.summary = null;
+    }
     const { warnings } = validateImportedState(state, { templateId: dec.canonical.templateId, templateHash: dec.templateHash, catalogHash: dec.catalogHash });
     return { ok: true, state, warnings, provenance: dec.provenance };
   } catch (e) {

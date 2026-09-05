@@ -1,34 +1,8 @@
 /*
- * GateBlock.tsx — the ask card, and the two parts every card in the gate family is built from
- * (normative prototype `.askcard`, `.verdict`, `.quickRow`).
- *
- * THE DOCK ALONE WEARS THE ASK PAPER. Yellow means one thing, "this needs
- * you", and only the desk says it: a gate card sits on the panel's own PLATE like every other card
- * and is tied to the asking dock by a slim `ACTIVE` SPINE down its left edge. The spine RETIRES to
- * the hairline the moment the card is answered, so an answered card stops asking while it goes on
- * standing in the record. Every fill inside the card is a neutral house fill; the ink primary and
- * the danger pills are what carry a press.
- *
- * THE ANSWERED CARD STAYS. A gate is a line of the record, not a modal: once answered it wears its
- * VERDICT on its own baseline and the job's next ops arrive above it in the ticket. Which verdict is
- * `AskRecord.verdict`, derived in the projection from the `gateAnswered` event's own answer — this
- * file only draws it, and picks the more precise wording where the card can prove it (a `words`
- * answer that is one of the quick pills this card offered is "answered: that word").
- *
- * The model logged the ask's summary in the active locale at ask time (a deferred tradeoff: a later
- * locale switch does not retranslate a standing gate), so it is rendered VERBATIM, never re-run
- * through `useT()`.
- *
- * `thumb` is a slot, not a fetch: the real map-footprint capture arrives from the caller that owns a
- * renderer (`PanelColumn`, through `canvas/thumbnail.ts`), which this component has no business
- * knowing how to build. No slot, no thumbnail box at all — an empty bordered rectangle over every
- * plain yes/no question would just be noise.
- *
- * `quick` IS THE ASK'S OWN OFFER: `gateAsked.quickAnswers` carries it in the log, the projection
- * hands it through as `AskRecord.quickAnswers`, and the shell passes it here. No TOOL populates the
- * field yet (`tools.ts` notes where such a producer would go), so the row is empty on every ask the
- * loop makes today — but the routing is live end to end, and an ask that does carry answers renders
- * them without another design round.
+ * Shared card, verdict and quick-answer primitives for approval gates. An open gate uses an active
+ * left spine; after settlement the card remains in the record with a neutral spine and verdict. Ask
+ * summaries stay in the locale recorded at ask time. Map thumbnails are caller-supplied, and absent
+ * slots render no placeholder. Quick answers come directly from the recorded ask.
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { motion } from 'framer-motion';
@@ -48,10 +22,7 @@ const GATE_GROWTH = amplitude('panel.gate.enter') ?? 0;
 /** How far the verdict chip rises into place, in px, per its declaration. */
 const VERDICT_RISE = amplitude('panel.gate.verdict') ?? 0;
 
-/** The spine's width, in px. It is the ONE tie between a card and the asking dock, so it is wide
- *  enough to read as a mark rather than as a border (the artifact's own 5). Exported because the
- *  ANSWER PAPER wears the same spine while its closing question stands: one grammar for "a question
- *  is standing", and one number behind it. */
+/** Active-gate spine width in CSS pixels, shared with closing questions on answer papers. */
 export const ASK_SPINE = 5;
 
 /** The quick row's reserved height, in px. RESERVED whenever the row stands, answers or not: a row
@@ -360,8 +331,7 @@ export function GateBlock({
   thumb?: ReactNode;
   /** The quick answers this ask offered (`AskRecord.quickAnswers`, off the `gateAsked` event). */
   quick?: readonly string[];
-  /** False renders the QUESTION form: no Approve/Don't pair, the quick row and the composer are the
-   *  whole answer (the artifact's `actions:false` ask). */
+  /** False renders a question with no Approve/Don't pair; quick answers and the composer answer it. */
   actions?: boolean;
   /** The composer's field holds words, so the primary steps down. */
   demoted?: boolean;

@@ -1,84 +1,14 @@
-/*
- * GenerateShelf.tsx — the bottom bar for 生成 mode: the kinds of island as its row of names, the
- * candidates standing on the backing band, and the settings in the band under them.
- *
- * THREE BANDS. The names are on the map and carry nothing but the four kinds; the cards stand UP out
- * of the backing band (`units.ts:PLATE_BAND`) with the batch tile at their end; the settings sit
- * INSIDE the plate, in the room that runs to the bottom of the window and that only the object
- * shelf was using, for its scrollbar. There is no fourth thing: the names carry the kinds, the last
- * card carries the recipe number, the tile at the cards' end asks for another batch, and Clear
- * stands beside that tile, taking the last run back.
- *
- * THE SHELF HAS NO TOTAL WIDTH. A control is as wide as its own label at a fixed type size, and the
- * cards give up width to whatever a language needs, which is the only way "Насыщенность" and
- * 丰富度 both read at full size in the same place.
- *
- * THE ROW OF NAMES CANNOT BE MOVED. It is `ShelfTabs`, the same element the object shelf is headed
- * with, hung from the same left edge AND standing on the same floor (`units.ts:shelfRowFloor`), so
- * switching between the two shelves moves nothing. The block under it is a DECLARED height
- * (`generate-shelf.ts:BODY_H`) — the cards, the strip and the room between them, all constants for a
- * given window — so neither a control that only one kind has nor a change of language can shift a
- * name.
- *
- * ITS HEIGHT IS A BUDGET, because it stands over the MAP and the map has to stay the biggest thing
- * on the screen. The design's own card height is `CARD_MAX_H`; on a window with no room for it the
- * floor comes down and the card takes what is left, keeping its shape, rather than the panel being
- * rearranged. Its content also steps clear of the right edge, where the rail's clusters are.
- *
- * A CANDIDATE IS DRAWN OFF THE MAP. `generateCandidate` builds the recipe on a detached copy of
- * the grid and `canvas/thumbnail` photographs that copy through the real 2D renderer, off the
- * stage, so a card shows the map the click produces and making, rerolling and browsing candidates
- * still cannot reach the live cells, objects, undo stack or Clear scope at all. The pictures are
- * re-made whenever a setting changes rather than left describing settings the user has moved on
- * from.
- *
- * CLICKING A CARD LANDS THE RUN IT ALREADY IS. The candidate is kept, not just its picture, and
- * `generateMap` replays its commands through the live executor instead of generating the recipe a
- * second time; a card that has been dropped (a setting moved, so its picture no longer answers)
- * generates for real. The bar does not decide which: it hands over what it has and `kit/operations`
- * checks whether the map underneath is still the map the run was built on.
- *
- * A CLICK IS THE ANSWER, AND THERE IS NO SECOND STEP. Clicking a card lands the map; undo is the way
- * back, the same way back every other edit in this editor has. A Keep button finalising what a click
- * had provisionally applied would make the click mean less than it looks like it means, and put the
- * difference nowhere a person could read it.
- *
- * AND EVERY CLICK IS ITS OWN EDIT. A second card does not swap the first out, it replaces the map
- * the way a generation replaces it, and the history says so: three cards clicked in a row leave
- * three steps to walk back through. Nothing is undone to make a candidate's fingerprint match:
- * `kit/operations/generate` clears the scope before it replays, which is what a generation does
- * anyway, so the numbers agree without taking anything back. Everything else LETS GO — moving a slider replaces the cards, and asking
- * another question is not retracting the answer given.
- *
- * THE SCOPE IS A CHIP AND A SCREEN. The chip is the first thing in the strip and says how many
- * cells are painted; pressing it puts the whole shelf away for `ScopeScreen`, and Done brings it
- * back with a fresh batch. It is a chip rather than a fifth tab because it keeps saying what the
- * scope is once the cards are back, where a tab would only say it while you were on it. A batch is
- * not built while that screen is up: every candidate is stale the moment the region changes.
- *
- * THE MAZE'S TWO ENDS ARE OPT-IN. Off — the default — the generator picks its own pair (in from
- * the edge, out at the square) and the map stays clear of marks; the "in and out" switch puts the
- * two draggable marks up as RECIPE SETTINGS: the carve grows out from the entrance, every
- * candidate is built with the pair, and a drop while a run stands re-runs it at its own seed
- * (`MazeEndpoints` draws them, this bar resolves them). What each end IS — a hole in the wall, or
- * a place inside to reach — is read from where it was dropped, so this bar never asks. The WAY
- * switch stands beside it in every state and refuses until the ends are chosen, since it answers
- * for that pair; it is a DRAPE, not an edit: a road's flat
- * sweep reaches the wall beside every corridor lane, so the answer cannot legally be paved — it is
- * drawn over the corridor floor instead, on the terrain grid the walls are shifted onto, and it
- * follows the maze through every regeneration while it is on.
- *
- * NOTHING NARRATES, AND THE CARDS CARRY WHAT A REPORT WOULD. One still being built shows so on its
- * own face; a row of finished cards is the finished message; a card being PUT ON THE MAP shows the
- * same waiting over its picture, because landing one is not instant and without the waiting it
- * reads as the app having stopped (a replay is about a tenth of a second, and a card landing on a map that already
- * carries an island runs for real, which is most of a second on a full map). And a click that did
- * NOT reach the map is said on the card that was clicked, since the run rolls itself back and
- * leaves the screen exactly as it was. There is no toast surface in this shell.
+/**
+ * Generation shelf with detached candidate previews and recipe controls.
+ * Setting or scope changes invalidate the current batch. Applying a matching candidate replays its
+ * commands through the live executor; each applied candidate remains a separate undo step. Optional
+ * maze endpoints and their route are recipe inputs shared by every candidate in the batch.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { setCursorBusy } from '../../../canvas/interaction/cursor-controller';
+import { helpTargetAttr } from '../../chrome/modals/help/targets';
+import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import { showToast } from '../../../core/runtime/toast-bus';
 import { focusFrame, renderThumbnail } from '../../../canvas/thumbnail';
 import { localizedName, useT } from '../../../i18n/context';
@@ -87,7 +17,7 @@ import { TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord, ResolvedMazeGates, StencilPlan } from '../../../core/model/types';
 import { currentKit } from '../../../kit/context';
 import { host } from '../../../kit/host';
-import { clearGenerated, generateCandidate, generateMap, type Candidate } from '../../../kit/operations';
+import { clearGenerated, generateCandidate, generateMap, peekCandidate, type Candidate } from '../../../kit/operations';
 import { useEditorStore } from '../../../state/store';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import type { GenSignal } from '../../../kit/operations/generate';
@@ -119,24 +49,20 @@ import {
   BAR, BATCH, PAIR_GAP, BODY_H, CANDIDATES, CARD, CARD_H, CHOSEN, CORRIDOR, GAP, PAD, RICHNESS, SEED_MAX,
   STRIP, TABS, batchSeeds, maxElevationFor, minElevationFor, newSeed, shelfConfig, slidersFor,
   CONTRAST, fillKindsFor, fillLabelKey, fillTakesElevation, fillTakesItem,
-  isStencilKind, pictureRecipe, regionFitsStencil, stencilNote, textFitsBox, textNeedsWidth, STENCIL_MIN_SIDE,
+  isStencilKind, pictureRecipe, regionFitsStencil, stencilNote, textFitsBox, STENCIL_MIN_SIDE,
   type GenerateKind, type ShelfSettings, type StencilFillKind,
 } from './generate-shelf';
 import { drawSamples, poolFor, sampleName, type StencilSample } from './stencil-samples';
-import { buildStencilPlan, forgetStencilImage, type StencilFill } from './stencil-plan';
-import { islandBox, regionBox } from './stencil-raster';
+import { buildStencilPlan, forgetStencilImage, peekStencilPlan, type StencilFill } from './stencil-plan';
+import { ensureGlyphFonts, glyphFontsReady, islandBox, regionBox } from './stencil-raster';
 import { isBuildableZone } from '../../../core/model/grid-model';
+import { textGraphemes } from '../../../tools/generation/stencil';
 
 import sliderKnob from '../../../assets/shell/shelf-generate/slider-naturalness/ellipse-1.svg';
 import sliderPip from '../../../assets/shell/shelf-generate/slider-naturalness/ellipse-2.svg';
 import sliderTick from '../../../assets/shell/shelf-generate/slider-naturalness/ticks/ellipse-1.svg';
 
-/**
- * No track art: the design's own (`slider-naturalness/roundrect.svg`) keeps its own aspect ratio,
- * and this track is as long as the row can spare it, so the groove is drawn instead — in the shade
- * a groove cut into the dark plate takes, since the strip stands INSIDE that plate rather than over
- * the map.
- */
+/** Slider marks reused across variable-width generated tracks. */
 const SLIDER_ART = { knob: sliderKnob, pip: sliderPip, tick: sliderTick };
 /** The design draws three marks on a track, whatever the range behind it. */
 const SLIDER_TICKS = 3;
@@ -168,6 +94,15 @@ const SWAP_X = MOTIONS['shelf.category.swap'].amplitude ?? 0;
 const ROW: CSSProperties = {
   display: 'flex', alignItems: 'stretch', justifyContent: 'center', flexWrap: 'nowrap',
 };
+
+/** Which Help Center page a kind's own tab opens: the maze is its own tool, the two picture kinds
+ *  share the stencil page, and the island kind is the shelf's own default page. */
+function helpForKind(kind: GenerateKind): HelpPageId {
+  if (kind === 'maze') return 'maze';
+  if (kind === 'text') return 'gen-letter';
+  if (kind === 'image') return 'gen-picture';
+  return 'gen-island';
+}
 
 
 /**
@@ -294,15 +229,17 @@ function Knob({ label, control, groove = true }: {
  * It has to be a WRAPPER rather than a provider inside the body, because the body itself reads
  * `usePx` for the card row's own measurements.
  */
-export function GenerateShelf() {
+export function GenerateShelf({ initialKind }: { initialKind?: GenerateKind } = {}) {
   return (
     <ScaleProvider value={SHELF_SCALE}>
-      <GenerateShelfBody />
+      <GenerateShelfBody {...(initialKind ? { initialKind } : {})} />
     </ScaleProvider>
   );
 }
 
-function GenerateShelfBody() {
+/** `initialKind` opens the shelf at a named kind (a picture poses one); the live shelf opens at
+ *  the tab row's first entry. */
+function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const { px } = usePx();
   const t = useT();
   const gridState = useEditorStore((s) => s.gridState);
@@ -315,8 +252,15 @@ function GenerateShelfBody() {
 
   // The first tab, read from the row rather than named again here: the two drifted apart the
   // moment the order changed.
-  const [kind, setKind] = useState<GenerateKind>(TABS[0]!.id);
-  const [base, setBase] = useState(newSeed);
+  const [kind, setKind] = useState<GenerateKind>(initialKind ?? TABS[0]!.id);
+  /** The batch's base seed, REMEMBERED PER KIND (the ceiling's own pattern below): a new batch
+   *  rerolls the kind that asked for it, and the batch standing under every other kind's name
+   *  keeps its numbers — and with them the cached cards a return restores. */
+  const [baseByKind, setBaseByKind] = useState<Record<GenerateKind, number>>(() => {
+    const first = newSeed();
+    return { maze: first, text: first, image: first, island: first };
+  });
+  const base = baseByKind[kind];
   const [richness, setRichness] = useState<number>(RICHNESS.default);
   /**
    * The tallest layer, REMEMBERED PER KIND and defaulted to that kind's own ceiling.
@@ -397,7 +341,16 @@ function GenerateShelfBody() {
    * that overwrote something typed would lose the one thing on this shelf they authored — so it is
    * built by an effect of its own, on the settings without the batch's base.
    */
-  const [customSeed, setCustomSeed] = useState<number | null>(null);
+  /** Per kind, like the batch's base: a recipe number typed for the island stays the island's,
+   *  and the maze's own card keeps whatever was typed there. */
+  const [customByKind, setCustomByKind] = useState<Record<GenerateKind, number | null>>(
+    { maze: null, text: null, image: null, island: null },
+  );
+  const customSeed = customByKind[kind];
+  const setCustomSeed = useCallback(
+    (next: number | null) => setCustomByKind((prev) => ({ ...prev, [kind]: next })),
+    [kind],
+  );
   /** Non-null only while the field is being typed in, so a half-typed number never becomes a seed. */
   const [customDraft, setCustomDraft] = useState<string | null>(null);
   const [customShot, setCustomShot] = useState<string | null | undefined>(null);
@@ -551,6 +504,24 @@ const CUSTOM = CANDIDATES;
   /** The own card's input as one comparable value, for the effect that photographs it: committing
    *  text or importing a picture is what must re-run it. */
   const ownKey = ownSample ? ownSample.text ?? ownSample.src ?? null : null;
+  const fontText = kind === 'text' ? hand.map(sample => sample.text ?? '').join(' ') : '';
+  const [loadedFontText, setLoadedFontText] = useState<string | null>(null);
+  const fontsReady = kind !== 'text' || loadedFontText === fontText || glyphFontsReady(fontText);
+  const [loadedOwnText, setLoadedOwnText] = useState<string | null>(null);
+  const ownFontsReady = kind !== 'text' || !ownText || loadedOwnText === ownText || glyphFontsReady(ownText);
+  useEffect(() => {
+    if (kind !== 'text' || glyphFontsReady(fontText)) return;
+    let dropped = false;
+    void ensureGlyphFonts(fontText).then(() => { if (!dropped) setLoadedFontText(fontText); });
+    return () => { dropped = true; };
+  }, [kind, fontText]);
+  useEffect(() => {
+    if (kind !== 'text' || !ownText || glyphFontsReady(ownText)) return;
+    let dropped = false;
+    void ensureGlyphFonts(ownText).then(() => { if (!dropped) setLoadedOwnText(ownText); });
+    return () => { dropped = true; };
+  }, [kind, ownText]);
+
   const fill: StencilFill = fillKind === 'object'
     ? { kind: 'object', catalogId: fillItem ?? '' }
     : { kind: 'terrain', terrain: fillKind === 'water' ? TerrainType.Water : TerrainType.Mountain };
@@ -594,14 +565,12 @@ const CUSTOM = CANDIDATES;
   /** Why a card has no picture, where there is a reason: the region has no room for the kind at
    *  all, or this word has no room in the region. */
   const cardNote = (sample: StencilSample | null): string | null => {
-    if (!stencil) return null;
+    if (!stencil || !(sample?.id === 'own' ? ownFontsReady : fontsReady)) return null;
     if (!fits) return t('gen.region_too_small', { n: STENCIL_MIN_SIDE[kind as 'text' | 'image'] });
     if (wordFits(sample)) return null;
-    // ONE LETTER AND A ROW OF THEM FAIL FOR DIFFERENT REASONS. A word runs out of width and the remedy
-    // is fewer characters or a wider region; a single letter that will not fit has run out of room for
-    // its own strokes, and telling someone to use fewer letters than one is nonsense.
-    const glyphs = [...(sample!.text ?? '')].length;
-    return t(glyphs > 1 ? 'gen.text_too_wide' : 'gen.text_needs_room', { n: textNeedsWidth(sample!.text!) });
+    // A single character cannot benefit from the suggestion to use fewer characters.
+    const glyphs = textGraphemes(sample!.text ?? '').length;
+    return t(glyphs > 1 ? 'gen.text_too_wide' : 'gen.text_needs_room');
   };
 
   const recipeKey = JSON.stringify([
@@ -626,8 +595,66 @@ const CUSTOM = CANDIDATES;
       return undefined;
     }
     if (!gridState || selectingRegion) return undefined;
+    if (!fontsReady) {
+      plansRef.current = [...Array(CANDIDATES).fill(null), plansRef.current[CUSTOM] ?? null];
+      candidatesRef.current = Array(CANDIDATES).fill(null);
+      setShots(Array(CANDIDATES).fill(undefined));
+      setPreviewing(true);
+      return () => { setPreviewing(false); };
+    }
     let dropped = false;
     const signal: GenSignal = { cancelled: false };
+
+    /*
+     * A BATCH ALREADY ANSWERED STANDS BACK UP AT ONCE. Returning to a kind asks the exact question
+     * the caches still hold — the ground, the recipe and the scope in the candidate cache's key,
+     * and for the picture kinds the built plan in the plan cache's — so when every card of the
+     * batch peeks, the cards must not blank, sit out the settle, rasterize a plan, or ask the pool
+     * for maps it already has; only their pictures are re-read, from the thumbnail cache, which
+     * answers on the same candidate grids. Everything here is a synchronous cache read: a single
+     * miss falls through to the slow path with nothing spent.
+     */
+    const peekKit = currentKit();
+    restore: if (peekKit && (!stencil || planInputs)) {
+      const dealt = stencil ? hand : seeds;
+      const plans: (StencilPlan | null)[] = Array(dealt.length).fill(null);
+      if (stencil) {
+        for (let i = 0; i < dealt.length; i++) {
+          const entry = dealt[i] as StencilSample;
+          if (!wordFits(entry)) continue;   // a refused card: no plan, a null picture, no candidate
+          const plan = peekStencilPlan(entry, planInputs!);
+          if (plan === undefined) break restore;
+          plans[i] = plan;
+        }
+      }
+      const peeked: (Candidate | null)[] = [];
+      for (let i = 0; i < dealt.length; i++) {
+        const seed = stencil ? base + i : (dealt[i] as number);
+        if (stencil && !plans[i]) { peeked.push(null); continue; }
+        const hit = peekCandidate(peekKit, {
+          config: shelfConfig({ ...settings, seed, stencilPlan: plans[i] }), region: scope,
+        });
+        if (!hit) break restore;
+        peeked.push(hit);
+      }
+      forgetApplied();
+      clearFailed();
+      candidatesRef.current = [...peeked];
+      plansRef.current = [...plans, plansRef.current[CUSTOM] ?? null];
+      // Cleared and repainted within one frame on the cache's answers; a card may never stand
+      // another recipe's picture under this batch's numbers, however briefly.
+      setShots(Array(CANDIDATES).fill(undefined));
+      void Promise.all(peeked.map(async (candidate, i) => {
+        const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, SHOT_ASPECT, shotFrame) : null;
+        if (dropped) return;
+        setShots((prev) => prev.map((s, j) => (j === i ? shot : s)));
+      }));
+      return () => {
+        dropped = true;
+        candidatesRef.current = Array(CANDIDATES).fill(null);
+      };
+    }
+
     /*
      * THE CARDS GO BLANK NOW, NOT WHEN THE RUN STARTS. The seeds change with the recipe, and the
      * pass that photographs them waits `SETTLE_MS` for the settings to stop moving — so a batch
@@ -695,7 +722,7 @@ const CUSTOM = CANDIDATES;
       // question the user has stopped asking.
       candidatesRef.current = Array(CANDIDATES).fill(null);
     };
-  }, [previewKey, gridState, region, selectingRegion, forgetApplied, clearFailed]);
+  }, [previewKey, gridState, region, selectingRegion, fontsReady, forgetApplied, clearFailed]);
 
   /*
    * The visitor's own card, on the recipe WITHOUT the batch's base: a new batch draws five other
@@ -710,9 +737,52 @@ const CUSTOM = CANDIDATES;
       setCustomPending(false);
       return undefined;
     }
+    if (!ownFontsReady) {
+      plansRef.current[CUSTOM] = null;
+      customRef.current = null;
+      setCustomShot(undefined);
+      setCustomPending(true);
+      return undefined;
+    }
     let dropped = false;
     const signal: GenSignal = { cancelled: false };
     setCustomShot(undefined);
+
+    // The batch cards' own fast path (above), for the visitor's card: a recipe already answered
+    // on this ground comes back without the settle, a raster, or a pending face.
+    const peekKit = currentKit();
+    if (peekKit) {
+      const plan = stencil && ownSample && planInputs && wordFits(ownSample)
+        ? peekStencilPlan(ownSample, planInputs)
+        : null;
+      if (stencil && plan === null) {
+        // The cached answer IS the refusal (a word that will not fit, a picture that would not
+        // read): the card comes back blank exactly as the slow path leaves it.
+        plansRef.current[CUSTOM] = null;
+        customRef.current = null;
+        setCustomShot(null);
+        setCustomPending(false);
+        return () => { dropped = true; customRef.current = null; };
+      }
+      if (plan !== undefined) {
+        const hit = peekCandidate(peekKit, {
+          config: shelfConfig({ ...settings, seed: customSeed ?? base, ...(plan ? { stencilPlan: plan } : {}) }),
+          region: scope,
+        });
+        if (hit) {
+          plansRef.current[CUSTOM] = plan;
+          customRef.current = hit;
+          setCustomPending(false);
+          void renderThumbnail(hit.state, SHOT_PX, SHOT_ASPECT, shotFrame).then((shot) => {
+            if (!dropped) setCustomShot(shot);
+          });
+          return () => {
+            dropped = true;
+            customRef.current = null;
+          };
+        }
+      }
+    }
 
     const run = async (): Promise<void> => {
       const kit = currentKit();
@@ -746,7 +816,7 @@ const CUSTOM = CANDIDATES;
     };
     // `ownKey` and not `ownSample`: the sample is rebuilt each render, and an object identity in the
     // deps would re-photograph the card on every keystroke anywhere in the shelf.
-  }, [recipeKey, customSeed, ownKey, gridState, region, selectingRegion]);
+  }, [recipeKey, customSeed, ownKey, gridState, region, selectingRegion, ownFontsReady]);
 
   /**
    * Land a card's run, or re-land it with a maze setting moved out from under it.
@@ -904,7 +974,6 @@ const CUSTOM = CANDIDATES;
    * makes the wheel behave the same on both rows.
    */
   const cardsRef = useRef<HTMLDivElement>(null);
-  const [, setCardsLeft] = useState(0);
   const zoom = useFrameZoom();
   // This row draws no scrollbar of its own (see the comment above): the fade is the only signal
   // that there is more to see, so it earns its keep here more than anywhere else in the shelf.
@@ -915,8 +984,8 @@ const CUSTOM = CANDIDATES;
 
   const reroll = useCallback(() => {
     if (busy) return;
-    setBase(newSeed());
-  }, [busy]);
+    setBaseByKind((prev) => ({ ...prev, [kind]: newSeed() }));
+  }, [busy, kind]);
 
   /** The typing has stopped: take the digits as a recipe number, or drop the card back to its
    *  question mark where there are none. No confirm, the way no other setting on this bar has one. */
@@ -1063,7 +1132,7 @@ const CUSTOM = CANDIDATES;
     <>
       <MazeEndpoints ends={shownEnds} onMove={onEndMove} />
 
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
+      <div {...helpTargetAttr('generate')} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
         <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
           {/* The backing, as the design draws it: a band at the bottom of the window that the
               candidates stand UP out of, and that the strip sits inside. See `units.ts:PLATE_BAND`. */}
@@ -1092,7 +1161,7 @@ const CUSTOM = CANDIDATES;
             <div style={{ ...TAB_ROW, position: 'relative' }}>
               <ShelfTabs
                 label={t('menu.generate')}
-                tabs={TABS.map((entry) => ({ id: entry.id, label: t(entry.labelKey) }))}
+                tabs={TABS.map((entry) => ({ id: entry.id, label: t(entry.labelKey), helpTarget: helpForKind(entry.id) }))}
                 active={kind}
                 onSelect={setKind}
               />
@@ -1135,7 +1204,7 @@ const CUSTOM = CANDIDATES;
                 ref={cardsRef}
                 className="pw-noscroll"
                 data-testid="gen-cards-row"
-                onScroll={(e) => setCardsLeft(e.currentTarget.scrollLeft)}
+                {...helpTargetAttr('candidates')}
                 onWheel={(e) => {
                   const push = wheelPush(e, e.currentTarget.clientWidth, zoom);
                   if (push) cardsGlide.wheel(e.currentTarget, push.by, reducedMotion);
@@ -1292,12 +1361,14 @@ const CUSTOM = CANDIDATES;
                   marginRight: -(PAD.right - STRIP.right),
                 }}
               >
-                <StripChip
-                  testId="shell-gen-scope"
-                  name={t('gen.scope')}
-                  value={scopeSays}
-                  onOpen={() => setSelectingRegion(true)}
-                />
+                <span {...helpTargetAttr('region')} style={{ flex: '0 0 auto' }}>
+                  <StripChip
+                    testId="shell-gen-scope"
+                    name={t('gen.scope')}
+                    value={scopeSays}
+                    onOpen={() => setSelectingRegion(true)}
+                  />
+                </span>
                 <span style={{ flex: '1 1 auto', minWidth: 0 }} />
                 {/* The maze's own pair of switches, at the right with its knobs. The ends first:
                     off, the generator picks the pair and the map stays clear of marks; on, the two
