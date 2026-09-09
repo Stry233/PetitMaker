@@ -3,6 +3,7 @@
  * row. Selection comes directly from edit state. Search clears the active category, and hovered
  * names render outside the clipped scroller while tracking their card's scroll-adjusted position.
  */
+import { useFrameReadableWeight } from '../use-frame-zoom';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState,
   type CSSProperties, type HTMLAttributes,
@@ -22,7 +23,7 @@ import { btnReset, cursors, pressable, z } from '../../design/styles';
 import { MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
 import { ShapeEdge } from '../../design/shape-edge';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
-import { PLATE_BAND, SHELF_SCALE, TEXT } from '../units';
+import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
 import { CardNameBubble } from './CardNameBubble';
 import { ItemCard, SmartCard } from './ItemCard';
@@ -30,6 +31,8 @@ import {
   BAR, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, shelfItems, tabRowGap,
 } from './object-shelf';
 import { useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
+import { useFrameLayout, useRailClearance } from '../frame-layout';
+import { cssMotion } from '../motion/use-motion';
 import { ShelfScrollbar } from './ShelfScrollbar';
 import { ShelfTabs, TAB_ROW } from './ShelfTabs';
 
@@ -77,14 +80,14 @@ export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, read
   wrapStyle?: CSSProperties;
   wrapAttrs?: HTMLAttributes<HTMLDivElement>;
 }) {
-  const { fw } = usePx();
+  const weightAt = useFrameReadableWeight();
   const searchStyle: PwStyle = {
     position: 'relative', display: 'block', boxSizing: 'border-box',
     width: '100%', height: '100%',
     paddingLeft: SEARCH.padX, paddingRight: SEARCH.padX,
     paddingTop: SEARCH_PAD_TOP, paddingBottom: 0,
     background: 'transparent', border: 'none', outline: 'none',
-    fontSize: SEARCH.text, fontWeight: fw(800), color: PLATE_INK,
+    fontSize: SEARCH.text, fontWeight: weightAt(800, SEARCH.text), color: PLATE_INK,
     lineHeight: `${SEARCH.h}px`, cursor: cursors.text,
     '--pw-placeholder': MUTED_INK,
   };
@@ -219,6 +222,9 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [reach, setReach] = useState<Reach>({ viewportW: 0, contentW: 0 });
   const zoom = useFrameZoom();
+  const layout = useFrameLayout();
+  const clearance = useRailClearance(SHELF_BOX.bottom, SHELF_TABS.floor + TEXT.shelfTab - SHELF_BOX.bottom);
+  const right = layout ? layout.edgeRight + clearance : SHELF_BOX.right;
   const rootRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -307,7 +313,8 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
       style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: z.panel, pointerEvents: 'none',
         display: 'flex', flexDirection: 'column', alignItems: 'stretch',
-        padding: `0 ${SHELF_BOX.right}px ${SHELF_BOX.bottom}px ${SHELF_BOX.left}px`,
+        padding: `0 ${right}px ${SHELF_BOX.bottom}px ${SHELF_BOX.left}px`,
+        transition: cssMotion('frame.layout.adapt', 'padding-right'),
       }}
     >
       <ShelfBand />
@@ -358,7 +365,8 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
           // is not part of the field's NAME, so a reader hears "Search" and not the dots.
           placeholder={t('shelf.search_ph')}
           wrapStyle={{
-            flex: 'none', marginLeft: SEARCH.inset,
+            flex: 'none', width: `min(${SEARCH.w}px, 45%)`,
+            marginLeft: layout?.compact ? 0 : SEARCH.inset,
             // The row's own bottom edge is the mark's, and the field stands off the names' INK
             // above it (`SEARCH.bottom`), not off the line box that carries them.
             marginBottom: SEARCH.bottom,

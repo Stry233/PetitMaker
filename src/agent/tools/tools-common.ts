@@ -10,8 +10,8 @@
  * - runSilently suppresses `validation-failed` events, so the error Toast never
  *   fires for agent edits — rejections are fed back to the LLM instead.
  * - Pre-command rejections are reported per command (reject-and-skip, the same
- *   semantics generation runs under); post-stroke violations mean the stroke already
- *   rolled back, reported as "REVERTED: …" so the model re-plans.
+ *   semantics generation runs under); post-stroke violations roll commands back until legal,
+ *   with retained changes reported so the model can re-plan from the current map.
  * - One stroke group is one undo step, so a user undoes agent work like their own.
  * - Error strings are always English (translateFor('en', …)), augmented with the
  *   rule's agentHint (see rules/index.ts RULE_HINTS) for the violated rule: the model
@@ -299,15 +299,7 @@ export function commandCells(cmd: Command): MacroCoord[] {
   }
 }
 
-/**
- * The ONE count + min/max-bounds derivation, re-exported from its home in `state/`.
- *
- * IT LIVES DOWN IN `state/` because a THIRD surface needs it: the composer's region chip says what
- * the user has marked, and a chip that recomputed the box would be free to disagree with the
- * refusal this file quotes back to the model. UI cannot import the agent layer (imports point
- * down), so the shared floor is `state/`. Kept exported here because this module is where the two
- * agent-side readers — the guard below and the order event's filed `OrderRegion` — already look.
- */
+/** Shared bounds keep the region chip, order context, and write guard in agreement. */
 export { regionBounds };
 
 type RegionGuard = { has(c: MacroCoord): boolean; bounds: string };
@@ -355,6 +347,33 @@ function tallyDetail(commands: readonly Command[]): ToolResultDetail | undefined
   }
   if (cellSet.size === 0 && objects === 0) return undefined;
   return { ...(cellSet.size > 0 ? { cells: cellSet.size } : {}), ...(objects > 0 ? { objects } : {}) };
+}
+
+/** A committed stroke's representative command omits earlier edits; its snapshots retain them. */
+function postStrokeDetail(exec: CommandExecutor, start: number, violations: ValidationError[]): ToolResultDetail {
+  const entries = exec.getUndoEntries(start);
+  const cells = new Set<string>();
+  const objects = new Set<string>();
+  for (const entry of entries) {
+    const before = new Map(entry.before.map((s) => [`${s.coord.x},${s.coord.y}`, s.cell.terrain]));
+    for (const s of entry.after) {
+      const key = `${s.coord.x},${s.coord.y}`;
+      if (JSON.stringify(before.get(key)) !== JSON.stringify(s.cell.terrain)) cells.add(key);
+    }
+    if (entry.objectOps) {
+      for (const obj of entry.objectOps.added) objects.add(obj.id);
+      for (const obj of entry.objectOps.removed) objects.add(obj.id);
+    } else if (entry.cmd.type === CommandType.PlaceObject) objects.add(entry.cmd.object.id);
+    else if (entry.cmd.type === CommandType.RemoveObject) objects.add(entry.cmd.removedObject.id);
+    else if (entry.cmd.type === CommandType.TrimCorners && entry.cmd.objectId) objects.add(entry.cmd.objectId);
+  }
+  return {
+    reverted: true,
+    ...(entries.length > 0 ? { partialRevert: true } : {}),
+    ...(cells.size > 0 ? { cells: cells.size } : {}),
+    ...(objects.size > 0 ? { objects: objects.size } : {}),
+    ...withViolations(detailViolations(violations)),
+  };
 }
 
 /** What a stray earns. One rule, so one wording, whichever runner caught it. */
@@ -424,19 +443,18 @@ export function runStroke(
     }
     violations = exec.commitStrokeGroup(start, opts);
   } catch (err) {
-    // A crash mid-stroke must behave like REVERTED: already-executed commands would
-    // otherwise stay applied with no post-stroke validation, while the model is told
-    // "Tool crashed" — a half-edit it believes never happened.
+    // Crashes restore the whole call, including commands that have already applied.
     exec.rollbackTo(start);
     throw err;
   } finally {
     exec.popSource();
   }
   if (violations.length > 0) {
+    const detail = postStrokeDetail(exec, start, violations);
     return {
       isError: true,
-      detail: { reverted: true, ...withViolations(detailViolations(violations)) },
-      content: `REVERTED: the edit violated post-stroke rules and was rolled back. The map is unchanged.\n${formatErrors(violations)}`,
+      detail,
+      content: revertedMsg('the edit', violations, detail),
     };
   }
   if (ok === 0 && failures.length > 0) {
@@ -470,8 +488,7 @@ export function runStroke(
  * the same one-stroke-group dance runStroke does — capture the undo size, run the
  * body with validation-failed events silenced (async-safe: keeps silent across
  * awaits), then commitStrokeGroup and detect a post-stroke revert — and hands back
- * the body's own data (`result`) plus the raw `violations` so each site formats its
- * own REVERTED string (the seven call sites word that message differently). It names
+ * the body's own data (`result`) plus the raw `violations` and retained-change detail. It names
  * the same author runStroke does — a model wrote this content either way, and the
  * export disclosure and clearGenerated's sparing both read that authorship.
  *
@@ -509,7 +526,7 @@ export async function runStrokeBody<T>(
       result,
       outOfRegion: null,
       detail: reverted
-        ? { reverted: true, ...withViolations(detailViolations(violations)) }
+        ? postStrokeDetail(exec, start, violations)
         : tallyDetail(applied),
     };
   } catch (err) {
@@ -521,10 +538,12 @@ export async function runStrokeBody<T>(
   }
 }
 
-/** REVERTED feedback with the full rule text, coordinates and hints — the model can only
- *  self-correct from what it is told, so a bare rule id starves the retry. Shared by the
- *  director tools; runStroke words its own equivalent inline. */
-export function revertedMsg(what: string, violations: ValidationError[]): string {
+/** Both stroke runners report the retained state beside the rule text and correction hints. */
+export function revertedMsg(what: string, violations: ValidationError[], detail: ToolResultDetail | undefined): string {
+  if (detail?.partialRevert) {
+    return `PARTIALLY REVERTED: ${what} violated post-stroke rules. Only the commands needed to restore a legal map were rolled back. `
+      + `Retained changes: ${detail.cells ?? 0} cell(s), ${detail.objects ?? 0} object(s). Inspect the current map before retrying.\n${formatErrors(violations)}`;
+  }
   return `REVERTED: ${what} violated post-stroke rules and was rolled back. The map is unchanged.\n${formatErrors(violations)}`;
 }
 

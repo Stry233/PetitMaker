@@ -21,6 +21,9 @@ import type { ReactNode } from 'react';
 import { ANNOTATION_COLORS, type AnnotationTool, type AnnotationZoneShape } from '../../../core/model/annotations';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { showToast } from '../../../core/runtime/toast-bus';
+import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, ToolRow } from './ToolRow';
+import { useFrameLayout, useRailClearance } from '../frame-layout';
+import { cssMotion } from '../motion/use-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { btnReset, cursors, pressable, UNAVAILABLE, z } from '../../design/styles';
@@ -120,10 +123,10 @@ const TILE = ROAD_STYLE.size * SCALE;
 const INNER = (ROAD_STYLE.size - 2 * ROAD_STYLE.inset) * SCALE;
 const ROUND = ROAD_STYLE.radius / ROAD_STYLE.size;
 const GROW = ACTIVE_PLATE.dy * SCALE;
-/** Between the swatch row and the tool row — the road styles' own separation. */
-const ROW_GAP = 20;
 
 export function AnnotationBar() {
+  const layout = useFrameLayout();
+  const clearance = useRailClearance(SWATCH_ROW_BOTTOM, TILE);
   const t = useT();
   const tool = useEditorStore((s) => s.annotationTool);
   const zoneShape = useEditorStore((s) => s.annotationZoneShape);
@@ -140,14 +143,15 @@ export function AnnotationBar() {
     <div
       {...helpTargetAttr('notes')}
       style={{
-        position: 'fixed', left: QUAD.left, right: EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
-        display: 'flex', flexDirection: 'column', gap: ROW_GAP,
+        position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
+        transition: cssMotion('frame.layout.adapt', 'right'),
+        display: 'flex', flexDirection: 'column', gap: SWATCH_ROW_GAP,
         pointerEvents: 'none',
       }}
     >
-      <SwatchRow />
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: QUAD.gap, flexWrap: 'wrap-reverse' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap-reverse', gap: QUAD.gap, flex: '0 1 auto', minWidth: 0 }}>
+      <div style={{ marginRight: clearance, transition: cssMotion('frame.layout.adapt', 'margin-right') }}><SwatchRow /></div>
+      <ToolRow>
+        <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: QUAD.gap, flex: '0 0 auto', minWidth: 0 }}>
           {NOTE_CELLS.map((cell, i) => {
             const active = tool === cell.tool && (cell.shape === undefined || zoneShape === cell.shape);
             return (
@@ -170,14 +174,14 @@ export function AnnotationBar() {
         </div>
         <div
           style={{
-            flex: 'none', marginLeft: 'auto', marginBottom: SLIDER_LIFT,
+            flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT,
             display: 'flex', alignItems: 'center', gap: 14,
             opacity: sized ? 1 : UNAVAILABLE,
           }}
         >
           <BrushSizeSlider value={brushSize} onChange={setBrushSize} disabled={!sized} />
         </div>
-      </div>
+      </ToolRow>
     </div>
   );
 }

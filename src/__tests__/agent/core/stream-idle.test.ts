@@ -88,6 +88,27 @@ function stallsThenAnswers(text: string): Adapter & { requests: AdapterRequest[]
 afterEach(() => { vi.useRealTimers(); });
 
 describe('withIdleTimeout', () => {
+  it('cancels a pending read even when the provider ignores the signal', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const { events, done } = collect(withIdleTimeout(neverYields(), { signal: controller.signal }));
+    controller.abort();
+    await done;
+    expect(events).toEqual([{ t: 'error', error: { cls: 'abort', detail: 'The stream was aborted.' } }]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not start a provider read for an already cancelled stream', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const source = neverYields();
+    const next = vi.spyOn(source, 'next');
+    const { events, done } = collect(withIdleTimeout(source, { signal: controller.signal }));
+    await done;
+    expect(next).not.toHaveBeenCalled();
+    expect(events[0]).toMatchObject({ t: 'error', error: { cls: 'abort' } });
+  });
+
   it('1. a stream that never sends anything ends as one retryable network error, and says so to its caller', async () => {
     vi.useFakeTimers();
     let idled = 0;

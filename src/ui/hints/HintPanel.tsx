@@ -4,6 +4,7 @@
  * Scenario changes replace the row set; detail-level changes reveal its tail in place. Heights use
  * local `scrollHeight` values because the card sits under CSS zoom.
  */
+import { roleFont } from '../design/text-weight';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
@@ -186,7 +187,7 @@ export function HintPanel() {
   const rowBlock = (list: typeof rows, from: number) => list.map((row, i) => (
     <div key={from + i} style={{ display: 'flex', alignItems: 'center', gap: ROW_GAP, minHeight: 24 }}>
       <HintTokens tokens={row.tokens} />
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.frameDark, lineHeight: 1.25 }}>{t(row.textKey)}</span>
+      <span style={{ ...roleFont('note'), color: colors.frameDark, lineHeight: 1.25 }}>{t(row.textKey)}</span>
     </div>
   ));
   const column: CSSProperties = { display: 'flex', flexDirection: 'column', gap: ROW_GAP };

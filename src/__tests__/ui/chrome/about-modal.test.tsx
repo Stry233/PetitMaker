@@ -64,13 +64,23 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 const EXPECTED_BUILD_LINE = `${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`;
 
 describe('AboutModal — view A (About)', () => {
-  it('renders exactly the 8 legal doc rows (clean 2×4 grid, no About-in-About row)', () => {
+  it('shows the team, eight local documents, then sponsorship links', () => {
     renderModal();
     const grid = screen.getByTestId('legal-grid');
     // 8 drill-in doc rows (privacy…changelog; the About doc is view A itself).
     // There is no origin-gated "open the About page" row — it would duplicate view A.
     expect(within(grid).getAllByRole('button')).toHaveLength(8);
     expect(screen.queryByTestId('legal-open-page-row')).toBeNull();
+    const team = screen.getByTestId('team-grid');
+    const sponsorship = screen.getByTestId('sponsorship-links');
+    expect(team.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grid.compareDocumentPosition(sponsorship) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const links = within(sponsorship).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([LEGAL.sponsorship.patreon, LEGAL.sponsorship.afdian]);
+    for (const link of links) {
+      expect(link.getAttribute('target')).toBe('_blank');
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    }
   });
 
   it('never shows an in-grid open-About-page row even when canonicalOrigin is configured', () => {
@@ -156,26 +166,6 @@ describe('AboutModal — team avatar cards', () => {
   });
 });
 
-describe('AboutModal — close affordance (View A only)', () => {
-  it('renders the OK button on View A and it calls onClose', () => {
-    const onClose = vi.fn();
-    renderModal(onClose);
-    const ok = screen.getByRole('button', { name: 'Done' });
-    expect(ok).toBeTruthy();
-    fireEvent.click(ok);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('hides the OK button on View B (the doc view)', async () => {
-    renderModal();
-    fireEvent.click(screen.getByTestId('legal-row-privacy'));
-    await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
-    });
-  });
-});
-
 describe('AboutModal — drill-in to the doc view', () => {
   it('opens the Privacy doc and renders its English h1 from the real source', async () => {
     renderModal();
@@ -233,11 +223,17 @@ describe('AboutModal — drill-in to the doc view', () => {
   });
 });
 
-describe('AboutModal — click version row to copy build info', () => {
-  it('copies the composed "{app} {version} (build …, sha, date)" line via navigator.clipboard.writeText', async () => {
+describe('AboutModal — build info and repository link', () => {
+  it('copies the complete version row and links to GitHub separately', async () => {
     const writeText = stubClipboard(() => Promise.resolve());
     renderModal();
+    const repository = screen.getByRole('link', { name: /Source on GitHub/ });
+    expect(repository.getAttribute('href')).toBe(LEGAL.repoUrl);
+    expect(repository.getAttribute('target')).toBe('_blank');
+    fireEvent.click(repository);
+    expect(writeText).not.toHaveBeenCalled();
     const row = screen.getByRole('button', { name: 'Copy version info' });
+    expect(row.textContent).toBe([`Version ${APP_VERSION}`, `Build ${BUILD_NUMBER}`, BUILD_SHA, BUILD_DATE].filter(Boolean).join(', '));
     fireEvent.click(row);
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledTimes(1);

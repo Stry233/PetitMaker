@@ -1,7 +1,7 @@
 /**
  * `road-link`: ONE ROUTE, or ONE DOOR.
  *
- * `from` present: the two-tap route between two points, chosen from up to three drafted offers
+ * `from` present: the route between two points, chosen from up to three drafted offers
  * (`route-offers.ts`), and it CONNECTS THEM OR LAYS NOTHING — the pavement is stitched into one piece
  * after the crossings land where the traits snapped them, and a route that still cannot be joined
  * takes itself back and says where it stopped.
@@ -31,7 +31,7 @@ import type { MacroReport } from './run';
 
 export interface RoadLinkInput {
   seed: number;
-  /** The SECOND tap, or the only one: a tap on a building with no `from` is the door-spur gesture. */
+  /** Destination. Without `from`, a building target requests a door spur. */
   to: MacroCoord;
   from?: MacroCoord;
   offer?: number;
@@ -45,6 +45,8 @@ export interface RoadLinkResult {
   laid: number;
   report: MacroReport;
 }
+
+const MAX_CROSSING_RETRIES = 12;
 
 /** The catalogId nearest `head`, ties by lowest flat index — for reaching an ALREADY-standing
  *  network from a spur's own gate. */
@@ -69,12 +71,9 @@ function spurHead(world: RouteWorld, building: PlacedObject): MacroCoord | null 
   return cells.find((c) => openAt(world.a, c.x, c.y)) ?? null;
 }
 
-/** Realize one crossing at the exact anchor `route.ts` already chose (main/grandest id first, every
- *  other pool item as a fallback for an anchor the main design doesn't quite fit), reserving 3x3
- *  clearance at its ends and sweeping any decoration that clearance would otherwise trap — the same
- *  shape `realizePortal`'s own fallback takes (in `network.ts:setupNet`), scoped to the one anchor the
- *  plan already picked rather than a second anchor search. */
+/** Retain a validated site's catalog geometry; an unbound portal uses the catalog fallback order. */
 function realizeCrossing(place: PlaceCtx, p: Portal): PlacedObject | null {
+  if (p.catalogId) return tryPlace(place, p.catalogId, p.anchor.x, p.anchor.y);
   const pool = p.kind === 'bridge' ? getPlaceableByCategory(ItemCategory.Bridge) : getPlaceableByCategory(ItemCategory.Ramp);
   const main = p.kind === 'bridge' ? [...pool].sort(bySizeDesc)[0]?.id : pool[0]?.id;
   const ids = [...(main ? [main] : []), ...pool.map((c) => c.id).filter((id) => id !== main)];
@@ -85,17 +84,8 @@ function realizeCrossing(place: PlaceCtx, p: Portal): PlacedObject | null {
   return null;
 }
 
-/** Realizes every crossing the plan asked for, and returns the anchor of each one that DIDN'T
- *  take — never dropped silently. `scanPortals`'s own dry-run already proved `pool[0]` places at
- *  each anchor before it was ever offered as a candidate, so a failure here means something changed
- *  SINCE: an earlier crossing in this same run reserved clearance (or swept a decoration) that this
- *  later one's anchor depended on differently than either dry-run modeled. Rare, and worth saying
- *  so rather than letting `changes` quietly count less than the plan promised.
- *
- *  The clearance itself is always reserved (nothing new may land there), but the SWEEP is gated on
- *  `place.sweep`: a live map's decor was placed by a hand, and `layRoadLink` sets `sweep: 'refuse'`,
- *  so a flower bed standing at a crossing's own ends is left exactly where it stood — the same
- *  policy `NetworkOptions.clearance: 'refuse'` gives `network.ts`'s twin sweeps. */
+/** Earlier crossings may invalidate a later site. Report every refusal and preserve existing
+ *  decoration when reserving the approaches of a live-map route. */
 function realizeCrossings(place: PlaceCtx, crossings: readonly Portal[]): { placed: PlacedObject[]; failed: MacroCoord[] } {
   const W = place.state.template.width, H = place.state.template.height;
   const inB = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H;
@@ -119,11 +109,14 @@ function realizeCrossings(place: PlaceCtx, crossings: readonly Portal[]): { plac
 }
 
 export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkResult {
+  return layRoute(ctx, input, routeWorld(ctx, { seed: input.seed, region: input.region, near: input.to }), 0);
+}
+
+function layRoute(ctx: MacroContext, input: RoadLinkInput, world: RouteWorld, attempt: number): RoadLinkResult {
   const { state, executor, registry } = ctx;
   const countChanged = objectsChanged(state);
   // Where the run started, so a route that turns out not to connect can take its own pavement back.
   const watermark = executor.getUndoStackSize();
-  const world = routeWorld(ctx, { seed: input.seed, region: input.region, near: input.to });
   const pool = getPlaceableByCategory(ItemCategory.Road);
   const roadId = input.material ?? world.style.materialId ?? pool[0]?.id;
   if (!roadId) return { laid: 0, report: {} };
@@ -133,15 +126,19 @@ export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkRe
   let gateBuildings: PlacedObject[] = [];
 
   if (input.from) {
-    const offers = routeOffers(world, input.from, input.to);
-    if (offers.length === 0) return { laid: 0, report: { code: 'no-route' } };
-    offerNames = offers.map((o) => o.profile);
-    plan = offers[clamp(Math.floor(input.offer ?? 0), 0, offers.length - 1)]!.plan;
     const idx = getObjectIndex(state);
-    for (const at of [input.from, input.to]) {
+    const endpoint = (at: MacroCoord): MacroCoord | null => {
       const obj = objectAt(idx, at);
-      if (obj && categoryOf(obj) === ItemCategory.Building && !gateBuildings.some((b) => b.id === obj.id)) gateBuildings.push(obj);
-    }
+      if (!obj || categoryOf(obj) !== ItemCategory.Building) return at;
+      if (!gateBuildings.some(b => b.id === obj.id)) gateBuildings.push(obj);
+      return spurHead(world, obj);
+    };
+    const from = endpoint(input.from), to = endpoint(input.to);
+    if (!from || !to) return { laid: 0, report: { code: 'no-route' } };
+    const offers = routeOffers(world, from, to);
+    if (offers.length === 0) return { laid: 0, report: { code: 'no-route' } };
+    offerNames = offers.map(o => o.profile);
+    plan = offers[clamp(Math.floor(input.offer ?? 0), 0, offers.length - 1)]!.plan;
   } else {
     // "Nothing here" — a tap on open ground, or a building whose gate cannot even be located —
     // is `nothing-to-connect`, not the generic no-route message: nothing was wrong with routing,
@@ -175,10 +172,12 @@ export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkRe
 
   const before = new Set(state.objects.keys());
   const laidCells = paveCells(ctx, place, roadId, [...plan.cells, ...plan.pads]);
+  // Capture the centerline before adding full-width entrances, which must not be dilated again.
+  const freshRoads = [...state.objects.values()].filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road);
   // THE REALIZED GEOMETRY GETS THE LAST WORD (`joinRoute`): a snapped deck sits where the plan's
   // approach cells are not, and one hole at an entrance is a route in three pieces.
   const join = joinRoute(ctx, place, roadId, {
-    a: world.a, turnPenalty: world.style.turnPenalty, crossings: placed, from: plan.from, to: plan.to,
+    a: world.a, turnPenalty: world.style.turnPenalty, crossings: placed, from: plan.from, to: plan.to, width: input.width,
   });
   // A ROUTE THAT DID NOT CONNECT LAYS NOTHING. The whole point of the gesture is a road between the
   // two points; pavement that stops on the wrong side of a river is not a smaller version of that,
@@ -187,6 +186,13 @@ export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkRe
   // cells ride along, so the ghost can mark them), anything else is `unjoined`.
   if (input.from && join.stoppedAt) {
     executor.rollbackTo(watermark);
+    if (attempt < MAX_CROSSING_RETRIES && plan.crossings.length) {
+      const stop = join.stoppedAt;
+      const blockedCrossing = [...plan.crossings].sort((a, b) =>
+        Math.abs(a.anchor.x - stop.x) + Math.abs(a.anchor.y - stop.y)
+        - Math.abs(b.anchor.x - stop.x) - Math.abs(b.anchor.y - stop.y))[0]!;
+      return layRoute(ctx, input, { ...world, portals: world.portals.filter(p => p !== blockedCrossing) }, attempt + 1);
+    }
     const blocked = [...plan.blocked, ...failedCrossings];
     return {
       laid: 0,
@@ -198,9 +204,12 @@ export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkRe
       },
     };
   }
-  const freshRoads = [...state.objects.values()].filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road);
   const narrowed = widenRoads(ctx, roadId, input.width ?? 1, freshRoads);
   const { unreached } = ensureGateTerminals(ctx, place, roadId, gateBuildings);
+  if (input.from && unreached.length > 0) {
+    executor.rollbackTo(watermark);
+    return { laid: 0, report: { code: 'door-unreachable', at: unreached[0] } };
+  }
 
   const allFresh = [...state.objects.values()]
     .filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road)
@@ -208,6 +217,7 @@ export function layRoadLink(ctx: MacroContext, input: RoadLinkInput): RoadLinkRe
   beautifyRoads(ctx, [...laidCells, ...join.paved, ...allFresh], input.trim ?? 'off');
 
   const report: MacroReport = {
+    ends: [plan.from, plan.to],
     blocked: [...plan.blocked, ...failedCrossings],
     ...(narrowed > 0 ? { narrowedByPlanting: narrowed } : {}),
     ...(offerNames ? { offers: offerNames } : {}),

@@ -12,7 +12,7 @@ import type { HistoryEntry } from '../core/commands/command-apply';
 import type { GridState } from '../core/model/types';
 import type { PersistedCamera } from './save-format';
 
-const DEBOUNCE_MS = 2000;
+export const AUTOSAVE_DEBOUNCE_MS = 2000;
 
 /**
  * How many undo steps ride along with the map.
@@ -29,7 +29,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 /** The camera(s) to persist alongside the map, read live from whichever view(s) have ever been
  *  active — NOT hooked to camera movement itself (a pan/orbit fires continuously; hammering
  *  localStorage on every frame would be the bug). It only rides along on the NEXT
- *  content-triggered write, and because it's read HERE (at write time, ~DEBOUNCE_MS after the
+ *  content-triggered write, and because it's read HERE (at write time, ~AUTOSAVE_DEBOUNCE_MS after the
  *  triggering edit) rather than captured back when that edit happened, it can never be more stale
  *  than "whatever the user is looking at right now" — there is no drift window to bound. Each view
  *  is independent: a view never opened this session simply reports undefined and is omitted. */
@@ -42,7 +42,7 @@ function currentCamera(): PersistedCamera | undefined {
 
 /**
  * The undo stack's tail, read LIVE at write time for the same reason the camera is: the debounce
- * fires ~DEBOUNCE_MS after the edit that triggered it, and `getUndoEntries` returns a copy, so a
+ * fires ~AUTOSAVE_DEBOUNCE_MS after the edit that triggered it, and `getUndoEntries` returns a copy, so a
  * list captured back then would describe a map that has since moved on.
  */
 function currentHistory(): string | null {
@@ -65,7 +65,7 @@ function writeHistory(json: string | null): void {
   }
 }
 
-/** Debounced: persist the working map ~DEBOUNCE_MS after the last edit. Safe to
+/** Debounced: persist the working map ~AUTOSAVE_DEBOUNCE_MS after the last edit. Safe to
  *  call on every mutation — only the trailing call writes. */
 export function scheduleAutosave(state: GridState): void {
   if (timer !== null) clearTimeout(timer);
@@ -101,7 +101,7 @@ export function scheduleAutosave(state: GridState): void {
     // entries carry taint deltas keyed to the tracker that was dropped, and replaying them over
     // the restored map's fresh legacy taint writes ghosts.
     writeHistory(saved && !droppedProvenance ? history : null);
-  }, DEBOUNCE_MS);
+  }, AUTOSAVE_DEBOUNCE_MS);
 }
 
 /** A map worth persisting: any terrain, any object beyond the built-in plaza, or any plan-notes

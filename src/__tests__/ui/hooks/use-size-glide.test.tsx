@@ -10,7 +10,7 @@
  * REAL TIMERS throughout: the glide runs on Framer's own frame loop, which stops running for the
  * rest of any file that has installed fake timers even once.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { useSizeGlide, type GlideAxis } from '../../../ui/hooks/use-size-glide';
@@ -61,6 +61,7 @@ const owning = () => screen.getByTestId('owner').dataset.gliding === 'true';
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   size = 100;
   for (const prop of ['offsetWidth', 'offsetHeight'] as const) {
     delete (HTMLElement.prototype as unknown as Record<string, unknown>)[prop];
@@ -79,10 +80,8 @@ describe('the size glide', () => {
     const { show } = mount('a', 'width');
     size = 260;
     show('b');
-    // The decision is taken in the same commit; the first WRITE lands a frame later, so it is
-    // waited for (waitFor re-checks on every DOM mutation, which is what a size write is).
     expect(gliding()).toBe(true);
-    await waitFor(() => expect(box().style.width).not.toBe(''), { timeout: 3000 });
+    expect(box().style.width).toBe('100px');
     // And the box arrives carrying nothing: a leftover inline size is what would make the NEXT
     // measurement describe the last glide instead of the content.
     await waitFor(() => expect(box().style.width).toBe(''), { timeout: 3000 });
@@ -95,6 +94,22 @@ describe('the size glide', () => {
     show('b');
     await waitFor(() => expect(box().style.height).not.toBe(''), { timeout: 3000 });
     expect(box().style.width).toBe('');
+    await waitFor(() => expect(box().style.height).toBe(''), { timeout: 3000 });
+  });
+
+  it('starts from the settled size after idle content changes', async () => {
+    let resized = () => {};
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { resized = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    const { show } = mount('a', 'height');
+    size = 140;
+    resized();
+    size = 260;
+    show('b');
+    expect(box().style.height).toBe('140px');
     await waitFor(() => expect(box().style.height).toBe(''), { timeout: 3000 });
   });
 

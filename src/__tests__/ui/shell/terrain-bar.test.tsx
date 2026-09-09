@@ -6,8 +6,6 @@
  * cells all resolve to one tool that multiplexes the figure internally — so a test that checked the
  * inputs would pass while the map was armed with something else entirely.
  *
- * The road-action test runs the REAL macro (the mock keeps the implementation and only watches the
- * arguments), because the flow rests on a macro being exactly one undo entry.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
@@ -24,7 +22,6 @@ import { COMMAND_META, effectiveCombo, useKeybinds } from '../../../core/runtime
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { applyMacro } from '../../../tools/macros';
-import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
@@ -42,8 +39,6 @@ import {
 import { getRoadMaterials } from '../../../state/catalog';
 import { localizedName } from '../../../i18n/context';
 import { makeState } from '../../rules/_helpers';
-import { objectPlacementCommand } from '../../../tools/objects/object-placer';
-import { generateObjectId } from '../../../core/model/object-id';
 
 /** Mounted at REST inside the surface: nothing armed, so a press on any cell arms it. A cell is a
  *  toggle, and the free brush is the store's own default, so a bar mounted with it already armed
@@ -497,130 +492,15 @@ describe('smart build', () => {
     expect(store.editMode.tool).toBe('brush');
   });
 
-  /**
-   * A WHOLE-MAP action has nothing to aim, so its press RUNS: each press is one edit and one undo
-   * entry, with a fresh seed, and undo is how you decline — the press-again-for-another grammar
-   * the aimed macros have at a cell.
-   */
-  it('runs the road action on press, one undo entry each, with a fresh seed after a press that changed something', () => {
-    const { state, exec } = installMap();
-    // Something for the router to connect: the seed advancing at all rests on THIS press laying a
-    // network — a press that changes nothing reuses its seed instead (see the empty-press case
-    // below), so an empty fixture could not tell the two apart.
-    const stall = { id: generateObjectId(), catalogId: 'building-stall', position: { x: 10, y: 10 }, rotation: 0 as const, elevation: 0 };
-    expect(exec.execute(objectPlacementCommand(stall)).success).toBe(true);
-    const depth = exec.getUndoStackSize();
-    mount('road');
-
+  it.each([['road', 'Draw a road', 'road-link'], ['water', 'River', 'stream']] as const)('%s exposes only its drawing action and arming leaves the map unchanged', (surface, label, macro) => {
+    const { exec } = installMap(), depth = exec.getUndoStackSize();
+    mount(surface);
     fireEvent.click(screen.getByLabelText('Smart build'));
-    expect(vi.mocked(applyMacro).mock.calls.map((c) => c[1])).toEqual(['roads']);
-    expect(useEditorStore.getState().armedMacro, 'nothing to aim, so nothing armed').toBeNull();
-    expect(vi.mocked(applyMacro).mock.results[0]!.value.changes, 'the first press laid the stall\'s spur').toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    const seeds = vi.mocked(applyMacro).mock.calls.map((c) => c[2].seed);
-    expect(new Set(seeds).size).toBe(seeds.length);
-    expect(exec.getUndoStackSize()).toBeGreaterThanOrEqual(depth);
-    void state;
-  });
-
-  /**
-   * PRESSING AGAIN IS AN ALTERNATIVE, NOT AN ADDITION. The second press hands the first one's own
-   * object ids back to the macro, which takes them off the map before laying the next candidate —
-   * and says so, because two road layouts on a large island are easy to mistake for one.
-   */
-  it('a second press takes the first press\'s own work back, and names the plan it laid instead', () => {
-    const { exec } = installMap();
-    const stall = { id: generateObjectId(), catalogId: 'building-stall', position: { x: 10, y: 10 }, rotation: 0 as const, elevation: 0 };
-    expect(exec.execute(objectPlacementCommand(stall)).success).toBe(true);
-    const toasts: string[] = [];
-    setToastPresenter((text) => { toasts.push(text); });
-    mount('road');
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    const laid = vi.mocked(applyMacro).mock.results[0]!.value.ownedIds ?? [];
-    expect(laid.length, 'the first press laid nothing to take back').toBeGreaterThan(0);
-    expect(vi.mocked(applyMacro).mock.calls[0]![2].replace, 'a first press has nothing of its own').toBeUndefined();
-    expect(toasts, 'the first press announced itself').toEqual([]);
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    expect(vi.mocked(applyMacro).mock.calls[1]![2].replace).toEqual(laid);
-    expect(toasts, 'the second press said nothing about the layout it replaced')
-      .toEqual([translations.en['smart.roads_another']!.replace('{n}', '2')]);
-  });
-
-  it('reuses the seed on a press that changes nothing, rather than dressing it up as another plan', () => {
-    installMap();
-    mount('road');
-
-    // Nothing stands on the map to connect: every press reports the same refusal, and rerolling a
-    // seed nothing used would promise a variety the router never had.
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    const seeds = vi.mocked(applyMacro).mock.calls.map((c) => c[2].seed);
-    expect(seeds).toEqual([1, 1]);
-  });
-
-  it('binds the press to the painted region and the live Auto Trim setting', () => {
-    installMap();
-    const region = [{ x: 5, y: 5 }, { x: 6, y: 5 }];
-    useEditorStore.setState({ region, autoEdgeCut: 'round' });
-    mount('road');
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    const opts = vi.mocked(applyMacro).mock.calls[0]![2];
-    expect(opts.region).toEqual(region);
-    expect(opts.trim).toBe('round');
-  });
-
-  it('drops the region field entirely when nothing is painted, rather than passing an empty array', () => {
-    installMap();
-    useEditorStore.setState({ region: [] });
-    mount('road');
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    const opts = vi.mocked(applyMacro).mock.calls[0]![2];
-    expect('region' in opts).toBe(false);
-  });
-
-  /**
-   * THE MAP'S OWN SURFACE, WHEN NOBODY HAS PICKED ONE. `readRoadStyle` works out what the island is
-   * already paved with so a new lane matches the street it grows from, and the bar must not override
-   * it on every press: `tileMaterial` is seeded with the catalog's first road because the tile brush
-   * needs something armed, so a press that passes that seed on as a decision overrides the reading
-   * for every caller but the agent, the one that never names a material.
-   */
-  it('names no surface until a hand picks one, so the run reads the map', () => {
-    installMap();
-    mount('road');
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    expect('material' in vi.mocked(applyMacro).mock.calls[0]![2]).toBe(false);
-  });
-
-  it('names the surface a hand picked, and that pick wins over the map', () => {
-    installMap();
-    mount('road');
-    const second = getRoadMaterials()[1]!;
-    fireEvent.click(screen.getByLabelText(localizedName(second.name, 'en')));
-
-    fireEvent.click(screen.getByLabelText('Smart build'));
-    expect(vi.mocked(applyMacro).mock.calls[0]![2].material).toBe(second.id);
-  });
-
-  it('offers a surface every one of its actions as visible segments', () => {
-    installMap();
-    // The road surface, because it is the one with two: the mountain surface has ONE verb now, and
-    // a row of one cannot show that a choice is read rather than discovered by cycling. Armed
-    // through the store rather than through the star, whose first road action RUNS rather than arms.
-    mount('road');
-    act(() => { useEditorStore.getState().setEditMode({ tool: 'smart', macro: 'road-link' }); });
-
-    // Both stand in the pill at once, the armed one filled.
-    const connect = screen.getByRole('button', { name: 'Connect all' });
-    expect(screen.getByRole('button', { name: 'Draw a road' }).getAttribute('aria-pressed')).toBe('true');
-    expect(connect.getAttribute('aria-pressed')).toBe('false');
-    expect(screen.queryByLabelText('Switch action')).toBeNull();
+    expect(screen.queryByRole('button', { name: label })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Connect all' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lake' })).toBeNull();
+    expect(useEditorStore.getState().armedMacro).toBe(macro);
+    expect(exec.getUndoStackSize()).toBe(depth);
   });
 
   it('arms the mountain surface with the one verb it offers', () => {
@@ -628,7 +508,8 @@ describe('smart build', () => {
     mount('mountain');
     fireEvent.click(screen.getByLabelText('Smart build'));
 
-    expect(screen.getByRole('button', { name: 'Raise the ground' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'Spray' })).toBeNull();
+    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull();
     expect(useEditorStore.getState().armedMacro).toBe('raise');
     expect(vi.mocked(applyMacro), 'arming builds nothing until the map is pressed').not.toHaveBeenCalled();
   });

@@ -9,6 +9,26 @@ function orderText(mapContext: string, text: string): string {
 }
 
 describe('deriveMessages', () => {
+  it('estimates each message once while dropping whole exchanges from a long log', () => {
+    const log = createLog(() => 0);
+    for (let i = 0; i < 500; i++) {
+      append(log, { kind: 'order', text: `order ${i}`, mapContext: '' });
+      append(log, {
+        kind: 'assistant', stop: 'tool-calls',
+        parts: [{ kind: 'tool', callId: `c${i}`, name: 'view_map', input: {}, argsDone: true }],
+      });
+      append(log, { kind: 'toolResult', callId: `c${i}`, name: 'view_map', content: `map ${i}`, isError: false });
+    }
+    let estimates = 0;
+    const out = deriveMessages(log, { budgetTokens: 1, estimate: () => { estimates++; return 1; } });
+    expect(estimates).toBe(1500);
+    expect(out).toEqual([
+      { role: 'user', text: orderText('', 'order 499') },
+      { role: 'assistant', text: '', toolCalls: [{ callId: 'c499', name: 'view_map', args: {} }] },
+      { role: 'tool', results: [{ callId: 'c499', name: 'view_map', content: 'map 499', isError: false }] },
+    ]);
+  });
+
   it('projects an order as a user message with its map context prepended', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'build a village', mapContext: 'elevation: flat' });

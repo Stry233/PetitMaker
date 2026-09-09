@@ -10,6 +10,7 @@
  * and the 2D view is where fine selection work lives.
  */
 import * as THREE from 'three';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import {
   ANNOTATION_INK, annotationInkScale, INK_CELLS, textApproxHeightCells, textApproxWidthCells, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
@@ -46,7 +47,6 @@ const INK_3D_BOOST = 1.5;
 const ORDER = { wash: 90, outlineHalo: 91, outline: 92, select: 97, routeHalo: 93, route: 94, headHalo: 95, head: 96, label: 100 } as const;
 /** The canvas raster behind a billboard, px per world unit — crisp at the fly-in's framing. */
 const TEX_PX_PER_UNIT = 96;
-const FONT = "'Alibaba PuHuiTi 3','PW Rounded Sans','PingFang SC',sans-serif";
 const INK = '#43413F';
 const MAP_TEXT = '#FFFEE3';
 
@@ -427,7 +427,7 @@ export class Annotations3D {
     const at = zoneCentroid(zone.cells);
     this.addBillboard(state, key, at, INK_CELLS.zoneLabel[zone.size ?? 'm'] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
       const fs = h * 0.52;
-      ctx.font = `800 ${fs}px ${FONT}`;
+      ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
       const nameW = zone.name ? ctx.measureText(zone.name).width : 0;
       const numR = withNum ? fs * 0.62 : 0;
       const total = (withNum ? numR * 2 + (zone.name ? 8 : 0) : 0) + nameW;
@@ -444,12 +444,12 @@ export class Annotations3D {
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = `800 ${fs * 0.68}px ${FONT}`;
+        ctx.font = `800 ${fs * 0.68}px ${APP_FONT_FAMILY}`;
         ctx.fillText(String(zone.num), x + numR, cy + fs * 0.04);
         x += numR * 2 + (zone.name ? 8 : 0);
       }
       if (zone.name) {
-        ctx.font = `800 ${fs}px ${FONT}`;
+        ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
@@ -468,7 +468,7 @@ export class Annotations3D {
     const key = `text:${this.ink}:${note.color}:${note.style}:${note.size}:${note.text}`;
     this.addBillboard(state, key, { x: note.x, y: note.y }, INK_CELLS.text[note.size] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
       const fs = h * (note.style === 'chip' ? 0.5 : 0.58);
-      ctx.font = `800 ${fs}px ${FONT}`;
+      ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
       const w = ctx.measureText(note.text).width;
       const cy = h / 2;
       if (note.style === 'chip') {

@@ -32,10 +32,8 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
-/** The one file under tools/macros that is a TOOL, not a macro body: it binds the macros to the
- *  pointer, so like every other tool it reads the store and toasts a post-stroke outcome. The
- *  macro BODIES it calls stay bound by both checks. */
-const isToolBinding = (file: string): boolean => file.endsWith('macro-tool.ts');
+/** The pointer binding receives ToolContext and reports outcomes; macro bodies stay silent. */
+const isToolBinding = (file: string): boolean => ['macros/macro-tool.ts', 'macros/drag-tool.ts', 'macros/spray-tool.ts'].some(binding => file.endsWith(binding));
 
 describe('operations stay silent', () => {
   it('never narrates its own result', () => {
@@ -57,9 +55,7 @@ describe('operations stay silent', () => {
     expect(offenders.sort()).toEqual([]);
   });
 
-  // Scoped to kit/: tools/objects legitimately reads the store elsewhere (e.g. object-placer.ts's
-  // armed-item state), since it has more than one caller and none of them is an operation or macro
-  // reaching around its own explicit KitContext.
+  // The broader tool-store boundary is enforced by import-direction.test.ts.
   it('never imports the store directly (kit/operations + tools/macros only)', () => {
     const roots = [resolve(__dirname, '../../kit/operations'), resolve(__dirname, '../../tools/macros')];
     const offenders: string[] = [];

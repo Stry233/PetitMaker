@@ -16,11 +16,7 @@
  * against the real viewport, then gets multiplied by the zoom) — that is what `--shell-zoom` is for.
  */
 
-/** The frame's own page zoom: part of the authored size, not a user preference. `uiZoom` (Ctrl +/-)
- *  multiplies it, and so does `design/scale.tsx:frameFit` below the window the layout was judged in.
- *  That fit lives with the scaling logic rather than here because the CHROME rides it too: the
- *  modals and corner controls are the same interface as the frame and may not size themselves by a
- *  different rule. */
+/** Ratio between the frame and chrome scales; both use `design/scale.tsx:fittedUiScale`. */
 export const ZOOM = 1.25;
 
 /** A mode block's drawing width in design px, resting and selected. All five share one width

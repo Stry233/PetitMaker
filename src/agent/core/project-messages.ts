@@ -172,7 +172,7 @@ function groupBy(tagged: Tagged[]): ProviderMessage[][] {
   return groups;
 }
 
-function messageText(m: ProviderMessage): string {
+export function messageText(m: ProviderMessage): string {
   if (m.role === 'user') return m.text;
   if (m.role === 'assistant') return m.text + m.toolCalls.map((c) => JSON.stringify(c.args)).join('');
   return m.results.map((r) => r.content).join('');
@@ -182,14 +182,15 @@ function applyBudget(groups: ProviderMessage[][], opts: ProjectOptions): Provide
   const estimate = opts.estimate ?? defaultEstimate;
   const groupCost = (g: ProviderMessage[]): number => g.reduce((sum, m) => sum + estimate(messageText(m)), 0);
 
-  const remaining = groups.slice();
-  let total = remaining.reduce((sum, g) => sum + groupCost(g), 0);
+  const costs = groups.map(groupCost);
+  let total = costs.reduce((sum, cost) => sum + cost, 0);
+  let first = 0;
   // Keep the newest exchange intact; provider overflow handling owns a single oversized group.
-  while (remaining.length > 1 && total > opts.budgetTokens) {
-    const dropped = remaining.shift();
-    if (dropped) total -= groupCost(dropped);
+  while (first < groups.length - 1 && total > opts.budgetTokens) {
+    total -= costs[first]!;
+    first++;
   }
-  return remaining.flat();
+  return groups.slice(first).flat();
 }
 
 function keepLatestImageOnly(messages: ProviderMessage[]): ProviderMessage[] {

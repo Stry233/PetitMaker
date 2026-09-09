@@ -19,6 +19,7 @@
  * pointer. Where they sit differs, because they answer to different edges: the name is centred on
  * the cell's own box, and the badge rides the PLATE's right edge, which is the shape that grows.
  */
+import { useFrameReadableWeight } from '../use-frame-zoom';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { btnReset, cursors, pressable } from '../../design/styles';
@@ -45,7 +46,7 @@ const CAPTION_GAP = Math.round((CAPTION.y - (CELL.y + CELL.h)) * SCALE);
  *  the design source sizes the two captions apart. */
 const caption: CSSProperties = {
   position: 'absolute', left: '50%', ...MAP_LABEL,
-  fontSize: TEXT.label, fontWeight: MODE.label.weight,
+  fontSize: TEXT.label,
   whiteSpace: 'nowrap', pointerEvents: 'none',
 };
 
@@ -84,6 +85,7 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
    *  page rather than the row's (the edge-trim and smart-build cells). */
   helpTarget?: HelpPageId;
 }) {
+  const weightAt = useFrameReadableWeight();
   const shape = useMotion('tool.plate.shape');
   const grown = active && carries != null;
 
@@ -180,7 +182,7 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
       <ShortcutBadge commandId={commandId} active={active} grown={grown} />
       {active ? (
         <span style={{
-          ...caption,
+          ...caption, fontWeight: weightAt(MODE.label.weight, TEXT.label),
           transform: captionShift(grown ? centre + PILL_CENTRE_SHIFT : centre),
           top: `calc(100% + ${CAPTION_GAP}px)`,
         }}>

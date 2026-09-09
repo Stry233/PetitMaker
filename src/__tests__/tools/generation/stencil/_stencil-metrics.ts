@@ -19,7 +19,7 @@ import { roadLookup } from '../../../../state/object-index';
 import { createGrid } from '../../../../core/model/grid-model';
 import { generateTerrain } from '../../../../tools/generation/terrain-generator';
 import { finishGlyph, strokeTarget } from '../../../../tools/generation/stencil/stencil-stroke';
-import { bridgesDaylight, COVERAGE_ON, densityOf, GLYPH_LEGIBLE, sealsGround, separationOf, textMinBox, TOUCHED_INK } from '../../../../tools/generation/stencil/stencil';
+import { bridgesDaylight, COVERAGE_ON, densityOf, GLYPH_LEGIBLE, separationOf, textMinBox, TOUCHED_INK } from '../../../../tools/generation/stencil/stencil';
 import { CellZone, TerrainType, type Corners, type EditorEvents, type GenerateConfig, type GridState, type MapTemplate, type Stencil } from '../../../../core/model/types';
 
 /** A binary picture, the form every measure below reads. */
@@ -175,6 +175,37 @@ export function strokeWidths(m: Mask): { median: number; spread: number; max: nu
  * one-cell wobble along a straight edge produces, and both survive the corner trim as a bevelled
  * step in the middle of a line.
  */
+/** Flood-fill oracle for background that would be trapped by filling one cell. */
+function sealsGround(s: Stencil, x: number, y: number): boolean {
+  const { width: w, height: h, coverage } = s;
+  const blocked = y * w + x;
+  for (const [dx, dy] of EDGES) {
+    const sx = x + dx, sy = y + dy;
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;      // this side is the outside already
+    const start = sy * w + sx;
+    if (coverage[start]! >= COVERAGE_ON) continue;
+    const seen = new Uint8Array(w * h);
+    seen[blocked] = 1;
+    seen[start] = 1;
+    const stack = [start];
+    let escapes = false;
+    while (stack.length && !escapes) {
+      const i = stack.pop()!;
+      const cx = i % w, cy = (i / w) | 0;
+      for (const [ex, ey] of EDGES) {
+        const nx = cx + ex, ny = cy + ey;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) { escapes = true; break; }
+        const n = ny * w + nx;
+        if (coverage[n]! >= COVERAGE_ON || seen[n]) continue;
+        seen[n] = 1;
+        stack.push(n);
+      }
+    }
+    if (!escapes) return true;
+  }
+  return false;
+}
+
 export function raggedness(m: Mask, touched?: Mask): { nubs: number; notches: number; isolated: number } {
   // A notch is damage only where it COULD HAVE BEEN FILLED, which is the same list of refusals the
   // glyph finishing works from: a one-cell gap between two strokes is the character's own daylight,

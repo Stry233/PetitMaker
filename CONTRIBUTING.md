@@ -104,6 +104,8 @@ npm run build           # production build
 
 Please run `npm run test:run` and `npm run lint` before opening a pull request, and keep changes focused. For architecture and conventions, see `docs/ARCHITECTURE.md`.
 
+The marked reference sections in [ARCHITECTURE.md](docs/ARCHITECTURE.md) are generated from runtime constants, rule registration, and TypeScript contracts. Run `npm run docs:generate` after changing those sources; `npm run docs:check` and the test suite reject stale generated sections. Keep explanations and rationale outside the generated markers, and link to code for facts that do not need a reference table. Provider disclosures, Help facts (including autosave timing and agent turn limits) and keyboard hints already derive from their respective registries; legal pages, headers and dependency notices have their own generators.
+
 ## Questions
 
 For contribution questions, or to arrange an asset-permission or credit record, email **selka.craft@outlook.com**. Security issues follow a separate process. See `SECURITY.md`.

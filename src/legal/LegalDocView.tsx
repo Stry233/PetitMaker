@@ -17,6 +17,8 @@ import { useT } from '../i18n/context';
 import { useEditorStore } from '../state/store';
 import { colors, font, radii, buttonMotion, cursors } from '../ui/design/styles';
 import { skin } from '../ui/design/window-skin';
+import { useChromeScale, useDevicePixelRatio, useReadableWeight } from '../ui/design/scale';
+import { isDenseScript, roleFont, TEXT_ROLES, weightVars } from '../ui/design/text-weight';
 import { SegmentedControl } from '../ui/primitives/SegmentedControl';
 import { useScrollFade } from '../ui/primitives/scroll-fade';
 import { DOCS, docNodes, type DocId } from './registry';
@@ -69,7 +71,6 @@ const titleStyle: CSSProperties = {
   minWidth: 0,
   margin: 0,
   fontSize: 18,
-  fontWeight: 800,
   color: skin.ink,
   fontFamily: font.family,
   lineHeight: 1.2,
@@ -103,8 +104,7 @@ const enOnlyNote: CSSProperties = {
   borderRadius: radii.md,
   background: skin.inset,
   color: colors.brownText,
-  fontSize: 13,
-  fontWeight: 700,
+  ...roleFont('note'),
   fontFamily: font.family,
   lineHeight: 1.5,
 };
@@ -113,14 +113,16 @@ const footerBar: CSSProperties = {
   flexShrink: 0,
   padding: '12px 28px',
   borderTop: `1px solid ${skin.line}`,
-  fontSize: 12,
-  fontWeight: 700,
+  ...roleFont('caption'),
   color: colors.brownText,
   fontFamily: font.family,
 };
 
 export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink }: LegalDocViewProps) {
   const t = useT();
+  const weightAt = useReadableWeight();
+  const zoom = useChromeScale();
+  const dpr = useDevicePixelRatio();
   const uiLocale = useEditorStore((s) => s.locale);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -169,7 +171,7 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
           </svg>
         </motion.button>
 
-        <h2 ref={titleRef} tabIndex={-1} style={titleStyle}>
+        <h2 ref={titleRef} tabIndex={-1} style={{ ...titleStyle, fontWeight: weightAt(800, titleStyle.fontSize as number) }}>
           {t(meta.titleKey)}
         </h2>
 
@@ -194,14 +196,14 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
         data-testid="legal-doc-body"
         data-scroll
         lang={effLang === 'zh' ? 'zh-CN' : 'en'}
-        style={{ ...bodyScroll, ...bodyFade }}
+        style={{ ...bodyScroll, ...bodyFade, ...weightVars(zoom, dpr, isDenseScript(effLang)) }}
       >
         {!hasZh && uiLocale !== 'en' && (
-          <div data-testid="en-only-note" style={enOnlyNote}>
+          <div data-testid="en-only-note" lang={uiLocale} style={{ ...enOnlyNote, fontWeight: weightAt(TEXT_ROLES.note.weight, TEXT_ROLES.note.px) }}>
             {t('legal.zh_only_note')}
           </div>
         )}
-        <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} />
+        <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} dense={isDenseScript(effLang)} />
       </div>
 
       {dated && (

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { analyzeTerrain } from '../../../tools/placement/analysis';
 import {
-  planRoute, straighten, squareJunction, approachRun, scoreCrossing, capEnter,
+  planRoute, straighten, squareJunction, approachRun, capEnter,
   MIN_RUN, STRAIGHTEN_SLACK, type RouteWorld,
 } from '../../../tools/placement/route';
 import type { Portal } from '../../../tools/placement/portals';
@@ -79,35 +79,7 @@ describe('approachRun', () => {
   });
 });
 
-describe('scoreCrossing', () => {
-  // A bare open map: only `world.a` (for the approach term's openness reads) matters here.
-  const bareWorld = (portals: Portal[]): RouteWorld =>
-    ({ a: analyzeTerrain(makeState(40, 40)), portals, regionAdj: new Map(), road: new Set(), occupied: new Set(), style: DEFAULT_STYLE });
-
-  it('a deck in line with the goal outscores the same deck read against a perpendicular goal', () => {
-    // axis x (approachA/B share y): due east of the anchor is ALONG the deck's own axis (a
-    // zero-detour crossing); due south is ACROSS it (a 90° jog to reach and use).
-    const p: Portal = { kind: 'bridge', regionA: 0, regionB: 1, anchor: { x: 10, y: 10 }, approachA: { x: 8, y: 10 }, approachB: { x: 12, y: 10 }, cost: 1 };
-    const world = bareWorld([p]);
-    const inLine = scoreCrossing(world, p, { x: 0, y: 10 }, { x: 30, y: 10 }).square;
-    const perpendicular = scoreCrossing(world, p, { x: 10, y: 0 }, { x: 10, y: 30 }).square;
-    expect(inLine).toBeGreaterThan(perpendicular);
-    expect(inLine).toBeCloseTo(1, 5);
-    expect(perpendicular).toBeCloseTo(0, 5);
-  });
-
-  it('an asymmetric fixture: an in-line portal outscores a perpendicular one at equal span and approach', () => {
-    const inLineP: Portal = { kind: 'bridge', regionA: 0, regionB: 1, anchor: { x: 10, y: 10 }, approachA: { x: 8, y: 10 }, approachB: { x: 12, y: 10 }, cost: 1 }; // axis x, span 4
-    const perpP: Portal = { kind: 'bridge', regionA: 0, regionB: 1, anchor: { x: 10, y: 20 }, approachA: { x: 10, y: 18 }, approachB: { x: 10, y: 22 }, cost: 1 }; // axis y, span 4
-    const world = bareWorld([inLineP, perpP]);
-    const toward = { x: 30, y: 10 }; // due east — in line with inLineP's x axis, perpendicular to perpP's y axis
-    const back = { x: 10, y: 30 }; // south of both, and exactly the point at which the two cost the same detour
-    expect(scoreCrossing(world, inLineP, back, toward).span).toBeCloseTo(scoreCrossing(world, perpP, back, toward).span, 10);
-    expect(scoreCrossing(world, inLineP, back, toward).approach).toBe(scoreCrossing(world, perpP, back, toward).approach);
-    expect(scoreCrossing(world, inLineP, back, toward).detour).toBeCloseTo(scoreCrossing(world, perpP, back, toward).detour, 10);
-    expect(scoreCrossing(world, inLineP, back, toward).total).toBeGreaterThan(scoreCrossing(world, perpP, back, toward).total);
-  });
-
+describe('crossing choice and positive costs', () => {
   it('planRoute picks the in-line crossing over a same-span perpendicular one', () => {
     const state = makeState(40, 40);
     for (let y = 0; y < 40; y++) setTerrain(state, 19, y, TerrainType.Water, 0);
@@ -150,7 +122,7 @@ describe('the alignment discount', () => {
     for (let x = 0; x <= 20; x++) alignment.set(11 * W + x, 'x');
     const from = { x: 0, y: 10 }, to = { x: 20, y: 10 };
 
-    const styled: RouteWorld = { a, portals: [], regionAdj: new Map(), road: new Set(), occupied: new Set(), style: { ...DEFAULT_STYLE, alignment } };
+    const styled: RouteWorld = { a, portals: [], regionAdj: new Map(), road: new Set(alignment.keys()), occupied: new Set(), style: { ...DEFAULT_STYLE, alignment } };
     const bare: RouteWorld = { a, portals: [], regionAdj: new Map(), road: new Set(), occupied: new Set(), style: DEFAULT_STYLE };
 
     const planStyled = planRoute(styled, from, to, 'short')!;

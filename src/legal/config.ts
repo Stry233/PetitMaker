@@ -32,6 +32,7 @@ export type LegalConfig = {
   /** `sort` is lowercase romanization; `avatar` is the member's Bilibili MID. */
   team: ReadonlyArray<{ name: string; sort: string; url: string; avatar?: string }>;
   repoUrl: string;
+  sponsorship: { patreon: string; afdian: string };
 };
 
 /** The active deployment owns its origin and filing facts. */
@@ -68,4 +69,8 @@ export const LEGAL: LegalConfig = {
     { name: 'Selka', sort: 'selka', url: 'https://space.bilibili.com/3546659724200757', avatar: '3546659724200757' },
   ],
   repoUrl: 'https://github.com/Stry233/PetitMaker',
+  sponsorship: {
+    patreon: 'https://www.patreon.com/c/PetitMaker',
+    afdian: 'https://afdian.com/a/PetitMaker',
+  },
 };

@@ -1,42 +1,22 @@
-/**
- * `raise`: ONE verb that grows.
- *
- * A TAP lays a mound. A HOLD climbs a rung of the ladder per burst, each rung one more nested
- * terrace (`terrace.ts`), to the map's own ceiling. A DRAG re-anchors and lays the next knuckle of
- * a ridge. All three are the same builder at different rungs, which is the point: `hill` and
- * `field` were this function already, split by a boolean into two buttons.
- *
- * THE MASS SITS, IT DOES NOT DRAPE. Every ring stands at one tier measured from the FOOTING (the
- * median surface under the disc, as the plateau has always taken it), because a ladder whose rungs
- * follow the ground underneath has no tier to speak of and no ring to inset.
- *
- * A HOLD RAISES THE GROUND IT STANDS ON AND THE MASS IT HAS ALREADY RAISED, AND NOTHING ELSE.
- * Relief standing proud of the footing that this hold did not build is absent from the footprint
- * altogether, so the erosion treats it as outside and the summit steps clear of it. That is the
- * planting's `heldIds` contract in its cell-shaped form, and it is why a press beside your mountain
- * cannot commandeer it.
- *
- * The OUTLINE comes from the generator's own value noise, sampled at the seed, so the disc is a
- * lumpy landform rather than a circle and two presses at one size are two different mounds. It is
- * the seed's only job here: the ladder, the rings and the footing are all read off the map.
- *
- * The body runs INSIDE the caller's stroke group and pushes no provenance of its own (see patch.ts).
- */
+/** Local mounds use a seeded outline and nested terraces. A held stroke supplies its original
+ *  footing and owned cells so later bursts cannot rebase on their own new height. */
 import { ELEVATION_MAX } from '../../core/model/constants';
 import { flatIndex } from '../../core/model/grid-model';
 import { valueNoise01 } from '../../core/model/noise';
-import { TerrainType, type GridState, type MacroCoord } from '../../core/model/types';
+import { CommandType, type AutoEdgeCut, type GridState, type MacroCoord } from '../../core/model/types';
+import { applyAutoEdgeCut } from '../edge-cut/auto-edge-cut';
 import { circleCells } from '../paint/shapes';
 import type { MacroContext } from './context';
 import { cellsChanged } from './measure';
 import { terraceRings } from './terrace';
-import { canBuildAt, isClean, paintSkipping, surfaceAt } from './terrain';
+import { canBuildAt, isClean, isWaterAt, surfaceAt } from './terrain';
+import { TerrainDraft } from './terrain-draft';
 
 /** Cells per unit of outline noise. Around three, so the lumps are the size of a terrace rather than
  *  of the whole mound or of a single cell. */
 const OUTLINE_SCALE = 3.2;
 /** How far the noise may push the rim in or out, as a fraction of the radius. */
-const OUTLINE_AMOUNT = 0.55;
+const OUTLINE_AMOUNT = 0.28;
 
 /** How wide a step is, in cells of inset per tier. Two kinds: a landing deep enough for the ramp
  *  rule's 4-deep approach, and a scenic spire's narrower one. Named here rather than shared with the
@@ -74,6 +54,8 @@ export interface RaiseInput {
    *  never terraces and admits the neighbouring relief a rung at a time. */
   footing?: number;
   seed: number;
+  region?: readonly MacroCoord[];
+  trim?: AutoEdgeCut;
 }
 
 export interface RaiseResult {
@@ -96,22 +78,24 @@ export function raiseTerrain(ctx: MacroContext, input: RaiseInput): RaiseResult 
   const { width: W, height: H } = state.template;
 
   const footing = input.footing ?? raiseFooting(state, at, radius);
-  const base = footprint(state, at, radius, footing, held, seed, W);
+  const bounds = new TerrainDraft(ctx, input.region);
+  const wanted = footprint(state, at, radius, footing, held, seed, W);
+  const base = wanted.filter(c => bounds.editable(c, footing + 1) && !isWaterAt(state, c.x, c.y));
+  const refused = wanted.filter(c => !bounds.editable(c, footing + 1));
   // What the map has left above the footing. A ladder that would push past the ceiling stops there
   // rather than repainting one tier under a new name.
   const room = ELEVATION_MAX - footing;
   const rings = room > 0
     ? terraceRings({ base, peak: Math.min(ladderPeak(stage), room), inset: insetFor(steepness), width: W, height: H })
     : [];
-  if (rings.length === 0) return { changed: laid(), peak: 0, blocked: [] };
+  if (rings.length === 0) return { changed: laid(), peak: 0, blocked: refused };
 
   const plan = planOf(rings, footing, W);
   const mark = executor.getUndoStackSize();
   let ceiling = 0;
   for (const p of plan) ceiling = Math.max(ceiling, p.target);
   while (ceiling >= 1) {
-    paintPlan(ctx, plan, ceiling);
-    if (isClean(ctx)) break;
+    if (paintPlan(ctx, plan, ceiling, input.region)) break;
     // The mass as a whole is illegal, so it loses its top LEVEL and is offered again. The rings are
     // legal by construction, so this turns only on what the geometry does not speak for: a footing
     // standing proud of the ground around it (the rim owes V-MTN-03 a base the map does not have),
@@ -122,10 +106,21 @@ export function raiseTerrain(ctx: MacroContext, input: RaiseInput): RaiseResult 
     ceiling--;
   }
 
+  if (input.trim && input.trim !== 'off') {
+    const trimMark = executor.getUndoStackSize();
+    applyAutoEdgeCut({ gridState: state, executeCommand: cmd => {
+      const cells = cmd.type === CommandType.TrimCorners ? [{ x: cmd.x, y: cmd.y }]
+        : cmd.type === CommandType.PaintTerrain ? cmd.cells : [];
+      if (cells.some(c => !bounds.editable(c))) return { success: false, errors: [] };
+      return executor.execute(cmd);
+    } }, input.trim, plan.map(p => p.c), []);
+    if (!isClean(ctx)) executor.rollbackTo(trimMark);
+  }
+
   // A run that kept NOTHING still names the ground it wanted: a ghost with no gains and no losses
   // says nothing at all about a press that will lay nothing.
   const kept = Math.max(1, ceiling);
-  const blocked = plan.filter((p) => surfaceAt(state, p.c.x, p.c.y) < Math.min(p.target, kept)).map((p) => p.c);
+  const blocked = [...refused, ...plan.filter((p) => surfaceAt(state, p.c.x, p.c.y) < Math.min(p.target, kept)).map((p) => p.c)];
   let peak = 0;
   for (const p of plan) peak = Math.max(peak, surfaceAt(state, p.c.x, p.c.y) - footing);
   return { changed: laid(), peak, blocked };
@@ -184,12 +179,9 @@ function planOf(rings: readonly { tier: number; cells: MacroCoord[] }[], footing
   return [...byCell.values()];
 }
 
-/** Paint the mass a whole layer at a time, from elevation 1 up to `ceiling`: V-MTN-02 forbids
- *  skipping a rung, so a cell below the footing climbs through every level between. A cell already
- *  at or above the level is skipped, and one the rules refuse costs only itself (`paintSkipping`). */
-function paintPlan(ctx: MacroContext, plan: Planned[], ceiling: number): void {
-  for (let e = 1; e <= ceiling; e++) {
-    const layer = plan.filter((p) => p.target >= e && surfaceAt(ctx.state, p.c.x, p.c.y) < e).map((p) => p.c);
-    paintSkipping(ctx, layer, TerrainType.Mountain, e);
-  }
+/** Support and placement are validated as a complete draft before accepting a height. */
+function paintPlan(ctx: MacroContext, plan: Planned[], ceiling: number, region?: readonly MacroCoord[]): boolean {
+  const draft = new TerrainDraft(ctx, region);
+  for (const p of plan) draft.raise(p.c, Math.min(p.target, ceiling));
+  return draft.commit();
 }

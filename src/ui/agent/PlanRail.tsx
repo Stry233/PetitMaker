@@ -151,9 +151,8 @@ export function PlanRail({
                 <div
                   data-testid="plan-stage-label"
                   style={{
-                    ...roleFont('label'),
+                    ...roleFont(state === 'now' ? 'menu' : 'label'),
                     fontFamily: font.family,
-                    fontWeight: state === 'now' ? 800 : undefined,
                     color: state === 'todo' ? colors.brownText : PLATE_INK,
                     opacity: state === 'todo' ? 0.6 : 1,
                     minWidth: 0,

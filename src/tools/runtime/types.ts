@@ -50,6 +50,8 @@ export interface ToolContext {
    *  pinned layer when it was, and at each cell's own surface when it was not. */
   layerPinned: boolean;
   brushSize: number;
+  /** A painted region confines all support and crossings of a Smart Build gesture. */
+  region?: readonly MacroCoord[];
 
   /**
    * THE EDITOR'S ARMING, mirrored per event by the manager that builds this context.
@@ -117,6 +119,8 @@ export interface AnnotationEditVerbs {
 
 export interface Tool {
   id: ToolType;
+  /** Whether pointer cells follow the half-cell terrain offset instead of the object grid. */
+  terrainGrid?(ctx: ToolContext): boolean;
   /** WHICH cursor, not a CSS value: the canvas layer owns the CSS (ui/design/cursors). */
   cursor: CursorId;
   /**
@@ -163,6 +167,8 @@ export interface Tool {
   onPointerDown(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
   onPointerMove(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
   onPointerUp(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
+  /** Stop asynchronous stroke work when the browser cancels input or touch becomes navigation. */
+  onPointerCancel?(ctx: ToolContext): void;
   onActivate(ctx: ToolContext): void;
   onDeactivate(ctx: ToolContext): void;
 }

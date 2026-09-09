@@ -15,6 +15,7 @@
  * framing is the shared image, not the close-up.
  */
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import {
   ANNOTATION_INK, INK_CELLS, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneCentroid,
@@ -27,10 +28,6 @@ import { requestRender } from '../render-scheduler';
  *  (`ui/design/tokens.ts:MAP_LABEL`), restated as numbers because a canvas takes no CSS. */
 const MAP_TEXT = 0xfffee3;
 const INK = 0x43413f;
-
-/** The UI's own stack; the browser has these faces loaded document-wide, so a canvas may name
- *  them too. Falls back per glyph exactly as the DOM does. */
-const FONT = "'Alibaba PuHuiTi 3','PW Rounded Sans','PingFang SC',sans-serif";
 
 const WASH_ALPHA = 0.3;
 const WASH_ALPHA_INK = 0.38;
@@ -236,7 +233,7 @@ function zoneLabel(zone: ZoneNote, inkScale: number): PIXI.Container | null {
     g.endFill();
     box.addChild(g);
     const num = makeText(String(zone.num), {
-      fontFamily: FONT, fontSize: fs * 0.68, fontWeight: '800', fill: 0xffffff,
+      fontFamily: APP_FONT_FAMILY, fontSize: fs * 0.68, fontWeight: '800', fill: 0xffffff,
     });
     num.anchor.set(0.5, 0.5);
     num.position.set(x0 + numR, Y + fs * 0.04);
@@ -258,7 +255,7 @@ function textBody(note: TextNote, selected: boolean, inkScale: number): PIXI.Con
   const fs = INK_CELLS.text[note.size] * inkScale * TILE_SIZE;
   if (note.style === 'chip') {
     const text = makeText(note.text, {
-      fontFamily: FONT, fontSize: fs, fontWeight: '800', fill: isInk(note.color) ? INK : 0xffffff,
+      fontFamily: APP_FONT_FAMILY, fontSize: fs, fontWeight: '800', fill: isInk(note.color) ? INK : 0xffffff,
     });
     const padX = fs * 0.5;
     const h = fs * 1.6;
@@ -354,7 +351,7 @@ function makeText(content: string, style: Partial<PIXI.ITextStyle>): PIXI.Text {
 
 function labelStyle(px: number, fill: number): Partial<PIXI.ITextStyle> {
   return {
-    fontFamily: FONT, fontSize: px, fontWeight: '800', fill,
+    fontFamily: APP_FONT_FAMILY, fontSize: px, fontWeight: '800', fill,
     stroke: INK, strokeThickness: px * 0.15, lineJoin: 'round',
   };
 }

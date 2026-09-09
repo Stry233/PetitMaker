@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, type CSSProperties, type ReactNode, type K
 import { motion, AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { font, colors, inkTint, springs, radii, buttonMotion, cursors } from '../../design/styles';
-import { skin, windowCard, windowPill, windowPrimary, windowTitle } from '../../design/window-skin';
-import { roleFont } from '../../design/text-weight';
+import { skin, windowCard, windowPill, windowTitle } from '../../design/window-skin';
+import { roleFont, TEXT_ROLES } from '../../design/text-weight';
+import { useReadableWeight } from '../../design/scale';
 import { BUILD_NUMBER, brandName } from '../../../version';
 import type { Locale } from '../../../core/model/types';
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../core/model/constants';
@@ -211,7 +212,7 @@ const PINWHEEL = (
       <path d="M12 12 L12 22 A10 10 0 0 1 5 19 Z" />
       <path d="M12 12 L2 12 A10 10 0 0 1 5 5 Z" />
     </g>
-    <circle cx="12" cy="12" r="2.6" fill={skin.active} />
+    <circle cx="12" cy="12" r="2.6" fill={skin.plate} stroke={skin.ink} strokeWidth="1" />
   </svg>
 );
 
@@ -295,6 +296,7 @@ const PAINTED_ARROW_URL = cursorArt('default');
  * applying at once keeps aria-valuenow and the reset chip in lockstep with the
  * key. Double-click reset + the ↺ chip also apply immediately. */
 function UiScaleSlider({ label }: { label: string }) {
+  const weightAt = useReadableWeight();
   const uiZoom = useEditorStore((s) => s.uiZoom);
   const setUiZoom = useEditorStore((s) => s.setUiZoom);
   const ref = useRef<HTMLDivElement>(null);
@@ -411,7 +413,7 @@ function UiScaleSlider({ label }: { label: string }) {
       <span style={flankA('title')} aria-hidden>A</span>
       {/* The live specimen: the letters scale as the interface would. */}
       <div style={{ width: 50, height: 50, borderRadius: radii.md, background: skin.plate, boxShadow: `inset 0 0 0 1px ${inkTint(0.10)}`, display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }} aria-hidden>
-        <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink, transition: 'transform 0.15s ease', transform: `scale(${shownZoom})` }}>Aa</span>
+        <span style={{ ...roleFont('label'), fontWeight: weightAt(TEXT_ROLES.label.weight, TEXT_ROLES.label.px * shownZoom), fontFamily: font.family, color: skin.ink, transition: 'transform 0.15s ease', transform: `scale(${shownZoom})` }}>Aa</span>
       </div>
       {/* ↺ keeps its slot when hidden so appearing never shifts the row; aria-hidden takes it out
           of the accessibility tree at 100%, where there is nothing to reset. */}
@@ -789,10 +791,6 @@ export function SettingsModal({
           {t('modal.settings_reset_btn')}
         </motion.button>
       </div>
-
-      <motion.button style={windowPrimary} onClick={onClose} {...buttonMotion}>
-        {t('modal.settings_ok')}
-      </motion.button>
     </ModalShell>
 
     {/* The erase confirm: a small dialog over the dimmed panel, the same shell every modal is

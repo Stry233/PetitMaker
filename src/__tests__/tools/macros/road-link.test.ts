@@ -13,6 +13,7 @@ import { categoryOf } from '../../../state/catalog';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { buildingGate } from '../../../tools/placement/object';
+import { gateTerminalCells } from '../../../tools/placement/route';
 import { generateObjectId } from '../../../core/model/object-id';
 import {
   CellZone, ItemCategory, TerrainType,
@@ -194,6 +195,23 @@ describe('road-link: two taps', () => {
     applyMacro(forced, 'road-link', { seed: 1, from, at: to, width: 1, material: 'path-simple-brick' });
     const laidForced = [...forced.state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Road);
     expect(laidForced.some((o) => o.catalogId === 'path-simple-brick'), 'the caller\'s own material wins').toBe(true);
+  });
+});
+
+describe('road-link: building endpoints', () => {
+  it.each([0, 90, 180, 270] as const)('resolves rotated buildings to their entrances before routing (%i°)', rotation => {
+    const kit = makeKit();
+    const from = place(kit, 'building-forest-cabin', 10, 10, rotation);
+    const to = place(kit, 'building-sunset-cabin', 28, 26, rotation);
+    const outcome = applyMacro(kit, 'road-link', {
+      seed: 1, from: { x: 11, y: 11 }, at: { x: 29, y: 27 }, width: 2,
+    });
+    expect(outcome.changes, JSON.stringify(outcome)).toBeGreaterThan(0);
+    for (const [i, building] of [from, to].entries()) {
+      expect(gateTerminalCells(objectRect(building), rotation)).toContainEqual(outcome.ends?.[i]);
+      expect(kit.state.objects.get(building.id)).toEqual(building);
+    }
+    expect(kit.registry.validatePostStroke(kit.state)).toEqual([]);
   });
 });
 

@@ -135,10 +135,15 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: 0.26,
     says: 'the layer stack has this part of the column now',
   },
-  /** Rail buttons travel to their positions when a group reflows between one and two columns. */
+  /** Rail buttons retain their identity as their group folds into additional columns. */
   'rail.group.reflow': {
     tier: 'inform', curve: 'stiff',
     says: 'these are the same buttons, in the shape this window has room for',
+  },
+  /** Neighboring control groups yield space when the workspace changes shape. */
+  'frame.layout.adapt': {
+    tier: 'inform', curve: 'punchy', duration: 0.26,
+    says: 'the controls keep their places relative to each other as space changes',
   },
   /** The layer stack's plate and rows resize together as one persistent control. */
   'layer.mode.resize': {
@@ -148,6 +153,10 @@ export const MOTIONS = {
   /** Layer selection and hover plates fade through the same fill property. */
   'layer.select.fade': {
     tier: 'ambient', curve: 'settle', duration: 0.15, amplitude: 1, amplitudeUnit: 'opacity',
+  },
+  'planet.choice.select': {
+    tier: 'inform', curve: 'punchy', duration: 0.18,
+    says: 'this is the selected destination for the planet change',
   },
   /** The 3D-only yaw controls enter and leave without reflowing controls above them. */
   'rail.yaw.offer': {

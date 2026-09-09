@@ -26,7 +26,7 @@ import {
   MODES, MODE_PLATE, MODE_ROW_BASE, MODE_ROW_LEFT, MODE_ROW_TOP, planRail, RAIL_FOLDS, railStack,
   RAIL_TOP, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, topRightHeight, topRightSlack, type RailPlan,
 } from '../../../ui/shell/frame';
-import { PLATE_DEPTH } from '../../../ui/shell/windows/LayerPanel';
+import { PLATE_DEPTH, plateMinDepth } from '../../../ui/shell/windows/LayerPanel';
 import {
   INK, MAP_EDGE_ALPHA, MAP_LABEL, MAP_SHAPE_EDGE, SHAPE_EDGE, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID,
 } from '../../../ui/design/tokens';
@@ -332,18 +332,11 @@ describe('the right-hand column', () => {
     expect(LAYER_STEP_RIGHT + RAIL.layer.w).toBeLessThan(EDGE_RIGHT + RAIL.button);
   });
 
-  /**
-   * THE PLATE IS PLACED WITH THE GROUPS, AND WHAT IT COSTS THEM IS WHAT THIS HOLDS.
-   *
-   * The open plate is 331 deep and the eight round buttons come to 424 with their separations, so a
-   * lane 489 long — a 1600x900 window — cannot hold both. Two things can give and the plan picks
-   * per window: the pair steps down and the plate takes the room above it, or the plate steps out of
-   * the lane and the column is untouched. What may NOT happen is the plate standing over a button:
-   * a plate is opaque, and a covered control is a control nobody can press.
-   */
   describe('and the layer stack takes its turn among them', () => {
     const layerBottom = RAIL_TOP + RAIL.layer.h;
-    const plan = (vh: number, open: boolean) => planRail(vh / ZOOM, { open, plateDepth: PLATE_DEPTH });
+    const plan = (vh: number, open: boolean) => planRail(vh / ZOOM, {
+      open, plateDepth: PLATE_DEPTH, plateMinDepth: plateMinDepth('grid'),
+    });
     /** How deep the pair stands in a given plan. It FOLDS on a short window, so it is not a
      *  constant, and reading it off the plan is what keeps every separation below measured against
      *  the arrangement the plan actually chose. */
@@ -351,31 +344,24 @@ describe('the right-hand column', () => {
     /** The least of the plate worth showing: its head, its own padding, and one whole row of the
      *  SQUARE's floors, which is the size these plans are made for. A plate cut above this is a head
      *  with no stack under it. */
-    const PLATE_FIRST_ROW = 142;
+    const PLATE_FIRST_ROW = plateMinDepth('grid');
     /** The three windows the arrangement is judged on. */
     const WINDOWS = [720, 900, 1440];
 
     it('declares the plate\'s depth the browser draws, so the plan is planning the real thing', () => {
-      // It does not vary with the language: a longer floor name widens a tile's equal track, it
-      // does not add a line to it. Measured in the browser at 322.6 css px over a generated island,
-      // three rows of the square's three-line tile: a floor's name, its count with the eye and the
-      // lock, and its bar.
+      // Localized floor names widen their tracks without adding a line.
       expect(PLATE_DEPTH).toBeCloseTo(359, 6);
     });
 
-    /** TWO FILES IS THE CAP, and it is a property of the ladder rather than of any window. A group
-     *  three buttons wide is a block sitting where a column was, so no arrangement of the kit or of
-     *  the pair may reach one — which also means a window too short for the last rung has to land
-     *  somewhere, and where it lands is the plate stepping aside (the test above). */
-    it('never runs either group in more than two files', () => {
+    it('limits the view kit to four files and history to one pair', () => {
       for (const f of RAIL_FOLDS) {
-        expect(f.kit, 'the kit').toBeLessThanOrEqual(2);
+        expect(f.kit, 'the kit').toBeLessThanOrEqual(4);
         expect(f.history, 'the pair').toBeLessThanOrEqual(2);
       }
       for (let vh = 400; vh <= 2160; vh += 4) {
         for (const open of [false, true]) {
           const p = plan(vh, open);
-          expect(p.kitFiles, `${vh}px, ${open ? 'open' : 'at rest'}`).toBeLessThanOrEqual(2);
+          expect(p.kitFiles, `${vh}px, ${open ? 'open' : 'at rest'}`).toBeLessThanOrEqual(4);
           expect(p.historyFiles, `${vh}px, ${open ? 'open' : 'at rest'}`).toBeLessThanOrEqual(2);
         }
       }
@@ -398,67 +384,35 @@ describe('the right-hand column', () => {
       }
     });
 
-    it('cannot make room for the plate on a short window, which is why the plate steps aside there', () => {
-      // Both of these are here again. The square is 323 deep rather than 193.5 — it kept the roomy
-      // three-line tile the file traded away — and the ladder stops at two files a group, so
-      // neither of these windows has a rung that seats it. This is the case that lands the plate
-      // beside the lane, which is what happens wherever the ladder does not reach.
-      const roomAt = (vh: number) => {
-        const p = plan(vh, true);
-        // The room the lane could offer, if the pair were pushed as low as the column allows.
-        return p.kitTop - pairDepth(p) - 2 * RAIL.groupMin - RAIL_TOP;
-      };
-      // On the shorter of the two there is not one floor's worth of lane, let alone a plate.
-      expect(roomAt(720), '720px cannot show one floor').toBeLessThan(PLATE_FIRST_ROW);
+    it('keeps a scrollable plate on the right until a complete floor row cannot fit', () => {
       for (const vh of [720, 900]) {
         const p = plan(vh, true);
-        expect(roomAt(vh), `${vh}px cannot hold the plate`).toBeLessThan(PLATE_DEPTH);
-        // So it stands one file of buttons and a separation out of the lane, and the pair is left
-        // at the place it keeps with nothing open.
-        expect(p.plateInLane).toBe(false);
-        expect(p.plateRight).toBeCloseTo(EDGE_RIGHT + railStack(p.kitFiles) + RAIL.groupMin, 6);
-        expect(p.historyTop).toBeCloseTo(plan(vh, false).historyTop, 6);
-        // And nothing was folded for it, since folding would not have seated it either.
-        expect(p.kitFiles).toBe(plan(vh, false).kitFiles);
-        expect(p.historyFiles).toBe(plan(vh, false).historyFiles);
+        expect(p.plateInLane).toBe(true);
+        expect(p.plateRight).toBe(EDGE_RIGHT);
+        expect(p.plateMaxH).toBeGreaterThanOrEqual(PLATE_FIRST_ROW);
       }
+      const short = plan(525, true);
+      expect(short.plateInLane).toBe(false);
+      expect(short.plateRight).toBeGreaterThan(EDGE_RIGHT + railStack(short.kitFiles));
+      expect(short.historyTop).toBeGreaterThanOrEqual(plan(525, false).historyTop);
     });
 
-    /**
-     * THE OPEN PLATE IS WHAT ASKS THE COLUMN TO FOLD, and on the windows people have it is the only
-     * thing that does.
-     *
-     * Read off the window's height alone the ladder is nearly dead: the kit only breaks up under
-     * about 900 device px and the pair only under 700, and almost nobody works at a window that
-     * short. What every window has is the plate, and the plate wants the column's own lane. Folding
-     * is what buys it: a shallower group hangs lower, so more of the run is left above it.
-     *
-     * What it costs is the arrangement of the column's own buttons, which stay on screen and stay
-     * pressable either way — against the plate stepping out over the map and standing a button's
-     * width off the line the rest of the right-hand side is squared to.
-     */
-    it('folds a group to seat the open plate, and only as far as seating it takes', () => {
+      it('folds a group to seat the open plate, and only as far as seating it takes', () => {
       const rung = (p: RailPlan) =>
         RAIL_FOLDS.findIndex((f) => f.kit === p.kitFiles && f.history === p.historyFiles);
-      // The band where the fold is what buys the lane: the square seats from about 1092 device px,
-      // and up to about 1352 it takes a second kit file to do it. Below the band even a full fold
-      // cannot seat it, so nothing folds and the plate steps out over the map.
       expect(rung(plan(1080, false)), '1080px at rest folds nothing').toBe(0);
-      expect(rung(plan(1080, true)), '1080px open folds nothing either — folding would not seat it').toBe(0);
-      expect(plan(1080, true).plateInLane).toBe(false);
+      expect(plan(1080, true).kitFiles, '1080px folds the kit to make room').toBe(2);
+      expect(plan(1080, true).plateInLane).toBe(true);
       expect(plan(1244, true).kitFiles, '1244px open puts the kit in two files').toBe(2);
       expect(plan(1244, true).plateInLane).toBe(true);
       // A tall window is asked for nothing: its lane is long enough as it stands.
       expect(rung(plan(1440, true)), '1440px needs no fold').toBe(0);
       expect(plan(1440, true).plateInLane).toBe(true);
-      // Across the range: an open plate never folds LESS than the window itself required, and a
-      // fold it did ask for always seats the plate. A column rearranged for a plate that still ends
-      // up out over the map has paid for nothing.
       for (let vh = 600; vh <= 2160; vh += 4) {
         const closed = rung(plan(vh, false));
         const open = plan(vh, true);
         expect(rung(open), `${vh}px`).toBeGreaterThanOrEqual(closed);
-        if (rung(open) > closed) expect(open.plateInLane, `${vh}px folded, so it is seated`).toBe(true);
+        if (open.plateInLane) expect(open.plateMaxH, `${vh}px keeps one complete floor row`).toBeGreaterThanOrEqual(PLATE_FIRST_ROW);
       }
     });
 
@@ -483,23 +437,14 @@ describe('the right-hand column', () => {
         .toBeGreaterThan(RAIL.button);
     });
 
-    /**
-     * THE HARD FLOOR, AND IT IS WHY THE KIT BREAKS INTO FILES.
-     *
-     * A 720-tall window leaves 345 css px of column against the 452 the three groups take at their
-     * own spacing, so the six camera buttons cannot be one file there: they hung 143 px below the
-     * window's bottom edge, the last two off the screen and the one before it on the shelf's band.
-     * The plan gives them a second file instead, which is 150 deep rather than 309.
-     */
-    it('keeps every group off the bottom shelf and clear of its neighbours, at all three windows', () => {
+      it('keeps every group on screen and clear of its neighbours while allowing bottom margin compression', () => {
       for (const vh of WINDOWS) {
         for (const open of [false, true]) {
           const p = plan(vh, open);
           const viewport = vh / ZOOM;
           const kitH = railStack(Math.ceil(KIT_BUTTONS / p.kitFiles));
           const what = `${vh}px, ${open ? 'open' : 'at rest'}`;
-          // The 3D kit, which is the tall one, stays off the shelf's plate and on the screen.
-          expect(p.kitTop + kitH, what).toBeLessThanOrEqual(viewport - PLATE_BAND.top);
+          expect(p.kitTop + kitH, what).toBeLessThanOrEqual(viewport - (open ? EDGE : RAIL_FLOOR));
           // The groups read as groups: every separation at least the squeezed one.
           expect(p.historyTop - layerBottom, `${what}, under the layer control`)
             .toBeGreaterThanOrEqual(RAIL.groupMin - 1e-9);
@@ -508,7 +453,7 @@ describe('the right-hand column', () => {
           // And nothing the plate does reaches a button: either it is out of the lane, or the pair
           // and the kit both start below it.
           if (open && p.plateInLane) {
-            expect(p.historyTop, what).toBeGreaterThanOrEqual(RAIL_TOP + PLATE_DEPTH + RAIL.groupMin);
+            expect(p.historyTop, what).toBeGreaterThanOrEqual(RAIL_TOP + Math.min(PLATE_DEPTH, p.plateMaxH) + RAIL.groupMin);
           }
         }
       }
@@ -525,18 +470,7 @@ describe('the right-hand column', () => {
       expect(railStack(2)).toBe(2 * RAIL.button + RAIL.gap);
     });
 
-    /**
-     * AND THE PAIR FOLDS THE SAME WAY, SECOND.
-     *
-     * The two groups that can fold are worth different amounts: the kit is six buttons, so a second
-     * file buys the column 159 css px, where folding two buttons into a row buys 53. So the order is
-     * not arbitrary and this is what holds it — the expensive group first, the pair only once that
-     * is not enough, and the kit's third file last of all, since three buttons abreast has stopped
-     * being a file.
-     *
-     * The window it bites on is a real one: a 1366x768 laptop with browser chrome lands near 660.
-     */
-    it('folds the pair after the kit, and only where a folded kit is not enough', () => {
+      it('folds the pair after the kit, and only where a folded kit is not enough', () => {
       // Not every window in the set: with seven in the kit, a folded kit stops being enough at about
       // 766 device px, and the smallest of the three is below that.
       for (const vh of WINDOWS.filter((h) => h > 766)) {
@@ -546,8 +480,7 @@ describe('the right-hand column', () => {
       expect(plan(720, false).historyFiles, 'and a 1366x768 laptop is under it').toBe(2);
       const folded = plan(660, false);
       expect(folded.historyFiles, 'a 660px window folds it into a 2x1 row').toBe(2);
-      // The kit went first, and it is still two rather than three: the pair is what gave next.
-      expect(folded.kitFiles).toBe(2);
+      expect(folded.kitFiles, 'a third kit file preserves the preferred bottom clearance').toBe(3);
       // Two buttons have one fold in them and no more, whatever the window does.
       for (let vh = 400; vh <= 2160; vh += 20) {
         expect(plan(vh, false).historyFiles, `${vh}px`).toBeLessThanOrEqual(HISTORY_BUTTONS);

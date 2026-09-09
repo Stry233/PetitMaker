@@ -3,6 +3,7 @@
 import { dataUrlToBlob } from '../../image-export';
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
+import { responseToDataUrl } from './image-response';
 import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from './types';
 
 const DEFAULT_BASE = 'https://api.openai.com';
@@ -15,16 +16,6 @@ const ASPECTS: readonly AspectOption[] = [
 
 function baseOf(cfg: DialectConfig): string {
   return cfg.baseUrl || DEFAULT_BASE;
-}
-
-/** Reads a fetched image reply straight off its `ArrayBuffer`, never through `Blob`: browsers
- *  agree on `Response#arrayBuffer`, and it is the one path that needs no intermediate object. */
-async function responseToDataUrl(res: Response): Promise<string> {
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-  const mime = res.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
-  return `data:${mime};base64,${btoa(binary)}`;
 }
 
 /** Source first (the edit target), then any remaining roles as references. */

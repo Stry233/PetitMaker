@@ -1,27 +1,4 @@
-/**
- * THE ACCEPTANCE SWEEP for the three road gestures, driven through the surface each one ships
- * behind: `MacroTool` for the two aimed gestures, `applyMacro` for the whole-map press (the shelf
- * runs that one itself — `SmartBuild.tsx:87`, there is no tool under it).
- *
- * What is here is the wire from the BAR to the MAP: the tool's own ghost payload against what its
- * press lays, its context's material/width/trim reaching the run, what the user is TOLD, and the
- * end-to-end facts a unit test on one function cannot see. Each case is a thing a hand does — lay a
- * route through a garden, tap a house, press the island — asserted on the finished map rather than
- * on an intermediate.
- *
- * THE FIXTURES CARRY WHAT MAKES THE QUESTION REAL, and a bare map does not: it collapses a route to
- * ONE offer, so the second tap has nothing to choose between; it has no standing planting for a
- * width-3 corridor to neck around; and its crossings land where the plan put them, so its pavement
- * joins whether or not the run stitches it. Each fixture below therefore carries the one thing its
- * own question needs, and the case that turns on a SNAPPED deck runs on a generated island, since
- * every hand-built ford and terrace joins either way.
- *
- * The gesture/contract pins that live elsewhere are not repeated: `road-link-gesture.test.ts` owns
- * the two-tap state machine and the cycle, `road-contract.test.ts` the five clauses through
- * `applyMacro`, `road-join.test.ts` the router's connectivity, `road-detour.test.ts` its length,
- * `smart-build.test.ts` the whole-map re-press on a generated island, and `route.ts`/
- * `route-offers.ts`/`road-style.ts`'s own tests the router's geometry.
- */
+/** Road drag and network acceptance: complete previews, connectivity, materials, widths and undo. */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
@@ -53,7 +30,7 @@ const ISLAND = 96;
 
 interface Kit { state: GridState; executor: CommandExecutor; registry: ReturnType<CommandExecutor['getRegistry']> }
 
-/** An open, flat, buildable map with a sea border — `road-link-gesture.test.ts`'s own fixture. */
+/** An open, flat, buildable map with a sea border. */
 function makeKit(size = SIZE): Kit {
   const state = makeState(size, size);
   for (let y = 0; y < size; y++) {
@@ -205,7 +182,7 @@ function pieceAt(comps: string[][], target: MacroCoord, slack = 2): number {
   return -1;
 }
 
-/** The two taps are joined by ONE piece of road. */
+/** The endpoints are joined by ONE piece of road. */
 function expectJoined(state: GridState, from: MacroCoord, to: MacroCoord): void {
   const comps = components(roadWalk(state));
   const a = pieceAt(comps, from), b = pieceAt(comps, to);
@@ -239,14 +216,14 @@ function linkTool(kit: Kit, over: Partial<ToolContext> = {}): {
   return { tool, ctx, ghosts, toasts };
 }
 
-/** The two-tap gesture as a hand makes it: tap, carry the pointer to the destination, tap there. */
-async function twoTaps(
+/** A road drag through the actual tool pointer lifecycle. */
+async function dragRoad(
   d: { tool: MacroTool; ctx: ToolContext }, from: MacroCoord, to: MacroCoord,
 ): Promise<void> {
   d.tool.onPointerDown(from, from as never, d.ctx);
   d.tool.onPointerMove(to, to as never, d.ctx);
   await settle();
-  d.tool.onPointerDown(to, to as never, d.ctx);
+  d.tool.onPointerUp(to, to as never, d.ctx);
 }
 
 /** Every object id the map gained while `body` ran, as cells. */
@@ -304,7 +281,7 @@ describe('acceptance: the ghost promises what the press lays', () => {
     expect(ghost.cells.length).toBeGreaterThan(0);
     expect(ghost.losses.map(key)).toContain(key(dirt.position));
 
-    const laid = laidBy(kit, () => { d.tool.onPointerDown(at(30, 10), at(30, 10), d.ctx); });
+    const laid = laidBy(kit, () => { d.tool.onPointerUp(at(30, 10), at(30, 10), d.ctx); });
     expect(new Set(ghost.cells.map(key))).toEqual(laid);
     expect(kit.state.objects.has(dirt.id), 'the standing coating was reused rather than replaced').toBe(false);
     const replaced = roadObjects(kit.state).find((o) => o.position.x === 20 && o.position.y === 11);
@@ -317,16 +294,17 @@ describe('acceptance: the ghost promises what the press lays', () => {
     const house = place(kit, 'building-myhouse', 20, 24, 0);
     const d = linkTool(kit);
 
-    d.tool.onPointerMove(house.position, house.position, d.ctx);
+    d.tool.onPointerDown(house.position, house.position, d.ctx);
+    d.tool.onPointerMove(at(20, 10), at(20, 10), d.ctx);
     await settle();
     const ghost = d.ghosts[d.ghosts.length - 1]!;
     expect(ghost.cells.length).toBeGreaterThan(0);
 
-    const laid = laidBy(kit, () => { d.tool.onPointerDown(house.position, house.position, d.ctx); });
+    const laid = laidBy(kit, () => { d.tool.onPointerUp(at(20, 10), at(20, 10), d.ctx); });
     expect(new Set(ghost.cells.map(key))).toEqual(laid);
   });
 
-  it('gesture 3: the whole-map press, on the path the shelf runs it on', () => {
+  it('the programmatic network operation commits exactly its previewed footprint', () => {
     const kit = makeKit();
     place(kit, 'building-myhouse', 10, 10);
     place(kit, 'building-bamboo-cabin', 30, 30, 180);
@@ -356,7 +334,7 @@ describe('acceptance: the contract, through the tool', () => {
     // dilation is the only thing that ever reached a hand's planting.
     const d = linkTool(kit, { brushSize: 3 });
     const depth = kit.executor.getUndoStackSize();
-    await twoTaps(d, at(10, 10), at(34, 10));
+    await dragRoad(d, at(10, 10), at(34, 10));
 
     expect(roadObjects(kit.state).length, 'the second tap laid no road at all').toBeGreaterThan(0);
     expect(kit.executor.getUndoStackSize(), 'the route did not land as one undo entry').toBe(depth + 1);
@@ -390,7 +368,7 @@ describe('acceptance: the contract, through the tool', () => {
     expect(ghost.losses.map(key), 'the ghost never named the cell it cannot have').toContain(key(flower.position));
     expect(kit.state.objects.has(flower.id), 'a hover removed something').toBe(true);
 
-    d.tool.onPointerDown(at(24, 40), at(24, 40), d.ctx);
+    d.tool.onPointerUp(at(24, 40), at(24, 40), d.ctx);
     expect(kit.state.objects.has(flower.id), 'the blocking flower was swept by the press').toBe(true);
     expect(roadObjects(kit.state), 'half a road was left on either side of the flower').toEqual([]);
     expect(d.toasts, 'nothing was laid and the tool said nothing').toContain('smart.blocked');
@@ -403,9 +381,9 @@ describe('acceptance: the contract, through the tool', () => {
     place(kit3, 'building-bamboo-cabin', 30, 30, 180);
 
     const d = linkTool(kit);
-    await twoTaps(d, at(10, 10), at(34, 10));
+    await dragRoad(d, at(10, 10), at(34, 10));
     expect(roadObjects(kit.state).length).toBeGreaterThan(0);
-    expect(decorations(kit.state), 'the two-tap route planted a roadside').toEqual([]);
+    expect(decorations(kit.state), 'the dragged route planted a roadside').toEqual([]);
 
     const whole = applyMacro(kit3, 'roads', { seed: 1 });
     expect(whole.changes, whole.reason ?? '').toBeGreaterThan(0);
@@ -417,7 +395,7 @@ describe('acceptance: the contract, through the tool', () => {
     const layBent = async (autoEdgeCut: 'round' | 'off'): Promise<Kit> => {
       const kit = makeKit();
       const d = linkTool(kit, { autoEdgeCut });
-      await twoTaps(d, at(10, 10), at(30, 30));
+      await dragRoad(d, at(10, 10), at(30, 30));
       expect(roadObjects(kit.state).length, `trim ${autoEdgeCut}: nothing was laid`).toBeGreaterThan(0);
       return kit;
     };
@@ -435,12 +413,13 @@ describe('acceptance: a gate is a terminal', () => {
     const d = linkTool(kit);
 
     d.tool.onPointerDown(house.position, house.position, d.ctx);
+    d.tool.onPointerUp(at(20, 10), at(20, 10), d.ctx);
     const paved = pavedCells(kit.state);
     const strip = gateTerminalCells(objectRect(house), house.rotation);
     expect(strip.some((c) => paved.has(key(c))), 'the spur stopped short of the door').toBe(true);
   });
 
-  it('gesture 2: a door already served is SAID to be, rather than paved again', () => {
+  it('pressing a served door waits for a drag without paving again', () => {
     const kit = makeKit();
     for (let x = 8; x <= 34; x++) place(kit, 'path-overgrown-dirt', x, 10);
     const house = place(kit, 'building-myhouse', 20, 24, 0);
@@ -455,7 +434,7 @@ describe('acceptance: a gate is a terminal', () => {
 
     expect(roadObjects(kit.state).length, 'a served door was paved again').toBe(before);
     expect(kit.executor.getUndoStackSize(), 'a press that laid nothing left an undo entry').toBe(depth);
-    expect(d.toasts, 'the tap did nothing and the tool said nothing').toEqual(['smart.roads_settled']);
+    expect(d.toasts).toEqual([]);
   });
 
   it('gesture 3: EVERY house the whole-map press connected is paved to its door', () => {
@@ -491,7 +470,7 @@ describe('acceptance: a gate is a terminal', () => {
     for (const y of [14, 15, 16]) place(kit, 'flower-daisy', 22, y);
 
     const d = linkTool(kit);
-    await twoTaps(d, at(10, 20), house.position);
+    await dragRoad(d, at(10, 20), house.position);
 
     expect(roadObjects(kit.state).length, 'the second tap laid nothing').toBeGreaterThan(0);
     const paved = pavedCells(kit.state);
@@ -500,7 +479,7 @@ describe('acceptance: a gate is a terminal', () => {
   });
 });
 
-describe('acceptance: the route joins the two taps, or lays nothing', () => {
+describe('acceptance: the route joins the endpoints, or lays nothing', () => {
   it('however many ways round the map offers, the second tap lays the one the ghost drew', async () => {
     const kit = makeKit();
     // A lake between the taps: round it and over it are genuinely different lines, so more than one
@@ -520,7 +499,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     const ghost = d.ghosts[d.ghosts.length - 1]!;
     expect(ghost.cells.length).toBeGreaterThan(0);
 
-    const laid = laidBy(kit, () => { d.tool.onPointerDown(to, to as never, d.ctx); });
+    const laid = laidBy(kit, () => { d.tool.onPointerUp(to, to as never, d.ctx); });
     expect(laid.size, 'the second tap laid nothing').toBeGreaterThan(0);
     expect(new Set(ghost.cells.map(key)), 'the tap laid a different way round than the ghost drew').toEqual(laid);
     expect(kit.executor.getUndoStackSize(), 'the route did not land as one undo entry').toBe(depth + 1);
@@ -532,7 +511,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     ford(kit);
     const from = at(10, 19), to = at(33, 19);
     const d = linkTool(kit);
-    await twoTaps(d, from, to);
+    await dragRoad(d, from, to);
 
     expect(roadObjects(kit.state).length, 'the second tap laid nothing').toBeGreaterThan(0);
     expect(crossings(kit.state).some((o) => categoryOf(o) === ItemCategory.Bridge),
@@ -546,7 +525,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     terrace(kit);
     const from = at(22, 14), to = at(22, 36);
     const d = linkTool(kit);
-    await twoTaps(d, from, to);
+    await dragRoad(d, from, to);
 
     expect(roadObjects(kit.state).length, 'the second tap laid nothing').toBeGreaterThan(0);
     expect(crossings(kit.state).some((o) => categoryOf(o) === ItemCategory.Ramp),
@@ -565,7 +544,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     const { from, to } = pairOverACrossing();
     const kit = generatedIsland(11);
     const d = linkTool(kit);
-    await twoTaps(d, from, to);
+    await dragRoad(d, from, to);
 
     expect(roadObjects(kit.state).length, 'the second tap laid nothing').toBeGreaterThan(0);
     expect(crossings(kit.state).length, 'the fixture no longer routes over a crossing').toBeGreaterThan(0);
@@ -582,7 +561,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
     const wasAt = { ...bridge.position };
 
     const d = linkTool(kit);
-    await twoTaps(d, from, to);
+    await dragRoad(d, from, to);
 
     expect(kit.state.objects.get(bridge.id)?.position, 'the standing bridge was moved or removed').toEqual(wasAt);
     expect(crossings(kit.state).length, 'a second crossing was built beside the one already there').toBe(1);
@@ -594,7 +573,7 @@ describe('acceptance: the route joins the two taps, or lays nothing', () => {
 
 describe('acceptance: the map\'s own character routes the press', () => {
   // The turn-penalty half of `readRoadStyle` is pinned at the unit level (`road-style.test.ts`):
-  // over the fixtures a two-tap route can actually be laid on, the straightener collapses the
+  // over the fixtures a dragged route can actually be laid on, the straightener collapses the
   // rectilinear and the organic answer onto the same line, so the style the map was measured at is
   // not observable from the pavement here.
   //
@@ -622,7 +601,7 @@ describe('acceptance: the map\'s own character routes the press', () => {
 
     const before = new Set(kit.state.objects.keys());
     const d = linkTool(kit);
-    await twoTaps(d, at(10, 15), at(28, 20));
+    await dragRoad(d, at(10, 15), at(28, 20));
 
     const fresh = [...kit.state.objects.values()].filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road);
     expect(fresh.length, 'the second tap laid nothing').toBeGreaterThan(0);

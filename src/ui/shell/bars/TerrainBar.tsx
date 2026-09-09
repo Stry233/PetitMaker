@@ -1,11 +1,14 @@
 /**
  * Shared bottom bar for terrain surfaces. Data selects the surface-specific glyphs and Smart Build
  * actions; tool facts still flow through `setEditMode`. The tool cells and size slider share a
- * wrapping flex row. Shape-sized tools keep the slider visible but disabled to preserve layout.
+ * horizontal scroll row. Shape-sized tools keep the slider visible but disabled to preserve layout.
  * Shortcut badges read live keybindings.
  */
+import { useFrameLayout } from '../frame-layout';
 import type { BuildShape, BuildTool } from '../../../core/model/edit-mode';
 import type { EraserShape } from '../../../core/model/types';
+import { SWATCH_ROW_GAP, ToolRow } from './ToolRow';
+import { cssMotion } from '../motion/use-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { tourTargetAttr } from '../../chrome/tour/steps';
@@ -18,26 +21,13 @@ import { RoadStyles } from './RoadStyles';
 import { SmartBuild } from './SmartBuild';
 import { AUTO_TRIM, CELL_BOX, ERASER_SHAPE, ToolCell } from './ToolCell';
 import { BRUSH, TOOL_CELLS, activeCellId, type TerrainSurface } from './terrain-cells';
-
-/** Right edge shared with the view-control column and used as the row's wrap boundary. */
-const BAR_RIGHT = EDGE_RIGHT;
-
 /** The brush reading, at the size the design draws it: half again the tool captions beside it,
  *  because it is a figure read on its own rather than a name under a picture. Exported because the
  *  scope screen wears this bar's layout, down to the reading beside its slider. */
 export const READOUT_SIZE = Math.round(BRUSH.readoutSize * SCALE);
 
-/** Margin that aligns the slider's drawn center with one row of tool-cell plates after wrapping. */
+/** Margin that aligns the slider with the tool-cell plates. */
 export const SLIDER_LIFT = CELL_BOX.h / 2 - (BRUSH.centreY - BRUSH.track.y) * SCALE;
-
-/**
- * Between the road swatches and the tool row under them, in css px.
- *
- * Judged, not the design's own 30 design px. The shortcut badge overhangs the top of every cell by
- * 7 px, and the design draws no badge, so the drawing's gap leaves four pixels between a swatch and
- * a "B" and the two rows read as one crowded block.
- */
-const SWATCH_GAP = 20;
 
 /**
  * What pressing the ACTIVE cell writes: a cell is a toggle, the way a mode block is.
@@ -53,13 +43,7 @@ const SWATCH_GAP = 20;
  */
 const PUT_AWAY = { tool: 'none' } as const;
 
-/**
- * The tool row itself: the seven cells and the eighth smart-build cell on their fixed pitch, the
- * brush-size slider at the far end of the same line, and the armed/sized dimming that both answer
- * to. Presentational — it takes the four edit-mode inputs as props rather than reading the store —
- * so `TerrainBar` below and the Help Center's posed figure (`figures/previews/strips.tsx`) mount the
- * SAME arrangement instead of the figure re-deciding it from a copy of these numbers.
- */
+/** Shared tool arrangement for the editor and help figures. */
 export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brushSize, onBrushSize, onSelect }: {
   surface: TerrainSurface;
   activeTool: BuildTool;
@@ -81,21 +65,13 @@ export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brus
   const sized = !armed || (armed.sized === true && !dragShaped);
 
   return (
-    // `flex-start` is the BOTTOM here. `wrap-reverse` swaps the cross axis's two ends, so a row
-    // that hangs off the window's bottom edge and grows upward aligns its members with the start
-    // it flipped, and asking for `flex-end` puts them on the line's TOP — which is where the
-    // slider sat, 16 px clear of the cells it is meant to line up with.
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: QUAD.gap, flexWrap: 'wrap-reverse' }}>
+    <ToolRow>
       <div
         {...tourTargetAttr('bar')}
         {...helpTargetAttr('terrain')}
         style={{
-          display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap-reverse', gap: QUAD.gap,
-          // As wide as the cells and no wider, but free to shrink: what gives at a narrow window
-          // is this group, which wraps UPWARD (it hangs off the bottom edge) while the slider
-          // keeps its place on the line. The smart-build proposal puts three more pills in here,
-          // and in Russian they are three times the width of the Chinese the drawing measured.
-          flex: '0 1 auto', minWidth: 0,
+          display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: QUAD.gap,
+          flex: '0 0 auto', minWidth: 0,
         }}
       >
         {/* The pitch a name is centred on holds because a cell only widens the row while it is the
@@ -130,7 +106,7 @@ export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brus
           the reading. */}
       <div
         style={{
-          flex: 'none', marginLeft: 'auto', marginBottom: SLIDER_LIFT,
+          flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT,
           display: 'flex', alignItems: 'center', gap: 14,
           opacity: sized ? 1 : UNAVAILABLE,
         }}
@@ -140,11 +116,12 @@ export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brus
             widest thing on this end of the bar. */}
         <BrushSizeSlider value={brushSize} onChange={onBrushSize} disabled={!sized} />
       </div>
-    </div>
+    </ToolRow>
   );
 }
 
 export function TerrainBar({ surface }: { surface: TerrainSurface }) {
+  const layout = useFrameLayout();
   const editMode = useEditorStore((s) => s.editMode);
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const brushSize = useEditorStore((s) => s.brushSize);
@@ -154,8 +131,9 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
   return (
     <div
       style={{
-        position: 'fixed', left: QUAD.left, right: BAR_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
-        display: 'flex', flexDirection: 'column', gap: SWATCH_GAP,
+        position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
+        transition: cssMotion('frame.layout.adapt', 'right'),
+        display: 'flex', flexDirection: 'column', gap: SWATCH_ROW_GAP,
         // The column spans the window, so it must let a press through everywhere it is not a
         // control; each control below claims its own pointer events.
         pointerEvents: 'none',

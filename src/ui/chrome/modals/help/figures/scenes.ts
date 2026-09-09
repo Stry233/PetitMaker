@@ -6,7 +6,7 @@
  * authors the opening state with real commands, then returns this run's steps — closures over the
  * world, so every loop starts clean (the player rewinds the world through the real undo stack
  * between loops). Steps mutate the world through the same doors the live tools use (`paint`,
- * `applyMacro('raise')`, `pressRoadNetwork`, `generateDesigned`, `generateMaze`, the stencil
+ * `applyMacro`, `generateDesigned`, `generateMaze`, the stencil
  * pipeline, placement and trim commands), and every mark they show goes through `DemoView` — which
  * the player maps onto the app's own overlay layer (real hover box, real ghost, real selection
  * ring, real band, real region tint, real route gold), so a demo is a proof, never a drawing.
@@ -28,13 +28,11 @@ import { removeObjectCommand } from '../../../../../tools/objects/object-placer'
 import { rotateObject } from '../../../../../tools/objects/actions';
 import { deleteGroup, rotateGroup } from '../../../../../tools/objects/group-actions';
 import type { GroupRotation } from '../../../../../canvas/group-arc';
-import { applyMacro } from '../../../../../tools/macros/run';
 import { peelCommand } from '../../../../../tools/paint/terrain-peel';
 import { circleCells, rectCells, splineCells, type CurveAnchor } from '../../../../../tools/paint/shapes';
 import { brushCells } from '../../../../../tools/paint/drawing-tool';
-import { pressRoadNetwork } from '../../../../../kit/operations/road-press';
 import { generateDesigned } from '../../../../../tools/generation/designer/pipeline';
-import { detachCommand } from '../../../../../tools/macros';
+import { applyMacro, detachCommand, previewMacro } from '../../../../../tools/macros';
 import { generateMaze } from '../../../../../tools/generation/maze/maze-generator';
 import { generateAnnotationId, nextZoneNumber, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type TextNote } from '../../../../../core/model/annotations';
 import type { TokenSpec } from '../../../../hints/catalogue';
@@ -1273,29 +1271,36 @@ const locked: HelpScene = {
 
 const smart1: HelpScene = {
   stage: { x1: 63, y1: 97, x2: 82, y2: 107, tile: 19 },
-  // Radius 4 is the bar's own smallest setting (sizes 1..5 land radii 4..8), and the macro tool
-  // wears the `place` cursor.
-  run: () => [
-    { capKey: 'help.fig.smart1_1', move: [68, 102], pointer: 'place', dur: 550 },
-    {
-      press: true, dur: 250,
-      on: ({ world }) => { applyMacro(world.kit, 'raise', { seed: 7, at: { x: 68, y: 102 }, radius: 4, steepness: 'wide' }); },
+  run: ({ world, view }) => {
+    const at = { x: 72, y: 102 };
+    const opts = { seed: 4, at, radius: 4, steepness: 'steep' as const, footing: 0 };
+    const grow = (stage: number) => applyMacro(world.kit, 'raise', { ...opts, stage,
+      heldCells: circleCells(at, 6, 6).filter(c => world.kit.state.cells[c.y]?.[c.x]?.terrain)
+        .map(c => c.y * world.kit.state.template.width + c.x),
+    });
+    return [
+    { capKey: 'help.fig.smart1_1', move: [72, 102], pointer: 'place', dur: 1100,
+      on: () => view.paintGhost(previewMacro(world.kit, 'raise', opts).added, 'mountain'),
     },
-    { press: false, dur: 700 },
-    { capKey: 'help.fig.smart1_2', move: [77, 102], dur: 600 },
     {
-      press: true, dur: 250,
-      on: ({ world }) => { applyMacro(world.kit, 'raise', { seed: 7, at: { x: 77, y: 102 }, radius: 4, steepness: 'wide' }); },
+      press: true, capKey: 'help.fig.smart1_2', dur: 260,
+      on: () => { view.paintGhost(null); grow(1); },
     },
-    { press: false, dur: 1700 },
-  ],
+    {
+      press: true, dur: 700, on: () => grow(2),
+    },
+    {
+      press: true, dur: 700, on: () => grow(3),
+    },
+    { press: false, dur: 1500 },
+  ];
+  },
 };
 
-/** The stream macro on a stepped headland: one press carves its own course down the tiers and out
- *  to the sea. The terraces are authored, the water is entirely the macro's. */
+/** An endpoint-guided river through terraces, built by the same macro as the editor. */
 const stream: HelpScene = {
   stage: COAST,
-  run: ({ world }) => {
+  run: ({ world, view }) => {
     world.beginStroke();
     world.paint(rect(64, 114, 78, 119), TerrainType.Mountain, 1);
     world.commit();
@@ -1311,33 +1316,34 @@ const stream: HelpScene = {
     world.paint([{ x: 71, y: 115 }], TerrainType.Water, 3);
     world.commit();
     const from = { x: 71, y: 115 };
+    const at = { x: 80, y: 120 }, opts = { seed: 5, from, at, width: 1 };
     return [
       { capKey: 'help.fig.stream_1', move: [from.x, from.y], pointer: 'place', dur: 700 },
       {
-        press: true, dur: 280,
-        on: ({ world: w }) => { applyMacro(w.kit, 'stream', { seed: 5, at: from, radius: 6 }); },
+        press: true, move: [at.x, at.y], dur: 850,
+        on: () => view.paintGhost(previewMacro(world.kit, 'stream', opts).added, 'water'),
       },
-      { press: false, capKey: 'help.fig.stream_2', dur: 2000 },
+      { press: false, capKey: 'help.fig.stream_2', dur: 2000,
+        on: () => { view.paintGhost(null); applyMacro(world.kit, 'stream', opts); },
+      },
     ];
   },
 };
 
 const smart2: HelpScene = {
   stage: INTERIOR,
-  run: ({ world }) => {
+  run: ({ world, view }) => {
     world.place(CABIN, 64, 97);
     world.place(CABIN2, 75, 104);
+    const from = { x: 65, y: 98 }, at = { x: 76, y: 105 }, opts = { seed: 1, from, at, width: 2 };
     return [
-      { capKey: 'help.fig.smart2_1', move: [72, 102], pointer: 'place', dur: 550 },
-      { press: true, dur: 260, on: ({ world: w }) => { pressRoadNetwork(w.kit, {}); } },
-      { press: false, dur: 900 },
-      {
-        capKey: 'help.fig.smart2_2', press: true, dur: 260,
-        on: ({ world: w }) => { pressRoadNetwork(w.kit, {}); },
+      { capKey: 'help.fig.smart2_1', move: [from.x, from.y], pointer: 'place', dur: 550 },
+      { press: true, move: [at.x, at.y], dur: 850,
+        on: () => view.paintGhost(previewMacro(world.kit, 'road-link', opts).added),
       },
-      // The app's own notice for a repeated press; the second landed press is plan 2.
-      { press: false, toastKey: 'smart.roads_another', toastParams: { n: 2 }, dur: 1600 },
-      { toastKey: null, dur: 700 },
+      { press: false, capKey: 'help.fig.smart2_2', dur: 1700,
+        on: () => { view.paintGhost(null); applyMacro(world.kit, 'road-link', opts); },
+      },
     ];
   },
 };

@@ -4,6 +4,34 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.22] - 2026-09-08
+
+### Added
+
+- Patreon and Afdian support links on the project page and in About.
+
+### Changed
+
+- About lists the team first, with sponsorship below the legal documents and a GitHub link below the version details. Graphics diagnostics are removed.
+- Mountain Smart Build sprays local mounds: hold to build higher terraces or drag to grow a ridge, with one undo step per stroke. Roads connect chosen points or building entrances, using legal bridges and ramps when they improve the route and keeping crossing approaches aligned. Rivers support adjustable bends, pond connections and waterfalls. Previews include support and crossings, and adjustments can be undone separately. Each terrain surface has one action directly on its Smart Build button; Connect all is removed from the road toolbar.
+- Image generation accepts regions from 7×7 cells, with more detailed sampling for small regions. Regions with both sides at least 20 cells keep their existing output.
+- Generator thumbnail errors use shorter, consistent area messages with a clear warning badge above the text. The area pill keeps showing the selected cell count without repeating the error.
+
+### Fixed
+
+- Floating toolbars and color strips allow canvas strokes to start in their shadows and gaps while keeping the controls interactive.
+- Large interface scales and narrow windows reposition corner actions and fold the lower controls before moving expanded layers aside. Undo and redo stay aligned on the right; each scrolling row clears only the controls at its height. The displayed scale fits the available workspace while preserving the saved preference.
+- Brush sliders align with their tool rows and keep their hover readings visible. Image-generation sliders use the same track length as other generators.
+- Small interface text adapts its weight to its visible size, display density and language, while normal text and headings retain their emphasis.
+- The assistant character follows window and interface-scale changes without remaining at its previous position.
+
+- Text generation preserves detached marks and counters more reliably and avoids unnecessarily thick junctions in small regions.
+- Terrain painting and erasing now target the block beneath the pointer in both 2D and 3D, keeping the ghost and edit aligned.
+- Assistant edits that are only partly rolled back now report the changes kept on the map and include them in edit counts.
+- Assistant Stop and Pause respect pending approvals and waits between edits. Cancelled streams cannot overwrite a new session, and an unshortenable context overflow ends with an error instead of repeating requests.
+- Malformed saved assistant events now open the existing recovery flow instead of breaking session restoration.
+- Help opens without generating or capturing illustrations below the visible page; demos start after the entrance animation. Deep links scroll once the destination section is mounted.
+
 ## [0.9.334] - 2026-09-04
 
 ### Fixed

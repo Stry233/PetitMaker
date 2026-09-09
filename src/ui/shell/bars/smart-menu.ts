@@ -1,18 +1,4 @@
-/*
- * smart-menu.ts — what smart build offers on each surface, and where the open cell draws.
- *
- * Each surface offers its OWN actions. The design source draws the road action under all three
- * bars because one group is reused there; the list below is what each surface actually offers.
- *
- * An AIM action builds where the user points, so it needs a target cell before it can run; a
- * PROPOSAL action works over the whole buildable region and needs none. That is the only thing the
- * kind decides here — `applyMacro` implements both the same way.
- *
- * EVERY MACRO THE ENGINE IMPLEMENTS IS OFFERED. `MACRO_IDS` is the list, and a macro that exists
- * without a way to reach it is a feature nobody can use; `smart-build.test.ts` holds the two equal
- * so a sixth cannot be written and left stranded. `patch-tree`/`patch-flora` are the object
- * shelf's two cards, which is why the surfaces here are not only the terrain ones.
- */
+/** Smart Build actions offered by each surface. */
 import type { MacroId } from '../../../tools/macros';
 import type { Glyph } from '../frame';
 import type { TerrainSurface } from './terrain-cells';
@@ -26,26 +12,17 @@ export interface SmartAction {
   id: MacroId;
   /** What the open cell names it. */
   labelKey: string;
-  /** Whether it builds at a cell the user points at. */
-  aim: boolean;
 }
 
 export const SMART_MENU: Record<SmartSurface, readonly SmartAction[]> = {
   mountain: [
-    // ONE verb: a tap lays a mound, a hold climbs it a terrace at a time, a drag lays a ridge. Split
-    // into two entries it is one builder behind a boolean, offering two names for a choice nobody
-    // could make.
-    { id: 'raise', labelKey: 'smart.raise', aim: true },
+    { id: 'raise', labelKey: 'smart.raise' },
   ],
   water: [
-    { id: 'stream', labelKey: 'smart.stream', aim: true },
+    { id: 'stream', labelKey: 'smart.stream' },
   ],
   road: [
-    // `roads` is the WHOLE-MAP press: no aim, over the painted region when one stands, else the
-    // whole buildable map, one edit and one undo entry per press. `road-link` AIMS: a press marks
-    // a point (or spurs one building's own gate) and a second press commits.
-    { id: 'roads', labelKey: 'smart.roads', aim: false },
-    { id: 'road-link', labelKey: 'smart.road_link', aim: true },
+    { id: 'road-link', labelKey: 'smart.road_link' },
   ],
   // Coverage-test data only: `SmartBuild` (the segment row that would show both labels at once)
   // never mounts on this surface, since `surface` there is typed `TerrainSurface`, which excludes
@@ -53,8 +30,8 @@ export const SMART_MENU: Record<SmartSurface, readonly SmartAction[]> = {
   // and hardcodes `smart.patch` directly, never reading `labelKey` from here. The duplicate below
   // would collide if either of those ever changed to render this list as segments.
   object: [
-    { id: 'patch-tree', labelKey: 'smart.patch', aim: true },
-    { id: 'patch-flora', labelKey: 'smart.patch', aim: true },
+    { id: 'patch-tree', labelKey: 'smart.patch' },
+    { id: 'patch-flora', labelKey: 'smart.patch' },
   ],
 };
 

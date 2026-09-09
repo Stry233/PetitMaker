@@ -1,5 +1,10 @@
 /* ── PetitMaker Animation System ─────────────────────────── */
 
+/* Native form controls otherwise select a browser font instead of inheriting their surface's. */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
 /* No global button:hover / :active rules: components own their hover/tap
    motion via Framer Motion (the shared `pressable` preset). A global
    `box-shadow … !important` would draw a rectangular shadow around every

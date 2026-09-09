@@ -3,6 +3,7 @@
 // image/image2/image3. No size param: an edit model follows its input's own shape.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
+import { responseToDataUrl } from './image-response';
 import { StylizeError, type StylizeDialect, type StylizeImage } from './types';
 
 const ASPECTS: readonly AspectOption[] = [
@@ -15,14 +16,6 @@ const ASPECTS: readonly AspectOption[] = [
 
 /** Reads a fetched image reply straight off its `ArrayBuffer`, never through `Blob`: browsers
  *  agree on `Response#arrayBuffer`, and it is the one path that needs no intermediate object. */
-async function responseToDataUrl(res: Response): Promise<string> {
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-  const mime = res.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
-  return `data:${mime};base64,${btoa(binary)}`;
-}
-
 function roleOf(images: readonly StylizeImage[], role: StylizeImage['role']): StylizeImage | undefined {
   return images.find((i) => i.role === role);
 }

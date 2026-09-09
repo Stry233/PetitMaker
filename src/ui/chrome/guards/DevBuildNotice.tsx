@@ -29,7 +29,7 @@ import { APP_VERSION, IS_DEV_BUILD } from '../../../version';
 import { LEGAL } from '../../../legal/config';
 import { TimedButton } from '../../primitives/TimedButton';
 import { colors, font, radii, springs, z, cursors } from '../../design/styles';
-import { roleFont } from '../../design/text-weight';
+import { roleWeight, roleFont } from '../../design/text-weight';
 import { MAP_LABEL, PANEL_EDGE } from '../../design/tokens';
 import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP } from '../floating/toast-band';
 import { useChromeScale } from '../../design/scale';
@@ -85,7 +85,7 @@ const stripe: CSSProperties = {
 
 const linkStyle: CSSProperties = {
   color: colors.frameDark,
-  fontWeight: 800,
+  fontWeight: roleWeight('small'),
   textDecoration: 'underline',
   textUnderlineOffset: 2,
   whiteSpace: 'nowrap',

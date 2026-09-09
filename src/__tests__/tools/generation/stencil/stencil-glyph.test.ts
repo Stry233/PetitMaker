@@ -28,7 +28,7 @@ import {
   scoreGlyph, skeletonRecall, STENCIL_THRESHOLDS, straightness, strokeWidths,
   type RasterFixture, type RasterFixtureFile,
 } from './_stencil-metrics';
-import { airCells, COVERAGE_ON, GLYPH_LEGIBLE, glyphLegible, sealsGround, smoothShape, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
+import { airCells, COVERAGE_ON, GLYPH_LEGIBLE, glyphLegible, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
 import { bridgeDiagonals, finishGlyph, glyphExtent, smoothOutline } from '../../../../tools/generation/stencil/stencil-stroke';
 
 const file = JSON.parse(readFileSync('src/__tests__/fixtures/stencil-rasters.json', 'utf8') as string) as RasterFixtureFile;
@@ -159,28 +159,30 @@ describe('a region at the floor its text asks for carries the letter', () => {
     expect(airCells('谷', { width: 13, height: 13 }), 'an ideograph at its own ink floor').toBe(0);
   });
 
-  it('asks a row of letters for ten each, since the gaps between them round away first', () => {
+  it('keeps word spacing below the conservative native-outline bound', () => {
     expect(textMinSide('HELLO')).toBe(10);
     expect(textMinBox('HELLO').width).toBe(50);
     const whole = scoreGlyph(at('HELLO', 10)!, buildGlyph(at('HELLO', 10)!));
     expect(whole.pieces, 'five letters, five pieces').toBe(whole.piecesWanted);
-    // The side bearings go before the strokes do: at eight the letters are drawn well enough and two
-    // of them touch anyway, which is why the row's floor is above a single letter's.
     for (const size of [6, 8]) {
-      const cramped = scoreGlyph(at('HELLO', size)!, buildGlyph(at('HELLO', size)!));
+      const fixture = at('HELLO', size)!;
+      const built = buildGlyph(fixture);
+      const cramped = scoreGlyph(fixture, built);
       expect(cramped.underFloor, `${size} is under the row's floor`).toBe(true);
-      expect(cramped.pieces, `at ${size} they touch`).toBeLessThan(cramped.piecesWanted);
+      expect(components(built.ink, 8)).toBe(components(rawMask(fixture), 8));
     }
   });
 
-  it('asks an ideograph for fourteen, where a letter asks for six', () => {
+  it('preserves separate raster components below the conservative dense-text bound', () => {
     expect(textMinSide('谷地')).toBe(14);
     expect(textMinSide('A谷'), 'one dense character makes the whole word dense').toBe(14);
     const whole = scoreGlyph(at('谷地', 14)!, buildGlyph(at('谷地', 14)!));
     expect(whole.pieces).toBe(whole.piecesWanted);
-    const cramped = scoreGlyph(at('谷地', 10)!, buildGlyph(at('谷地', 10)!));
+    const fixture = at('谷地', 10)!;
+    const built = buildGlyph(fixture);
+    const cramped = scoreGlyph(fixture, built);
     expect(cramped.underFloor).toBe(true);
-    expect(cramped.pieces, 'at ten the strokes merge').toBeLessThan(cramped.piecesWanted);
+    expect(components(built.ink, 8)).toBe(components(rawMask(fixture), 8));
   });
 
   it('keeps the letter recognisable at every size at or above its floor', () => {
@@ -215,6 +217,36 @@ function draw(s: Stencil): string[] {
 }
 
 describe('nothing in the finishing may take the letter apart', () => {
+  it('preserves separate marks across partly covered gaps between thick strokes', () => {
+    const s = stencilOf(['..##..', '..##..', '......', '..##..', '..##..']);
+    s.coverage[2 * s.width + 2] = s.coverage[2 * s.width + 3] = 90;
+    finishGlyph(s);
+    expect(components(maskFor(s), 8)).toBe(2);
+    expect(draw(s)[2]).toBe('......');
+  });
+
+  it('preserves ink components and counters for every binary three-cell neighborhood', () => {
+    for (let bits = 0; bits < 512; bits++) {
+      const s = stencilOf(Array.from({ length: 5 }, () => '.....'));
+      for (let i = 0; i < 9; i++) if (bits & (1 << i)) s.coverage[(1 + Math.floor(i / 3)) * 5 + 1 + i % 3] = 255;
+      const before = maskFor(s);
+      finishGlyph(s);
+      const after = maskFor(s);
+      expect(components(after, 8), `ink ${bits}`).toBe(components(before, 8));
+      expect(holes(after), `counter ${bits}`).toBe(holes(before));
+    }
+  });
+
+  it('retains the full area of an enclosed gap while smoothing its outer edge', () => {
+    const s = stencilOf(['.#####.', '#######', '##...##', '##...##', '#######', '.#####.']);
+    const empty = s.coverage.slice();
+    finishGlyph(s);
+    for (const y of [2, 3]) for (const x of [2, 3, 4]) {
+      expect(empty[y * s.width + x]).toBe(0);
+      expect(s.coverage[y * s.width + x]).toBe(0);
+    }
+  });
+
   it('joins a thinned diagonal, which touches only at its corners until it is', () => {
     // What a stroke at a shallow angle comes out as once it is one cell wide: whole in a raster dump,
     // and a dotted line of separate blocks on a map.
@@ -257,12 +289,16 @@ describe('nothing in the finishing may take the letter apart', () => {
 
   it('fills a dead-end dent and refuses to seal a character\'s own gap', () => {
     const dent = stencilOf([
+      '##.##',
       '#####',
-      '##.##',   // three ink sides, and the way out is the way in
       '#####',
     ]);
     smoothOutline(dent);
     expect(maskFor(dent).on.every((v) => v === 1), 'a dent with nothing behind it fills').toBe(true);
+
+    const counter = stencilOf(['#####', '##.##', '#####']);
+    finishGlyph(counter);
+    expect(draw(counter)).toEqual(['#####', '##.##', '#####']);
 
     // A pocket whose only way out is one cell of the outline: covering that cell shuts it in, which
     // on an ideograph is a stroke gap turning into a filled-in blob.
@@ -273,10 +309,8 @@ describe('nothing in the finishing may take the letter apart', () => {
       '##.##',
       '.....',
     ]);
-    expect(sealsGround(neck, 2, 3), 'the guard names the neck').toBe(true);
     const before = holes(maskFor(neck));
-    smoothShape(neck);
-    smoothOutline(neck);
+    finishGlyph(neck);
     expect(holes(maskFor(neck)), 'no counter conjured').toBe(before);
     expect(maskFor(neck).on[3 * 5 + 2], 'the neck is left open').toBe(0);
   });
@@ -473,16 +507,13 @@ describe('a card is offered by what its own letter can do', () => {
     }
   });
 
-  it('refuses a WORD whose letters have run into each other, which a share cannot see', () => {
-    // The hole a third bar closes. Two letters fusing costs a couple of runs out of a whole row, so
-    // HELLO in a six-cell region comes back at 0.898 separation and 0.540 density — both comfortably
-    // inside their bars — while arriving as three pieces of five. What a row of letters loses first
-    // is the ground BETWEEN them, and that is a count of pieces rather than a proportion of runs.
-    for (const size of [6, 8]) {
-      const v = verdict('HELLO', size);
-      expect(v.separation, `HELLO at ${size} passes the share`).toBeGreaterThan(GLYPH_LEGIBLE.separation);
-      expect(v.ok, `HELLO at ${size} is refused anyway`).toBe(false);
-    }
+  it('checks separate letters independently of aggregate stroke separation', () => {
+    const separate = verdict('HELLO', 6), merged = verdict('HELLO', 8);
+    expect(separate.pieces).toBe(5);
+    expect(separate.ok).toBe(true);
+    expect(merged.separation).toBeGreaterThan(GLYPH_LEGIBLE.separation);
+    expect(merged.pieces).toBeLessThan(5);
+    expect(merged.ok).toBe(false);
     expect(verdict('HELLO', 10).ok, 'and offered where its letters stand apart').toBe(true);
   });
 

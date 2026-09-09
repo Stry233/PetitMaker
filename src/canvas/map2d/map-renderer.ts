@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import '@pixi/unsafe-eval'; // self-installs on import (7.1+) — keeps strict-CSP shader builds
 import type { ActiveView } from '../view-projection';
 import type { CellFrame } from '../thumbnail';
@@ -829,7 +830,7 @@ export class MapRenderer {
     const chunksX = Math.ceil(width / CHUNK_SIZE);
     const chunksY = Math.ceil(height / CHUNK_SIZE);
     const fontSize = 400;
-    const textStyle = { fontSize, fill: 0x000000, fontFamily: 'sans-serif', fontWeight: 'bold' as const };
+    const textStyle = { fontSize, fill: 0x000000, fontFamily: APP_FONT_FAMILY, fontWeight: 'bold' as const };
 
     // Precompute the label specs (cheap); the cost is PIXI.Text rasterization.
     interface Spec { label: string; x: number; y: number; ax: number; ay: number; }

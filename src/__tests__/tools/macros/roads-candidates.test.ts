@@ -1,20 +1,4 @@
-/**
- * PRESS AGAIN FOR ANOTHER WAY: the whole-map roads press hands back a different candidate each time,
- * takes its OWN last one back to do it, and touches nothing else.
- *
- * A SEED THE ROUTER DOES NOT READ makes the press seed-invariant: five seeds over the fixture below
- * laid the same 679 cells, Jaccard 1.000 across every pair. `network-variation.ts` gives the seed four
- * decisions to land on, behind `NetworkOptions.variation` so generation (which runs this same router and
- * is hash-pinned) cannot see them.
- *
- * ON A REAL HAND-BUILT MAP. `hand-terraced-hexia.json` is a person's own island: many small
- * plateaus, houses on raised ground, a river, a plaza in its own court. Every earlier road pin but
- * `roads-hand-terraced.ts` builds its fixture with the GENERATOR, and a generated island's broad
- * rooms hide most of what a person's terracing asks of a router.
- *
- * A VARIANT THAT IS MERELY DIFFERENT IS A BUG, so every case below measures the candidate as well as
- * the difference: every house served, one piece, no orphan crossing, nothing hand-placed lost.
- */
+/** Seeded networks preserve standing objects and replace only the supplied owned roads. */
 import { describe, expect, it } from 'vitest';
 // @ts-ignore - node:fs is untyped in this project (no @types/node)
 import { readFileSync } from 'node:fs';
@@ -30,7 +14,6 @@ import { getObjectIndex, roadLookup } from '../../../state/object-index';
 import { objectRect } from '../../../state/object-geometry';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { applyMacro } from '../../../tools/macros';
-import { pressRoadNetwork } from '../../../kit/operations/road-press';
 import type { KitContext } from '../../../kit/context';
 
 const FIXTURE = 'src/__tests__/fixtures/road-maps/hand-terraced-hexia.json'; // vitest runs from the repo root
@@ -188,27 +171,25 @@ describe('one press, more than one way to pave it', () => {
 });
 
 describe('a re-press replaces its own last answer', () => {
-  // Every case loads its own map, and the press's memory keys off the map it was pressed on, so
-  // none of them can inherit another's ids or seed.
 
   it('three presses leave three candidates, not three networks piled up', () => {
     const kit = loadMap();
     const standing = new Set(kit.state.objects.keys());
     const depth = kit.executor.getUndoStackSize();
 
-    const first = pressRoadNetwork(kit, {});
-    expect(first.outcome.changes, first.outcome.reason ?? '').toBeGreaterThan(0);
-    expect(first.nth).toBe(1);
+    const first = applyMacro(kit, 'roads', { seed: 1 });
+    expect(first.changes, first.reason ?? '').toBeGreaterThan(0);
+    let ownedIds = first.ownedIds;
     const firstCells = networkCells(kit.state);
     expectGoodCandidate(kit, 'press 1');
     expect(kit.executor.getUndoStackSize(), 'a press is one undo entry').toBe(depth + 1);
 
     const sizes = [firstCells.size];
     for (const nth of [2, 3]) {
-      const again = pressRoadNetwork(kit, {});
-      expect(again.outcome.changes, `press ${nth}: ${again.outcome.reason ?? ''}`).toBeGreaterThan(0);
-      expect(again.outcome.code, `press ${nth} reported a refusal`).toBeUndefined();
-      expect(again.nth, 'the press count is what the shell narrates from').toBe(nth);
+      const again = applyMacro(kit, 'roads', { seed: nth, replace: ownedIds });
+      expect(again.changes, `press ${nth}: ${again.reason ?? ''}`).toBeGreaterThan(0);
+      expect(again.code, `press ${nth} reported a refusal`).toBeUndefined();
+      ownedIds = again.ownedIds;
       expectGoodCandidate(kit, `press ${nth}`);
       expect(kit.executor.getUndoStackSize(), `press ${nth} is one undo entry`).toBe(depth + nth);
       sizes.push(networkCells(kit.state).size);
@@ -249,9 +230,12 @@ describe('a re-press replaces its own last answer', () => {
     }
     expect(hand, 'nowhere on the island took a hand-painted road tile').not.toBeNull();
 
-    expect(pressRoadNetwork(kit, {}).outcome.changes).toBeGreaterThan(0);
-    expect(pressRoadNetwork(kit, {}).outcome.changes).toBeGreaterThan(0);
-    expect(pressRoadNetwork(kit, {}).outcome.changes).toBeGreaterThan(0);
+    let ownedIds: readonly string[] | undefined;
+    for (const seed of [1, 2, 3]) {
+      const result = applyMacro(kit, 'roads', { seed, replace: ownedIds });
+      expect(result.changes).toBeGreaterThan(0);
+      ownedIds = result.ownedIds;
+    }
 
     expect(kit.state.objects.has(hand!.id), 'the hand-painted road was taken back with the press\'s own')
       .toBe(true);
@@ -269,15 +253,15 @@ describe('a re-press replaces its own last answer', () => {
 
   it('a press over a painted region takes back only what stands inside it', () => {
     const kit = loadMap();
-    const first = pressRoadNetwork(kit, {});
-    expect(first.outcome.changes).toBeGreaterThan(0);
+    const first = applyMacro(kit, 'roads', { seed: 1 });
+    expect(first.changes).toBeGreaterThan(0);
     const before = networkCells(kit.state);
 
     // A small region in one corner of the island. Whatever the run makes of it, the streets on the
     // far side of the map are not this press's to strip.
     const region = [];
     for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) region.push({ x, y });
-    pressRoadNetwork(kit, { region });
+    applyMacro(kit, 'roads', { seed: 2, region, replace: first.ownedIds });
 
     const outside = [...before].filter((k) => {
       const [x, y] = k.split(',').map(Number) as [number, number];

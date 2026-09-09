@@ -13,6 +13,9 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 &nbsp;![版本](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&label=%E7%89%88%E6%9C%AC&color=8CC9A1&labelColor=43413F)
 &nbsp;[![许可证 Apache-2.0](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](../LICENSE)
 
+[![通过 Patreon 支持项目](https://img.shields.io/badge/Patreon-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
+&nbsp;[![通过爱发电支持项目](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
+
 <img src="./media/hero-annotated.zh.png" alt="谷地工坊编辑器中一座建成的小岛，图上有七处标注：左上的方块行标为「建造模式」，其下的角色标为「智能体」，右上角标为「保存与分享」，右侧栏标为「图层面板」「撤销与重做」与「3D 视图、适应视图和缩放」，底部一排小屋卡片标为「物品架」" width="840">
 
 <sub>页首展示的是团队成员鱼松制作的「鱼松的爱心桃花岛」。下文提供可直接导入的分享图。</sub>
@@ -220,6 +223,10 @@ npm run build        # 生产构建
 <td align="center"><a href="https://space.bilibili.com/3632319829116985"><img src="../src/assets/team/3632319829116985.jpg" width="72" alt="鱼松吃点吗 的头像"><br><sub><b>鱼松吃点吗</b></sub></a></td>
 </tr>
 </table>
+
+## 支持项目
+
+你可以通过 [Patreon](https://www.patreon.com/c/PetitMaker) 或[爱发电](https://afdian.com/a/PetitMaker)支持谷地工坊的持续开发。感谢你的支持。
 
 ## 法律与政策文件
 

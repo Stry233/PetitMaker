@@ -4,6 +4,7 @@
  * loop over this; the masking rules (object footprints, hidden layers, ground
  * island cells) live here where they can be unit-tested.
  */
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { CHUNK_SIZE } from '../../../core/model/constants';
 import { getCell } from '../../../core/model/grid-model';
 import { TerrainType } from '../../../core/model/types';
@@ -16,12 +17,12 @@ export interface NumberCell { x: number; y: number; label: string }
 /* ── Shared label GLYPH look ──────────────────────────────────────────────────
  * Both renderers draw the number labels onto a CanvasRenderingContext2D (the 2D
  * per-chunk raster + the 3D per-chunk label atlas) with the identical style:
- * bold 14px monospace, white fill over a 3px black outline, bottom-left anchored.
+ * bold 14px app font, white fill over a 3px black outline, bottom-left anchored.
  * These are the single source for that look so the two rasters can't drift. */
 
 /** Configure `ctx` for the number-label glyphs. Call once before a batch of draws. */
 export function setNumberLabelStyle(ctx: CanvasRenderingContext2D): void {
-  ctx.font = 'bold 14px monospace';
+  ctx.font = `bold 14px ${APP_FONT_FAMILY}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
 }

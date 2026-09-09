@@ -62,7 +62,6 @@ const CONTROLS = [
   ['radiogroup', 'modal.settings_cursor'],
   ['button', 'modal.keyboard_title'],
   ['button', 'modal.settings_tour'],
-  ['button', 'modal.settings_ok'],
 ] as const;
 
 beforeEach(() => {

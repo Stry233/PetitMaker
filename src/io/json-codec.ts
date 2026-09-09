@@ -183,7 +183,7 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
       const suffix = encodeCorners(obj.corners);
       if (suffix) saved.corners = suffix;
     }
-    if (obj.patchOnly) (saved as any).patchOnly = true;
+    if (obj.patchOnly) saved.patchOnly = true;
     objectList.push(saved);
   }
 
@@ -329,7 +329,7 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (obj.corners) {
       placed.corners = decodeCorners(obj.corners);
     }
-    if ((obj as any).patchOnly) placed.patchOnly = true;
+    if (obj.patchOnly) placed.patchOnly = true;
     objects.set(id, placed);
   }
 

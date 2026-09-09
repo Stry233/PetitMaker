@@ -14,7 +14,8 @@ import { roadLookup } from '../../../../state/object-index';
 import { CellZone, ItemCategory, TerrainType, type EditorEvents, type GridState, type PlacedObject } from '../../../../core/model/types';
 import { objectPlacementCommand } from '../../../../tools/objects/object-placer';
 import { makeState } from '../../../rules/_helpers';
-import { COVERAGE_ON, covered, FLAT_SAFE_ELEVATION, nearestTerrain, relaxHeights, smoothShape, STENCIL_MIN_SIDE, terrainPalette, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
+import { COVERAGE_ON, covered, FLAT_SAFE_ELEVATION, nearestTerrain, relaxHeights, STENCIL_MIN_SIDE, terrainPalette, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
+import { finishGlyph } from '../../../../tools/generation/stencil/stencil-stroke';
 import { layStencilColor, layStencilObjects, layStencilTerrain } from '../../../../tools/generation/stencil/stencil-generator';
 import { tilesAShape } from '../../../../tools/generation/stencil/stencil';
 import { stencilChooser } from '../../../../tools/generation/stencil/stencil-trim';
@@ -137,23 +138,23 @@ describe('a rasterized shape is repaired before it is built', () => {
       '.~#~',
       '..~#',
     ]);
-    smoothShape(s);
+    finishGlyph(s);
     // Every near-cell flanked by two covered cells joined; the stroke is 4-connected now.
     expect(covered(s, 1, 0)).toBe(true);
     expect(covered(s, 0, 1)).toBe(true);
     expect(covered(s, 2, 1)).toBe(true);
   });
 
-  it('closes a one-cell notch in a solid run, and leaves open ground open', () => {
+  it('preserves a one-cell counter and leaves unrelated ground open', () => {
     const s = cov([
       '###',
       '#.#',
       '###',
     ]);
-    smoothShape(s);
-    expect(covered(s, 1, 1)).toBe(true);   // the pit closes
+    finishGlyph(s);
+    expect(covered(s, 1, 1)).toBe(false);
     const open = cov(['#..', '...', '..#']);
-    smoothShape(open);
+    finishGlyph(open);
     expect(covered(open, 1, 1)).toBe(false); // two lone corners join nothing
   });
 });

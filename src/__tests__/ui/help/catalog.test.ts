@@ -16,6 +16,8 @@ import { translations } from '../../../i18n/translations';
 import { helpFacts } from '../../../ui/chrome/modals/help/facts';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../../io/stylize/providers';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/autosave';
+import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../agent/core/governor';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -190,6 +192,20 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
       || key === 'help.fig.notetext_word1' || key === 'help.fig.notetext_word2';
     const orphans = enKeys.filter((key) => !used.has(key) && !componentRead(key));
     expect(orphans).toEqual([]);
+  });
+
+  it('derives autosave timing and agent limits and interpolates them in every locale', () => {
+    for (const locale of LOCALES) {
+      const facts = helpFacts(locale);
+      expect(facts.autosaveSeconds).toBe(AUTOSAVE_DEBOUNCE_MS / 1000);
+      expect(facts.agentMaxTurns).toBe(MAX_TURNS_DEFAULT);
+      expect(facts.agentChildTurns).toBe(SUBAGENT_MAX_TURNS);
+      for (const key of ['help.welcome.resume_b1', 'help.save.when_b1', 'help.save.a1']) {
+        expect(HELP_TABLES[locale][key]).toContain('{autosaveSeconds}');
+      }
+      expect(HELP_TABLES[locale]['help.agenttrouble.caps_b1']).toContain('{agentMaxTurns}');
+      expect(HELP_TABLES[locale]['help.agenttrouble.caps_b1']).toContain('{agentChildTurns}');
+    }
   });
 
   it('derives provider rosters and counts from their runtime registries', () => {

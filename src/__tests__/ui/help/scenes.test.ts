@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene, type SceneStep } from '../../../ui/chrome/modals/help/figures/scenes';
 import { DemoWorld } from '../../../ui/chrome/modals/help/figures/demo-world';
 import { TerrainType, type MacroCoord } from '../../../core/model/types';
+import { detectWaterfalls } from '../../../core/model/waterfall-geometry';
 import { isBuildableZone } from '../../../core/model/grid-model';
 import { PLAZA_ID } from '../../../core/model/constants';
 import { INNER_TRI, OUTER_TRI } from '../../../core/edge-cut/cut-validator';
@@ -373,21 +374,22 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(run.refusalAtRelease).toBe('error.locked_immutable');
   });
 
-  it('smart1: two taps of the real raise macro land two different mounds', () => {
+  it('smart1: a held local spray grows a terraced mound', () => {
     const run = play(HELP_SCENES.smart1!);
     const raised: number[] = [];
     for (let y = 95; y <= 109; y++) {
       for (let x = 61; x <= 84; x++) {
         const cell = run.world.state.cells[y]?.[x]?.terrain;
-        if (cell && cell.type === TerrainType.Mountain && cell.elevation > 0) raised.push(x);
+        if (cell && cell.type === TerrainType.Mountain && cell.elevation >= 3) raised.push(x);
       }
     }
     expect(raised.length).toBeGreaterThan(8);
     expect(raised.some((x) => x < 73)).toBe(true);
     expect(raised.some((x) => x >= 73)).toBe(true);
+    expect(run.world.state.cells[102]![72]!.terrain?.elevation).toBeGreaterThan(3);
   });
 
-  it('stream: one press carves a course from the aimed tier down to sea level and out to the coast', () => {
+  it('stream: the drag joins the upper pond to the selected destination through legal falls', () => {
     const run = play(HELP_SCENES.stream!);
     const course: Array<{ x: number; y: number; elevation: number }> = [];
     for (let y = 112; y <= 130; y++) {
@@ -396,20 +398,15 @@ describe('help demo scenes are proofs: the real commands land on the real templa
         if (cell?.type === TerrainType.Water) course.push({ x, y, elevation: cell.elevation });
       }
     }
-    // The press lands on the authored tarn, and the course leaves it: the cell below it is water
-    // the macro cut, at the tarn's own tier.
-    expect(terrainAt(run, 71, 116)).toEqual({ type: TerrainType.Water, elevation: 3 });
-    // Every tier between the top and sea level carries part of the course: it steps down rather
-    // than plunging, and it ends at level 0.
-    expect(new Set(course.map((c) => c.elevation))).toEqual(new Set([3, 2, 1, 0]));
-    // It runs out past the terraces to the boundary the island's own zones draw, which is what
-    // "reaches open water" means here.
-    const mouth = course.reduce((lowest, c) => (c.y > lowest.y ? c : lowest), course[0]!);
-    expect(mouth.elevation).toBe(0);
-    expect(isBuildableZone(run.world.state.cells[mouth.y + 1]![mouth.x]!.zone)).toBe(false);
+    expect(terrainAt(run, 71, 115)).toEqual({ type: TerrainType.Water, elevation: 3 });
+    expect(terrainAt(run, 80, 120)).toEqual({ type: TerrainType.Water, elevation: 0 });
+    expect(course.length).toBeGreaterThan(10);
+    expect(detectWaterfalls(run.world.state).length).toBeGreaterThan(0);
+    expect(run.world.kit.registry.validatePostStroke(run.world.state)).toEqual([]);
+    expect(course.every(c => c.y <= 121)).toBe(true);
   });
 
-  it('smart2: the road press lays a network between the cabins', () => {
+  it('smart2: the drag connects the two cabins with a road', () => {
     const run = play(HELP_SCENES.smart2!);
     const roads = [...run.world.state.objects.values()].filter((o) => o.catalogId.startsWith('path-'));
     expect(roads.length).toBeGreaterThan(0);

@@ -147,6 +147,11 @@ export function macroToMicro(x: number, y: number): MicroCoord {
   return { x: x * 2, y: y * 2 };
 }
 
+/** Terrain cell containing a half-cell pointer sample; terrain spans [cell - 0.5, cell + 0.5). */
+export function microToTerrain(x: number, y: number): MacroCoord {
+  return { x: Math.floor((x + 1) / 2), y: Math.floor((y + 1) / 2) };
+}
+
 /** Deep-copies terrain, including corners and patchOnly. The clone shares no mutable references with the original. */
 export function cloneCell(cell: MacroCell): MacroCell {
   const cloned: MacroCell = {
@@ -309,4 +314,3 @@ export function getFootprint(x: number, y: number, w: number, h: number): MacroC
       coords.push({ x: x + dx, y: y + dy });
   return coords;
 }
-

@@ -4,6 +4,7 @@
  * under one combined page/UI zoom. This component also hosts the tour and applies its requested mode
  * and view changes.
  */
+import { useFrameReadableWeight } from './use-frame-zoom';
 import {
   Suspense, lazy, useCallback, useEffect, useRef, useState,
   type CSSProperties, type ReactNode, type RefObject,
@@ -47,6 +48,7 @@ import { LoadMeter } from './windows/LoadMeter';
 import { MenuSheet } from './windows/MenuSheet';
 import { cssMotion, useBeat, useMotion, useMotionAllowed } from './motion/use-motion';
 import { Rail } from './Rail';
+import { FrameLayoutProvider, useFrameLayout } from './frame-layout';
 import { RestoreShelf } from './bars/RestoreShelf';
 import { BarText } from './bars/bar-atoms';
 import { ACTIVE, EDGE_VIGNETTE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, FOCUS_SHAPE_RADIUS, INK, MAP_EDGE_ALPHA, MAP_LABEL, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID, VIGNETTE_DEPTH, mapShape } from '../design/tokens';
@@ -245,6 +247,7 @@ function RowBlock({ art, on, centre, expanded, tourTarget, helpTarget, slot, onP
   /** Called for either half of the toggle: the caller owns what "on" and "off" mean for it. */
   onPress: () => void;
 }) {
+  const weightAt = useFrameReadableWeight();
   const t = useT();
   const caption = useBeat('mode.switch', 'caption');
   const reduced = useReducedMotionConfig();
@@ -292,7 +295,7 @@ function RowBlock({ art, on, centre, expanded, tourTarget, helpTarget, slot, onP
           style={{
             ...centred, ...MAP_LABEL,
             transform: captionShift(centre), top: `calc(100% + ${MODE.label.gap}px)`,
-            fontSize: MODE.label.size, fontWeight: MODE.label.weight,
+            fontSize: MODE.label.size, fontWeight: weightAt(MODE.label.weight, MODE.label.size),
             whiteSpace: 'nowrap', pointerEvents: 'none',
           }}
         >
@@ -556,6 +559,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   const surface = terrainSurface(mode);
   const selectedMode = MODES.findIndex((art) => art.id === mode);
   const [menuOpen, setMenuOpen] = useState(false);
+  const layout = useFrameLayout();
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   // The region brush is a state machine on the pointer channel, not a panel: it has to be mounted
   // wherever the button that arms it lives, or `selectingRegion` turns on and no stroke is collected.
@@ -673,8 +677,10 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
       <AssistantBlock entranceRef={entranceRef} />
 
       <div
+        data-testid="shell-corner-actions"
         style={{
-          position: 'fixed', top: TOP_RIGHT_TOP, right: EDGE_RIGHT, zIndex: z.panel,
+          position: 'fixed', top: layout?.cornerTop ?? TOP_RIGHT_TOP, right: layout?.edgeRight ?? EDGE_RIGHT, zIndex: z.panel,
+          transition: cssMotion('frame.layout.adapt', 'top'),
           // The three are different heights, and what they share is the LINE they stand on,
           // which is the mode row's own.
           display: 'flex', alignItems: 'flex-end', gap: TOP_RIGHT_GAP, pointerEvents: 'auto',
@@ -1045,6 +1051,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
         transition={arrive}
       >
         <ScaleProvider value={SCALE}>
+        <FrameLayoutProvider>
           <Frame
             onRestoreSession={onRestoreSession}
             splashActive={splashActive}
@@ -1052,6 +1059,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
             onHide={toggleHidden}
             entranceRef={entranceRef}
           />
+        </FrameLayoutProvider>
         </ScaleProvider>
       </motion.div>
       {/* THE ONE CHARACTER, and it stands outside the frame's zoom on purpose: it positions itself

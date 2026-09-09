@@ -14,6 +14,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { Shell } from '../../../../../shell/Shell';
 import { tourTargetSelector } from '../../../../tour/steps';
 import { drawCursorImg } from '../demo-cursor';
+import { useInView } from '../use-in-view';
+import { useFigureReady } from '../figure-ready';
 import { UiPreviewProvider, type UiPreviewPose } from '../../../../../primitives/ui-preview';
 import { FIT_REF } from '../../../../../design/scale';
 import { useEditorStore } from '../../../../../../state/store';
@@ -156,6 +158,7 @@ const CYCLE: readonly FrameCorner[] = ['modes', 'agent', 'topright', 'rail', 'ba
 
 /** The whole window at a glance, the spotlight walking cluster to cluster. */
 export function FrameOverview() {
+  const ready = useFigureReady();
   const t = useT();
   const win = useWindowSnapshot();
   const width = 560;
@@ -166,15 +169,15 @@ export function FrameOverview() {
   const still = useRef(isMotionReduced());
 
   useEffect(() => {
-    if (still.current) return undefined;
+    if (!ready || still.current) return undefined;
     const timer = setInterval(() => setStep((n) => (n + 1) % CYCLE.length), 2200);
     return () => clearInterval(timer);
-  }, []);
+  }, [ready]);
 
   const corner = CYCLE[step]!;
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!root || still.current) return undefined;
+    if (!ready || !root || still.current) return undefined;
     const read = () => {
       const b = measure(root, corner, win.w);
       if (b) setBox(b);
@@ -186,11 +189,11 @@ export function FrameOverview() {
     read();
     const timer = setTimeout(() => { if (!read()) setStep((n) => (n + 1) % CYCLE.length); }, 80);
     return () => clearTimeout(timer);
-  }, [corner, scale]);
+  }, [corner, scale, ready]);
 
   return (
     <div ref={rootRef} aria-hidden {...INERT} style={{ position: 'relative', width, height: Math.round(win.h * scale), overflow: 'hidden', borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none' }}>
-      <PicturedShell win={win} zoom={scale}>
+      {ready && <PicturedShell win={win} zoom={scale}>
         {!still.current && box && (
           <>
             {/* Figure annotations stand at the ladder's top: the pictured chrome carries the
@@ -215,7 +218,7 @@ export function FrameOverview() {
             </span>
           </>
         )}
-      </PicturedShell>
+      </PicturedShell>}
     </div>
   );
 }
@@ -227,21 +230,10 @@ export function FrameOverview() {
 export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?: ReactNode }) {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(false);
+  const near = useInView(holdRef);
   const rootRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Box | null>(null);
   const [settled, setSettled] = useState(false);
-
-  useEffect(() => {
-    const hold = holdRef.current;
-    if (!hold || near) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setNear(true); return undefined; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: '600px' });
-    io.observe(hold);
-    return () => io.disconnect();
-  }, [near]);
 
   const scale = box ? Math.min(620 / box.w, 340 / box.h, 1.25) : 0.4;
 
@@ -352,7 +344,7 @@ const LAYERS_VIEW = { w: 560, h: 430, pad: 14 } as const;
 export function LayersTour() {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(false);
+  const near = useInView(holdRef);
   const still = useRef(isMotionReduced());
   const rootRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
@@ -362,17 +354,6 @@ export function LayersTour() {
   const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
   // The pointer wears the app's own cursor art; the host's position is the acting point.
   const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
-
-  useEffect(() => {
-    const hold = holdRef.current;
-    if (!hold || near) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setNear(true); return undefined; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: '600px' });
-    io.observe(hold);
-    return () => io.disconnect();
-  }, [near]);
 
   useEffect(() => {
     if (still.current || !near) return undefined;

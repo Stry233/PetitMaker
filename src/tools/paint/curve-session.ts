@@ -24,6 +24,9 @@ export interface CurveSession {
   /** Anchors on the CONTINUOUS half-cell grid (a route's), not whole cells: the overlay projects
    *  them unshifted and reads a drag at the same precision. */
   freeCoords: boolean;
+  /** Routed roads expose endpoints; free curves and rivers also expose direction handles. */
+  tangents: boolean;
+  armingEpoch?: number;
   /** Counts up on every change, so a subscriber re-renders on an in-place anchor edit. */
   revision: number;
 }
@@ -58,12 +61,14 @@ export function getCurveSession(): CurveSession | null {
 /** Open the adjust phase on a curve that has just been painted. */
 export function beginCurveSession(
   anchors: CurveAnchor[],
-  opts: { width: number; terrainGrid: boolean; freeCoords?: boolean },
+  opts: { width: number; terrainGrid: boolean; freeCoords?: boolean; tangents?: boolean; armingEpoch?: number },
   owner: CurveSessionHost,
 ): void {
+  endCurveSession();
   session = {
     anchors: anchors.map((a) => ({ ...a })), width: opts.width, terrainGrid: opts.terrainGrid,
     freeCoords: opts.freeCoords === true, revision: 0,
+    tangents: opts.tangents !== false, armingEpoch: opts.armingEpoch,
   };
   host = owner;
   emit();

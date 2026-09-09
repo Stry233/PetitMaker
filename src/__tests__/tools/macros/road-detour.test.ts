@@ -1,17 +1,4 @@
-/**
- * A ROUTE CROSSES WHERE THE TWO TAPS ARE, NOT WHERE THE BEST FORD IS.
- *
- * Two things carry that and both are pinned here: the candidate POOL covers a whole seam rather
- * than the first few sites a row-major scan meets, and the SCORE leads with how far off the line
- * between the two taps a site lies.
- *
- * Without them — candidates scored on their own merits alone (narrow span, deck square to the
- * travel, a clear run-in on both banks) and the region graph walked on portal COST alone — nothing
- * in either decision knows where the road has been asked to go. On real islands that laid 125 cells
- * for an eleven-cell trip: fifteen cells east along the bank, over a bridge, twenty cells back west.
- * Over 75 tap pairs on three generated islands the median such route ran 2.2x the straight-line
- * distance between its taps and 28 of them ran past 3x.
- */
+/** Aimed roads cross near their endpoints on long seams and generated terrain. */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
@@ -20,18 +7,12 @@ import { roadLookup } from '../../../state/object-index';
 import { categoryOf } from '../../../state/catalog';
 import { cloneGridState } from '../../../core/model/grid-model';
 import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
-import { analyzeTerrain } from '../../../tools/placement/analysis';
-import { scoreCrossing, crossingDetour, type RouteWorld } from '../../../tools/placement/route';
 import { applyMacro } from '../../../tools/macros';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import {
   CellZone, ItemCategory, TerrainType,
   type Command, type EditorEvents, type GenerateConfig, type GridState, type MacroCoord, type PlacedObject,
 } from '../../../core/model/types';
-import type { Portal } from '../../../tools/placement/portals';
-
-/** The style a bare map reads: no turn penalty, no learned alignment, no standing material. */
-const DEFAULT_STYLE = { turnPenalty: 0, naturalness: 1, alignment: new Map<number, 'x' | 'y'>(), materialId: undefined, source: 'default' as const };
 
 const SHORE = 3;
 const CHANNEL = 80;
@@ -113,35 +94,5 @@ describe('a route crosses near its own taps', () => {
     const outcome = applyMacro(kit, 'road-link', { seed: 1, from, at: to });
     expect(outcome.changes, outcome.reason ?? '').toBeGreaterThan(0);
     expect(roadCount(kit.state)).toBeLessThanOrEqual(man(from, to) * 3);
-  });
-});
-
-describe('scoreCrossing weighs the detour first', () => {
-  const world = (portals: Portal[]): RouteWorld => ({
-    a: analyzeTerrain(makeState(60, 60)), portals, regionAdj: new Map(),
-    road: new Set(), occupied: new Set(), style: DEFAULT_STYLE,
-  });
-  const ford = (y: number): Portal => ({
-    kind: 'bridge', regionA: 0, regionB: 1, anchor: { x: 30, y },
-    approachA: { x: 28, y }, approachB: { x: 32, y }, cost: 6,
-  });
-
-  it('a site on the line outscores an identical one twenty cells off it', () => {
-    const from: MacroCoord = { x: 10, y: 30 }, to: MacroCoord = { x: 50, y: 30 };
-    const near = ford(30), far = ford(50);
-    const w = world([near, far]);
-    expect(crossingDetour(near.anchor, from, to)).toBe(0);
-    expect(crossingDetour(far.anchor, from, to)).toBe(40);
-    // Same span, same run-in, and the far one is even squarer to the travel — the detour still wins.
-    expect(scoreCrossing(w, near, from, to).span).toBeCloseTo(scoreCrossing(w, far, from, to).span, 10);
-    expect(scoreCrossing(w, near, from, to).approach).toBe(scoreCrossing(w, far, from, to).approach);
-    expect(scoreCrossing(w, near, from, to).total).toBeGreaterThan(scoreCrossing(w, far, from, to).total);
-  });
-
-  it('the same detour costs more on a short trip than on a long one', () => {
-    const p = ford(40);
-    const short = scoreCrossing(world([p]), p, { x: 25, y: 30 }, { x: 35, y: 30 }).detour;
-    const long = scoreCrossing(world([p]), p, { x: 0, y: 30 }, { x: 59, y: 30 }).detour;
-    expect(long).toBeGreaterThan(short);
   });
 });
