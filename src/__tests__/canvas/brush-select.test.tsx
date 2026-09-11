@@ -42,7 +42,7 @@ function makeView() {
   const view = {
     projection: {
       screenToMacro: (sx: number, sy: number) => ({ x: Math.floor(sx / 10), y: Math.floor(sy / 10) }),
-      screenToMicro: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
+      screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / 5), y: Math.floor(sy / 5) }),
       cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
       pan: vi.fn(),
     },
@@ -99,17 +99,17 @@ function activate(tool: ToolType, ...objects: PlacedObject[]): void {
   });
 }
 
-/** Press, optionally drag, release — screen coords are macro cells × 10 (+5 to land mid-cell). */
+/** The point lies inside both the object cell and the overlapping terrain cell. */
 function gesture(from: { x: number; y: number }, to = from): void {
-  const sx = from.x * 10 + 5, sy = from.y * 10 + 5;
-  const ex = to.x * 10 + 5, ey = to.y * 10 + 5;
+  const sx = from.x * 10 + 2, sy = from.y * 10 + 2;
+  const ex = to.x * 10 + 2, ey = to.y * 10 + 2;
   el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: sx, clientY: sy }));
   if (ex !== sx || ey !== sy) window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: ex, clientY: ey }));
   window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: ex, clientY: ey }));
 }
 
 function hover(at: { x: number; y: number }): void {
-  el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: at.x * 10 + 5, clientY: at.y * 10 + 5 }));
+  el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: at.x * 10 + 2, clientY: at.y * 10 + 2 }));
 }
 
 function ids(): string[] {

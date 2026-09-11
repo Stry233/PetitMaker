@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FIT_FLOOR, FIT_REF, frameFit } from '../../../ui/design/scale';
+import { FIT_FLOOR, FIT_REF, fittedUiScale, frameFit } from '../../../ui/design/scale';
 import { ZOOM } from '../../../ui/shell/units';
 
 /**
@@ -29,8 +29,8 @@ describe('frameFit', () => {
 
 describe('chrome and frame agree at every window shape', () => {
   /** What the two hooks compute, without React: the frame's zoom and the chrome's `zoom`. */
-  const frameZoom = (vw: number, vh: number, uiZoom = 1) => ZOOM * frameFit(vw, vh) * uiZoom;
-  const chromeZoom = (vw: number, vh: number, uiZoom = 1) => frameFit(vw, vh) * uiZoom;
+  const frameZoom = (vw: number, vh: number, uiZoom = 1) => ZOOM * fittedUiScale(vw, vh, uiZoom);
+  const chromeZoom = (vw: number, vh: number, uiZoom = 1) => fittedUiScale(vw, vh, uiZoom);
 
   const SHAPES: [number, number, string][] = [
     [1920, 869, 'maximized 1080p Chrome on Windows'],

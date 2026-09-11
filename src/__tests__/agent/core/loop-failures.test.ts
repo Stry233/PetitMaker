@@ -86,6 +86,24 @@ function seedOrder(log: SessionLog, text = 'go'): void {
   append(log, { kind: 'order', text, mapContext: '' });
 }
 
+it('ends an unshortenable provider overflow without repeating the same request', async () => {
+  const log = createLog(() => 0);
+  seedOrder(log);
+  const controller = new AbortController();
+  let requests = 0;
+  const adapter: Adapter = {
+    async *stream() {
+      if (++requests === 3) controller.abort();
+      yield { t: 'error', error: { cls: 'overflow', detail: 'context too large' } };
+    },
+    async listModels() { return []; },
+  };
+  const outcome = await runJob(log, makeDeps({ adapter, executor: makeExecutor(), signal: controller.signal }));
+  expect(outcome).toBe('incident');
+  expect(requests).toBe(1);
+  expect(eventsOf(log).find((e) => e.kind === 'incident')).toMatchObject({ error: { cls: 'overflow' } });
+});
+
 /** A no-op sleep: records every delay the loop asks it to wait, but resolves immediately so the
  *  retry-ladder tests run at real-clock speed with no fake timers. */
 function fakeSleep(): { sleep: (ms: number, signal: AbortSignal) => Promise<void>; calls: number[] } {

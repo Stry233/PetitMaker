@@ -145,6 +145,7 @@ const NOTE_TAG_ROUTING: Record<NoteTag, Routes> = {
 
 /** Every `ToolResultDetail` member — the view-only extras a result carries. */
 const DETAIL_ROUTING: { [F in keyof ToolResultDetail]-?: Routes } = {
+  partialRevert: ['ui:the op row and helper rollup distinguish retained edits from a full rollback'],
   cells: ['fold:vitals.cells', 'record:the run dump\'s totals; no panel meter today'],
   objects: ['fold:vitals.objects', 'record:the run dump\'s totals; no panel meter today'],
   reverted: ['ui:the op row\'s revert status and chip', 'fold:vitals.reverts, writeApplied withheld'],

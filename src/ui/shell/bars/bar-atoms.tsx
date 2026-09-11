@@ -15,6 +15,7 @@ import { prettyCombo } from '../../../core/runtime/keybindings';
 import { MAP_LABEL, ON_DARK } from '../../design/tokens';
 import { SCALE, TEXT } from '../units';
 import { useMotion } from '../motion/use-motion';
+import { useFrameReadableWeight } from '../use-frame-zoom';
 import { BADGE, PLATE_ART, plateRight, type ArtPart } from './terrain-cells';
 
 /** Design y of a box's top → its distance from the design canvas's bottom edge. */
@@ -124,6 +125,7 @@ export function BarText({
   style?: CSSProperties;
   children: ReactNode;
 }) {
+  const weightAt = useFrameReadableWeight();
   return (
     <span
       style={{
@@ -132,7 +134,7 @@ export function BarText({
         justifyContent: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
         pointerEvents: 'none',
         fontSize: size,
-        fontWeight: weight,
+        fontWeight: weightAt(weight, size),
         whiteSpace: 'nowrap',
         lineHeight: 1.15,
         ...(onMap ? MAP_LABEL : null),

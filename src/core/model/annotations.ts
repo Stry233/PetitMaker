@@ -3,28 +3,60 @@
 import type { MacroCoord } from './types';
 import { splineSamples, type CurveAnchor } from './spline';
 
-/** A painted region with a numbered caption. */
+/** The closed planning vocabulary. Notes carry one of these ids; free text is never stored. */
+export type TagId =
+  | 'homes' | 'shops' | 'workshop' | 'farm' | 'orchard' | 'ranch' | 'garden'
+  | 'forest' | 'plaza' | 'landmark' | 'dock' | 'water' | 'entrance' | 'reserved';
+
+export interface AnnotationTag {
+  id: TagId;
+  labelKey: string;
+}
+
+export const ANNOTATION_TAGS: readonly AnnotationTag[] = [
+  { id: 'homes', labelKey: 'annot.tag_homes' },
+  { id: 'shops', labelKey: 'annot.tag_shops' },
+  { id: 'workshop', labelKey: 'annot.tag_workshop' },
+  { id: 'farm', labelKey: 'annot.tag_farm' },
+  { id: 'orchard', labelKey: 'annot.tag_orchard' },
+  { id: 'ranch', labelKey: 'annot.tag_ranch' },
+  { id: 'garden', labelKey: 'annot.tag_garden' },
+  { id: 'forest', labelKey: 'annot.tag_forest' },
+  { id: 'plaza', labelKey: 'annot.tag_plaza' },
+  { id: 'landmark', labelKey: 'annot.tag_landmark' },
+  { id: 'dock', labelKey: 'annot.tag_dock' },
+  { id: 'water', labelKey: 'annot.tag_water' },
+  { id: 'entrance', labelKey: 'annot.tag_entrance' },
+  { id: 'reserved', labelKey: 'annot.tag_reserved' },
+];
+
+export const TAG_IDS: readonly TagId[] = ANNOTATION_TAGS.map((t) => t.id);
+
+export function isTagId(v: unknown): v is TagId {
+  return typeof v === 'string' && (TAG_IDS as readonly string[]).includes(v);
+}
+
+/** A painted region with a numbered caption. `tag` is null only on zones loaded from older saves. */
 export interface ZoneNote {
   kind: 'zone';
   id: string;
   cells: MacroCoord[];
   /** A hex from `ANNOTATION_COLORS` today; any CSS hex renders. */
   color: string;
-  name: string;
+  tag: TagId | null;
   /** Stable display number; deleted numbers are not reused. */
   num: number;
   /** Caption size; an omitted value decodes as 'm'. */
   size?: 's' | 'm' | 'l';
 }
 
-/** A text label rendered directly or on a colored background. */
-export interface TextNote {
-  kind: 'text';
+/** A tag standing on its own plate, for marking a spot without painting a zone. */
+export interface ChipNote {
+  kind: 'chip';
   id: string;
   x: number;
   y: number;
-  text: string;
-  style: 'label' | 'chip';
+  tag: TagId;
   size: 's' | 'm' | 'l';
   color: string;
 }
@@ -38,7 +70,7 @@ export interface RouteNote {
   dashed: boolean;
 }
 
-export type MapAnnotation = ZoneNote | TextNote | RouteNote;
+export type MapAnnotation = ZoneNote | ChipNote | RouteNote;
 
 /** Annotation items and their shared visibility and edit lock. */
 export interface AnnotationsState {
@@ -52,7 +84,7 @@ export function createAnnotationsState(): AnnotationsState {
 }
 
 /** Annotation tools; `none` enables selection and movement. */
-export type AnnotationTool = 'zone' | 'text' | 'route' | 'erase' | 'none';
+export type AnnotationTool = 'zone' | 'chip' | 'route' | 'erase' | 'none';
 
 /** Zone shapes shared with the terrain toolbar. */
 export type AnnotationZoneShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
@@ -96,6 +128,25 @@ export function zoneCellAt(p: { x: number; y: number }): MacroCoord {
 /** Build the shared zone-cell lookup used by rendering and hit testing. */
 export function zoneCellSet(cells: readonly MacroCoord[]): Set<string> {
   return new Set(cells.map((c) => key(c.x, c.y)));
+}
+
+/** `cells` plus `more`, without duplicates and in stable order. */
+export function addZoneCells(cells: readonly MacroCoord[], more: readonly MacroCoord[]): MacroCoord[] {
+  const seen = zoneCellSet(cells);
+  const out = [...cells];
+  for (const c of more) {
+    const k = key(c.x, c.y);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out;
+}
+
+/** `cells` without any member of `gone`. */
+export function removeZoneCells(cells: readonly MacroCoord[], gone: readonly MacroCoord[]): MacroCoord[] {
+  const drop = zoneCellSet(gone);
+  return cells.filter((c) => !drop.has(key(c.x, c.y)));
 }
 
 /** Trace zone boundaries into closed grid-corner loops and remove collinear points. Disconnected
@@ -207,10 +258,89 @@ export function zoneCentroid(cells: readonly MacroCoord[]): { x: number; y: numb
   return { x: sx / n, y: sy / n };
 }
 
+/**
+ * Where a zone's caption stands: the middle of the region's thickest part, which is always one of
+ * its own cells. The mean of the cells falls outside an L, a U or a ring, so instead every cell is
+ * ranked by how many rings of cells stand between it and the outside (8-neighbour distance), and
+ * the deepest cells win. Their mean is used when it lands inside the zone, so a rectangle's caption
+ * sits at its exact centre; otherwise the deepest cell nearest the centroid is used.
+ */
+export function zoneLabelAnchor(cells: readonly MacroCoord[]): { x: number; y: number } {
+  if (cells.length === 0) return { x: 0, y: 0 };
+  const set = zoneCellSet(cells);
+  const depth = new Map<string, number>();
+  let ring: MacroCoord[] = [];
+  for (const c of cells) {
+    let exposed = false;
+    for (let dy = -1; dy <= 1 && !exposed; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if ((dx || dy) && !set.has(key(c.x + dx, c.y + dy))) { exposed = true; break; }
+      }
+    }
+    if (exposed) { depth.set(key(c.x, c.y), 1); ring.push(c); }
+  }
+  let level = 1;
+  while (depth.size < cells.length) {
+    level += 1;
+    const next: MacroCoord[] = [];
+    for (const c of ring) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const k = key(c.x + dx, c.y + dy);
+          if (set.has(k) && !depth.has(k)) { depth.set(k, level); next.push({ x: c.x + dx, y: c.y + dy }); }
+        }
+      }
+    }
+    ring = next;
+  }
+  const deepest = cells.filter((c) => depth.get(key(c.x, c.y)) === level);
+  const mean = zoneCentroid(deepest);
+  const meanCell = zoneCellAt(mean);
+  if (set.has(key(meanCell.x, meanCell.y))) return mean;
+  const centroid = zoneCentroid(cells);
+  let best = deepest[0]!;
+  let bestDist = Infinity;
+  for (const c of deepest) {
+    const d = Math.hypot(c.x - centroid.x, c.y - centroid.y);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return { x: best.x, y: best.y };
+}
+
 /** Sample a route with the same spline implementation used by terrain curves. */
 export function routeSamples(points: readonly CurveAnchor[], perSegment?: number): Array<[number, number]> {
   if (points.length < 2) return points.map((p) => [p.x, p.y]);
   return splineSamples(points, perSegment);
+}
+
+/** Reduce a dragged path to the anchors that shape it (Ramer-Douglas-Peucker). `tolerance` is the
+ * largest deviation, in cells, a dropped point may have from the simplified path. */
+export function simplifyPath(points: readonly MacroCoord[], tolerance: number): MacroCoord[] {
+  if (points.length <= 2) return points.map((p) => ({ x: p.x, y: p.y }));
+  const keep = new Array<boolean>(points.length).fill(false);
+  keep[0] = keep[points.length - 1] = true;
+  const stack: Array<[number, number]> = [[0, points.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const pa = points[a]!;
+    const pb = points[b]!;
+    const dx = pb.x - pa.x;
+    const dy = pb.y - pa.y;
+    const len = Math.hypot(dx, dy);
+    let far = -1;
+    let farDist = tolerance;
+    for (let i = a + 1; i < b; i++) {
+      const p = points[i]!;
+      const d = len === 0
+        ? Math.hypot(p.x - pa.x, p.y - pa.y)
+        : Math.abs(dx * (pa.y - p.y) - (pa.x - p.x) * dy) / len;
+      if (d > farDist) { farDist = d; far = i; }
+    }
+    if (far < 0) continue;
+    keep[far] = true;
+    stack.push([a, far], [far, b]);
+  }
+  return points.filter((_, i) => keep[i]).map((p) => ({ x: p.x, y: p.y }));
 }
 
 /** Return annotations intersecting a selection rectangle. Routes are tested by sampled curve
@@ -223,7 +353,7 @@ export function annotationsInRect(
     px >= rect.x && px < rect.x + rect.w && py >= rect.y && py < rect.y + rect.h;
   const caught = (n: MapAnnotation): boolean => {
     if (n.kind === 'zone') return n.cells.some((c) => inside(c.x, c.y));
-    if (n.kind === 'text') return inside(n.x, n.y);
+    if (n.kind === 'chip') return inside(n.x, n.y);
     return routeSamples(n.points, 8).some(([sx, sy]) => inside(sx, sy));
   };
   return items.filter(caught).map((n) => n.id);
@@ -236,7 +366,7 @@ export function annotationInkScale(template: { width: number; height: number }):
 
 /** Base annotation dimensions in cell units. Both views apply the shared ink scale and cell size. */
 export const INK_CELLS = {
-  text: { s: 0.66, m: 0.9, l: 1.2 } as Record<TextNote['size'], number>,
+  text: { s: 0.66, m: 0.9, l: 1.2 } as Record<'s' | 'm' | 'l', number>,
   zoneLabel: { s: 0.56, m: 0.75, l: 1.0 } as Record<'s' | 'm' | 'l', number>,
   outline: 0.16,
   dash: 0.52,
@@ -255,28 +385,29 @@ export function routeHitDistCells(inkScale: number): number {
   return Math.max(0.45, INK_CELLS.route * inkScale * 2);
 }
 
-/** Estimate label width for shared hit testing. CJK characters count as one unit and Latin
- * characters as 0.55 units. */
-export function textApproxWidthCells(note: TextNote, inkScale = 1): number {
-  const em = INK_CELLS.text[note.size] * inkScale;
+/** Label units for width estimates: CJK characters count as one, Latin characters as 0.55. */
+function labelUnits(label: string): number {
   let units = 0;
-  for (const ch of note.text) units += ch.charCodeAt(0) > 0xff ? 1 : 0.55;
-  const pad = note.style === 'chip' ? 1.3 : 0.4;
-  return Math.max(1, (units + pad) * em);
+  for (const ch of label) units += ch.charCodeAt(0) > 0xff ? 1 : 0.55;
+  return units;
 }
 
-/** A text note's height in cells, from the same size table the width uses. */
-export function textApproxHeightCells(note: TextNote, inkScale = 1): number {
-  return INK_CELLS.text[note.size] * inkScale * 1.3;
+/** Estimate a chip's plate width for shared hit testing. */
+export function chipApproxWidthCells(note: ChipNote, label: string, inkScale = 1): number {
+  const em = INK_CELLS.text[note.size]! * inkScale;
+  return Math.max(1, (labelUnits(label) + 1.3) * em);
 }
 
-/** Estimate the selectable width of a zone's centered number-and-name caption. */
-export function zoneLabelApproxWidthCells(zone: ZoneNote, inkScale = 1): number {
+/** A chip's plate height in cells, from the same size table the width uses. */
+export function chipApproxHeightCells(note: ChipNote, inkScale = 1): number {
+  return INK_CELLS.text[note.size]! * inkScale * 1.3;
+}
+
+/** Estimate the selectable width of a zone's centered number-and-label caption. */
+export function zoneLabelApproxWidthCells(zone: ZoneNote, label: string, inkScale = 1): number {
   const fs = INK_CELLS.zoneLabel[zone.size ?? 'm'] * inkScale;
   const numR = zone.num > 0 ? fs * 0.62 : 0;
-  let units = 0;
-  for (const ch of zone.name) units += ch.charCodeAt(0) > 0xff ? 1 : 0.55;
-  return Math.max(fs, numR * 2 + (zone.num > 0 && zone.name ? fs * 0.3 : 0) + units * fs);
+  return Math.max(fs, numR * 2 + (zone.num > 0 && label ? fs * 0.3 : 0) + labelUnits(label) * fs);
 }
 
 /** The caption's height in cells, matching the drawn number disc. */

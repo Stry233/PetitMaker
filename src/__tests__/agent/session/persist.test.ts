@@ -45,6 +45,26 @@ function buildLog(): SessionLog {
 }
 
 describe('agent session persist', () => {
+  it.each([
+    [null],
+    [{ seq: 1, at: 0, kind: 'assistant', parts: [null], stop: 'stop' }],
+    [{ seq: 1, at: 0, kind: 'assistant', parts: [], stop: 'unknown' }],
+    [{ seq: 1, at: 0, kind: 'order', text: {}, mapContext: '' }],
+    [{ seq: 1, at: 0, kind: 'toolResult', callId: 'c', name: 'paint', content: '', isError: false, detail: { violations: [null] } }],
+    [{ seq: 1, at: 0, kind: 'plan', stages: [null], revision: 1 }],
+    [{ seq: 1, at: 0, kind: 'gateAsked', gateId: 'g', scope: 'unknown', summary: '' }],
+    [{ seq: 1, at: 0, kind: 'incident', error: {} }],
+    [{ seq: 1, at: 0, kind: 'unknown' }],
+    [{ seq: 0, at: 0, kind: 'paused' }],
+    [{ seq: 1, at: 0, kind: 'paused' }, { seq: 1, at: 0, kind: 'paused' }],
+    [{ seq: 2, at: 0, kind: 'paused' }, { seq: 1, at: 0, kind: 'paused' }],
+  ].map((events) => ({ events })))('preserves malformed event payloads for recovery: $events', ({ events }) => {
+    const raw = JSON.stringify({ v: 3, events });
+    expect(deserializeLog(raw)).toBeNull();
+    localStorage.setItem(PREFS.agentLogV3.key, raw);
+    expect(loadLog()).toEqual({ log: null, corrupt: true, corruptRaw: raw });
+  });
+
   it('round-trips one of every event kind, and nextSeq continues after the highest seq', () => {
     const log = buildLog();
     const original = eventsOf(log);

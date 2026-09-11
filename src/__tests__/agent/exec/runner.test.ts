@@ -86,6 +86,35 @@ afterEach(() => {
 });
 
 describe('exec/runner', () => {
+  it('does not publish or clear live output on a replacement session', async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: Adapter = {
+      async *stream() {
+        await waiting;
+        yield { t: 'text', delta: 'old session output' };
+        yield { t: 'done', stop: 'stop' };
+      },
+      async listModels() { return []; },
+    };
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    runner.send('go');
+    await flush();
+    const oldLog = useAgentSession.getState().log;
+    useAgentSession.getState().clearSession();
+    const freshLive: Part[] = [{ kind: 'text', text: 'new session output', done: false }];
+    useAgentSession.setState({ live: freshLive });
+    const observed: (readonly Part[] | null)[] = [];
+    const unsubscribe = useAgentSession.subscribe((state) => { observed.push(state.live); });
+    release();
+    await flush();
+    unsubscribe();
+    expect(runner.active()).toBe(false);
+    expect(observed.every((live) => live === freshLive)).toBe(true);
+    expect(useAgentSession.getState().live).toBe(freshLive);
+    expect(eventsOf(oldLog)[eventsOf(oldLog).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
+  });
+
   it('send while idle appends an order and drives a scripted text-only turn to done', async () => {
     // Question-ending closes throughout this file: a zero-write close that hands back to the user
     // settles at once, while a plain one is answered by the loop's delivery nudge first — these

@@ -207,7 +207,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'smart-stream', titleKey: 'help.smart.stream_t', bodyKeys: ['help.smart.stream_b1'],
         figure: { kind: 'demo', scene: 'stream' },
       },
-      { kind: 'prose', anchor: 'smart-roads', titleKey: 'help.smart.roads_t', bodyKeys: ['help.smart.roads_b1', 'help.smart.roads_b2'] },
+      { kind: 'prose', anchor: 'smart-roads', titleKey: 'help.smart.roads_t', bodyKeys: ['help.smart.roads_b1'] },
       {
         kind: 'prose', anchor: 'smart-plant', titleKey: 'help.smart.plant_t', bodyKeys: ['help.smart.plant_b1'],
         figure: { kind: 'demo', scene: 'smartpatch' },

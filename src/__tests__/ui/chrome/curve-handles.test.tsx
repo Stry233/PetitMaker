@@ -4,8 +4,9 @@ import { render, act, screen } from '@testing-library/react';
 import { CurveHandles } from '../../../ui/chrome/floating/CurveHandles';
 import { I18nProvider } from '../../../i18n/context';
 import {
-  __resetCurveSession, beginCurveSession, endCurveSession, getCurveSession,
+  __resetCurveSession, beginCurveSession, endCurveSession, getCurveSession, resetCurveAnchors,
 } from '../../../tools/paint/curve-session';
+import { useEditorStore } from '../../../state/store';
 import { setActiveView } from '../../../canvas/active-view';
 import { installModifierTracking } from '../../../core/runtime/modifier-state';
 import type { ActiveView } from '../../../canvas/view-projection';
@@ -17,7 +18,7 @@ const view = {
   projection: {
     cellToScreen: (x: number, y: number) => ({ x: x * SCALE, y: y * SCALE, scale: SCALE }),
     screenToMacro: (sx: number, sy: number) => ({ x: Math.round(sx / SCALE), y: Math.round(sy / SCALE) }),
-    screenToMicro: (sx: number, sy: number) => ({ x: Math.round(sx / SCALE), y: Math.round(sy / SCALE) }),
+    screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / SCALE * 2), y: Math.floor(sy / SCALE * 2) }),
     pan: () => {},
   },
   overlay: {} as ActiveView['overlay'],
@@ -71,6 +72,30 @@ afterEach(() => {
 });
 
 describe('what is on screen', () => {
+  it('routed roads show only their endpoints and follow a corrected worker result', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 2, terrainGrid: false, tangents: false }, { preview, repaint, finalize }));
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(document.querySelector('polyline')).toBeNull();
+    const before = screen.getByLabelText('Curve point 2').style.left;
+    act(() => resetCurveAnchors([{ x: 2, y: 2 }, { x: 10, y: 2 }]));
+    expect(screen.getByLabelText('Curve point 2').style.left).not.toBe(before);
+  });
+
+  it('closes Smart Build handles when the armed tool changes', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 2, terrainGrid: false, armingEpoch: useEditorStore.getState().armingEpoch }, { preview, repaint, finalize }));
+    act(() => useEditorStore.setState(s => ({ armingEpoch: s.armingEpoch + 1 })));
+    expect(getCurveSession()).toBeNull(); expect(finalize).toHaveBeenCalledOnce();
+  });
+
+  it('closes adjustment handles when undo or redo applies', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    act(() => useEditorStore.getState().eventBus.emit('history-applied', { cells: [] }));
+    expect(getCurveSession()).toBeNull(); expect(repaint).not.toHaveBeenCalled();
+  });
+
   it('nothing at all when no curve has been drawn', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     expect(screen.queryByTestId('curve-handles')).toBeNull();
@@ -80,7 +105,7 @@ describe('what is on screen', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 1, y: 1 }, { x: 5, y: 3 }, { x: 9, y: 1 }]);
     expect(screen.getAllByLabelText(/^Curve point /)).toHaveLength(3);
-    expect(screen.getAllByLabelText(/^curve direction /)).toHaveLength(6);
+    expect(screen.getAllByLabelText(/^(Outgoing|Incoming) direction at curve point /)).toHaveLength(6);
   });
 
   it('places the grabs in proportion to their anchors', () => {
@@ -109,6 +134,16 @@ describe('what is on screen', () => {
 });
 
 describe('dragging', () => {
+  it('a cancelled pointer drag dismisses adjustment without painting its tentative position', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    act(() => screen.getByLabelText('Curve point 1').dispatchEvent(pointer('pointerdown')));
+    act(() => window.dispatchEvent(pointer('pointermove', { clientX: 40, clientY: 60 })));
+    expect(preview).toHaveBeenCalled();
+    act(() => window.dispatchEvent(pointer('pointercancel')));
+    expect(getCurveSession()).toBeNull(); expect(repaint).not.toHaveBeenCalled();
+  });
+
   it('moves an anchor, and re-lays the map only on release', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
@@ -129,7 +164,7 @@ describe('dragging', () => {
   it('turns the tangent when a direction knob is dragged, without moving the anchor', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
-    drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 });
+    drag(screen.getByLabelText('Outgoing direction at curve point 2'), { x: 8, y: 6 });
     const a = getCurveSession()!.anchors[1]!;
     expect(a).toMatchObject({ x: 8, y: 2 });
     expect(a.hy).toBe(4);
@@ -141,7 +176,7 @@ describe('dragging', () => {
     // would kink the path at the anchor instead of keeping it smooth through.
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
-    drag(screen.getByLabelText('curve direction 2 in'), { x: 8, y: 6 });
+    drag(screen.getByLabelText('Incoming direction at curve point 2'), { x: 8, y: 6 });
     expect(getCurveSession()!.anchors[1]!.hy).toBe(-4);
   });
 
@@ -149,7 +184,7 @@ describe('dragging', () => {
     // Photoshop's pen: Alt turns one side of the handle on its own, so the anchor becomes a corner.
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
-    holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
+    holdingBreak(() => drag(screen.getByLabelText('Outgoing direction at curve point 2'), { x: 8, y: 6 }));
     const a = getCurveSession()!.anchors[1]!;
     expect(a).toMatchObject({ hx: 0, hy: 4 });
     expect(a.ihy, 'the untouched side held still rather than mirroring').not.toBe(-4);
@@ -158,8 +193,8 @@ describe('dragging', () => {
   it('re-links the two sides when the same knob is dragged WITHOUT the break key', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
-    holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
-    drag(screen.getByLabelText('curve direction 2 out'), { x: 12, y: 2 });
+    holdingBreak(() => drag(screen.getByLabelText('Outgoing direction at curve point 2'), { x: 8, y: 6 }));
+    drag(screen.getByLabelText('Outgoing direction at curve point 2'), { x: 12, y: 2 });
     const a = getCurveSession()!.anchors[1]!;
     expect(a).toMatchObject({ hx: 4, hy: 0, ihx: -4, ihy: -0 });
   });
@@ -167,7 +202,7 @@ describe('dragging', () => {
   it('draws the direction line THROUGH the anchor, so a broken handle reads as a corner', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 14, y: 2 }]);
-    holdingBreak(() => drag(screen.getByLabelText('curve direction 2 out'), { x: 8, y: 6 }));
+    holdingBreak(() => drag(screen.getByLabelText('Outgoing direction at curve point 2'), { x: 8, y: 6 }));
     const line = document.querySelectorAll('polyline')[1] as SVGPolylineElement;
     expect(line.getAttribute('points')!.split(' ')).toHaveLength(3);
   });
@@ -225,7 +260,7 @@ describe('sizing against the map zoom', () => {
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     expect(grabWidth()).toBeLessThan(20);
     expect(hitWidth()).toBeGreaterThanOrEqual(30);
-    const knob = screen.getByLabelText('curve direction 1 out') as HTMLElement;
+    const knob = screen.getByLabelText('Outgoing direction at curve point 1') as HTMLElement;
     expect(parseFloat(knob.style.width)).toBeGreaterThanOrEqual(30);
   });
 

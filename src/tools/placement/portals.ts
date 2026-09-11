@@ -6,14 +6,16 @@ import { tryPlace, removePlaced, type PlaceCtx } from './object';
 import { getPlaceableByCategory } from '../../state/catalog';
 import type { PlacementAnalysis } from './analysis';
 
-/** A candidate crossing site between two buildable regions. Validity is confirmed at realization
- *  (tryPlace through the oracle); bridge portals are pre-validated by detectBridgeSpan, ramp portals are
- *  hints (the heightDrop snap is confirmed when the router uses them). */
+/** A crossing validated through placement rules, with the open regions served by its two ends. */
 export interface Portal {
   kind: 'bridge' | 'ramp';
+  /** Aimed routes retain the catalog geometry validated for this site. */
+  catalogId?: string;
   regionA: number; regionB: number;            // the two regions this links
   anchor: MacroCoord;                          // where the router calls tryPlace(bridge/ramp)
   approachA: MacroCoord; approachB: MacroCoord; // open cells in regionA / regionB to road-connect
+  /** Actual deck exits; an irregular bank can separate them from the conservative open mask. */
+  landingA?: MacroCoord; landingB?: MacroCoord;
   cost: number;                                // region-graph edge weight
 }
 
@@ -73,13 +75,7 @@ function scanRampPortals(
   }
 }
 
-/** Scan every region boundary for ford/tier-step crossing sites and build the region-adjacency graph.
- *  Deterministic (row-major scan; deduped + spread per region-pair). The two scans are independent
- *  full-grid passes sharing the probe/accept/commit closures below.
- *  `perPair`: how many candidate sites to keep per region-pair. `TUNING.maxPortalsPerPair` (2) is
- *  generation's and stays its default; an AIMED route asks for many more, because the cap is taken
- *  in SCAN order — the first sites found along a seam, which on a long river or cliff are all at one
- *  end of the island whatever the route was asked to join. */
+/** Generation spreads a bounded number of crossing sites per region pair in row-major order. */
 export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis, perPair: number = TUNING.maxPortalsPerPair): { portals: Portal[]; regionAdj: Map<number, Portal[]> } {
   const W = a.width, H = a.height, state = ctx.state;
   const portals: Portal[] = [];
@@ -138,10 +134,14 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis, perPair: number
   if (bridge) scanBridgePortals(state, W, H, bridgeW, spanMin, spanMax, probe, accept, commit);
   if (hasRamp) scanRampPortals(a, state, W, H, inB, idx, probe, accept, commit);
 
+  return { portals, regionAdj: portalAdjacency(portals) };
+}
+
+export function portalAdjacency(portals: readonly Portal[]): Map<number, Portal[]> {
   const regionAdj = new Map<number, Portal[]>();
   const add = (r: number, p: Portal) => { const l = regionAdj.get(r); if (l) l.push(p); else regionAdj.set(r, [p]); };
   for (const p of portals) { add(p.regionA, p); add(p.regionB, p); }
-  return { portals, regionAdj };
+  return regionAdj;
 }
 
 /** What one hop of the region graph costs. Generation weighs a portal by its KIND alone (`p.cost`,

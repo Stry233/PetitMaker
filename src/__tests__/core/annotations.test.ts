@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  annotationsInRect, generateAnnotationId, nextZoneNumber, routeSamples, textApproxWidthCells,
+  annotationsInRect, chipApproxWidthCells, generateAnnotationId, nextZoneNumber, routeSamples,
   zoneCentroid, zoneLoops,
-  type MapAnnotation, type TextNote,
+  type ChipNote, type MapAnnotation,
 } from '../../core/model/annotations';
 
 const cells = (...pairs: Array<[number, number]>) => pairs.map(([x, y]) => ({ x, y }));
@@ -18,9 +18,9 @@ describe('annotation ids', () => {
 describe('zone numbering', () => {
   it('the next number is one past the highest assigned, so a deleted zone never re-issues its number', () => {
     const notes: MapAnnotation[] = [
-      { kind: 'zone', id: 'a', cells: cells([0, 0]), color: '#fff', name: '', num: 1 },
-      { kind: 'zone', id: 'b', cells: cells([1, 0]), color: '#fff', name: '', num: 4 },
-      { kind: 'text', id: 'c', x: 0, y: 0, text: 'x', style: 'label', size: 'm', color: '#fff' },
+      { kind: 'zone', id: 'a', cells: cells([0, 0]), color: '#fff', tag: 'homes', num: 1 },
+      { kind: 'zone', id: 'b', cells: cells([1, 0]), color: '#fff', tag: null, num: 4 },
+      { kind: 'chip', id: 'c', x: 0, y: 0, tag: 'plaza', size: 'm', color: '#fff' },
     ];
     expect(nextZoneNumber(notes)).toBe(5);
     expect(nextZoneNumber([])).toBe(1);
@@ -80,26 +80,23 @@ describe('routeSamples', () => {
   });
 });
 
-describe('text hit box estimate', () => {
-  it('grows with length and size, and a chip pads wider than bare lettering', () => {
-    const base: TextNote = { kind: 'text', id: 't', x: 0, y: 0, text: '广场', style: 'label', size: 'm', color: '#fff' };
-    const longer = { ...base, text: '中心广场花园' };
-    const chip = { ...base, style: 'chip' as const };
+describe('chip hit box estimate', () => {
+  it('grows with the drawn label and with the size', () => {
+    const base: ChipNote = { kind: 'chip', id: 't', x: 0, y: 0, tag: 'plaza', size: 'm', color: '#fff' };
     const large = { ...base, size: 'l' as const };
-    expect(textApproxWidthCells(longer)).toBeGreaterThan(textApproxWidthCells(base));
-    expect(textApproxWidthCells(chip)).toBeGreaterThan(textApproxWidthCells(base));
-    expect(textApproxWidthCells(large)).toBeGreaterThan(textApproxWidthCells(base));
+    expect(chipApproxWidthCells(base, '中心广场花园')).toBeGreaterThan(chipApproxWidthCells(base, '广场'));
+    expect(chipApproxWidthCells(large, '广场')).toBeGreaterThan(chipApproxWidthCells(base, '广场'));
   });
 });
 
 describe('annotationsInRect', () => {
-  const zone: MapAnnotation = { kind: 'zone', id: 'z', cells: cells([4, 4], [5, 4]), color: '#f00', name: '', num: 1, size: 'm' };
-  const text: MapAnnotation = { kind: 'text', id: 't', x: 10.5, y: 10.5, text: 'a', style: 'chip', size: 'm', color: '#fff' };
+  const zone: MapAnnotation = { kind: 'zone', id: 'z', cells: cells([4, 4], [5, 4]), color: '#f00', tag: 'homes', num: 1, size: 'm' };
+  const text: MapAnnotation = { kind: 'chip', id: 't', x: 10.5, y: 10.5, tag: 'plaza', size: 'm', color: '#fff' };
   // A straight route crossing x=14..16 at y=2: both endpoints far outside a band over its middle.
   const route: MapAnnotation = { kind: 'route', id: 'r', points: [{ x: 0, y: 2 }, { x: 30, y: 2 }], color: '#00f', dashed: false };
   const items = [zone, text, route];
 
-  it('a zone joins by any cell, text by its anchor', () => {
+  it('a zone joins by any cell, a chip by its anchor', () => {
     expect(annotationsInRect({ x: 5, y: 4, w: 1, h: 1 }, items)).toEqual(['z']);
     expect(annotationsInRect({ x: 10, y: 10, w: 1, h: 1 }, items)).toEqual(['t']);
     expect(annotationsInRect({ x: 20, y: 20, w: 3, h: 3 }, items)).toEqual([]);

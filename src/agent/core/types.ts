@@ -83,6 +83,8 @@ export type JobOutcome = 'done' | 'capped' | 'aborted' | 'incident';
 /** Structured tool-result details used by the local view, never sent to the provider. */
 export interface ToolResultDetail {
   cells?: number; objects?: number; reverted?: boolean; regionBlocked?: boolean;
+  /** Post-stroke rollback left commands applied; counts describe the retained changes. */
+  partialRevert?: true;
   /** Identity of a successfully loaded skill. */
   skill?: { name: string; kind: 'method' | 'style'; title: string };
   /** Marks a result carrying a loop-authored retry, revert or repeat-refusal nudge. */

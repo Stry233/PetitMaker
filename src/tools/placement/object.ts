@@ -101,7 +101,7 @@ export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: numb
 /** Build one PlaceObjectCommand for a catalog item at (x,y). Elevation reads the STANDABLE SURFACE
  *  via the kernel (surfaceElevation), same as the manual placer — so an object on a filleted/patched
  *  cell records the surface it actually sits on, not the raw block tier underneath. */
-function placeObjectCommand(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): PlaceObjectCommand | null {
+function placeObjectCommand(ctx: Pick<PlaceCtx, 'state'>, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): PlaceObjectCommand | null {
   const item = getCatalogItem(catalogId);
   if (!item) return null;
   const obj: PlacedObject = {
@@ -112,6 +112,12 @@ function placeObjectCommand(ctx: PlaceCtx, catalogId: string, x: number, y: numb
     elevation: surfaceElevation(ctx.state.cells[y]?.[x]?.terrain),
   };
   return objectPlacementCommand(obj);
+}
+
+/** Validate and read snapped command geometry without applying it or reserving navigation space. */
+export function probePlacement(ctx: Pick<PlaceCtx, 'state' | 'reg'>, catalogId: string, x: number, y: number): PlacedObject | null {
+  const cmd = placeObjectCommand(ctx, catalogId, x, y, 0);
+  return cmd && ctx.reg.validatePreCommand(cmd, ctx.state).length === 0 ? cmd.object : null;
 }
 
 /** A HOUSE's gate: the centre of the edge that is the footprint's BOTTOM at rotation 0, rotated

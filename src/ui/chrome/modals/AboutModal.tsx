@@ -5,15 +5,14 @@
  * one unit, and reopening returns to About.
  */
 
-import { useState, useRef, useEffect, useLayoutEffect, useMemo, Suspense, lazy, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, Suspense, lazy, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { font, colors, radii, springs, shadows, exitTransition, modalRow, buttonMotion, btnReset, cursors } from '../../design/styles';
-import { skin, windowCard, windowPrimary } from '../../design/window-skin';
-import { roleFont, roleWeight } from '../../design/text-weight';
+import { skin, windowCard } from '../../design/window-skin';
+import { roleFont } from '../../design/text-weight';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../version';
-import { glQuality, glRendererName } from '../../../core/runtime/device-quality';
 import { ModalShell } from '../../primitives/ModalShell';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { BrandLockup } from '../BrandLockup';
@@ -158,36 +157,19 @@ const versionLine: CSSProperties = {
   letterSpacing: '0.01em',
 };
 
-// The version line as a click target — `btnReset` strips native button chrome
-// so the visual stays IDENTICAL to the plain text it replaces; hover/press
-// nudge opacity a step brighter/dimmer (buttonMotion's scale would jitter a
-// full-width text line's layout, so this uses the "subtle opacity step"
-// alternative the row's siblings already lean on elsewhere in the app).
+const repositoryLink: CSSProperties = {
+  ...versionLine,
+  marginTop: 0,
+  textDecoration: 'none',
+};
+
 const versionButton: CSSProperties = {
   ...btnReset,
   ...versionLine,
-  marginTop: 3,
   display: 'inline-block',
 };
 
-// The graphics diagnostic, a step quieter than the version line above it. Same `colors.brownText`
-// ink (see the a11y contrast describe block) at the same small-print rung; the opacity is what
-// recedes, since the rung is already the floor.
-const diagLine: CSSProperties = {
-  ...versionLine,
-  opacity: 0.72,
-  marginTop: 1,
-  maxWidth: 300,
-  lineHeight: 1.35,
-  overflowWrap: 'anywhere',
-};
-
-/** The renderer string is a device identifier of unbounded length (ANGLE names a driver, a
- *  Direct3D level and a shader model). One line's worth is what a report needs. */
-const RENDERER_CHARS = 46;
-
-// Wraps the button so the confirmation bubble has a positioning root without
-// disturbing the button's own centered layout in `brandBlock`.
+// The build-copy confirmation is anchored to the version row.
 const versionButtonWrap: CSSProperties = {
   position: 'relative',
   display: 'inline-block',
@@ -254,6 +236,7 @@ const gridStyle: CSSProperties = {
 
 const gridRow: CSSProperties = {
   ...modalRow,
+  boxSizing: 'border-box',
   justifyContent: 'flex-start',
   gap: 8,
   padding: '11px 11px',
@@ -430,12 +413,6 @@ const footerRow: CSSProperties = {
   flexWrap: 'wrap',
 };
 
-const footerLink: CSSProperties = {
-  color: skin.ink,
-  textDecoration: 'none',
-  fontWeight: roleWeight('caption'),
-};
-
 const suspenseFallback: CSSProperties = {
   flex: 1,
   minHeight: 0,
@@ -576,16 +553,6 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     if (open) setView({ kind: 'about' });
   }, [open]);
 
-  // Re-read on each open: the Settings quality choice can change between two of them. The probe is
-  // memoized in device-quality, so a reopen costs a property read.
-  const gl = useMemo(() => {
-    const name = glRendererName();
-    return {
-      quality: glQuality(),
-      name: name.length > RENDERER_CHARS ? `${name.slice(0, RENDERER_CHARS).trimEnd()}…` : name,
-    };
-  }, [open]);
-
   const hasIcp = !!(LEGAL.icpNumber && LEGAL.icpUrl);
   const hasPsb = !!(LEGAL.psbNumber && LEGAL.psbUrl);
 
@@ -710,16 +677,41 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                   )}
                 </AnimatePresence>
               </div>
-              {/* Which renderer class this machine is on, and what that renderer calls itself:
-                  the two facts a slowness report needs and cannot otherwise reach. */}
-              <div style={diagLine} data-gl-diagnostic>
-                {[t(gl.quality === 'lite' ? 'about.renderer_lite' : 'about.renderer_full'), gl.name]
-                  .filter(Boolean)
-                  .join(', ')}
+              <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
+                {t('about.repository_link')} <span aria-hidden>↗</span>
+              </motion.a>
+            </div>
+
+            <div>
+              <div style={sectionLabel}>{t('about.team_title')}</div>
+              <div style={teamNote}>{t('about.team_order')}</div>
+              <div style={teamGrid} data-testid="team-grid">
+                {teamInReadingOrder(LEGAL.team).map((m) => {
+                  const avatar = teamAvatarUrl(m.avatar);
+                  return (
+                    <motion.a
+                      key={m.url}
+                      data-testid="team-member"
+                      style={memberCard}
+                      href={m.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={t('about.team_link', { name: m.name })}
+                      {...buttonMotion}
+                    >
+                      <span style={avatarRing}>
+                        {avatar && <img src={avatar} alt={m.name} style={avatarImg} />}
+                        <span style={avatarBadge} aria-hidden>
+                          ↗
+                        </span>
+                      </span>
+                      <span style={memberName}>{m.name}</span>
+                    </motion.a>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Legal & policies grid — the primary action area. */}
             <div>
               <div style={sectionLabel}>{t('legal.section_title')}</div>
               <div style={gridStyle} data-testid="legal-grid">
@@ -769,53 +761,30 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
               </div>
             )}
 
-            {/* Team — avatar cards; the whole card is the (external) link. Alphabetical
-                by the same helper the About doc's table uses, with the order
-                disclaimed, so the grid never reads as a ranking. */}
             <div>
-              <div style={sectionLabel}>{t('about.team_title')}</div>
-              <div style={teamNote}>{t('about.team_order')}</div>
-              <div style={teamGrid} data-testid="team-grid">
-                {teamInReadingOrder(LEGAL.team).map((m) => {
-                  const avatar = teamAvatarUrl(m.avatar);
-                  return (
-                    <motion.a
-                      key={m.url}
-                      data-testid="team-member"
-                      style={memberCard}
-                      href={m.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={t('about.team_link', { name: m.name })}
-                      {...buttonMotion}
-                    >
-                      <span style={avatarRing}>
-                        {avatar && <img src={avatar} alt={m.name} style={avatarImg} />}
-                        <span style={avatarBadge} aria-hidden>
-                          ↗
-                        </span>
-                      </span>
-                      <span style={memberName}>{m.name}</span>
-                    </motion.a>
-                  );
-                })}
+              <div style={sectionLabel}>{t('about.sponsorship_title')}</div>
+              <div style={gridStyle} data-testid="sponsorship-links">
+                {[
+                  { href: LEGAL.sponsorship.patreon, key: 'about.patreon' },
+                  { href: LEGAL.sponsorship.afdian, key: 'about.afdian' },
+                ].map(({ href, key }) => (
+                  <motion.a key={key} href={href} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={gridIcon}>
+                      <path d="M12 20 4.5 12.5a5 5 0 0 1 7.5-6.6 5 5 0 0 1 7.5 6.6L12 20Z" />
+                    </svg>
+                    <span style={gridLabel}>{t(key)}</span>
+                    <span style={chevron} aria-hidden>↗</span>
+                  </motion.a>
+                ))}
               </div>
             </div>
 
-            {/* Footer — disclaimer + source + ©, receding. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={disclaimerStyle}>{t('about.disclaimer')}</div>
               <div style={footerRow}>
-                <a style={footerLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer">
-                  GitHub ↗
-                </a>
-                <span>{`© 2026 ${LEGAL.productName} contributors`}</span>
+                <span>{t('about.copyright', { year: 2026 })}</span>
               </div>
             </div>
-
-            <motion.button style={{ ...windowPrimary, marginTop: 2 }} onClick={onClose} {...buttonMotion}>
-              {t('modal.settings_ok')}
-            </motion.button>
           </motion.div>
         )}
       </AnimatePresence>

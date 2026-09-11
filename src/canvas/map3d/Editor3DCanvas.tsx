@@ -7,6 +7,7 @@
  * scene on the next activation.
  */
 import { useEffect, useRef } from 'react';
+import { tagLabel } from '../../i18n/annotation-tags';
 import { useEditorStore } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
 import type { GridState } from '../../core/model/types';
@@ -92,6 +93,7 @@ export function Editor3DCanvas() {
       const boot = useEditorStore.getState();
       sceneRef.current.setAnnotations(boot.gridState?.annotations ?? null, {
         draft: boot.annotationDraft, selection: boot.annotationSelection,
+        tagLabel: (tag) => tagLabel(tag, boot.locale),
       });
       if (useEditorStore.getState().viewMode === '3d') setActiveView(sceneRef.current.asEditorView());
     }, fail);
@@ -114,6 +116,7 @@ export function Editor3DCanvas() {
     if (!gs) return;
     sceneRef.current?.setAnnotations(gs.annotations ?? null, {
       draft: annotationDraft, selection: annotationSelection,
+      tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
     });
   }, [annotationsEpoch, annotationDraft, annotationSelection, gridState]);
 

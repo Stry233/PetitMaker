@@ -28,6 +28,7 @@ import { frameZoomAttr } from '../motion/zoom-corrected-radius';
 import { ACTIVE, INK, INSET, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
+import { useUiPreviewPose } from '../../primitives/ui-preview';
 
 /** How long a refusal holds the tint on the locked tiles before it fades.
  *
@@ -74,6 +75,7 @@ const PANEL = {
   /** Between the two size arrows, which are a PAIR and so stand closer to each other than either
    *  does to the layer-numbers toggle beside them. */
   arrowGap: 5,
+  headSplitGap: 8,
   /** The plate's own corner, in the frame's px like every other length here. */
   radius: 20,
 } as const;
@@ -138,6 +140,10 @@ const TILE: Record<'grid' | 'column', TileMetrics> = {
     swatch: 12, count: 38, icon: 20, bar: 6, radius: 12, gap: 6,
   },
 };
+
+/** Width needed to keep all three header controls visible at either panel size. */
+export const PLATE_MIN_WIDTH = 2 * (PANEL.pad + PANEL.edge + Math.max(TILE.grid.padX, TILE.column.padX))
+  + 3 * (PANEL.headGlyph + 2 * PANEL.headPadX) + PANEL.arrowGap + PANEL.headSplitGap;
 
 /** Which tile a size draws. The pill draws none, and takes the file's, since the file is what the
  *  count opens into. */
@@ -214,6 +220,11 @@ export function plateDepth(mode: LayerMode): number {
   return depthOf(mode, shownRows(mode));
 }
 
+/** The header, notes and one complete row remain visible when the floor list scrolls. */
+export function plateMinDepth(mode: LayerMode): number {
+  return depthOf(mode, 1);
+}
+
 /** The square plate's depth, which is what the column plans the whole right-hand side against. */
 export const PLATE_DEPTH = plateDepth('grid');
 
@@ -287,8 +298,9 @@ function NotesRow({ lane }: { lane: number }) {
   useEditorStore((s) => s.annotationsEpoch);
   const data = useEditorStore((s) => s.gridState)?.annotations;
   const selected = editMode.mode === 'annotate';
-  const visible = data?.visible !== false;
-  const locked = data?.locked === true;
+  const posed = useUiPreviewPose()?.notesRow;
+  const visible = posed ? posed.visible : data?.visible !== false;
+  const locked = posed ? posed.locked : data?.locked === true;
   const count = data?.items.length ?? 0;
   const tileM = TILE.column;
   const ink = selected ? INK : PLATE_INK;
@@ -335,14 +347,14 @@ function NotesRow({ lane }: { lane: number }) {
           label={t('a11y.toggle_visibility')}
           testId={measurer ? 'shell-layer-annotation-eye-width' : 'shell-layer-annotation-eye'}
           size={tileM.icon}
-          onPress={measurer ? () => {} : () => setAnnotationsVisible(!visible)}
+          onPress={measurer || posed ? () => {} : () => setAnnotationsVisible(!visible)}
         />
         <TileToggle
           icon={`${locked ? 'lock' : 'unlock'}-selected`}
           label={t('a11y.toggle_lock')}
           testId={measurer ? 'shell-layer-annotation-lock-width' : 'shell-layer-annotation-lock'}
           size={tileM.icon}
-          onPress={measurer ? () => {} : () => setAnnotationsLocked(!locked)}
+          onPress={measurer || posed ? () => {} : () => setAnnotationsLocked(!locked)}
         />
       </div>
     </div>
@@ -674,12 +686,14 @@ export interface LayerPanelProps {
    *  things that plan places, not a thing dropped on top of what it placed. */
   right: number;
   maxHeight: number;
+  top?: number;
+  maxWidth?: number;
   /** Drawn and out of reach: the interface has been put away. `visibility` rather than an unmount,
    *  so the stack comes back at the size the visitor left it at. */
   veiled?: boolean;
 }
 
-export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPanelProps) {
+export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_TOP, maxWidth, veiled }: LayerPanelProps) {
   const t = useT();
   const open = mode !== 'pill';
   const cols = colsOf(mode);
@@ -850,7 +864,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
             {...frameZoomAttr(zoom)}
             style={{
               position: 'fixed',
-              top: LAYER_PANEL_TOP,
+              top,
               right,
               padding: PANEL.pad,
               boxSizing: 'border-box',
@@ -872,15 +886,14 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
               // It grows out of the count standing at that corner.
               transformOrigin: 'top right',
               maxHeight: drawn,
+              maxWidth,
               // Only `visibility` here: the opacity beside it is Framer's. Discrete, and it
               // interpolates as visible until the end, so the plate leaves hit-testing once it has
               // finished fading rather than the instant it starts.
               visibility: veiled ? 'hidden' : 'visible',
-              transition: cssMotion(veiled ? 'frame.veil' : 'frame.unveil', 'visibility'),
-              // A COLUMN OF TWO, and that is the whole of how the head stays put: the head is the
-              // first item and the floors are the second, so only the second scrolls. The plate
-              // itself does not, which is why its own overflow is hidden rather than auto.
-              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              transition: [cssMotion(veiled ? 'frame.veil' : 'frame.unveil', 'visibility'), cssMotion('frame.layout.adapt', 'top', 'right', 'max-width')].join(', '),
+              // The head stays fixed during vertical floor scrolling; a narrow panel can scroll sideways.
+              display: 'flex', flexDirection: 'column', overflowX: 'auto', overflowY: 'hidden',
               // Over the rail: the panel is what the count just opened, so it cannot be the thing
               // the control it belongs to covers.
               zIndex: z.opened,
@@ -913,7 +926,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
                 // ONE CONTROL AT EITHER END. The head carries two unrelated things — what the map
                 // shows, and what size this panel is — so they stand apart rather than side by side
                 // at one end with the whole plate empty beside them.
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: PANEL.headSplitGap,
                 // Squared with the tiles under it, so the head's pills line up with a floor's name.
                 padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px`,
                 height: 2 * PANEL.headPadY + TEXT.head, boxSizing: 'content-box',
@@ -974,7 +987,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, veiled }: LayerPane
                   <span
                     ref={numbersNameRef}
                     style={{
-                      flex: 'none', whiteSpace: 'nowrap', fontWeight: fw(800, TEXT.tab),
+                      flex: 'none', whiteSpace: 'nowrap', fontWeight: fw(800, TEXT.small),
                       paddingRight: PANEL.headPadX,
                     }}
                   >

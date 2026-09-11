@@ -47,6 +47,7 @@ function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
   let cells = 0;
   let objects = 0;
   let reverted = false;
+  let partialRevert = false;
   const childOps: NonNullable<ToolResultDetail['childOps']> = [];
   let childError: ErrorClass | undefined;
   for (const e of eventsOf(childLog)) {
@@ -55,6 +56,7 @@ function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
     cells += e.detail?.cells ?? 0;
     objects += e.detail?.objects ?? 0;
     if (e.detail?.reverted) reverted = true;
+    if (e.detail?.partialRevert) partialRevert = true;
     childOps.push({
       name: e.name,
       status: e.detail?.reverted ? 'revert' : e.isError ? 'error' : 'ok',
@@ -65,6 +67,7 @@ function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
   if (cells > 0) detail.cells = cells;
   if (objects > 0) detail.objects = objects;
   if (reverted) detail.reverted = true;
+  if (partialRevert) detail.partialRevert = true;
   if (childOps.length > 0) detail.childOps = childOps;
   if (childError) detail.childError = childError;
   return Object.keys(detail).length > 0 ? detail : undefined;

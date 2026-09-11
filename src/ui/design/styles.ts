@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { APP_FONT_FAMILY as FONT_FAMILY } from '../../assets/fonts/family';
 import { DOM_CURSORS } from '../../core/runtime/cursor-spec';
 import { INK, CREAM, ERROR_RED } from '../../core/runtime/brand-palette';
 import { roleFont } from './text-weight';
@@ -189,9 +190,6 @@ export const shadows = {
 } as const;
 
 /* ── Typography ──────────────────────────────────────────── */
-
-/* The one font stack — every face below references it so the family lives in a single place. */
-const FONT_FAMILY = "'Alibaba PuHuiTi 3', 'PW Rounded Sans', 'Varela Round', system-ui, sans-serif";
 
 export const font = {
   family: FONT_FAMILY,

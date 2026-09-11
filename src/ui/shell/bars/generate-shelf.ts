@@ -11,6 +11,7 @@ import type { GenerateAlgorithm, GenerateConfig, MazeGates, StencilPlan, Stencil
 import { EDGE, EDGE_RIGHT, RAIL, SHELF_SCALE, SHELF_TABS } from '../units';
 import type { SliderShape } from './BarSlider';
 import { DARK_PLATE } from '../../design/tokens';
+import { IS_DEV_BUILD } from '../../../version';
 
 /** User-selectable generation workflows. */
 export type GenerateKind = 'island' | 'maze' | 'text' | 'image';
@@ -27,6 +28,16 @@ export const TABS: readonly GenerateTab[] = [
   { id: 'image', labelKey: 'gen.kind_image' },
   { id: 'island', labelKey: 'gen.kind_island' },
 ];
+
+/** Workflows whose own card ships in released builds. Development builds offer every card. */
+const CUSTOM_CARD_RELEASED: Record<GenerateKind, boolean> = {
+  maze: true, island: true, text: false, image: false,
+};
+
+/** Whether the shelf offers the visitor's own card for `kind`. */
+export function hasCustomCard(kind: GenerateKind, devBuild: boolean = IS_DEV_BUILD): boolean {
+  return devBuild || CUSTOM_CARD_RELEASED[kind];
+}
 
 /** Maps a UI workflow to its engine algorithm. */
 export function algorithmFor(kind: GenerateKind): GenerateAlgorithm {
@@ -230,39 +241,21 @@ export const CARD_H = Math.min(
 /** Fixed body height derived from its card and settings-strip parts. */
 export const BODY_H = CARD_H + STRIP.gap + STRIP.h;
 
-/** Default slider length and the compact image-mode length, in design pixels. */
-const TRACK_DRAWN = 454;
-const TRACK_TIGHT = 300;
+/** Shared generator slider geometry, in design pixels. */
+const sliderAt = (y: number): SliderShape => ({
+  track: { x: 3038, y, w: 454, h: 79 },
+  first: 3089,
+  last: 3441,
+  centreY: y + 39.5,
+  tick: 22,
+  knob: 96,
+  pip: 31,
+});
 
-/** Scales knob travel with the selected track length while retaining vertical geometry. */
-const sliderAt = (y: number, w: number): SliderShape => {
-  const inset = Math.round((3089 - 3038) * (w / TRACK_DRAWN));
-  const span = Math.round((3441 - 3089) * (w / TRACK_DRAWN));
-  return {
-    track: { x: 3038, y, w, h: 79 },
-    first: 3038 + inset,
-    last: 3038 + inset + span,
-    centreY: y + 39.5,
-    tick: 22,
-    knob: 96,
-    pip: 31,
-  };
-};
-
-const slidersOf = (w: number) => ({
-  /** Richness in island mode or corridor width in maze mode. */
-  upper: sliderAt(1511, w),
-  maxLayer: sliderAt(1612, w),
-} as const);
-
-export const SLIDERS = slidersOf(TRACK_DRAWN);
-/** The picture kind's, whose row also carries six material segments. */
-export const SLIDERS_TIGHT = slidersOf(TRACK_TIGHT);
-
-/** Which pair a kind's strip draws. */
-export function slidersFor(kind: GenerateKind): typeof SLIDERS {
-  return kind === 'image' ? SLIDERS_TIGHT : SLIDERS;
-}
+export const SLIDERS = {
+  upper: sliderAt(1511),
+  maxLayer: sliderAt(1612),
+} as const;
 
 /** Scenery richness as a UI percentage; the engine receives a 0..1 fraction. */
 export const RICHNESS = { min: 0, max: 100, default: 70 } as const;

@@ -1,24 +1,4 @@
-/**
- * Smart build: one generator verb, invoked at a point on a live map.
- *
- * A macro is the editor's verb for "do the whole thing" — the shell's smart-build shelf and the
- * agent's director tools both reach the same body, so there is one implementation of each verb and
- * one place a fix to it lands.
- *
- * EXACTLY ONE UNDO ENTRY, which is what makes the shell's proposal flow work: rerolling is `undo()`
- * then applying the next seed. A macro that landed as two entries would leave half of itself behind
- * on the first undo, and every later reroll would stack on that half.
- *
- * EVERY MACRO BUILDS ON A COPY FIRST. A macro tries a design, asks the rules what they make of it,
- * and drops the parts they refuse, which on the live map means painting and unpainting under the
- * user. `scratch.ts` gives it a detached clone with the live rules to work against; only the
- * commands the clone accepted are replayed here, inside the stroke group. It also lets a macro try
- * more than one draw and keep the one that built something, which is what the planting does.
- *
- * Rejections are silenced. The populator refuses candidate placements constantly by design, so a
- * validation toast per refusal would be noise rather than information — the same reason
- * `kit/operations/generate.ts` runs silently.
- */
+/** Smart Build executes against a detached map, then replays accepted commands as one undo step. */
 import { isInBounds } from '../../core/model/grid-model';
 import { hashJSON } from '../../core/model/hash';
 import type { AutoEdgeCut, GridState, ItemCategory, MacroCoord } from '../../core/model/types';
@@ -30,21 +10,13 @@ import { cellsChanged, objectsChanged } from './measure';
 import { plantPatchTiers, plantScopedPatch, type PatchScope } from './patch';
 import { raiseTerrain, type RaiseSteepness } from './raise';
 import { layRoadNetwork } from './roads';
-import { detachCommand, runOnScratch, replayOnLive, type ScratchRun } from './scratch';
+import { detachCommand, mapFingerprint, runOnScratch, type ScratchRun } from './scratch';
 import { carveStream } from './stream';
+import { fillMountainArea } from './landform';
+import { buildRiver } from './river';
+import type { CurveAnchor } from '../../core/model/spline';
 
-/** Every macro this module implements, and the LIST is the source: the type is derived from it so
- *  a caller that must enumerate them (the shelf's menu, and the test holding the two equal) has
- *  something to read at runtime. A union alone cannot be walked, which is how `patch` came to be
- *  implemented with no way to reach it.
- *
- * `patch-tree`/`patch-flora` are TWO ids rather than one `patch` plus a scope carried beside it.
- * One undifferentiated `patch` armed by both object-shelf cards has nothing to tell them apart, so
- * the Trees tab plants flowers and the Flora tab plants trees. Every place that already keys off a
- * macro's `id` string — the ghost's cache key, the held spray, the preview's cache key, `EMPTY_REASON`,
- * `AIMED` — picks up the scope for free, because the id IS the scope; a second store field beside
- * `armedMacro` would have to be threaded through each of those by hand and could drift from the id
- * riding next to it. */
+/** Available operations, including programmatic networks and category-specific planting. */
 export const MACRO_IDS = ['raise', 'stream', 'road-link', 'roads', 'patch-tree', 'patch-flora'] as const;
 
 export type MacroId = (typeof MACRO_IDS)[number];
@@ -58,32 +30,28 @@ export function patchScope(id: MacroId): PatchScope | null {
   return null;
 }
 
-/** Which macros a HELD press keeps building. The planting sprays (a second stand beside a stand is
- *  a wood) and a raise CLIMBS (a second rung on a mound is a mountain); a stream or a road network
- *  has no repeat that composes, so a press is the whole of it. `patchScope` still answers which
- *  planting card an id names; this answers whether the tool holds at all. */
-export function holdsSpray(id: MacroId): boolean {
-  return patchScope(id) !== null || id === 'raise';
-}
-
 export interface MacroOpts {
   seed: number;
-  /** Aim macros only: the cell the user pointed at. road-link: this is the SECOND tap (`to`). */
+  /** Mountain fill: the complete connected area, captured before the stroke. */
+  area?: MacroCoord[];
+  elevation?: number;
+  /** Adjustable river guide, in terrain cells. */
+  anchors?: CurveAnchor[];
+  /** Target cell; the destination for road and river drags. */
   at?: MacroCoord;
   radius?: number;
   density?: number;
   /** roads/road-link: the catalog id of the surface to lay. */
   material?: string;
-  /** roads/road-link: how many cells wide the paved routes come out. 1 when absent. */
+  /** Road or river channel width in cells; 1 when absent. */
   width?: number;
-  /** road-link: the FIRST tap. Absent with `at` on a building is the door-spur gesture. */
+  /** Road or river source. A road with only `at` retains the programmatic door-spur operation. */
   from?: MacroCoord;
   /** road-link: which drafted offer to lay, clamped into range. 0 when absent. */
   offer?: number;
-  /** roads/road-link: confine the run to these cells, the placeable mask the analysis is built
-   *  with. The shell's painted region, exactly as the agent's `build_road_network` already binds it. */
+  /** Editable region, including terrain support and road crossings. */
   region?: MacroCoord[];
-  /** roads/road-link: the corner-trim kind the beautifier runs at, from the live Auto Trim setting. */
+  /** Corner treatment from the active Auto Trim setting. */
   trim?: AutoEdgeCut;
   /** roads: the ids an EARLIER press of this gesture laid, which this one may take back before
    *  laying its own (see `roads.ts:RoadNetworkInput.replace`). A plain array, never a `Set`: this
@@ -129,6 +97,7 @@ export interface MacroOpts {
  * the agent reads, and they are two audiences rather than two truths.
  */
 export interface MacroReport {
+  ends?: [MacroCoord, MacroCoord];
   reason?: string;
   code?: MacroRefusal;
   /** Where the report stands, when it is about ONE place: the door a spur could not reach. A toast
@@ -141,7 +110,7 @@ export interface MacroReport {
    *  removed. Present only above width 1, where it is the normal outcome rather than a corner: the
    *  road necks, and the caller is the only one that can say so. */
   narrowedByPlanting?: number;
-  /** The profiles this run drafted between the two taps, in offer order. The tool names them. */
+  /** The profiles this run drafted between the endpoints, in offer order. The tool names them. */
   offers?: readonly string[];
   /** roads: everything this gesture's work now amounts to, for the caller to hand to the next
    *  press. Absent means the run had nothing to say about ownership, never "it owns nothing". */
@@ -152,6 +121,8 @@ export interface MacroReport {
 }
 
 export type MacroRefusal =
+  | 'terrain-blocked'
+  | 'river-blocked'
   | 'nothing-to-connect'    // no building or structure on open ground
   | 'no-route'              // ends found, no ground between them
   | 'already-connected'     // every building here already meets the network: THIS is the plan
@@ -162,9 +133,11 @@ export type MacroRefusal =
   | 'blocked';              // a planting holds a cell the route needed, and it was left standing
 
 /** The one toast key for each refusal a road macro can report, so the whole-map press
- *  (`SmartBuild.tsx`) and the two-tap tool (`macro-tool.ts`) never disagree about what a code
+ *  (`SmartBuild.tsx`) and the drag tool (`macro-tool.ts`) never disagree about what a code
  *  means. Never localized here (see `MacroReport`'s own header): the caller narrates. */
 export const EMPTY_KEY: Record<MacroRefusal, string> = {
+  'terrain-blocked': 'smart.terrain_blocked',
+  'river-blocked': 'smart.river_blocked',
   'already-connected': 'smart.roads_settled',
   'no-route': 'smart.empty_link',
   unjoined: 'smart.unjoined',
@@ -176,6 +149,7 @@ export const EMPTY_KEY: Record<MacroRefusal, string> = {
 };
 
 export interface MacroOutcome {
+  ends?: [MacroCoord, MacroCoord];
   /** Cells plus objects the macro actually changed, measured off the map after the commit. Zero is
    *  a result, not a failure. */
   changes: number;
@@ -191,7 +165,7 @@ export interface MacroOutcome {
   blocked?: MacroCoord[];
   /** roads/road-link: how many cells a wide road's corridor lost to a planting it went round. */
   narrowedByPlanting?: number;
-  /** road-link: the offers this run drafted between the two taps, in offer order. */
+  /** road-link: the offers this run drafted between the endpoints, in offer order. */
   offers?: readonly string[];
   /** roads: everything this gesture's work now amounts to. The caller keeps it and hands it back on
    *  the next press, which is what makes a re-press a candidate rather than an addition. */
@@ -210,7 +184,7 @@ const AIMED: ReadonlySet<MacroId> = new Set<MacroId>(['raise', 'stream', 'road-l
 /** What to say when the macro ran and kept nothing. */
 const EMPTY_REASON: Record<MacroId, string> = {
   raise: 'no ground here would take a rise',
-  stream: 'no course from here reaches open water',
+  stream: 'no complete river can be built here',
   'patch-tree': 'no ground here would take a planting',
   'patch-flora': 'no ground here would take a planting',
   'road-link': 'no route could be planned between these points',
@@ -256,6 +230,11 @@ export function buildMacro(
     }
     switch (id) {
       case 'raise': {
+        if (opts.area) {
+          const result = fillMountainArea(scratch, { area: opts.area, elevation: opts.elevation ?? 1, region: opts.region, trim: opts.trim });
+          report?.(result);
+          return;
+        }
         const out = raiseTerrain(scratch, {
           at: at!, radius, stage: opts.stage ?? 1, steepness: opts.steepness ?? 'wide',
           held: new Set(opts.heldCells ?? []),
@@ -263,6 +242,7 @@ export function buildMacro(
           // where there is one, so a mound climbing under a held press keeps the rim it started
           // with instead of spreading a new lump per burst.
           seed: opts.anchorSeed ?? opts.seed,
+          region: opts.region, trim: opts.trim,
           ...(opts.footing !== undefined ? { footing: opts.footing } : {}),
         });
         report?.({
@@ -272,7 +252,11 @@ export function buildMacro(
         return;
       }
       case 'stream':
-        carveStream(scratch, { at: at!, radius, seed: opts.seed });
+        if (opts.from) {
+          const result = buildRiver(scratch, { from: opts.from, to: at!, width: opts.width ?? 1, anchors: opts.anchors, region: opts.region, trim: opts.trim });
+          report?.(result);
+        }
+        else carveStream(scratch, { at: at!, radius, seed: opts.seed });
         return;
       case 'patch-tree':
       case 'patch-flora':
@@ -377,8 +361,10 @@ export function landMacroRun(
   { trustBase = false }: { trustBase?: boolean } = {},
 ): MacroOutcome | null {
   const { executor } = ctx;
+  if (!trustBase && mapFingerprint(ctx.state) !== built.run.base) return null;
   const watermark = executor.getUndoStackSize();
-  const countCells = cellsChanged(ctx.state);
+  const atomic = opts.area !== undefined || opts.from !== undefined;
+  const countCells = cellsChanged(ctx.state, atomic);
   const countObjects = objectsChanged(ctx.state);
   executor.pushSource({
     source: ProvSource.Procedural,
@@ -387,25 +373,22 @@ export function landMacroRun(
   });
 
   try {
-    let landed = false;
+    let landed = true;
     executor.runSilently(() => {
-      if (trustBase) {
-        for (const cmd of built.run.commands) executor.execute(detachCommand(cmd));
-        landed = true;
-      } else {
-        landed = replayOnLive(ctx, built.run);
+      for (const cmd of built.run.commands) {
+        if (!executor.execute(detachCommand(cmd)).success && atomic) { landed = false; break; }
       }
     });
-    if (!landed) return null;
+    if (!landed) {
+      executor.rollbackTo(watermark);
+      return { changes: 0, reason: 'the complete build could not be replayed', code: built.report?.code ?? 'blocked' };
+    }
     const violations = executor.commitStrokeGroup(watermark);
-    // Measured off the map on EVERY path, violations included: the terrain macros lay cells and the
-    // two adapters lay objects, and `changes` is one number over both. `commitStroke` auto-reverts
-    // only until the state is legal, so a violation can leave part of the run standing under one
-    // undo entry — reporting zero there tells the shell nothing happened while the user is looking
-    // at what did, and the shell then has no reason to `undo()` before the next apply.
+    if (violations.length > 0 && atomic) executor.rollbackTo(watermark);
     const changes = countCells() + countObjects();
     const report = built.report;
-    const narrated: Pick<MacroOutcome, 'code' | 'at' | 'blocked' | 'narrowedByPlanting' | 'offers' | 'peak'> = {
+    const narrated: Pick<MacroOutcome, 'code' | 'at' | 'blocked' | 'narrowedByPlanting' | 'offers' | 'peak' | 'ends'> = {
+      ...(report?.ends ? { ends: report.ends } : {}),
       ...(report?.code ? { code: report.code } : {}),
       ...(report?.at ? { at: report.at } : {}),
       ...(report?.blocked && report.blocked.length > 0 ? { blocked: report.blocked } : {}),
@@ -415,10 +398,7 @@ export function landMacroRun(
       ...(report?.peak !== undefined ? { peak: report.peak } : {}),
     };
     if (violations.length > 0) {
-      const reason = changes === 0
-        ? 'post-stroke rules rolled the run back'
-        : 'post-stroke rules rolled part of the run back';
-      return { changes, reason, ...narrated };
+      return { changes, reason: changes === 0 ? 'post-stroke rules rolled the run back' : 'post-stroke rules rolled part of the run back', ...narrated };
     }
     return changes === 0
       ? { changes: 0, reason: report?.reason ?? EMPTY_REASON[id], ...narrated }
@@ -440,10 +420,21 @@ export function landMacroRun(
 type MacroBuildRunner = (state: GridState, id: MacroId, opts: MacroOpts) => Promise<MacroBuild | null>;
 let buildRunner: MacroBuildRunner | null = null;
 
-export function installMacroBuildRunner(fn: MacroBuildRunner): void { buildRunner = fn; }
+export function installMacroBuildRunner(fn: MacroBuildRunner | null): void { buildRunner = fn; }
 
 /** Whether presses can build off-thread — what the tool forks its sync/async plumbing on. */
 export function hasMacroBuildRunner(): boolean { return buildRunner !== null; }
+
+/** Build without landing, so a gesture can cancel an outstanding worker request. */
+export async function prepareMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): Promise<MacroBuild | null> {
+  if (buildRunner) {
+    try {
+      const built = await buildRunner(ctx.state, id, opts);
+      if (built) return built;
+    } catch { buildRunner = null; }
+  }
+  return buildMacroRun(ctx, id, opts);
+}
 
 /** `applyMacro`, with the expensive build off-thread when a runner is installed. Without one the whole
  *  body runs synchronously before the returned promise settles, so the no-worker path (tests, headless)

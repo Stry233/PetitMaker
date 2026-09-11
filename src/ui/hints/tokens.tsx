@@ -4,6 +4,8 @@
  */
 import type { CSSProperties } from 'react';
 import { colors, inkTint, radii } from '../design/styles';
+import { useReadableWeight } from '../design/scale';
+import { roleWeight } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { MouseButton, MouseMark, ResolvedToken } from './catalogue';
 
@@ -13,20 +15,25 @@ const capStyle: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   minWidth: 22, height: 22, padding: '0 6px', borderRadius: 6,
   background: colors.white, border: `1.5px solid ${inkTint(0.18)}`, borderBottomWidth: 3,
-  fontSize: 12, fontWeight: 900, color: INK, lineHeight: 1, position: 'relative',
+  fontSize: 12, fontWeight: roleWeight('small'), color: INK, lineHeight: 1, position: 'relative',
 };
 
 const badgeStyle: CSSProperties = {
   position: 'absolute', top: -6, right: -7, background: colors.tileYellow,
-  border: `1.5px solid ${INK}`, borderRadius: radii.pill, fontSize: 9, fontWeight: 900,
+  border: `1.5px solid ${INK}`, borderRadius: radii.pill, fontSize: 9,
   padding: '0 3px', lineHeight: 1.3,
 };
+
+function RepeatBadge() {
+  const weightAt = useReadableWeight();
+  return <span style={{ ...badgeStyle, fontWeight: weightAt(900, badgeStyle.fontSize as number) }}>×2</span>;
+}
 
 export function KeyCap({ label, x2 }: { label: string; x2?: boolean }) {
   return (
     <span style={capStyle}>
       {label}
-      {x2 && <span style={badgeStyle}>×2</span>}
+      {x2 && <RepeatBadge />}
     </span>
   );
 }
@@ -75,13 +82,14 @@ function MouseGlyph({ button, mark, x2 }: { button: MouseButton; mark?: MouseMar
         {mark === 'scroll' && <g stroke={INK} strokeWidth="1.5" fill="none"><path d="M23 9 L25 6.5 L27 9 M23 17 L25 19.5 L27 17" /></g>}
         {mark === 'hscroll' && <g stroke={INK} strokeWidth="1.5" fill="none"><path d="M24 10.5 L21.5 13 L24 15.5 M27 10.5 L29.5 13 L27 15.5" /></g>}
       </svg>
-      {x2 && <span style={badgeStyle}>×2</span>}
+      {x2 && <RepeatBadge />}
     </span>
   );
 }
 
 export function HintTokens({ tokens }: { tokens: readonly ResolvedToken[] }) {
   const t = useT();
+  const weightAt = useReadableWeight();
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 3, flex: 'none', minWidth: 20 }}>
       {tokens.map((tok, i) => {
@@ -89,7 +97,7 @@ export function HintTokens({ tokens }: { tokens: readonly ResolvedToken[] }) {
         if (tok.kind === 'pan-stack') return <PanStack key={i} letters={tok.letters} />;
         if (tok.kind === 'mouse') return <MouseGlyph key={i} button={tok.button} mark={tok.mark} x2={tok.x2} />;
         const label = tok.sep === 'plus' ? '+' : t(`hint.sep.${tok.sep}`);
-        return <span key={i} style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary, padding: '0 1px' }}>{label}</span>;
+        return <span key={i} style={{ fontSize: 11, fontWeight: weightAt(800, 11), color: colors.textSecondary, padding: '0 1px' }}>{label}</span>;
       })}
     </span>
   );

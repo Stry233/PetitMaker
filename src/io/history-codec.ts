@@ -90,7 +90,7 @@ export function decodeHistory(raw: unknown, bounds?: HistoryBounds): HistoryEntr
     if (!entry.cmd || !Array.isArray(entry.before) || !Array.isArray(entry.after)) return null;
     if (entry.objectOps !== undefined) {
       if (!entry.objectOps || typeof entry.objectOps !== 'object') return null;
-      if (!Array.isArray((entry.objectOps as any).removed) || !Array.isArray((entry.objectOps as any).added)) return null;
+      if (!Array.isArray(entry.objectOps.removed) || !Array.isArray(entry.objectOps.added)) return null;
     }
     // Content validation — undo replays this data verbatim, bypassing every rule, so
     // it gets the same trust bar as the map decoder: one bad value drops the section.

@@ -6,6 +6,7 @@ import { PREFS, readPref, writePref } from '../../core/runtime/prefs';
 import { append, deepFreeze, eventsOf, type SessionLog } from '../core/log';
 import { isJobActive } from '../core/loop';
 import { REASONING_EXCERPT_CHARS, type Part, type SessionEvent } from '../core/types';
+import { validStoredEvents } from './validate-log';
 
 export const LOG_VERSION = 3;
 
@@ -42,7 +43,7 @@ export function deserializeLog(raw: string | null, now: () => number = Date.now)
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed !== 'object') return null;
   const { v, events } = parsed as Partial<StoredEnvelope>;
-  if (v !== LOG_VERSION || !Array.isArray(events)) return null;
+  if (v !== LOG_VERSION || !validStoredEvents(events)) return null;
   const frozen = events.map((e) => deepFreeze(e)) as SessionEvent[];
   const maxSeq = frozen.reduce((m, e) => Math.max(m, e.seq), 0);
   return { events: frozen, now, nextSeq: maxSeq + 1, listeners: new Set() };

@@ -28,7 +28,6 @@ function Bead({ n }: { n: number }) {
         color: INK,
         ...roleFont('small'),
         fontFamily: font.family,
-        fontWeight: 800,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -102,9 +101,8 @@ export function PlanGate({
           display: 'flex',
           alignItems: 'center',
           gap: 7,
-          ...roleFont('label'),
+          ...roleFont('menu'),
           fontFamily: font.family,
-          fontWeight: 800,
           color: INK,
         }}
       >
@@ -144,7 +142,6 @@ export function PlanGate({
             gap: 8,
             ...roleFont('label'),
             fontFamily: font.family,
-            fontWeight: 700,
             color: PLATE_INK,
           }}
         >

@@ -80,7 +80,7 @@ An unreadable sealed Agent blob is retained so temporary IndexedDB failure does 
 - **Imported data.** Imported maps are untrusted input. Share decoding synthesizes object identifiers, while JSON loading rejects unknown catalog identifiers and normalizes object identifiers before they can appear in tool output.
 - **Provider output.** Model responses are untrusted. Only recognized message parts and schema-valid tool calls reach the executor; provider prose has no direct browser or storage capability.
 
-The main remaining Agent impacts are undoable map edits, provider spend and disclosure of the request data described above. Approval gates, turn limits, whole-stroke rollback and the user's Stop control bound those impacts.
+The main remaining Agent impacts are undoable map edits, provider spend and disclosure of the request data described above. Approval gates, turn limits, rollback and the user's Stop control bound those impacts. Region violations and tool crashes roll back the whole call. Ordinary post-stroke validation can retain an earlier valid portion; tool feedback and the panel identify those retained edits. Cancellation is rechecked after approval and write waits, and persisted agent logs are structurally validated before they are projected into the UI or provider messages.
 
 ## Illustration threat model
 

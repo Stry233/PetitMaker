@@ -94,6 +94,7 @@ export function brushCells(cx: number, cy: number, size: number): MacroCoord[] {
 
 export class DrawingTool implements Tool {
   readonly id = ToolType.TerrainBrush;
+  terrainGrid(): boolean { return this.contentType !== 'tile'; }
 
   /** The material, not the shape: the ghost already shows brush vs line vs rect. */
   get cursor(): CursorId {

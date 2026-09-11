@@ -77,7 +77,6 @@ const MORE_STYLE: CSSProperties = {
   padding: '5px 12px',
   ...roleFont('small'),
   fontFamily: font.family,
-  fontWeight: 800,
   color: colors.brownText,
   cursor: cursors.clickable,
   boxShadow: 'none',

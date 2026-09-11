@@ -38,7 +38,7 @@ function makeView() {
   return {
     projection: {
       screenToMacro: (sx: number, sy: number) => ({ x: Math.floor(sx / 10), y: Math.floor(sy / 10) }),
-      screenToMicro: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
+      screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / 5), y: Math.floor(sy / 5) }),
       cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
       pan: vi.fn(),
     },
@@ -220,7 +220,7 @@ describe('the refusal badge across a tool switch under a stationary pointer', ()
     registerToolManager(tm);
     syncToolLayer(tm, ToolType.TerrainBrush);
     setToolCursor('mountain');
-    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
+    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 52, clientY: 52 }));
     expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
 
     syncToolLayer(tm, ToolType.Eraser);
@@ -246,7 +246,7 @@ describe('the refusal badge across a tool switch under a stationary pointer', ()
     registerToolManager(tm);
     syncToolLayer(tm, ToolType.TerrainBrush);
     setToolCursor('mountain');
-    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 125, clientY: 125 }));
+    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 122, clientY: 122 }));
     expect(el.style.cursor).toBe(cursorCss('mountain'));
 
     brush.contentType = 'tile';

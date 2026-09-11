@@ -12,7 +12,7 @@ import {
 } from '../core/model/types';
 import {
   ANNOTATION_COLORS, generateAnnotationId,
-  type AnnotationsState, type MapAnnotation,
+  type AnnotationsState, type MapAnnotation, isTagId,
 } from '../core/model/annotations';
 import type { CurveAnchor } from '../core/model/spline';
 import { cellKey, createGrid, createPlazaObject, onHalfGrid } from '../core/model/grid-model';
@@ -183,7 +183,7 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
       const suffix = encodeCorners(obj.corners);
       if (suffix) saved.corners = suffix;
     }
-    if (obj.patchOnly) (saved as any).patchOnly = true;
+    if (obj.patchOnly) saved.patchOnly = true;
     objectList.push(saved);
   }
 
@@ -329,7 +329,7 @@ export function deserialize(json: string, template: MapTemplate): GridState {
     if (obj.corners) {
       placed.corners = decodeCorners(obj.corners);
     }
-    if ((obj as any).patchOnly) placed.patchOnly = true;
+    if (obj.patchOnly) placed.patchOnly = true;
     objects.set(id, placed);
   }
 
@@ -412,22 +412,18 @@ function decodeAnnotation(raw: unknown): MapAnnotation | null {
     }
     if (cells.length === 0) return null;
     const num = typeof n.num === 'number' && Number.isInteger(n.num) && n.num > 0 && n.num < 10000 ? n.num : 0;
+    // A zone from before tags arrives untagged; its free-text name is not carried.
     return {
-      kind: 'zone', id, cells, color, name: typeof n.name === 'string' ? n.name.slice(0, 40) : '', num,
+      kind: 'zone', id, cells, color, tag: isTagId(n.tag) ? n.tag : null, num,
       size: n.size === 's' || n.size === 'l' ? n.size : 'm',
     };
   }
-  if (n.kind === 'text') {
+  // Free-text notes from before tags are dropped: nothing on the layer holds typed words.
+  if (n.kind === 'chip') {
     const x = finiteCoord(n.x);
     const y = finiteCoord(n.y);
-    const text = typeof n.text === 'string' ? n.text.slice(0, 80) : '';
-    if (x === null || y === null || !text) return null;
-    return {
-      kind: 'text', id, x, y, text,
-      style: n.style === 'chip' ? 'chip' : 'label',
-      size: n.size === 's' || n.size === 'l' ? n.size : 'm',
-      color,
-    };
+    if (x === null || y === null || !isTagId(n.tag)) return null;
+    return { kind: 'chip', id, x, y, tag: n.tag, size: n.size === 's' || n.size === 'l' ? n.size : 'm', color };
   }
   if (n.kind === 'route') {
     if (!Array.isArray(n.points)) return null;

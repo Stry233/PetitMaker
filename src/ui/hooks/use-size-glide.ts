@@ -62,8 +62,14 @@ export function useSizeGlide<T extends HTMLElement = HTMLDivElement>(
     const from = rest.current;
     const to = measure();
     rest.current = to;
-    if (!from || from === to || reduced) return undefined;
-    let travelling = true;
+    let travelling = false;
+    // Fonts and images can change the resting size without changing the caller's state.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      if (!travelling) rest.current = measure();
+    });
+    observer?.observe(el);
+    if (!from || from === to || reduced) return () => observer?.disconnect();
+    travelling = true;
     let legs = 0;
     let glide: AnimationPlaybackControls | null = null;
     const run = (a: number, b: number) => {
@@ -99,9 +105,12 @@ export function useSizeGlide<T extends HTMLElement = HTMLDivElement>(
       travelling = false;
       setGliding(false);
     };
+    // Hold the previous size before the next animation frame can paint the new content.
+    el.style[axis] = `${from}px`;
     setGliding(true);
     run(from, to);
     return () => {
+      observer?.disconnect();
       // ONLY A GLIDE STILL IN FLIGHT IS INTERRUPTED HERE. This cleanup runs on every later change,
       // long after the box landed, and the DOM it would measure then is the change's own NEW
       // content — so re-measuring unconditionally records the size the next glide is meant to

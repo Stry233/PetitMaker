@@ -10,11 +10,12 @@
  * and the 2D view is where fine selection work lives.
  */
 import * as THREE from 'three';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import {
-  ANNOTATION_INK, annotationInkScale, INK_CELLS, textApproxHeightCells, textApproxWidthCells, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
-  zoneCentroid,
-  type AnnotationsState, type MapAnnotation, type RouteNote, type TextNote, type ZoneNote,
+  ANNOTATION_INK, annotationInkScale, INK_CELLS, chipApproxHeightCells, chipApproxWidthCells, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
+  zoneLabelAnchor,
+  type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
 import { mapCenterOffset } from '../core/coords';
 import { cellDecals, DECAL_LIFT } from '../build/overlay-decals';
@@ -46,7 +47,6 @@ const INK_3D_BOOST = 1.5;
 const ORDER = { wash: 90, outlineHalo: 91, outline: 92, select: 97, routeHalo: 93, route: 94, headHalo: 95, head: 96, label: 100 } as const;
 /** The canvas raster behind a billboard, px per world unit — crisp at the fly-in's framing. */
 const TEX_PX_PER_UNIT = 96;
-const FONT = "'Alibaba PuHuiTi 3','PW Rounded Sans','PingFang SC',sans-serif";
 const INK = '#43413F';
 const MAP_TEXT = '#FFFEE3';
 
@@ -54,6 +54,8 @@ export interface Annotations3DOpts {
   draft: MapAnnotation | null;
   /** The selected notes' ids — marked HERE too: 2D shows a selection the 3D view must not deny. */
   selection?: readonly string[];
+  /** The drawn label for a tag, in the interface language. */
+  tagLabel: (tag: TagId) => string;
 }
 
 const isInk = (color: string): boolean => color.toLowerCase() === ANNOTATION_INK.toLowerCase();
@@ -106,7 +108,7 @@ export class Annotations3D {
   private mats = new Map<string, THREE.Material>();
   private textures = new Map<string, THREE.CanvasTexture>();
   private lastData: AnnotationsState | null = null;
-  private lastOpts: Annotations3DOpts = { draft: null };
+  private lastOpts: Annotations3DOpts = { draft: null, tagLabel: () => '' };
 
   /** The map's ink scale, refreshed per build: one cell is one world unit here, so the shared
    *  cell-unit metrics apply directly. */
@@ -125,10 +127,10 @@ export class Annotations3D {
     const picked = new Set(opts.selection ?? []);
     for (const n of items) if (n.kind === 'zone') this.buildZone(state, n, picked.has(n.id));
     for (const n of items) if (n.kind === 'route') this.buildRoute(state, n, picked.has(n.id));
-    for (const n of items) if (n.kind === 'text' && picked.has(n.id)) this.buildTextSelection(state, n);
+    for (const n of items) if (n.kind === 'chip' && picked.has(n.id)) this.buildChipSelection(state, n, opts.tagLabel(n.tag));
     for (const n of items) {
-      if (n.kind === 'zone') this.buildZoneLabel(state, n, usedTex);
-      else if (n.kind === 'text') this.buildText(state, n, usedTex);
+      if (n.kind === 'zone') this.buildZoneLabel(state, n, n.tag ? opts.tagLabel(n.tag) : '', usedTex);
+      else if (n.kind === 'chip') this.buildChip(state, n, opts.tagLabel(n.tag), usedTex);
     }
     for (const [key, tex] of this.textures) {
       if (usedTex.has(key)) continue;
@@ -346,11 +348,11 @@ export class Annotations3D {
     this.group.add(m);
   }
 
-  /** A selected TEXT note's mark: the 2D layer's dashed white box, draped around the word. */
-  private buildTextSelection(state: GridState, note: TextNote): void {
+  /** A selected chip's mark: the 2D layer's dashed white box, draped around the plate. */
+  private buildChipSelection(state: GridState, note: ChipNote, label: string): void {
     const off = mapCenterOffset(state.template.width, state.template.height);
-    const hw = textApproxWidthCells(note, this.ink) / 2 + 0.3;
-    const hh = textApproxHeightCells(note, this.ink) / 2 + 0.3;
+    const hw = chipApproxWidthCells(note, label, this.ink) / 2 + 0.3;
+    const hh = chipApproxHeightCells(note, this.ink) / 2 + 0.3;
     const corners: Array<[number, number]> = [
       [note.x - hw - off.x, note.y - hh - off.z], [note.x + hw - off.x, note.y - hh - off.z],
       [note.x + hw - off.x, note.y + hh - off.z], [note.x - hw - off.x, note.y + hh - off.z],
@@ -420,17 +422,17 @@ export class Annotations3D {
     return mat;
   }
 
-  private buildZoneLabel(state: GridState, zone: ZoneNote, used: Set<string>): void {
+  private buildZoneLabel(state: GridState, zone: ZoneNote, label: string, used: Set<string>): void {
     const withNum = zone.num > 0;
-    if (!withNum && !zone.name) return;
-    const key = `zone:${this.ink}:${zone.color}:${zone.size ?? 'm'}:${withNum ? zone.num : ''}:${zone.name}`;
-    const at = zoneCentroid(zone.cells);
+    if (!withNum && !label) return;
+    const key = `zone:${this.ink}:${zone.color}:${zone.size ?? 'm'}:${withNum ? zone.num : ''}:${label}`;
+    const at = zoneLabelAnchor(zone.cells);
     this.addBillboard(state, key, at, INK_CELLS.zoneLabel[zone.size ?? 'm'] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
       const fs = h * 0.52;
-      ctx.font = `800 ${fs}px ${FONT}`;
-      const nameW = zone.name ? ctx.measureText(zone.name).width : 0;
+      ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
+      const labelW = label ? ctx.measureText(label).width : 0;
       const numR = withNum ? fs * 0.62 : 0;
-      const total = (withNum ? numR * 2 + (zone.name ? 8 : 0) : 0) + nameW;
+      const total = (withNum ? numR * 2 + (label ? 8 : 0) : 0) + labelW;
       let x = 8;
       const cy = h / 2;
       if (withNum) {
@@ -444,57 +446,46 @@ export class Annotations3D {
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = `800 ${fs * 0.68}px ${FONT}`;
+        ctx.font = `800 ${fs * 0.68}px ${APP_FONT_FAMILY}`;
         ctx.fillText(String(zone.num), x + numR, cy + fs * 0.04);
-        x += numR * 2 + (zone.name ? 8 : 0);
+        x += numR * 2 + (label ? 8 : 0);
       }
-      if (zone.name) {
-        ctx.font = `800 ${fs}px ${FONT}`;
+      if (label) {
+        ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = INK;
         ctx.lineWidth = fs * 0.16;
-        ctx.strokeText(zone.name, x, cy);
+        ctx.strokeText(label, x, cy);
         ctx.fillStyle = MAP_TEXT;
-        ctx.fillText(zone.name, x, cy);
+        ctx.fillText(label, x, cy);
       }
       return total + 16;
     });
   }
 
-  private buildText(state: GridState, note: TextNote, used: Set<string>): void {
-    if (!note.text) return;
-    const key = `text:${this.ink}:${note.color}:${note.style}:${note.size}:${note.text}`;
+  private buildChip(state: GridState, note: ChipNote, label: string, used: Set<string>): void {
+    if (!label) return;
+    const key = `chip:${this.ink}:${note.color}:${note.size}:${label}`;
     this.addBillboard(state, key, { x: note.x, y: note.y }, INK_CELLS.text[note.size] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
-      const fs = h * (note.style === 'chip' ? 0.5 : 0.58);
-      ctx.font = `800 ${fs}px ${FONT}`;
-      const w = ctx.measureText(note.text).width;
+      const fs = h * 0.5;
+      ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
+      const w = ctx.measureText(label).width;
       const cy = h / 2;
-      if (note.style === 'chip') {
-        const padX = fs * 0.5;
-        const chipH = fs * 1.6;
-        ctx.fillStyle = note.color;
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 2;
-        roundRect(ctx, 4, cy - chipH / 2, w + padX * 2, chipH, chipH * 0.36);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = isInk(note.color) ? INK : '#fff';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(note.text, 4 + padX, cy + fs * 0.05);
-        return w + padX * 2 + 8;
-      }
+      const padX = fs * 0.5;
+      const chipH = fs * 1.6;
+      ctx.fillStyle = note.color;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 4, cy - chipH / 2, w + padX * 2, chipH, chipH * 0.36);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = isInk(note.color) ? INK : '#fff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = fs * 0.15;
-      ctx.strokeText(note.text, 8, cy);
-      ctx.fillStyle = isInk(note.color) ? MAP_TEXT : note.color;
-      ctx.fillText(note.text, 8, cy);
-      return w + 16;
+      ctx.fillText(label, 4 + padX, cy + fs * 0.05);
+      return w + padX * 2 + 8;
     });
   }
 

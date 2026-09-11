@@ -36,7 +36,7 @@ import { makeState } from '../../rules/_helpers';
  *  takes no aim point and answers no dial. `road-link` is aimed at a POINT PAIR rather than a disc
  *  around one cell, so it sits outside `AIMED` too: it has no ground to "read" under a radius, no
  *  dial that widens a footprint, and (by design — the same taps must lay the same road) no seed to
- *  vary by. Its own two-tap gesture is pinned directly, in `road-link.test.ts`. */
+ *  vary by. Its own endpoint gesture is pinned directly, in `road-link.test.ts`. */
 const AIMED: MacroId[] = ['raise', 'stream', 'patch-tree', 'patch-flora'];
 const EVERY: MacroId[] = ['raise', 'stream', 'road-link', 'roads', 'patch-tree', 'patch-flora'];
 
@@ -49,7 +49,7 @@ const CONE = { at: { x: 14, y: 20 }, radius: 6, peak: 6 };
 const FLANK: MacroCoord = { x: 10, y: 20 };
 /** Open grass east of the cone, well clear of its radius (cone spans x in [8,20]). */
 const FLAT: MacroCoord = { x: 24, y: 20 };
-/** road-link's FIRST tap: the same open column as `FLAT`, far enough north for a real route. */
+/** road-link's source: the same open column as `FLAT`, far enough north for a real route. */
 const ROAD_FROM: MacroCoord = { x: 24, y: 10 };
 const AIM: Record<MacroId, MacroCoord> = {
   raise: FLAT, 'patch-tree': FLAT, 'patch-flora': FLAT, roads: FLAT, stream: FLANK, 'road-link': FLAT,
@@ -59,7 +59,7 @@ const FROM: Partial<Record<MacroId, MacroCoord>> = { 'road-link': ROAD_FROM };
 const RADIUS = 5;
 
 /** `AIM`/`radius`, plus `from` for `road-link` — the one id whose gesture is a point PAIR. Every
- *  probe below reads its opts through this, so the two-tap shape rides along automatically. */
+ *  probe below reads its opts through this, so the endpoint shape rides along automatically. */
 function macroOpts(id: MacroId, seed: number, radius = RADIUS): MacroOpts {
   return { seed, at: AIM[id], radius, ...(FROM[id] ? { from: FROM[id] } : {}) };
 }

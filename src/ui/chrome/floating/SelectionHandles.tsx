@@ -5,7 +5,7 @@
  * pivot and clamped to the viewport. That anchor is cached while rotation changes object bounds so
  * repeated clicks do not move the controls. A single selection stays attached to its projected box.
  */
-import { useChromeScale, useWeightVars } from '../../design/scale';
+import { useChromeScale, useWeightVars, useReadableWeight } from '../../design/scale';
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
@@ -64,7 +64,7 @@ const rowHandleStyle = (danger: boolean, size: number): CSSProperties => ({
 });
 
 // The explicit width must match `groupRowMetrics` so viewport clamping uses the rendered size.
-const countBadgeStyle = (size: number, width: number): CSSProperties => ({
+const countBadgeStyle = (size: number, width: number, weight: number): CSSProperties => ({
   flex: '0 0 auto',
   width,
   height: Math.round(size * 0.72),
@@ -76,7 +76,7 @@ const countBadgeStyle = (size: number, width: number): CSSProperties => ({
   color: colors.frameDark,
   // This non-button span otherwise inherits the browser serif.
   fontFamily: font.family,
-  fontWeight: 800,
+  fontWeight: weight,
   fontSize: Math.max(TEXT_FLOOR, Math.round(size * 0.4)),
   boxShadow: shadows.float,
   pointerEvents: 'none',
@@ -107,6 +107,7 @@ export function SelectionHandles() {
   const eventBus = useEditorStore((s) => s.eventBus);
   const boxRef = useRef<HTMLDivElement>(null);
   const chrome = useChromeScale();
+  const weightAt = useReadableWeight();
   const weights = useWeightVars();
   // The rect tracker runs imperatively (outside render) — read the zoom via a ref.
   const chromeRef = useRef(chrome);
@@ -383,7 +384,7 @@ export function SelectionHandles() {
             </motion.button>
           )}
           {row && (
-            <div data-testid="selection-count" style={countBadgeStyle(size, row.badge)}>{selection.length}</div>
+            <div data-testid="selection-count" style={countBadgeStyle(size, row.badge, weightAt(800, Math.max(TEXT_FLOOR, Math.round(size * 0.4))))}>{selection.length}</div>
           )}
           <motion.button
             type="button"

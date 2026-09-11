@@ -27,7 +27,7 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useT } from '../../../i18n/context';
 import { LoadingDots } from '../../primitives/LoadingDots';
 import { btnReset, buttonMotion, cursors } from '../../design/styles';
-import { ACTIVE, MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
+import { ACTIVE, MUTED_INK, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
 import { CARD, CHOSEN, SEED_DIGITS, TEXT_MAX_CHARS } from './generate-shelf';
@@ -201,13 +201,29 @@ function ChosenPlate() {
   );
 }
 
-/** Why a card has no picture, drawn in the empty frame — the one place on this bar with room for a
- *  sentence. Shared by the drawn cards and the typed one, which refuse for the same reasons. */
+/** Shared refusal message for sample and custom candidate thumbnails. */
 function NoteText({ text }: { text: string }) {
   return (
-    <BarText size={TEXT.small} color={PLATE_INK} weight={700}>
-      <span style={{ display: 'block', padding: '0 8%', textAlign: 'center', whiteSpace: 'normal' }}>{text}</span>
-    </BarText>
+    <span
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 4, padding: '6px 8%', boxSizing: 'border-box', width: '100%', height: '100%',
+      }}
+    >
+      <svg
+        aria-hidden="true"
+        focusable="false"
+        viewBox="0 0 32 32"
+        style={{ width: 24, height: 24, flexShrink: 0, color: PLATE_INK, pointerEvents: 'none' }}
+      >
+        <circle cx="16" cy="16" r="16" fill={TRACK} />
+        <path d="M16 8V17" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
+        <circle cx="16" cy="24" r="2" fill="currentColor" />
+      </svg>
+      <BarText size={TEXT.small} color={PLATE_INK} weight={700} style={{ width: '100%', flexShrink: 0 }}>
+        <span style={{ display: 'block', textAlign: 'center', whiteSpace: 'normal', textWrap: 'balance' }}>{text}</span>
+      </BarText>
+    </span>
   );
 }
 

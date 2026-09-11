@@ -3,6 +3,7 @@
 // system from compose.ts and scale with the final output width.
 
 import type { Badge, ExportComposition, Rect } from './types';
+import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import type { GridState } from '../../core/model/types';
 import { CHUNK_SIZE } from '../../core/model/constants';
 import { layersFor, paintLayer } from './layer-preview';
@@ -68,7 +69,7 @@ export function paintComposition(
   assets: CompositionAssets,
 ): void {
   const S = comp.scale;
-  const FF = fontFamily();
+  const FF = APP_FONT_FAMILY;
   drawFrame(ctx, comp.width, comp.height, S, comp.bare === true);
   if (comp.header) drawHeader(ctx, comp.header, comp.badges, assets, S, FF);
   if (comp.map) drawMap(ctx, comp.map, assets, S, FF, comp.bare === true);
@@ -349,7 +350,7 @@ function draw3dCard(ctx: CanvasRenderingContext2D, rect: Rect, assets: Compositi
 /** The heading sits outside the native-size raster so every code module keeps its exact pixels. */
 export function paintCodeBand(
   ctx: CanvasRenderingContext2D, rect: Rect, assets: Pick<CompositionAssets, 'codeImg' | 'translate'>,
-  S: number, FF = fontFamily(),
+  S: number, FF = APP_FONT_FAMILY,
 ): void {
   const { x, y, w, h } = rect;
   const labelH = Math.round(CODE_LABEL_H * S);
@@ -482,10 +483,6 @@ function drawIsoCubeIcon(ctx: CanvasRenderingContext2D, x: number, y: number, sz
 }
 
 // ── text helpers ────────────────────────────────────────────────────────────────
-
-function fontFamily(): string {
-  return "'Alibaba PuHuiTi 3','PW Rounded Sans','Varela Round',system-ui,-apple-system,sans-serif";
-}
 
 function drawBadgePill(ctx: CanvasRenderingContext2D, x: number, y: number, label: string, color: string, ff: string, S: number, scale = 1): void {
   const padX = 11 * S * scale, iconW = 16 * S * scale, gap = 6 * S * scale;

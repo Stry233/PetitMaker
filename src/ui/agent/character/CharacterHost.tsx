@@ -119,6 +119,19 @@ export function CharacterHost({
     return () => cancelAnimationFrame(frame);
   }, []);
   useEffect(() => parkSettled(), [parkSettled, park, chromeScale]);
+  // CSS zoom changes the containing plane's layout size, while each seat keeps its local size.
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const planes = new Set<HTMLElement>();
+    for (const seat of [entranceRef.current, seated]) {
+      let plane = seat?.parentElement;
+      while (plane && !plane.style.getPropertyValue('--shell-zoom')) plane = plane.parentElement;
+      if (plane) planes.add(plane);
+    }
+    const observer = new ResizeObserver(() => parkNow.current());
+    for (const plane of planes) observer.observe(plane);
+    return () => observer.disconnect();
+  }, [entranceRef, seated]);
   // A stable listener also catches height-only resizes that do not change chrome scale.
   useEffect(() => {
     let settle = () => {};

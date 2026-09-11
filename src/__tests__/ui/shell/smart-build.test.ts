@@ -1,10 +1,4 @@
-/**
- * Smart construction is a TOOL, and these are the facts that make it one rather than a gimmick.
- *
- * The facts: every macro the engine implements is reachable, and
- * arming one does not open a negotiation. Both are properties of data rather than of a rendered
- * frame, which is why they can be held here cheaply and exactly.
- */
+/** Surface actions use registered macros; network operations remain available to programmatic callers. */
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
@@ -29,13 +23,11 @@ import { translations } from '../../../i18n/translations';
 const offered = (): MacroId[] => Object.values(SMART_MENU).flat().map((a) => a.id);
 
 describe('smart construction', () => {
-  /**
-   * A macro that exists with no way to reach it is a feature nobody can use: implemented and
-   * absent from every surface's list, it is written, validated and invisible. Holding the
-   * two sets equal means a sixth macro cannot be written and left stranded.
-   */
-  it('offers every macro the engine implements, and invents none', () => {
-    expect([...offered()].sort()).toEqual([...MACRO_IDS].sort());
+  it('offers one aimed action per terrain surface and keeps network operations out of the toolbar', () => {
+    expect(SMART_MENU.mountain.map(a => a.id)).toEqual(['raise']);
+    expect(SMART_MENU.water.map(a => a.id)).toEqual(['stream']);
+    expect(SMART_MENU.road.map(a => a.id)).toEqual(['road-link']);
+    for (const id of offered()) expect(MACRO_IDS).toContain(id);
   });
 
   /**
@@ -60,14 +52,6 @@ describe('smart construction', () => {
     expect(new Set(seen).size).toBe(seen.length);
   });
 
-  /**
-   * THERE IS NO NEGOTIATION, and these strings are the evidence that cannot drift.
-   *
-   * Laying a macro and then opening a row of three plates — keep, another, cancel — turns one cell in
-   * a row of eight into a dialogue. Closing keeps, pressing again rerolls, and undo is how you
-   * decline, the same as after any other stroke. If those keys ever come back, the row has come back
-   * with them.
-   */
   it('has no keep, cancel, or plan-heading strings left to draw', () => {
     const gone = ['smart.keep', 'smart.cancel', 'smart.plan_hill', 'smart.plan_field',
       'smart.plan_stream', 'smart.plan_roads'];
@@ -88,8 +72,8 @@ describe('smart construction', () => {
         expect(`${locale}:${action.labelKey}`).toBe(`${locale}:${action.labelKey in table ? action.labelKey : 'MISSING'}`);
       }
       for (const key of [
-        'smart.empty', 'smart.empty_roads', 'smart.route_offer', 'smart.offer_short',
-        'smart.offer_straight', 'smart.offer_scenic', 'smart.empty_link', 'smart.no_door',
+        'smart.empty', 'smart.empty_roads', 'smart.terrain_blocked',
+        'smart.river_blocked', 'smart.empty_link', 'smart.no_door',
         'smart.roads_settled', 'smart.unrouted', 'smart.blocked',
       ]) {
         expect(`${locale}:${key}`).toBe(`${locale}:${key in table ? key : 'MISSING'}`);
@@ -100,24 +84,7 @@ describe('smart construction', () => {
     }
   });
 
-  /**
-   * A re-press over the SAME finished network is a different situation from one that never found
-   * a route at all, and the two need different honesty: this one IS the plan, unchanged, not a
-   * routing failure. `roads-live-map.test.ts` proved a live map's first press lays a network; this
-   * holds what the SECOND, THIRD and FOURTH press over that same network report.
-   *
-   * THROUGH `applyMacro` WITH NO `replace` LIST, which is the caller that has no memory of its own
-   * work: the agent's director tool, and the shell after a reload. The shell's own press keeps the
-   * ids it laid and hands back another candidate instead (`kit/operations/road-press.ts`,
-   * `roads-candidates.test.ts`) — it takes its network back, so it never meets this report.
-   *
-   * ON GENERATED TERRAIN, not on the bare template, because a flat map cannot see the way this
-   * fails: a road tile is not a decoration, so a press can read the few hundred tiles it has just
-   * laid as fresh doorsteps, plan crossings between the regions they imply, and spend its
-   * scenic-crossing budget again — five ramps grow to thirty-six over four presses, most standing in
-   * bare grass, and `changes` never falls to zero so this report never fires. Flat ground has no
-   * crossing sites to realize, so a flat fixture passes throughout.
-   */
+  // Generated terrain exposes orphan crossings that a repeated network call could otherwise add.
   it('a re-press with nothing changed says so, on terrain that could grow crossings', () => {
     const template = getMapTemplate('hexia');
     const state = {

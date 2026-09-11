@@ -19,6 +19,7 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 import { ModalPreviewContext } from '../../../../../primitives/ModalShell';
 import { UiPreviewProvider, type UiPreviewPose } from '../../../../../primitives/ui-preview';
 import { radii } from '../../../../../design/styles';
+import { useFigureReady } from '../figure-ready';
 
 // React 18 has no typed `inert` prop; the empty-string spread is the codebase's idiom for it.
 const INERT = { inert: '' } as unknown as HTMLAttributes<HTMLDivElement>;
@@ -42,6 +43,7 @@ export interface PreviewFrameProps {
 }
 
 export function PreviewFrame({ width = '100%', height, zoom = 1, align = 'center', fit = false, pose, style, children }: PreviewFrameProps) {
+  const ready = useFigureReady();
   return (
     <div
       aria-hidden
@@ -61,7 +63,8 @@ export function PreviewFrame({ width = '100%', height, zoom = 1, align = 'center
         ...style,
       }}
     >
-      <div
+      {/* Content-sized figures keep their children so section anchors do not shift on admission. */}
+      {(ready || fit) && <div
         style={{
           ...(fit ? { position: 'relative' } : { position: 'absolute', inset: 0 }),
           zoom,
@@ -73,7 +76,7 @@ export function PreviewFrame({ width = '100%', height, zoom = 1, align = 'center
         <ModalPreviewContext.Provider value>
           <UiPreviewProvider {...(pose ? { pose } : {})}>{children}</UiPreviewProvider>
         </ModalPreviewContext.Provider>
-      </div>
+      </div>}
     </div>
   );
 }

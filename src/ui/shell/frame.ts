@@ -5,7 +5,7 @@
  */
 import type { BuildMode } from '../../core/model/edit-mode';
 import {
-  BLOCK_W, BLOCK_W_ON, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_INK_DEPTH, MODE, MODE_PLATE_W,
+  BLOCK_W, BLOCK_W_ON, EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_BOX_DEPTH, LABEL_INK_DEPTH, MODE, MODE_PLATE_W, TOP_RIGHT_GAP,
   MODE_SCALE, RAIL, RAIL_FLOOR,
 } from './units';
 
@@ -32,6 +32,7 @@ import railZoomOutLens from '../../assets/shell/rail/zoom-out/ellipse-2.svg';
 import railZoomOutMark from '../../assets/shell/rail/zoom-out/roundrect.svg';
 import railHideEye from '../../assets/shell/rail/hide-ui/ellipse-2.svg';
 import layersStack from '../../assets/shell/rail/layers/polygon.svg';
+import { pressable } from '../design/styles';
 
 /** A drawing: how big it is in design px, and what it is called. */
 export interface FrameArt {
@@ -440,12 +441,24 @@ export function railCell(i: number, count: number, files: number): RailCell {
   return { column: files - orphans + 1 + (i - full), row: full / files + 1 };
 }
 
+/** Wider folds give the three view actions their own row, keeping zoom and yaw pairs together. */
+export function viewKitCell(i: number, count: number, files: number): RailCell {
+  if (files < 3) return railCell(i, count, files);
+  if (i < 3) return railCell(i, 3, files);
+  const pairFiles = files === 3 ? 2 : files;
+  const cell = railCell(i - 3, count - 3, pairFiles);
+  return { column: cell.column + files - pairFiles, row: cell.row + 1 };
+}
+
 /** Fold order for fitting the view kit, history pair, and optional layer panel into one lane. */
 export const RAIL_FOLDS: readonly { kit: number; history: number }[] = [
   { kit: 1, history: 1 },
   { kit: 2, history: 1 },
   { kit: 2, history: 2 },
+  { kit: 3, history: 2 },
+  { kit: 4, history: 2 },
 ];
+const MOST_FOLDED = RAIL_FOLDS[RAIL_FOLDS.length - 1]!;
 
 /**
  * The three sizes the layer control comes in, smallest first, and the ladder the arrows walk.
@@ -475,8 +488,7 @@ export interface RailPlan {
   kitTop: number;
   /** The history pair's top. */
   historyTop: number;
-  /** Whether the open plate is standing in the column's own lane, which is also the one reason the
-   *  pair is anywhere but its resting place. */
+  /** Whether the panel fits above history in the right lane. */
   plateInLane: boolean;
   /** The open plate's right edge, css px from the window's right edge. */
   plateRight: number;
@@ -484,63 +496,105 @@ export interface RailPlan {
   plateMaxH: number;
 }
 
-/**
- * Place the right rail within the CSS-pixel run between `RAIL_TOP` and `RAIL_FLOOR`. The first fold
- * that fits the window is the baseline. An open layer panel may request later folds; if none leaves
- * enough lane, the panel moves one file toward the map. History moves only as far as the panel needs.
- */
-export function planRail(vh: number, opts: { open: boolean; plateDepth: number }): RailPlan {
-  const layerBottom = RAIL_TOP + RAIL.layer.h;
-  /** What the two folding groups have to fit in: the run under the layer control, less the two
-   *  separations that keep the three reading as three. */
-  const run = vh - RAIL_FLOOR - layerBottom - 2 * RAIL.groupMin;
-  const fitsRun = (f: { kit: number; history: number }) =>
-    foldedHeight(KIT_BUTTONS, f.kit) + foldedHeight(HISTORY_BUTTONS, f.history) <= run;
-
-  /** Where the two groups stand under one rung of the ladder. `yielded` is the lowest the pair may
-   *  go, which is also the bottom of the room an open plate could take. */
-  const under = (f: { kit: number; history: number }) => {
-    const historyH = foldedHeight(HISTORY_BUTTONS, f.history);
-    /** The lowest the kit may hang and still leave the pair its own place above it. */
-    const kitFloor = layerBottom + 2 * RAIL.groupMin + historyH;
-    const kitTop = Math.max(vh - RAIL_FLOOR - foldedHeight(KIT_BUTTONS, f.kit), kitFloor);
-    return { historyH, kitTop, yielded: kitTop - RAIL.groupMin - historyH };
-  };
-  /** Whether the plate clears the pair by a group's separation with the pair as low as it goes.
-   *  Asked of the plate's own depth, so a taller stack asks for more room rather than quietly
-   *  standing over the pair. */
-  const holdsPlate = (f: { kit: number; history: number }) =>
-    RAIL_TOP + opts.plateDepth + RAIL.groupMin <= under(f).yielded;
-
-  const required = RAIL_FOLDS.find(fitsRun) ?? RAIL_FOLDS[RAIL_FOLDS.length - 1]!;
-  // A rung further down the ladder only for the plate, and only one that actually seats it: every
-  // rung after `required` is shallower, so this is the least folding that answers the demand.
+/** Fold and lower the controls before yielding the right lane to a scrollable layer panel. */
+export function planRail(vh: number, opts: { open: boolean; plateDepth: number; plateMinDepth?: number; top?: number }): RailPlan {
+  const top = opts.top ?? RAIL_TOP;
+  const layerBottom = top + RAIL.layer.h;
+  const groupHeight = (fold: typeof RAIL_FOLDS[number]) =>
+    foldedHeight(KIT_BUTTONS, fold.kit) + foldedHeight(HISTORY_BUTTONS, fold.history);
+  const fits = (fold: typeof RAIL_FOLDS[number], depth: number, floor: number) =>
+    top + depth + 2 * RAIL.groupMin + groupHeight(fold) + floor <= vh;
+  const restingFold = RAIL_FOLDS.find(fold => fits(fold, RAIL.layer.h, RAIL_FLOOR))
+    ?? RAIL_FOLDS.find(fold => fits(fold, RAIL.layer.h, EDGE)) ?? MOST_FOLDED;
   const fold = opts.open
-    ? RAIL_FOLDS.slice(RAIL_FOLDS.indexOf(required)).find(holdsPlate) ?? required
-    : required;
-
-  const kitFiles = fold.kit;
-  const { historyH, kitTop, yielded } = under(fold);
-  const resting = (layerBottom + kitTop) / 2 - historyH / 2;
-  const plateInLane = opts.open && holdsPlate(fold);
-  /** The lowest edge of the plate, plus the separation that keeps the two reading as two groups.
-   *  The pair steps down TO THIS and no further: `yielded` is the bottom of the room it could give,
-   *  which is what the plate is measured against, but it is not what the plate needs. Handing over
-   *  the whole of it put the pair against the kit at every window that seats the plate — including
-   *  a tall one with 150 px of slack still in the lane, where the two groups then read as one. */
-  const cleared = RAIL_TOP + opts.plateDepth + RAIL.groupMin;
-
+    ? RAIL_FOLDS.find(fold => fits(fold, opts.plateDepth, EDGE)) ?? MOST_FOLDED
+    : restingFold;
+  const gap = Math.max(RAIL.gap, Math.min(RAIL.groupMin,
+    (vh - EDGE - layerBottom - groupHeight(fold)) / 2));
+  const floor = Math.max(EDGE, Math.min(RAIL_FLOOR,
+    vh - top - (opts.open ? opts.plateDepth : RAIL.layer.h) - 2 * gap - groupHeight(fold)));
+  const kitTop = vh - floor - foldedHeight(KIT_BUTTONS, fold.kit);
+  const historyH = foldedHeight(HISTORY_BUTTONS, fold.history);
+  const yielded = kitTop - gap - historyH;
+  const room = yielded - gap - top;
+  const plateInLane = opts.open && room >= (opts.plateMinDepth ?? opts.plateDepth);
+  const resting = (layerBottom + kitTop - historyH) / 2;
+  const historyTop = opts.open
+    ? plateInLane ? Math.max(resting, top + Math.min(opts.plateDepth, room) + gap) : yielded
+    : resting;
   return {
-    kitFiles,
+    kitFiles: fold.kit,
     historyFiles: fold.history,
-    kitTop,
-    historyTop: plateInLane ? Math.max(resting, cleared) : resting,
-    plateInLane,
-    plateRight: plateInLane ? EDGE_RIGHT : EDGE_RIGHT + railStack(kitFiles) + RAIL.groupMin,
-    // In the lane, all the room the pair can yield; beside it, the run down to the column's own
-    // floor. Where the pair actually stands is `historyTop`, which is this or less.
-    plateMaxH: plateInLane ? yielded - RAIL.groupMin - RAIL_TOP : vh - RAIL_TOP - RAIL_FLOOR,
+    kitTop, historyTop, plateInLane,
+    plateRight: plateInLane ? EDGE_RIGHT : EDGE_RIGHT + railStack(fold.kit) + gap,
+    plateMaxH: plateInLane ? room : vh - top - EDGE,
   };
+}
+
+export interface FrameLayout {
+  width: number;
+  height: number;
+  edgeRight: number;
+  cornerTop: number;
+  railTop: number;
+  plateTop: number;
+  plateMaxWidth: number;
+  compact: boolean;
+  rail: RailPlan;
+}
+
+/** All dimensions are local to the zoomed, dock-inset frame. */
+export function planFrame(
+  width: number, height: number,
+  opts: { open: boolean; plateDepth: number; plateMinDepth?: number; plateMinWidth?: number },
+): FrameLayout {
+  const edgeRight = opts.plateMinWidth === undefined ? EDGE_RIGHT : Math.max(EDGE, Math.min(EDGE_RIGHT,
+    width - ASSISTANT_INK.right - 2 * RAIL.groupMin - railStack(MOST_FOLDED.kit) - opts.plateMinWidth));
+  const cornerWidth = TOP_RIGHT.reduce((sum, art) => sum + topRightHeight(art) * art.w / art.h, 0)
+    + (TOP_RIGHT.length - 1) * TOP_RIGHT_GAP;
+  const modeRight = blockCentre(MODES.length - 1) + MODE_PLATE_W * MODE_SCALE / 2;
+  const modeBottom = MODE_ROW_BASE + MODE.label.gap + LABEL_BOX_DEPTH * MODE.label.size + MODE.rowClearance;
+  const cornerTop = width - edgeRight - cornerWidth >= modeRight + RAIL.groupMin
+    ? TOP_RIGHT_TOP : modeBottom;
+  const railTop = Math.max(RAIL_TOP, cornerTop + TOP_RIGHT_H + RAIL.gap);
+  let rail = planRail(height, { ...opts, top: railTop });
+  const compact = rail.kitFiles > 2
+    || rail.kitTop + foldedHeight(KIT_BUTTONS, rail.kitFiles) > height - RAIL_FLOOR + 0.5;
+  const plateTop = rail.plateInLane ? railTop
+    : Math.max(RAIL_TOP, modeBottom);
+  if (!rail.plateInLane && plateTop < cornerTop + TOP_RIGHT_H + RAIL.gap) {
+    rail = { ...rail, plateRight: Math.max(rail.plateRight, EDGE_RIGHT + cornerWidth + RAIL.gap) };
+  }
+  rail = { ...rail, plateRight: rail.plateRight + edgeRight - EDGE_RIGHT };
+  // Keep the panel beside the assistant when their vertical spans meet, preserving the room above.
+  const plateLeft = plateTop < ASSISTANT_INK.top + ASSISTANT_INK.h + RAIL.gap
+    ? ASSISTANT_INK.right + RAIL.groupMin : EDGE_LEFT;
+  const plateMaxWidth = width - rail.plateRight - plateLeft;
+  rail = { ...rail, plateMaxH: rail.plateMaxH - (plateTop - railTop) };
+  return { width, height, edgeRight, cornerTop, railTop, plateTop, plateMaxWidth, compact, rail };
+}
+
+/** Reserve only the rail cells that intersect this vertical band, in frame-local pixels. */
+export function railClearanceFor(layout: FrameLayout, bottom: number, height: number): number {
+  const top = layout.height - bottom - height;
+  const end = layout.height - bottom;
+  let clearance = 0;
+  const include = (cell: RailCell, groupTop: number, files: number) => {
+    const y = groupTop + (cell.row - 1) * (RAIL.button + RAIL.gap);
+    const overhang = RAIL.button * (pressable.whileHover.scale - 1) / 2;
+    if (y < end + overhang && y + RAIL.button > top - overhang) {
+      clearance = Math.max(clearance,
+        railStack(files - cell.column + 1) + RAIL.groupMin);
+    }
+  };
+  for (let i = 0; i < KIT_BUTTONS; i++) {
+    include(viewKitCell(i, KIT_BUTTONS, layout.rail.kitFiles), layout.rail.kitTop, layout.rail.kitFiles);
+  }
+  for (let i = 0; i < HISTORY_BUTTONS; i++) {
+    include(railCell(i, HISTORY_BUTTONS, layout.rail.historyFiles), layout.rail.historyTop,
+      layout.rail.historyFiles);
+  }
+  return clearance;
 }
 
 /**

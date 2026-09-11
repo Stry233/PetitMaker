@@ -1,16 +1,6 @@
-/**
- * The bars are SOLID to the pointer wherever they are visible: the dark plate band the shelves
- * stand on, and every row that answers the wheel, all carry `pointerEvents: 'auto'`.
- *
- * The bars' roots are full-width fixed strips with `pointerEvents: 'none'` so the map stays
- * reachable around them, and each control opts back in — which leaves any DECORATIVE surface that
- * does not passing input through to the canvas underneath: a wheel between two road tiles zooms the
- * map, and a drag across the shelf plate pans the map below the dock. The plates and
- * the wheel rows are the opt-in sites, and this pins them: jsdom does no hit-testing, so the pin
- * is the property that decides one.
- */
+/** Solid shelf plates receive input; floating controls leave their surrounding canvas reachable. */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { RoadStyles } from '../../../ui/shell/bars/RoadStyles';
@@ -38,11 +28,12 @@ function plates(): HTMLElement[] {
   return screen.getAllByTestId('bar-plate');
 }
 
-describe('the pointer cannot reach the map through a bar', () => {
-  it('the road row is solid, gaps between tiles included', () => {
+describe('bar pointer surfaces', () => {
+  it('road swatches receive input while their shadow padding and gaps remain transparent', () => {
     render(<Providers><RoadStyles /></Providers>);
     const row = screen.getByRole('group', { name: 'Road Surface' });
-    expect(row.style.pointerEvents).toBe('auto');
+    expect(row.style.pointerEvents).toBe('none');
+    for (const button of within(row).getAllByRole('button')) expect(button.style.pointerEvents).toBe('auto');
   });
 
   it('the object shelf: the plate band and the row of names are solid', () => {

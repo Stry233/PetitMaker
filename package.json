@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.9.334",
+  "version": "0.10.36",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -23,6 +23,8 @@
     "test:run": "vitest run",
     "perf": "PETIT_PERF=1 vitest run --no-file-parallelism src/__tests__/perf",
     "lint": "tsc --noEmit",
+    "docs:generate": "vite-node scripts/generate-reference.mts",
+    "docs:check": "vite-node scripts/generate-reference.mts --check",
     "legal:licenses": "vite-node scripts/license-audit.mts",
     "legal:licenses:check": "vite-node scripts/license-audit.mts --check",
     "legal:headers": "vite-node scripts/generate-headers.mts",

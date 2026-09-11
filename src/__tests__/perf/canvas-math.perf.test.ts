@@ -104,7 +104,7 @@ describe.runIf(PERF)('perf: canvas-math', () => {
       const cx = (i * 37) % Math.max(1, width - 8), cy = (i * 41) % Math.max(1, height - 8);
       const cells: MacroCoord[] = [];
       for (let dy = 0; dy < 8; dy++) for (let dx = 0; dx < 8; dx++) cells.push({ x: cx + dx, y: cy + dy });
-      return { kind: 'zone', id: `z${i}`, cells, color: '#9BC53D', name: `Zone ${i}`, num: i + 1 };
+      return { kind: 'zone', id: `z${i}`, cells, color: '#9BC53D', tag: 'forest', num: i + 1 };
     });
     await s.bench('annotations/route-sample', () => {
       for (const r of routes) routeSamples(r.points, 8);

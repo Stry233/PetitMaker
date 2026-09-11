@@ -7,7 +7,7 @@ import { ToolType, CommandType } from '../../core/model/types';
 import type { MacroCoord, GridState, PlacedObject } from '../../core/model/types';
 import type { BlockRef } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
-import { getCell, getFootprint } from '../../core/model/grid-model';
+import { getCell, getFootprint, microToTerrain } from '../../core/model/grid-model';
 import {
   groupMembers, moveGroup, planObjectMove, previewGroupMove, stripCoatingsFor,
   GHOST_INVALID, GHOST_VALID,
@@ -284,7 +284,7 @@ export function usePointerInteraction(
     let bandStartY = 0;
     // The macro cell the idle-hover probe last ran the cursor rules against: a pointer-move that
     // stays on the same cell does not re-run them.
-    let hoverCell: MacroCoord | null = null;
+    let hoverCell: (MacroCoord & { toolX: number; toolY: number }) | null = null;
     /** The `hoverInputs` signature the current hover answer was computed from. */
     let hoverInputsKey: HoverInputs | null = null;
     /** Bumped on every map mutation — see `hoverInputs`. */
@@ -319,7 +319,7 @@ export function usePointerInteraction(
     const cancelTouchStroke = (x: number, y: number) => {
       if (!toolDown) return;
       toolDown = false;
-      tools()?.handlePointerUp(x, y);
+      tools()?.handlePointerCancel(x, y);
       const executor = useEditorStore.getState().commandExecutor;
       if (executor && touchUndoStart >= 0) {
         while (executor.getUndoStackSize() > touchUndoStart) executor.undo();
@@ -461,6 +461,8 @@ export function usePointerInteraction(
       const hit = objectUnderPointer(gs, macro, activeView.projection.pickObject?.(x, y) ?? undefined);
       const tool = tools()?.getActiveTool();
       const ctx = tools()?.getContext();
+      const micro = ctx && tool?.terrainGrid?.(ctx) ? activeView.projection.screenToMicro(x, y) : null;
+      const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
       return {
         button,
         tool: store.activeTool,
@@ -471,22 +473,19 @@ export function usePointerInteraction(
         multiSelectHeld: isMultiSelectHeld(),
         macro,
         hit: hit ? { id: hit.id, draggable: isDraggableObject(hit), locked: !!hit.locked } : null,
-        placementAllowed: !tool?.canActAt || !ctx || tool.canActAt(macro, ctx),
+        placementAllowed: !tool?.canActAt || !ctx || tool.canActAt(toolCoord, ctx),
         toolGrabs: !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false)),
         toolSelects: !!(ctx && (tool?.selects?.(ctx) ?? false)),
         toolSelectHit: (ctx && tool?.selectHit) ? tool.selectHit(macro, ctx) : null,
         pendingGesture: (ctx ? tool?.hasPending?.(ctx) : false) ?? false,
         viewPansLeftDrag: activeView.leftDragPans !== false,
+        // The chip drops on a click and the curve figure lays anchors on clicks; the zone brush,
+        // the eraser and the route all draw with the drag. The select state: a press that grabs a
+        // note drags IT; empty ground presses only clear the selection, so their drag is the
+        // camera's — the empty-handed pan every other mode already answers with.
         clickOnlyStroke: store.activeTool === ToolType.Annotate
-          && (store.annotationTool === 'text' || store.annotationTool === 'route' || store.annotationTool === 'erase'
+          && (store.annotationTool === 'chip'
             || (store.annotationTool === 'zone' && store.annotationZoneShape === 'curve')
-            // While a note stands selected, a drawing tool's press only DISMISSES (the tool's own
-            // dismiss-first rule), so the drag under it is the camera's — the map stays movable
-            // while the verb row is up.
-            || (store.annotationTool !== 'none' && store.annotationSelection.length > 0)
-            // The select state: a press that grabs a note drags IT; empty ground presses only
-            // clear the selection, so their drag is the camera's — the empty-handed pan every
-            // other mode already answers with.
             || (store.annotationTool === 'none' && !(ctx && (tool?.grabAt?.(macro, ctx) ?? false)))),
 
       };
@@ -869,8 +868,13 @@ export function usePointerInteraction(
       // The rule pipeline runs when one of its INPUTS changes, not per pointer-move: the hovered
       // cell, the multi-select key, and everything `hoverInputs` names.
       const inputs = hoverInputs(store, mapEpoch, toolEpoch, isMultiSelectHeld());
-      if (!hoverCell || hoverCell.x !== macro.x || hoverCell.y !== macro.y || !sameHoverInputs(hoverInputsKey, inputs)) {
-        hoverCell = macro;
+      const tool = tools()?.getActiveTool();
+      const ctx = tools()?.getContext();
+      const micro = ctx && tool?.terrainGrid?.(ctx) ? hoverView.projection.screenToMicro(e.clientX, e.clientY) : null;
+      const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
+      if (!hoverCell || hoverCell.x !== macro.x || hoverCell.y !== macro.y
+        || hoverCell.toolX !== toolCoord.x || hoverCell.toolY !== toolCoord.y || !sameHoverInputs(hoverInputsKey, inputs)) {
+        hoverCell = { ...macro, toolX: toolCoord.x, toolY: toolCoord.y };
         hoverInputsKey = inputs;
         const f = buildPressFacts(PRIMARY_BUTTON, e.clientX, e.clientY);
         if (f) {
@@ -1059,6 +1063,9 @@ export function usePointerInteraction(
         cancelTouchStroke(e.clientX, e.clientY);
         if (touchPinch.up(e.pointerId) === 0) touchNavigating = false;
         touchUndoStart = -1;
+      } else if (toolDown) {
+        toolDown = false;
+        tools()?.handlePointerCancel(e.clientX, e.clientY);
       }
       gestures.cancel();
       dragging = false;

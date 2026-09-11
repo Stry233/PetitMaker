@@ -441,9 +441,9 @@ export class CommandExecutor {
   getUndoStackSize(): number { return this.undoStack.length; }
   getRegistry(): RuleDispatcher { return this.registry; }
 
-  /** Read-only view of the undo stack (oldest-first) for the JSON exporter. */
-  getUndoEntries(): HistoryEntry[] {
-    return [...this.undoStack];
+  /** Undo entries oldest-first, optionally limited to the stroke above a watermark. */
+  getUndoEntries(watermark = 0): HistoryEntry[] {
+    return this.undoStack.slice(watermark);
   }
 
   /**

@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { animConfig, easeOutBack } from '../../../core/runtime/anim-config';
 import { isMotionReduced } from '../motion-state';
@@ -705,7 +706,7 @@ export class OverlayLayer {
     }
     if (elevation !== undefined) {
       const label = new PIXI.Text(String(elevation), {
-        fontSize: 16, fontWeight: 'bold', fontFamily: 'monospace',
+        fontSize: 16, fontWeight: 'bold', fontFamily: APP_FONT_FAMILY,
         fill: 0xffffff, stroke: 0x000000, strokeThickness: 3,
       });
       label.x = x * TILE_SIZE + 3 - offset;

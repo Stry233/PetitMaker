@@ -140,9 +140,8 @@ function OptionRow({
       )}
       <span
         style={{
-          ...roleFont('label'),
+          ...roleFont('menu'),
           fontFamily: font.family,
-          fontWeight: 800,
           color: INK,
           flex: 1,
           minWidth: 0,
@@ -166,7 +165,6 @@ function OptionRow({
             padding: '3px 9px',
             ...roleFont('small'),
             fontFamily: font.family,
-            fontWeight: 800,
             color: INK,
           }}
         >
@@ -200,9 +198,8 @@ export function OptionPick({
       <div
         data-testid="option-question"
         style={{
-          ...roleFont('label'),
+          ...roleFont('menu'),
           fontFamily: font.family,
-          fontWeight: 800,
           color: INK,
           lineHeight: 1.45,
           minWidth: 0,

@@ -15,7 +15,7 @@ import {
   skin, windowCard, windowInset, windowMenu, windowMenuItem, windowMenuItemHover, windowPill,
   windowTitle, type WindowSurface,
 } from '../../../design/window-skin';
-import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
+import { roleFont, TEXT_ROLES } from '../../../design/text-weight';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { useScrollFadeBoth } from '../../../primitives/scroll-fade';
 import { useWheelToHorizontal } from '../../../primitives/wheel-horizontal';
@@ -154,7 +154,7 @@ function pill(variant: 'quiet' | 'primary' | 'danger', disabled = false, on: Win
 // Layer chips = a filled segmented control: active is the dark ink pill, inactive the quiet fill.
 function chip(active: boolean): CSSProperties {
   return {
-    ...pill('quiet'), fontWeight: roleWeight(active ? 'menu' : 'label'), padding: '7px 16px',
+    ...pill('quiet'), padding: '7px 16px',
     ...(active ? { background: skin.ink, color: skin.plate } : {}),
   };
 }
@@ -520,7 +520,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
 
         <div ref={presetRef} style={{ position: 'relative' }}>
           <motion.button {...buttonMotion} onClick={() => setPresetOpen((o) => !o)} style={{ ...pill('quiet'), display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ color: skin.muted, fontWeight: roleWeight('label') }}>{t('kbd.preset')}</span>
+            <span style={{ color: skin.muted }}>{t('kbd.preset')}</span>
             {activePreset === 'custom' ? t('kbd.preset.custom') : t(PRESETS.find((p) => p.id === activePreset)!.labelKey)}
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden style={{ transition: 'transform 0.18s ease', transform: presetOpen ? 'rotate(180deg)' : 'none' }}>
               <path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke={skin.ink} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

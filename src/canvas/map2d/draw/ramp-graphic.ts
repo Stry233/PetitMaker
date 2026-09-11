@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import type { CatalogItem, PlacedObject } from '../../../core/model/types';
 export { isRampItem } from '../object-sprite-url';
@@ -107,7 +108,7 @@ export function drawRamp(
   const arrow = RAMP_ARROWS[obj.rotation] ?? '↑';
   const arrowLabel = new PIXI.Text(arrow, {
     fontSize: Math.min(size.w, size.h) * TILE_SIZE * 0.34,
-    fontFamily: 'monospace',
+    fontFamily: APP_FONT_FAMILY,
     fill: 0xffffff,
     stroke: 0x000000,
     strokeThickness: 3,
@@ -119,7 +120,7 @@ export function drawRamp(
   wrapper.addChild(arrowLabel);
 
   const numStyle = {
-    fontSize: 14, fontWeight: 'bold' as const, fontFamily: 'monospace',
+    fontSize: 14, fontWeight: 'bold' as const, fontFamily: APP_FONT_FAMILY,
     fill: 0xffffff, stroke: 0x000000, strokeThickness: 3,
   };
   const highNum = new PIXI.Text(String(highElev), numStyle);

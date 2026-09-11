@@ -1,29 +1,13 @@
-/*
- * scale.tsx — the design canvas, and how it is mapped onto a window.
- *
- * TWO factors leave this file and they are not the same number, but they are the same number times a
- * CONSTANT, which is the rule this file exists to hold. `useScale`/`usePx` convert design px to css
- * px at whatever the surrounding `ScaleProvider` holds, and every live provider holds a FIXED value:
- * `shell/units.ts:SCALE` for the frame, `SHELF_SCALE` inside the two shelves. That is what makes a
- * button one size at every window size, with the extra room going to the map. `useChromeScale` is
- * the window-derived one — `frameFit` times the user's UI zoom — and it is what the modals, the
- * toasts, the hint panel and the corner controls ride, applied as css `zoom`. The frame draws at
- * `ZOOM × frameFit`, so the two stand in one ratio whatever shape the window is.
- *
- * THEY DRIFT APART ON THE WINDOW'S SHAPE ALONE if either is derived some other way. Mapping the
- * chrome onto viewport HEIGHT is the case to know: a maximized, non-fullscreen Chrome on a 1080p
- * screen leaves an 869 css px viewport, where the frame stands at full size and a height-mapped
- * chrome at 0.80 — Settings and the export sheet at ~9 px beside 35 px shelf names. Anything added
- * here that keys on the viewport must key on `frameFit` too.
- *
- * So a surface authored on the design canvas does not thereby track the window: which of the two it
- * tracks is decided by whether it reads `usePx` or `useChromeScale`.
+/**
+ * Fixed providers convert design coordinates to CSS pixels. `fittedUiScale` supplies the shared live
+ * CSS zoom for chrome and frame; the frame adds its constant authored ratio. The minimum workspace
+ * applies to the rendered size without rewriting the user's preferred scale.
  */
 import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
 import { useEditorStore } from '../../state/store';
 import { useUiPreviewPose } from '../primitives/ui-preview';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
-import { isDenseScript, readableWeight, textDevicePx, weightVars } from './text-weight';
+import { isDenseScript, readableWeight, weightVars } from './text-weight';
 
 /** The design canvas, in design pixels: the surface every coordinate here is measured against. */
 export const CANVAS = { w: 3754, h: 1918 } as const;
@@ -62,6 +46,18 @@ export function frameFit(vw: number, vh: number, refWiden = 0): number {
   return Math.max(FIT_FLOOR, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
 }
 
+/** Minimum workspace in chrome pixels, after the shell folds its controls and scrolls its rows. */
+export const MIN_UI_ROOM = { w: 700, h: 525 } as const;
+
+/** Fit the requested size without changing the saved preference, including the dock's own width. */
+export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0): number {
+  return Math.min(
+    frameFit(vw, vh, refWiden * uiZoom) * uiZoom,
+    vw / (MIN_UI_ROOM.w + refWiden),
+    vh / MIN_UI_ROOM.h,
+  );
+}
+
 /**
  * How much the reference window is widened by right now, in reference px: the strip some surface
  * has taken out of the viewport, or 0 while none has.
@@ -98,13 +94,12 @@ export function useViewportSize(): { w: number; h: number } {
   return posed ?? { w, h };
 }
 
-/** `frameFit` of the live window, re-read on resize, with whatever strip is docked taken off it.
- *  The widening rides the ANIMATED UI zoom because the strip is drawn at that zoom too, so the fit
- *  and the strip move together through a Ctrl +/- glide instead of fighting for one frame each. */
+/** The shared live fit, normalized so callers can multiply by the animated UI preference. */
 export function useViewportFit(): number {
   const { w, h } = useViewportSize();
-  const widen = useDockRef() * useAnimatedUiZoom();
-  return frameFit(w, h, widen);
+  const widen = useDockRef();
+  const zoom = useAnimatedUiZoom();
+  return fittedUiScale(w, h, zoom, widen) / zoom;
 }
 
 /**
@@ -152,11 +147,11 @@ export function useDenseScript(): boolean {
  * window, a floating popover. Reach for it where a site's size is its own rather than a role's;
  * anything on the role table inherits its answer from `useWeightVars` instead.
  */
-export function useReadableWeight(): (nominal: number, cssPx: number) => number {
+export function useReadableWeight(denseOverride?: boolean): (nominal: number, cssPx: number) => number {
   const zoom = useChromeScale();
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
-  return (nominal, cssPx) => readableWeight(nominal, textDevicePx(cssPx, zoom, dpr), dense);
+  return (nominal, cssPx) => readableWeight(nominal, cssPx * zoom, denseOverride ?? dense, dpr);
 }
 
 /** Every role's weight resolved for the CHROME zoom, as the custom properties a surface publishes.
@@ -171,17 +166,6 @@ export const ScaleProvider = ScaleContext.Provider;
 
 export function useScale(): number {
   return useContext(ScaleContext);
-}
-
-/** Effective-resolution-aware font weight: the bundled Heavy faces (800/900)
- *  fuse dense CJK strokes when glyphs rasterize small (1080p at DPR 1: design
- *  40px → ~22 physical px). Below the threshold, heavy weights drop to 600
- *  (user-validated); lighter weights and high-res displays are untouched.
- *
- *  Keyed on the design SCALE rather than on the size the text ends up at, which is what
- *  `text-weight.ts` answers instead and what every surface outside the agent panel reads. */
-export function effectiveWeight(w: number, scale: number, dpr: number): number {
-  return w >= 800 && scale * Math.min(dpr, 2) < 0.7 ? 600 : w;
 }
 
 /** px helpers bound to the current scale. */
@@ -204,7 +188,5 @@ export function usePx() {
     scale,
     px,
     pxf: (n: number) => +(n * scale).toFixed(2),
-    /** Scale-aware font weight: caps 800/900 to 600 at low effective resolution. */
-    fw: (w: number) => effectiveWeight(w, scale, dpr),
   };
 }

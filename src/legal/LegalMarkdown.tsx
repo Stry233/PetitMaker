@@ -15,11 +15,13 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 're
 import { Fragment, useRef } from 'react';
 import { headingSlug, inlineText, type Inline, type MdNode } from './markdown';
 import { colors, font } from '../ui/design/styles';
+import { useReadableWeight } from '../ui/design/scale';
+import { roleFont, roleWeight } from '../ui/design/text-weight';
 import { useScrollFade } from '../ui/primitives/scroll-fade';
 
 const PROSE = {
   body: {
-    fontSize: 14,
+    ...roleFont('body'),
     lineHeight: 1.75,
     color: colors.textPrimary,
     fontFamily: font.family,
@@ -64,6 +66,7 @@ const PROSE = {
   code: {
     fontFamily: 'monospace',
     fontSize: '0.92em',
+    fontWeight: 400,
     background: colors.surfaceSecondary,
     padding: '1px 4px',
     borderRadius: 4,
@@ -91,6 +94,7 @@ const PROSE = {
     margin: '0 0 12px',
   } satisfies CSSProperties,
   table: {
+    ...roleFont('body'),
     borderCollapse: 'collapse',
     width: '100%',
   } satisfies CSSProperties,
@@ -98,7 +102,7 @@ const PROSE = {
     textAlign: 'left',
     padding: '6px 10px',
     borderBottom: `2px solid ${colors.textSecondary}`,
-    fontWeight: 700,
+    fontWeight: roleWeight('label'),
     color: colors.textPrimary,
     fontFamily: font.family,
   } satisfies CSSProperties,
@@ -133,12 +137,12 @@ function TableWrap({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
-function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLinkHandler): ReactNode {
+function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLinkHandler, strongWeight: CSSProperties['fontWeight']): ReactNode {
   switch (node.t) {
     case 'text':
       return node.text;
     case 'strong':
-      return <strong key={key}>{node.text}</strong>;
+      return <strong key={key} style={{ fontWeight: strongWeight }}>{node.text}</strong>;
     case 'em':
       return <em key={key}>{node.text}</em>;
     case 'code':
@@ -178,20 +182,20 @@ function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLink
   }
 }
 
-function renderInline(children: Inline[], onInternalLink: InternalLinkHandler): ReactNode {
+function renderInline(children: Inline[], onInternalLink: InternalLinkHandler, strongWeight: CSSProperties['fontWeight'] = roleWeight('label')): ReactNode {
   return children.map((node, i) => (
-    <Fragment key={i}>{renderInlineOne(node, i, onInternalLink)}</Fragment>
+    <Fragment key={i}>{renderInlineOne(node, i, onInternalLink, strongWeight)}</Fragment>
   ));
 }
 
-function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHandler): ReactNode {
+function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHandler, weightAt: (nominal: number, size: number) => number): ReactNode {
   switch (node.t) {
     case 'h': {
       const Tag = `h${node.level}` as 'h1' | 'h2' | 'h3' | 'h4';
       const id = headingSlug(inlineText(node.children));
       return (
-        <Tag key={key} id={id} style={PROSE[Tag]}>
-          {renderInline(node.children, onInternalLink)}
+        <Tag key={key} id={id} style={{ ...PROSE[Tag], fontWeight: weightAt(PROSE[Tag].fontWeight, PROSE[Tag].fontSize) }}>
+          {renderInline(node.children, onInternalLink, 'inherit')}
         </Tag>
       );
     }
@@ -266,9 +270,12 @@ function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHand
 export function LegalMarkdown({
   nodes,
   onInternalLink,
+  dense,
 }: {
   nodes: MdNode[];
   onInternalLink?: (slugPath: string) => void;
+  dense?: boolean;
 }) {
-  return <>{nodes.map((node, i) => renderBlock(node, i, onInternalLink))}</>;
+  const weightAt = useReadableWeight(dense);
+  return <>{nodes.map((node, i) => renderBlock(node, i, onInternalLink, weightAt))}</>;
 }

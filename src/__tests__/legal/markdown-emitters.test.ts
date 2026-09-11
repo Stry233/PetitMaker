@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { renderHtml } from '../../legal/markdown-html';
 import { LegalMarkdown } from '../../legal/LegalMarkdown';
@@ -143,7 +144,7 @@ describe('structural parity — renderHtml vs <LegalMarkdown/>', () => {
     const html = renderHtml(nodes);
     const htmlStruct = extractStructure(parseHtmlFragment(html));
 
-    const { container } = render(LegalMarkdown({ nodes }));
+    const { container } = render(createElement(LegalMarkdown, { nodes }));
     const reactStruct = extractStructure(container);
 
     expect(reactStruct).toEqual(htmlStruct);
@@ -165,7 +166,7 @@ describe('structural parity — renderHtml vs <LegalMarkdown/>', () => {
 describe('<LegalMarkdown/> — React-side link and table attributes', () => {
   it('renders external link with target="_blank" and rel="noopener noreferrer"', () => {
     const nodes = parseLegalMarkdown('[x](https://a.b/path)');
-    const { container } = render(LegalMarkdown({ nodes }));
+    const { container } = render(createElement(LegalMarkdown, { nodes }));
     const a = container.querySelector('a[href="https://a.b/path"]');
     expect(a?.getAttribute('target')).toBe('_blank');
     expect(a?.getAttribute('rel')).toBe('noopener noreferrer');
@@ -173,7 +174,7 @@ describe('<LegalMarkdown/> — React-side link and table attributes', () => {
 
   it('renders internal link with no target and no rel attribute', () => {
     const nodes = parseLegalMarkdown('[y](/privacy)');
-    const { container } = render(LegalMarkdown({ nodes }));
+    const { container } = render(createElement(LegalMarkdown, { nodes }));
     const a = container.querySelector('a[href="/privacy"]');
     expect(a?.getAttribute('target')).toBeNull();
     expect(a?.getAttribute('rel')).toBeNull();
@@ -181,7 +182,7 @@ describe('<LegalMarkdown/> — React-side link and table attributes', () => {
 
   it('renders table header cells with scope="col"', () => {
     const nodes = parseLegalMarkdown('| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |');
-    const { container } = render(LegalMarkdown({ nodes }));
+    const { container } = render(createElement(LegalMarkdown, { nodes }));
     const th = container.querySelector('th');
     expect(th?.getAttribute('scope')).toBe('col');
   });

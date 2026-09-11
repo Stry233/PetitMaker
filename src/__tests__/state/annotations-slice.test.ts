@@ -11,7 +11,7 @@ import { makeTemplate } from '../rules/_helpers';
 import type { ZoneNote } from '../../core/model/annotations';
 
 const zone = (id: string, num = 1): ZoneNote => ({
-  kind: 'zone', id, cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], color: '#FF8A7A', name: '', num,
+  kind: 'zone', id, cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], color: '#FF8A7A', tag: 'homes', num,
 });
 
 describe('annotation slice', () => {
@@ -25,8 +25,8 @@ describe('annotation slice', () => {
     s().addAnnotation(zone('a'));
     expect(s().gridState?.annotations?.items).toHaveLength(1);
     expect(s().annotationsEpoch).toBe(before + 1);
-    s().updateAnnotation('a', { name: '住宅区' });
-    expect(s().gridState?.annotations?.items[0]).toMatchObject({ name: '住宅区' });
+    s().updateAnnotation('a', { tag: 'farm' });
+    expect(s().gridState?.annotations?.items[0]).toMatchObject({ tag: 'farm' });
     s().removeAnnotation('a');
     expect(s().gridState?.annotations?.items).toHaveLength(0);
   });
@@ -72,6 +72,34 @@ describe('annotation slice', () => {
     expect(s().undoAnnotation()).toBe(false);
   });
 
+  it('an armed tag, color or size reaches the draft and the selection; the selection as one lane entry', () => {
+    const s = () => useEditorStore.getState();
+    s().addAnnotation(zone('a'));
+    s().addAnnotation({ ...zone('b', 2), id: 'b' });
+    s().setAnnotationDraft(zone('draft', 9));
+    s().setAnnotationSelection(['a']);
+    const lanes = s().annotationUndoLane.length;
+    s().setAnnotationTag('forest');
+    s().setAnnotationColor('#3B82F6');
+    expect(s().annotationDraft).toMatchObject({ tag: 'forest', color: '#3B82F6' });
+    const items = s().gridState!.annotations!.items as ZoneNote[];
+    expect(items.find((n) => n.id === 'a')).toMatchObject({ tag: 'forest', color: '#3B82F6' });
+    expect(items.find((n) => n.id === 'b')).toMatchObject({ tag: 'homes', color: '#FF8A7A' });
+    expect(s().annotationUndoLane.length).toBe(lanes + 2);
+  });
+
+  it('committing the draft makes it a selected note; an empty draft commits nothing', () => {
+    const s = () => useEditorStore.getState();
+    s().setAnnotationDraft({ ...zone('d', 3), cells: [] });
+    expect(s().commitAnnotationDraft()).toBe(false);
+    expect(s().gridState?.annotations?.items ?? []).toHaveLength(0);
+    s().setAnnotationDraft(zone('d', 3));
+    expect(s().commitAnnotationDraft()).toBe(true);
+    expect(s().annotationDraft).toBeNull();
+    expect(s().gridState?.annotations?.items).toHaveLength(1);
+    expect(s().annotationSelection).toEqual(['d']);
+  });
+
   it('a new map resets the session: lanes, selection and draft go, the epoch moves', () => {
     const s = () => useEditorStore.getState();
     s().addAnnotation(zone('a'));
@@ -89,7 +117,7 @@ describe('annotation slice', () => {
 
 describe('the selection set and its batch verbs', () => {
   const zoneAt = (id: string, x: number): any => ({
-    kind: 'zone', id, cells: [{ x, y: 2 }, { x: x + 1, y: 2 }], color: '#FF8A7A', name: id, num: 1,
+    kind: 'zone', id, cells: [{ x, y: 2 }, { x: x + 1, y: 2 }], color: '#FF8A7A', tag: 'homes', num: 1,
   });
 
   it('removeAnnotations takes the whole set as ONE lane entry', () => {
@@ -110,16 +138,16 @@ describe('the selection set and its batch verbs', () => {
   it('merge folds the cells into the FIRST zone and keeps its identity', () => {
     const s = () => useEditorStore.getState();
     s().initMap(makeTemplate(12, 12), createDefaultRegistry());
-    s().addAnnotation({ ...zoneAt('a', 1), name: '甲', num: 1, color: '#FF8A7A' });
-    s().addAnnotation({ ...zoneAt('b', 4), name: '乙', num: 2, color: '#3B82F6' });
+    s().addAnnotation({ ...zoneAt('a', 1), tag: 'homes', num: 1, color: '#FF8A7A' });
+    s().addAnnotation({ ...zoneAt('b', 4), tag: 'farm', num: 2, color: '#3B82F6' });
     // A shared cell dedups rather than doubling.
-    s().addAnnotation({ kind: 'zone', id: 'c', cells: [{ x: 4, y: 2 }, { x: 6, y: 2 }], color: '#9BC53D', name: '丙', num: 3 } as any);
+    s().addAnnotation({ kind: 'zone', id: 'c', cells: [{ x: 4, y: 2 }, { x: 6, y: 2 }], color: '#9BC53D', tag: 'shops', num: 3 } as any);
     s().mergeAnnotationZones(['a', 'b', 'c']);
     const items = s().gridState!.annotations!.items;
     expect(items).toHaveLength(1);
     const z = items[0] as any;
     expect(z.id).toBe('a');
-    expect(z.name).toBe('甲');
+    expect(z.tag).toBe('homes');
     expect(z.num).toBe(1);
     expect(z.color).toBe('#FF8A7A');
     expect(z.cells).toHaveLength(5);
@@ -133,7 +161,7 @@ describe('the selection set and its batch verbs', () => {
     const s = () => useEditorStore.getState();
     s().initMap(makeTemplate(12, 12), createDefaultRegistry());
     s().addAnnotation(zoneAt('a', 1));
-    s().addAnnotation({ kind: 'text', id: 't', x: 5, y: 5, text: '广场', style: 'chip', size: 'm', color: '#FFB347' } as any);
+    s().addAnnotation({ kind: 'chip', id: 't', x: 5, y: 5, tag: 'plaza', size: 'm', color: '#FFB347' } as any);
     const lanes = s().annotationUndoLane.length;
     s().mergeAnnotationZones(['a', 't']);
     expect(s().gridState!.annotations!.items).toHaveLength(2);

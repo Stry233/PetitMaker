@@ -97,6 +97,37 @@ function seedOrder(log: SessionLog, text = 'go'): void {
 }
 
 describe('runJob core flows', () => {
+  it('stops before a write when cancellation follows approval in the same turn', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log);
+    const controller = new AbortController();
+    const executor = makeExecutor({ writeNames: new Set(['paint']) });
+    const adapter = createScriptedAdapter([toolTurn([{ callId: 'c1', name: 'paint', args: {} }]), textTurn('done')]);
+    const running = runJob(log, makeDeps({ adapter, executor, oversight: 'strict', signal: controller.signal }));
+    await flush();
+    answerGate(log, pendingGate(log)!.gateId, 'allow');
+    controller.abort();
+    expect(await running).toBe('aborted');
+    expect(executor.calls).toHaveLength(0);
+    expect(eventsOf(log).some((e) => e.kind === 'checkpoint')).toBe(false);
+  });
+
+  it('honors a pause requested while the pause between writes is finishing', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log);
+    const executor = makeExecutor({ writeNames: new Set(['paint']) });
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'c1', name: 'paint', args: {} }, { callId: 'c2', name: 'paint', args: { x: 1 } }]),
+      textTurn('done'),
+    ]);
+    const deps = makeDeps({ adapter, executor, sleep: async () => { append(log, { kind: 'pauseRequested' }); } });
+    expect(await runJob(log, deps)).toBe('paused');
+    expect(executor.calls.map((c) => c.callId)).toEqual(['c1']);
+    append(log, { kind: 'resumed' });
+    expect(await runJob(log, deps)).toBe('done');
+    expect(executor.calls.map((c) => c.callId)).toEqual(['c1', 'c2']);
+  });
+
   it('a text-only turn ends the job done, appending assistant then jobEnd, with the executor untouched', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a house');
