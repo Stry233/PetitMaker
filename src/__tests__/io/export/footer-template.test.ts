@@ -48,4 +48,8 @@ describe('footer ai/proc tokens (value-only)', () => {
     expect(r.left).toBe('AI 23%');
     expect(r.right).toBe('Proc'); // empty proc value leaves just the user label, trimmed
   });
+  it('drops a token naming an Object.prototype key', () => {
+    expect(resolveFooter('{toString}', {}).left).toBe('');
+    expect(resolveFooter('{constructor}', {}).left).toBe('');
+  });
 });

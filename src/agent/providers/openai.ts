@@ -433,7 +433,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
           ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
         };
       } catch (err) {
-        yield streamFailureEvent(err, signal.aborted);
+        yield streamFailureEvent(err, signal.aborted, [opts.apiKey]);
       }
     },
 

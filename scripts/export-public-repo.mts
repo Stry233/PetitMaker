@@ -4,8 +4,8 @@
 //
 // Usage:
 //   vite-node scripts/export-public-repo.mts --out <dir>              copy the allowlist
-//   vite-node scripts/export-public-repo.mts --out <dir> --verify      + npm ci && npm run
-//                                                                       build && npm run
+//   vite-node scripts/export-public-repo.mts --out <dir> --verify      + npm ci --ignore-scripts &&
+//                                                                       npm run build && npm run
 //                                                                       test:run in <dir>
 //                                                                       (SLOW — installs a
 //                                                                       full node_modules;
@@ -101,11 +101,11 @@ function initGitSnapshot(outDir: string): void {
 }
 
 function runVerify(outDir: string): void {
-  console.log(`[export-public-repo] --verify: npm ci && npm run build && npm run test:run in ${outDir}`);
+  console.log(`[export-public-repo] --verify: npm ci --ignore-scripts && npm run build && npm run test:run in ${outDir}`);
   console.log('[export-public-repo] this is SLOW (installs a full node_modules) — manual/CI use only.');
   initGitSnapshot(outDir);
   try {
-    for (const args of [['ci'], ['run', 'build'], ['run', 'test:run']]) {
+    for (const args of [['ci', '--ignore-scripts'], ['run', 'build'], ['run', 'test:run']]) {
       const result = spawnSync('npm', args, { cwd: outDir, stdio: 'inherit' });
       if (result.status !== 0) {
         throw new Error(`[export-public-repo] verify step failed: npm ${args.join(' ')} (exit ${result.status})`);
@@ -113,7 +113,7 @@ function runVerify(outDir: string): void {
     }
   } finally {
     // Restore the output to publishable source files after verification.
-    for (const artifact of ['.git', 'node_modules', 'dist', 'tsconfig.tsbuildinfo']) {
+    for (const artifact of ['.git', 'node_modules', 'dist', 'tsconfig.tsbuildinfo', '.bundle-packages.json']) {
       rmSync(join(outDir, artifact), { recursive: true, force: true });
     }
   }

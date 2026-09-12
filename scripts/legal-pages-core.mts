@@ -19,6 +19,7 @@ import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
 import { en } from '../src/i18n/locales/en';
 import { zh } from '../src/i18n/locales/zh';
 import { brandName } from '../src/version';
+import { toDocumentCspMeta } from '../security/headers-policy';
 
 // Local ambient type avoids adding Node types to the browser compilation.
 declare const process: { cwd(): string };
@@ -208,6 +209,7 @@ export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="${toDocumentCspMeta()}" />
 <title>${esc(title)} | ${esc(brand)}</title>
 <meta name="description" content="${esc(description)}" />
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />

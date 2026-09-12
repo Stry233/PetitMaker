@@ -6,6 +6,7 @@ import { getMapTemplate } from '../../config/maps';
 import { ShareError, DEFAULT_LIMITS, type ShareLimits } from './errors';
 import { decodeGlyphAsync } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
+import { isGenerationConfig } from '../import-sections';
 import { toSaveJSON } from './canonical';
 import { validateImportedState } from './validate';
 import { decodePng } from './raster/png-raster';
@@ -22,7 +23,7 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
     const saveJson = toSaveJSON(dec.canonical, dec.annotations);
     migrateToCurrent(JSON.parse(saveJson) as RawSave);
     const state = deserialize(saveJson, getMapTemplate(dec.canonical.templateId));
-    if (dec.generation) state.generation = dec.generation;
+    if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
     // The compact frame-level provenance flags seed disclosure after import; per-cell provenance
     // is not part of the PetitGlyph payload.
     if (state.provenance) {

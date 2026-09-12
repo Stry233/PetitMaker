@@ -64,7 +64,8 @@ export function resolveFooter(tpl: string, values: Record<string, string>): { le
   let side: 'left' | 'right' = 'left';
   for (const s of parseFooter(tpl)) {
     if (s.t === 'token' && s.id === FOOTER_FILL) { side = 'right'; continue; }
-    const piece = s.t === 'text' ? s.v : (values[s.id] ?? '');
+    // Own-property only: a template token may name an Object.prototype member.
+    const piece = s.t === 'text' ? s.v : (Object.prototype.hasOwnProperty.call(values, s.id) ? values[s.id] ?? '' : '');
     if (side === 'left') left += piece; else right += piece;
   }
   return { left: left.trim(), right: right.trim() };

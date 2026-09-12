@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ProvenanceTracker } from '../../../core/provenance/tracker';
+import { LEDGER_MAX, ProvenanceTracker } from '../../../core/provenance/tracker';
 import { serializeProvenance, deserializeProvenance } from '../../../core/provenance/serialize';
 import { hasFlag, ProvSource, TaintFlag } from '../../../core/provenance/types';
 
@@ -18,6 +18,32 @@ describe('provenance serialize', () => {
     const r = deserializeProvenance(undefined, 2, 2);
     expect(r.ledger).toEqual([]);
     expect(r.cellTaint[0]![0]).toBeNull();
+  });
+});
+
+describe('the wire ledger is untrusted', () => {
+  const base = {
+    v: 1 as const, session: {
+      aiAnalysisUsed: false, aiWritesUsed: false, aiAcceptedCount: 0,
+      proceduralRuns: 0, analysisOnlyCalls: 0, humanAfterAi: false, aiAfterHuman: false,
+    },
+    cells: [], objects: [],
+  };
+
+  it('drops entries that are not operations with a string id', () => {
+    const raw = { ...base, ledger: [null, { id: {} }, 'op-1', 7] };
+    expect(deserializeProvenance(raw as never, 2, 2).ledger).toEqual([]);
+  });
+
+  it('keeps the newest entries up to the ledger cap', () => {
+    const ledger = Array.from({ length: LEDGER_MAX + 10 }, (_, i) => ({ id: `op-${i}` }));
+    const restored = deserializeProvenance({ ...base, ledger } as never, 2, 2).ledger;
+    expect(restored).toHaveLength(LEDGER_MAX);
+    expect(restored[restored.length - 1]!.id).toBe(`op-${LEDGER_MAX + 9}`);
+  });
+
+  it('drops a ledger that is not an array', () => {
+    expect(deserializeProvenance({ ...base, ledger: { length: 3 } } as never, 2, 2).ledger).toEqual([]);
   });
 });
 

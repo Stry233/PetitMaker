@@ -75,3 +75,83 @@ describe('custom endpoint persistence', () => {
     expect(loadAgentSettings().customBaseUrl).toBeUndefined();
   });
 });
+
+describe('sealed keys and the obfuscated fallback', () => {
+  const SEALED = { iv: 'iv', ct: btoa(JSON.stringify({ openai: 'sk-live-1' })) };
+
+  /** A readable vault: `openSecret` returns what `sealSecret` was given. */
+  async function withFakeVault() {
+    vi.resetModules();
+    vi.doMock('../../../core/runtime/vault', () => ({
+      sealSecret: (plain: string) => Promise.resolve({ iv: 'iv', ct: btoa(plain) }),
+      openSecret: (blob: { ct: string }) => Promise.resolve(atob(blob.ct)),
+      sealWithKey: () => Promise.resolve(null),
+      openWithKey: () => Promise.resolve(null),
+    }));
+    const mod = await import('../../../agent/security/key-storage');
+    backing.clear();
+    backing.set('petit-agent-settings-v1', JSON.stringify({ provider: 'openai', keysSealed: SEALED }));
+    expect(await mod.hydrateSealedKeys()).toEqual({ openai: 'sk-live-1' });
+    mod.markKeysHydrated();
+    return mod;
+  }
+
+  function record(): { keys?: Record<string, string>; keysSealed?: unknown } {
+    return JSON.parse(backing.get('petit-agent-settings-v1') ?? 'null') as { keys?: Record<string, string>; keysSealed?: unknown };
+  }
+
+  it('omits the obfuscated copy when the sealed blob already holds the same keys', async () => {
+    const { loadAgentSettings, saveAgentSettings } = await withFakeVault();
+    const s = loadAgentSettings();
+    saveAgentSettings({ ...s, keys: { openai: 'sk-live-1' }, model: { ...s.model, openai: 'gpt-4.1' } });
+
+    expect(record().keys).toBeUndefined();
+    expect(record().keysSealed).toEqual(SEALED);
+    expect(backing.get('petit-agent-settings-v1')).not.toContain(btoa('sk-live-1'));
+  });
+
+  it('writes the obfuscated copy when the key set changed', async () => {
+    const { loadAgentSettings, saveAgentSettings } = await withFakeVault();
+    const s = loadAgentSettings();
+    saveAgentSettings({ ...s, keys: { openai: 'sk-live-2' } });
+
+    expect(record().keys?.openai).toBeDefined();
+  });
+
+  it('writes the obfuscated copy when no sealed blob exists', async () => {
+    vi.resetModules();
+    const { loadAgentSettings, saveAgentSettings } = await import('../../../agent/security/key-storage');
+    backing.clear();
+    const s = loadAgentSettings();
+    saveAgentSettings({ ...s, keys: { openai: 'sk-first' } });
+
+    expect(record().keys?.openai).toBeDefined();
+  });
+});
+
+describe('a freshly sealed keyring', () => {
+  it('stops mirroring the obfuscated copy once the vault upgrade has sealed it', async () => {
+    vi.resetModules();
+    vi.doMock('../../../core/runtime/vault', () => ({
+      sealSecret: (plain: string) => Promise.resolve({ iv: 'iv', ct: btoa(plain) }),
+      openSecret: (blob: { ct: string }) => Promise.resolve(atob(blob.ct)),
+      sealWithKey: () => Promise.resolve(null),
+      openWithKey: () => Promise.resolve(null),
+    }));
+    const { loadAgentSettings, saveAgentSettings, markKeysHydrated } =
+      await import('../../../agent/security/key-storage');
+    backing.clear();
+    markKeysHydrated();
+
+    const first = loadAgentSettings();
+    saveAgentSettings({ ...first, keys: { openai: 'sk-first' } });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    saveAgentSettings({ ...first, keys: { openai: 'sk-first' }, oversight: 'strict' });
+    const rec = JSON.parse(backing.get('petit-agent-settings-v1') ?? 'null') as { keys?: unknown; keysSealed?: unknown };
+    expect(rec.keys).toBeUndefined();
+    expect(rec.keysSealed).toBeDefined();
+  });
+});

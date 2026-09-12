@@ -125,6 +125,15 @@ export function markKeysHydrated(): void {
  */
 let sealedUnread = false;
 
+/** Canonical form of a keyring, comparable across saves. */
+function keyringSignature(keys: Partial<Record<ProviderId, string>>): string {
+  const pairs = Object.entries(keys).filter(([, v]) => Boolean(v)).sort(([a], [b]) => (a < b ? -1 : 1));
+  return JSON.stringify(pairs);
+}
+
+/** Signature of the keys the last hydration opened, or null when none were readable. */
+let hydratedSignature: string | null = null;
+
 /** Decrypt stored keys for the startup merge. */
 export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
   if (typeof localStorage === 'undefined') return null;
@@ -136,9 +145,15 @@ export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, st
     }
     const plain = await openSecret(rec.keysSealed);
     sealedUnread = plain === null;
-    if (plain === null) return null;
-    return JSON.parse(plain) as Partial<Record<ProviderId, string>>;
+    if (plain === null) {
+      hydratedSignature = null;
+      return null;
+    }
+    const keys = JSON.parse(plain) as Partial<Record<ProviderId, string>>;
+    hydratedSignature = keyringSignature(keys);
+    return keys;
   } catch {
+    hydratedSignature = null;
     return null;
   }
 }
@@ -173,15 +188,20 @@ async function upgradeToSealed(): Promise<void> {
   delete cur.keys;
   cur.keysSealed = sealed;
   localStorage.setItem(PREFS.agentSettings.key, JSON.stringify(cur));
+  hydratedSignature = keyringSignature(plain as Partial<Record<ProviderId, string>>);
 }
 
 export function saveAgentSettings(s: AgentSettings): void {
   if (typeof localStorage === 'undefined') return;
   const keys: Record<string, string> = {};
   for (const [k, v] of Object.entries(s.keys)) if (v) keys[k] = enc(v);
+  // The sealed blob still holds exactly these keys, so the obfuscated copy is left out.
+  const sealedIsCurrent = keysHydrated
+    && hydratedSignature !== null
+    && hydratedSignature === keyringSignature(s.keys);
   // Preserve sealed keys while hydration is pending or the blob is unreadable.
   let keysSealed: SealedBlob | undefined;
-  if (!keysHydrated || sealedUnread || Object.keys(keys).length > 0) {
+  if (!keysHydrated || sealedUnread || sealedIsCurrent || Object.keys(keys).length > 0) {
     try {
       keysSealed = (JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null)?.keysSealed;
     } catch {
@@ -192,7 +212,7 @@ export function saveAgentSettings(s: AgentSettings): void {
   localStorage.setItem(
     PREFS.agentSettings.key,
     JSON.stringify({
-      provider: s.provider, model: s.model, keys, keysSealed,
+      provider: s.provider, model: s.model, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
       askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
       oversight: s.oversight,
       customBaseUrl: s.customBaseUrl,

@@ -23,7 +23,7 @@ export function validateImportedState(state: GridState, info: ImportedStateInfo)
   const W = template.width, H = template.height;
 
   // Template compatibility.
-  if (!MAP_TEMPLATES[info.templateId]) {
+  if (!Object.prototype.hasOwnProperty.call(MAP_TEMPLATES, info.templateId)) {
     throw new ShareError('incompatible-template', `Unknown map template "${info.templateId}".`);
   }
   const known = getMapTemplate(info.templateId);

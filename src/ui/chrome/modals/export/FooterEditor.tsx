@@ -4,7 +4,7 @@
 // is open ↑/↓ move the highlight and Enter inserts. Zero-width-space slots are kept around chips so
 // the caret can sit between adjacent tags (and you can type there) even with no plain text between
 // them. {fill} splits the footer into a left- and a right-aligned half.
-import { useRef, useLayoutEffect, useEffect, useState, type CSSProperties } from 'react';
+import { useRef, useLayoutEffect, useEffect, useState, type ClipboardEvent, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { colors, font, radii, springs, cursors } from '../../../design/styles';
 import { skin, windowMenu } from '../../../design/window-skin';
@@ -109,6 +109,28 @@ export function FooterEditor({ value, onChange, samples, t }: {
     }
   };
 
+  // Plain text only: the clipboard's own markup never becomes part of the editable line.
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (!text) return;
+    const inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, text);
+    if (!inserted) {
+      const node = document.createTextNode(text);
+      const sel = window.getSelection();
+      const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+      if (range && ref.current?.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        range.insertNode(node);
+        range.setStartAfter(node); range.collapse(true);
+        sel!.removeAllRanges(); sel!.addRange(range);
+      } else {
+        ref.current?.append(node);
+      }
+    }
+    onInput();
+  };
+
   const insertToken = (id: string, fromSlash: boolean) => {
     const el = ref.current; if (!el) return;
     el.focus();
@@ -177,6 +199,7 @@ export function FooterEditor({ value, onChange, samples, t }: {
           suppressContentEditableWarning
           data-ph={t('export.footer_ph')}
           onInput={onInput}
+          onPaste={onPaste}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !menu) e.preventDefault(); }}
           onBlur={sync}
           style={fieldStyle}

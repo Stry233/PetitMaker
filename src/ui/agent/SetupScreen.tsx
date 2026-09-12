@@ -268,7 +268,7 @@ export function SetupScreen({
     const mine = reading.current;
     setProbing(true);
     setProbeFailed(false);
-    probe(key, { candidates: [...candidates], ...(customBaseUrl ? { customBaseUrl } : {}) })
+    probe(key, { candidates: [...candidates] })
       .then((winner) => {
         if (mine !== reading.current) return;
         setProbing(false);
@@ -281,7 +281,7 @@ export function SetupScreen({
         setProbing(false);
         setProbeFailed(true);
       });
-  }, [probe, candidates, customBaseUrl, commit]);
+  }, [probe, candidates, commit]);
 
   /** Automatic destination after the key remains idle, excluding the user-initiated endpoint step. */
   const gate: Exclude<KeyDestination, 'endpoint'> = (() => {

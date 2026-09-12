@@ -27,11 +27,9 @@ export function detectProviderFromKey(key: string): ProviderId | null {
 }
 
 /** Providers whose keys are bare `sk-…` and can only be told apart by probing
- *  their /models endpoints. Order = probe priority when a custom endpoint is
- *  also in play (custom goes first — see `probeAmbiguousKey`), and it is also
- *  the order a setup screen stands them up in: the UI has to NAME the
- *  candidates before the probe answers, so the list is exported rather than
- *  restated there. */
+ *  their /models endpoints. Also the order a setup screen stands them up in: the
+ *  UI has to NAME the candidates before the probe answers, so the list is
+ *  exported rather than restated there. */
 export const AMBIGUOUS_CANDIDATES: readonly ProviderId[] = ['deepseek', 'openai', 'qwen', 'moonshot'];
 
 /** Hard deadline on asking a provider what it runs: an unreachable endpoint
@@ -48,11 +46,7 @@ interface ProbeAttempt {
 
 /** Every host to try for one candidate provider: a region-split platform (qwen,
  *  moonshot) contributes one attempt per regional host. */
-function endpointsOf(id: ProviderId, customBaseUrl?: string): ProbeAttempt[] {
-  if (id === 'custom') {
-    const url = (customBaseUrl ?? '').trim().replace(/\/+$/, '');
-    return url ? [{ id, baseUrl: url }] : [];
-  }
+function endpointsOf(id: ProviderId): ProbeAttempt[] {
   const urls = QUIRKS[id].baseUrls;
   if (urls && urls.length > 0) return urls.map((baseUrl) => ({ id, baseUrl }));
   if (id === 'openai') return [{ id, baseUrl: OPENAI_DEFAULT_BASE }];
@@ -61,7 +55,6 @@ function endpointsOf(id: ProviderId, customBaseUrl?: string): ProbeAttempt[] {
 
 export interface ProbeOpts {
   candidates?: ProviderId[];
-  customBaseUrl?: string;
   fetchFn?: typeof fetch;
   deadlineMs?: number;
 }
@@ -69,8 +62,9 @@ export interface ProbeOpts {
 /**
  * Identify the provider of an ambiguous bare `sk-…` key by probing candidate
  * endpoints' `GET /models` concurrently — the endpoint that authenticates the
- * key is its provider. A configured custom endpoint joins the probe set FIRST
- * (its keys are usually bare `sk-…` too, e.g. Open WebUI / LiteLLM gateways).
+ * key is its provider. The candidates are `AMBIGUOUS_CANDIDATES` unless the
+ * caller names others; a custom endpoint is never among them, so the key
+ * reaches a user-named address only through the explicit endpoint step.
  * Resolves the first 2xx responder's id, or null if none accept it (offline,
  * CORS-blocked, invalid key) or the deadline passes first. Never throws: a
  * synchronously-throwing `fetchFn` counts as that candidate failing. Losing
@@ -79,8 +73,8 @@ export interface ProbeOpts {
 export function probeAmbiguousKey(key: string, opts: ProbeOpts = {}): Promise<ProviderId | null> {
   const fetchFn = opts.fetchFn ?? fetch;
   const deadlineMs = opts.deadlineMs ?? PROBE_DEADLINE_MS;
-  const candidateIds = opts.customBaseUrl ? ['custom' as ProviderId, ...(opts.candidates ?? AMBIGUOUS_CANDIDATES)] : (opts.candidates ?? AMBIGUOUS_CANDIDATES);
-  const attempts = candidateIds.flatMap((id) => endpointsOf(id, opts.customBaseUrl));
+  const candidateIds = opts.candidates ?? AMBIGUOUS_CANDIDATES;
+  const attempts = candidateIds.flatMap((id) => endpointsOf(id));
 
   const jobs = attempts.map((attempt) => ({ attempt, controller: new AbortController() }));
 

@@ -228,7 +228,7 @@ describe('toVercelJson(existing)', () => {
     expect(csp).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
     expect(csp).toContain('frame-ancestors');
     const hsts = secRule!.headers.find((h) => h.key === 'Strict-Transport-Security');
-    expect(hsts?.value).toBe('max-age=31536000; includeSubDomains');
+    expect(hsts?.value).toBe('max-age=31536000; includeSubDomains; preload');
   });
 
   it('produces valid JSON via stringifyVercelJson', () => {

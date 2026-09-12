@@ -33,7 +33,7 @@ function clone(t: UnitTaint | null): UnitTaint | null {
 }
 
 /** Operation-history cap. Oldest ops are dropped past this; cell/object taint is exact regardless. */
-const LEDGER_MAX = 2000;
+export const LEDGER_MAX = 2000;
 
 export class ProvenanceTracker {
   readonly state: ProvenanceState;

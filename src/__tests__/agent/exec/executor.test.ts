@@ -48,12 +48,12 @@ describe('exec/executor', () => {
     }
   });
 
-  it('isWide is exactly the three wide names, delegation among them', () => {
+  it('isWide is exactly the five wide names, delegation and history among them', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const wide = TOOL_SCHEMAS.filter((s) => executor.isWide(s.name)).map((s) => s.name).sort();
-    expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task']);
-    expect(WIDE_TOOLS).toEqual(new Set(['clear_area', 'build_road_network', 'delegate_task']));
+    expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task', 'redo', 'undo']);
+    expect(WIDE_TOOLS).toEqual(new Set(['clear_area', 'build_road_network', 'delegate_task', 'undo', 'redo']));
   });
 
   it('checkpoint oversight gates delegate_task: the helper burst gets the one approval there is', () => {
@@ -61,7 +61,7 @@ describe('exec/executor', () => {
     const executor = createExecutor(deps);
     const ask = (tool: string): boolean => shouldGate({
       tool, isWrite: executor.isWrite(tool), isWide: executor.isWide(tool),
-      oversight: 'checkpoint', planApproved: false, allowAll: false,
+      oversight: 'checkpoint', allowAll: false,
     });
     expect(ask('delegate_task')).toBe(true);
     expect(ask('place_object')).toBe(false); // an ordinary write still rides through checkpoint

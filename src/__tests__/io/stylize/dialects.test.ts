@@ -295,7 +295,7 @@ describe('openai-images dialect', () => {
   it('accepts a url reply and re-encodes it to a data URL', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await openaiImagesDialect.generate(
@@ -361,7 +361,7 @@ describe('openai-compatible dialect', () => {
   it('accepts a url reply and re-encodes it to a data URL', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([4, 5, 6]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await openaiCompatibleDialect.generate(
       cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
@@ -428,7 +428,7 @@ describe('ark-images dialect', () => {
   it('accepts a url reply and re-encodes it to a data URL', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await arkImagesDialect.generate(
       cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
@@ -503,7 +503,7 @@ describe('stepfun-images dialect', () => {
   it('accepts a url reply and re-encodes it to a data URL', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await stepfunImagesDialect.generate(
       cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
@@ -580,7 +580,7 @@ describe('modelscope-images dialect', () => {
   it('falls back to data[0].url, fetched and re-encoded to a data URL', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await modelscopeImagesDialect.generate(cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' });
     expect(result.startsWith('data:image/png;base64,')).toBe(true);
@@ -589,7 +589,7 @@ describe('modelscope-images dialect', () => {
   it('falls back to images[0].url when data is absent, fetched and re-encoded', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { images: [{ url: 'https://cdn.example/out2.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([4, 5, 6]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await modelscopeImagesDialect.generate(cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' });
     expect(result.startsWith('data:image/png;base64,')).toBe(true);
@@ -598,7 +598,7 @@ describe('modelscope-images dialect', () => {
   it('falls back to output.images[0].url when both data and images are absent, fetched and re-encoded', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { output: { images: [{ url: 'https://cdn.example/out3.png' }] } }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([7, 8, 9]), { status: 200, headers: { 'content-type': 'image/png' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await modelscopeImagesDialect.generate(cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' });
     expect(result.startsWith('data:image/png;base64,')).toBe(true);

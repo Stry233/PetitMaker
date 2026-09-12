@@ -106,6 +106,12 @@ describe('numeric token hardening', () => {
     };
     expect(() => validateImportedState(state, info)).toThrow(/elevation/i);
   });
+
+  it('share validate rejects a template id naming an Object.prototype key', () => {
+    const state = makeState(10, 10);
+    const info = { templateId: 'toString', templateHash: 0, catalogHash: catalogHash() };
+    expect(() => validateImportedState(state, info)).toThrow(/template/i);
+  });
 });
 
 describe('history section content validation', () => {

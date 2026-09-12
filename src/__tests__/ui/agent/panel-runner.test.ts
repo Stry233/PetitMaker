@@ -88,7 +88,7 @@ describe('the tool dependencies the panel builds per job', () => {
   /** Every member the panel is expected to wire. A name leaving this list is a capability the agent
    *  loses, so the list is the test. */
   const EXPECTED = [
-    'getState', 'getExecutor', 'getRegion', 'getSelectedBlock',
+    'getState', 'getExecutor', 'getRegion', 'getSelectedBlock', 'undoFloor',
     'onFlash', 'getProvenanceSource', 'requestExport',
   ] as const;
 

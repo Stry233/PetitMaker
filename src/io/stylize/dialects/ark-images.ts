@@ -7,7 +7,7 @@
 // draws the AI notation itself.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { responseToDataUrl } from './image-response';
+import { fetchProviderImage } from './fetch-image';
 import { StylizeError, type DialectConfig, type StylizeDialect } from './types';
 
 const DEFAULT_BASE = 'https://ark.cn-beijing.volces.com';
@@ -104,16 +104,7 @@ export const arkImagesDialect: StylizeDialect = {
     const item = (json as GenerationsResponse).data?.[0];
     if (!item) throw new StylizeError('bad_response');
     if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item.url) {
-      let imgRes: Response;
-      try {
-        imgRes = await fetch(item.url, { signal });
-      } catch (err) {
-        throw new StylizeError('network', scrub(String(err instanceof Error ? err.message : err)));
-      }
-      if (!imgRes.ok) throw new StylizeError('bad_response');
-      return responseToDataUrl(imgRes);
-    }
+    if (item.url) return fetchProviderImage(item.url, signal);
     throw new StylizeError('bad_response');
   },
 };

@@ -97,7 +97,7 @@ export const geminiDialect: StylizeDialect = {
       contents: [{ parts }],
       generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: req.aspectId } },
     };
-    const json = (await post(cfg, `/v1beta/models/${cfg.model}:generateContent`, body, signal)) as GenerateContentResponse;
+    const json = (await post(cfg, `/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`, body, signal)) as GenerateContentResponse;
     const parts_ = json.candidates?.[0]?.content?.parts;
     if (!Array.isArray(parts_) || parts_.length === 0) throw new StylizeError('bad_response');
     const imagePart = parts_.find((p) => p.inlineData);
@@ -121,7 +121,7 @@ export const geminiDialect: StylizeDialect = {
       }],
       generationConfig: { responseModalities: ['TEXT'] },
     };
-    const json = (await post(cfg, `/v1beta/models/${cfg.model}:generateContent`, body, signal)) as GenerateContentResponse;
+    const json = (await post(cfg, `/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`, body, signal)) as GenerateContentResponse;
     const textPart = json.candidates?.[0]?.content?.parts?.find((p) => typeof p.text === 'string');
     const text = (textPart?.text ?? '').trim();
     if (text.length === 0 || /all clear/i.test(text)) return [];

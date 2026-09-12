@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const lock: LockJson = JSON.parse(readFileSync(join(rootDir, 'package-lock.json'), 'utf8'));
   const closure = computeClosure(lock);
 
-  const bundlePath = join(rootDir, 'dist', '.bundle-packages.json');
+  const bundlePath = join(rootDir, '.bundle-packages.json');
   if (existsSync(bundlePath)) {
     const bundleNames: string[] = JSON.parse(readFileSync(bundlePath, 'utf8'));
     const closureNames = new Set(closure.map((c) => c.name));
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     }
   } else {
     console.warn(
-      '[license-audit] no dist/.bundle-packages.json found — run `npm run build` first to cross-check the ' +
+      '[license-audit] no .bundle-packages.json found — run `npm run build` first to cross-check the ' +
         'shipped bundle; proceeding with the lockfile closure alone.'
     );
   }

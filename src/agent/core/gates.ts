@@ -3,14 +3,14 @@ import { append, eventsOf, subscribe, type SessionLog } from './log';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 
-/** Applies the selected supervision level to a prospective tool call. */
+/** Applies the selected supervision level to a prospective tool call. A wide tool is gated on
+ *  every call under checkpoint oversight; an approved plan gates the plan alone. */
 export function shouldGate(input: {
-  tool: string; isWrite: boolean; isWide: boolean; oversight: Oversight;
-  planApproved: boolean; allowAll: boolean;
+  tool: string; isWrite: boolean; isWide: boolean; oversight: Oversight; allowAll: boolean;
 }): boolean {
   if (input.allowAll || !input.isWrite || input.oversight === 'yolo') return false;
   if (input.oversight === 'strict') return true;
-  return input.isWide && !input.planApproved;
+  return input.isWide;
 }
 
 /** Appends a question with a log-sequence-derived ID and returns that ID. */

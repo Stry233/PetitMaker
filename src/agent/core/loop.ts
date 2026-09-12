@@ -88,6 +88,12 @@ function hasJobCheckpoint(log: SessionLog): boolean {
   return jobEvents(log).some((e) => e.kind === 'checkpoint' && e.label === 'job');
 }
 
+/** The undo-stack size recorded when the current job's first write ran; `0` before any write. */
+export function jobUndoFloor(log: SessionLog): number {
+  for (const e of jobEvents(log)) if (e.kind === 'checkpoint' && e.label === 'job') return e.undoIndex;
+  return 0;
+}
+
 function countAssistantTurns(log: SessionLog): number {
   return jobEvents(log).filter((e) => e.kind === 'assistant').length;
 }
@@ -228,7 +234,7 @@ function realSleep(ms: number, signal: AbortSignal): Promise<void> {
 async function resolveGate(log: SessionLog, deps: LoopDeps, part: ToolPart, assistantSeq: number): Promise<boolean | 'aborted'> {
   const gate = shouldGate({
     tool: part.name, isWrite: deps.executor.isWrite(part.name), isWide: deps.executor.isWide(part.name),
-    oversight: deps.oversight, planApproved: hasPlanEvent(log), allowAll: hasAllowAlways(log),
+    oversight: deps.oversight, allowAll: hasAllowAlways(log),
   });
   if (!gate) return true;
   const gateId = existingGateId(log, 'tool', part.callId, assistantSeq)

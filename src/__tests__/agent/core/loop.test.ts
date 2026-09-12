@@ -229,7 +229,7 @@ describe('runJob core flows', () => {
     expect(executor.calls).toEqual([]); // no filing ever reached the executor
   });
 
-  it('update_plan gates first under checkpoint oversight; allow approves the plan and a later wide tool does not gate', async () => {
+  it('update_plan gates first under checkpoint oversight; a later wide tool gates on its own', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a town');
     const adapter = createScriptedAdapter([
@@ -242,15 +242,19 @@ describe('runJob core flows', () => {
 
     const promise = runJob(log, deps);
     await flush();
-    const gate = pendingGate(log);
-    expect(gate?.scope).toBe('plan');
-    answerGate(log, gate!.gateId, 'allow');
+    const planGate = pendingGate(log);
+    expect(planGate?.scope).toBe('plan');
+    answerGate(log, planGate!.gateId, 'allow');
+    await flush();
+
+    const toolGate = pendingGate(log);
+    expect(toolGate?.scope).toBe('tool');
+    answerGate(log, toolGate!.gateId, 'allow');
 
     const outcome = await promise;
 
     expect(outcome).toBe('done');
     expect(eventsOf(log).some((e) => e.kind === 'plan')).toBe(true);
-    expect(eventsOf(log).some((e) => e.kind === 'gateAsked' && e.scope === 'tool')).toBe(false);
     expect(executor.calls).toEqual([{ callId: 'c2', name: 'build_road_network', args: {} }]);
   });
 

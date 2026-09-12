@@ -53,7 +53,9 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=()',
-    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
   },
 };
 
@@ -105,6 +107,28 @@ export function toCspMeta(
     }
   }
   return buildCspString(policy, { includeHeaderOnly: false });
+}
+
+// ---------------------------------------------------------------------------
+// Static legal pages
+// ---------------------------------------------------------------------------
+
+/** CSP directives for the static legal pages, which run no script and make no network request. */
+export const DOCUMENT_CSP_DIRECTIVES: Readonly<Record<string, readonly string[]>> = {
+  'default-src': ["'none'"],
+  'img-src': ["'self'"],
+  'style-src': ["'unsafe-inline'"],
+  'base-uri': ["'none'"],
+  'form-action': ["'none'"],
+};
+
+/** The `content` value of the static legal pages' CSP meta tag. */
+export function toDocumentCspMeta(
+  directives: Readonly<Record<string, readonly string[]>> = DOCUMENT_CSP_DIRECTIVES
+): string {
+  return Object.entries(directives)
+    .map(([name, sources]) => `${name} ${sources.join(' ')}`)
+    .join('; ');
 }
 
 /** Ordered response-header entries, with CSP first. */

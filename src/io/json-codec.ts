@@ -21,6 +21,7 @@ import { PLAZA_ID } from '../core/model/constants';
 import { isCoating } from '../core/model/traits';
 import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
 import { currentCatalogId } from './legacy-catalog';
+import { MAX_OBJECTS_PER_CELL } from './import-limits';
 import { getCatalogItem } from '../state/catalog';
 import { hasHalfStep, objectRect } from '../state/object-geometry';
 import {
@@ -295,6 +296,10 @@ export function deserialize(json: string, template: MapTemplate): GridState {
         row[x] = tokenToCell(token, row[x]?.zone ?? CellZone.Grass);
       }
     }
+  }
+
+  if (save.objects.length > area * MAX_OBJECTS_PER_CELL) {
+    throw new Error('Invalid object data: more objects than the map can hold.');
   }
 
   const objects = new Map<string, PlacedObject>();

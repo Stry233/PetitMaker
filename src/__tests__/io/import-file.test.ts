@@ -6,6 +6,7 @@
 // __tests__/ui/chrome/import-modal.test.tsx.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { importFile, type ImportFileDeps } from '../../io/import-file';
+import { MAX_IMPORT_BYTES } from '../../io/import-limits';
 import { serialize } from '../../io/json-codec';
 import { TerrainType, type GridState } from '../../core/model/types';
 import { setTerrain } from '../rules/_helpers';
@@ -136,6 +137,27 @@ describe('importFile routing', () => {
 
     const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', makeDeps());
     expect(outcome).toEqual({ status: 'imported', source: 'raster', warnings: [{ kind: 'catalog-drift' }] });
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects a file past the import byte cap without reading it', async () => {
+    const text = vi.fn(async () => '{}');
+    const huge = { type: 'application/json', size: MAX_IMPORT_BYTES + 1, text } as unknown as File;
+    const deps = makeDeps();
+    expect(await importFile(huge, 'map.json', deps)).toEqual({ status: 'failed' });
+    expect(text).not.toHaveBeenCalled();
+    expect(deps.loadMap).not.toHaveBeenCalled();
+  });
+
+  it('rejects a bitmap past the raster pixel cap without decoding it', async () => {
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 20000, height: 20000, close } as unknown as ImageBitmap));
+    const deps = makeDeps();
+    const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', deps);
+    expect(outcome).toEqual({ status: 'failed' });
+    expect(close).toHaveBeenCalled();
+    expect(importFromRaster).not.toHaveBeenCalled();
+    expect(deps.loadMap).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 

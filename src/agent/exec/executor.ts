@@ -185,9 +185,12 @@ async function delegateTask(
  *
  *  `delegate_task` is the widest of them: the helper it spawns runs its own writes ungated in a
  *  fresh context, so this one approval covers that whole burst and is the only place a user in
- *  checkpoint oversight can decline it. */
+ *  checkpoint oversight can decline it.
+ *
+ *  `undo` and `redo` move the shared history, which holds the user's own edits below the job's
+ *  undo floor. */
 export const WIDE_TOOLS: ReadonlySet<string> = new Set([
-  'clear_area', 'build_road_network', 'delegate_task',
+  'clear_area', 'build_road_network', 'delegate_task', 'undo', 'redo',
 ]);
 
 /** Returns the wire schemas allowed at the requested execution depth. */

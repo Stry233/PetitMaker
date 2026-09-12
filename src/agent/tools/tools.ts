@@ -1287,8 +1287,11 @@ export const TOOL_HANDLERS: Record<string, { write?: boolean; handler: ToolHandl
   delegate_task: { write: true, handler: () => ({ isError: true, content: 'Delegation is not available in this context — do the task directly.' }) },
   undo: { write: true, handler: (deps, input) => {
     const steps = Math.min(Math.max(Number(input.steps) || 1, 1), 10);
+    const exec = deps.getExecutor();
+    // Undo reaches only the entries this job pushed; everything below the floor is the user's own.
+    const room = Math.max(0, exec.getUndoStackSize() - (deps.undoFloor?.() ?? 0));
     let n = 0;
-    for (let i = 0; i < steps; i++) if (deps.getExecutor().undo()) n++;
+    for (let i = 0; i < Math.min(steps, room); i++) if (exec.undo()) n++;
     return { isError: false, content: `Undid ${n} step(s).` };
   } },
   redo: { write: true, handler: (deps, input) => {

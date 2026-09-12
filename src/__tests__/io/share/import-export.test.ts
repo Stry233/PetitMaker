@@ -49,6 +49,20 @@ describe('PetitGlyph raster-first import/export', () => {
     expect(canonicalBytes(canonicalize(result.state))).toEqual(canonicalBytes(canonicalize(state)));
   });
 
+  it('drops a decoded generation note that is not a generation config', async () => {
+    const cases = await corpusCases();
+    const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
+    const forged = { ...state, generation: { algorithm: 'island', seed: 'not-a-number' } as never };
+
+    const code = await buildShareCode(forged, null, META, 1600);
+    expect(code).not.toBeNull();
+
+    const result = await importFromRaster(code!.rgba, code!.width, code!.height);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.generation).toBeUndefined();
+  });
+
   it('a blank (no-code) raster fails with no-payload', async () => {
     const width = 400, height = 150;
     const rgba = new Uint8Array(width * height * 4);

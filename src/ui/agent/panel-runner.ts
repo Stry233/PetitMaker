@@ -5,6 +5,7 @@
  * ownership of the active job and its abort controller.
  */
 import { callApproved } from '../../agent/core/gates';
+import { jobUndoFloor } from '../../agent/core/loop';
 import type { RunnerConfig } from '../../agent/exec/runner';
 import { takeMapRegionSnapshot, takeMapSnapshot } from '../../agent/snapshot';
 import type { AgentToolDeps } from '../../agent/tools/tools';
@@ -86,6 +87,8 @@ export function makePanelToolDeps(opts: { vision: boolean }): AgentToolDeps {
     // The tool surface describes ONE clicked block ("this/it"); it has no vocabulary for a group, so
     // a plural selection reads as none rather than as an arbitrary member.
     getSelectedBlock: () => singleSelection(useEditorStore.getState().selection),
+    // The running job's own floor, read live: the checkpoint is appended when its first write runs.
+    undoFloor: () => jobUndoFloor(useAgentSession.getState().log),
     onFlash: (cells) => host.feedback.flash(cells),
     // THE APPROVAL IS A FACT ABOUT THIS CALL, read off the log's own gate pair rather than assumed.
     // It was hardcoded `false`, which made `ProvSource.AiAccepted` unreachable and the export

@@ -25,6 +25,13 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+/** A generation recipe off the wire: informational, so only the fields every reader needs. */
+export function isGenerationConfig(value: unknown): value is GenerateConfig {
+  if (!value || typeof value !== 'object') return false;
+  const g = value as Partial<GenerateConfig>;
+  return isFiniteNumber(g.seed) && typeof g.algorithm === 'string';
+}
+
 /** Best-effort restore of the optional top-level sections a "keep everything" export may
  *  carry. Each section is independent: a throw or shape mismatch drops just that section. */
 export function applyOptionalSections(raw: unknown, deps: SectionRestoreDeps): SectionRestoreResult {
@@ -35,9 +42,9 @@ export function applyOptionalSections(raw: unknown, deps: SectionRestoreDeps): S
 
   if ('generation' in obj) {
     try {
-      const g = obj.generation as Partial<GenerateConfig> | null | undefined;
-      if (g && typeof g === 'object' && isFiniteNumber(g.seed) && typeof g.algorithm === 'string') {
-        deps.state.generation = g as GenerateConfig;
+      const g = obj.generation;
+      if (isGenerationConfig(g)) {
+        deps.state.generation = g;
         restored.push('generation');
       } else {
         dropped.push('generation');

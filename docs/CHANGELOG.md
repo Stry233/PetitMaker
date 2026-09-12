@@ -4,6 +4,14 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.10] - 2026-09-11
+
+### Changed
+- The assistant's undo reaches only the edits it made in the current job; earlier manual work stays in place. In checkpoint mode, area clears, road networks, delegated tasks, and undo ask for approval on every call, including after a plan is approved.
+
+### Fixed
+- A key pasted on the connection screen is tested only against the built-in providers whose key format it matches. A saved custom endpoint receives a key only when you choose it.
+
 ## [0.10.49] - 2026-09-11
 
 ### Added

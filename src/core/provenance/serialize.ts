@@ -1,6 +1,6 @@
 import type { GridState } from '../model/types';
 import { cellKey } from '../model/grid-model';
-import { ProvenanceTracker } from './tracker';
+import { LEDGER_MAX, ProvenanceTracker } from './tracker';
 import {
   ProvSource, TaintFlag, setFlag,
   type ProvenanceState, type ProvenanceOperation, type UnitTaint,
@@ -59,6 +59,14 @@ function sanitizeTaint(t: unknown): UnitTaint | null {
   };
 }
 
+/** The wire ledger, keeping the newest entries the tracker can key by id. */
+function sanitizeLedger(raw: unknown): ProvenanceOperation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((op): op is ProvenanceOperation => !!op && typeof op === 'object' && typeof (op as ProvenanceOperation).id === 'string')
+    .slice(-LEDGER_MAX);
+}
+
 export function deserializeProvenance(raw: SerializedProvenance | undefined, width: number, height: number): ProvenanceState {
   const cellTaint: (UnitTaint | null)[][] = Array.from({ length: height }, () => Array<UnitTaint | null>(width).fill(null));
   const objectTaint = new Map<string, UnitTaint>();
@@ -84,7 +92,7 @@ export function deserializeProvenance(raw: SerializedProvenance | undefined, wid
     humanAfterAi: s.humanAfterAi === true,
     aiAfterHuman: s.aiAfterHuman === true,
   };
-  return { ledger: Array.isArray(raw.ledger) ? raw.ledger : [], cellTaint, objectTaint, session, summary: null };
+  return { ledger: sanitizeLedger(raw.ledger), cellTaint, objectTaint, session, summary: null };
 }
 
 function emptySession(): ProvenanceState['session'] {

@@ -4,7 +4,7 @@ import { answerGate, askGate, awaitGate, pendingGate, shouldGate } from '../../.
 import type { Oversight } from '../../../agent/core/gates';
 
 describe('shouldGate', () => {
-  const base = { tool: 'paint_terrain', isWrite: true, isWide: true, oversight: 'strict' as Oversight, planApproved: false, allowAll: false };
+  const base = { tool: 'paint_terrain', isWrite: true, isWide: true, oversight: 'strict' as Oversight, allowAll: false };
 
   it('allowAll never gates, whatever else is true', () => {
     expect(shouldGate({ ...base, allowAll: true })).toBe(false);
@@ -23,14 +23,9 @@ describe('shouldGate', () => {
     expect(shouldGate({ ...base, oversight: 'strict', isWide: false })).toBe(true);
   });
 
-  it('checkpoint gates a wide write only while no plan is approved', () => {
-    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: true, planApproved: false })).toBe(true);
-    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: false, planApproved: false })).toBe(false);
-  });
-
-  it('checkpoint with planApproved gates nothing', () => {
-    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: true, planApproved: true })).toBe(false);
-    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: false, planApproved: true })).toBe(false);
+  it('checkpoint gates every wide write and no narrow one', () => {
+    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: true })).toBe(true);
+    expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: false })).toBe(false);
   });
 });
 

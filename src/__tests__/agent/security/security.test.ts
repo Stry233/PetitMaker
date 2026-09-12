@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { redactSecrets } from '../../../agent/security/redact';
+import { toRawFailure } from '../../../agent/providers/http-failure';
 import { sanitizeEndpointUrl } from '../../../core/runtime/endpoint-url';
 import { sealSecret, sealWithKey, openWithKey } from '../../../core/runtime/vault';
 
@@ -25,9 +26,35 @@ describe('redactSecrets', () => {
     expect(out).toContain('<redacted-key>');
   });
 
+  it('scrubs Perplexity keys', () => {
+    expect(redactSecrets('pplx-0123456789abcdefghij rejected')).toBe('<redacted-key> rejected');
+  });
+
+  it('scrubs a named secret whose shape matches no pattern', () => {
+    const text = 'gateway refused token gw_7f3a2b1c for model x';
+    expect(redactSecrets(text, ['gw_7f3a2b1c'])).toBe('gateway refused token <redacted-key> for model x');
+  });
+
+  it('replaces every occurrence of a named secret', () => {
+    expect(redactSecrets('gw_1 then gw_1', ['gw_1'])).toBe('<redacted-key> then <redacted-key>');
+  });
+
+  it('ignores an empty named secret', () => {
+    const text = 'nothing secret here';
+    expect(redactSecrets(text, ['', '   '])).toBe(text);
+  });
+
   it('leaves normal text and coordinates alone', () => {
     const text = 'Painted water at (12,34); see skill "river-crossing" and road-dirt.';
     expect(redactSecrets(text)).toBe(text);
+  });
+});
+
+describe('toRawFailure', () => {
+  it('scrubs the live key out of a provider error message', () => {
+    const err = new Error('401 Unauthorized for token gw_7f3a2b1c');
+    expect(toRawFailure(err, false, ['gw_7f3a2b1c']).message)
+      .toBe('401 Unauthorized for token <redacted-key>');
   });
 });
 

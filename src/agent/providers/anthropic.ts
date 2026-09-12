@@ -158,7 +158,7 @@ export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
           final: finalCalls,
         };
       } catch (err) {
-        yield streamFailureEvent(err, signal.aborted);
+        yield streamFailureEvent(err, signal.aborted, [opts.apiKey]);
       }
     },
 

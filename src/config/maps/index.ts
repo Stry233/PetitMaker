@@ -22,7 +22,8 @@ const DEFAULT_MAP_ID = 'hexia';
 
 /** Resolve a template id to its map, falling back to the default. */
 export function getMapTemplate(id: string | undefined): MapTemplate {
-  return (id ? MAP_TEMPLATES[id] : undefined) ?? MAP_TEMPLATES[DEFAULT_MAP_ID] ?? MAP_LIST[0]!;
+  // Own-property only: a decoded id may name an Object.prototype member.
+  return (id && Object.prototype.hasOwnProperty.call(MAP_TEMPLATES, id) ? MAP_TEMPLATES[id] : undefined) ?? MAP_TEMPLATES[DEFAULT_MAP_ID] ?? MAP_LIST[0]!;
 }
 
 /** The default map template (cold start). */

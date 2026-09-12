@@ -50,6 +50,9 @@ export interface AgentToolDeps {
   getRegion(): MacroCoord[];
   /** The clicked/selected block on canvas, if any. */
   getSelectedBlock?(): SelectedBlock;
+  /** Undo-stack size recorded when the running job's first write committed. `undo` stops there, so
+   *  the assistant cannot reverse edits the user made before the job started. Absent means 0. */
+  undoFloor?(): number;
   /** Visual acknowledgment hook — flashes the edited cells on the canvas
    *  (wired to the renderer's commit flash; absent in headless tests). */
   onFlash?(cells: MacroCoord[]): void;

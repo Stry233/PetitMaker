@@ -7,10 +7,12 @@
  * `ui/chrome/modals/import/import-toast.ts` is the single place a result becomes a message.
  */
 import { deserialize } from './json-codec';
+import { MAX_IMPORT_BYTES } from './import-limits';
 import { verifyIntegrity } from './export-json';
 import { applyOptionalSections, type SectionRestoreDeps } from './import-sections';
 import { getMapTemplate } from '../config/maps';
 import { importFromRaster, type ShareErrorCode } from './share';
+import { DEFAULT_LIMITS } from './share/errors';
 import type { GridState } from '../core/model/types';
 
 /** One warning surfaced from a successful import. Carries enough shape for the toast mapper to
@@ -57,6 +59,7 @@ function isImageFile(file: File | Blob, name: string): boolean {
  */
 export async function importFile(file: File | Blob, name: string, deps: ImportFileDeps): Promise<FileImportOutcome> {
   try {
+    if (file.size > MAX_IMPORT_BYTES) return { status: 'failed' };
     if (isJsonFile(file, name)) {
       const text = await file.text();
       const parsed = JSON.parse(text) as { templateId?: string };
@@ -75,6 +78,10 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
     if (!isImageFile(file, name)) return { status: 'unsupported' };
 
     const bmp = await createImageBitmap(file);
+    if (bmp.width * bmp.height > (DEFAULT_LIMITS.maxRasterPixels ?? Infinity)) {
+      bmp.close?.();
+      return { status: 'failed' };
+    }
     const canvas = document.createElement('canvas');
     canvas.width = bmp.width;
     canvas.height = bmp.height;

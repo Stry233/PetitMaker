@@ -1,11 +1,11 @@
 {
   // Cloudflare Workers static-asset hosting for the production site. `name` must equal the
   // Worker's name in the Cloudflare dashboard or the build fails before it runs.
-  // The Worker consolidates origins and HTML aliases before static assets are served.
+  // No Worker script runs: zone redirect rules consolidate scheme and host, `dist/_redirects`
+  // normalizes page aliases, and every other request is served as a static asset.
   // Response headers come from public/_headers, generated from security/headers-policy.ts.
   "name": "petitmaker",
   "compatibility_date": "2026-07-30",
-  "main": "./security/site-worker.ts",
   "routes": [
     { "pattern": "petitmaker.cc", "custom_domain": true },
     { "pattern": "www.petitmaker.cc", "custom_domain": true },
@@ -14,9 +14,7 @@
   ],
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS",
-    "run_worker_first": true,
-    "html_handling": "none",
+    "html_handling": "drop-trailing-slash",
     "not_found_handling": "404-page"
   }
 }

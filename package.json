@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "0.10.49",
+  "version": "0.11.10",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -57,5 +57,8 @@
     "vite": "^6.0.5",
     "vite-node": "2.1.9",
     "vitest": "^2.1.8"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

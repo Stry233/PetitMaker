@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, readSaveCamera } from '../../io/json-codec';
 import { CURRENT_VERSION, SaveVersionError, type PersistedCamera } from '../../io/save-format';
 import { makeState, setTerrain, makeObject } from '../rules/_helpers';
-import { TerrainType } from '../../core/model/types';
+import { MAX_OBJECTS_PER_CELL } from '../../io/import-limits';
+import { getMapTemplate } from '../../config/maps';
+import { createGrid } from '../../core/model/grid-model';
+import { TerrainType, type GridState } from '../../core/model/types';
 
 describe('json-codec', () => {
   it('roundtrips an empty grid', () => {
@@ -194,6 +197,34 @@ describe('json-codec', () => {
       expect(readSaveCamera('42')).toBeUndefined();
       expect(readSaveCamera(JSON.stringify({ camera: null }))).toBeUndefined();
       expect(readSaveCamera(JSON.stringify({ camera: 'nope' }))).toBeUndefined();
+    });
+  });
+
+  describe('object-count ceiling', () => {
+    function saveWith(state: ReturnType<typeof makeState>, count: number): string {
+      const raw = JSON.parse(serialize(state)) as { objects: unknown[] };
+      const { width, height } = state.template;
+      raw.objects = Array.from({ length: count }, (_, i) => ({
+        id: `o${i}`,
+        catalogId: 'building-myhouse',
+        x: i % width,
+        y: Math.floor(i / width) % height,
+        rotation: 0,
+      }));
+      return JSON.stringify(raw);
+    }
+
+    it('throws when the save carries more objects than the map can hold', () => {
+      const state = makeState(10, 10);
+      const over = state.template.width * state.template.height * MAX_OBJECTS_PER_CELL + 1;
+      expect(() => deserialize(saveWith(state, over), state.template)).toThrow(/more objects/i);
+    });
+
+    it('loads a save at the density of the largest real map', () => {
+      const template = getMapTemplate('hexia');
+      const state: GridState = { template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set() };
+      const restored = deserialize(saveWith(state, 4300), template);
+      expect(restored.objects.size).toBeGreaterThan(4000);
     });
   });
 });

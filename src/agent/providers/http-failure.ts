@@ -19,16 +19,17 @@ export function retryAfterMsOf(headers: unknown): number | undefined {
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
 }
 
-export function toRawFailure(err: unknown, aborted: boolean): { status?: number; message: string; retryAfterMs?: number; aborted: boolean } {
+/** `secrets` carries the adapter's live key, removed from the message by value. */
+export function toRawFailure(err: unknown, aborted: boolean, secrets?: readonly string[]): { status?: number; message: string; retryAfterMs?: number; aborted: boolean } {
   const e = err as { status?: unknown; message?: unknown; headers?: unknown } | null;
   const rawMessage = typeof e?.message === 'string' ? e.message : String(err);
   const status = typeof e?.status === 'number' ? e.status : undefined;
-  return { status, message: redactSecrets(rawMessage), retryAfterMs: retryAfterMsOf(e?.headers), aborted };
+  return { status, message: redactSecrets(rawMessage, secrets), retryAfterMs: retryAfterMsOf(e?.headers), aborted };
 }
 
 /** The one event a stream's catch yields, the same for both dialects: an abort settles the turn,
  *  anything else classifies and stands in front of the retry ladder. */
-export function streamFailureEvent(err: unknown, aborted: boolean): StreamEvent {
-  const error = classify(toRawFailure(err, aborted));
+export function streamFailureEvent(err: unknown, aborted: boolean, secrets?: readonly string[]): StreamEvent {
+  const error = classify(toRawFailure(err, aborted, secrets));
   return error.cls === 'abort' ? { t: 'done', stop: 'aborted' } : { t: 'error', error };
 }

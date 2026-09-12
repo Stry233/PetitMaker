@@ -38,7 +38,8 @@ export function translateFor(locale: Locale, key: string, params?: Record<string
     ?? translations['en'][key] ?? extraTables['en']?.[key] ?? key;
   text = text.split('{app}').join(brandName(locale));
   if (params) {
-    for (const [k, v] of Object.entries(params)) text = text.replace(`{${k}}`, String(v));
+    // split/join, not replace: a param value is literal text, never a replacement pattern.
+    for (const [k, v] of Object.entries(params)) text = text.split(`{${k}}`).join(String(v));
   }
   return text;
 }

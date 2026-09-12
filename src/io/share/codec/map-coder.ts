@@ -13,6 +13,7 @@ import { SHARE_CATALOG_ORDER } from './catalog-order';
 import { frozenTemplateMask } from './template-mask';
 import type { Corners, CornerTrim, MapTemplate } from '../../../core/model/types';
 import type { SaveObject } from '../../save-format';
+import { MAX_OBJECTS_PER_CELL } from '../../import-limits';
 
 /** The encoder's inverse of `SHARE_CATALOG_ORDER[idx]`, asked once per object per pass. */
 const SHARE_CATALOG_INDEX = new Map(SHARE_CATALOG_ORDER.map((id, i) => [id, i]));
@@ -21,8 +22,6 @@ const SHARE_CATALOG_INDEX = new Map(SHARE_CATALOG_ORDER.map((id, i) => [id, i]))
 const CORNERS = 'SF1234E';
 const CORNER_TRIM: readonly CornerTrim[] = ['square', 'fan', 'tri-NW', 'tri-NE', 'tri-SW', 'tri-SE', 'empty'];
 const ROTS = [0, 90, 180, 270];
-/** Guards a hostile payload from allocating without bound; a real map is far below this. */
-const MAX_OBJECTS_PER_CELL = 8;
 
 const models = <T>(n: number, make: () => T): T[] => Array.from({ length: n }, make);
 

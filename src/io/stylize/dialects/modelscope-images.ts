@@ -3,7 +3,7 @@
 // the endpoint's CORS allow-list is closed and an extra header would fail preflight.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { responseToDataUrl } from './image-response';
+import { fetchProviderImage } from './fetch-image';
 import { StylizeError, type StylizeDialect, type StylizeImage } from './types';
 
 const ASPECTS: readonly AspectOption[] = [
@@ -14,8 +14,6 @@ const ASPECTS: readonly AspectOption[] = [
   { id: '9:16', ratio: 9 / 16 },
 ];
 
-/** Reads a fetched image reply straight off its `ArrayBuffer`, never through `Blob`: browsers
- *  agree on `Response#arrayBuffer`, and it is the one path that needs no intermediate object. */
 function roleOf(images: readonly StylizeImage[], role: StylizeImage['role']): StylizeImage | undefined {
   return images.find((i) => i.role === role);
 }
@@ -33,16 +31,7 @@ async function extractImage(json: GenerationsResponse, signal?: AbortSignal): Pr
   const item = json.data?.[0];
   if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
   const url = item?.url ?? json.images?.[0]?.url ?? json.output?.images?.[0]?.url;
-  if (url) {
-    let imgRes: Response;
-    try {
-      imgRes = await fetch(url, { signal });
-    } catch (err) {
-      throw new StylizeError('network', scrub(String(err instanceof Error ? err.message : err)));
-    }
-    if (!imgRes.ok) throw new StylizeError('bad_response');
-    return responseToDataUrl(imgRes);
-  }
+  if (url) return fetchProviderImage(url, signal);
   throw new StylizeError('bad_response');
 }
 

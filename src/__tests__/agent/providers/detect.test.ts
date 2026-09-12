@@ -71,7 +71,7 @@ describe('providers/detect: probeAmbiguousKey', () => {
     expect(calls.some((c) => c.url.includes('api.moonshot.cn'))).toBe(true);
   });
 
-  it('prepends custom as a candidate when a custom base URL is configured', async () => {
+  it('never sends the key to a custom endpoint, even when one is passed in', async () => {
     const calls: string[] = [];
     const fetchFn = vi.fn((url: string) => {
       calls.push(url);
@@ -79,14 +79,14 @@ describe('providers/detect: probeAmbiguousKey', () => {
     });
 
     void probeAmbiguousKey('sk-testkey', {
-      fetchFn: fetchFn as unknown as typeof fetch,
-      customBaseUrl: 'https://my-gateway.example/v1/',
-    });
+      fetchFn,
+      customBaseUrl: 'https://evil.example/v1',
+    } as unknown as Parameters<typeof probeAmbiguousKey>[1]);
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(calls.length).toBe(7); // custom + the 6 default attempts
-    expect(calls.some((u) => u === 'https://my-gateway.example/v1/models')).toBe(true);
+    expect(calls.length).toBe(6); // the built-in candidates alone
+    expect(calls.some((u) => u.startsWith('https://evil.example'))).toBe(false);
   });
 
   it('resolves the first 2xx responder\'s id', async () => {
@@ -107,27 +107,6 @@ describe('providers/detect: probeAmbiguousKey', () => {
     resolvers['https://api.openai.com/v1/models']!({ ok: true } as Response);
 
     await expect(result).resolves.toBe('openai');
-  });
-
-  it('treats a custom endpoint win as `custom`', async () => {
-    const resolvers: Record<string, (r: Response) => void> = {};
-    const fetchFn = vi.fn((url: string) => {
-      return new Promise<Response>((resolve) => {
-        resolvers[url] = resolve;
-      });
-    });
-
-    const result = probeAmbiguousKey('sk-testkey', {
-      candidates: ['deepseek', 'openai'],
-      customBaseUrl: 'https://my-gateway.example/v1',
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    resolvers['https://my-gateway.example/v1/models']!({ ok: true } as Response);
-
-    await expect(result).resolves.toBe('custom');
   });
 
   it('resolves null when every candidate fails', async () => {

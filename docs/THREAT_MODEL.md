@@ -57,7 +57,7 @@ The CSP meta fallback cannot enforce `frame-ancestors`, `X-Frame-Options` or HST
 
 Named origins in `connect-src` are derived from the Agent and illustration provider registries. Custom endpoints require the broader `https:` source plus HTTP loopback sources for local gateways. `sanitizeEndpointUrl` forces HTTPS for non-loopback hosts, removes embedded URL credentials and rewrites IPv6 loopback to `localhost` so it matches CSP.
 
-The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-origin script to the named providers. `script-src 'self'`, dependency review, input handling and key redaction therefore remain the controls against code injection and exfiltration. Custom base URLs are not secrets and are stored in local storage.
+The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-origin script to the named providers. `script-src 'self'`, dependency review, input handling and key redaction therefore remain the controls against code injection and exfiltration. Custom base URLs are not secrets and are stored in local storage. A key entered on the connection screen is sent only to the built-in provider hosts whose key format it matches, or to a custom endpoint the user has chosen explicitly.
 
 ## API-key handling
 
@@ -89,10 +89,17 @@ The main remaining Agent impacts are undoable map edits, provider spend and disc
 - Returned image bytes, including bytes fetched from a provider-returned URL, are decoded into the session's version shelf. Generated takes are not persisted by the app unless the user exports them.
 - The illustration key follows the vault-only persistence rule above. Its provider, model, custom endpoint, direction and custom prompt are ordinary local preferences.
 
+## Residual risks
+
+- `connect-src` admits every HTTPS origin so that custom endpoints work. A script executing in this origin can send stored keys anywhere. The accepted mitigations are the same-origin script policy, lockfile-pinned dependencies installed without lifecycle scripts, Dependabot review, and a publish pipeline whose token never shares a step with dependency code.
+- Keys stored before the vault upgrade completes, or in browsers without WebCrypto and IndexedDB, are obfuscated rather than encrypted.
+- Provider spend is bounded by turn limits and approval gates, not by a hard budget.
+
 ## Deployment checks
 
 - Run `npm run legal:headers:check` and verify the generated response headers on each live deployment target.
 - Serve production over HTTPS. Enable HSTS only on a host that consistently redirects or refuses plain HTTP.
+- Keep the international deployment free of a Worker script: requests served by the static-asset layer are not billed, so a request flood cannot exhaust a Workers quota. Scheme and host redirects live in zone redirect rules; page aliases live in the generated `_redirects` file.
 - Exercise at least one request for every built-in Agent and illustration provider after deployment; this catches CSP and CORS differences that static checks cannot observe.
 - Run `npm audit --omit=dev` for the shipped dependency closure.
 - Confirm the production build has no source maps, development API or unintended console output.

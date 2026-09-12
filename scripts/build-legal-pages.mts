@@ -2,12 +2,14 @@
 // PETIT_RELEASE=1 enables release validation; path-based previews keep only their noindex app.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
 import { LEGAL } from '../src/legal/config';
-import { writeAll, resolveMode } from './legal-pages-core.mts';
+import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
+import { pagePlan, writeAll, resolveMode } from './legal-pages-core.mts';
+import { redirectsFile } from './redirects-core.mts';
 
 declare const process: {
   cwd(): string;
@@ -34,6 +36,11 @@ async function main(): Promise<void> {
   }
 
   writeAll(distDir, LEGAL, mode);
+
+  // Cloudflare reads `_redirects`; the Chinese edge serves slashed page paths and receives none.
+  if (LEGAL.canonicalOrigin === DEPLOY_TARGETS.global.canonicalOrigin) {
+    writeFileSync(join(distDir, '_redirects'), redirectsFile(pagePlan(LEGAL)), 'utf8');
+  }
 
   console.log(`[build-legal-pages] wrote static legal pages + sitemap/robots/security.txt into ${distDir} (mode: ${mode}).`);
 }

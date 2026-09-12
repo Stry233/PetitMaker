@@ -104,11 +104,11 @@ This project includes the following third-party open-source packages, resolved f
 | protobufjs | 7.6.5 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | https://protobufjs.github.io/protobuf.js/ |
 | punycode | 1.4.1 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/punycode |
 | qrcode-generator | 2.0.4 | MIT | Kazuhiko Arase | — |
-| qs | 6.15.2 | BSD-3-Clause | — | https://github.com/ljharb/qs |
+| qs | 6.16.0 | BSD-3-Clause | — | https://github.com/ljharb/qs |
 | react | 18.3.1 | MIT | — | https://reactjs.org/ |
 | react-dom | 18.3.1 | MIT | — | https://reactjs.org/ |
 | scheduler | 0.23.2 | MIT | — | https://reactjs.org/ |
-| side-channel | 1.1.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel#readme |
+| side-channel | 1.1.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel#readme |
 | side-channel-list | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-list#readme |
 | side-channel-map | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-map#readme |
 | side-channel-weakmap | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-weakmap#readme |
