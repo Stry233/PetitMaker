@@ -1,11 +1,11 @@
 /*
  * Converts decoded pixels to a cell stencil. Each destination quadrant integrates its covered source
  * area, avoiding browser downsampling artifacts. Photographic sources use averaged colour and error
- * diffusion; flat drawings use majority colour without diffusion to preserve exact edges. The module
- * is pure arithmetic after pixels arrive from the main-thread rasterizer.
+ * diffusion. Flat drawings avoid diffusion and use majority colour except in compact boxes, where
+ * area averages retain subcell detail. The module is pure arithmetic after decoded pixels arrive.
  */
 import type { Stencil, StencilSourceNature } from '../../../core/model/types';
-import { COVERAGE_ON } from './stencil';
+import { COMPACT_IMAGE_LIMIT, COVERAGE_ON } from './stencil';
 
 export type { StencilSourceNature };
 
@@ -103,8 +103,8 @@ export function readSourceNature(src: SourcePixels): { nature: StencilSourceNatu
 
 /**
  * Fits a source into `box` with preserved aspect ratio and centered placement. Two-by-two quadrant
- * sampling records coverage for corner trimming. Photographs average colour; flat drawings use the
- * majority colour. Transparent or removed backdrop cells remain uncovered. Empty build borders are
+ * sampling records coverage for corner trimming. Photographs and compact boxes average colour;
+ * larger flat drawings use majority colour. Transparent or removed backdrop cells remain uncovered. Empty build borders are
  * cropped and sampled again unless `trim` is disabled.
  */
 export function stencilFromPixels(src: SourcePixels, box: SampleBox, opts: SampleOptions = {}): Stencil | null {
@@ -318,6 +318,7 @@ function samplePixels(
 ): Stencil {
   const { width, height } = box;
   const { scale, offX, offY } = containFit(src, box);
+  const useMajority = nature === 'flat' && Math.min(width, height) >= COMPACT_IMAGE_LIMIT;
 
   const coverage = new Uint8Array(width * height);
   const color = new Uint32Array(width * height);
@@ -352,7 +353,7 @@ function samplePixels(
         r += w * pa * pr;
         g += w * pa * pg;
         b += w * pa * pb;
-        if (nature === 'flat' && pa > 0) {
+        if (useMajority && pa > 0) {
           const key = bucketOf(pr, pg, pb);
           const bucket = buckets.get(key);
           if (bucket) { bucket.w += w * pa; bucket.r += w * pa * pr; bucket.g += w * pa * pg; bucket.b += w * pa * pb; }
@@ -389,7 +390,7 @@ function samplePixels(
         r += qr * a; g += qg * a; b += qb * a;
       }
       coverage[i] = Math.round((aSum / 4) * 255);
-      const mode = nature === 'flat' ? majority() : null;
+      const mode = useMajority ? majority() : null;
       color[i] = mode !== null
         ? mode
         : aSum > 0

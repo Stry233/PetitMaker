@@ -44,7 +44,7 @@ function makeView() {
   const view = {
     projection: {
       screenToMacro: (sx: number, sy: number) => ({ x: Math.floor(sx / 10) + panOffsetCells, y: Math.floor(sy / 10) }),
-      screenToMicro: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
+      screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / 5) + panOffsetCells * 2, y: Math.floor(sy / 5) }),
       cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
       pan: vi.fn(),
     },
@@ -111,7 +111,7 @@ afterEach(() => {
 describe('a camera pan under a stationary pointer', () => {
   it('feeds a live brush stroke a move at the last screen position, painting the cell that slid under it', () => {
     activate(ToolType.TerrainBrush);
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
+    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 52, clientY: 52 }));
     expect(getCell(gs.cells, 5, 5)?.terrain?.type).toBe(TerrainType.Mountain);
     expect(getCell(gs.cells, 6, 5)?.terrain).toBeFalsy();
 
@@ -119,7 +119,7 @@ describe('a camera pan under a stationary pointer', () => {
 
     expect(getCell(gs.cells, 6, 5)?.terrain?.type).toBe(TerrainType.Mountain);
 
-    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 55, clientY: 55 }));
+    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 52, clientY: 52 }));
   });
 
   it('re-tracks the idle placement ghost with no stroke active', () => {

@@ -262,9 +262,9 @@ describe('a button gives its name', () => {
    * reaches where the word was, the hover that showed it has ended and the neighbour is answering
    * for itself.
    */
-  it('keeps giving names once its group has folded into two files', () => {
+  it('keeps giving names in the compact multi-column arrangement', () => {
     mountAt(396);
-    expect(files(kit())).toBe(2);
+    expect(files(kit())).toBeGreaterThanOrEqual(2);
     expect(files(pair())).toBe(2);
     for (const label of ['Undo', 'Redo', 'Zoom in', 'Hide interface']) {
       expect(plate(label).textContent, `${label} still carries its name`).toContain(label);

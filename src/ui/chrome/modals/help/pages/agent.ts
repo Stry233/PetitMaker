@@ -39,6 +39,20 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     figure: { kind: 'surface', surface: 'agent-setup', captionKey: 'help.agentsetup.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agsetup-providers', titleKey: 'help.agentsetup.providers_t', bodyKeys: ['help.agentsetup.providers_b1'] },
+      {
+        kind: 'steps', anchor: 'agsetup-keys', titleKey: 'help.agentsetup.keys_t', bodyKeys: ['help.agentsetup.keys_b1'],
+        groups: [
+          { provider: 'claude', stepKeys: ['help.agentsetup.keys_claude_1', 'help.agentsetup.keys_claude_2', 'help.agentsetup.keys_claude_3', 'help.agentsetup.keys_claude_4'] },
+          { provider: 'openai', stepKeys: ['help.agentsetup.keys_openai_1', 'help.agentsetup.keys_openai_2', 'help.agentsetup.keys_openai_3', 'help.agentsetup.keys_openai_4'] },
+          { provider: 'deepseek', stepKeys: ['help.agentsetup.keys_deepseek_1', 'help.agentsetup.keys_deepseek_2', 'help.agentsetup.keys_deepseek_3', 'help.agentsetup.keys_deepseek_4'] },
+          { provider: 'gemini', stepKeys: ['help.agentsetup.keys_gemini_1', 'help.agentsetup.keys_gemini_2', 'help.agentsetup.keys_gemini_3'] },
+          { provider: 'openrouter', stepKeys: ['help.agentsetup.keys_openrouter_1', 'help.agentsetup.keys_openrouter_2', 'help.agentsetup.keys_openrouter_3'] },
+          { provider: 'zhipu', stepKeys: ['help.agentsetup.keys_zhipu_1', 'help.agentsetup.keys_zhipu_2', 'help.agentsetup.keys_zhipu_3'] },
+          { provider: 'qwen', stepKeys: ['help.agentsetup.keys_qwen_1', 'help.agentsetup.keys_qwen_2', 'help.agentsetup.keys_qwen_3', 'help.agentsetup.keys_qwen_4'] },
+          { provider: 'moonshot', stepKeys: ['help.agentsetup.keys_moonshot_1', 'help.agentsetup.keys_moonshot_2', 'help.agentsetup.keys_moonshot_3'] },
+          { provider: 'perplexity', stepKeys: ['help.agentsetup.keys_perplexity_1', 'help.agentsetup.keys_perplexity_2', 'help.agentsetup.keys_perplexity_3', 'help.agentsetup.keys_perplexity_4'] },
+        ],
+      },
       { kind: 'prose', anchor: 'agsetup-paste', titleKey: 'help.agentsetup.paste_t', bodyKeys: ['help.agentsetup.paste_b1'], figure: { kind: 'surface', surface: 'agent-setup-detect', captionKey: 'help.agentsetup.detect_figcap' } },
       { kind: 'prose', anchor: 'agsetup-unknown', titleKey: 'help.agentsetup.unknown_t', bodyKeys: ['help.agentsetup.unknown_b1'] },
       { kind: 'prose', anchor: 'agsetup-model', titleKey: 'help.agentsetup.model_t', bodyKeys: ['help.agentsetup.model_b1'] },
@@ -52,6 +66,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
       { qKey: 'help.agentsetup.q3', aKey: 'help.agentsetup.a3' },
       { qKey: 'help.agentsetup.q4', aKey: 'help.agentsetup.a4' },
       { qKey: 'help.agentsetup.q5', aKey: 'help.agentsetup.a5' },
+      { qKey: 'help.agentsetup.q6', aKey: 'help.agentsetup.a6' },
     ],
     seeAlso: ['agent-intro', 'agent-run', 'agent-trouble', 'settings'],
   },

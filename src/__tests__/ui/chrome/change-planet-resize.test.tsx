@@ -98,7 +98,7 @@ describe('the change-planet card', () => {
     expect(screen.getByTestId('planet-start-over-hint')).toBeTruthy();
     // Clipped while it travels, so no row re-lays itself out on the way.
     expect(body().style.overflow).toBe('hidden');
-    await waitFor(() => expect(body().style.height).not.toBe(''), { timeout: 3000 });
+    expect(body().style.height).toBe('400px');
     // And it arrives carrying nothing: a leftover inline height would make the next measurement
     // describe this glide rather than the card's own content.
     await waitFor(() => expect(body().style.height).toBe(''), { timeout: 3000 });
@@ -111,6 +111,21 @@ describe('the change-planet card', () => {
     expect(screen.getByTestId('planet-start-over-hint')).toBeTruthy();
     expect(body().style.overflow).toBe('');
     expect(body().style.height).toBe('');
+  });
+
+  it('animates the first selection after an empty modal opens', async () => {
+    act(() => { useEditorStore.setState({ gridState: grid(HEXIA) }); });
+    const frame = (open: boolean) => (
+      <MotionConfig reducedMotion="never">
+        <I18nProvider><ChangePlanetModal open={open} onSwitch={() => {}} onClose={() => {}} /></I18nProvider>
+      </MotionConfig>
+    );
+    const view = render(frame(false));
+    view.rerender(frame(true));
+    height = 460;
+    fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+    expect(body().style.height).toBe('400px');
+    await waitFor(() => expect(body().style.height).toBe(''), { timeout: 3000 });
   });
 
   it('eases when a destination is picked at all, and again when the choice moves', async () => {
@@ -138,7 +153,7 @@ describe('the change-planet card', () => {
     show();
     // Every line in the card is a different length in Russian, so the card is a different card.
     await expectGlide(540, () => { act(() => { useEditorStore.setState({ locale: 'ru' }); }); });
-    expect(screen.getByText('Вы здесь')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Сменить планету' })).toBeTruthy();
   });
 
   it('eases when the busy dots take the verb', async () => {

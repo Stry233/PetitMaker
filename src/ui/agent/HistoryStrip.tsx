@@ -8,6 +8,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Icon, type IconId } from './icons';
+import { editCount } from './job-stats';
 import { amplitude, CONFIRM_ARM, framerMotion } from './motion';
 import { iconForTool } from './tool-meta';
 import { rewindConfirmCopy, rollbackCost, rollbackReaches } from './rollback';
@@ -46,11 +47,6 @@ function glyphFor(job: JobView): IconId {
   return last ? iconForTool(last.name) : NO_WORK_ICON;
 }
 
-/** Cells painted plus objects placed, as the job's tool results reported them. */
-function editsIn(job: JobView): number {
-  return job.ops.reduce((sum, op) => sum + (op.detail?.cells ?? 0) + (op.detail?.objects ?? 0), 0);
-}
-
 /**
  * What a row states where a build states its edit count: an answer says what it WAS, since "0 edits"
  * reports a build that went nowhere and this job never set out to edit anything.
@@ -65,7 +61,7 @@ function editsIn(job: JobView): number {
 function statKeyFor(job: JobView): string | null {
   if (job.kind === 'answer') return 'agent3.history_answered';
   if (job.kind === 'quiet') return 'agent3.history_ended';
-  if (editsIn(job) === 0) return 'agent3.dock_no_edits';
+  if (editCount(job) === 0) return 'agent3.dock_no_edits';
   return null;
 }
 
@@ -181,7 +177,7 @@ function HistoryRow({
     && watermark !== undefined && rollbackReaches(watermark, undoDepth);
   const actions = (onOpen ? 1 : 0) + (rollable ? 1 : 0);
   const statKey = statKeyFor(job);
-  const edits = editsIn(job);
+  const edits = editCount(job);
   const dim = rolledBack || blocked !== undefined;
   const copy = rewindConfirmCopy(
     t, watermark === undefined ? null : rollbackCost(watermark, undoDepth, job.endUndoIndex),

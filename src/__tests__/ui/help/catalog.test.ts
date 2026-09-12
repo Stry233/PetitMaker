@@ -4,7 +4,14 @@
  * figure naming a scene or mock that exists. This is the test that makes the catalog a CONTRACT:
  * a descriptor cannot point at prose, a page or a drawing that is not there.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+/** The catalog under test is the development one, which carries every help string. Sections a
+ *  released build withholds are pinned in `custom-card-gate.test.ts`. */
+vi.mock('../../../version', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../version')>();
+  return { ...actual, IS_DEV_BUILD: true };
+});
 import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/chrome/modals/help/catalog';
 import { HELP_SCENES, type DemoView, type HelpScene, type SceneStep } from '../../../ui/chrome/modals/help/figures/scenes';
 import { DemoWorld } from '../../../ui/chrome/modals/help/figures/demo-world';
@@ -16,6 +23,8 @@ import { translations } from '../../../i18n/translations';
 import { helpFacts } from '../../../ui/chrome/modals/help/facts';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../../io/stylize/providers';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/autosave';
+import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../agent/core/governor';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -67,6 +76,9 @@ function keysOf(page: HelpPage): string[] {
     if (s.kind === 'prose') {
       keys.push(...s.bodyKeys);
       if (s.figure) keys.push(...figureKeys(s.figure));
+    } else if (s.kind === 'steps') {
+      keys.push(...(s.bodyKeys ?? []));
+      for (const g of s.groups) keys.push(...g.stepKeys);
     } else {
       keys.push(...s.rows.map((r) => r.doKey));
       keys.push(...(s.afterKeys ?? []));
@@ -186,10 +198,24 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
       || ['help.fig.plan_job', 'help.fig.plan_s1', 'help.fig.plan_s2', 'help.fig.plan_s3', 'help.fig.undo_job', 'help.fig.undo_job2', 'help.fig.steer_job', 'help.fig.steer_note', 'help.fig.trail_job', 'help.fig.pic_title', 'help.fig.pic_desc',
         'help.camera.fig_orbit', 'help.camera.fig_tilt', 'help.camera.fig_dolly', 'help.camera.fig_hturn', 'help.camera.fig_pan'].includes(key)
       || key === 'help.qa_title' || key === 'help.see_also' || key === 'help.search_placeholder'
-      || key.startsWith('help.whats_this') || key === 'help.fig.notes_zone_name' || key === 'help.fig.built_title'
-      || key === 'help.fig.notetext_word1' || key === 'help.fig.notetext_word2';
+      || key.startsWith('help.steps.')
+      || key.startsWith('help.whats_this') || key === 'help.fig.built_title';
     const orphans = enKeys.filter((key) => !used.has(key) && !componentRead(key));
     expect(orphans).toEqual([]);
+  });
+
+  it('derives autosave timing and agent limits and interpolates them in every locale', () => {
+    for (const locale of LOCALES) {
+      const facts = helpFacts(locale);
+      expect(facts.autosaveSeconds).toBe(AUTOSAVE_DEBOUNCE_MS / 1000);
+      expect(facts.agentMaxTurns).toBe(MAX_TURNS_DEFAULT);
+      expect(facts.agentChildTurns).toBe(SUBAGENT_MAX_TURNS);
+      for (const key of ['help.welcome.resume_b1', 'help.save.when_b1', 'help.save.a1']) {
+        expect(HELP_TABLES[locale][key]).toContain('{autosaveSeconds}');
+      }
+      expect(HELP_TABLES[locale]['help.agenttrouble.caps_b1']).toContain('{agentMaxTurns}');
+      expect(HELP_TABLES[locale]['help.agenttrouble.caps_b1']).toContain('{agentChildTurns}');
+    }
   });
 
   it('derives provider rosters and counts from their runtime registries', () => {

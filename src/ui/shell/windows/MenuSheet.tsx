@@ -19,7 +19,9 @@ import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import { btnReset, cursors, springs, z } from '../../design/styles';
 import { useReadableWeight } from '../../design/scale';
-import { MODE_ROW_BASE } from '../frame';
+import { MODE_ROW_BASE, TOP_RIGHT_TOP } from '../frame';
+import { useFrameLayout } from '../frame-layout';
+import { cssMotion } from '../motion/use-motion';
 import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, TEXT } from '../units';
 
@@ -59,6 +61,8 @@ export interface MenuSheetProps {
 export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
   const t = useT();
   const fw = useReadableWeight();
+  const layout = useFrameLayout();
+  const top = SHEET_TOP + (layout ? layout.cornerTop - TOP_RIGHT_TOP : 0);
   const setModal = useEditorStore((s) => s.setModal);
 
   // Escape closes the sheet. It is not a modal — nothing is locked out behind it — so this is its
@@ -85,8 +89,11 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
             transition={springs.stiff}
             style={{
               position: 'fixed',
-              top: SHEET_TOP,
-              right: EDGE_RIGHT,
+              top,
+              maxHeight: layout ? layout.height - top - 16 : undefined,
+              overflowY: 'auto',
+              transition: cssMotion('frame.layout.adapt', 'top', 'max-height'),
+              right: layout?.edgeRight ?? EDGE_RIGHT,
               // The frame's plane is deaf so the map keeps its presses; a surface standing on it
               // claims its own (`shell/Shell.tsx`'s frame style).
               pointerEvents: 'auto',

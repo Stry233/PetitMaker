@@ -57,7 +57,7 @@ export function laneRollup(
   // A child call that was refused or put back is the one thing worth naming over the count: the
   // helper came back with less than it was asked for.
   if (ops.some((o) => o.status === 'error')) return { text: t('agent3.lane_refused'), tone: 'bad' };
-  if (ops.some((o) => o.status === 'revert')) return { text: t('agent3.op_chip_put_back'), tone: 'warn' };
+  if (ops.some((o) => o.status === 'revert')) return { text: t(detail.partialRevert ? 'agent3.op_chip_partial' : 'agent3.op_chip_put_back'), tone: 'warn' };
   return { text: t(ops.length === 1 ? 'agent3.steps_count_one' : 'agent3.steps_count', { n: ops.length }) };
 }
 
@@ -91,9 +91,8 @@ function LaneHead({ lane }: { lane: LaneView }) {
       <span
         data-testid="lane-name"
         style={{
-          ...roleFont('caption'),
+          ...roleFont('small'),
           fontFamily: font.family,
-          fontWeight: 800,
           color: PLATE_INK,
           minWidth: 0,
           overflow: 'hidden',

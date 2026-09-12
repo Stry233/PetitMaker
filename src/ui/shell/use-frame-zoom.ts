@@ -8,7 +8,7 @@
  */
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
 import { useDenseScript, useDevicePixelRatio, useViewportFit } from '../design/scale';
-import { readableWeight, textDevicePx } from '../design/text-weight';
+import { readableWeight } from '../design/text-weight';
 import { ZOOM } from './units';
 
 /** The factor every length inside the frame is drawn at: the frame's own page zoom, times the
@@ -32,7 +32,7 @@ export function useFrameReadableWeight(): (nominal: number, cssPx: number) => nu
   const zoom = useFrameZoom();
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
-  return (nominal, cssPx) => readableWeight(nominal, textDevicePx(cssPx, zoom, dpr), dense);
+  return (nominal, cssPx) => readableWeight(nominal, cssPx * zoom, dense, dpr);
 }
 
 /**

@@ -76,9 +76,9 @@ describe('the numbered tool keys inside annotate mode', () => {
     expect(s().annotationTool).toBe('erase');
   });
 
-  it('the two keys with no annotate twin carry the text and the route', () => {
+  it('the two keys with no annotate twin carry the chip and the route', () => {
     RUN['tool.edgecut']!(ctx);
-    expect(s().annotationTool).toBe('text');
+    expect(s().annotationTool).toBe('chip');
     RUN['tool.smart']!(ctx);
     expect(s().annotationTool).toBe('route');
     // Pressing the active one puts the tool away, the terrain rows' own toggle.
@@ -89,8 +89,8 @@ describe('the numbered tool keys inside annotate mode', () => {
   it('select-all means the NOTES: the drawing tool goes away and every note joins', () => {
     s().initMap(makeTemplate(24, 24), createDefaultRegistry());
     s().setEditMode({ mode: 'annotate' });
-    s().addAnnotation({ kind: 'text', id: 't1', x: 5.5, y: 5.5, text: 'a', style: 'chip', size: 'm', color: '#FFB347' });
-    s().addAnnotation({ kind: 'text', id: 't2', x: 8.5, y: 8.5, text: 'b', style: 'chip', size: 'm', color: '#FFB347' });
+    s().addAnnotation({ kind: 'chip', id: 't1', x: 5.5, y: 5.5, tag: 'plaza', size: 'm', color: '#FFB347' });
+    s().addAnnotation({ kind: 'chip', id: 't2', x: 8.5, y: 8.5, tag: 'farm', size: 'm', color: '#FFB347' });
     s().setAnnotationTool('zone');
     RUN['selection.all']!(ctx);
     expect(s().annotationTool).toBe('none');

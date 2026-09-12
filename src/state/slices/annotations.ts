@@ -3,8 +3,7 @@
  *
  * The annotation DATA lives on `GridState.annotations` — it is map content and rides the save
  * file — so this slice holds what a session brings to it: the armed annotation tool and its
- * options, the selection, the name editor, the in-progress draft, and the layer's own undo/redo
- * lanes. Every data mutation goes through the verbs here, which bump `annotationsEpoch` so
+ * options, the selection, the in-progress draft, and the layer's own undo/redo lanes. Every data mutation goes through the verbs here, which bump `annotationsEpoch` so
  * subscribed views redraw over the in-place-mutated grid (the same move `objectsVersion` makes
  * for the object index).
  *
@@ -16,7 +15,7 @@
 import type { StateCreator } from 'zustand';
 import {
   ANNOTATION_COLORS, createAnnotationsState,
-  type AnnotationsState, type AnnotationTool, type AnnotationZoneShape, type MapAnnotation,
+  type AnnotationsState, type AnnotationTool, type AnnotationZoneShape, type MapAnnotation, type TagId,
 } from '../../core/model/annotations';
 import type { EngineSlice } from './engine';
 
@@ -30,29 +29,32 @@ export interface AnnotationsSlice {
    *  tool rather than an arming, so putting the tool down keeps the figure. */
   annotationZoneShape: AnnotationZoneShape;
   annotationColor: string;
-  annotationTextStyle: 'label' | 'chip';
-  annotationTextSize: 's' | 'm' | 'l';
+  /** The tag a new zone or chip carries, and the tag a pick applies to the selection. */
+  annotationTag: TagId;
+  /** Caption and chip size. */
+  annotationSize: 's' | 'm' | 'l';
   annotationRouteDashed: boolean;
   /** The selected notes' ids, in the order they were picked — a SET, like the map's own object
    *  selection: Ctrl-clicks toggle members, batch verbs (delete, merge) act on the whole. The
    *  FIRST id is the primary: a merge keeps its identity. */
   annotationSelection: string[];
-  /** The note whose name editor is open (a zone's name, a text note's words). */
-  annotationNaming: string | null;
-  /** The note being drawn RIGHT NOW — a zone mid-paint, a route mid-waypoints. Both views draw it
-   *  like a committed note; it joins `items` (and the undo lane) only when the gesture commits. */
+  /** The note being drawn RIGHT NOW: a zone gathering strokes until Done, a route mid-waypoints.
+   *  Both views draw it like a committed note; it joins `items` (and the undo lane) on commit. */
   annotationDraft: MapAnnotation | null;
   annotationUndoLane: string[];
   annotationRedoLane: string[];
   setAnnotationTool: (t: AnnotationTool) => void;
   setAnnotationZoneShape: (s: AnnotationZoneShape) => void;
+  /** Arm a color; a standing selection takes it too, as one lane entry. */
   setAnnotationColor: (c: string) => void;
-  setAnnotationTextStyle: (s: 'label' | 'chip') => void;
-  setAnnotationTextSize: (s: 's' | 'm' | 'l') => void;
+  /** Arm a tag; a standing draft or selection takes it too. */
+  setAnnotationTag: (tag: TagId) => void;
+  setAnnotationSize: (s: 's' | 'm' | 'l') => void;
   setAnnotationRouteDashed: (d: boolean) => void;
   setAnnotationSelection: (ids: string[]) => void;
-  setAnnotationNaming: (id: string | null) => void;
   setAnnotationDraft: (a: MapAnnotation | null) => void;
+  /** Turn the standing draft into a note, selected. False when nothing commits. */
+  commitAnnotationDraft: () => boolean;
   /** Push the CURRENT items onto the undo lane (and clear redo) — the one entry a whole gesture
    *  makes, however many `applyAnnotationEdit` calls the gesture then applies. */
   beginAnnotationStroke: () => void;
@@ -63,7 +65,7 @@ export interface AnnotationsSlice {
   removeAnnotation: (id: string) => void;
   /** Remove several notes as ONE undo-lane entry. */
   removeAnnotations: (ids: string[]) => void;
-  /** Merge the given zones into the FIRST of them: its name, number, colour and size absorb the
+  /** Merge the given zones into the FIRST of them: its tag, number, colour and size absorb the
    *  others' cells (deduplicated), and the absorbed zones go — one lane entry. Ids that are not
    *  zones are ignored; under two zones, nothing happens. */
   mergeAnnotationZones: (ids: string[]) => void;
@@ -89,23 +91,48 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     annotationTool: 'zone',
     annotationZoneShape: 'free',
     annotationColor: ANNOTATION_COLORS[0]!,
-    annotationTextStyle: 'label',
-    annotationTextSize: 'm',
+    annotationTag: 'homes',
+    annotationSize: 'm',
     annotationRouteDashed: true,
     annotationSelection: [],
-    annotationNaming: null,
     annotationDraft: null,
     annotationUndoLane: [],
     annotationRedoLane: [],
-    setAnnotationTool: (t) => set({ annotationTool: t, annotationSelection: [], annotationNaming: null, annotationDraft: null }),
-    setAnnotationZoneShape: (shape) => set({ annotationZoneShape: shape, annotationDraft: null }),
-    setAnnotationColor: (c) => set({ annotationColor: c }),
-    setAnnotationTextStyle: (s) => set({ annotationTextStyle: s }),
-    setAnnotationTextSize: (s) => set({ annotationTextSize: s }),
-    setAnnotationRouteDashed: (d) => set({ annotationRouteDashed: d }),
+    // A zone draft outlives a switch among the zone figures and to the eraser: trimming a draft is
+    // part of drawing it. Every other switch drops what was pending.
+    setAnnotationTool: (t) => set((s) => ({
+      annotationTool: t, annotationSelection: [],
+      annotationDraft: (t === 'zone' || t === 'erase') && s.annotationDraft?.kind === 'zone' ? s.annotationDraft : null,
+    })),
+    setAnnotationZoneShape: (shape) => set({ annotationZoneShape: shape }),
+    setAnnotationColor: (c) => {
+      set({ annotationColor: c });
+      patchStanding(get, set, (n) => ({ ...n, color: c } as MapAnnotation));
+    },
+    setAnnotationTag: (tag) => {
+      set({ annotationTag: tag });
+      patchStanding(get, set, (n) => (n.kind === 'route' ? n : { ...n, tag }));
+    },
+    setAnnotationSize: (size) => {
+      set({ annotationSize: size });
+      patchStanding(get, set, (n) => (n.kind === 'route' ? n : { ...n, size }));
+    },
+    setAnnotationRouteDashed: (d) => {
+      set({ annotationRouteDashed: d });
+      patchStanding(get, set, (n) => (n.kind === 'route' ? { ...n, dashed: d } : n));
+    },
     setAnnotationSelection: (ids) => set({ annotationSelection: ids }),
-    setAnnotationNaming: (id) => set({ annotationNaming: id }),
     setAnnotationDraft: (a) => set({ annotationDraft: a }),
+    commitAnnotationDraft: () => {
+      const d = get().annotationDraft;
+      if (!d) return false;
+      set({ annotationDraft: null });
+      const empty = d.kind === 'zone' ? d.cells.length === 0 : d.kind === 'route' ? d.points.length < 2 : false;
+      if (empty) return false;
+      get().addAnnotation(d);
+      set({ annotationSelection: [d.id] });
+      return true;
+    },
 
     beginAnnotationStroke: () => {
       const d = data();
@@ -133,10 +160,7 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
       const gone = new Set(ids);
       get().beginAnnotationStroke();
       get().applyAnnotationEdit((d) => { d.items = d.items.filter((n) => !gone.has(n.id)); });
-      set((s) => ({
-        annotationSelection: s.annotationSelection.filter((i) => !gone.has(i)),
-        annotationNaming: s.annotationNaming && gone.has(s.annotationNaming) ? null : s.annotationNaming,
-      }));
+      set((s) => ({ annotationSelection: s.annotationSelection.filter((i) => !gone.has(i)) }));
     },
     mergeAnnotationZones: (ids) => {
       const d = data();
@@ -159,7 +183,7 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
         if (i >= 0) data2.items[i] = { ...head!, cells };
         data2.items = data2.items.filter((n) => !restIds.has(n.id));
       });
-      set({ annotationSelection: [head!.id], annotationNaming: null });
+      set({ annotationSelection: [head!.id] });
     },
     updateAnnotation: (id, patch) => {
       get().beginAnnotationStroke();
@@ -189,7 +213,6 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
         annotationUndoLane: s.annotationUndoLane.slice(0, -1),
         annotationRedoLane: [...s.annotationRedoLane, JSON.stringify(d.items)],
         annotationSelection: [],
-        annotationNaming: null,
       }));
       d.items = JSON.parse(snapshot) as MapAnnotation[];
       bump();
@@ -204,7 +227,6 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
         annotationRedoLane: s.annotationRedoLane.slice(0, -1),
         annotationUndoLane: [...s.annotationUndoLane, JSON.stringify(d.items)],
         annotationSelection: [],
-        annotationNaming: null,
       }));
       d.items = JSON.parse(snapshot) as MapAnnotation[];
       bump();
@@ -213,11 +235,27 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
   };
 };
 
+/** Apply an armed option to what is standing: the draft in place, and the selection as one lane
+ *  entry. A hidden or locked layer keeps its notes; the arming still changes. */
+function patchStanding(
+  get: () => AnnotationsSlice & Deps,
+  set: (partial: Partial<AnnotationsSlice>) => void,
+  patch: (n: MapAnnotation) => MapAnnotation,
+): void {
+  const s = get();
+  if (s.annotationDraft) set({ annotationDraft: patch(s.annotationDraft) });
+  const data = s.gridState?.annotations;
+  if (!data || s.annotationSelection.length === 0 || !data.visible || data.locked) return;
+  const picked = new Set(s.annotationSelection);
+  if (!data.items.some((n) => picked.has(n.id) && patch(n) !== n)) return;
+  s.beginAnnotationStroke();
+  s.applyAnnotationEdit((d) => { d.items = d.items.map((n) => (picked.has(n.id) ? patch(n) : n)); });
+}
+
 /** The session fields a NEW or LOADED map resets, spread by the engine slice's `initMap`/`loadMap`:
  *  a selection, a draft or an undo lane describes the map being left, never the one arriving. */
 export const ANNOTATION_SESSION_RESET = {
   annotationSelection: [] as string[],
-  annotationNaming: null,
   annotationDraft: null,
   annotationUndoLane: [] as string[],
   annotationRedoLane: [] as string[],

@@ -2,7 +2,7 @@
  * UP TO THREE GENUINELY DIFFERENT ROUTES, or fewer, honestly.
  *
  * One A* over three cost profiles: straight (turning is expensive, so it commits to long runs),
- * short (the map's own learned style, which is the default offer), scenic (a discount for hugging
+ * short (road reuse with a moderate bend cost, the default offer), scenic (a discount for hugging
  * water and terrace edges, so the walk has something to look at). Three profiles do not guarantee
  * three ANSWERS: across open ground they collapse onto the same line, and offering the same route
  * three times with three names is the kind of variety this design exists to stop pretending to.

@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { colors, font, z } from '../../design/styles';
-import { roleFont } from '../../design/text-weight';
+import { roleWeight, roleFont } from '../../design/text-weight';
 import { MOTIONS } from '../motion/registry';
 import { cssMotion, useMotion, useMotionAllowed } from '../motion/use-motion';
 import { activeTarget } from '../../../legal/deploy-targets';
@@ -244,7 +244,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
           {/* A fixed slot sized for "100%", digits CENTRED in it: the composite never moves as
               the count grows, and the ink stays symmetric — left-aligned, the empty remainder of
               the slot pushed the visible text off the pill's centre. */}
-          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: colors.brownText, minWidth: '2.9em', textAlign: 'center' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: roleWeight('small'), color: colors.brownText, minWidth: '2.9em', textAlign: 'center' }}>
             {pct}%
           </span>
         </div>

@@ -304,6 +304,7 @@ describe('export leak check — re-derived independently of the copy step', () =
     for (const real of [
       'LICENSE',
       'README.md',
+      '.github/FUNDING.yml',
       'package.json',
       'docs/ARCHITECTURE.md',
       'docs/THIRD_PARTY_NOTICES.md',
@@ -412,19 +413,12 @@ describe('applying a snapshot to the public checkout', () => {
       planPublicSync(exported, existing, published, loadManifest());
 
     it('leaves the public repository its own files, even after we have published over them', () => {
-      // A publish commit's TREE contains these too, so "in the previous publish" alone
-      // would delete a maintainer's own file on the NEXT run.
-      // (Issue templates are manifest-public and authored here, so the maintainer-owned
-      // examples are the funding file and a PR template.)
-      const theirs = ['.github/workflows/codeql.yml', '.github/FUNDING.yml', 'CODE_OF_CONDUCT.md'];
+      // A previous snapshot can contain maintainer-owned files outside the export allowlist.
+      const theirs = ['.github/workflows/codeql.yml', '.github/PULL_REQUEST_TEMPLATE.md', 'CODE_OF_CONDUCT.md'];
       const previousTree = ['README.md', ...theirs]; // the whole repo, as a tree always is
       const { deletions, foreign, orphaned } = plan(['README.md'], ['README.md', ...theirs], previousTree);
       expect(deletions).toEqual([]);
-      // The manifest names its two internal workflows individually (the issue-desk one is
-      // public), so a maintainer-added workflow matches nothing at all and reads as orphaned,
-      // like the funding file and the code of conduct. Either reading leaves the file in place;
-      // orphaned additionally reports it as a decision for the maintainer.
-      expect(orphaned).toEqual(['.github/FUNDING.yml', '.github/workflows/codeql.yml', 'CODE_OF_CONDUCT.md'].sort());
+      expect(orphaned).toEqual([...theirs].sort());
       expect(foreign).not.toContain('.github/workflows/codeql.yml');
     });
 

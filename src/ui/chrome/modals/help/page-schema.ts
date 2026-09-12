@@ -8,6 +8,7 @@
  * or named surfaces (the real interface mounted live); a page never embeds drawing code of its own.
  */
 import type { TokenSpec } from '../../../hints/catalogue';
+import type { ProviderId } from '../../../../agent/providers/defaults';
 
 export type HelpGroupId = 'start' | 'build' | 'generate' | 'plan' | 'share' | 'agent' | 'misc';
 
@@ -26,9 +27,17 @@ export interface HelpKeyRow {
   tokens: readonly TokenSpec[];
 }
 
+/** One provider's bulleted walkthrough; its name and console links are read from `PROVIDER_META`. */
+export interface HelpStepGroup {
+  provider: ProviderId;
+  stepKeys: readonly string[];
+}
+
 export type HelpSection =
   /** A heading and one or more paragraphs. Body strings may mark gestures with `**bold**`. */
   | { kind: 'prose'; anchor: string; titleKey: string; bodyKeys: readonly string[]; figure?: HelpFigure }
+  /** A heading, optional paragraphs, then one bulleted step list per provider. */
+  | { kind: 'steps'; anchor: string; titleKey: string; bodyKeys?: readonly string[]; groups: readonly HelpStepGroup[] }
   /** A heading over a key table, with optional prose after it. */
   | { kind: 'keys'; anchor: string; titleKey: string; rows: readonly HelpKeyRow[]; afterKeys?: readonly string[] }
   /** A yellow aside between sections. */

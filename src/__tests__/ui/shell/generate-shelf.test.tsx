@@ -46,6 +46,18 @@ vi.mock('../../../ui/shell/bars/stencil-plan', async (importOriginal) => {
   };
 });
 
+/** The shelf under test is the development one: every kind offers its own card. The release
+ *  state is exercised explicitly through `hasCustomCard`'s build argument below. */
+vi.mock('../../../version', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../version')>();
+  return { ...actual, IS_DEV_BUILD: true };
+});
+
+vi.mock('../../../ui/shell/bars/generate-shelf', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../ui/shell/bars/generate-shelf')>();
+  return { ...actual, hasCustomCard: vi.fn(actual.hasCustomCard) };
+});
+
 import { setActiveView } from '../../../canvas/active-view';
 import { setMapRenderer } from '../../../canvas/map2d/renderer-registry';
 import type { MapRenderer } from '../../../canvas/map2d/map-renderer';
@@ -56,7 +68,7 @@ import {
   CommandType, ItemCategory, TerrainType,
   type GenerateConfig, type GridState, type MacroCoord,
 } from '../../../core/model/types';
-import { I18nProvider, localizedName } from '../../../i18n/context';
+import { I18nProvider, localizedName, translateFor } from '../../../i18n/context';
 import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import type { KitContext } from '../../../kit/context';
 import { serialize } from '../../../io/json-codec';
@@ -75,8 +87,8 @@ import { fitTextGrid } from '../../../tools/generation/stencil/stencil-text-grid
 import { fontModel } from '../../tools/generation/stencil/_text-fonts';
 import { MazeEndpoints } from '../../../ui/shell/bars/MazeEndpoints';
 import {
-  BODY_H, CANDIDATES, CARD_H, CARD_MAX_H, GAP, PAD, SEED_DIGITS, SLIDERS, SLIDERS_TIGHT, STRIP, TABS,
-  batchSeeds, maxElevationFor, shelfConfig, slidersFor, stencilNote,
+  BODY_H, CANDIDATES, CARD_H, CARD_MAX_H, GAP, PAD, SEED_DIGITS, SLIDERS, STRIP, TABS,
+  batchSeeds, hasCustomCard, maxElevationFor, shelfConfig, stencilNote,
 } from '../../../ui/shell/bars/generate-shelf';
 import { IMAGE_POOL, sampleName } from '../../../ui/shell/bars/stencil-samples';
 import { APP_NAME, brandName } from '../../../version';
@@ -732,18 +744,19 @@ describe('the scope chip', () => {
    * PLAN behind each card survives, so a click on the blank card would still build the picture the
    * last region was fitted for. The card stands (nothing on this shelf vanishes), and it refuses.
    */
-  it('refuses a card whose region no longer fits, rather than landing the last one', async () => {
+  it.each([7, 20])('builds pictures in a %i-cell box and refuses a stale card after shrinking below the minimum', async (side) => {
     installKit();
     // Big enough for a picture to start with, so the cards are real.
-    useEditorStore.setState({ region: rect(2, 2, 30, 30) });
+    useEditorStore.setState({ region: rect(2, 2, side + 1, side + 1) });
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
     await settle();
     const cards = (): HTMLElement[] => screen.getAllByTestId(/^shell-candidate-/);
     expect(cards().length).toBeGreaterThan(0);
+    expect(cards()[0]!.getAttribute('aria-disabled')).toBe('false');
 
     // Now paint one the kind cannot work in.
-    act(() => { useEditorStore.setState({ region: rect(2, 2, 6, 6) }); });
+    act(() => { useEditorStore.setState({ region: rect(2, 2, 7, 7) }); });
     await settle();
     vi.mocked(barrelGenerateMap).mockClear();
 
@@ -1098,7 +1111,7 @@ describe('the sliders', () => {
    * other kind draws the design's own track, since a shorter one is a coarser setting under the
    * same hand and nothing on those rows was asking for the width.
    */
-  it('draws the design\'s own track on every kind but the crowded picture row', async () => {
+  it('keeps the same slider length across generator kinds', async () => {
     installKit();
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
@@ -1109,12 +1122,9 @@ describe('the sliders', () => {
     await settle();
     const tight = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
 
-    expect(drawn).toBeGreaterThan(tight);
-    expect(slidersFor('island')).toBe(SLIDERS);
-    expect(slidersFor('maze')).toBe(SLIDERS);
-    expect(slidersFor('image')).toBe(SLIDERS_TIGHT);
+    expect(drawn).toBe(tight);
     // Whatever the length, the knob travels between marks INSIDE the track it is drawn on.
-    for (const shape of [SLIDERS.upper, SLIDERS.maxLayer, SLIDERS_TIGHT.upper, SLIDERS_TIGHT.maxLayer]) {
+    for (const shape of [SLIDERS.upper, SLIDERS.maxLayer]) {
       expect(shape.first).toBeGreaterThanOrEqual(shape.track.x);
       expect(shape.last).toBeLessThanOrEqual(shape.track.x + shape.track.w);
     }
@@ -1573,7 +1583,7 @@ describe('a word too long for its region', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
 
-    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(/Text: enlarge the region/)).toBeNull();
+    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(translateFor('en', 'gen.text_needs_room'))).toBeNull();
     expect(vi.mocked(barrelCandidate).mock.calls.length).toBeGreaterThan(0);
     measure.mockRestore();
   }, 30_000);
@@ -1600,7 +1610,7 @@ describe('a word too long for its region', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 420)); });
     expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
-    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(/Text: enlarge the region/)).toBeNull();
+    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(translateFor('en', 'gen.text_needs_room'))).toBeNull();
     expect(screen.getByRole('button', { name: 'New batch' }).getAttribute('aria-disabled')).toBe('true');
 
     await act(async () => { release(); });
@@ -1620,7 +1630,7 @@ describe('a word too long for its region', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
 
-    expect(screen.getByText(/Text: use fewer characters/)).toBeTruthy();
+    expect(screen.getByText(translateFor('en', 'gen.text_too_wide'))).toBeTruthy();
     expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(0);
   }, 30_000);
 
@@ -1633,7 +1643,7 @@ describe('a word too long for its region', () => {
     fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
     fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
-    expect(screen.queryByText(/Text: use fewer characters/)).toBeNull();
+    expect(screen.queryByText(translateFor('en', 'gen.text_too_wide'))).toBeNull();
   }, 30_000);
 });
 
@@ -1776,4 +1786,46 @@ describe('the batch', () => {
     await waitFor(() => expect(kit.executor.getUndoStackSize()).toBe(1));
     expect(kit.state.generation?.seed).toBe(shown[1]);
   }, 60_000);
+});
+
+/**
+ * Which kinds offer the visitor's own card is decided when the app is built. A development build
+ * offers every card; a released build withholds the Letter and Picture ones, and the shelf shows
+ * the row without them rather than a card that cannot be used.
+ */
+describe('the own card per build', () => {
+  type Shelf = typeof import('../../../ui/shell/bars/generate-shelf');
+  const released = async (): Promise<(kind: Parameters<Shelf['hasCustomCard']>[0]) => boolean> => {
+    const actual = await vi.importActual<Shelf>('../../../ui/shell/bars/generate-shelf');
+    return (kind) => actual.hasCustomCard(kind, false);
+  };
+
+  it('ships every own card in a development build and only the recipe cards in a release', async () => {
+    const RELEASED = await released();
+    for (const kind of ['maze', 'island', 'text', 'image'] as const) expect(hasCustomCard(kind, true), kind).toBe(true);
+    expect(RELEASED('maze')).toBe(true);
+    expect(RELEASED('island')).toBe(true);
+    expect(RELEASED('text')).toBe(false);
+    expect(RELEASED('image')).toBe(false);
+  });
+
+  it('shows no own card for Letter and Picture in a release, and keeps the maze one', async () => {
+    vi.mocked(hasCustomCard).mockImplementation(await released());
+    const cards = () => screen.getByTestId('gen-cards-row').children.length;
+    installKit();
+    mount();
+    await settle();
+    expect(screen.getByTestId('shell-candidate-custom')).toBeTruthy();
+    expect(cards()).toBe(CANDIDATES + 1);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+    await settle();
+    expect(screen.queryByTestId('shell-candidate-custom')).toBeNull();
+    expect(cards()).toBe(CANDIDATES);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    await settle();
+    expect(screen.queryByTestId('shell-candidate-import')).toBeNull();
+    expect(cards()).toBe(CANDIDATES);
+  }, 30_000);
 });

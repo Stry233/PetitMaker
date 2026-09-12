@@ -23,13 +23,13 @@ declare const __dirname: string;
 // The fields the composed store is expected to expose. Checked in so that losing one fails here:
 // comparing the slices against the store only proves the two agree, and they shrink together.
 const EXPECTED_STORE_FIELDS: readonly string[] = [
-  'addAnnotation', 'annotationColor', 'annotationDraft', 'annotationNaming', 'annotationRedoLane',
-  'annotationRouteDashed', 'annotationSelection', 'annotationTextSize', 'annotationTextStyle',
+  'addAnnotation', 'annotationColor', 'annotationDraft', 'annotationRedoLane',
+  'annotationRouteDashed', 'annotationSelection', 'annotationSize', 'annotationTag',
   'annotationTool', 'annotationUndoLane', 'annotationZoneShape', 'annotationsEpoch',
-  'applyAnnotationEdit', 'beginAnnotationStroke', 'mergeAnnotationZones', 'redoAnnotation', 'removeAnnotation',
+  'applyAnnotationEdit', 'beginAnnotationStroke', 'commitAnnotationDraft', 'mergeAnnotationZones', 'redoAnnotation', 'removeAnnotation',
   'removeAnnotations',
-  'setAnnotationColor', 'setAnnotationDraft', 'setAnnotationNaming', 'setAnnotationRouteDashed',
-  'setAnnotationSelection', 'setAnnotationTextSize', 'setAnnotationTextStyle', 'setAnnotationTool',
+  'setAnnotationColor', 'setAnnotationDraft', 'setAnnotationRouteDashed',
+  'setAnnotationSelection', 'setAnnotationSize', 'setAnnotationTag', 'setAnnotationTool',
   'setAnnotationZoneShape',
   'setAnnotationsLocked', 'setAnnotationsVisible', 'undoAnnotation',
   'updateAnnotation',

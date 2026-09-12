@@ -22,23 +22,23 @@ export function objectsChanged(state: GridState): () => number {
   };
 }
 
-/** Type and height only. Corners are excluded: `commitStroke`'s reconcile pass re-trims the ring
- *  around every changed cell, so counting them would report neighbours the macro never built. */
-function terrainMark(cell: MacroCell | null): string {
+/** Legacy point builders count structural changes; complete gestures also count corner edits. */
+function terrainMark(cell: MacroCell | null, includeCorners: boolean): string {
   const t = cell?.terrain;
+  if (includeCorners) return JSON.stringify(t);
   return t ? `${t.type}:${t.elevation}:${t.patchOnly ? 1 : 0}` : '';
 }
 
 /** Call before the macro body; the returned function counts the cells whose terrain differs since.
  *  The terrain macros lay no objects, so `changes` is otherwise zero for a run that raised a hill. */
-export function cellsChanged(state: GridState): () => number {
+export function cellsChanged(state: GridState, includeCorners = false): () => number {
   const { width, height } = state.template;
   const before: string[] = [];
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) before.push(terrainMark(getCell(state.cells, x, y)));
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) before.push(terrainMark(getCell(state.cells, x, y), includeCorners));
   return () => {
     let changed = 0, i = 0;
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++, i++) {
-      if (terrainMark(getCell(state.cells, x, y)) !== before[i]) changed++;
+      if (terrainMark(getCell(state.cells, x, y), includeCorners) !== before[i]) changed++;
     }
     return changed;
   };

@@ -21,7 +21,6 @@ import { cssMotion } from './ui/shell/motion/use-motion';
 import { ToastContainer } from './ui/chrome/floating/Toast';
 import { ArrivalToast } from './ui/chrome/floating/ArrivalToast';
 import { CurveHandles } from './ui/chrome/floating/CurveHandles';
-import { RouteMarks } from './ui/chrome/floating/RouteMarks';
 import { InAppBrowserNotice } from './ui/chrome/guards/InAppBrowserNotice';
 import { DevBuildNotice } from './ui/chrome/guards/DevBuildNotice';
 import { PortraitGuard } from './ui/chrome/guards/PortraitGuard';
@@ -280,7 +279,6 @@ export default function App() {
       <ArrivalToast splashActive={splashActive} />
       <ToastContainer />
       <CurveHandles />
-      <RouteMarks />
       <DevBuildNotice />
       <InAppBrowserNotice />
       <LegalBar />

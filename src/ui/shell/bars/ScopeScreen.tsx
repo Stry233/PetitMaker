@@ -21,16 +21,20 @@
  * paints nothing itself. It asks that buffer for the two whole-region edits through the same
  * channel, so a Clear here is one entry on the region's own undo stack rather than a silent write.
  */
+import { useFrameLayout } from '../frame-layout';
 import { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { clearRegionSelection } from '../../../core/runtime/region-brush';
+import { ToolRow } from './ToolRow';
+import { cssMotion } from '../motion/use-motion';
 import { useT } from '../../../i18n/context';
 import { host } from '../../../kit/host';
 import { useEditorStore } from '../../../state/store';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { btnReset, buttonMotion, cursors, UNAVAILABLE, z } from '../../design/styles';
 import { ACTIVE, PLATE, PLATE_INK } from '../../design/tokens';
-import { EDGE_RIGHT, QUAD, TEXT } from '../units';
+import { EDGE_RIGHT, QUAD, SCALE, TEXT } from '../units';
+import { ScaleProvider } from '../../design/scale';
 import { BarText } from './bar-atoms';
 import { BrushSizeSlider } from './BrushSizeSlider';
 import { SCOPE_CELLS } from './scope-cells';
@@ -45,7 +49,7 @@ const ACTION_GAP = 22;
 
 /** One of the three actions: a pill as tall as a cell, so it stands IN the row rather than beside
  *  it. `primary` is the one that ends the screen, in the yellow this frame marks a choice with. */
-function Action({ label, primary, disabled, onPress }: {
+export function Action({ label, primary, disabled, onPress }: {
   label: string; primary?: boolean; disabled?: boolean; onPress: () => void;
 }) {
   return (
@@ -68,7 +72,7 @@ function Action({ label, primary, disabled, onPress }: {
   );
 }
 
-export function ScopeScreen({ onDone, tools, minSide }: {
+interface ScopeScreenProps {
   onDone: () => void;
   /** The figures this screen may offer, or all of them when the caller has no preference
    *  (`scope-cells.ts:SCOPE_TOOLS_FOR`). */
@@ -77,7 +81,14 @@ export function ScopeScreen({ onDone, tools, minSide }: {
    *  (a caller that fills a region cannot use two), and this screen says so while it is too small
    *  rather than letting Done be pressed on a selection the generator will refuse. */
   minSide?: number;
-}) {
+}
+
+export function ScopeScreen(props: ScopeScreenProps) {
+  return <ScaleProvider value={SCALE}><ScopeScreenBody {...props} /></ScaleProvider>;
+}
+
+function ScopeScreenBody({ onDone, tools, minSide }: ScopeScreenProps) {
+  const layout = useFrameLayout();
   const t = useT();
   const region = useEditorStore((s) => s.region);
   const tool = useEditorStore((s) => s.regionTool);
@@ -143,20 +154,19 @@ export function ScopeScreen({ onDone, tools, minSide }: {
       data-testid="shell-scope-screen"
       {...helpTargetAttr('region')}
       style={{
-        position: 'fixed', left: QUAD.left, right: EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
+        position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
+        transition: cssMotion('frame.layout.adapt', 'right'),
         display: 'flex', flexDirection: 'column',
         // The column spans the window, so it must let a press through everywhere it is not a
         // control; each control below claims its own pointer events.
         pointerEvents: 'none',
       }}
     >
-      {/* `flex-start` is the BOTTOM here: `wrap-reverse` swaps the cross axis's two ends, so a row
-          hanging off the window's bottom edge and growing upward aligns with the start it flipped. */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: QUAD.gap, flexWrap: 'wrap-reverse' }}>
+      <ToolRow>
         <div
           style={{
-            display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap-reverse', gap: QUAD.gap,
-            flex: '0 1 auto', minWidth: 0,
+            display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: QUAD.gap,
+            flex: '0 0 auto', minWidth: 0,
           }}
         >
           {cells.map((cell, i) => (
@@ -195,7 +205,7 @@ export function ScopeScreen({ onDone, tools, minSide }: {
             stands where the view kit's column does, and this is the terrain bar's own slider. */}
         <div
           style={{
-            flex: 'none', marginLeft: 'auto', marginBottom: SLIDER_LIFT,
+            flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT,
             display: 'flex', alignItems: 'center', gap: 14,
             opacity: sized ? 1 : UNAVAILABLE,
           }}
@@ -205,7 +215,7 @@ export function ScopeScreen({ onDone, tools, minSide }: {
           </BarText>
           <BrushSizeSlider value={size} onChange={setSize} disabled={!sized} />
         </div>
-      </div>
+      </ToolRow>
     </div>
   );
 }

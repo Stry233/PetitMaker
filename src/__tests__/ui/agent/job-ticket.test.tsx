@@ -20,6 +20,7 @@ import { JobTicket } from '../../../ui/agent/JobTicket';
 import { OpRow } from '../../../ui/agent/OpRow';
 import { tickInk } from '../../../ui/agent/tokens';
 import { ACTIVE, INK } from '../../../ui/design/tokens';
+import { roleWeight } from '../../../ui/design/text-weight';
 import type { JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/types';
 
@@ -42,6 +43,7 @@ function renderWithI18n(node: React.ReactElement) {
 
 beforeEach(() => {
   backing.clear();
+  act(() => useEditorStore.setState({ locale: 'en' }));
 });
 
 function asColor(value: string): string {
@@ -297,6 +299,18 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
 });
 
 describe('OpRow: a reverted row', () => {
+  it('states that a partially reverted edit still has changes on the map', () => {
+    const op = makeOp({
+      name: 'paint_terrain', status: 'revert',
+      detail: { reverted: true, partialRevert: true, cells: 1 },
+    });
+    const { getByTestId, container } = renderWithI18n(<OpRow op={op} />);
+    expect(getByTestId('op-detail').textContent).toContain('The rest remain on the map.');
+    expect(container.textContent).not.toContain('Put back:');
+    fireEvent.click(getByTestId('op-row'));
+    expect(container.textContent).toContain('partly kept');
+  });
+
   it('shows the amber mark and a friendly reason, and never the raw REVERTED prefix', () => {
     // What the fold hands the row is already the rule LINE rather than the tool's own banner
     // (`project-view.ts:resultLine`), which is the whole point of that treatment.
@@ -330,7 +344,7 @@ describe('OpRow: a reverted row', () => {
     });
     const { getByTestId } = renderWithI18n(<OpRow op={op} />);
     const bolded = [...getByTestId('op-detail').querySelectorAll('span')]
-      .filter((el) => el.style.fontWeight === '800')
+      .filter((el) => el.style.fontWeight === roleWeight('chip'))
       .map((el) => el.textContent);
     expect(bolded).toEqual(['Placement:']);
   });
@@ -362,7 +376,7 @@ describe('OpRow: a reverted row', () => {
     expect(detail.textContent, 'no English left standing').not.toContain('requires flat ground');
     // And the taxonomy still leads in the panel's one emphasis weight, at that locale's own colon.
     const bolded = [...detail.querySelectorAll('span')]
-      .filter((el) => el.style.fontWeight === '800')
+      .filter((el) => el.style.fontWeight === roleWeight('chip'))
       .map((el) => el.textContent);
     expect(bolded).toEqual([category]);
     act(() => useEditorStore.setState({ locale: 'en' }));

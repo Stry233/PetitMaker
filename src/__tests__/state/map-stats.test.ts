@@ -11,6 +11,7 @@ import { CommandType, TerrainType, type EditorEvents, type GridState, type Place
 import { CHUNK_SIZE } from '../../core/model/constants';
 import { chunkKey } from '../../core/model/grid-model';
 import { chunksOf, getMapStats } from '../../state/map-stats';
+import { footprintCells } from '../../state/object-geometry';
 import { getActiveLayers } from '../../state/layer-utils';
 import { makeState } from '../rules/_helpers';
 
@@ -91,6 +92,21 @@ describe('map stats', () => {
 });
 
 describe('chunksOf', () => {
+  it('matches footprint cell order across fractional, empty and multi-chunk spans', () => {
+    for (const x of [-16.5, -0.5, 0, 0.5, 15, 15.5, 16, 16.5, 31.5]) {
+      for (const y of [-0.5, 0, 15.5, 16, 31.5]) {
+        for (const width of [0, 0.5, 1, 2, 15.5, 16, 16.5, 32]) {
+          for (const height of [0, 0.5, 1, 2, 16, 32]) {
+            const obj: PlacedObject = { ...tree('span', x, y), width, height };
+            const expected = [...new Set(footprintCells(x, y, width, height)
+              .map((c) => chunkKey(Math.floor(c.x / CHUNK_SIZE), Math.floor(c.y / CHUNK_SIZE))))];
+            expect(chunksOf(obj), JSON.stringify({ x, y, width, height })).toEqual(expected);
+          }
+        }
+      }
+    }
+  });
+
   it('keys BOTH chunks a half-anchored footprint straddles, not just the one at its floored origin', () => {
     // A 1-wide deck anchored at x = CHUNK_SIZE - 0.5 spans [15.5, 16.5): half in chunk 0
     // (cols 0-15), half in chunk 1 (cols 16-31). Iterating `pos + integer offset` only ever visits

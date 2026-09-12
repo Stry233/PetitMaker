@@ -52,7 +52,7 @@ function occurrenceKey(callId: string, assistantSeq: number): string {
 interface ResultFact {
   /** Signature of the answered call; undefined when its minting was never logged (should not happen). */
   sig: string | undefined;
-  /** isError, or a post-stroke revert: nothing (durable) landed on the map. */
+  /** isError or a post-stroke rollback, including a partially retained stroke. */
   failed: boolean;
   /** A successful write: the map changed under everything logged before this. */
   wroteMap: boolean;

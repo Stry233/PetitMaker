@@ -1,33 +1,12 @@
-/**
- * A ROUTE BETWEEN TWO POINTS, decided rather than stumbled into.
- *
- * Pure: analysis, portal candidates and the standing road set in, a plan out. It places nothing,
- * validates nothing and reads no catalog — `road-link.ts` realizes the plan through `tryPlace`, and
- * a plan that the rules then refuse in part is still the plan that was drawn, which is what lets the
- * ghost and the press agree.
- *
- * The four quality rules of the design live here and nowhere else:
- *  1. STRAIGHTEN. A* returns the cheapest walk, which on open ground is a staircase. The path is
- *     consolidated into long runs and deliberate L bends, and two bends may not fall within
- *     `MIN_RUN` cells of each other. A few extra cells of length is the price and it is deliberate.
- *  2. CHOOSE THE CROSSING, FOR THIS TRIP. Candidates are scored first by how far off the line
- *     between the two points they lie, then by span (narrowest), squareness (the deck across the
- *     water rather than askew to it) and approach (a straight run-in on BOTH banks) — and the chain
- *     of regions is weighed the same way, not by the graph's edge cost, which only ever knew
- *     "bridge" from "ramp". A crossing chosen on its own merits alone sends the road fifteen cells
- *     out of its way and twenty back for an eleven-cell trip, which is what a player sees.
- *  3. PLAN THE APPROACH. A ramp lands on the terrace face the route is TRAVELLING TOWARD and the
- *     straight run-in is part of the plan, so a bend can never land on the transition.
- *  4. JOIN SQUARE. Where the route meets standing pavement it meets it as a T or as a collinear
- *     extension; a meeting of three ways or more earns a small pad.
- */
+/** Aimed routes compare walking and crossings, consolidate bends, and join standing pavement
+ *  squarely. The world contains validated crossing geometry; placement rechecks the final plan. */
 import type { MacroCoord } from '../../core/model/types';
 import { NEIGHBORS4, type Rect } from '../../core/model/grid-model';
-import { clamp01 } from '../../core/model/math';
 import { TUNING } from './tuning';
 import { astar, nearestWalkable, type AstarCost } from './network';
 import { buildingGate } from './object';
-import { routeRegionsMulti, type Portal } from './portals';
+import type { Portal } from './portals';
+import { searchCrossings, type RouteJump } from './route-search';
 import type { PlacementAnalysis } from './analysis';
 import type { RoadStyle } from './road-style';
 
@@ -73,7 +52,7 @@ export interface RoutePlan {
   /** Cells the route NEEDS that an unlocked decoration holds. The run leaves every one standing;
    *  the ghost marks them. Empty on a route that found a way round. */
   blocked: MacroCoord[];
-  /** Total step cost, so offers can be compared and ordered without re-running A*. */
+  /** Weighted pavement length plus crossing construction cost. */
   cost: number;
 }
 
@@ -115,6 +94,7 @@ const sameDir = (a: readonly [number, number] | null, b: readonly [number, numbe
  *  the one place a straight run's cells are enumerated, shared by pricing and by the final output. */
 function expandRun(from: MacroCoord, to: MacroCoord): MacroCoord[] {
   const out: MacroCoord[] = [from];
+  if (sameCell(from, to)) return out;
   if (from.x === to.x) { const step = to.y > from.y ? 1 : -1; for (let y = from.y + step; ; y += step) { out.push({ x: from.x, y }); if (y === to.y) break; } }
   else { const step = to.x > from.x ? 1 : -1; for (let x = from.x + step; ; x += step) { out.push({ x, y: from.y }); if (x === to.x) break; } }
   return out;
@@ -223,80 +203,18 @@ export function straighten(
   return out;
 }
 
-/** How good a crossing site is, decomposed so a test can say WHICH term rejected a candidate.
- *  Higher is better; every term is normalized to 0..1 and the weights are named constants. */
-export interface CrossingScore {
-  /** 1 when the site sits ON the line between the two points being joined, falling away as the
-   *  round trip out to it and back grows against the trip itself. */
-  detour: number;
-  /** Narrow spans score high: a four-cell ford beats an eight-cell one. */
-  span: number;
-  /** 1 when the deck's own axis lines up with the direction of travel toward the goal — the
-   *  zero-detour crossing a route walks straight through — falling off as the angle away from
-   *  that axis grows (a crossing that would need a jog to reach and use). */
-  square: number;
-  /** 1 when both banks offer `APPROACH_DEPTH` straight open cells in line with the deck. */
-  approach: number;
-  total: number;
-}
 export const APPROACH_DEPTH = 2;
 
-/** DETOUR OUTWEIGHS EVERY OTHER MERIT, and by a distance: a narrower span fifteen cells east is a
- *  worse crossing than a wide one on the line, because the road has to walk there and back. The
- *  other three terms decide between sites the trip passes anyway. */
-const DETOUR_WEIGHT = 0.55, SPAN_WEIGHT = 0.2, SQUARE_WEIGHT = 0.15, APPROACH_WEIGHT = 0.1;
-/** The trip's own length is what a detour is read against — twenty cells out of the way is a
- *  different thing on an eleven-cell trip than on a hundred-cell one — floored so that two taps a
- *  few cells apart do not make every site on the map look equally hopeless. */
-const DETOUR_FLOOR = 8;
-
-/** How many cells further the trip runs for going through `anchor`. Manhattan, so it is 0 for any
- *  anchor inside the box the two points span and grows with the distance outside it. */
-export function crossingDetour(anchor: MacroCoord, from: MacroCoord, to: MacroCoord): number {
-  return manhattan(from, anchor) + manhattan(anchor, to) - manhattan(from, to);
-}
-
-const detourScore = (anchor: MacroCoord, from: MacroCoord, to: MacroCoord): number =>
-  1 / (1 + crossingDetour(anchor, from, to) / Math.max(DETOUR_FLOOR, manhattan(from, to)));
-
-/** The straight run-in cells on one bank: `APPROACH_DEPTH` cells stepping away from the deck along
- *  the deck's OWN axis. These are part of the plan, which is what keeps a bend off the transition. */
+/** Join the actual deck exit to open ground, then extend the straight approach when space allows. */
 export function approachRun(p: Portal, side: 'A' | 'B', depth = APPROACH_DEPTH): MacroCoord[] {
   const near = side === 'A' ? p.approachA : p.approachB;
   const far = side === 'A' ? p.approachB : p.approachA;
+  const landing = (side === 'A' ? p.landingA : p.landingB) ?? near;
   const axisX = near.y === far.y; // the two approaches share the deck's cross-axis coordinate
   const dir = axisX ? (Math.sign(near.x - far.x) || 1) : (Math.sign(near.y - far.y) || 1);
-  const out: MacroCoord[] = [];
-  for (let k = 0; k < depth; k++) out.push(axisX ? { x: near.x + dir * k, y: near.y } : { x: near.x, y: near.y + dir * k });
+  const out = expandRun(landing, near);
+  for (let k = 1; k < depth; k++) out.push(axisX ? { x: near.x + dir * k, y: near.y } : { x: near.x, y: near.y + dir * k });
   return out;
-}
-
-/** How good a crossing site is FOR THIS TRIP: a site on the way between `from` and `to` wins over
- *  one the route would have to walk out to and back from, a narrow span wins, a deck whose OWN AXIS
- *  lines up with the direction of travel toward `to` wins (you walk straight onto it and straight
- *  off it again, rather than jogging 90° to reach a deck that runs across your path), and both banks
- *  must offer a clear straight run-in. `route.ts` reads no terrain beyond `world.a`, so squareness is
- *  read against the travel direction rather than an explicit shoreline. */
-export function scoreCrossing(world: RouteWorld, p: Portal, from: MacroCoord, to: MacroCoord): CrossingScore {
-  const { width: W, height: H, open } = world.a;
-  const axisX = p.approachA.y === p.approachB.y;
-  const span = manhattan(p.approachA, p.approachB);
-  const spanScore = 1 / (1 + span);
-  const detour = detourScore(p.anchor, from, to);
-
-  const travelDx = to.x - p.anchor.x, travelDy = to.y - p.anchor.y;
-  const travelLen = Math.hypot(travelDx, travelDy) || 1;
-  // How much of the travel runs ALONG the deck's own axis: 1 when travel is purely along it (the
-  // deck sits directly on the line to the goal — zero detour), 0 when travel is purely perpendicular
-  // to it (the deck runs square ACROSS the path, so reaching it costs a 90° jog either way).
-  const alongDeck = axisX ? Math.abs(travelDx) / travelLen : Math.abs(travelDy) / travelLen;
-  const square = clamp01(alongDeck);
-
-  const withinOpen = (c: MacroCoord): boolean => c.x >= 0 && c.y >= 0 && c.x < W && c.y < H && open[idxAt(c, W)] === 1;
-  const approach = approachRun(p, 'A').every(withinOpen) && approachRun(p, 'B').every(withinOpen) ? 1 : 0;
-
-  const total = detour * DETOUR_WEIGHT + spanScore * SPAN_WEIGHT + square * SQUARE_WEIGHT + approach * APPROACH_WEIGHT;
-  return { detour, span: spanScore, square, approach, total };
 }
 
 /**
@@ -417,7 +335,7 @@ export function capEnter(world: RouteWorld, i: number, raw: number): number {
 
 /** Each profile's extra cost, layered on `astar`'s classic arithmetic — the only thing in this file
  *  that reads `AstarCost`. 'straight' pays double the map's own worst turn cost to keep to long
- *  runs; 'short' is the map's own style, discounted only for joining a standing street's line;
+ *  runs; 'short' keeps a moderate bend cost and discounts joining a standing street’s line;
  *  'scenic' adds that same join discount plus a bonus for hugging water or a terrace edge. */
 function profileCost(world: RouteWorld, profile: RouteProfile): AstarCost {
   const { a, style } = world;
@@ -431,7 +349,7 @@ function profileCost(world: RouteWorld, profile: RouteProfile): AstarCost {
     case 'straight':
       return { turn: () => STRAIGHT_TURN, enter: (i, prev) => capEnter(world, i, align(i, prev)) };
     case 'short':
-      return { enter: (i, prev) => capEnter(world, i, align(i, prev)) };
+      return { turn: () => Math.max(2, style.turnPenalty), enter: (i, prev) => capEnter(world, i, align(i, prev)) };
     case 'scenic':
       return {
         enter: (i, prev) => capEnter(world, i, align(i, prev)
@@ -452,7 +370,7 @@ function toStepCost(world: RouteWorld, cost: AstarCost | undefined): StepCost {
     const stepDir = dirOfStep(from, to);
     const iTo = idxAt(to, W), iFrom = idxAt(from, W);
     const base = road.has(iTo) ? TUNING.roadReuseCost : TUNING.roadCost;
-    const turn = style.turnPenalty > 0 && prevDir !== null && !sameDir(prevDir, stepDir)
+    const turn = (style.turnPenalty > 0 || cost?.turn) && prevDir !== null && !sameDir(prevDir, stepDir)
       ? (cost?.turn?.(iTo, iFrom) ?? style.turnPenalty) : 0;
     return base + turn + (cost?.enter?.(iTo, iFrom) ?? 0);
   };
@@ -517,7 +435,7 @@ function splitLegs(cells: readonly MacroCoord[]): MacroCoord[][] {
 const crossingCost = (kind: Portal['kind']): number => (kind === 'bridge' ? TUNING.portalBridgeCost : TUNING.portalRampCost);
 
 export function planRoute(world: RouteWorld, from: MacroCoord, to: MacroCoord, profile: RouteProfile): RoutePlan | null {
-  const { a, regionAdj, portals, road } = world;
+  const { a, portals, road } = world;
   const W = a.width, H = a.height;
   const astarCost = profileCost(world, profile);
 
@@ -526,68 +444,41 @@ export function planRoute(world: RouteWorld, from: MacroCoord, to: MacroCoord, p
   const goal = nearestWalkable(to, a, occupiedSet, W, H);
   if (!start || !goal) return null;
 
-  const startRegion = a.region[idxAt(start, W)] ?? -1;
-  const goalRegion = a.region[idxAt(goal, W)] ?? -1;
   const blocked = new Set<number>();
-  /** One entry per GROUP (the stretch between two crossings, or into the goal) — split into its own
-   *  straight-run legs only once every group is assembled, so the final group can still be squared
-   *  against standing pavement before it is cut into legs. */
+  const strict = passableOf(world, false), stepCost = toStepCost(world, astarCost);
   const groups: { cells: MacroCoord[]; crossing?: Portal }[] = [];
-
-  // A DIRECT leg is tried first regardless of region match: an unlocked decoration sitting on the
-  // only line splits `a.region` (the analysis excludes every occupied cell alike), so "different
-  // region" is only ever a HINT that a crossing may be needed, never proof one is — the occupied
-  // fallback inside `buildLegCells` already crosses exactly that kind of gap.
-  const direct = buildLegCells(world, start, goal, blocked, astarCost);
-  if (direct) {
-    groups.push({ cells: direct });
-  } else if (startRegion < 0 || goalRegion < 0 || startRegion === goalRegion) {
-    return null; // same region and still unreachable — no portal graph can help
-  } else {
-    // The chain of regions is chosen with the two points in view, not by portal kind alone: a
-    // single hop over a bridge at the far end of the island is a cheaper EDGE than two ramps beside
-    // the line and a far longer road. `crossingDetour` is in cells and `TUNING.roadCost` is what a
-    // cell of road costs, so the two summands are the same currency.
-    const hops = routeRegionsMulti(new Set([startRegion]), goalRegion, regionAdj,
-      (p) => p.cost + crossingDetour(p.anchor, start, goal) * TUNING.roadCost);
-    if (!hops) return null;
-    let cur = start;
-    let prefix: MacroCoord[] = [];
-    for (const hop of hops) {
-      const curRegion = a.region[idxAt(cur, W)] ?? startRegion;
-      const pair = portals.filter((q) =>
-        (q.regionA === hop.regionA && q.regionB === hop.regionB) || (q.regionA === hop.regionB && q.regionB === hop.regionA));
-      let best = hop, bestScore = -Infinity, bestIdx = Infinity;
-      for (const q of (pair.length ? pair : [hop])) {
-        // Scored from where the route has REACHED, not from its first tap: after one hop the trip
-        // still to make is `cur → goal`, and a site is on the way or not with respect to that.
-        const s = scoreCrossing(world, q, cur, goal).total, qi = idxAt(q.anchor, W);
-        if (s > bestScore || (s === bestScore && qi < bestIdx)) { best = q; bestScore = s; bestIdx = qi; }
+  const jumps: RouteJump[] = [];
+  for (const portal of portals) {
+    // Straight run-ins are a preference; a short terrace may only fit the landing itself.
+    const availableRun = (side: 'A' | 'B'): MacroCoord[] => {
+      const run = approachRun(portal, side);
+      while (run.length && !strict(run[run.length - 1]!.x, run[run.length - 1]!.y)) run.pop();
+      return run;
+    };
+    const aRun = availableRun('A'), bRun = availableRun('B');
+    if (!aRun.length || !bRun.length) continue;
+    jumps.push({ from: aRun[aRun.length - 1]!, to: bRun[bRun.length - 1]!, near: aRun, far: bRun, portal });
+    jumps.push({ from: bRun[bRun.length - 1]!, to: aRun[aRun.length - 1]!, near: bRun, far: aRun, portal });
+  }
+  const steps = jumps.length ? searchCrossings(start, goal, W, H, strict, stepCost, jumps,
+    road.size ? MIN_EDGE_COST : 1 - (world.style.alignment.size ? ALIGN_BONUS : 0) - (profile === 'scenic' ? SCENIC_BONUS : 0)) : null;
+  if (steps) {
+    let walk: MacroCoord[] = [], prefix: MacroCoord[] = [];
+    for (const step of steps) {
+      if (step.jump) {
+        groups.push({ cells: appendPath(appendPath(prefix, straighten(walk, strict, stepCost)), [...step.jump.near].reverse()), crossing: step.jump.portal });
+        prefix = step.jump.far; walk = [];
       }
-      const nearSide: 'A' | 'B' = best.regionA === curRegion ? 'A' : 'B';
-      const farSide: 'A' | 'B' = nearSide === 'A' ? 'B' : 'A';
-      const nearRun = approachRun(best, nearSide), farRun = approachRun(best, farSide);
-      const head = nearRun[nearRun.length - 1]!;
-      const toDeck = buildLegCells(world, cur, head, blocked, astarCost);
-      if (!toDeck) return null;
-      let groupCells: MacroCoord[] = [];
-      groupCells = appendPath(groupCells, prefix);
-      groupCells = appendPath(groupCells, toDeck);
-      groupCells = appendPath(groupCells, [...nearRun].reverse());
-      groups.push({ cells: groupCells, crossing: best });
-      prefix = [...farRun];
-      cur = farRun[farRun.length - 1]!;
+      walk.push(step.at);
     }
-    const finalCells = buildLegCells(world, cur, goal, blocked, astarCost);
-    if (!finalCells) return null;
-    let lastGroupCells: MacroCoord[] = [];
-    lastGroupCells = appendPath(lastGroupCells, prefix);
-    lastGroupCells = appendPath(lastGroupCells, finalCells);
-    groups.push({ cells: lastGroupCells });
+    groups.push({ cells: appendPath(prefix, straighten(walk, strict, stepCost)) });
+  } else {
+    const direct = buildLegCells(world, start, goal, blocked, astarCost);
+    if (!direct) return null;
+    groups.push({ cells: direct });
   }
 
   const lastGroup = groups[groups.length - 1]!;
-  const strict = passableOf(world, false);
   const { cells: squared, pads } = squareJunction(lastGroup.cells, road, strict, W);
   lastGroup.cells = squared;
 

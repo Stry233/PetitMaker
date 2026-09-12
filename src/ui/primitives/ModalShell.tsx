@@ -56,6 +56,8 @@ export const SIZE_MORPH_TWEEN: Transition = { type: 'tween', ease: [0.2, 0, 0, 1
 export interface ModalShellProps {
   open: boolean;
   onClose: () => void;
+  /** Starts optional content work once the card's entrance has settled. */
+  onEntered?: () => void;
   width?: number | string;
   height?: number | string;
   maxVwPct?: number;
@@ -154,7 +156,7 @@ const sentinelStyle: CSSProperties = {
   border: 0,
 };
 
-export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
+export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
   const preview = useContext(ModalPreviewContext);
   const passive = passiveProp || preview;
   useOverlayLock(open && lockOverlay && !preview); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
@@ -163,6 +165,9 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
   // the zoom they were resolved for cannot come apart. Every token and label inside inherits them.
   const weights = useWeightVars();
   const prefersReduced = useReducedMotionConfig();
+  useEffect(() => {
+    if (open && prefersReduced) onEntered?.();
+  }, [open, prefersReduced, onEntered]);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const startSentinelRef = useRef<HTMLDivElement>(null);
@@ -318,6 +323,9 @@ export function ModalShell({ open, onClose, width, height, maxVwPct, maxVhPct, m
             aria-labelledby={ariaLabelledBy}
             onClick={(e) => e.stopPropagation()}
             {...cardMotion}
+            onAnimationComplete={onEntered ? (target) => {
+              if (open && typeof target === 'object' && 'scale' in target && target.scale === 1) onEntered();
+            } : undefined}
           >
             {/* Minimal sentinel-div focus trap: reaching either end of the
                 real content by Tab/Shift+Tab wraps to the other end, so

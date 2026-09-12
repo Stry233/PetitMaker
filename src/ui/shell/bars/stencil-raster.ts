@@ -1,7 +1,7 @@
 /** Browser font outlines and decoded images supply the stencils used by generation. */
 import type { MacroCoord, Stencil } from '../../../core/model/types';
 import {
-  airCells, analyzeTextGrid, COVERAGE_ON, densityOf, finishGlyph, fitTextGrid, glyphLegible, glyphWeight, GLYPH_WEIGHTS,
+  airCells, analyzeTextGrid, COMPACT_IMAGE_LIMIT, COVERAGE_ON, densityOf, finishGlyph, fitTextGrid, glyphLegible, glyphWeight, GLYPH_WEIGHTS,
   piecesOf, runsAlong, separationOf, stencilFromPixels, type GlyphReading, type TextGridModel, type TextGridResult,
   emojiTextDrawing, fitEmojiDrawing, isEmojiGrapheme, textGraphemes, normalizeTextPresentation, textTopology, textStrokeEnds, type EmojiDrawing,
 } from '../../../tools/generation/stencil';
@@ -34,7 +34,7 @@ export async function ensureGlyphFonts(text = '', weight?: number): Promise<void
     fonts.load(`${w} 16px 'PW Rounded Sans'`, text).catch(() => undefined),
     fonts.load(`${w} 16px 'Alibaba PuHuiTi 3'`, text).catch(() => undefined),
   ]));
-  if (changed) { textModels.clear(); fittedTexts.clear(); survives.clear(); }
+  if (changed) { textModels.clear(); fittedTexts.clear(); nativeTexts.clear(); survives.clear(); }
 }
 
 /**
@@ -116,36 +116,45 @@ const SUB = 2;
 
 /**
  * Aligns a glyph to the cell grid by testing all four quarter-cell phases on each axis. Candidates
- * stay within half a cell of the centered position, matching the reserved edge air. The score favors
- * cells clearly above or below the coverage threshold, preserving thin strokes at small sizes.
+ * stay within half a cell of the centered position, matching the reserved edge air. Preserve marks
+ * and counters first, then prefer coverage clearly above or below the cell threshold. All weights
+ * share the reference used by final validation.
  */
 function gridFit(
   ctx: CanvasRenderingContext2D, text: string, cw: number, ch: number,
-  inkW: number, inkH: number, left: number, top: number, cell: number,
+  inkW: number, inkH: number, left: number, top: number, cell: number, model: TextModel | null,
 ): [number, number] {
   const baseX = (cw - inkW) / 2, baseY = (ch - inkH) / 2;
   const STEPS = [0, -0.25, -0.5, 0.25];
-  let best: [number, number] = [baseX + left, baseY + top];
-  let bestScore = Infinity;
+  const phases: { point: [number, number]; score: number; coverage: Uint8Array | null }[] = [];
   for (const sy of STEPS) {
     for (const sx of STEPS) {
       const x = baseX + sx * cell + left, y = baseY + sy * cell + top;
       ctx.clearRect(0, 0, cw, ch);
       ctx.fillText(text, x, y);
-      const score = undecided(ctx, cw, ch, cell);
-      if (score < bestScore) { bestScore = score; best = [x, y]; }
+      phases.push({ point: [x, y], ...outlineScore(ctx, cw, ch, cell, model !== null) });
     }
   }
   ctx.clearRect(0, 0, cw, ch);
-  return best;
+  phases.sort((a, b) => a.score - b.score);
+  let best = phases[0]!, bestLoss = Infinity;
+  for (const phase of phases) {
+    const topology = phase.coverage ? textTopology(phase.coverage, cw / cell, ch / cell) : null;
+    const loss = topology && model ? Math.abs(topology.pieces - model.outline.pieces) + Math.abs(topology.counters - model.outline.counters) : 0;
+    if (loss < bestLoss) { best = phase; bestLoss = loss; }
+    if (loss === 0) break;
+  }
+  return best.point;
 }
 
 /** How much of a drawing sits near the threshold that will decide it, summed over the cells of the
  *  REGION's grid: 0 where every cell is plainly ink or plainly ground, and highest where the picture
  *  is all half-coverage. */
-function undecided(ctx: CanvasRenderingContext2D, cw: number, ch: number, cell: number): number {
+function outlineScore(ctx: CanvasRenderingContext2D, cw: number, ch: number, cell: number, topology: boolean): { score: number; coverage: Uint8Array | null } {
   const { data } = ctx.getImageData(0, 0, cw, ch);
   const step = Math.max(1, Math.round(cell));
+  const width = Math.floor(cw / step), height = Math.floor(ch / step);
+  const coverage = topology ? new Uint8Array(width * height) : null;
   let sum = 0;
   for (let y = 0; y + step <= ch; y += step) {
     for (let x = 0; x + step <= cw; x += step) {
@@ -153,10 +162,12 @@ function undecided(ctx: CanvasRenderingContext2D, cw: number, ch: number, cell: 
       for (let dy = 0; dy < step; dy++) {
         for (let dx = 0; dx < step; dx++) a += data[((y + dy) * cw + x + dx) * 4 + 3]!;
       }
-      sum += Math.max(0, COVERAGE_ON - Math.abs(a / (step * step) - COVERAGE_ON));
+      const value = a / (step * step);
+      sum += Math.max(0, COVERAGE_ON - Math.abs(value - COVERAGE_ON));
+      if (coverage) coverage[y / step * width + x / step] = Math.round(value) >= COVERAGE_ON ? 1 : 0;
     }
   }
-  return sum;
+  return { score: sum, coverage };
 }
 
 /**
@@ -235,16 +246,17 @@ export function drawGlyph(
 
   ctx.fillStyle = '#000000';
   const [ox, oy] = search && mayShift
-    ? gridFit(ctx, text, cw, ch, w2, h2, left, top, cell)
+    ? gridFit(ctx, text, cw, ch, w2, h2, left, top, cell, magnify === 1 ? textModel(text) : null)
     : [(cw - w2) / 2 + left, (ch - h2) / 2 + top];
   ctx.fillText(text, ox, oy);
   return readBack(ctx, width, height);
 }
 
 type TextReference = Pick<Stencil, 'width' | 'height' | 'coverage'> & { picture?: EmojiDrawing; ascent: number; descent: number };
-interface TextModel extends TextGridModel { source: TextReference; emoji: boolean }
+interface TextModel extends TextGridModel { source: TextReference; emoji: boolean; outline: { pieces: number; counters: number } }
 const textModels = new Map<string, TextModel>();
 const fittedTexts = new Map<string, TextGridResult | null>();
+const nativeTexts = new Map<string, Stencil>();
 
 /** Font analysis is independent of the selected region and shared by fitting and rasterization. */
 function textModel(text: string, detail = 0.0025, weight = 500): TextModel | null {
@@ -258,7 +270,9 @@ function textModel(text: string, detail = 0.0025, weight = 500): TextModel | nul
   const model = analyzeTextGrid(source);
   if (model) {
     if (textModels.size >= 48) textModels.delete(textModels.keys().next().value!);
-    const result = { ...model, source, emoji: textGraphemes(text).some(isEmojiGrapheme) };
+    // Native curves retain fine counters that a one-cell skeleton deliberately simplifies.
+    const outline = textTopology(Uint8Array.from(source.coverage, v => v >= COVERAGE_ON ? 1 : 0), source.width, source.height);
+    const result = { ...model, source, outline, emoji: textGraphemes(text).some(isEmojiGrapheme) };
     textModels.set(key, result);
     return result;
   }
@@ -344,9 +358,8 @@ function fitMixedText(runs: TextRun[], box: { width: number; height: number }): 
     const frame = { origin: { x: 0, y: 0 }, width: widths[i]!, height: heights[i]! };
     const fitted = gridText(runs[i]!.text, frame);
     if (fitted && !fitted.ok) return refused;
-    const raster = fitted?.stencil ?? drawGlyph(runs[i]!.text, frame);
+    const raster = fitted?.stencil ?? nativeText(runs[i]!.text, frame);
     if (!raster) return refused;
-    if (!fitted) finishGlyph(raster);
     const source = models[i]!.source;
     const y0 = Math.max(0, Math.min(height - frame.height, Math.round(ascent * scale - source.ascent / (source.ascent + source.descent) * frame.height)));
     for (let y = 0; y < raster.height; y++) for (let x = 0; x < raster.width; x++) {
@@ -392,8 +405,15 @@ function fitText(text: string, box: { width: number; height: number }): TextGrid
     const reference = weight === 500 ? model : textModel(text, 0.0025, weight)!;
     const native = drawGlyph(text, frame, weight);
     if (!native) continue;
+    const raw = native.coverage.slice();
     finishGlyph(native);
     if (structureLoss(reference, native) === 0) return { stencil: { ...native, cellAligned: true }, ok: true, loss: 0 };
+    // Font antialiasing can hide a subcell stem; every alternative still passes the structure check.
+    for (const threshold of [96, 160, 64]) {
+      const candidate = { ...native, coverage: Uint8Array.from(raw, v => v >= threshold ? 255 : 0), cellAligned: true };
+      finishGlyph(candidate);
+      if (structureLoss(reference, candidate) === 0) return { stencil: candidate, ok: true, loss: 0 };
+    }
     if (weight !== 500) {
       const alternative = fitTextGrid(reference, box);
       if (alternative?.ok) return alternative;
@@ -407,15 +427,41 @@ export function gridTextFits(text: string, box: { width: number; height: number 
   return gridText(text, box)?.ok ?? null;
 }
 
+/** Phase and weight changes retain native curves once stems have room for multiple cells. */
+function nativeText(text: string, box: StencilBox): Stencil | null {
+  const key = `${text}\u0000${box.width}x${box.height}`;
+  const known = nativeTexts.get(key);
+  if (known) return known;
+  const model = textModel(text), weight = glyphWeight(text, box);
+  let best = drawGlyph(text, box, weight);
+  if (!best) return null;
+  finishGlyph(best);
+  const lossOf = (stencil: Stencil): number => {
+    if (!model) return 0;
+    const topology = textTopology(Uint8Array.from(stencil.coverage, v => v >= COVERAGE_ON ? 1 : 0), stencil.width, stencil.height);
+    return Math.abs(topology.pieces - model.outline.pieces) + Math.abs(topology.counters - model.outline.counters);
+  };
+  let loss = lossOf(best);
+  for (const lighter of [500, 400]) {
+    if (loss === 0) break;
+    if (lighter >= weight) continue;
+    const candidate = drawGlyph(text, box, lighter);
+    if (!candidate) continue;
+    finishGlyph(candidate);
+    const next = lossOf(candidate);
+    if (next < loss) { best = candidate; loss = next; }
+  }
+  if (nativeTexts.size >= 64) nativeTexts.delete(nativeTexts.keys().next().value!);
+  nativeTexts.set(key, best);
+  return best;
+}
+
 export function rasterizeText(text: string, box: StencilBox): Stencil | null {
   const minimum = measuredTextMinimum(text);
   if (minimum && (box.width < minimum.width || box.height < minimum.height)) return null;
   const grid = gridText(text, box);
   if (grid) return grid.ok ? grid.stencil : null;
-  const stencil = drawGlyph(text, box);
-  if (!stencil) return null;
-  finishGlyph(stencil);
-  return stencil;
+  return nativeText(text, box);
 }
 
 /** Resolution multiplier for the outline reference used by the shelf's legibility check. */
@@ -445,15 +491,18 @@ function judge(text: string, box: StencilBox): GlyphVerdict {
   const grid = gridText(text, box);
   if (grid) return { ...judgeDrawn(grid.stencil, grid.stencil, 1), ok: grid.ok };
   const flat = { origin: box.origin, width: box.width, height: box.height };
-  const built = drawGlyph(text, flat);
+  const built = nativeText(text, flat);
   const weight = glyphWeight(text, flat);
   const truth = drawGlyph(
     text, { origin: box.origin, width: box.width * JUDGE_SCALE, height: box.height * JUDGE_SCALE },
     weight, JUDGE_SCALE,
   );
   if (!built || !truth) return UNMEASURED;
-  finishGlyph(built);
-  return judgeDrawn(built, truth, JUDGE_SCALE);
+  const reading = judgeDrawn(built, truth, JUDGE_SCALE);
+  const model = textModel(text);
+  // A different native weight or phase can shift scanlines while retaining every structural feature.
+  if (!reading.ok && model && structureLoss(model, built) === 0) reading.ok = true;
+  return reading;
 }
 
 /**
@@ -525,7 +574,9 @@ const OVERSAMPLE = 4;
 export function rasterizeImage(source: CanvasImageSource, sw: number, sh: number, box: StencilBox): Stencil | null {
   const { width, height } = box;
   if (width < 1 || height < 1 || sw < 1 || sh < 1) return null;
-  const scale = Math.min(1, (width * 2 * OVERSAMPLE) / sw, (height * 2 * OVERSAMPLE) / sh);
+  // Premature reduction can erase fine details and misclassify flat artwork as photographic.
+  const detail = Math.max(1, COMPACT_IMAGE_LIMIT / Math.min(width, height));
+  const scale = Math.min(1, (width * detail * 2 * OVERSAMPLE) / sw, (height * detail * 2 * OVERSAMPLE) / sh);
   const iw = Math.max(1, Math.round(sw * scale)), ih = Math.max(1, Math.round(sh * scale));
   const canvas = document.createElement('canvas');
   canvas.width = iw;

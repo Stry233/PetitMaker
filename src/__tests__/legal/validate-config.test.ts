@@ -23,6 +23,7 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
       { name: 'Jane Doe', sort: 'janedoe', url: 'https://example.com/jane' },
     ],
     repoUrl: 'https://github.com/example/petitmaker',
+    sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,
   };
 }

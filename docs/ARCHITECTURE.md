@@ -1,5 +1,7 @@
 # System Behavior & Architecture
 
+Marked reference sections are generated from code by `npm run docs:generate`; `npm run docs:check` and the test suite detect drift. Narrative sections explain contracts and rationale and need review when behavior changes.
+
 This is the backend/engine reference for the Petit Planet map editor: how the system is built and how it behaves at runtime. What a map may legally *be* is not prose here: the game's building rules live in `src/rules/`, one rule per file, and this document describes the machinery that runs them.
 
 ## Architecture at a glance
@@ -110,7 +112,7 @@ The sections below follow this dependency chain outward, from the data model to 
 
 ### The Cell Hierarchy
 
-The atomic unit of state is `MacroCell` (`types.ts`): a zone enum (`CellZone`) plus a nullable `TerrainCell`. When `terrain` is `null` the cell is bare ground (layer 0) — this is a deliberate sentinel rather than a default struct with `TerrainType.None`, because it keeps the common case cheap and makes "has terrain?" a single null check everywhere. `TerrainCell` (`types.ts`) holds `type` (a `TerrainType` enum), `elevation` (1–8 per `constants.ts`), and three optional fields that only exist on road/edge-cut cells: `corners?: Corners`, `patchOnly?: boolean`, and `patchBase?: number`. These optional fields are how the road/edge system piggy-backs metadata onto the same terrain slot without adding a separate data structure. `patchBase` is the load-bearing one: a Γ patch is a cosmetic fillet, so `patchBase` records the REAL support tier under it (0 when the fillet sits straight on the ground). Reading `elevation` on such a cell sees a block that is not there, which is why `structuralTop`/`surfaceElevation` exist and why placement and support questions must go through them.
+The atomic unit of state is `MacroCell` (`types.ts`): a zone enum (`CellZone`) plus a nullable `TerrainCell`. When `terrain` is `null` the cell is bare ground (layer 0) — this is a deliberate sentinel rather than a default struct with `TerrainType.None`, because it keeps the common case cheap and makes "has terrain?" a single null check everywhere. `TerrainCell` (`types.ts`) holds `type` (a `TerrainType` enum), `elevation` (bounded by `ELEVATION_MAX`), and three optional fields that only exist on road/edge-cut cells: `corners?: Corners`, `patchOnly?: boolean`, and `patchBase?: number`. These optional fields are how the road/edge system piggy-backs metadata onto the same terrain slot without adding a separate data structure. `patchBase` is the load-bearing one: a Γ patch is a cosmetic fillet, so `patchBase` records the REAL support tier under it (0 when the fillet sits straight on the ground). Reading `elevation` on such a cell sees a block that is not there, which is why `structuralTop`/`surfaceElevation` exist and why placement and support questions must go through them.
 
 `Corners` (`types.ts`) is a fixed-length tuple `[CornerTrim, CornerTrim, CornerTrim, CornerTrim]` in NW/NE/SW/SE order. The element type `CornerTrim` is a string union (`'square' | 'fan' | 'tri-NW' | 'tri-NE' | 'tri-SW' | 'tri-SE' | 'empty'`). The sentinel value `'empty'` signals "remove this cell entirely" in `TrimCornersCommand` — when all four corners are `'empty'`, `applyCommand` deletes the terrain cell rather than storing an all-empty `Corners` array (`command-apply.ts`). Similarly, all-`'square'` corners normalize to `corners: undefined`, since `undefined` is the canonical form for "no corner data".
 
@@ -124,7 +126,7 @@ The atomic unit of state is `MacroCell` (`types.ts`): a zone enum (`CellZone`) p
 
 ### The Command Discriminated Union
 
-All mutations flow as `Command` values, a discriminated union narrowed by `cmd.type: CommandType` (`types.ts`). The five members are:
+All mutations flow as `Command` values, a discriminated union narrowed by `cmd.type: CommandType` (`types.ts`). Its variants are:
 
 - **`PaintTerrainCommand`**: a batch of `MacroCoord[]` plus `terrainType` and `elevation`. The batch design means a full brush stroke can be a single command, though in practice each cell in a stroke is a separate command (tools call `execute()` once per cell, accumulate them as separate undo entries, and call `commitStroke()` at pointer-up).
 - **`EraseTerrainCommand`**: same batch shape, no terrain payload.
@@ -138,15 +140,15 @@ Every command extends `CommandBase` (`types.ts`) which carries only `timestamp`.
 
 ### PlacedObject and the Dual Catalog Problem
 
-`PlacedObject` (`types.ts`) is the runtime representation: a unique `id`, `catalogId` reference, `position`, `rotation`, `elevation`, and optionals (`spanLength` for bridges, `corners`/`patchOnly` for road objects, and the self-description fields `width`/`height`/`icon`/`color` plus `locked` that let an off-catalog immutable structure — the central plaza — render and validate with no special case). It carries no category of its own: `catalogId` determines it, and `state/catalog.ts:categoryOf` is the one way to ask, answering with the full seven-way `ItemCategory`. That matters because a projection onto fewer members cannot tell a house from a road, a bridge or a ramp, and callers then recover the difference by matching on id strings.
+`PlacedObject` (`types.ts`) is the runtime representation: a unique `id`, `catalogId` reference, `position`, `rotation`, `elevation`, and optionals (`spanLength` for bridges, `corners`/`patchOnly` for road objects, and the self-description fields `width`/`height`/`icon`/`color` plus `locked` that let an off-catalog immutable structure — the central plaza — render and validate with no special case). It carries no category of its own: `catalogId` determines it, and `state/catalog.ts:categoryOf` is the one way to ask, answering with the full `ItemCategory`. That matters because a projection onto fewer members cannot tell a house from a road, a bridge or a ramp, and callers then recover the difference by matching on id strings.
 
-`ItemCategory` (`types.ts`) is the string enum with seven values (Building, Tree, Flora, Road, Bridge, Ramp, Facility) that `CatalogItem` carries. `CatalogItem` (`types.ts`) is the schema for the per-object files under `src/config/catalog/<category>/<id>.json`. `PlacedObject` stores only `catalogId` and looks up its dimensional and behavioral metadata from the catalog at runtime.
+`ItemCategory` (`types.ts`) is the catalog category enum that `CatalogItem` carries. `CatalogItem` (`types.ts`) is the schema for the per-object files under `src/config/catalog/<category>/<id>.json`. `PlacedObject` stores only `catalogId` and looks up its dimensional and behavioral metadata from the catalog at runtime.
 
 ---
 
 ### PlacementTrait Union
 
-`PlacementTrait` (`types.ts`) is a tagged union of nine variants. Each variant parameterizes a validation strategy: `flat` checks uniform elevation across an extended footprint (W+1 × H+1 to account for the macro/micro grid offset — see "Coordinate duality (macro vs. micro)" below); `noFloat` requires terrain present on every footprint cell; `waterSpan` validates bridge geometry including auto-detecting orientation and mutating `cmd.object.rotation`, `cmd.object.position`, and `cmd.object.spanLength` as side-effects during validation (`placement.ts`); `heightDrop` similarly mutates position, rotation, and elevation for ramps; `surfaceCoating` requires non-water terrain (roads); `plantable` marks a coating flora may stand ON (the game plants flowers on some path surfaces, so placing flora keeps this coating instead of stripping it, and the pair passes the standing-on-a-road rule); `exclusionRadius` enforces Chebyshev distance between same-category items; `terrainBase` declares the footprint usable as structural support for terrain above it; `halfStep` lets the item anchor on the half-cell grid in both axes (the game's exception for ramps and bridges, which is what `ToolContext.halfCoord` exists for).
+`PlacementTrait` (`types.ts`) is a tagged union declared in `types.ts`. Each variant parameterizes a validation strategy: `flat` checks uniform elevation across an extended footprint (W+1 × H+1 to account for the macro/micro grid offset — see "Coordinate duality (macro vs. micro)" below); `noFloat` requires terrain present on every footprint cell; `waterSpan` validates bridge geometry including auto-detecting orientation and mutating `cmd.object.rotation`, `cmd.object.position`, and `cmd.object.spanLength` as side-effects during validation (`placement.ts`); `heightDrop` similarly mutates position, rotation, and elevation for ramps; `surfaceCoating` requires non-water terrain (roads); `plantable` marks a coating flora may stand ON (the game plants flowers on some path surfaces, so placing flora keeps this coating instead of stripping it, and the pair passes the standing-on-a-road rule); `exclusionRadius` enforces Chebyshev distance between same-category items; `terrainBase` declares the footprint usable as structural support for terrain above it; `halfStep` lets the item anchor on the half-cell grid in both axes (the game's exception for ramps and bridges, which is what `ToolContext.halfCoord` exists for).
 
 The mutation-during-validation pattern for `waterSpan` and `heightDrop` is intentional: it allows the placement validation rule to both check and auto-correct object placement geometry in a single pass.
 
@@ -154,7 +156,7 @@ The mutation-during-validation pattern for `waterSpan` and `heightDrop` is inten
 
 ### Rule System Interfaces
 
-`PreCommandRule` (`types.ts`) gates individual commands: `appliesTo: CommandType[]` lets `RuleRegistry.validatePreCommand` skip irrelevant rules cheaply. `PostStrokeRule` (`types.ts`) gets the full `GridState` with no command context — it must scan for structural violations globally. Both are pure (no mutation). `ValidationError` (`types.ts`) carries a `ruleId`, i18n `message` key with optional `messageParams` interpolation values, evidence `cells`, optional `rects` (the evidence's exact drawn BODY when the cause is an object rather than a grid cell — an object's footprint can sit on the half grid, so when present the error flash paints THESE and ignores `cells` for that error; both come out of `grid-model:bodyEvidence` so the two cannot disagree), and `severity: 'error' | 'warning'` (only `'error'` triggers rejection; `'warning'` is defined but not acted on by `CommandExecutor`). **`cells` is the evidence contract**: the cells that *cause* the violation — complete (every offender, e.g. every non-flat cell in the `flat` trait's extended sweep, or the intersection region of an overlap), never a bare click anchor; non-spatial rules (max-count, chunk load, locked object) report the whole footprint involved. The optional `grid: 'macro' | 'micro'` says which grid the evidence renders on ('micro' = the terrain micro-grid, −HALF_TILE); when absent, the renderer falls back to the command-type default. The error flash (`OverlayLayer.flashErrors` via the pure `canvas/map2d/layers/error-flash.ts:resolveErrorFlashCells`) lights exactly these cells, per-error grid, deduped across rules — and the agent bridge's `formatErrors` echoes the same coordinates to the LLM.
+`PreCommandRule` (`types.ts`) gates individual commands: `appliesTo: CommandType[]` lets `RuleRegistry.validatePreCommand` skip irrelevant rules cheaply. `PostStrokeRule` (`types.ts`) gets the full `GridState` with no command context — it must scan for structural violations globally. Neither mutates the map; placement validation may normalize the proposed command before subsequent rules inspect it. `ValidationError` (`types.ts`) carries a `ruleId`, i18n `message` key with optional `messageParams` interpolation values, evidence `cells`, optional `rects` (the evidence's exact drawn BODY when the cause is an object rather than a grid cell — an object's footprint can sit on the half grid, so when present the error flash paints THESE and ignores `cells` for that error; both come out of `grid-model:bodyEvidence` so the two cannot disagree), and `severity: 'error' | 'warning'` (only `'error'` triggers rejection; `'warning'` is defined but not acted on by `CommandExecutor`). **`cells` is the evidence contract**: the cells that *cause* the violation — complete (every offender, e.g. every non-flat cell in the `flat` trait's extended sweep, or the intersection region of an overlap), never a bare click anchor; non-spatial rules (max-count, chunk load, locked object) report the whole footprint involved. The optional `grid: 'macro' | 'micro'` says which grid the evidence renders on ('micro' = the terrain micro-grid, −HALF_TILE); when absent, the renderer falls back to the command-type default. The error flash (`OverlayLayer.flashErrors` via the pure `canvas/map2d/layers/error-flash.ts:resolveErrorFlashCells`) lights exactly these cells, per-error grid, deduped across rules — and the agent bridge's `formatErrors` echoes the same coordinates to the LLM.
 
 ---
 
@@ -170,7 +172,26 @@ The `LayerInfo` type lives in `core/model/layer-utils.ts`; the derivation that p
 
 ### Game Constants
 
-`constants.ts` holds the actively used spatial constants: `CHUNK_SIZE = 16` (chunk key math in `grid-model.ts`), `CHUNK_LOAD_LIMIT = 10_000` (the chunk-load rule's default per-chunk load ceiling — see the chunk-load section below), `CHUNK_LOAD_ENABLED = false` (gates chunk-load enforcement — see the chunk-load section below), `ELEVATION_MAX = 8` (range rules and layer utils; the floor is 0, the clear-terrain sentinel, and needs no constant), `TILE_SIZE = 64`, `ZOOM_MIN`/`ZOOM_MAX` and `PAN_KEEP_PX` (renderer), `PLAZA_ID` (the reserved id of the locked central plaza), and `ELEVATION_COLORS`/`ZONE_COLORS`/`WATER_COLOR` (renderer). Per-item numeric parameters (e.g. exclusion radii) are not constants here — they live in the catalog as trait parameters (`exclusionRadius.radius`).
+<!-- generated:constants:start -->
+
+Source: [src/core/model/constants.ts](../src/core/model/constants.ts).
+
+| Constant | Value |
+|---|---|
+| `CHUNK_SIZE` | `16` |
+| `CHUNK_LOAD_LIMIT` | `10000` |
+| `CHUNK_LOAD_ENABLED` | `false` |
+| `ELEVATION_MAX` | `8` |
+| `TILE_SIZE` | `64` |
+| `PLAZA_ID` | `"__plaza__"` |
+| `ZOOM_MIN` | `0.05` |
+| `ZOOM_MAX` | `4` |
+| `PAN_KEEP_PX` | `160` |
+| `WATER_COLOR` | `"#97e1ff"` |
+
+<!-- generated:constants:end -->
+
+Chunk and elevation rules, grid conversion, and camera bounds read these constants directly. The same module owns the elevation and zone palettes. Per-item parameters such as exclusion radii belong to catalog traits.
 
 ---
 
@@ -210,9 +231,11 @@ The grid is intentionally mutable. `applyCommand` directly sets `cell.terrain` o
 
 **Coordinate duality (macro vs. micro):**
 
-The editor has two overlapping grids. The macro-grid is the placement unit (1 tile = `TILE_SIZE = 64 px`). The micro-grid subdivides each macro tile into a 2×2 sub-grid (0.5 tile = 32 px = `HALF_TILE`). Terrain blocks render at pixel position `x * TILE_SIZE - HALF_TILE` (a −32 px offset), centering each block on the intersection of four macro cells. Objects render at `x * TILE_SIZE` with no offset.
+The editor has two overlapping grids. Object placement uses the macro grid; the micro grid subdivides each macro cell into two steps per axis. Terrain blocks are centered on macro intersections, with their top-left at `x * TILE_SIZE - HALF_TILE`; objects start at `x * TILE_SIZE`. These offsets and conversions are defined in [grid-model.ts](../src/core/model/grid-model.ts).
 
 `macroToMicro` (`grid-model.ts`) converts by doubling: `(x, y) → (x*2, y*2)`. Bridge geometry is the main consumer of the micro grid, and it lives in `core/model/bridge-span.ts:detectBridgeSpan` — shared by the `waterSpan` trait rule and the placement ghost, so validation and preview cannot disagree about where a bridge lands.
+
+`microToTerrain(mx, my)` resolves the terrain block containing a pointer, including the half-tile offset and negative coordinates. `Tool.terrainGrid(ctx)` opts terrain drawing and terrain erasing into this conversion. `ToolManager` uses it for pointer down, move and up; the cursor refusal probe and ghost use the same coordinates. Roads, object placement, selection, region tools and corner detection retain their own coordinate contracts. The 2D and 3D views share this dispatch rule.
 
 The practical consequence of the −`HALF_TILE` terrain offset is captured in the "Flat trait" rule: placement flatness checks extend one extra column and row right/bottom to account for the fact that a macro cell's terrain block bleeds into the adjacent macro-grid region (`grid-model.ts` header comment) — this is what prevents micro-block floating at cliff edges due to the macro/micro grid offset difference.
 
@@ -256,7 +279,7 @@ Chunk load has no accounting structure of its own: it is one of the whole-map fi
 
 **The rule reads the memoized figure:** The chunk-load pre-command rule (`rules/chunk-load.ts:chunkLoadViolations`) calls `getMapStats(state).chunks` and, for each chunk key in the *candidate's own footprint*, checks `existing.load + loadValue` against `loadMaxFor(state, key)` — a function, not a bare constant, so a chunk's ceiling can vary by map template or in-game config later; every chunk defaults to `CHUNK_LOAD_LIMIT` today. One placement check therefore costs the candidate's own footprint, not the map's object count, as long as map-stats itself is patched rather than rebuilt (a mutation that skips or corrupts the object delta forces map-stats to fall back to a full rebuild that touches every object once — a property of map-stats's staleness-never/speed-sometimes contract, not of this rule; see Map Stats below). If `candidate.id` already names an object on the map — a caller validating a replacement before the old copy under the same id has been removed — that prior copy's own contribution is discounted per chunk so a candidate is never charged against itself.
 
-**`CHUNK_LOAD_ENABLED` gate:** The rule is currently gated off (`constants.ts:CHUNK_LOAD_ENABLED = false`) because the real in-game load values are unknown. When the flag is `false`, `chunkLoadRule.validate` immediately returns `[]` and every placement is free. Flipping the flag to `true` and setting real `loadValue` entries in the catalog enables enforcement with no further plumbing.
+**`CHUNK_LOAD_ENABLED` gate:** The flag in the generated constants table controls enforcement. Catalog load values must be established before enabling it. When the flag is `false`, `chunkLoadRule.validate` immediately returns `[]` and every placement is free. Flipping the flag to `true` and setting real `loadValue` entries in the catalog enables enforcement with no further plumbing.
 
 ---
 
@@ -375,29 +398,41 @@ The rule system is the editor's contract enforcement layer. Its sole job is to a
 
 ### RuleRegistry
 
-`registry.ts:RuleRegistry` is a simple dispatcher. It holds two typed arrays — `preCommandRules: PreCommandRule[]` and `postStrokeRules: PostStrokeRule[]` — and exposes three methods:
+`registry.ts:RuleRegistry` is a simple dispatcher. It holds two typed arrays — `preCommandRules: PreCommandRule[]` and `postStrokeRules: PostStrokeRule[]` — exposes validation and introspection methods:
 
 - `register(rule: AnyRule)` — appends to the correct array based on `rule.phase`.
 - `validatePreCommand(cmd, state)` — iterates `preCommandRules`, skips any whose `appliesTo` array does not contain `cmd.type`, and accumulates errors from the rest. All applicable rules always run; there is no short-circuit on first error.
 - `validatePostStroke(state)` — iterates `postStrokeRules` unconditionally (post-stroke rules have no `appliesTo` filter) and accumulates errors.
 
-The `appliesTo` field is a `CommandType[]` on `PreCommandRule` (`types.ts:PreCommandRule`). This means the dispatch cost is O(R × |appliesTo|) per call, where R is the number of registered rules. With the current 11 pre-command rules and command sets of 2–4 types this is negligible, but the filtering is a linear scan rather than an indexed lookup.
+The `appliesTo` field is a `CommandType[]` on `PreCommandRule` (`types.ts:PreCommandRule`). This means the dispatch cost is O(R × |appliesTo|) per call, where R is the number of registered rules. The registry scans each rule's declared command set; registration and dispatch remain separate from validation behavior.
 
 ### createDefaultRegistry
 
-`index.ts:createDefaultRegistry` is the sole assembly point. It walks one `ALL_RULES` array — 15 rules, 11 pre-command then 4 post-stroke — and registers each into the phase list its own `phase` field names. The pre-command order is:
+[createDefaultRegistry](../src/rules/index.ts) is the sole assembly point. It registers the canonical rule list into each rule's declared phase.
 
-1. `layerLockRule` (V-LOCK-01) — first, so a locked-layer error takes priority over zone or elevation errors on the same cell.
-2. `lockedObjectRule` (V-LOCK-02)
-3. `elevationRangeRule` (V-MTN-01)
-4. `mountainFloatingRule` (V-MTN-02)
-5. `waterFloatingRule` (V-WTR-01)
-6. `objectBlocksTerrainRule` (V-PLACE-BLOCK)
-7. `traitPlacementRule` (V-PLACE-TRAIT)
-8. `zoneRestrictionRule` (V-ZONE-01)
-9. `placementOverlapRule` (V-PLACE-OVERLAP)
-10. `placementMaxCountRule` (V-PLACE-MAX)
-11. `chunkLoadRule` (V-CHUNK-01)
+<!-- generated:rules:start -->
+
+Source: [src/rules/index.ts](../src/rules/index.ts), through `createDefaultRegistry().getRules()`.
+
+| Order | Rule | Phase |
+|---|---|---|
+| 1 | `V-LOCK-01` | pre-command |
+| 2 | `V-LOCK-02` | pre-command |
+| 3 | `V-MTN-01` | pre-command |
+| 4 | `V-MTN-02` | pre-command |
+| 5 | `V-WTR-01` | pre-command |
+| 6 | `V-PLACE-BLOCK` | pre-command |
+| 7 | `V-PLACE-TRAIT` | pre-command |
+| 8 | `V-ZONE-01` | pre-command |
+| 9 | `V-PLACE-OVERLAP` | pre-command |
+| 10 | `V-PLACE-MAX` | pre-command |
+| 11 | `V-CHUNK-01` | pre-command |
+| 12 | `V-MTN-03` | post-stroke |
+| 13 | `V-WTR-02` | post-stroke |
+| 14 | `V-WTR-03` | post-stroke |
+| 15 | `V-PLACE-COATED` | post-stroke |
+
+<!-- generated:rules:end -->
 
 Most of this order is about which message wins in the UI, since errors accumulate into one `ValidationError[]` rather than short-circuiting. **One part of it is load-bearing for correctness**: `traitPlacementRule` runs BEFORE zone and overlap because the `waterSpan`/`heightDrop` traits SNAP the object's position, rotation and span during validation. Zone and overlap must judge the snapped footprint, not the raw click — otherwise a bridge or ramp can snap onto a non-grass zone and be accepted, which is how the generator once placed a ramp on the beach.
 
@@ -416,7 +451,7 @@ The registry is a value object: `createDefaultRegistry()` is called once during 
 Every rule receives `state: GridState` (`types.ts:GridState`), which contains:
 - `cells: MacroCell[][]` — row-major `cells[y][x]`, accessed via `grid-model.ts:getCell` (returns `null` for out-of-bounds). A cell with `terrain: null` is grass at elevation 0.
 - `objects: Map<string, PlacedObject>` — keyed by object ID.
-- `lockedLayers: Set<number>` — layers 1–8 that the user has locked.
+- `lockedLayers: Set<number>` — the buildable layers that the user has locked.
 - `template: MapTemplate` — static map geometry including `plaza: PlazaConfig`.
 
 Rules read this state purely; the only exception is the `waterSpan` and `heightDrop` trait handlers in `placement.ts`, which mutate `cmd.object.rotation`, `cmd.object.position`, and `cmd.object.spanLength` as a side effect of successful validation (described below).
@@ -427,7 +462,7 @@ Rules read this state purely; the only exception is the `waterSpan` and `heightD
 
 **V-ZONE-01 (`zone-restriction.ts`)** — Rejects any edit on a non-Grass zone (`isBuildableZone`). For `PlaceObject` it walks the rotated footprint from `getPlacedObjectSize`; for terrain edits it walks the command's own cells. Out-of-bounds differs by command on purpose: an object may not hang over the void, so a null cell is an error there, while a terrain edit off-map is simply skipped. It does NOT apply to `RemoveObject` — removal must always succeed, or an object that somehow reached a non-grass cell could never be cleared. The plaza needs no clause of its own here: it is a locked object, and the object rules cover it. One error per invalid cell.
 
-**V-MTN-01 (`elevation-range.ts`)** — Applies to `PaintTerrain`. Guards only `TerrainType.Mountain` commands. Returns a single error for the whole command (not per-cell) if `cmd.elevation` is outside `[0, ELEVATION_MAX]` (currently 0–8, per `constants.ts:ELEVATION_MAX`). Elevation 0 is valid because it is the clear-terrain sentinel in `applyCommand()`.
+**V-MTN-01 (`elevation-range.ts`)** — Applies to `PaintTerrain`. Guards only `TerrainType.Mountain` commands. Returns a single error for the whole command (not per-cell) if `cmd.elevation` is outside `[0, ELEVATION_MAX]`. Elevation 0 is valid because it is the clear-terrain sentinel in `applyCommand()`.
 
 **V-MTN-02 / V-WTR-01 (`floating-block.ts`)** — Both rules share `validateNoFloating`. Applies to `PaintTerrain`. Skips elevations ≤ 1 (layer 1 is always supported by the implicit ground). For each cell in `cmd.cells`, reads existing terrain and rejects if `cell.terrain.elevation < cmd.elevation - 1` (or if no terrain at all). Water counts as valid support for floating purposes; the rule checks only structural adjacency, not terrain type. Two distinct rule instances (`mountainFloatingRule`, `waterFloatingRule`) are registered separately and both appear in `appliesTo: [CommandType.PaintTerrain]`.
 
@@ -457,7 +492,7 @@ The trait dispatch (`placement.ts:validateTrait`) covers nine trait types:
 
 - `halfStep` — Passive: grants the item a half-cell anchor on both axes (`state/object-geometry:hasHalfStep`). An item WITHOUT it is what the fractional-position guard rejects, so ramps and bridges may sit flush with the terrain grid while everything else stays whole-celled.
 
-**V-CHUNK-01 (`chunk-load.ts`)** — Applies to `PlaceObject`. Gated behind `CHUNK_LOAD_ENABLED = false` (`constants.ts`) — currently returns `[]` unconditionally (placement is free because real in-game load values are unknown). When enabled, the exported `chunkLoadViolations` helper reads `getMapStats(state).chunks` (the same memoized per-chunk load `state/map-stats.ts` keeps for every other whole-map question) and, for each chunk key in the candidate's **own footprint**, checks the existing load plus the candidate's `loadValue` against that chunk's ceiling (`loadMaxFor`, defaulting every chunk to `CHUNK_LOAD_LIMIT` = 10,000 — exactly the limit is permitted), returning an error if any chunk would overflow. The enforcement is unit-tested via the exported helper; flip `CHUNK_LOAD_ENABLED` and set real catalog `loadValue` entries to activate it.
+**V-CHUNK-01 (`chunk-load.ts`)** — Applies to `PlaceObject`. Gated by `CHUNK_LOAD_ENABLED` in the generated constants table; while disabled, placement is free and the rule returns no errors. When enabled, the exported `chunkLoadViolations` helper reads `getMapStats(state).chunks` (the same memoized per-chunk load `state/map-stats.ts` keeps for every other whole-map question) and, for each chunk key in the candidate's **own footprint**, checks the existing load plus the candidate's `loadValue` against that chunk's ceiling (`loadMaxFor`, defaulting every chunk to `CHUNK_LOAD_LIMIT` — exactly the limit is permitted), returning an error if any chunk would overflow. The enforcement is unit-tested via the exported helper; flip `CHUNK_LOAD_ENABLED` and set real catalog `loadValue` entries to activate it.
 
 ### Composition with neighbouring subsystems
 
@@ -473,7 +508,7 @@ The `waterSpan` and `heightDrop` traits deliberately blur the pure-validator bou
 
 ### Responsibility and Position in the Pipeline
 
-Post-stroke rules are the second validation phase in the two-phase rule system. Unlike pre-command rules (which gate individual `Command` objects before they mutate state), post-stroke rules receive no command context at all — they are passed only the full `GridState` and are expected to scan it for structural invariant violations. The four post-stroke rules are:
+Post-stroke rules are the second validation phase in the two-phase rule system. Unlike pre-command rules (which gate individual `Command` objects before they mutate state), post-stroke rules receive no command context at all — they are passed only the full `GridState` and are expected to scan it for structural invariant violations. The post-stroke policies are:
 
 - **`base-support.ts`** — rule `V-MTN-03`, checks 3x3 structural base requirements for high mountains
 - **`water-containment.ts`** — rule `V-WTR-02`, checks that every water cell's open faces are perpendicularly capped by mountains
@@ -641,7 +676,7 @@ Road cuts are stored and reasoned about in a **canonical (left-connected) form**
 
 1. **Seeds the working region**: takes the set of changed `MacroCoord`s from the stroke and inflates it by one cell in every direction (8-neighbourhood) via `expandRegion` (`cut-reconcile.ts`), storing the result in a `Set<string>`.
 
-2. **Iterates to fixpoint with cascading growth**: runs up to `MAX_RECONCILE_PASSES = 16` passes over the current region. Each pass visits every cell in the region and applies three orthogonal reconcilers. When a cell is repaired, its 8-neighbourhood is immediately folded into the region `Set`, so that cascading road repairs beyond the initial ring are picked up in subsequent passes. The loop exits early as soon as a pass makes no changes.
+2. **Iterates to fixpoint with cascading growth**: runs up to `MAX_RECONCILE_PASSES` passes over the current region. Each pass visits every cell in the region and applies three orthogonal reconcilers. When a cell is repaired, its 8-neighbourhood is immediately folded into the region `Set`, so that cascading road repairs beyond the initial ring are picked up in subsequent passes. The loop exits early as soon as a pass makes no changes.
 
 The four reconcilers:
 
@@ -686,7 +721,38 @@ The editor renders through one of two live views over this same pipeline — the
 
 ### Key Types
 
-**`Tool` interface** (`types.ts`) — five pointer callbacks (`onPointerDown`, `onPointerMove`, `onPointerUp`, `onActivate`, `onDeactivate`) plus an `id: ToolType`, a semantic `cursor: CursorId` (the canvas layer turns it into CSS — see `src/ui/design/cursors/`), and four optional members: `cursorFor(ctx)` (the cursor a tool can only name with the context in hand — the placer's place-vs-select), `canActAt(coord, ctx)` (the pre-click refusal probe the cursor's forbidden badge reads), and the pending-gesture trio `cancelPending`/`undoPendingStep`/`hasPending` (the curve's multi-click anchor chain, so Escape and Delete reach the pending gesture before the selection, and a nav tap can end it). Every concrete tool is a stateful class that implements this interface. The interface is coordinate-aware: each callback receives a `MacroCoord` (integer, resolved at `TILE_SIZE` granularity) and a `MicroCoord` (half-cell, resolved at `HALF_TILE`), so tools that need sub-cell precision (edge-cut corner detection) have it available without further computation.
+The [Tool contract](../src/tools/runtime/types.ts) declares pointer callbacks, cursor/refusal probes, terrain-coordinate selection and pending-gesture hooks. Concrete tools keep gesture state; `ToolManager` supplies the current context and resolves coordinates before dispatch.
+
+<!-- generated:tool:start -->
+
+Source: [src/tools/runtime/types.ts](../src/tools/runtime/types.ts).
+
+```ts
+export interface Tool {
+    id: ToolType;
+    terrainGrid?(ctx: ToolContext): boolean;
+    cursor: CursorId;
+    cursorFor?(ctx: ToolContext): CursorId;
+    canActAt?(coord: MacroCoord, ctx: ToolContext): boolean;
+    cancelPending?(ctx: ToolContext): boolean;
+    undoPendingStep?(ctx: ToolContext): boolean;
+    hasPending?(ctx: ToolContext): boolean;
+    grabAt?(coord: MacroCoord, ctx: ToolContext): boolean;
+    selects?(ctx: ToolContext): boolean;
+    selectHit?(coord: MacroCoord, ctx: ToolContext): {
+        id: string;
+        selected: boolean;
+    } | null;
+    onPointerDown(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
+    onPointerMove(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
+    onPointerUp(coord: MacroCoord, micro: MicroCoord, ctx: ToolContext): void;
+    onPointerCancel?(ctx: ToolContext): void;
+    onActivate(ctx: ToolContext): void;
+    onDeactivate(ctx: ToolContext): void;
+}
+```
+
+<!-- generated:tool:end -->
 
 **`ToolContext`** (`types.ts`) — a plain object assembled and refreshed by `ToolManager` before each pointer dispatch. It bundles:
 - `gridState` — read-only reference to the live `GridState` (cells, objects, lockedLayers).
@@ -732,11 +798,11 @@ The curve is a multi-click ANCHOR CHAIN, not a fixed three-click quadratic: `Dra
 
 What a paint click issues is planned in `paint-plan.ts:planPaint` (with `water-layers.ts` beside it for the water brush's layer questions), and the tool's `canActAt` probe reads the SAME `planPaint`, so the cursor's forbidden badge and the click cannot disagree. The plan has a significant asymmetry between mountain and water content: mountains group cells by their **target elevation** (one `PaintTerrain` command per distinct level, starting from the cell's STRUCTURAL surface via `surfaceElevation`, producing correct incremental stacking), while water paints at the pinned layer when a hand chose one (`layerPinned`) and at each cell's own surface when it did not. A `strokeCells: Set<string>` guard prevents re-painting the same macro cell twice within a brush stroke — important for brush mode where the pointer can revisit a cell.
 
-Ghost preview uses `ctx.overlay.showGhost(cells, color, terrainMode)`. The third argument controls a pixel offset: terrain ghosts are offset by `-HALF_TILE` (32 px) to align with the micro-grid rendering of terrain tiles; object ghosts pass `false` to sit on the macro-grid.
+Ghost preview uses `ctx.overlay.showGhost(cells, color, terrainMode)`. The third argument controls a pixel offset: terrain ghosts are offset by `-HALF_TILE` to align with the micro-grid rendering of terrain tiles; object ghosts pass `false` to sit on the macro-grid.
 
 ### EraserTool
 
-`EraserTool` (`eraser.ts`) delegates single-cell peel to `peelCommand` (`terrain-peel.ts`). This helper (`terrain-peel.ts`) encodes the erosion rule: water erases to ground (`EraseTerrain` command); mountain at elevation N emits a `PaintTerrain` command at elevation N-1 (elevation 0 is the special case that clears via `applyCommand`). The eraser reads `layerVisibility` directly from the Zustand store to skip hidden layers — one of only two places in the tools layer that reads Zustand state at event time (the other being `ObjectPlacerTool`, which reads `selectedItemId`).
+`EraserTool` (`eraser.ts`) delegates single-cell peel to `peelCommand` (`terrain-peel.ts`). Water erases to ground; mountain at elevation N lowers to N−1, with elevation zero clearing terrain. The eraser reads current layer visibility and content selection from `ToolContext`; `ToolManager` refreshes those values from the store before each event.
 
 ### ObjectPlacerTool
 
@@ -756,7 +822,11 @@ There is no separate road tool. `DrawingTool` in tile mode (`contentType: 'tile'
 
 ### Smart Build Macros (`tools/macros/`)
 
-`MacroTool` (registered under `ToolType.Macro`) arms one generator verb at a point on the live map — the shell's Smart Build shelf and the agent's director tools reach the same bodies through `macros/index.ts`, so each verb has one implementation. `run.ts` states the contract: EXACTLY ONE UNDO ENTRY per press (rerolling a proposal is `undo()` then the next seed, so a macro landing as two entries would strand half of itself), and EVERY MACRO BUILDS ON A COPY FIRST — `scratch.ts` hands it a detached clone with the live rules, and only the validated result is replayed onto the real map. A press builds off the main thread through the installed runner (the same worker pool candidate generation uses, `kit/operations/candidate-pool.ts`); only the validated replay and commit land on the main thread. The verbs themselves (terrace raising, a stream, road linking, a road network, the planting patches) compose the shared `tools/placement/` machinery, and `preview.ts` runs the REAL press on a clone and diffs it, which is the only preview form that cannot disagree with what lands.
+`MacroTool`, registered under `ToolType.Macro`, routes editor gestures through [`macros/index.ts`](../src/tools/macros/index.ts). The shell and the agent's director tools reach the same operation bodies. The [macro registry](../src/tools/macros/run.ts) owns available operations, and the [surface menu](../src/ui/shell/bars/smart-menu.ts) selects their interface entries. Whole-map road networks remain available to programmatic callers.
+
+[Road and river gestures](../src/tools/macros/drag-tool.ts) use the shared line geometry, preview on detached maps, and build on release. [Mountain spray](../src/tools/macros/spray-tool.ts) queues local mounds in input order: a tap builds a mound, held bursts raise nested terraces, and dragging extends a ridge. Each stroke retains its original terrain and seed, includes any supporting terraces, and forms one undo entry. Held planting also groups its bursts into one undo entry. Rivers connect selected endpoints and construct legal channels, pools and waterfall frames through [terrain drafts](../src/tools/macros/terrain-draft.ts).
+
+Each operation builds on a detached map with live rules before replaying accepted commands. The installed worker runner shares the candidate-generation pool; validated replay and commit run on the main thread. [Previews](../src/tools/macros/preview.ts) use the same builders and include the complete changed footprint. Road and river results replay atomically. Their adjustments share the [curve session](../src/tools/paint/curve-session.ts), retaining a baseline for restore-and-replay while the current result stays visible. Each adjustment is its own undo step. Map identity, arming epochs and fingerprints prevent cancelled or stale worker results from landing. Preview caches belong to individual maps and include layer locks as well as edit versions. Legacy point operations remain available to programmatic callers.
 
 ### Shared Shape Utilities
 
@@ -800,7 +870,9 @@ The remove/replace commands become part of the stroke's history — so a single 
 
 The generation subsystem produces rule-valid maps from three algorithms — the ISLAND generator (`src/tools/generation/designer/`, the default `'designed'`), a recursive-backtracker MAZE (`maze/`), and the STENCIL that reads a picture or a phrase as terrain (`stencil/`) — and deposits their results into `GridState` through the standard command/validation pipeline. The Generate shelf fronts them as FOUR kinds (`ui/shell/bars/generate-shelf.ts:GenerateKind = 'island' | 'maze' | 'text' | 'image'`), with `algorithmFor()` mapping the two picture kinds onto `'stencil'`. Generation runs inside `kit/operations/generate.ts:generateMap`, an async function that `await`s `yieldFrame()` before its first synchronous chunk so a caller's loading-spinner state can paint first (`ui/shell/bars/GenerateShelf.tsx` holds that flag).
 
-The subsystem is entirely stateless: it never stores state of its own. All persistent output goes through `executeCommand`, which is `CommandExecutor.execute` bound at call time.
+Generation algorithms operate on supplied map state. All persistent output goes through `executeCommand`, which is `CommandExecutor.execute` bound at call time.
+
+Stencil input floors are declared in `stencil/stencil.ts:STENCIL_MIN_SIDE`; the shelf gate and localized minimum-size message read that same source. Text uses font-derived grid fitting while strokes are small, then native outlines with component and counter checks. Image sampling has a separate compact-region boundary, `COMPACT_IMAGE_LIMIT`: smaller pictures preserve subcell color detail, while larger pictures retain standard sampling and material allocation. Text outline cleanup does not run on image stencils. Browser decoding, font readiness and bounded raster/plan caches belong to `ui/shell/bars/stencil-raster.ts` and `stencil-plan.ts`; engine placement still goes through ordinary commands and validation.
 
 ---
 
@@ -846,7 +918,8 @@ A module of its own beside `macros/`, not a stage under `generation/`: it puts o
 
 - `object.ts` — `makeCtx` builds the placement context (state, execute, rules, seed, road style, clearance set); `tryPlace`/`tryDecorate` validate and place; `buildingGate` derives a house's door and the strip in front of it; `reserveClearance`/`sweepClearanceCells`/`enforceClearance` keep gates and crossing ends walkable.
 - `analysis.ts` — `analyzeTerrain` reads the map once into the placeable mask, the elevation-aware regions and the distance-to-water field every later pass asks questions of.
-- `network.ts` + `route.ts` + `route-offers.ts` + `portals.ts` + `network-variation.ts` — the road router: `scanPortals` finds the bridge/ramp crossings between adjacent regions by dry-run validation, `buildNetwork` spans the nodes with directed A* roads through them, `planRoute` is the single-route planner the smart-build macros use.
+- `network.ts`, `portals.ts` and `network-variation.ts` build road networks. `scanPortals` uses sparse candidates and dry-run validation to find bridge and ramp crossings; `buildNetwork` connects the network nodes through them.
+- `route.ts`, `route-search.ts`, `route-offers.ts` and `route-portals.ts` plan aimed roads. Direction-aware search compares land paths with validated bridges and ramps. Crossing discovery includes dry ravines, half-grid placements and narrower catalog geometry; `object.ts:probePlacement` validates the snapped command without applying temporary objects. Candidates retain their catalog geometry and deck exits so pavement can join the crossing within the available approach space.
 - `road-style.ts` — what kind of roads the map ALREADY has, measured rather than assumed: `bendDensity` reads the fraction of paved cells that turn (a grid near 0, a ramble near 1) and `turnPenaltyFor` maps that to the A* per-turn cost, so a new lane matches the streets it grows out of.
 - `nature.ts` — `placeNature`, the layered ecology: forest stands with glades and soft edges, biome bands by elevation and moisture, waterside and ecotone flora in drifts rather than confetti.
 - `themes.ts` — the six themed room decorators (`decorateZone`: orchard, farm, garden, hamlet, waterfront, peak) and the mirrored crossing vignette (`decorateCrossing`).
@@ -905,7 +978,7 @@ The hook owns the region's OWN undo/redo stack, separate from the map's command 
 
 ## The Verb Seam (`src/kit/`)
 
-`kit/` is the layer where "an editor operation" is one function with three interchangeable callers — the UI, the agent, and a test's by-hand context. `operations/` holds the verbs (`newMap`, `loadMap`, `generateMap`, `generateCandidate`, `clearGenerated`, `pressRoadNetwork`, `transferMap`): each is a plain function over a `KitContext` (`context.ts`, whose `currentKit()`/`installMap`/`installLoadedMap` are the one sanctioned path into a live map — `operations/` never imports the store itself), runs as one stroke group with provenance pushed and popped, and returns its outcome as DATA (`outcome.ts`) so the UI and the agent narrate it separately. Beside the verbs: `host.ts` (the typed surface for camera, feedback, buildable-region overlay, capture and resync on the active view), `commands.ts` (the keyboard-command RUN bodies, zipped with the identity metadata in `core/runtime/keybindings.ts`), `actions.ts`, and `group-edit.ts` (the shared toast/animation side of single and group object actions).
+`kit/` is the layer where "an editor operation" is one function with three interchangeable callers — the UI, the agent, and a test's by-hand context. `operations/` holds the verbs (`newMap`, `loadMap`, `generateMap`, `generateCandidate`, `clearGenerated`, `transferMap`): each is a plain function over a `KitContext` (`context.ts`, whose `currentKit()`/`installMap`/`installLoadedMap` are the one sanctioned path into a live map — `operations/` never imports the store itself), runs as one stroke group with provenance pushed and popped, and returns its outcome as DATA (`outcome.ts`) so the UI and the agent narrate it separately. Beside the verbs: `host.ts` (the typed surface for camera, feedback, buildable-region overlay, capture and resync on the active view), `commands.ts` (the keyboard-command RUN bodies, zipped with the identity metadata in `core/runtime/keybindings.ts`), `actions.ts`, and `group-edit.ts` (the shared toast/animation side of single and group object actions).
 
 Candidate generation leaves the main thread: `operations/candidate-pool.ts` + `candidate.worker.ts` run island builds in a small worker pool (`min(3, cores - 2)` workers — the main thread still has the map to draw and each worker holds a whole grid), with queueing, pre-dispatch cancellation, and a main-thread fallback where a worker cannot boot, gated on `typeof Worker` so headless runs never construct one. Jobs cross the boundary as `core/model/grid-wire` buffers in both directions, because a structured clone of a raw grid costs tens of milliseconds ON the main thread. The Smart Build macros' ghost preview and press share the same pool at queue-front priority.
 
@@ -986,7 +1059,7 @@ A `BlockRef` is used for three distinct but related purposes:
 
 `ContextMenu.tsx` and `DeletePopover.tsx` both pull `commandExecutor` and `gridState` directly from the store, but the operations themselves run through shared call paths rather than being built inline: single-object rotate/peel through `tools/objects/actions.ts` (rotate is a remove plus a place of the same id, collapsed into one undo step), and delete/rotate's toast + animation side through `kit/group-edit.ts:deleteSelection`/`rotateObjectAction`/`rotateGroupAction` — the same functions `SelectionHandles.tsx` and the keyboard shortcuts (`kit/commands.ts`) call, so the three surfaces cannot answer the same action differently.
 
-There is also `selectedItemId: string | null` in the store, which is the **catalog-level** selection — which item in the object shelf is armed for placement. `ObjectPlacerTool` reads it via `useEditorStore.getState().selectedItemId` to know what to place, and `placementRotation` beside it carries the armed item's pending rotation (it lives in the store because the rotate shortcut, the ghost preview and the placement command are three separate call sites, only one of which touches a tool).
+The store's `selectedItemId: string | null` is the catalog selection. `ToolManager` resolves it into `ToolContext.armedItem` and supplies `placementRotation` alongside it. The object placer reads that context, keeping the toolbar, rotation shortcut, placement command and ghost synchronized without reaching into Zustand itself.
 
 ---
 
@@ -1042,7 +1115,7 @@ The returned `MapStats` is a **live view, not a snapshot**: it is the same objec
 
 This subsystem has three loosely related jobs that share the `GridState` type as their interface surface:
 
-1. **Persistence** (`src/io/`): Serialise and deserialise `GridState` to/from a versioned JSON envelope, compress the cell grid with run-length encoding, and provide the transport helpers — file download, clipboard copy, and a 2-second debounced localStorage autosave. Around the codec: `export-json.ts`/`import-sections.ts` (the optional save sections), `import-file.ts` (one entry for a picked/dropped/pasted file, JSON or image, that never throws), `import-validate.ts`, `history-codec.ts` (an exported undo stack, validated before replay), `legacy-catalog.ts` (retired-id renames), and `local-reset.ts` (the Settings "Local data" wipe).
+1. **Persistence** (`src/io/`): Serialise and deserialise `GridState` to/from a versioned JSON envelope, compress the cell grid with run-length encoding, and provide the transport helpers — file download, clipboard copy, and a debounced localStorage autosave. Around the codec: `export-json.ts`/`import-sections.ts` (the optional save sections), `import-file.ts` (one entry for a picked/dropped/pasted file, JSON or image, that never throws), `import-validate.ts`, `history-codec.ts` (an exported undo stack, validated before replay), `legacy-catalog.ts` (retired-id renames), and `local-reset.ts` (the Settings "Local data" wipe).
 2. **The share pipeline** (`src/io/share/`): the map as an importable PICTURE — its own section below.
 3. **Programmatic API** (`src/api/editor-api.ts`): Expose the live editor as a typed object on `window.__PETIT_API` — **DEV builds only** — so browser-console scripts and automation harnesses can read grid state, issue commands, and round-trip JSON without touching the React/Zustand layer.
 
@@ -1050,21 +1123,66 @@ This subsystem has three loosely related jobs that share the `GridState` type as
 
 #### SaveFile schema
 
-`SaveFile` and `CURRENT_VERSION` live in `io/save-format/types.ts`, not in the codec — the shape is versioned data, and the codec is one reader of it:
+The save envelope and its current version come from [save-format/types.ts](../src/io/save-format/types.ts). The codec writes declared fields directly. Optional domain sections stay `unknown` at this boundary and are parsed by their owners.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `version` | number | The shape this file was written in; `migrate.ts` lifts an older one before the decoder sees it |
-| `templateId` | string | Identifies which `MapTemplate` to pair with on load; the codec does not embed template data |
-| `cells` | RLE string | Packed row-major terrain tokens |
-| `objects` | `SaveObject[]` | Placed objects with all placement metadata |
-| `metadata.savedAt` | ISO-8601 string | Informational only; not validated on load |
-| `provenance` | object | The edit-source ledger, written only when the map carries one |
-| `notes` | object | Title/description/author, written only when non-empty |
-| `generation`, `session`, `history`, `stats`, `catalogInfo`, `manifest` | `unknown` | Optional export-json sections, additive with no version bump (old builds ignore unknown keys). Typed `unknown` on purpose: only `io/export-json` writes them and `io/import-sections` reads them, so the codec gains no dependency on their domains |
-| `camera` | object | The 2D/3D framing to resume at, written only when supplied |
+<!-- generated:save:start -->
 
-**Versioning** (`io/save-format/`): `CURRENT_VERSION = 1` today. `migrate.ts` runs an append-only chain of vN→vN+1 steps, pure JSON→JSON, before decoding, and rejects a FUTURE version with `SaveVersionError` rather than guessing. A breaking change means adding `migrations/NNN-*.ts`, bumping `CURRENT_VERSION`, and freezing a fixture.
+Source: [src/io/save-format/types.ts](../src/io/save-format/types.ts).
+
+```ts
+export const CURRENT_VERSION = 1;
+
+export interface SaveObject {
+    id: string;
+    catalogId: string;
+    x: number;
+    y: number;
+    rotation: number;
+    elevation?: number;
+    spanLength?: number;
+    corners?: string;
+    patchOnly?: boolean;
+}
+
+export interface PersistedCamera {
+    view2d?: {
+        x: number;
+        y: number;
+        zoom: number;
+    };
+    view3d?: {
+        az: number;
+        el: number;
+        dist: number;
+        tx?: number;
+        tz?: number;
+    };
+}
+
+export interface SaveFile {
+    version: number;
+    templateId: string;
+    cells: string;
+    objects: SaveObject[];
+    metadata: {
+        savedAt: string;
+    };
+    provenance?: SerializedProvenance;
+    notes?: MapNotes;
+    annotations?: unknown;
+    generation?: unknown;
+    session?: unknown;
+    history?: unknown;
+    stats?: unknown;
+    catalogInfo?: unknown;
+    manifest?: unknown;
+    camera?: PersistedCamera;
+}
+```
+
+<!-- generated:save:end -->
+
+**Versioning** (`io/save-format/`): `migrate.ts` runs an append-only chain of version-to-version transformations before decoding, and rejects future versions with `SaveVersionError`. A breaking change adds a migration, advances `CURRENT_VERSION`, and freezes a fixture. Additive optional sections require no version bump. `metadata.savedAt` is informational; `cells` contains packed row-major terrain tokens.
 
 #### Cell encoding pipeline
 
@@ -1086,18 +1204,18 @@ The token array is then RLE-compressed by `rleEncode` (`json-codec.ts`): consecu
 
 - `spanLength` and `corners` are only written when present (bridges only have `spanLength`; road patches may have `corners`).
 - A corner-suffix omission optimisation mirrors the terrain case: if all four corners encode to `"SSSS"`, `corners` is omitted from the saved object entirely.
-- `patchOnly` is written through a cast: `SaveObject` does not declare it, so it round-trips without appearing in the schema. The read on load is symmetric.
-- `rotation` is read back with a type assertion to `0 | 90 | 180 | 270` (`json-codec.ts`) without runtime validation; an invalid serialised value would silently pass through.
+- `patchOnly` is a declared optional `SaveObject` field and round-trips directly through the codec.
+- Object rotation, coordinates, elevation and span are validated before constructing a placement. Unknown catalog items and invalid placements are skipped; object identifiers are normalized before they reach tool output.
 
 #### Deserialization invariants
 
-`deserialize` (`json-codec.ts`) rebuilds `GridState` from scratch via `createGrid(template)`, which ensures `zone` is always sourced from the template (not persisted). This means importing a save against a different template than it was created with will produce mismatched zone assignments — the codec does not validate `templateId` against the provided template. The returned state always has `lockedLayers: new Set()` regardless of what was in the save file; layer locks are not persisted.
+`deserialize` (`json-codec.ts`) rejects a declared template mismatch and cell data that does not cover the template. It reconstructs zones and the immutable plaza from the template, validates imported objects and removes fully covered duplicate coatings. The returned state starts with an empty `lockedLayers` set; layer locks are not persisted.
 
 `parseTerrain` (`json-codec.ts`) includes a legacy entry in its decode map: `T: 'tri-NW'` alongside `'1': 'tri-NW'` (`json-codec.ts`). The encoder only ever writes numeric codes, so `T` is a dead read path for forward-compat with an older encoding.
 
 #### Autosave (`src/io/autosave.ts`)
 
-`scheduleAutosave` (`autosave.ts`) wraps `serialize` + `localStorage.setItem` behind a 2-second debounce. Errors (quota exceeded, serialisation failure) are silently swallowed. Reading back is deliberately split: `readAutosave` decodes and returns `null` on any exception, while `readRestorableAutosave` additionally applies `autosaveWorthy` — a map with no content is not offered for restore, so a fresh session never proposes resuming an empty one. `hasAutosave` and `clearAutosave` round out the surface.
+`scheduleAutosave` uses `AUTOSAVE_DEBOUNCE_MS` in [autosave.ts](../src/io/autosave.ts) to coalesce edits. Only content-bearing maps are written. If storage fails, it retries without provenance; undo history is retained only when the full map and its provenance were saved together. `readAutosave` returns null on decoding failure, and `readRestorableAutosave` additionally applies the shared `autosaveWorthy` content predicate.
 
 #### Image export (`src/io/image-export.ts`)
 
@@ -1157,13 +1275,21 @@ The 3D editor is the second LIVE view over the same command pipeline, not a prev
 
 One interface, mounted by App as `ui/shell/Shell`: two shared layers below (`design/` for tokens, the UI-scaling factor and cursors; `primitives/` for generic parts), and three owning surfaces above. `shell/` is the game-style frame around the map: its mode is the store's `editMode.mode`, so the visible bottom bar and the armed map action are one fact; `bars/` contains the per-mode shelves and `windows/` the layer panel and related surfaces. `chrome/` owns modals, floating overlays, guards and the first-launch tour. `agent/` is the assistant panel, loaded separately so its tool layer and provider SDKs stay out of the eager graph. Every user-facing string goes through `i18n/`, and every shell motion is declared in `shell/motion/registry.ts`.
 
+`design/scale.tsx:fittedUiScale` owns the shared fit for the frame and chrome, including the remaining workspace beside a docked assistant. The frame layout plan coordinates corner actions and rail folding, keeping history on the right and fitting expanded layers above the lower controls when space permits. Each bottom row reserves only the rail cells intersecting its height; crowded rows scroll horizontally. Fitting changes the displayed size while retaining the saved scale preference. Layout transitions use the shared motion registry and reduced-motion gates.
+
+`assets/fonts/family.ts` declares the common interface and map-label font stack. `ui/design/text-weight.ts` adapts text weight to visible text size, a bounded allowance for display density and script density. Small text becomes lighter while normal body text and larger headings retain their emphasis. Native controls inherit their surface's font; portalled slider readings carry the font explicitly and use the same weight adaptation.
+
+`GenerateShelf` owns generation settings and applying a chosen result. Its preview hook owns detached candidate/custom previews, caches and cancellation; font readiness and strip controls have their own modules. Help renders text immediately and admits illustration work after the modal entrance and near the reading viewport. Preview frames retain their dimensions while unseen map generation, captures and renderer setup wait; examples still use the live components and editor operations.
+
 ## The Agent Harness (`src/agent/`)
 
 The LLM assistant edits the map by tool call, and its architecture is one sentence: THE LOG IS THE STATE, and everything else is a projection of it. `core/log.ts` is an append-only `SessionEvent` list; `core/project-view.ts` folds it into what the panel renders and `core/project-messages.ts` folds the same log into provider messages, so the UI and the wire can never tell two different stories. `core/loop.ts:runJob` drives adapter turns from the log and back into it — its only state IS the log, so a fresh call over the same log resumes exactly where the last one stopped (an unanswered gate is re-entered rather than re-asked), with the governor's dampers (turn budget, verbatim-retry and repeated-revert escalations, the repeat refusal) reading their counters back off the log too.
 
 `providers/` is BYOK in-browser. `defaults.ts:PROVIDER_IDS` is the provider roster, including the custom OpenAI-compatible endpoint; `detect.ts` identifies a pasted key from its format or a `/models` probe. `exec/` is the seam to the app: `executor.ts` adapts the tool layer to the loop, and `runner.ts` owns the in-flight job. `session/` bridges to Zustand and persists the log. `prompts/` and `skills/` are markdown, with the system prompt rebuilt from the live `RuleRegistry.getRules()` and catalog so those runtime facts cannot drift from the model's instructions.
 
-Three invariants: the TOOL SANDBOX (`tools/**` and `exec/executor.ts` never touch storage, DOM or network — map commands only, one silent stroke group per write so a call is one undo step, with pre-command rejects and post-stroke `REVERTED:` feedback echoed back to the model in English with rule hints); the REGION LOCK (a painted region is a hard boundary for every write tool, enforced over the commands AS APPLIED via `commandsSince`, all-or-nothing — a stray rolls the whole call back); and the key SECURITY model (an AES-GCM vault under a non-extractable IndexedDB `CryptoKey`, transcript redaction, https-only custom endpoints with loopback excepted). The full threat model is `docs/THREAT_MODEL.md`.
+The tool sandbox (`tools/**` and `exec/executor.ts`) exposes map operations without storage, DOM or network access. A write call groups its accepted edits into one undo step. Pre-command refusals return rule evidence; post-stroke validation rolls back only as far as legality requires, so a valid prefix may remain. Tool feedback and the panel report the retained cell/object edits explicitly. Crashes and region-lock violations roll back the whole call; the region boundary is checked against commands as applied, including snapped placements. The key vault uses AES-GCM with a non-extractable IndexedDB key, transcript redaction and HTTPS-only custom endpoints with a loopback exception. See [THREAT_MODEL.md](THREAT_MODEL.md).
+
+Cancellation and pause are checked again after approval and write waits, before execution. Stream waits and compaction observe cancellation even when a provider does not. Runner callbacks are scoped to their active log so late completion cannot replace a newer job. `session/validate-log.ts` validates persisted event structure and sequence before projection; unanswered gates from earlier jobs cannot block a current pause. An oversized context that cannot be shortened becomes a reported incident instead of a retry loop.
 
 ---
 

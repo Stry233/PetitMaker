@@ -10,6 +10,8 @@ import { ANNOTATION_COLORS } from '../../../../core/model/annotations';
 import { ItemCategory, type PlacementTrait } from '../../../../core/model/types';
 import { getAllItems, getPlaceableByCategory } from '../../../../state/catalog';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../../agent/providers/defaults';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../../../io/autosave';
+import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../../agent/core/governor';
 import { STYLIZE_PROVIDERS } from '../../../../io/stylize/providers';
 import { brandName } from '../../../../version';
 import { translateFor } from '../../../../i18n/context';
@@ -62,11 +64,15 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     modeMountain: translateFor(locale as Locale, 'mode.mountain'),
     modeWater: translateFor(locale as Locale, 'mode.water'),
     modeGenerate: translateFor(locale as Locale, 'mode.generate'),
+    smartBuild: translateFor(locale, 'smart.build'),
     smartRaise: translateFor(locale as Locale, 'smart.raise'),
     smartStream: translateFor(locale as Locale, 'smart.stream'),
     smartRoad: translateFor(locale as Locale, 'smart.road_link'),
     maxElev: ELEVATION_MAX,
     chunkLimit: CHUNK_LOAD_LIMIT,
+    autosaveSeconds: AUTOSAVE_DEBOUNCE_MS / 1000,
+    agentMaxTurns: MAX_TURNS_DEFAULT,
+    agentChildTurns: SUBAGENT_MAX_TURNS,
     noteColors: ANNOTATION_COLORS.length,
     bridgeMin: span?.min ?? 3,
     bridgeMax: span?.max ?? 6,

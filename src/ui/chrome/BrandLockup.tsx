@@ -12,6 +12,7 @@
 import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
 import { colors, font, radii } from '../design/styles';
+import { useReadableWeight } from '../design/scale';
 
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;
@@ -30,6 +31,7 @@ export interface BrandLockupProps {
 
 export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   const t = useT();
+  const weightAt = useReadableWeight();
 
   const row: CSSProperties = {
     display: 'flex',
@@ -46,7 +48,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   const names: CSSProperties = { display: 'flex', flexDirection: 'column', gap: Math.round(size * 0.04) };
   const name: CSSProperties = {
     fontFamily: font.family,
-    fontWeight: 900,
+    fontWeight: weightAt(900, Math.round(size * 0.42)),
     fontSize: Math.round(size * 0.42),
     color: colors.frameDark,
     lineHeight: 1.05,
@@ -55,7 +57,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   // below the 4.5:1 AA floor (see legal/a11y.test.tsx).
   const sub: CSSProperties = {
     fontFamily: font.family,
-    fontWeight: 700,
+    fontWeight: weightAt(700, Math.round(size * 0.2)),
     fontSize: Math.round(size * 0.2),
     color: colors.brownText,
     lineHeight: 1.2,

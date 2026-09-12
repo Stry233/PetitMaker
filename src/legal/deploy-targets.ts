@@ -67,6 +67,10 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     legacyOrigins: [],
     icpNumber: '浙ICP备2026062928号-1',
     icpUrl: 'https://beian.miit.gov.cn/',
+    // No PSB (公安联网备案) filing: Article 12 of the 计算机信息网络国际联网安全保护管理办法 places
+    // that duty on 互联单位、接入单位 and 使用计算机信息网络国际联网的法人和其他组织, not on natural
+    // persons, and this site is filed under an individual's ICP record.
+    // https://www.cac.gov.cn/2014-10/08/c_1112737294.htm
     psbNumber: null,
     psbUrl: null,
     privacyHostNetwork: {

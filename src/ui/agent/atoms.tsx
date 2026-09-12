@@ -394,7 +394,6 @@ export function ResultChip({ tone, children }: { tone?: 'warn' | 'bad'; children
         maxWidth: CHIP_MAX,
         ...roleFont('small'),
         fontFamily: font.family,
-        fontWeight: 800,
         color: ink,
         background: INSET,
         borderRadius: 999,

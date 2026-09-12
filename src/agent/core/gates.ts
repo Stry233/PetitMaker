@@ -26,15 +26,16 @@ export function askGate(
   return gateId;
 }
 
-/** The most recent `gateAsked` with no matching `gateAnswered` yet, or undefined if the log has
- *  none outstanding. */
+/** The current job's most recent unanswered gate, if any. */
 export function pendingGate(
   log: SessionLog,
 ): { gateId: string; scope: 'tool' | 'plan'; callId?: string; summary: string } | undefined {
   const events = eventsOf(log);
   const answered = new Set<string>();
-  for (const ev of events) if (ev.kind === 'gateAnswered') answered.add(ev.gateId);
-  for (const ev of [...events].reverse()) {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i]!;
+    if (ev.kind === 'order' || ev.kind === 'jobEnd' || ev.kind === 'incident') return undefined;
+    if (ev.kind === 'gateAnswered') answered.add(ev.gateId);
     if (ev.kind === 'gateAsked' && !answered.has(ev.gateId)) {
       return { gateId: ev.gateId, scope: ev.scope, callId: ev.callId, summary: ev.summary };
     }

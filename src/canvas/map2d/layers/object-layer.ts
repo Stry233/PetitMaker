@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { maxRenderScale } from '../../../core/runtime/device-quality';
 import { TILE_SIZE } from '../../../core/model/constants';
 import type { GridState, PlacedObject, CatalogItem } from '../../../core/model/types';
@@ -470,7 +471,7 @@ export class ObjectLayer {
     const numLabel = new PIXI.Text(text, {
       fontSize: 14,
       fontWeight: 'bold',
-      fontFamily: 'monospace',
+      fontFamily: APP_FONT_FAMILY,
       fill: 0xffffff,
       stroke: 0x000000,
       strokeThickness: 3,
@@ -660,7 +661,7 @@ export class ObjectLayer {
             const fontSize = Math.min(size.w, size.h) * TILE_SIZE * 0.6;
             const label = new PIXI.Text(obj.catalogId.slice(0, 3), {
               fontSize,
-              fontFamily: 'serif',
+              fontFamily: APP_FONT_FAMILY,
             });
             label.anchor.set(0.5);
             label.x = (size.w * TILE_SIZE) / 2;

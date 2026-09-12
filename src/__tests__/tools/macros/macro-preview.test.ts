@@ -34,6 +34,17 @@ const fingerprint = (s: GridState): string => s.cells
   .map((row) => row.map((c) => `${c.terrain?.type ?? '-'}${c.terrain?.elevation ?? 0}`).join()).join('|');
 
 describe('a macro preview', () => {
+  it('distinguishes maps with matching version counters and invalidates when locks change', () => {
+    const first = kit(), second = kit(), opts = { seed: 1, from: { x: 10, y: 20 }, at: { x: 30, y: 20 } };
+    second.state.lockedLayers.add(0);
+    expect(previewMacro(first, 'stream', opts).valid).toBe(true);
+    expect(previewMacro(second, 'stream', opts).valid).toBe(false);
+    first.state.lockedLayers.add(0);
+    expect(previewMacro(first, 'stream', opts).valid).toBe(false);
+    first.state.lockedLayers.clear();
+    expect(previewMacro(first, 'stream', opts).valid).toBe(true);
+  });
+
   it('names cells, and writes nothing to the map', () => {
     const ctx = kit();
     const before = fingerprint(ctx.state);

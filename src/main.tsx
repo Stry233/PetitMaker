@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { APP_FONT_FAMILY } from './assets/fonts/family';
 import './assets/fonts/fonts.css';
 import './ui/design/animations.css';
 import './ui/design/cursors/cursors.css';
@@ -23,6 +24,8 @@ publishCursorPreference(useEditorStore.getState().systemCursors);
 if (useEditorStore.getState().viewMode === '3d') preloadScene3D();
 
 printConsoleBanner();
+
+document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

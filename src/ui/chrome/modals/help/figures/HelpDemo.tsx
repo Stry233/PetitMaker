@@ -18,6 +18,7 @@ import type { MacroCoord, PlacementTrait } from '../../../../../core/model/types
 import { detectBridgeSpan } from '../../../../../core/model/bridge-span';
 import { useEditorStore } from '../../../../../state/store';
 import { localizedName, useT } from '../../../../../i18n/context';
+import { tagLabel } from '../../../../../i18n/annotation-tags';
 import { resolveTokenSpecs, type TokenSpec } from '../../../../hints/catalogue';
 import { HintTokens } from '../../../../hints/tokens';
 import { helpFacts } from '../facts';
@@ -230,9 +231,10 @@ class Player {
       poof: (id) => { if (!this.still) this.r.objectLayer.animateRemove(id); },
       spin: (id, fromDeg, toDeg) => { if (!this.still) this.r.objectLayer.animateRotation(id, fromDeg, toDeg); },
       groupSpin: (turn) => { if (!this.still) this.r.objectLayer.animateGroupRotation(turn); },
-      annotations: (draft) => {
+      annotations: (draft, selection) => {
         this.r.annotationLayer.draw(this.world.state.annotations ?? null, {
-          draft: draft ?? null, selectionIds: [], inkScale: annotationInkScale(this.world.state.template),
+          draft: draft ?? null, selectionIds: selection ?? [], inkScale: annotationInkScale(this.world.state.template),
+          tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
         });
         this.r.requestRender();
       },

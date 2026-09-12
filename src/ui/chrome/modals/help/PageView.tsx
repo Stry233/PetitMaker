@@ -6,7 +6,7 @@
  * their command ids through the live keymap (`resolveTokenSpecs`), which is what keeps a rebind
  * and its documentation the same fact.
  */
-import { Fragment, memo, useId, useState, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../../../state/store';
 import { startTour } from '../../tour/use-tour';
@@ -14,7 +14,7 @@ import { useT } from '../../../../i18n/context';
 import { useKeybinds } from '../../../../core/runtime/keybindings';
 import { resolveTokenSpecs } from '../../../hints/catalogue';
 import { HintTokens } from '../../../hints/tokens';
-import { roleFont } from '../../../design/text-weight';
+import { roleWeight, roleFont } from '../../../design/text-weight';
 import { INK, INSET, LINE, PLATE_INK } from '../../../design/tokens';
 import { buttonMotion, colors, cursors, primaryButton, radii, springs } from '../../../design/styles';
 import { withAlpha } from '../../../design/styles';
@@ -26,8 +26,11 @@ import { helpFacts } from './facts';
 import { HELP_SCENES } from './figures/scenes';
 import { HelpDemo } from './figures/HelpDemo';
 import { HELP_SURFACES } from './figures/surfaces';
+import { FigureReadyContext } from './figures/figure-ready';
+import { useInView } from './figures/use-in-view';
 import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
 import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
+import { PROVIDER_META } from '../../../../agent/providers/defaults';
 
 /** One box for every inline art: the same height and baseline whatever the kind, so a sentence's
  *  icons sit level with each other and with the text. */
@@ -117,9 +120,15 @@ function inlineIcons(text: string, keyBase: string): ReactNode[] {
 function emphasize(text: string): ReactNode {
   const parts = text.split('**');
   return parts.map((part, i) => (i % 2 === 1
-    ? <b key={i} style={{ fontWeight: 800, color: INK }}>{inlineIcons(part, `b${i}`)}</b>
+    ? <b key={i} style={{ fontWeight: roleWeight('head'), color: INK }}>{inlineIcons(part, `b${i}`)}</b>
     : <Fragment key={i}>{inlineIcons(part, `t${i}`)}</Fragment>));
 }
+
+/** An outbound link beside a step group's provider name: note-sized, underlined, in the page's brown. */
+const STEP_LINK: CSSProperties = {
+  ...roleFont('note'), color: colors.brownText, textDecoration: 'underline', textUnderlineOffset: 3,
+  cursor: cursors.clickable, whiteSpace: 'nowrap',
+};
 
 function SectionView({ section }: { section: HelpSection }) {
   const t = useT();
@@ -137,6 +146,38 @@ function SectionView({ section }: { section: HelpSection }) {
       {t(section.titleKey, facts)}
     </h3>
   );
+  if (section.kind === 'steps') {
+    return (
+      <section>
+        {heading}
+        {section.bodyKeys?.map((key) => (
+          <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
+        ))}
+        {section.groups.map((group) => {
+          const meta = PROVIDER_META[group.provider];
+          // A provider with two consoles links both; the mainland one is `keyUrl` (see ProviderMeta).
+          const links = meta.keyUrlIntl
+            ? [{ href: meta.keyUrl, label: t('help.steps.link_cn') }, { href: meta.keyUrlIntl, label: t('help.steps.link_intl') }]
+            : [{ href: meta.keyUrl, label: t('help.steps.link') }];
+          return (
+            <div key={group.provider} data-provider={group.provider} style={{ marginTop: 18 }}>
+              <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 4px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                <span>{meta.name}</span>
+                {links.map((link) => (
+                  <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={STEP_LINK}>
+                    {link.label} <span aria-hidden>↗</span>
+                  </a>
+                ))}
+              </h4>
+              <ul style={{ margin: 0, paddingLeft: 22, ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7 }}>
+                {group.stepKeys.map((key) => <li key={key} style={{ marginTop: 4 }}>{emphasize(t(key, facts))}</li>)}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+    );
+  }
   if (section.kind === 'keys') {
     return (
       <section>
@@ -173,6 +214,8 @@ function SectionView({ section }: { section: HelpSection }) {
 function Figure({ fig }: { fig: HelpPage['figure'] }) {
   const t = useT();
   const facts = helpFacts(useEditorStore((s) => s.locale));
+  const ref = useRef<HTMLElement>(null);
+  const ready = useInView(ref);
   if (!fig) return null;
   let body: ReactNode = null;
   if (fig.kind === 'demo') {
@@ -199,8 +242,8 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   if (!body) return null;
   // A demo narrates itself with its animated caption; only a surface carries a static one.
   return (
-    <figure style={{ background: withAlpha(INSET, 0.42), borderRadius: 18, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
-      {body}
+    <figure ref={ref} style={{ background: withAlpha(INSET, 0.42), borderRadius: 18, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
+      <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
       {fig.kind === 'surface' && (
         <figcaption style={{ ...roleFont('note'), color: colors.brownText, textAlign: 'center', lineHeight: 1.5, paddingBottom: 4 }}>
           {t(fig.captionKey, facts)}
@@ -272,7 +315,8 @@ function ActionButton({ action }: { action: NonNullable<HelpPage['action']> }) {
 /** Memoized on its props: the window re-renders on every search keystroke, and an unchanged page
  *  standing behind the dropdown can hold a dozen live demo figures — locale and keymap changes
  *  still arrive through the hooks' own subscriptions. */
-export const PageView = memo(function PageView({ page, onGo }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void }) {
+export const PageView = memo(function PageView({ page, onGo, onReady }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void; onReady?: (page: HelpPageId) => void | (() => void) }) {
+  useEffect(() => onReady?.(page.id), [onReady, page.id]);
   const t = useT();
   const facts = helpFacts(useEditorStore((s) => s.locale));
   return (

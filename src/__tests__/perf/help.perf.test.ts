@@ -130,6 +130,9 @@ describe.runIf(PERF)('perf: help', () => {
           translateFor(locale, sec.titleKey, facts); n++;
           if (sec.kind === 'prose') {
             for (const k of sec.bodyKeys) { translateFor(locale, k, facts); n++; }
+          } else if (sec.kind === 'steps') {
+            for (const k of sec.bodyKeys ?? []) { translateFor(locale, k, facts); n++; }
+            for (const g of sec.groups) for (const k of g.stepKeys) { translateFor(locale, k, facts); n++; }
           } else {
             for (const r of sec.rows) { translateFor(locale, r.doKey, facts); n++; }
             for (const k of sec.afterKeys ?? []) { translateFor(locale, k, facts); n++; }

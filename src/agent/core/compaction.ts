@@ -3,7 +3,7 @@
  *  (project-messages.ts), so a second compaction summarizes forward from the first's boundary
  *  with no special-casing here: the request it builds naturally carries the prior summary. */
 import { append, eventsOf, type SessionLog } from './log';
-import { deriveMessages, type ProviderMessage } from './project-messages';
+import { deriveMessages, messageText } from './project-messages';
 import { withIdleTimeout } from './stream-idle';
 import type { SessionEvent } from './types';
 import type { Adapter, AdapterRequest } from '../providers/types';
@@ -26,12 +26,6 @@ const SUMMARY_SYSTEM = 'Summarize this conversation in two or three sentences: t
   + 'pick the job up cold.';
 
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
-
-function messageText(m: ProviderMessage): string {
-  if (m.role === 'user') return m.text;
-  if (m.role === 'assistant') return m.text + m.toolCalls.map((c) => JSON.stringify(c.args)).join('');
-  return m.results.map((r) => r.content).join('');
-}
 
 export function needsCompaction(
   log: SessionLog,
@@ -151,7 +145,7 @@ async function runSummaryTurn(adapter: Adapter, req: AdapterRequest, signal: Abo
   else signal.addEventListener('abort', onAbort, { once: true });
   try {
     const source = adapter.stream(req, turn.signal);
-    for await (const ev of withIdleTimeout(source, { onIdle: () => turn.abort() })) {
+    for await (const ev of withIdleTimeout(source, { onIdle: () => turn.abort(), signal })) {
       if (ev.t === 'error') return undefined;
       if (ev.t === 'text') text += ev.delta;
     }
@@ -201,7 +195,7 @@ export async function compact(
   // ABORT is the one case that appends nothing, since the user has already stopped the run.
   const summary = await runSummaryTurn(deps.adapter, request, deps.signal)
     ?? (deps.signal.aborted ? undefined : `(automatic summary) ${ledger}`);
-  if (summary === undefined) return false;
+  if (summary === undefined || deps.signal.aborted) return false;
 
   append(log, { kind: 'compaction', summary, retainedFromSeq });
   return true;

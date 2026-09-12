@@ -5,12 +5,12 @@ import { serialize, deserialize } from '../../io/json-codec';
 import { canonicalize, toSaveJSON } from '../../io/share/canonical';
 import { autosaveWorthy } from '../../io/autosave';
 import { makeState } from '../rules/_helpers';
-import type { AnnotationsState, RouteNote, TextNote, ZoneNote } from '../../core/model/annotations';
+import type { AnnotationsState, ChipNote, RouteNote, ZoneNote } from '../../core/model/annotations';
 
 const notes = (): AnnotationsState => ({
   items: [
-    { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', name: '住宅区', num: 1 },
-    { kind: 'text', id: 't1', x: 5.5, y: 6, text: '中心广场', style: 'chip', size: 'l', color: '#FFB347' },
+    { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: 'homes', num: 1 },
+    { kind: 'chip', id: 't1', x: 5.5, y: 6, tag: 'plaza', size: 'l', color: '#FFB347' },
     { kind: 'route', id: 'r1', points: [{ x: 1, y: 1 }, { x: 4.5, y: 2, hx: 1.5, hy: -0.5, ihx: -2, ihy: 0.25 }], color: '#FFFEE3', dashed: true },
   ],
   visible: true,
@@ -26,8 +26,8 @@ describe('annotations through serialize/deserialize', () => {
     expect(back.annotations!.visible).toBe(false);
     expect(back.annotations!.locked).toBe(true);
     expect(back.annotations!.items).toHaveLength(3);
-    expect(back.annotations!.items[0] as ZoneNote).toMatchObject({ kind: 'zone', name: '住宅区', num: 1 });
-    expect((back.annotations!.items[1] as TextNote)).toMatchObject({ x: 5.5, y: 6, style: 'chip', size: 'l' });
+    expect(back.annotations!.items[0] as ZoneNote).toMatchObject({ kind: 'zone', tag: 'homes', num: 1 });
+    expect((back.annotations!.items[1] as ChipNote)).toMatchObject({ x: 5.5, y: 6, tag: 'plaza', size: 'l' });
     expect((back.annotations!.items[2] as RouteNote).points).toHaveLength(2);
   });
 
@@ -45,8 +45,8 @@ describe('annotations through serialize/deserialize', () => {
     const raw = JSON.parse(serialize(state));
     raw.annotations = {
       items: [
-        { kind: 'zone', cells: [{ x: 1, y: 1 }, { x: 1e9, y: 2 }, { x: 2.5, y: 2 }], color: 'javascript:alert(1)', name: 'x'.repeat(200), num: -3 },
-        { kind: 'text', x: 3, y: 3, text: '', style: 'chip', size: 'm', color: '#abc' },
+        { kind: 'zone', cells: [{ x: 1, y: 1 }, { x: 1e9, y: 2 }, { x: 2.5, y: 2 }], color: 'javascript:alert(1)', tag: 'not-a-tag', num: -3 },
+        { kind: 'chip', x: 3, y: 3, tag: 'not-a-tag', size: 'm', color: '#abc' },
         { kind: 'route', points: [{ x: 1, y: 1 }], color: '#2FBF9B', dashed: true },
         { kind: 'mystery' },
         null,
@@ -54,22 +54,38 @@ describe('annotations through serialize/deserialize', () => {
       visible: 'yes', locked: 0,
     };
     const back = deserialize(JSON.stringify(raw), state.template);
-    // The empty text, the one-point route and the unknown kind all drop; the zone survives clamped.
+    // The unknown-tag chip, the one-point route and the unknown kind all drop; the zone survives clamped.
     expect(back.annotations!.items).toHaveLength(1);
     const zone = back.annotations!.items[0] as ZoneNote;
     expect(zone.cells).toEqual([{ x: 1, y: 1 }]);
     expect(zone.color).toBe('#FF8A7A');
-    expect(zone.name).toHaveLength(40);
+    expect(zone.tag).toBeNull();
     expect(zone.num).toBe(0);
     expect(back.annotations!.visible).toBe(true);
     expect(back.annotations!.locked).toBe(false);
+  });
+
+  it('a save from before tags loads its zones untagged and without its text notes', () => {
+    const state = makeState(8, 8);
+    const raw = JSON.parse(serialize(state));
+    raw.annotations = {
+      items: [
+        { kind: 'zone', id: 'z', cells: [{ x: 1, y: 1 }], color: '#FF8A7A', name: '住宅区', num: 1 },
+        { kind: 'text', id: 't', x: 3, y: 3, text: '中心广场', style: 'chip', size: 'm', color: '#FFB347' },
+      ],
+      visible: true, locked: false,
+    };
+    const back = deserialize(JSON.stringify(raw), state.template);
+    expect(back.annotations!.items).toHaveLength(1);
+    expect(back.annotations!.items[0]).toMatchObject({ kind: 'zone', id: 'z', tag: null, num: 1 });
+    expect(JSON.stringify(back.annotations)).not.toContain('住宅区');
   });
 
   it('stays outside the canonical terrain/object map', () => {
     const state = makeState(8, 8);
     state.annotations = notes();
     const canonical = canonicalize(state);
-    expect(JSON.stringify(canonical)).not.toContain('住宅区');
+    expect(JSON.stringify(canonical)).not.toContain('"tag"');
     expect(toSaveJSON(canonical)).not.toContain('annotations');
   });
 

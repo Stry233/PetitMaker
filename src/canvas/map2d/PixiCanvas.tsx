@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
 import { annotationInkScale } from '../../core/model/annotations';
+import { tagLabel } from '../../i18n/annotation-tags';
 import { selectedObjectIds } from '../../state/selection';
 import { MapRenderer } from './map-renderer';
 import { createDefaultRegistry } from '../../rules/index';
@@ -164,6 +165,7 @@ export function PixiCanvas() {
       draft: useEditorStore.getState().annotationDraft,
       selectionIds: useEditorStore.getState().annotationSelection,
       inkScale: annotationInkScale(gs.template),
+      tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
     });
     draw();
     let stale = false;
@@ -180,8 +182,14 @@ export function PixiCanvas() {
     const exec = useEditorStore.getState().commandExecutor;
     if (exec) {
       // ToolManager registers the full default tool set in its constructor.
-      toolManagerRef.current = new ToolManager(renderer, exec, gridState);
-      registerToolManager(toolManagerRef.current);
+      const tm = new ToolManager(renderer, exec, gridState);
+      // A map that arrives mid-session keeps the arming the shell already shows.
+      const s = useEditorStore.getState();
+      tm.setActiveTool(s.activeTool);
+      tm.elevation = s.activeLayer;
+      tm.brushSize = s.brushSize;
+      toolManagerRef.current = tm;
+      registerToolManager(tm);
       if (useEditorStore.getState().viewMode === '2d') setActiveView(renderer.asEditorView());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -96,7 +96,7 @@ export function placeCarried(seat: SeatedAt, step: CarryStep, at: number): void 
   }
   const hero = getCharacterHandle();
   if (!hero) return;
-  hero.el.style.transition = '';
+  hero.el.style.transition = 'none';
   hero.el.style.position = 'fixed';
   hero.el.style.width = `${seat.width}px`;
   hero.el.style.left = `${seat.left + back * step.left * step.scale}px`;

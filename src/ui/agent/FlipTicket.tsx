@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { animate, useReducedMotionConfig } from 'framer-motion';
 import { CountPill, Pill, Stamp as StampLine, TapeBar } from './atoms';
+import { editCount } from './job-stats';
 import { AskPrimary } from './GateBlock';
 import { Icon, type IconId } from './icons';
 import { ModelProse } from './model-prose';
@@ -92,11 +93,6 @@ function stageFigure(job: JobView, index: number, t: T): string | undefined {
   // Reuse the dock's read-count copy.
   if (reads > 0) return t(reads === 1 ? 'agent3.dock_reads_one' : 'agent3.dock_reads', { n: reads });
   return undefined;
-}
-
-/** Everything a job changed on the map, which is the stop card's own headline fact. */
-export function editCount(job: JobView): number {
-  return job.ops.reduce((sum, op) => sum + (op.detail?.cells ?? 0) + (op.detail?.objects ?? 0), 0);
 }
 
 /* ── the shared paper ─────────────────────────────────────── */

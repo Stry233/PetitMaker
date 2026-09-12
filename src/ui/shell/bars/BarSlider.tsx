@@ -16,10 +16,12 @@
  * reflow the row every time the context changed, and a knob you can see not applying is information.
  * A single-stop range (`min === max`) is that state by construction and needs no caller to say so.
  */
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePx } from '../../design/scale';
-import { cursors, UNAVAILABLE } from '../../design/styles';
+import { cursors, font, UNAVAILABLE, z } from '../../design/styles';
+import { useUiPreview } from '../../primitives/ui-preview';
 import { BarText, Plate } from './bar-atoms';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
@@ -88,7 +90,6 @@ export function BarSlider({
    */
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const readingMotion = useMotion('slider.reading');
   const off = disabled || max <= min;
   // Shown even while the slider REFUSES: a control that has nothing to set is the one most in need of
   // saying so, and its reading is where the reason goes ("n/a" beside the setting's own name). It is
@@ -193,31 +194,69 @@ export function BarSlider({
           reads as the number belonging to the previous value. */}
       <AnimatePresence initial={false}>
         {showReading ? (
-        <motion.span
+        <SliderReading
           key="reading"
-          aria-hidden
-          initial={{ opacity: 0, y: RISE }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: RISE }}
-          transition={readingMotion}
-          style={{
-            position: 'absolute', left: px(centre), bottom: '100%',
-            // `translateX` here and `y` on the motion props: Framer animates `y`, so the centring
-            // has to live on a different axis or the two fight over one transform.
-            translateX: '-50%', marginBottom: 6,
-            padding: '2px 8px', borderRadius: 999, background: PLATE,
-            pointerEvents: 'none', whiteSpace: 'nowrap',
-            display: 'flex', alignItems: 'center',
-            // NOT A SHADOW. Nothing in this frame casts one (`frame-margins.test.ts` holds it), and
-            // this bubble stands over the map: it takes the same 1px ink edge every panel out there
-            // wears, which is what stands in a shadow's place here.
-            border: PANEL_EDGE,
-          }}
-        >
-          <BarText size={TEXT.label} color={PLATE_INK} weight={800}>{valueText ?? String(current)}</BarText>
-        </motion.span>
+          anchor={ref} centre={px(centre)} width={px(shape.track.w)}
+          text={valueText ?? String(current)}
+        />
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+/** The reading follows the knob outside scroll clips; pictured controls stay inside their preview. */
+function SliderReading({ anchor, centre, width, text }: {
+  anchor: RefObject<HTMLDivElement>; centre: number; width: number; text: string;
+}) {
+  const pictured = useUiPreview();
+  const layer = useRef<HTMLDivElement>(null);
+  const bubble = useRef<HTMLSpanElement>(null);
+  const readingMotion = useMotion('slider.reading');
+  useLayoutEffect(() => {
+    if (pictured) return;
+    let raf = 0;
+    const place = () => {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (rect && layer.current) {
+        const zoom = rect.width / width;
+        if (zoom > 0) {
+          const half = (bubble.current?.offsetWidth ?? 0) * zoom / 2;
+          const x = Math.max(half + 6, Math.min(window.innerWidth - half - 6, rect.left + centre * zoom));
+          const style = layer.current.style;
+          const left = `${x / zoom}px`, top = `${rect.top / zoom}px`;
+          if (style.zoom !== String(zoom)) style.zoom = String(zoom);
+          if (style.left !== left) style.left = left;
+          if (style.top !== top) style.top = top;
+        }
+      }
+      raf = requestAnimationFrame(place);
+    };
+    place();
+    return () => cancelAnimationFrame(raf);
+  }, [anchor, centre, width, pictured]);
+  const reading = (
+    <motion.span
+      ref={bubble}
+      data-testid="shell-slider-reading"
+      aria-hidden
+      initial={{ opacity: 0, y: RISE }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: RISE }}
+      transition={readingMotion}
+      style={{
+        position: 'absolute', left: pictured ? centre : 0, bottom: '100%',
+        translateX: '-50%', marginBottom: 6,
+        padding: '2px 8px', borderRadius: 999, background: PLATE,
+        pointerEvents: 'none', whiteSpace: 'nowrap',
+        display: 'flex', alignItems: 'center', border: PANEL_EDGE,
+      }}
+    >
+      <BarText size={TEXT.label} color={PLATE_INK} weight={800}>{text}</BarText>
+    </motion.span>
+  );
+  return pictured ? reading : createPortal(
+    <div ref={layer} style={{ position: 'fixed', zIndex: z.popover, pointerEvents: 'none', fontFamily: font.family }}>{reading}</div>,
+    document.body,
   );
 }

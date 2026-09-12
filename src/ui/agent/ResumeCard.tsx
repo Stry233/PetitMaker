@@ -30,7 +30,7 @@ const CARD_STYLE: CSSProperties = {
 };
 
 const ORDER_STYLE: CSSProperties = {
-  ...roleFont('label'), fontFamily: font.family, fontWeight: 800, color: INK, lineHeight: 1.35,
+  ...roleFont('menu'), fontFamily: font.family, color: INK, lineHeight: 1.35,
 };
 
 const NOTE_STYLE: CSSProperties = {
@@ -48,7 +48,6 @@ const PAUSEMARK_STYLE: CSSProperties = {
   padding: '4px 10px',
   ...roleFont('small'),
   fontFamily: font.family,
-  fontWeight: 800,
   color: colors.brownText,
 };
 

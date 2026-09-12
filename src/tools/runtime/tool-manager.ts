@@ -1,10 +1,12 @@
 import { TerrainType, ToolType } from '../../core/model/types';
+import { microToTerrain } from '../../core/model/grid-model';
 import type { Command, GridState, ValidationResult } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { MapRenderer } from '../../canvas/map2d/map-renderer';
 import type { EditorView } from '../../canvas/view-projection';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { translateFor } from '../../i18n/context';
+import { tagLabel } from '../../i18n/annotation-tags';
 import { useEditorStore } from '../../state/store';
 import { HandTool } from './hand';
 import { DrawingTool } from '../paint/drawing-tool';
@@ -108,7 +110,8 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
-    this.activeTool.onPointerDown(macro, micro, this.ctx);
+    const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
+    this.activeTool.onPointerDown(coord, micro, this.ctx);
   }
 
   handlePointerMove(screenX: number, screenY: number): void {
@@ -141,7 +144,8 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
-    this.activeTool.onPointerMove(macro, micro, this.ctx);
+    const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
+    this.activeTool.onPointerMove(coord, micro, this.ctx);
   }
 
   handlePointerUp(screenX: number, screenY: number): void {
@@ -150,7 +154,14 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
-    this.activeTool.onPointerUp(macro, micro, this.ctx);
+    const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
+    this.activeTool.onPointerUp(coord, micro, this.ctx);
+  }
+
+  handlePointerCancel(screenX: number, screenY: number): void {
+    this.refreshCtx();
+    if (this.activeTool.onPointerCancel) this.activeTool.onPointerCancel(this.ctx);
+    else this.handlePointerUp(screenX, screenY);
   }
 
   /** The live arming, copied in before every tool call. THE ONE PLACE IN `tools/` THAT KNOWS A
@@ -173,12 +184,13 @@ export class ToolManager {
     this.ctx.placementRotation = s.placementRotation;
     this.ctx.armedMacro = s.armedMacro;
     this.ctx.armingEpoch = s.armingEpoch;
+    this.ctx.region = s.region;
     this.ctx.annotations = this.gridState.annotations ?? null;
     this.ctx.annotationTool = s.annotationTool;
     this.ctx.annotationZoneShape = s.annotationZoneShape;
     this.ctx.annotationColor = s.annotationColor;
-    this.ctx.annotationTextStyle = s.annotationTextStyle;
-    this.ctx.annotationTextSize = s.annotationTextSize;
+    this.ctx.annotationTag = s.annotationTag;
+    this.ctx.annotationSize = s.annotationSize;
     this.ctx.annotationRouteDashed = s.annotationRouteDashed;
     this.ctx.annotationSelection = s.annotationSelection;
     this.ctx.annotationDraft = s.annotationDraft;
@@ -223,13 +235,14 @@ export class ToolManager {
       placementRotation: s.placementRotation,
       armedMacro: s.armedMacro,
       armingEpoch: s.armingEpoch,
+      region: s.region,
       macroContext: { state: this.gridState, executor: this.executor, registry: this.executor.getRegistry() },
       annotations: this.gridState.annotations ?? null,
       annotationTool: s.annotationTool,
       annotationZoneShape: s.annotationZoneShape,
       annotationColor: s.annotationColor,
-      annotationTextStyle: s.annotationTextStyle,
-      annotationTextSize: s.annotationTextSize,
+      annotationTag: s.annotationTag,
+      annotationSize: s.annotationSize,
       annotationRouteDashed: s.annotationRouteDashed,
       annotationSelection: s.annotationSelection,
       annotationDraft: s.annotationDraft,
@@ -240,8 +253,9 @@ export class ToolManager {
         remove: (id) => useEditorStore.getState().removeAnnotation(id),
         select: (ids) => useEditorStore.getState().setAnnotationSelection(ids),
         setDraft: (a) => useEditorStore.getState().setAnnotationDraft(a),
-        setNaming: (id) => useEditorStore.getState().setAnnotationNaming(id),
+        commitDraft: () => useEditorStore.getState().commitAnnotationDraft(),
       },
+      tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
     };
   }
 }

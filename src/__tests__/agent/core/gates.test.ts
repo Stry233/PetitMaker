@@ -35,6 +35,18 @@ describe('shouldGate', () => {
 });
 
 describe('askGate / pendingGate / answerGate', () => {
+  it('does not carry an unanswered gate into a later job', () => {
+    const log = createLog();
+    append(log, { kind: 'order', text: 'old job', mapContext: '' });
+    askGate(log, { scope: 'tool', callId: 'old', summary: 'paint' });
+    append(log, { kind: 'jobEnd', outcome: 'aborted' });
+    expect(pendingGate(log)).toBeUndefined();
+    append(log, { kind: 'order', text: 'new job', mapContext: '' });
+    expect(pendingGate(log)).toBeUndefined();
+    const next = askGate(log, { scope: 'tool', callId: 'new', summary: 'paint' });
+    expect(pendingGate(log)?.gateId).toBe(next);
+  });
+
   it('askGate appends gateAsked with a fresh gateId; pendingGate returns it until answerGate appends the pair', () => {
     const log = createLog();
     const gateId = askGate(log, { scope: 'tool', callId: 'call-1', summary: 'paint a mountain' });

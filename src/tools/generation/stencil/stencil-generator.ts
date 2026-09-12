@@ -21,7 +21,7 @@ import { getCatalogItem } from '../../../state/catalog';
 import { generateObjectId } from '../../../core/model/object-id';
 import { objectPlacementCommand, removeObjectCommand } from '../../objects/object-placer';
 import { getObjectIndex, objectAt } from '../../../state/object-index';
-import { covered, fitTarget, FLAT_SAFE_ELEVATION, luma, narrowRange, nearestByColor, nearestTerrain, paletteToneRange, relaxHeights, sourceToneRange, terrainPalette, toneFit, withTone, type ToneRange } from './stencil';
+import { COMPACT_IMAGE_LIMIT, covered, fitTarget, FLAT_SAFE_ELEVATION, luma, narrowRange, nearestByColor, nearestTerrain, paletteToneRange, relaxHeights, sourceToneRange, terrainPalette, toneFit, withTone, type ToneRange } from './stencil';
 import { DIFFUSION, matchWithDiffusion, RAMP_DIFFUSION } from './stencil-sample';
 import { bedCells, hueReach, hueToneOffsets, planBorrow, planColourFill, readSmallBox, settleWaterBodies, smallBoxWeight, sourceColour, BORROW_COVER_MIN, type BorrowPolicy } from './stencil-small';
 import { detectFeatures, featureBudget, planFeatureMarks, FEATURE_MAX_SHARE } from './stencil-feature';
@@ -391,6 +391,7 @@ export function layStencilColor(
   water: StencilWaterRole = 'none',
   fitTones = true,
 ): StencilResult {
+  const compact = Math.min(stencil.width, stencil.height) < COMPACT_IMAGE_LIMIT;
   const palette = terrainPalette(Math.max(1, maxElevation), water === 'palette');
   // The COATINGS a terrain picture may borrow a hue from: the road surfaces, which declare their own
   // colours in the catalog, so this needs no canvas and crosses into the candidate worker intact.
@@ -465,12 +466,10 @@ export function layStencilColor(
     const terrainOnly = wanted;
     wanted = (i): number | null => (isWater[i] ? null : terrainOnly(i));
   }
-  // IN A SMALL BOX THE UNIT IS THE AREA, NOT THE CELL (`stencil-small.ts:readSmallBox`): the picture is
-  // read as the few coherent areas the box can hold and each is told in ONE tier, allocated to the
-  // areas by what carries the subject rather than to a tonal ramp every cell is rounded against.
+  // Compact terrain keeps local details; mixed material still needs coherent plateaus for coatings.
   const small = readSmallBox(
     stencil, (i) => wanted(i) !== null, (i) => wanted(i) ?? 0,
-    boxWeight, ramp, true, read.damping,
+    boxWeight, ramp, !compact || water === 'palette', read.damping,
     // What an area of this depth may be told in: the support rules give a block three layers over the
     // ground beside it, so a cell one step inside the figure can stand at three and no higher. Read
     // as the palette's own tone, since that is what the allocation orders entries by.

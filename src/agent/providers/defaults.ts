@@ -21,8 +21,11 @@ export interface ProviderMeta {
   id: ProviderId;
   /** Display name used by settings and legal disclosure. */
   name: string;
-  /** Key-management page; empty for a custom endpoint. */
+  /** Key-management page; empty for a custom endpoint. Where the provider runs separate mainland
+   *  China and international consoles, this is the mainland one. */
   keyUrl: string;
+  /** The international console's key page, for a provider whose `keyUrl` is the mainland one. */
+  keyUrlIntl?: string;
   /** Detection-badge accent. */
   accent: string;
   /** Conservative model-id test for image input support. */
@@ -35,14 +38,14 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   claude: {
     id: 'claude',
     name: 'Anthropic',
-    keyUrl: 'https://console.anthropic.com/settings/keys',
+    keyUrl: 'https://platform.claude.com/settings/keys',
     accent: '#D97757',
     vision: () => true,
   },
   openai: {
     id: 'openai',
     name: 'OpenAI',
-    keyUrl: 'https://platform.openai.com/api-keys',
+    keyUrl: 'https://platform.openai.com/settings/organization/api-keys',
     accent: '#10A37F',
     vision: (model) => /^(gpt-|o\d)/.test(lower(model)) && !/audio|realtime/.test(lower(model)),
   },
@@ -56,7 +59,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   gemini: {
     id: 'gemini',
     name: 'Google',
-    keyUrl: 'https://aistudio.google.com/app/apikey',
+    keyUrl: 'https://aistudio.google.com/apikey',
     accent: '#1A73E8',
     vision: () => true,
   },
@@ -70,21 +73,24 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   zhipu: {
     id: 'zhipu',
     name: 'Zhipu',
-    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    keyUrl: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys',
+    keyUrlIntl: 'https://z.ai/manage-apikey/apikey-list',
     accent: '#3859FF',
     vision: () => false,
   },
   qwen: {
     id: 'qwen',
     name: 'Alibaba',
-    keyUrl: 'https://bailian.console.aliyun.com/',
+    keyUrl: 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key',
+    keyUrlIntl: 'https://modelstudio.console.alibabacloud.com/ap-southeast-1/settings/api-key',
     accent: '#615CED',
     vision: (model) => /vl|omni/.test(lower(model)),
   },
   moonshot: {
     id: 'moonshot',
     name: 'Moonshot',
-    keyUrl: 'https://platform.moonshot.cn/console/api-keys',
+    keyUrl: 'https://platform.kimi.com/console/api-keys',
+    keyUrlIntl: 'https://platform.kimi.ai/console/api-keys',
     accent: '#16091B',
     vision: () => false,
   },

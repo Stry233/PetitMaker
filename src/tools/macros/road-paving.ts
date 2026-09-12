@@ -89,9 +89,10 @@ export interface RouteJoin {
  */
 export function joinRoute(
   ctx: MacroContext, place: PlaceCtx, roadId: string,
-  { a, turnPenalty, crossings, from, to }: {
+  { a, turnPenalty, crossings, from, to, width = 1 }: {
     a: PlacementAnalysis; turnPenalty: number; crossings: readonly PlacedObject[];
     from: MacroCoord; to: MacroCoord;
+    width?: number;
   },
 ): RouteJoin {
   const { state } = ctx;
@@ -99,11 +100,19 @@ export function joinRoute(
   const inB = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H;
   const paved: MacroCoord[] = [];
 
-  // Each realized deck's own entrance, full deck width: a 2-wide ramp has two exit cells per end and
-  // an object can hold one while the other stays open.
+  // Half-grid decks can overlap an extra row. Keep the apron aligned with the chosen road width,
+  // using another lane only when its preferred entrance is blocked.
   for (const obj of crossings) {
     const [exitA, exitB] = crossingExitCells(obj);
-    paved.push(...paveCells(ctx, place, roadId, [...exitA, ...exitB].filter((c) => inB(c.x, c.y))));
+    const r = objectRect(obj), horizontal = r.w >= r.h;
+    const center = Math.floor(horizontal ? r.y + (r.h - 1) / 2 : r.x + (r.w - 1) / 2);
+    const low = center - Math.floor((width - 1) / 2), high = center + Math.ceil((width - 1) / 2);
+    for (const exit of [exitA, exitB]) {
+      const available = exit.filter(c => inB(c.x, c.y));
+      const aligned = available.filter(c => (horizontal ? c.y : c.x) >= low && (horizontal ? c.y : c.x) <= high);
+      const laid = paveCells(ctx, place, roadId, aligned);
+      paved.push(...(laid.length ? laid : paveCells(ctx, place, roadId, available)));
+    }
   }
 
   const banned = new Set<number>();
