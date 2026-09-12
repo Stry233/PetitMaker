@@ -36,7 +36,7 @@ import { decorateZoneHandler, plantForestHandler, buildRoadNetworkHandler, frame
 import { SKILLS, listSkills } from '../skills';
 import { evaluateMap, renderScorecard, speckleFindings, type QualityReport } from '../quality';
 import type { ToolCall, ToolResult, ToolSchema } from './types';
-import { type AgentToolDeps, type ToolResultBody, argError, clamp, clipBuildable, clipOccupied, dedupe, formatErrors, geometryError, occupiedNote, offZoneNote, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError, clamp, clipBuildable, clipOccupied, dedupe, formatErrors, geometryError, occupiedNote, offZoneNote, revertedMsg, runStroke, runStrokeBody, resolveCells, waterSpanTrait } from './tools-common';
 import { rectInput } from './geometry';
 import { regionClip, sculptTerrace, carveRiver, sculptWall, sinkPool } from './tools-terraform';
 import { findFlatAreas, findBridgeSites, findRampSites, scanBridgeSites } from './tools-search';
@@ -564,7 +564,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
 ];
 
-/** delegate_task is handled by the UI layer (it needs the adapter); sub-agents
+/** delegate_task is handled by exec/executor.ts with the job's adapter; sub-agents
  *  get every tool except delegation itself (depth is capped at 1).
  *  update_plan is also excluded: the plan is the PARENT agent's progress surface
  *  rendered in the UI header — a fresh-context subagent would clobber it. */
@@ -707,7 +707,7 @@ async function buildRoad(deps: AgentToolDeps, input: Record<string, unknown>): P
     }
   });
   if (outOfRegion) return outOfRegion;
-  if (reverted) return { isError: true, content: `REVERTED, nothing changed:\n${formatErrors(violations)}` };
+  if (reverted) return { isError: true, content: revertedMsg('the road', violations, detail), detail };
   if (ok > 0) deps.onFlash?.(cells);
   let msg = `Laid ${ok}/${cells.length} road cell(s).${offZoneNote(offZone)}`;
   // Said at the moment the crossing is made: the close-out hint arrives when re-routing a whole
@@ -793,7 +793,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
     }
   });
   if (outOfRegion) return outOfRegion;
-  if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
+  if (reverted) return { isError: true, content: revertedMsg('the placements', violations, detail), detail };
   if (placedAt.length > 0) deps.onFlash?.(placedAt);
   let why = placedAt.length < count && failures.length > 0 ? ` Most common rejections:\n${dedupe(failures).slice(0, 3).join('\n')}` : '';
   if (onRoad > 0) why += `\n${onRoad} cell(s) skipped: they carry a road, and objects cannot stand on one. Edging runs BESIDE a street, so offset the rect off the pavement.`;
@@ -1101,7 +1101,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
   if (!item?.rotatable) return { isError: true, content: `${obj.catalogId} is not rotatable.` };
   const exec = deps.getExecutor();
   let failure: string | null = null;
-  const { reverted, violations, outOfRegion } = await runStrokeBody(deps, () => {
+  const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
     const rm = exec.execute({
       ...removeObjectCommand(obj) });
     if (!rm.success) {
@@ -1117,7 +1117,7 @@ async function rotateObject(deps: AgentToolDeps, input: Record<string, unknown>)
     }
   });
   if (outOfRegion) return outOfRegion;
-  if (reverted) return { isError: true, content: `REVERTED:\n${formatErrors(violations)}` };
+  if (reverted) return { isError: true, content: revertedMsg('the rotation', violations, detail), detail };
   if (failure) return { isError: true, content: `Rotation failed (object restored unchanged):\n${failure}` };
   return { isError: false, content: `Rotated ${obj.catalogId} to ${rotation} degrees.` };
 }

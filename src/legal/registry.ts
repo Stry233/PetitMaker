@@ -140,8 +140,8 @@ const PRIVACY_SECTIONS_ZH = [
   '联系我们',
 ];
 
-const ABOUT_SECTIONS_EN = ['Mission', 'The Team', 'Fan-Project Disclaimer', 'Filing Information'];
-const ABOUT_SECTIONS_ZH = ['使命', '团队', '同人项目声明', '备案信息'];
+const ABOUT_SECTIONS_EN = ['Mission', 'The Team', 'Support the Project', 'Fan-Project Disclaimer', 'Filing Information'];
+const ABOUT_SECTIONS_ZH = ['使命', '团队', '支持项目', '同人项目声明', '备案信息'];
 
 const CONTACT_SECTIONS_EN = [
   'General Inquiries',
@@ -315,6 +315,8 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
   }
   if (id === 'about') {
     tokens.team = teamTable(lang, cfg.team);
+    tokens.patreon = cfg.sponsorship.patreon;
+    tokens.afdian = cfg.sponsorship.afdian;
   }
   return tokens;
 }

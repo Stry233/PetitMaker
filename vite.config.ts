@@ -155,6 +155,10 @@ export default defineConfig(({ mode }) => {
         '@': '/src',
       },
     },
+    optimizeDeps: {
+      // Worker-only imports escape the initial scan; discovering them during inference reloads the page.
+      include: ['onnxruntime-web/webgpu', 'onnxruntime-web'],
+    },
     server: {
       /**
        * Ignore nested worktrees and scratch metadata. Their config-file writes would otherwise

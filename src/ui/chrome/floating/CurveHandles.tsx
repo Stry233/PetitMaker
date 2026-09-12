@@ -20,13 +20,14 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import {
-  anchorHandles, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
+  anchorHandles, endCurveSession, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
 } from '../../../tools/paint';
 import { isBreakHandleHeld } from '../../../core/runtime/modifier-state';
 import { useEditorStore } from '../../../state/store';
 import { useChromeScale } from '../../design/scale';
 import { useT } from '../../../i18n/context';
 import { TILE_SIZE } from '../../../core/model/constants';
+import { microToTerrain } from '../../../core/model/grid-model';
 import { colors, cursors, shadows, springs, z } from '../../design/styles';
 
 /**
@@ -104,6 +105,7 @@ export function CurveHandles() {
   const chrome = useChromeScale();
   const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
+  const armingEpoch = useEditorStore(s => s.armingEpoch);
   const [, bump] = useState(0);
   const [screen, setScreen] = useState<ScreenAnchor[]>([]);
   const [zoomK, setZoomK] = useState(1);
@@ -114,6 +116,14 @@ export function CurveHandles() {
   useEffect(() => subscribeCurveSession(() => bump((n) => n + 1)), []);
 
   const session = getCurveSession();
+  useEffect(() => {
+    if (session?.armingEpoch !== undefined && session.armingEpoch !== armingEpoch) endCurveSession();
+  }, [session?.armingEpoch, armingEpoch]);
+  useEffect(() => {
+    const close = () => endCurveSession();
+    eventBus.on('history-applied', close);
+    return () => eventBus.off('history-applied', close);
+  }, [eventBus]);
   const anchorCount = session?.anchors.length ?? 0;
 
   /** Project every anchor, and the two ends of its direction line, into screen px. */
@@ -138,9 +148,10 @@ export function CurveHandles() {
     })));
   }, [chrome]);
 
+  useEffect(() => { reproject(); }, [session, reproject]);
+
   useEffect(() => {
     if (anchorCount === 0) { setScreen([]); return; }
-    reproject();
     eventBus.on('viewport-changed', reproject);
     eventBus.on('cells-changed', reproject);
     window.addEventListener('resize', reproject);
@@ -163,6 +174,10 @@ export function CurveHandles() {
       if (getCurveSession()?.freeCoords) {
         return proj.screenToHalf?.(e.clientX, e.clientY)
           ?? (() => { const c = proj.screenToMacro(e.clientX, e.clientY); return { x: c.x + 0.5, y: c.y + 0.5 }; })();
+      }
+      if (getCurveSession()?.terrainGrid) {
+        const micro = proj.screenToMicro(e.clientX, e.clientY);
+        return microToTerrain(micro.x, micro.y);
       }
       return proj.screenToMacro(e.clientX, e.clientY);
     };
@@ -189,13 +204,17 @@ export function CurveHandles() {
       grab.current = null;
       reproject();
     };
+    const onCancel = () => {
+      if (!grab.current) return;
+      grab.current = null; endCurveSession(); reproject();
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('pointercancel', onCancel);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     };
   }, [reproject]);
 
@@ -228,7 +247,7 @@ export function CurveHandles() {
               whole coordinate space and the line sweeps in from the corner. */}
           <svg width="100%" height="100%" aria-hidden
             style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}>
-            {screen.map((s, i) => (
+            {session?.tangents && screen.map((s, i) => (
               // Through the anchor rather than knob to knob: a broken handle bends here, and a
               // straight line across it would draw a smooth join the path does not have.
               <motion.polyline
@@ -263,8 +282,8 @@ export function CurveHandles() {
                 >
                   <span style={face(grabPx, colors.tileYellow)} />
                 </motion.button>
-                <motion.button
-                  type="button" aria-label={`curve direction ${i + 1} out`}
+                {session?.tangents && <><motion.button
+                  type="button" aria-label={t('a11y.curve_out', { n: i + 1 })}
                   onPointerDown={start(i, 'out')}
                   whileHover={{ scale: 1.15 }}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
@@ -273,14 +292,14 @@ export function CurveHandles() {
                   <span style={face(knobPx, colors.panelCream)} />
                 </motion.button>
                 <motion.button
-                  type="button" aria-label={`curve direction ${i + 1} in`}
+                  type="button" aria-label={t('a11y.curve_in', { n: i + 1 })}
                   onPointerDown={start(i, 'into')}
                   whileHover={{ scale: 1.15 }}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.into.x, top: s.into.y }}
                 >
                   <span style={face(knobPx, colors.panelCream)} />
-                </motion.button>
+                </motion.button></>}
               </div>
             );
           })}

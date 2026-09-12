@@ -23,7 +23,7 @@ import { CellZone, CommandType, TerrainType, type Command, type EditorEvents, ty
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { LAYER_MODES, planRail, railStack, RAIL_TOP, stepLayerMode } from '../../../ui/shell/frame';
-import { plateDepth, PLATE_DEPTH } from '../../../ui/shell/windows/LayerPanel';
+import { plateDepth, plateMinDepth, PLATE_DEPTH } from '../../../ui/shell/windows/LayerPanel';
 import { Rail } from '../../../ui/shell/Rail';
 import { ACTIVE, INK, MAP_EDGE_ALPHA } from '../../../ui/design/tokens';
 import { EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
@@ -57,7 +57,7 @@ const zoomAt = (windowHeight: number) => ZOOM * frameFit(window.innerWidth, wind
 /** The column's plan for that window, which is what the rail is reading. `mode` is the size the
  *  layer control is in, since the plate's own depth is one of the plan's inputs. */
 function planAt(windowHeight: number, open: boolean, mode: 'column' | 'grid' = 'grid') {
-  return planRail(windowHeight / zoomAt(windowHeight), { open, plateDepth: plateDepth(open ? mode : 'pill') });
+  return planRail(windowHeight / zoomAt(windowHeight), { open, plateDepth: plateDepth(open ? mode : 'pill'), plateMinDepth: plateMinDepth(mode) });
 }
 
 const topOf = (el: HTMLElement) => parseFloat(el.style.top);
@@ -416,7 +416,7 @@ describe('the layer panel', () => {
     expect(floors.contains(screen.getByTestId('shell-layer-row-0')), 'and every floor is inside it')
       .toBe(true);
     expect(floors.style.overflowY).toBe('auto');
-    expect(screen.getByTestId('shell-layer-panel').style.overflow, 'the plate itself does not scroll')
+    expect(screen.getByTestId('shell-layer-panel').style.overflowY, 'the head stays put during vertical scrolling')
       .toBe('hidden');
   });
 
@@ -430,7 +430,7 @@ describe('the layer panel', () => {
    * whole stack, so it has one only where the lane cannot hand it its 323.
    */
   it('wears a scrollbar on the size that scrolls and not on the one that does not', () => {
-    mountAt(900);
+    mountAt(1200);
     openPanel();
     expect(columnsShown()).toBe(1);
     expect(screen.getByTestId('shell-layer-floors').classList.contains('pw-noscroll'), 'the file')
@@ -605,41 +605,18 @@ describe('the layer panel', () => {
     expect(topOf(pair), 'and back when it closes').toBeCloseTo(resting, 6);
   });
 
-  /**
-   * AND WHERE NO ARRANGEMENT CAN, THE PLATE MOVES RATHER THAN THE COLUMN. The column will fold a
-   * group to seat the plate, but a fold that would still leave it out over the map buys nothing, so
-   * where the ladder does not reach, the plate steps one file of buttons plus a group's separation
-   * out of the lane and the column is left exactly as it was.
-   *
-   * It is the plate that gives because it is the thing that just arrived. Standing it over the
-   * column instead leaves six controls behind an opaque plate; moving
-   * the column sideways instead would take eight buttons the width of the whole plate across the
-   * map to save one from moving 62 px.
-   *
-   * The FILE is what is read back here at both windows, since it is the size the count opens and
-   * neither window seats it. The square is deeper still, so it steps aside at both too.
-   */
-  it('steps out of the lane where no fold would seat the plate, and leaves the column alone', () => {
+  it('keeps a scrollable panel in the right lane when one complete floor row fits', () => {
     for (const h of [432, 720]) {
       const open = planAt(h, true, 'column');
-      expect(open.plateInLane, `${h}px cannot hold the file in the lane`).toBe(false);
       mountAt(h);
       const pair = screen.getByTestId('shell-rail-history');
-      const resting = planAt(h, false, 'column').historyTop;
-      expect(topOf(pair), `${h}px, at rest`).toBeCloseTo(resting, 6);
-
+      const resting = topOf(pair);
       openPanel();
-      expect(columnsShown(), `${h}px, at the file`).toBe(1);
-      const inset = parseFloat(screen.getByTestId('shell-layer-panel').style.right);
-      // Clear of the widest thing standing in the lane on this window, by a group's separation. The
-      // kit runs in two files on a short one, so the step is not a constant.
-      expect(inset, `${h}px`).toBeCloseTo(EDGE_RIGHT + railStack(open.kitFiles) + RAIL.groupMin, 6);
-      expect(inset).toBeGreaterThanOrEqual(EDGE_RIGHT + RAIL.button + RAIL.groupMin);
-      expect(topOf(pair), `${h}px, the pair has no reason to move`).toBeCloseTo(resting, 6);
-      // And it is standing where the pair stands, not where the plate would have pushed it: the
-      // plate is over no part of the lane, so there is nothing to step out of.
-      const pairH = railStack(Math.ceil(2 / open.historyFiles));
-      expect(topOf(pair) + pairH, `${h}px, still above the kit`).toBeLessThanOrEqual(open.kitTop);
+      expect(columnsShown()).toBe(1);
+      expect(open.plateInLane).toBe(true);
+      expect(parseFloat(screen.getByTestId('shell-layer-panel').style.right)).toBe(EDGE_RIGHT);
+      expect(topOf(pair)).toBeGreaterThanOrEqual(resting);
+      expect(topOf(pair) + railStack(Math.ceil(2 / open.historyFiles))).toBeLessThanOrEqual(open.kitTop);
       cleanup();
     }
   });

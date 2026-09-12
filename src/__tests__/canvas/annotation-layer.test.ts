@@ -13,16 +13,16 @@ import type { AnnotationsState, ZoneNote } from '../../core/model/annotations';
 
 const data = (): AnnotationsState => ({
   items: [
-    { kind: 'zone', id: 'z1', cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }], color: '#FF8A7A', name: '住宅区', num: 1 },
-    { kind: 'text', id: 't1', x: 4.5, y: 4.5, text: '中心广场', style: 'chip', size: 'm', color: '#FFB347' },
-    { kind: 'text', id: 't2', x: 6, y: 6, text: '入口', style: 'label', size: 'l', color: '#FFFEE3' },
+    { kind: 'zone', id: 'z1', cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }], color: '#FF8A7A', tag: 'homes', num: 1 },
+    { kind: 'chip', id: 't1', x: 4.5, y: 4.5, tag: 'plaza', size: 'm', color: '#FFB347' },
+    { kind: 'chip', id: 't2', x: 6, y: 6, tag: 'entrance', size: 'l', color: '#FFFEE3' },
     { kind: 'route', id: 'r1', points: [{ x: 1, y: 8 }, { x: 4, y: 8 }, { x: 6, y: 5 }], color: '#FFFEE3', dashed: true },
   ],
   visible: true,
   locked: false,
 });
 
-const OPTS = { draft: null, selectionIds: [] as string[], inkScale: 1 };
+const OPTS = { draft: null, selectionIds: [] as string[], inkScale: 1, tagLabel: (tag: string) => tag };
 
 const passes = (layer: AnnotationLayer) => ({
   wash: layer.container.children[0] as Container,
@@ -40,7 +40,7 @@ describe('AnnotationLayer', () => {
     const p = passes(layer);
     expect(p.wash.children).toHaveLength(1);
     expect(p.route.children).toHaveLength(1);
-    // The zone's label group plus the two text notes.
+    // The zone's caption group plus the two chips.
     expect(p.label.children).toHaveLength(3);
     expect(layer.container.visible).toBe(true);
     layer.destroy();
@@ -57,7 +57,7 @@ describe('AnnotationLayer', () => {
 
   it('a draft draws like a committed note', () => {
     const layer = new AnnotationLayer();
-    const draft: ZoneNote = { kind: 'zone', id: 'draft', cells: [{ x: 8, y: 8 }, { x: 9, y: 8 }], color: '#2FBF9B', name: '', num: 5 };
+    const draft: ZoneNote = { kind: 'zone', id: 'draft', cells: [{ x: 8, y: 8 }, { x: 9, y: 8 }], color: '#2FBF9B', tag: 'farm', num: 5 };
     layer.draw({ items: [], visible: true, locked: false }, { ...OPTS, draft });
     expect(passes(layer).wash.children).toHaveLength(1);
     layer.destroy();
@@ -70,7 +70,7 @@ describe('AnnotationLayer', () => {
     const before = [...passes(layer).label.children];
     layer.draw(d, OPTS);
     expect([...passes(layer).label.children]).toEqual(before);
-    const edited = { ...d, items: d.items.map((n) => (n.id === 't1' ? { ...n, text: '新广场' } : n)) };
+    const edited = { ...d, items: d.items.map((n) => (n.id === 't1' ? { ...n, tag: 'farm' } : n)) };
     layer.draw(edited as AnnotationsState, OPTS);
     const after = [...passes(layer).label.children];
     expect(after).toHaveLength(3);
@@ -91,7 +91,7 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
-  it('a numbered zone caption carries the disc, its digit and the name', () => {
+  it('a numbered zone caption carries the disc, its digit and the tag label', () => {
     const layer = new AnnotationLayer();
     layer.draw(data(), OPTS);
     const withNum = passes(layer).label.children[0] as Container;

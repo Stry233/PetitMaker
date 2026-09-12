@@ -25,6 +25,24 @@ function setup(w = 20, h = 20) {
 const call = (name: string, input: Record<string, unknown>) => ({ id: 't1', name, input });
 
 describe('agent tools', () => {
+  it('reports the legal mountain tiers retained after partial rollback, with one undo step', async () => {
+    const { state, exec, deps, toasts } = setup(10, 10);
+    const r = await executeToolCall(call('paint_terrain', { cells: [{ x: 5, y: 5 }], terrain: 'mountain', elevation: 4 }), deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/^PARTIALLY REVERTED:/);
+    expect(r.content).toContain('Retained changes: 1 cell(s), 0 object(s).');
+    expect(r.content).not.toContain('map is unchanged');
+    expect(r.detail).toMatchObject({ reverted: true, partialRevert: true, cells: 1 });
+    expect(state.cells[5]![5]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 3 });
+    expect(exec.getUndoStackSize()).toBe(1);
+    expect(exec.canRedo()).toBe(false);
+    expect(toasts()).toBe(0);
+    exec.undo();
+    expect(state.cells[5]![5]!.terrain).toBeNull();
+    exec.redo();
+    expect(state.cells[5]![5]!.terrain?.elevation).toBe(3);
+  });
+
   it('paints a mountain plateau with auto-tiers', async () => {
     const { state, deps } = setup();
     const r = await executeToolCall(

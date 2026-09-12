@@ -121,7 +121,7 @@ export async function decorateZoneHandler(
 
   if (outOfRegion) return outOfRegion;
   if (reverted) {
-    return { isError: true, content: revertedMsg('the decoration', violations) };
+    return { isError: true, content: revertedMsg('the decoration', violations, detail), detail };
   }
 
   deps.onFlash?.(rectCells);
@@ -164,7 +164,7 @@ export async function plantForestHandler(
 
   if (outOfRegion) return outOfRegion;
   if (reverted) {
-    return { isError: true, content: revertedMsg('the forest', violations) };
+    return { isError: true, content: revertedMsg('the forest', violations, detail), detail };
   }
 
   deps.onFlash?.(rectCells);
@@ -202,7 +202,7 @@ export async function buildRoadNetworkHandler(
 
   if (outOfRegion) return outOfRegion;
   if (reverted) {
-    return { isError: true, content: revertedMsg('the road network', violations) };
+    return { isError: true, content: revertedMsg('the road network', violations, detail), detail };
   }
   if (routed.reason) return { isError: true, content: `No road network was laid: ${routed.reason}.` };
 
@@ -292,7 +292,7 @@ export async function frameCrossingHandler(
 
   if (outOfRegion) return outOfRegion;
   if (reverted) {
-    return { isError: true, content: revertedMsg('the crossing', violations) };
+    return { isError: true, content: revertedMsg('the crossing', violations, detail), detail };
   }
 
   return { isError: false, content: resultMsg, detail };

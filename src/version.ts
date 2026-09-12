@@ -28,19 +28,9 @@ export function brandName(locale: string): string {
 }
 
 /*
- * BUILD metadata, injected by Vite `define`. APP_VERSION is `MAJOR.MINOR.BUILD`, with
- * `-dev` unless this tree was published: PATCH is the build number, so the version carries
- * the same single source of truth as the stamp, and only the publish workflow can drop the
- * `-dev` (see `resolveVersion`). The build number, sha, and date are resolved by
- * `scripts/build-info-core.mts` from
- * the COMMITTED `build-info.json` stamp (then env, then git), so every copy of a
- * given source tree reports the same identity without needing the commit history.
- * The user-facing repository LINK is a separate concern and comes from
- * `LEGAL.repoUrl` (src/legal/config.ts).
- *
- * The fallbacks below only apply where the defines never ran (a bare unit-test
- * import). 'dev' rather than '0': an absent build number must not read like a real
- * one in a copied build line.
+ * Vite injects build identity exclusively from the committed `build-info.json` stamp.
+ * `resolveVersion` derives the release line and adds `-dev` to unpublished builds.
+ * These fallbacks apply only when Vite's defines are absent, such as bare unit-test imports.
  */
 export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
 export const BUILD_NUMBER: string = typeof __BUILD_NUMBER__ === 'string' ? __BUILD_NUMBER__ : 'dev';

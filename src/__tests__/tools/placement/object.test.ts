@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
-import { makeState } from '../../rules/_helpers';
+import { makeState, setTerrain } from '../../rules/_helpers';
 import { getCatalogByCategory } from '../../../state/catalog';
-import { makeCtx, tryDecorate, tryPlace, enforceClearance } from '../../../tools/placement/object';
+import { makeCtx, tryDecorate, tryPlace, enforceClearance, probePlacement } from '../../../tools/placement/object';
 import { ItemCategory, TerrainType, type EditorEvents } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
 
@@ -14,10 +14,25 @@ const roadId = getCatalogByCategory(ItemCategory.Road)[0]!.id;
 function ctxFor(size = 12) {
   const state = makeState(size, size);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  return { state, ctx: makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), 42) };
+  return { state, exec, ctx: makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), 42) };
 }
 
 describe('placement/object', () => {
+  it.each([ItemCategory.Bridge, ItemCategory.Ramp])('probes snapped %s geometry without changing the map or history', kind => {
+    const { state, exec, ctx } = ctxFor(20), bridge = kind === ItemCategory.Bridge;
+    for (let y = 3; y < 18; y++) for (let x = bridge ? 7 : 10; x < (bridge ? 11 : 17); x++) setTerrain(state, x, y, bridge ? TerrainType.Water : TerrainType.Mountain, bridge ? 0 : 1);
+    const cells = JSON.stringify(state.cells), versions = [state.cellsVersion, state.objectsVersion];
+    const id = getCatalogByCategory(kind)[0]!.id, x = bridge ? 8 : 9;
+    const probe = probePlacement(ctx, id, x, 8.5);
+    expect(probe).toMatchObject({ position: { x: 6, y: 8.5 }, elevation: bridge ? 0 : 1, rotation: bridge ? 0 : 270 });
+    expect(state.objects.size).toBe(0);
+    expect(JSON.stringify(state.cells)).toBe(cells);
+    expect([state.cellsVersion, state.objectsVersion]).toEqual(versions);
+    expect(exec.getUndoStackSize()).toBe(0);
+    const placed = tryPlace(ctx, id, x, 8.5);
+    expect(placed).toEqual({ ...probe, id: placed?.id });
+  });
+
   it('places flora on flat grass and returns the object it put on the map', () => {
     const { state, ctx } = ctxFor();
     const placed = tryPlace(ctx, floraId, 5, 5);

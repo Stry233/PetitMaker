@@ -1,7 +1,6 @@
 /**
  * Stroke atomicity under exceptions: a write tool that crashes mid-stroke must
- * leave the map exactly as it found it — "Tool crashed" and "REVERTED" both
- * mean the map is unchanged.
+ * leave the map exactly as it found it, including edits applied before the crash.
  */
 import { describe, it, expect } from 'vitest';
 import { runStroke, runStrokeBody } from '../../agent/tools/tools-common';
@@ -27,6 +26,30 @@ const paint = (x: number, y: number): Command => ({
 });
 
 describe('stroke crash rollback', () => {
+  it('counts all retained edits after a callback stroke is partially rolled back and grouped', async () => {
+    const { state, executor, deps } = world();
+    const result = await runStrokeBody(deps, () => {
+      executor.execute(paint(5, 5));
+      for (const x of [1, 7]) {
+        expect(executor.execute({
+          type: CommandType.PlaceObject, timestamp: 0, loadValue: 0,
+          object: { id: `tree-${x}`, catalogId: 'tree-apple', position: { x, y: 1 }, rotation: 0, elevation: 0 },
+        }).success).toBe(true);
+      }
+      executor.execute({
+        type: CommandType.PaintTerrain, timestamp: 0,
+        cells: [{ x: 5, y: 8 }], terrainType: TerrainType.Water, elevation: 1,
+      });
+    });
+    expect(result.reverted).toBe(true);
+    expect(result.detail).toMatchObject({ reverted: true, partialRevert: true, cells: 1, objects: 2 });
+    expect(executor.getUndoStackSize()).toBe(1);
+    expect(state.cells[8]![5]!.terrain).toBeNull();
+    executor.undo();
+    expect(state.objects.size).toBe(0);
+    expect(state.cells[5]![5]!.terrain).toBeNull();
+  });
+
   it('runStroke rolls back already-executed commands when a later step throws', () => {
     const { state, executor, deps } = world();
     const before = executor.getUndoStackSize();

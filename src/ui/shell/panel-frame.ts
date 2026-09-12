@@ -6,7 +6,7 @@
  */
 import type { BuildMode } from '../../core/model/edit-mode';
 import type { DockSide } from '../../core/runtime/prefs';
-import { FIT_FLOOR, FIT_REF, frameFit } from '../design/scale';
+import { FIT_FLOOR, FIT_REF, fittedUiScale } from '../design/scale';
 import { ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODE_ROW_BASE, MODES } from './frame';
 import { LABEL_BOX_DEPTH, MODE, EDGE_LEFT, EDGE_TOP, MODE_SCALE, SCALE, ZOOM } from './units';
 
@@ -252,7 +252,7 @@ export function hasPinRoom(vw: number, uiZoom = 1): boolean {
  * DOM rather than through a render (`use-dock.ts`), so the arithmetic has to be callable outside one.
  */
 export function frameZoomAt(aside: number, vw: number, vh: number, uiZoom: number): number {
-  return ZOOM * frameFit(vw, vh, aside * PINNED_DOCK_REF_W * uiZoom) * uiZoom;
+  return ZOOM * fittedUiScale(vw, vh, uiZoom, aside * PINNED_DOCK_REF_W);
 }
 
 /**

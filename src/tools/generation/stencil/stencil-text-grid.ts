@@ -329,6 +329,18 @@ export function fitTextGrid(model: TextGridModel, box: Box): TextGridResult | nu
     if (result.ok) return result;
     if (result.loss < best.loss) best = result;
   }
+  // Even-width symmetry can fuse central branches that remain distinct one column narrower.
+  for (let inset = 1; inset <= 2 && box.width - inset >= model.minimum.width; inset++) {
+    const frame = { width: box.width - inset, height: box.height };
+    for (let reduction = 0; reduction <= 3; reduction++) {
+      const result = fitAtHeight(model, frame, reduction);
+      if (!result) break;
+      if (!result.ok) continue;
+      const coverage = new Uint8Array(box.width * box.height), ox = Math.floor(inset / 2);
+      for (let y = 0; y < box.height; y++) coverage.set(result.stencil.coverage.subarray(y * frame.width, (y + 1) * frame.width), y * box.width + ox);
+      return { stencil: { ...result.stencil, width: box.width, coverage, color: new Uint32Array(coverage.length) }, ok: true, loss: 0 };
+    }
+  }
   return best;
 }
 
@@ -355,7 +367,7 @@ function fitAtHeight(model: TextGridModel, box: Box, reduction: number): TextGri
     gaps[gap]!--;
   }
   const oy = Math.floor((height - inkH) / 2);
-  let best: TextGridResult | null = null;
+  const best: { result: TextGridResult | null; blocks: number } = { result: null, blocks: Infinity };
   for (let expansion = 0; expansion < 3; expansion++) {
     for (const vertical of [axisMap(model.vertical, inkH), axisMap(model.vertical, inkH, false)])
     for (const method of ['scan', 'path']) for (const tolerance of [0.25, 0.4, 0.55]) {
@@ -407,12 +419,21 @@ function fitAtHeight(model: TextGridModel, box: Box, reduction: number): TextGri
       }
       const topology = textTopology(coverage, width, height);
       const loss = Math.abs(topology.pieces - model.pieces) + Math.abs(topology.counters - model.counters) + endLoss;
-      if (!best || loss < best.loss) best = { stencil: { width, height, coverage, color: new Uint32Array(width * height), cellAligned: true }, ok: loss === 0, loss };
-      if (best?.ok) return best;
+      let blocks = 0;
+      for (let y = 0; y < height - 1; y++) for (let x = 0; x < width - 1; x++) {
+        const i = y * width + x;
+        if (coverage[i] && coverage[i + 1] && coverage[i + width] && coverage[i + width + 1]) blocks++;
+      }
+      if (!best.result || loss < best.result.loss || (loss === best.result.loss && blocks < best.blocks)) {
+        best.result = { stencil: { width, height, coverage, color: new Uint32Array(width * height), cellAligned: true }, ok: loss === 0, loss };
+        best.blocks = blocks;
+      }
+      if (best.result.ok && best.blocks === 0) return best.result;
     }
+    if (best.result?.ok) return best.result;
     let changed = false;
     for (let i = 0; i < sizes.length && total() < width - air; i++) { sizes[i]!++; changed = true; }
     if (!changed) break;
   }
-  return best;
+  return best.result;
 }

@@ -56,7 +56,6 @@ const ALLOWED: Record<string, string> = {
   'src/ui/chrome/modals/help/PageView.tsx': 'the Q&A row\'s chevron is a mark sized to the row, not a word in it',
   // Quick Hints is unmounted and has no shared frame placement, so its local sizes are exempt.
   'src/ui/hints/tokens.tsx': 'the Quick Hints panel is built but unmounted',
-  'src/ui/hints/HintPanel.tsx': 'the Quick Hints panel is built but unmounted',
 };
 
 /**

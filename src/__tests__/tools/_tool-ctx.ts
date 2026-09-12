@@ -44,14 +44,15 @@ export function makeToolCtx(
     annotationTool: 'none',
     annotationZoneShape: 'free',
     annotationColor: '#FF8A7A',
-    annotationTextStyle: 'label',
-    annotationTextSize: 'm',
+    annotationTag: 'homes',
+    annotationSize: 'm',
     annotationRouteDashed: true,
     annotationSelection: [],
     annotationDraft: null,
     annotationEdit: {
-      begin() {}, apply() {}, add() {}, remove() {}, select() {}, setDraft() {}, setNaming() {},
+      begin() {}, apply() {}, add() {}, remove() {}, select() {}, setDraft() {}, commitDraft() { return false; },
     },
+    tagLabel: (tag) => tag,
     ...over,
   };
 }

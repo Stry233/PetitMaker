@@ -21,7 +21,7 @@
 export { tilesAShape } from './stencil';
 export {
   airCells, densityOf, glyphLegible, piecesOf, runsAlong, separationOf, terrainPalette, textMinBox,
-  COVERAGE_ON, STENCIL_MIN_SIDE,
+  COMPACT_IMAGE_LIMIT, COVERAGE_ON, STENCIL_MIN_SIDE,
   type GlyphReading,
 } from './stencil';
 export { readSourceNature, stencilFromPixels, type SampleOptions } from './stencil-sample';

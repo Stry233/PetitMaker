@@ -18,7 +18,7 @@ import { CHUNK_SIZE, ELEVATION_MAX } from '../core/model/constants';
 import { chunkKey } from '../core/model/grid-model';
 import { TerrainType, type EditorEvents, type GridState, type ObjectsDelta, type PlacedObject } from '../core/model/types';
 import { getCatalogItem } from './catalog';
-import { footprintCells, getPlacedObjectSize } from './object-geometry';
+import { getPlacedObjectSize } from './object-geometry';
 
 interface ChunkStat { objects: number; load: number }
 
@@ -65,14 +65,17 @@ const loadOf = (obj: PlacedObject): number => getCatalogItem(obj.catalogId)?.loa
  *  placed yet (so cannot be read back out of `chunks` itself). */
 export function chunksOf(obj: PlacedObject): string[] {
   const { w, h } = getPlacedObjectSize(obj);
-  const keys = new Set<string>();
-  // footprintCells, not `pos + integer offset`: a half-integer origin (a halfStep ramp/bridge)
-  // names every macro cell it partially covers, including the trailing half cell a plain
-  // integer-offset walk from a floored origin never reaches.
-  for (const { x, y } of footprintCells(obj.position.x, obj.position.y, w, h)) {
-    keys.add(chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)));
+  const x0 = Math.floor(obj.position.x), x1 = Math.ceil(obj.position.x + w) - 1;
+  const y0 = Math.floor(obj.position.y), y1 = Math.ceil(obj.position.y + h) - 1;
+  if (x0 > x1 || y0 > y1) return [];
+  const keys: string[] = [];
+  // Floor/ceil includes every partially covered macro cell at a half-step footprint's edges.
+  for (let y = Math.floor(y0 / CHUNK_SIZE); y <= Math.floor(y1 / CHUNK_SIZE); y++) {
+    for (let x = Math.floor(x0 / CHUNK_SIZE); x <= Math.floor(x1 / CHUNK_SIZE); x++) {
+      keys.push(chunkKey(x, y));
+    }
   }
-  return [...keys];
+  return keys;
 }
 
 /** Folds one object into (sign 1) or out of (sign -1) every derived structure except

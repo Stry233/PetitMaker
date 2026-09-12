@@ -158,7 +158,10 @@ export function createRunner(cfg: RunnerConfig): {
       get oversight() { return cfg.oversight; },
       signal: controller.signal,
       log,
-      onChildProgress: (p) => useAgentSession.getState().setChildLive(p),
+      onChildProgress: (p) => {
+        const session = useAgentSession.getState();
+        if (session.log === log) session.setChildLive(p);
+      },
     };
     const executor = createExecutor(toolDeps, { delegate: delegateOpts });
     const loopDeps: LoopDeps = {
@@ -187,7 +190,10 @@ export function createRunner(cfg: RunnerConfig): {
       // here: the loop appends nothing until the turn closes, so without this the phase never
       // leaves `thinking`, the assistant's sentence appears only once it is finished, and a tool
       // call shows no row until its result lands. The loop nulls it at every exit of its own.
-      onLive: (parts) => useAgentSession.getState().setLive(parts),
+      onLive: (parts) => {
+        const session = useAgentSession.getState();
+        if (session.log === log) session.setLive(parts);
+      },
     };
     inflight = runJob(log, loopDeps)
       .catch((err): JobOutcome => {
@@ -204,7 +210,8 @@ export function createRunner(cfg: RunnerConfig): {
         // The loop clears the live parts on every path it takes itself; this covers the one it
         // does not, the stray throw caught above, which would otherwise leave a half-streamed turn
         // standing in the panel for the rest of the session.
-        useAgentSession.getState().setLive(null);
+        const session = useAgentSession.getState();
+        if (session.log === log) { session.setLive(null); session.setChildLive(null); }
       });
   }
 

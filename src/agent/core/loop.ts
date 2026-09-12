@@ -364,6 +364,8 @@ async function processCalls(
 
     const proceed = await resolveGate(log, deps, part, assistantSeq);
     if (proceed === 'aborted') return 'aborted';
+    if (deps.signal.aborted) return 'aborted';
+    if (pauseIsPending(log)) { append(log, { kind: 'paused' }); return 'paused'; }
     if (!proceed) continue; // skipped: the projection synthesizes the model-visible result
 
     if (deps.executor.isWrite(part.name) && !hasJobCheckpoint(log)) {
@@ -380,6 +382,8 @@ async function processCalls(
       }
     }
 
+    if (deps.signal.aborted) return 'aborted';
+    if (pauseIsPending(log)) { append(log, { kind: 'paused' }); return 'paused'; }
     let executed: ExecutedResult;
     try {
       executed = await deps.executor.execute({ callId: part.callId, name: part.name, args: part.input });
@@ -466,10 +470,11 @@ async function streamOnce(deps: LoopDeps, req: AdapterRequest): Promise<Assemble
   const assembler = createAssembler();
   const turn = new AbortController();
   const onAbort = (): void => turn.abort();
-  deps.signal.addEventListener('abort', onAbort, { once: true });
+  if (deps.signal.aborted) turn.abort();
+  else deps.signal.addEventListener('abort', onAbort, { once: true });
   try {
     const source = deps.adapter.stream(req, turn.signal);
-    for await (const ev of withIdleTimeout(source, { onIdle: () => turn.abort() })) {
+    for await (const ev of withIdleTimeout(source, { onIdle: () => turn.abort(), signal: deps.signal })) {
       assembler.push(ev);
       deps.onLive?.(assembler.snapshot());
     }
@@ -482,7 +487,7 @@ async function streamOnce(deps: LoopDeps, req: AdapterRequest): Promise<Assemble
 /** Runs one logical turn, reusing its request across retries and rebuilding it after compaction. */
 async function runAdapterTurn(
   log: SessionLog, deps: LoopDeps, buildRequest: () => AdapterRequest,
-  opts: { estimate: (s: string) => number; contextWindow: number; sleep: (ms: number, signal: AbortSignal) => Promise<void> },
+  opts: { estimate: (s: string) => number; sleep: (ms: number, signal: AbortSignal) => Promise<void> },
 ): Promise<AssistantEvent | 'incident' | 'aborted'> {
   let req = buildRequest();
   let attempt = retryAttemptsLogged(log);
@@ -490,7 +495,7 @@ async function runAdapterTurn(
     if (deps.signal.aborted) { deps.onLive?.(null); return 'aborted'; }
     const assembled = await streamOnce(deps, req);
 
-    if (!assembled.error) {
+    if (!assembled.error && !deps.signal.aborted) {
       const ev = append(log, {
         kind: 'assistant', parts: assembled.parts, stop: assembled.stop,
         ...(assembled.usage !== undefined ? { usage: assembled.usage } : {}),
@@ -503,20 +508,21 @@ async function runAdapterTurn(
       return ev as AssistantEvent;
     }
 
-    const err = assembled.error;
+    const err = deps.signal.aborted ? { cls: 'abort' as const, detail: 'The turn was aborted.' } : assembled.error!;
     if (err.cls === 'abort') {
-      append(log, {
+      const ev = append(log, {
         kind: 'assistant', parts: assembled.parts, stop: 'aborted',
         ...(assembled.usage !== undefined ? { usage: assembled.usage } : {}),
         ...(assembled.raw !== undefined ? { raw: assembled.raw, rawModel: deps.model } : {}),
       });
       deps.onLive?.(null);
-      return 'aborted';
+      return ev as AssistantEvent;
     }
 
     if (err.cls === 'overflow') {
       const ok = await compact(log, { adapter: deps.adapter, model: deps.model, signal: deps.signal, estimate: opts.estimate });
-      if (!ok && needsCompaction(log, { contextWindow: opts.contextWindow, estimate: opts.estimate })) {
+      if (deps.signal.aborted) { deps.onLive?.(null); return 'aborted'; }
+      if (!ok) {
         deps.onLive?.(null);
         append(log, { kind: 'incident', error: err });
         return 'incident';
@@ -556,12 +562,14 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
   if (resumed) return resumed;
 
   for (;;) {
+    if (deps.signal.aborted) { endJob(log, deps, { outcome: 'aborted' }); return 'aborted'; }
     if (pauseIsPending(log)) { append(log, { kind: 'paused' }); return 'paused'; }
     deliverSteers(log);
     syncStageCheckpoints(log, deps);
 
     if (needsCompaction(log, { contextWindow, estimate })) {
       const ok = await compact(log, { adapter: deps.adapter, model: deps.model, signal: deps.signal, estimate });
+      if (deps.signal.aborted) { endJob(log, deps, { outcome: 'aborted' }); return 'aborted'; }
       if (!ok && needsCompaction(log, { contextWindow, estimate })) {
         append(log, { kind: 'incident', error: { cls: 'overflow', detail: 'The conversation no longer fits the context window and cannot be shortened further.' } });
         endJob(log, deps, { outcome: 'incident' });
@@ -606,7 +614,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
       }
     }
 
-    const turnOutcome = await runAdapterTurn(log, deps, buildRequest, { estimate, contextWindow, sleep });
+    const turnOutcome = await runAdapterTurn(log, deps, buildRequest, { estimate, sleep });
     if (turnOutcome === 'incident') { endJob(log, deps, { outcome: 'incident' }); return 'incident'; }
     if (turnOutcome === 'aborted') { endJob(log, deps, { outcome: 'aborted' }); return 'aborted'; }
 

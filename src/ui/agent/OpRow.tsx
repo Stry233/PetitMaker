@@ -14,7 +14,7 @@ import { Lane, laneRollup, type LaneView } from './Lane';
 import { withAlpha } from '../design/styles';
 import { INK, INSET, PLATE_INK } from '../design/tokens';
 import { colors, cursors, font } from '../design/styles';
-import { roleFont } from '../design/text-weight';
+import { roleWeight, roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { OpRow as OpRowData } from '../../agent/core/project-view';
 
@@ -52,7 +52,7 @@ function withBoldCategory(text: string): ReactNode {
     if (!text.startsWith(prefix)) continue;
     return (
       <>
-        <span style={{ fontWeight: 800 }}>{prefix}</span>
+        <span style={{ fontWeight: roleWeight('chip') }}>{prefix}</span>
         {text.slice(prefix.length)}
       </>
     );
@@ -73,7 +73,7 @@ function boldToColon(text: string): ReactNode {
   if (at <= 0 || at > 24) return text;
   return (
     <>
-      <span style={{ fontWeight: 800 }}>{text.slice(0, at + 1)}</span>
+      <span style={{ fontWeight: roleWeight('chip') }}>{text.slice(0, at + 1)}</span>
       {text.slice(at + 1)}
     </>
   );
@@ -114,6 +114,10 @@ function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
   const rule = localizedRule(op, t);
   if (op.status === 'blocked') return t('agent3.op_detail_region');
   if (op.status === 'revert') {
+    if (op.detail?.partialRevert) {
+      const prefix = t('agent3.op_detail_partial');
+      return rule !== undefined ? <>{prefix} {rule}</> : prefix;
+    }
     if (rule !== undefined) return withFragment(t('agent3.op_detail_put_back'), rule);
     if (text === '' || isSystemNote(text)) return t('agent3.op_reverted_reason');
     return withFragment(t('agent3.op_detail_put_back'), withBoldCategory(text));
@@ -138,7 +142,7 @@ function chipFor(
   // A row that carries the picture the model was shown says so at a glance; the click opens it.
   if (op.image !== undefined) return { text: t('agent3.op_chip_saw') };
   if (op.status === 'blocked') return { text: t('agent3.op_chip_region') };
-  if (op.status === 'revert') return { text: t('agent3.op_chip_put_back'), tone: 'warn' };
+  if (op.status === 'revert') return { text: t(op.detail?.partialRevert ? 'agent3.op_chip_partial' : 'agent3.op_chip_put_back'), tone: 'warn' };
   if (op.status === 'skipped') return { text: t('agent3.op_chip_declined') };
   if (op.status === 'words') return { text: t('agent3.op_chip_words') };
   if (op.status === 'error' && isSystemNote(ruleText(op.summary))) {

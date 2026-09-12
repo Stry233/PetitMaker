@@ -82,7 +82,7 @@ function surfaceKey(c: CommandContext, id: string): void {
  *  decides a SURFACE and putting a tool down is not a reason to move to another one. */
 /** What each numbered tool key ARMS while the annotation layer is the mode: a key keeps its
  *  meaning wherever both modes carry the tool (2 erases, 4 rules a line, 5 bends a curve, 6 and 7
- *  drag out their shapes), the trim key carries the text, and the smart key carries the route
+ *  drag out their shapes), the trim key carries the chip, and the smart key carries the route
  *  (at its own RUN body, since smart is not a DesignMode). Pressing the active one puts the tool
  *  away, the terrain rows' own toggle. */
 const ANNOTATE_ARM: Partial<Record<DesignMode, { tool: AnnotationTool; shape?: AnnotationZoneShape }>> = {
@@ -92,7 +92,7 @@ const ANNOTATE_ARM: Partial<Record<DesignMode, { tool: AnnotationTool; shape?: A
   rect: { tool: 'zone', shape: 'rect' },
   circle: { tool: 'zone', shape: 'circle' },
   eraser: { tool: 'erase' },
-  'edge-cut': { tool: 'text' },
+  'edge-cut': { tool: 'chip' },
 };
 
 function toolKey(c: CommandContext, design: DesignMode): void {
@@ -210,7 +210,7 @@ function deselect(): void {
   if (pendingGesture().cancel()) return;
   // The annotate analogue of the chain below: the selected note first, then the armed cell.
   if (s.editMode.mode === 'annotate') {
-    if (s.annotationNaming) { s.setAnnotationNaming(null); return; }
+    if (s.annotationDraft) { s.setAnnotationDraft(null); return; }
     if (s.annotationSelection.length > 0) { s.setAnnotationSelection([]); return; }
     if (s.annotationTool !== 'none') { s.setAnnotationTool('none'); return; }
     return;

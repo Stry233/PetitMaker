@@ -1,9 +1,4 @@
-/**
- * Adapts font weight to rendered device-pixel size without changing layout. The shipped faces form
- * a Heavy/Bold/Medium ladder. Dense CJK glyphs receive a two-pixel threshold increase because their
- * counters close earlier at small sizes. UI roles below publish the resolved weights as custom
- * properties so call sites share one semantic type ladder.
- */
+/** Shared UI weight limits use visible text size with a bounded allowance for display density. */
 import type { CSSProperties } from 'react';
 import type { Locale } from '../../core/model/types';
 
@@ -11,20 +6,19 @@ import type { Locale } from '../../core/model/types';
 export const HEAVY = 900;
 export const BOLD = 700;
 export const MEDIUM = 500;
+export const REGULAR = 400;
 
-/** Device pixels under which the Heavy faces stop resolving into strokes. */
-export const HEAVY_MIN = 12;
-/** Device pixels under which the Bold faces stop resolving into strokes. */
-export const BOLD_MIN = 10;
-/**
- * Added to both floors for a script whose glyphs fill their em rather than a cap-height, so the same
- * nominal size carries several times the stroke count. Measured on CJK; Thai is not covered, and
- * takes the Latin floors until it is.
- */
+/** Minimum rendered CSS-pixel sizes at 1× density, before the script-density adjustment. */
+export const HEAVY_MIN = 24;
+export const BOLD_MIN = 16;
+export const MEDIUM_MIN = 12;
+/** Limit the extra weight allowed by denser rasterization while retaining visible size as the main limit. */
+export const MAX_DENSITY_GAIN = 1.4;
+/** Dense CJK strokes and stacked Thai marks need more room between strokes. */
 export const DENSE_BUMP = 2;
 
-/** Locales written in a script that fills its em. */
-const DENSE_LOCALES: readonly Locale[] = ['zh', 'ja'];
+/** Locales whose dense strokes or stacked marks need more spacing. */
+const DENSE_LOCALES: readonly Locale[] = ['zh', 'ja', 'th'];
 
 /**
  * Whether a surface should be judged against the dense floors. Read off the LOCALE, not the string:
@@ -37,31 +31,17 @@ export function isDenseScript(locale: Locale): boolean {
 }
 
 /**
- * The device pixels a run of text paints at. `zoom` is the css `zoom` the surface stands under —
- * `frameFit × uiZoom` for the chrome, that times `units.ts:ZOOM` inside the frame — and `dpr` the
- * display's own multiplier. Browser page zoom needs no term: it divides the css viewport and
- * multiplies `dpr` by the same factor, so it arrives through those two.
+ * `screenPx` includes CSS zoom and any text-fitting transform. Density provides a bounded allowance;
+ * browser zoom below 100% can further reduce the raster budget.
  */
-export function textDevicePx(cssPx: number, zoom: number, dpr: number): number {
-  return cssPx * zoom * dpr;
-}
-
-/**
- * The weight to draw `nominal` at when it will paint `devicePx` tall.
- *
- * One step per floor crossed, so a heavy label under both floors lands on Medium. That does flatten
- * a chip onto its body text's weight, which is the trade: at 11 device px the chip's emphasis is
- * carried by its fill and its ink, and a weight nobody can resolve carries nothing. Nothing is ever
- * pushed BELOW Medium, and a nominal already at or under it passes through — the fix for small text
- * is a lighter weight at the same size, never a lighter one than the design asked for.
- */
-export function readableWeight(nominal: number, devicePx: number, dense = false): number {
+export function readableWeight(nominal: number, screenPx: number, dense = false, dpr = 1): number {
+  const pixels = screenPx * Math.min(MAX_DENSITY_GAIN, dpr);
   const bump = dense ? DENSE_BUMP : 0;
-  if (nominal <= MEDIUM) return nominal;
-  let w = nominal;
-  if (w > BOLD && devicePx < HEAVY_MIN + bump) w = BOLD;
-  if (w > MEDIUM && devicePx < BOLD_MIN + bump) w = MEDIUM;
-  return w;
+  let weight = nominal;
+  if (weight > BOLD && pixels < HEAVY_MIN + bump) weight = BOLD;
+  if (weight > MEDIUM && pixels < BOLD_MIN + bump) weight = MEDIUM;
+  if (weight > REGULAR && pixels < MEDIUM_MIN + bump) weight = REGULAR;
+  return weight;
 }
 
 /**
@@ -123,8 +103,7 @@ export const TEXT_ROLES = {
   /**
    * A sentence of prose: a menu row's own words, a confirm question, a note that is not small print.
    *
-   * The only rung that draws the MEDIUM file. A paragraph set in Bold is a paragraph shouting, so
-   * anything on this rung that has to outrank its neighbours names `label` instead.
+   * Body copy starts at medium weight; stronger emphasis uses the label role.
    */
   body: { px: 14, weight: 500 },
   /** The text inside an input, which the reader both reads and edits. */
@@ -188,7 +167,7 @@ export function weightVars(zoom: number, dpr: number, dense: boolean): CSSProper
   const vars: Record<string, string> = {};
   for (const role of Object.keys(TEXT_ROLES) as TextRole[]) {
     const { px, weight } = TEXT_ROLES[role];
-    vars[weightVar(role)] = String(readableWeight(weight, textDevicePx(px, zoom, dpr), dense));
+    vars[weightVar(role)] = String(readableWeight(weight, px * zoom, dense, dpr));
   }
   return vars as CSSProperties;
 }

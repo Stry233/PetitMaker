@@ -22,8 +22,8 @@ const META = { appVersion: '1.0-test', saveVersion: 3 };
 function annotations(): AnnotationsState {
   return {
     items: [
-      { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', name: 'Homes', num: 1, size: 'm' },
-      { kind: 'text', id: 't1', x: 5.5, y: 6, text: 'Town square', style: 'chip', size: 'l', color: '#FFB347' },
+      { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
+      { kind: 'chip', id: 't1', x: 5.5, y: 6, tag: 'plaza', size: 'l', color: '#FFB347' },
       { kind: 'route', id: 'r1', points: [{ x: 1, y: 1 }, { x: 4.5, y: 2, hx: 1.5, hy: -0.5 }], color: '#2FBF9B', dashed: true },
     ],
     visible: false,
@@ -93,7 +93,7 @@ describe('payload frame', () => {
     const frame = await encodeMapPayload(state, null, META);
     const range = annotationBlobRange(frame);
     const plain = await inflate(frame.subarray(range.start, range.end), CompressionMethod.Deflate, { maxBytes: 4 * 1024 * 1024, maxRatio: 256 });
-    const changed = new TextEncoder().encode(new TextDecoder().decode(plain).replace('Homes', 'House'));
+    const changed = new TextEncoder().encode(new TextDecoder().decode(plain).replace('"homes"', '"shops"'));
     const compressed = await deflate(changed, CompressionMethod.Deflate);
     const edited = new Uint8Array(frame.length - (range.end - range.start) + compressed.length);
     edited.set(frame.subarray(0, range.lengthOffset));

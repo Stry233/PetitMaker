@@ -4,9 +4,9 @@
  * moving their button targets; zoom and rotation controls repeat while held.
  */
 import {
-  useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode,
+  useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode,
 } from 'react';
-import { AnimatePresence, motion, type TargetAndTransition } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotionConfig, type AnimationPlaybackControls, type TargetAndTransition } from 'framer-motion';
 import { getActiveView } from '../../canvas/active-view';
 import { tourTargetAttr, type TourTargetId } from '../chrome/tour/steps';
 import { helpTargetAttr } from '../chrome/modals/help/targets';
@@ -22,20 +22,19 @@ import { usePressRepeat } from '../hooks/use-press-repeat';
 import { useUiZooming } from '../design/ui-zoom-anim';
 import {
   apparentSize, FIT_BOX, FIT_INK, FIT_TRIM, GLYPHS, HISTORY_BUTTONS, KIT_BUTTONS, LAYER_STEP_RIGHT,
-  LAYERS_STACK_SRC, planRail, railCell, RAIL_TOP, readoutPressLane,
-  type LayerMode, type RailCell, type RailPlan,
+  LAYERS_STACK_SRC, railCell, RAIL_TOP, readoutPressLane, viewKitCell,
+  type RailCell, type RailPlan,
 } from './frame';
 import { GlyphIcon } from './GlyphIcon';
-import { LayerPanel, plateDepth } from './windows/LayerPanel';
+import { LayerPanel } from './windows/LayerPanel';
+import { FrameLayoutProvider, useFrameLayout } from './frame-layout';
 import { CSS_CURVES } from './motion/curves';
 import { MOTIONS } from './motion/registry';
 import { cssMotion, useMotion } from './motion/use-motion';
 import { useDockStage } from './use-dock';
 import { ACTIVE, DARK_PLATE, INK, MAP_LABEL, PLATE, PLATE_INK, plateShapeEdge } from '../design/tokens';
 import { PANEL_RIGHT } from './panel-frame';
-import { useFrameZoom, useZoomedLayoutTransform } from './use-frame-zoom';
-import { useViewportHeight } from './use-viewport';
-import { useUiPreviewPose } from '../primitives/ui-preview';
+import { useFrameZoom, useFrameReadableWeight } from './use-frame-zoom';
 import { EDGE_RIGHT, RAIL, TEXT } from './units';
 
 
@@ -76,6 +75,33 @@ const inGroup: CSSProperties = { pointerEvents: 'auto' };
  *  acknowledges a pointer by the same amount the modals and the mode blocks do. */
 const HOVER_SCALE = pressable.whileHover.scale;
 
+/** Animate discrete reflow in local units while continuous CSS zoom follows the frame directly. */
+function useRailReflow(x: number, y: number, place: string, enabled = true) {
+  const dx = useMotionValue(0), dy = useMotionValue(0);
+  const previous = useRef<{ x: number; y: number; place: string }>();
+  const running = useRef<AnimationPlaybackControls[]>([]);
+  const reduced = useReducedMotionConfig();
+  const transition = useMotion('rail.group.reflow');
+  useLayoutEffect(() => {
+    const before = previous.current;
+    if (reduced) {
+      running.current.forEach(animation => animation.stop());
+      running.current = [];
+      dx.set(0);
+      dy.set(0);
+    } else if (enabled && before && before.place !== place) {
+      running.current.forEach(animation => animation.stop());
+      // Rebase without turning the coordinate change into spring velocity.
+      dx.jump(dx.get() + before.x - x);
+      dy.jump(dy.get() + before.y - y);
+      running.current = [animate(dx, 0, transition), animate(dy, 0, transition)];
+    }
+    previous.current = { x, y, place };
+  });
+  useEffect(() => () => running.current.forEach(animation => animation.stop()), []);
+  return { x: dx, y: dy };
+}
+
 /**
  * Round rail control with a fixed hit box and a pointer-transparent animated plate. Keeping hit
  * testing off the growing plate prevents hover oscillation and layout shifts. The plate and its
@@ -90,7 +116,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
   /** For a button its group only offers sometimes: how it comes and goes. Each target carries its
    *  own transition rather than replacing the button's, so the press feedback is untouched. */
   arrival?: { initial: TargetAndTransition; animate: TargetAndTransition; exit: TargetAndTransition };
-  /** Grid column count used as the layout-animation dependency with this button's cell. */
+  /** Grid column count used to animate changes to this button's cell. */
   files?: number;
   /** Which way the plate opens to give the button's name: into the map, away from the edge the
    *  button's group hangs on. In a folded group a right-file pill opens over its left neighbour and
@@ -113,9 +139,8 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
   helpTarget?: HelpPageId;
   children: ReactNode;
 }) {
-  const reflow = useMotion('rail.group.reflow');
+  const weightAt = useFrameReadableWeight();
   const reach = useMotion('rail.name.reach');
-  const zoomed = useZoomedLayoutTransform();
   const [hovered, setHovered] = useState(false);
   const nameRef = useRef<HTMLSpanElement>(null);
   const [nameW, setNameW] = useState(0);
@@ -137,15 +162,16 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
   // opens from it, the growth spreads from it, the press pulls back toward it. Anywhere else and
   // the glyph the pointer is on would be the thing that moves.
   const anchor = grow === 'left' ? 'right center' : 'left center';
-  /** The whole of where this button stands: the group's shape and its cell of it. A layout
-   *  animation answers to this and to nothing else. */
-  const place = files === undefined ? undefined : `${files}:${cell?.column ?? 1}:${cell?.row ?? 1}`;
+  // Only discrete cell changes animate; scaling keeps the local coordinates unchanged.
+  const place = `${files ?? 1}:${cell?.column ?? 1}:${cell?.row ?? 1}`;
+  const offset = useRailReflow(((cell?.column ?? 1) - (files ?? 1)) * (RAIL.button + RAIL.gap),
+    ((cell?.row ?? 1) - 1) * (RAIL.button + RAIL.gap), place);
   const name = (
     <span
       ref={nameRef}
       style={{
         flex: 'none', whiteSpace: 'nowrap', color: on ? INK : PLATE_INK,
-        fontSize: TEXT.tab, fontWeight: 800, lineHeight: 1,
+        fontSize: TEXT.tab, fontWeight: weightAt(800, TEXT.tab), lineHeight: 1,
         [grow === 'left' ? 'paddingLeft' : 'paddingRight']: RAIL.namePad,
       }}
     >
@@ -157,12 +183,6 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
       type="button"
       {...(disabled ? {} : pressOnly)}
       {...arrival}
-      {...(place === undefined ? {} : {
-        layout: true,
-        layoutDependency: place,
-        transformTemplate: zoomed,
-        transition: { ...pressable.transition, layout: reflow },
-      })}
       {...(repeat === undefined || disabled ? { onClick: onPress } : held)}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
@@ -175,6 +195,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
       style={{
         ...btnReset,
         ...inGroup,
+        ...offset,
         position: 'relative',
         gridColumnStart: cell?.column,
         gridRowStart: cell?.row,
@@ -290,10 +311,13 @@ function LayerStep({ label, half, disabled, onPress }: {
  * control without moving the rail groups below it.
  */
 function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpen: () => void; veiled: boolean }) {
+  const weightAt = useFrameReadableWeight();
   const t = useT();
+  const layout = useFrameLayout();
   const activeLayer = useEditorStore((s) => s.activeLayer);
   const displayLayer = useEditorStore((s) => s.displayLayer);
   const setActiveLayer = useEditorStore((s) => s.setActiveLayer);
+  const assistantOpen = useEditorStore((s) => s.assistantOpen);
   const { place } = useDockStage();
   const shown = displayLayer ?? activeLayer;
   const step = (d: number) => setActiveLayer(Math.min(ELEVATION_MAX, Math.max(0, activeLayer + d)));
@@ -310,7 +334,7 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
         { left: box.left / zoom, width: box.width / zoom },
         // A DOCKED panel is at the other end of the window and the two can never meet, so the lane
         // is the word's own; free, it stands where this measurement is against.
-        place === 'free' ? PANEL_RIGHT : null,
+        assistantOpen && place === 'free' ? PANEL_RIGHT : null,
       ));
     };
     measure();
@@ -318,15 +342,16 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
     // word nor the zoom changing.
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [place, zoom, word, panelOpen]);
+  }, [place, zoom, word, panelOpen, assistantOpen]);
   return (
     <div
+      data-testid="shell-layer-control"
       {...helpTargetAttr('layers')}
       style={{
-        ...group, top: RAIL_TOP, right: LAYER_STEP_RIGHT, flexDirection: 'row', gap: RAIL.layer.gap,
+        ...group, top: layout?.railTop ?? RAIL_TOP, right: (layout?.edgeRight ?? EDGE_RIGHT) + LAYER_STEP_RIGHT - EDGE_RIGHT, flexDirection: 'row', gap: RAIL.layer.gap,
         opacity: veiled ? 0 : 1,
         visibility: veiled ? 'hidden' : 'visible',
-        transition: veilTransition(veiled),
+        transition: [veilTransition(veiled), cssMotion('frame.layout.adapt', 'top')].join(', '),
       }}
     >
       {panelOpen ? null : (
@@ -353,8 +378,9 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
               role="status"
               style={{
                 ...MAP_LABEL,
-                fontSize: TEXT.readout, fontWeight: 900, lineHeight: 1,
+                fontSize: TEXT.readout, fontWeight: weightAt(900, TEXT.readout), lineHeight: 1,
                 whiteSpace: 'nowrap',
+                ...(layout?.compact ? { maxWidth: RAIL.button * 2.5, overflow: 'hidden', textOverflow: 'ellipsis' } : {}),
               }}
             >
               {word}
@@ -400,24 +426,11 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
   );
 }
 
-/**
- * Undo and redo: two buttons, one pair, standing lower while the layer stack is over their lane and
- * side by side on a window too short for a file of them.
- *
- * IT FOLDS THE WAY THE KIT DOES, by the same rule and in the same plan (`frame.ts:RAIL_FOLDS`). Two
- * buttons is a small saving, so it is the second thing the column gives up rather than the first,
- * and a 2x1 row is the whole of its folding.
- *
- * THE TRAVEL IS SUPPRESSED WHILE THE UI SCALE MOVES. `top` is a computed length: every step of a
- * Ctrl +/- tween gives it a new number, and a transition on it plays that recomputation as though
- * the pair had been asked to move: undo and redo lag behind the rest of the frame and slide into
- * place after it, on a gesture that is not about them at all. The signal
- * is the one `scale.tsx` already drops its pixel rounding on (`useUiZooming`), and this is the same
- * class of problem: a thing that is right per frame and wrong across a scale change.
- */
-function HistoryGroup({ top, files, veiled }: { top: number; files: number; veiled: boolean }) {
+/** History follows continuous zoom directly; only discrete group reflows receive an offset tween. */
+function HistoryGroup({ top, right, files, placement, veiled }: { top: number; right: number; files: number; placement: string; veiled: boolean }) {
   const t = useT();
   const zooming = useUiZooming();
+  const offset = useRailReflow(0, top, placement, zooming);
   const eventBus = useEditorStore((s) => s.eventBus);
   const [{ canUndo, canRedo }, setHistory] = useState({ canUndo: false, canRedo: false });
   useEffect(() => {
@@ -426,11 +439,13 @@ function HistoryGroup({ top, files, veiled }: { top: number; files: number; veil
     return () => eventBus.off('history-changed', onHistory);
   }, [eventBus]);
   return (
-    <div
+    <motion.div
       data-testid="shell-rail-history"
       style={{
         ...group,
+        ...offset,
         top,
+        right,
         // A grid, as the kit is, so the two fold into one row by the same property in the same
         // shape. At one file it is what the flex column was.
         display: 'grid',
@@ -441,7 +456,7 @@ function HistoryGroup({ top, files, veiled }: { top: number; files: number; veil
         // so the pair still arrives at the place the panel left it and simply does not travel there.
         // The veil is on the same declaration because an element has ONE `transition`, and a second
         // one written here would silently drop the travel this group is placed by.
-        transition: [zooming ? '' : YIELD_TRANSITION, veilTransition(veiled)].filter(Boolean).join(', '),
+        transition: [zooming ? '' : `${YIELD_TRANSITION}, ${cssMotion('frame.layout.adapt', 'right')}`, veilTransition(veiled)].filter(Boolean).join(', '),
       }}
     >
       <RailButton
@@ -468,7 +483,7 @@ function HistoryGroup({ top, files, veiled }: { top: number; files: number; veil
       >
         <GlyphIcon glyph={GLYPHS.undo} size={RAIL.glyph} flip />
       </RailButton>
-    </div>
+    </motion.div>
   );
 }
 
@@ -534,8 +549,10 @@ const yawArrival = (offer: Record<string, unknown>) => ({
  * front of it. A remnant is better than a key nobody was told about and better than "press
  * anything", which would make the hidden state unusable for the panning and looking it is for.
  */
-function ViewKit({ plan, hidden, onHide }: { plan: RailPlan; hidden: boolean; onHide: () => void }) {
+function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: number; hidden: boolean; onHide: () => void }) {
   const t = useT();
+  const zooming = useUiZooming();
+  const weightAt = useFrameReadableWeight();
   const offer = useMotion('rail.yaw.offer');
   const viewMode = useEditorStore((s) => s.viewMode);
   const setViewMode = useEditorStore((s) => s.setViewMode);
@@ -543,18 +560,18 @@ function ViewKit({ plan, hidden, onHide }: { plan: RailPlan; hidden: boolean; on
   // full complement so nothing moves across a view switch, but the row that ends up short is the
   // one drawn, so the fill direction is answered against the buttons actually on screen.
   const shown = KIT_BUTTONS - (viewMode === '3d' ? 0 : YAW_TURNS.length);
-  const cell = (i: number) => railCell(i, shown, plan.kitFiles);
+  const cell = (i: number) => viewKitCell(i, shown, plan.kitFiles);
+  const offset = useRailReflow(0, plan.kitTop, String(plan.kitFiles), zooming);
   return (
-    <div
+    <motion.div
+      data-testid="shell-view-kit"
       {...helpTargetAttr('camera')}
       style={{
         ...group,
-        top: plan.kitTop,
-        // A GRID, filled row by row, which is one file when the column has room for one. Two files
-        // of three would split the zoom pair and the yaw pair down the middle if it filled by file;
-        // filled by row, each pair stays on its own line and the yaw arrows keep their two sides.
-        // Every cell is NAMED (`frame.ts:railCell`) rather than flowed, so a pair on its way out
-        // cannot re-place the row it is leaving from.
+        ...offset,
+        top: plan.kitTop, right,
+        transition: zooming ? undefined : cssMotion('frame.layout.adapt', 'top', 'right'),
+        // Explicit cells keep exiting yaw buttons from reflowing the remaining controls.
         display: 'grid',
         gridTemplateColumns: `repeat(${plan.kitFiles}, ${RAIL.button}px)`,
       }}
@@ -572,7 +589,7 @@ function ViewKit({ plan, hidden, onHide }: { plan: RailPlan; hidden: boolean; on
         tourTarget="view3d"
         onPress={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
       >
-        <span style={{ fontSize: RAIL.viewLabel, fontWeight: 900, color: INK }}>{viewMode.toUpperCase()}</span>
+        <span style={{ fontSize: RAIL.viewLabel, fontWeight: weightAt(900, RAIL.viewLabel), color: INK }}>{viewMode.toUpperCase()}</span>
       </RailButton>
       <RailButton
         label={t(hidden ? 'a11y.show_ui' : 'a11y.hide_ui')}
@@ -631,8 +648,8 @@ function ViewKit({ plan, hidden, onHide }: { plan: RailPlan; hidden: boolean; on
         HOLDING THE CELLS IS WHAT `railCell` IS FOR. A leaving button is mounted, so grid
         auto-placement counted it and shuffled the cells of the buttons around it as it went: in two
         files a turn mid-fade dropped a row and jumped a column, and zoom-out changed columns without
-        travelling. Now both are named cells: zoom-out TRAVELS across (its cell changed, which is what
-        `layoutDependency` reads), the leaving turn stays exactly where it was drawn, and the two
+        travelling. Both occupy explicit cells: zoom-out animates its cell change, the leaving turn
+        stays exactly where it was drawn, and the two
         share the cell for the length of the fade.
 
         Each button is its own keyed child rather than a fragment: a fragment is not something
@@ -656,35 +673,17 @@ function ViewKit({ plan, hidden, onHide }: { plan: RailPlan; hidden: boolean; on
           </RailButton>
         )) : null}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
 export function Rail({ hidden, onHide }: { hidden: boolean; onHide: () => void }) {
-  // The layer control's SIZE lives up here because it places every group, not one: the panel
-  // replaces the control, and how deep it draws decides where the other two go. A pictured
-  // shell opens it at the size its figure poses.
-  const pose = useUiPreviewPose();
-  const [mode, setMode] = useState<LayerMode>(pose?.layerPanel ?? 'pill');
-  // The window's own height, in the px the frame is laid out in.
-  const zoom = useFrameZoom();
-  const vh = useViewportHeight() / zoom;
-  /**
-   * OPENING IS ONE STEP OF THE LADDER, and the count is the rung below the file.
-   *
-   * The three sizes are one control (`frame.ts:LAYER_MODES`), so the way in is the way the arrows
-   * go: pill, then file, then square. Opening onto whichever of the two the window happens to have
-   * room for makes the ladder skip its middle rung on a tall monitor and not on a laptop, so one
-   * press gives two different panels and the file can only be reached by stepping back down to it.
-   * What size the window can hold is still the plan's answer, and it is still what decides where the
-   * plate STANDS (`planRail`) — but it decides that for whichever size the visitor has walked to,
-   * rather than deciding which one they get.
-   */
-  const openPanel = useCallback(() => setMode('column'), []);
-  const plan = planRail(vh, { open: mode !== 'pill', plateDepth: plateDepth(mode) });
+  const layout = useFrameLayout();
+  if (!layout) return <FrameLayoutProvider><Rail hidden={hidden} onHide={onHide} /></FrameLayoutProvider>;
+  const { layerMode: mode, setLayerMode: setMode, rail: plan } = layout;
   return (
     <>
-      <LayerControl panelOpen={mode !== 'pill'} onOpen={openPanel} veiled={hidden} />
+      <LayerControl panelOpen={mode !== 'pill'} onOpen={() => setMode('column')} veiled={hidden} />
       {/* A SIBLING OF THE THREE GROUPS, not a child of the one it replaces. A group carries a
           z-index, so it is a stacking context, and a plate nested inside one is ordered against its
           siblings INSIDE it however high its own z-index is: the buttons of the next group along
@@ -693,11 +692,14 @@ export function Rail({ hidden, onHide }: { hidden: boolean; onHide: () => void }
         mode={mode}
         onMode={setMode}
         right={plan.plateRight}
+        top={layout.plateTop}
+        maxWidth={layout.plateMaxWidth}
         maxHeight={plan.plateMaxH}
         veiled={hidden}
       />
-      <HistoryGroup top={plan.historyTop} files={plan.historyFiles} veiled={hidden} />
-      <ViewKit plan={plan} hidden={hidden} onHide={onHide} />
+      <HistoryGroup top={plan.historyTop} right={layout.edgeRight} files={plan.historyFiles}
+        placement={`${plan.kitFiles}:${plan.historyFiles}:${layout.cornerTop}`} veiled={hidden} />
+      <ViewKit plan={plan} right={layout.edgeRight} hidden={hidden} onHide={onHide} />
     </>
   );
 }

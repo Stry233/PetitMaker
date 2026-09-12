@@ -43,6 +43,7 @@ function erasesHere(type: TerrainType, surface: ContentType): boolean {
  */
 export class EraserTool implements Tool {
   readonly id = ToolType.Eraser;
+  terrainGrid(ctx: ToolContext): boolean { return ctx.contentType !== 'tile'; }
   readonly cursor: CursorId = 'eraser';
 
   /**

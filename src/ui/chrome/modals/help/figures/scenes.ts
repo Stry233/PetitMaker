@@ -6,7 +6,7 @@
  * authors the opening state with real commands, then returns this run's steps — closures over the
  * world, so every loop starts clean (the player rewinds the world through the real undo stack
  * between loops). Steps mutate the world through the same doors the live tools use (`paint`,
- * `applyMacro('raise')`, `pressRoadNetwork`, `generateDesigned`, `generateMaze`, the stencil
+ * `applyMacro`, `generateDesigned`, `generateMaze`, the stencil
  * pipeline, placement and trim commands), and every mark they show goes through `DemoView` — which
  * the player maps onto the app's own overlay layer (real hover box, real ghost, real selection
  * ring, real band, real region tint, real route gold), so a demo is a proof, never a drawing.
@@ -28,15 +28,13 @@ import { removeObjectCommand } from '../../../../../tools/objects/object-placer'
 import { rotateObject } from '../../../../../tools/objects/actions';
 import { deleteGroup, rotateGroup } from '../../../../../tools/objects/group-actions';
 import type { GroupRotation } from '../../../../../canvas/group-arc';
-import { applyMacro } from '../../../../../tools/macros/run';
 import { peelCommand } from '../../../../../tools/paint/terrain-peel';
 import { circleCells, rectCells, splineCells, type CurveAnchor } from '../../../../../tools/paint/shapes';
 import { brushCells } from '../../../../../tools/paint/drawing-tool';
-import { pressRoadNetwork } from '../../../../../kit/operations/road-press';
 import { generateDesigned } from '../../../../../tools/generation/designer/pipeline';
-import { detachCommand } from '../../../../../tools/macros';
+import { applyMacro, detachCommand, previewMacro } from '../../../../../tools/macros';
 import { generateMaze } from '../../../../../tools/generation/maze/maze-generator';
-import { generateAnnotationId, nextZoneNumber, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type TextNote } from '../../../../../core/model/annotations';
+import { addZoneCells, generateAnnotationId, nextZoneNumber, removeZoneCells, simplifyPath, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type ChipNote } from '../../../../../core/model/annotations';
 import type { TokenSpec } from '../../../../hints/catalogue';
 import { DemoWorld } from './demo-world';
 
@@ -82,8 +80,8 @@ export interface DemoView {
    *  member has landed. */
   groupSpin(turn: GroupRotation): void;
   /** Redraw plan notes from `world.state.annotations` through the real annotation layer; a draft
-   *  rides along the way the live tool's in-progress figure does. */
-  annotations(draft?: MapAnnotation | null): void;
+   *  rides along the way the live tool's in-progress figure does, and `selection` wears the marks. */
+  annotations(draft?: MapAnnotation | null, selection?: readonly string[]): void;
   /** The adjust handles a finished curve leaves standing: anchor grabs and tangent knobs at these
    *  anchors, wearing the live controls' own faces (`CurveHandles.tsx`). `null` puts them away. */
   curveHandles(anchors: readonly CurveAnchor[] | null): void;
@@ -1273,29 +1271,36 @@ const locked: HelpScene = {
 
 const smart1: HelpScene = {
   stage: { x1: 63, y1: 97, x2: 82, y2: 107, tile: 19 },
-  // Radius 4 is the bar's own smallest setting (sizes 1..5 land radii 4..8), and the macro tool
-  // wears the `place` cursor.
-  run: () => [
-    { capKey: 'help.fig.smart1_1', move: [68, 102], pointer: 'place', dur: 550 },
-    {
-      press: true, dur: 250,
-      on: ({ world }) => { applyMacro(world.kit, 'raise', { seed: 7, at: { x: 68, y: 102 }, radius: 4, steepness: 'wide' }); },
+  run: ({ world, view }) => {
+    const at = { x: 72, y: 102 };
+    const opts = { seed: 4, at, radius: 4, steepness: 'steep' as const, footing: 0 };
+    const grow = (stage: number) => applyMacro(world.kit, 'raise', { ...opts, stage,
+      heldCells: circleCells(at, 6, 6).filter(c => world.kit.state.cells[c.y]?.[c.x]?.terrain)
+        .map(c => c.y * world.kit.state.template.width + c.x),
+    });
+    return [
+    { capKey: 'help.fig.smart1_1', move: [72, 102], pointer: 'place', dur: 1100,
+      on: () => view.paintGhost(previewMacro(world.kit, 'raise', opts).added, 'mountain'),
     },
-    { press: false, dur: 700 },
-    { capKey: 'help.fig.smart1_2', move: [77, 102], dur: 600 },
     {
-      press: true, dur: 250,
-      on: ({ world }) => { applyMacro(world.kit, 'raise', { seed: 7, at: { x: 77, y: 102 }, radius: 4, steepness: 'wide' }); },
+      press: true, capKey: 'help.fig.smart1_2', dur: 260,
+      on: () => { view.paintGhost(null); grow(1); },
     },
-    { press: false, dur: 1700 },
-  ],
+    {
+      press: true, dur: 700, on: () => grow(2),
+    },
+    {
+      press: true, dur: 700, on: () => grow(3),
+    },
+    { press: false, dur: 1500 },
+  ];
+  },
 };
 
-/** The stream macro on a stepped headland: one press carves its own course down the tiers and out
- *  to the sea. The terraces are authored, the water is entirely the macro's. */
+/** An endpoint-guided river through terraces, built by the same macro as the editor. */
 const stream: HelpScene = {
   stage: COAST,
-  run: ({ world }) => {
+  run: ({ world, view }) => {
     world.beginStroke();
     world.paint(rect(64, 114, 78, 119), TerrainType.Mountain, 1);
     world.commit();
@@ -1311,33 +1316,34 @@ const stream: HelpScene = {
     world.paint([{ x: 71, y: 115 }], TerrainType.Water, 3);
     world.commit();
     const from = { x: 71, y: 115 };
+    const at = { x: 80, y: 120 }, opts = { seed: 5, from, at, width: 1 };
     return [
       { capKey: 'help.fig.stream_1', move: [from.x, from.y], pointer: 'place', dur: 700 },
       {
-        press: true, dur: 280,
-        on: ({ world: w }) => { applyMacro(w.kit, 'stream', { seed: 5, at: from, radius: 6 }); },
+        press: true, move: [at.x, at.y], dur: 850,
+        on: () => view.paintGhost(previewMacro(world.kit, 'stream', opts).added, 'water'),
       },
-      { press: false, capKey: 'help.fig.stream_2', dur: 2000 },
+      { press: false, capKey: 'help.fig.stream_2', dur: 2000,
+        on: () => { view.paintGhost(null); applyMacro(world.kit, 'stream', opts); },
+      },
     ];
   },
 };
 
 const smart2: HelpScene = {
   stage: INTERIOR,
-  run: ({ world }) => {
+  run: ({ world, view }) => {
     world.place(CABIN, 64, 97);
     world.place(CABIN2, 75, 104);
+    const from = { x: 65, y: 98 }, at = { x: 76, y: 105 }, opts = { seed: 1, from, at, width: 2 };
     return [
-      { capKey: 'help.fig.smart2_1', move: [72, 102], pointer: 'place', dur: 550 },
-      { press: true, dur: 260, on: ({ world: w }) => { pressRoadNetwork(w.kit, {}); } },
-      { press: false, dur: 900 },
-      {
-        capKey: 'help.fig.smart2_2', press: true, dur: 260,
-        on: ({ world: w }) => { pressRoadNetwork(w.kit, {}); },
+      { capKey: 'help.fig.smart2_1', move: [from.x, from.y], pointer: 'place', dur: 550 },
+      { press: true, move: [at.x, at.y], dur: 850,
+        on: () => view.paintGhost(previewMacro(world.kit, 'road-link', opts).added),
       },
-      // The app's own notice for a repeated press; the second landed press is plan 2.
-      { press: false, toastKey: 'smart.roads_another', toastParams: { n: 2 }, dur: 1600 },
-      { toastKey: null, dur: 700 },
+      { press: false, capKey: 'help.fig.smart2_2', dur: 1700,
+        on: () => { view.paintGhost(null); applyMacro(world.kit, 'road-link', opts); },
+      },
     ];
   },
 };
@@ -1537,56 +1543,83 @@ const stencil: HelpScene = {
 
 /* ───────────────────────────── plan ────────────────────────────── */
 
+/** The plan-notes stage: wide, because annotation ink scales with the island, at a cell size that
+ *  keeps one or two notes readable without filling the frame. */
+const NOTES_STAGE: Stage = { x1: 50, y1: 92, x2: 104, y2: 118, tile: 8 };
+
+/** Zone cells within `r` of the segment from `a` to `b`, ordered along it, so a stroke reveals
+ *  them in the order the brush would lay them. */
+function bandCells(a: [number, number], b: [number, number], r: number): MacroCoord[] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy || 1;
+  const out: Array<{ c: MacroCoord; t: number }> = [];
+  for (let y = Math.floor(Math.min(a[1], b[1]) - r); y <= Math.ceil(Math.max(a[1], b[1]) + r); y++) {
+    for (let x = Math.floor(Math.min(a[0], b[0]) - r); x <= Math.ceil(Math.max(a[0], b[0]) + r); x++) {
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / len2));
+      if (Math.hypot(x - (a[0] + dx * t), y - (a[1] + dy * t)) <= r) out.push({ c: { x, y }, t });
+    }
+  }
+  out.sort((p, q) => p.t - q.t);
+  return out.map((p) => p.c);
+}
+
+/** The first `k` share of `cells`, at least one. */
+const reveal = (cells: MacroCoord[], k: number): MacroCoord[] => cells.slice(0, Math.max(1, Math.ceil(cells.length * k)));
+
+/** Points every `step` along the segment from `a` to `b`, the way a dragged pointer reports. */
+function sampled(a: [number, number], b: [number, number], step = 0.5): MacroCoord[] {
+  const n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+  const out: MacroCoord[] = [];
+  for (let i = 0; i <= n; i++) out.push({ x: a[0] + (b[0] - a[0]) * i / n, y: a[1] + (b[1] - a[1]) * i / n });
+  return out;
+}
+
+/** Replace a note in the world the way the slice does: a new object, so the layer redraws it. */
+function replaceNote(world: DemoWorld, id: string, patch: Partial<MapAnnotation>): void {
+  const items = world.state.annotations!.items;
+  const i = items.findIndex((n) => n.id === id);
+  if (i >= 0) items[i] = { ...items[i]!, ...patch } as MapAnnotation;
+  world.touch();
+}
+
 const notes: HelpScene = {
-  // A wide crop: annotation ink scales with the ISLAND (annotationInkScale), so a tight stage
-  // shows plan labels at billboard size. This frame reads like the editor zoomed to plan.
-  stage: { x1: 50, y1: 90, x2: 111, y2: 119, tile: 7 },
-  run: ({ world, view }, t) => {
-    world.place(CABIN, 75, 99);
-    world.place(TREE, 65, 106);
-    // A zone at planning scale: wide enough that its own caption sits INSIDE it.
-    const zoneCells = rect(58, 96, 71, 103);
-    // The notes the beats commit, shaped as the annotate tool's own drafts are (its zoneDraft and
-    // route collection), and landed through `world.addNote` — the slice's own append.
+  stage: NOTES_STAGE,
+  run: ({ world, view }) => {
+    world.place(CABIN, 78, 100);
+    world.place(TREE, 66, 110);
+    const zoneCells = rect(56, 96, 69, 103);
     const zone: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: zoneCells,
-      color: ANNOTATION_COLORS[0]!, name: t('help.fig.notes_zone_name'), num: nextZoneNumber([]), size: 'm',
+      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
     };
-    const routePoints = [{ x: 71, y: 105 }, { x: 75, y: 104 }, { x: 79, y: 105 }];
-    // A second pen colour from the panel's own palette, so the route reads apart from the zone.
-    const route: RouteNote = {
-      kind: 'route', id: generateAnnotationId(), points: routePoints,
-      color: ANNOTATION_COLORS[5]!, dashed: true,
-    };
-    const routeDraft = (n: number): RouteNote => ({ ...route, points: routePoints.slice(0, n) });
+    const raw = [...sampled([70, 108], [80, 105]), ...sampled([80, 105], [90, 109]).slice(1)];
+    const half = Math.ceil(raw.length / 2);
+    const route: RouteNote = { kind: 'route', id: generateAnnotationId(), points: [], color: ANNOTATION_COLORS[5]!, dashed: true };
     return [
-      // The zone and route tools both wear the annotate tool's `place` cursor.
-      { capKey: 'help.fig.notes_1', move: [58, 96], pointer: 'place', dur: 450 },
+      { capKey: 'help.fig.notes_1', move: [56, 96], pointer: 'place', dur: 450 },
       { press: true, dur: 160 },
       {
-        move: [71.5, 103.5], dur: 650,
+        move: [69.5, 103.5], dur: 650,
         during: (_ctx, k) => {
-          // The tool's own draft wash rides the drag, drawn by the annotation layer itself.
-          view.annotations({ ...zone, name: '', cells: zoneCells.filter((c) => c.x <= 58 + 13 * k + 0.5 && c.y <= 96 + 7 * k + 0.5) });
+          view.annotations({ ...zone, tag: null, cells: zoneCells.filter((c) => c.x <= 56 + 13 * k + 0.5 && c.y <= 96 + 7 * k + 0.5) });
         },
       },
+      { press: false, dur: 700, on: ({ world: w }) => { w.addNote(zone); view.annotations(); } },
+      { capKey: 'help.fig.notes_2', move: [70, 108], dur: 500 },
+      { press: true, dur: 160, on: () => view.annotations({ ...route, points: raw.slice(0, 1) }) },
+      { move: [80, 105], dur: 450, during: (_ctx, k) => view.annotations({ ...route, points: raw.slice(0, Math.max(1, Math.round(half * k))) }) },
+      { move: [90, 109], dur: 450, during: (_ctx, k) => view.annotations({ ...route, points: raw.slice(0, Math.max(1, half + Math.round((raw.length - half) * k))) }) },
       {
-        press: false, dur: 700,
-        on: ({ world: w }) => { w.addNote(zone); view.annotations(); },
+        press: false, dur: 1500,
+        on: ({ world: w }) => {
+          const points = simplifyPath(raw, 0.35);
+          w.addNote({ ...route, points });
+          view.annotations(null, [route.id]);
+          view.curveHandles(points);
+        },
       },
-      // The route collects waypoints as a draft; a press back on the last one takes the band.
-      { capKey: 'help.fig.notes_2', move: [71, 105], dur: 500 },
-      { press: true, dur: 160, on: () => { view.annotations(routeDraft(1)); } },
-      { press: false, move: [75, 104], dur: 450 },
-      { press: true, dur: 160, on: () => { view.annotations(routeDraft(2)); } },
-      { press: false, move: [79, 105], dur: 450 },
-      { press: true, dur: 160, on: () => { view.annotations(routeDraft(3)); } },
-      { press: false, dur: 400 },
-      {
-        press: true, dur: 160,
-        on: ({ world: w }) => { w.addNote(route); view.annotations(); },
-      },
-      { press: false, dur: 1100 },
+      { dur: 300, on: () => view.curveHandles(null) },
     ];
   },
 };
@@ -1791,18 +1824,16 @@ const mazew1 = mazeWidth(1);
 const mazew2 = mazeWidth(2);
 
 const notetext: HelpScene = {
-  // The notes stage: annotation ink scales with the island, so the wide crop reads at plan size.
-  stage: { x1: 50, y1: 90, x2: 111, y2: 119, tile: 7 },
-  run: (_ctx, t) => {
-    // The two text styles the tool offers, shaped as its own committed notes and landed through
-    // `world.addNote` — plain lettering first, then the colored plate.
-    const label: TextNote = {
-      kind: 'text', id: generateAnnotationId(), x: 62, y: 98,
-      text: t('help.fig.notetext_word1'), style: 'label', size: 'l', color: ANNOTATION_COLORS[0]!,
+  stage: NOTES_STAGE,
+  run: () => {
+    // Two chips, shaped as the tool's own committed notes and landed through `world.addNote`.
+    const label: ChipNote = {
+      kind: 'chip', id: generateAnnotationId(), x: 62, y: 98,
+      tag: 'landmark', size: 'm', color: ANNOTATION_COLORS[0]!,
     };
-    const chip: TextNote = {
-      kind: 'text', id: generateAnnotationId(), x: 85, y: 108,
-      text: t('help.fig.notetext_word2'), style: 'chip', size: 'm', color: ANNOTATION_COLORS[2]!,
+    const chip: ChipNote = {
+      kind: 'chip', id: generateAnnotationId(), x: 85, y: 108,
+      tag: 'entrance', size: 's', color: ANNOTATION_COLORS[2]!,
     };
     return [
       // The text tool wears the annotate tool's `place` cursor.
@@ -1822,12 +1853,129 @@ const notetext: HelpScene = {
   },
 };
 
+
+const notezone: HelpScene = {
+  stage: NOTES_STAGE,
+  run: ({ view }) => {
+    const first = bandCells([57, 97], [72, 97], 1.6);
+    const second = bandCells([57, 98], [57, 108], 1.6);
+    const zone: ZoneNote = {
+      kind: 'zone', id: generateAnnotationId(), cells: [],
+      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
+    };
+    return [
+      { capKey: 'help.fig.notezone_1', move: [57, 97], pointer: 'place', dur: 450 },
+      { press: true, dur: 160 },
+      { move: [72, 97], dur: 650, during: (_ctx, k) => view.annotations({ ...zone, cells: reveal(first, k) }) },
+      { press: false, dur: 500 },
+      { capKey: 'help.fig.notezone_2', move: [57, 98], dur: 400 },
+      { press: true, dur: 160 },
+      { move: [57, 108], dur: 650, during: (_ctx, k) => view.annotations({ ...zone, cells: addZoneCells(first, reveal(second, k)) }) },
+      { press: false, dur: 500 },
+      {
+        capKey: 'help.fig.notezone_3', dur: 1400,
+        on: ({ world }) => { world.addNote({ ...zone, cells: addZoneCells(first, second) }); view.annotations(); },
+      },
+    ];
+  },
+};
+
+const notegrow: HelpScene = {
+  stage: NOTES_STAGE,
+  run: ({ world, view }) => {
+    const base = rect(58, 96, 67, 101);
+    const zone: ZoneNote = {
+      kind: 'zone', id: generateAnnotationId(), cells: base,
+      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
+    };
+    world.addNote(zone);
+    // A stroke down from inside the zone hangs a leg on it; the eraser then takes the right end
+    // of the top back, so the L reads as the zone's new shape.
+    const grow = bandCells([61, 100], [61, 110], 1.6);
+    const bite = bandCells([67, 96], [67, 101], 1.2);
+    const grown = addZoneCells(base, grow);
+    return [
+      { capKey: 'help.fig.notegrow_1', move: [61, 100], pointer: 'place', dur: 450, on: () => view.annotations() },
+      { press: true, dur: 160 },
+      { move: [61, 110], dur: 650, during: (_ctx, k) => { replaceNote(world, zone.id, { cells: addZoneCells(base, reveal(grow, k)) }); view.annotations(); } },
+      { press: false, dur: 600 },
+      { capKey: 'help.fig.notegrow_2', move: [67, 96], pointer: 'eraser', dur: 450 },
+      { press: true, dur: 160 },
+      { move: [67, 101], dur: 600, during: (_ctx, k) => { replaceNote(world, zone.id, { cells: removeZoneCells(grown, reveal(bite, k)) }); view.annotations(); } },
+      { press: false, dur: 600 },
+      { capKey: 'help.fig.notegrow_3', move: [61, 104], pointer: 'place', dur: 450 },
+      { press: true, dur: 140 },
+      { press: false, dur: 1200, on: () => view.annotations(null, [zone.id]) },
+    ];
+  },
+};
+
+const noteroute: HelpScene = {
+  stage: NOTES_STAGE,
+  run: ({ world, view }) => {
+    world.place(CABIN, 78, 100);
+    const raw = [...sampled([58, 110], [72, 104]), ...sampled([72, 104], [88, 110]).slice(1)];
+    const half = Math.ceil(raw.length / 2);
+    const route: RouteNote = { kind: 'route', id: generateAnnotationId(), points: [], color: ANNOTATION_COLORS[5]!, dashed: true };
+    return [
+      { capKey: 'help.fig.noteroute_1', move: [58, 110], pointer: 'place', dur: 450 },
+      { press: true, dur: 160, on: () => view.annotations({ ...route, points: raw.slice(0, 1) }) },
+      { move: [72, 104], dur: 500, during: (_ctx, k) => view.annotations({ ...route, points: raw.slice(0, Math.max(1, Math.round(half * k))) }) },
+      { move: [88, 110], dur: 500, during: (_ctx, k) => view.annotations({ ...route, points: raw.slice(0, Math.max(1, half + Math.round((raw.length - half) * k))) }) },
+      {
+        press: false, capKey: 'help.fig.noteroute_2', dur: 1500,
+        on: () => {
+          const points = simplifyPath(raw, 0.35);
+          world.addNote({ ...route, points });
+          view.annotations(null, [route.id]);
+          view.curveHandles(points);
+        },
+      },
+      { dur: 400, on: () => view.curveHandles(null) },
+    ];
+  },
+};
+
+const noteselect: HelpScene = {
+  stage: NOTES_STAGE,
+  run: ({ world, view }) => {
+    const homes: ZoneNote = {
+      kind: 'zone', id: generateAnnotationId(), cells: rect(56, 95, 65, 100),
+      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: 1, size: 's',
+    };
+    const farm: ZoneNote = {
+      kind: 'zone', id: generateAnnotationId(), cells: rect(76, 106, 86, 112),
+      color: ANNOTATION_COLORS[5]!, tag: 'farm', num: 2, size: 's',
+    };
+    const chip: ChipNote = { kind: 'chip', id: generateAnnotationId(), x: 88, y: 97, tag: 'plaza', size: 's', color: ANNOTATION_COLORS[2]! };
+    world.addNote(homes);
+    world.addNote(farm);
+    world.addNote(chip);
+    const moveBy = (dy: number): void => {
+      replaceNote(world, homes.id, { cells: homes.cells.map((c) => ({ x: c.x, y: c.y + dy })) });
+      view.annotations(null, [homes.id]);
+    };
+    return [
+      { capKey: 'help.fig.noteselect_1', move: [60, 97], pointer: 'select', dur: 450, on: () => view.annotations() },
+      { press: true, dur: 140 },
+      { press: false, dur: 600, on: () => view.annotations(null, [homes.id]) },
+      { capKey: 'help.fig.noteselect_2', press: true, dur: 160 },
+      { move: [60, 104], dur: 600, during: (_ctx, k) => moveBy(Math.round(7 * k)) },
+      { press: false, dur: 600 },
+      { keys: CTRL_KEYS, capKey: 'help.fig.noteselect_3', move: [80, 109], dur: 500 },
+      { press: true, dur: 140 },
+      { press: false, dur: 1200, on: () => view.annotations(null, [homes.id, farm.id]) },
+      { keys: null, dur: 200 },
+    ];
+  },
+};
+
 export const HELP_SCENES: Record<string, HelpScene> = {
   welcome, camera, terrain, trim, objects, select,
   brushfree, brushwidth, eraseline, lineridge, curvebank, rectpad, circlepond, autotrim,
   water, road, roadtrim, trimmulti, trimnotch, rotate, ramp, spacing, smartpatch, grouprotate,
   locked, delight,
   smart1, smart2, stream, generate, region, maze, stencil,
-  notes, undo, load, faq,
+  notes, notezone, notegrow, noteroute, noteselect, undo, load, faq,
   scope, ground, mazew1, mazew2, notetext,
 };

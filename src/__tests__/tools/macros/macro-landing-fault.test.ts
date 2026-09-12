@@ -9,7 +9,7 @@ import { MacroTool } from '../../../tools/macros/macro-tool';
 import {
   buildMacroRun, installMacroBuildRunner, type MacroBuild, type MacroId, type MacroOpts,
 } from '../../../tools/macros';
-import { __resetRouteSession, getRouteSession } from '../../../tools/macros/route-session';
+import { __resetCurveSession, getCurveSession } from '../../../tools/paint/curve-session';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { CellZone, type EditorEvents, type GridState } from '../../../core/model/types';
@@ -86,7 +86,7 @@ beforeEach(() => {
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   unpresent = setToastPresenter((text, type) => { toasts.push({ text, type }); });
 });
-afterEach(() => { errorSpy.mockRestore(); unpresent?.(); unpresent = null; live = null; __resetRouteSession(); });
+afterEach(() => { errorSpy.mockRestore(); unpresent?.(); unpresent = null; live = null; __resetCurveSession(); });
 
 describe('a macro landing that throws', () => {
   it('leaves the map alone, says the press built nothing, and lets the next press build', async () => {
@@ -101,6 +101,7 @@ describe('a macro landing that throws', () => {
     tool.onActivate();
 
     tool.onPointerDown({ x: 20, y: 20 }, { x: 20, y: 20 }, ctx);
+    tool.onPointerUp({ x: 24, y: 24 }, { x: 24, y: 24 }, ctx);
     await flush();
 
     expect(faults.left, 'the fault was reached').toBe(0);
@@ -108,10 +109,11 @@ describe('a macro landing that throws', () => {
     expect(raised(state), 'the faulted landing took its own work back').toBe(0);
 
     tool.onPointerDown({ x: 20, y: 20 }, { x: 20, y: 20 }, ctx);
+    tool.onPointerUp({ x: 24, y: 24 }, { x: 24, y: 24 }, ctx);
     await flush();
 
     expect(raised(state), 'the next press still builds').toBeGreaterThan(0);
-    expect(toasts.map((t) => t.text), 'the press that built nothing is reported').toContain('smart.empty');
+    expect(toasts.map((t) => t.text), 'the press that built nothing is reported').toContain('smart.terrain_blocked');
   });
 
   it('lets a held planting whose burst faulted settle, and keeps planting after it', async () => {
@@ -155,20 +157,20 @@ describe('a macro landing that throws', () => {
     tool.onActivate();
 
     tool.onPointerDown({ x: 10, y: 10 }, { x: 10, y: 10 }, ctx);
-    tool.onPointerDown({ x: 30, y: 10 }, { x: 30, y: 10 }, ctx);
+    tool.onPointerUp({ x: 30, y: 10 }, { x: 30, y: 10 }, ctx);
     await flush();
 
     expect(faults.left).toBe(0);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(state.objects.size, 'the faulted commit paved nothing').toBe(0);
-    expect(getRouteSession(), 'and nothing offers to nudge a route the map does not have').toBeNull();
+    expect(getCurveSession(), 'and nothing offers to nudge a route the map does not have').toBeNull();
     expect(toasts.map((t) => t.text), 'the commit reports its own refusal').toContain('smart.empty_link');
 
     tool.onPointerDown({ x: 10, y: 20 }, { x: 10, y: 20 }, ctx);
-    tool.onPointerDown({ x: 30, y: 20 }, { x: 30, y: 20 }, ctx);
+    tool.onPointerUp({ x: 30, y: 20 }, { x: 30, y: 20 }, ctx);
     await flush();
 
     expect(state.objects.size, 'the next link lays').toBeGreaterThan(0);
-    expect(getRouteSession(), 'with its own marks standing').not.toBeNull();
+    expect(getCurveSession(), 'with its own marks standing').not.toBeNull();
   });
 });

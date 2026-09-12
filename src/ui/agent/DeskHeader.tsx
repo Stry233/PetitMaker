@@ -9,6 +9,7 @@ import { MAX_TURN_RETRIES } from '../../agent/core/retry';
 import type { AskRecord, JobView, PanelView, SessionPhase } from '../../agent/core/project-view';
 import { useT } from '../../i18n/context';
 import { IconButton, Pill } from './atoms';
+import { editCount } from './job-stats';
 import { Character } from './character/Character';
 import { poseForPhase, type PoseName } from './character/poses';
 import { setSurfacePose } from './character/surface-pose';
@@ -21,7 +22,7 @@ import { amplitude, cssMotion, flipProfile, framerMotion, outMotion, turnSeconds
 import { TimedButton } from '../primitives/TimedButton';
 import { INK } from '../design/tokens';
 import { colors, font } from '../design/styles';
-import { roleFont } from '../design/text-weight';
+import { roleWeight, roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
 
 /** Dock-card height in pixels. */
@@ -347,11 +348,6 @@ interface Face {
   retry?: { secs: number; spent: number; spanMs: number; timed: boolean };
   /** Stall copy split around its ticking time leaf. */
   stall?: { prefix: string; suffix: string; clock: string };
-}
-
-/** What a job actually changed on the map, as its own ops recorded it. */
-function editCount(job: JobView): number {
-  return job.ops.reduce((sum, op) => sum + (op.detail?.cells ?? 0) + (op.detail?.objects ?? 0), 0);
 }
 
 export interface DeskHeaderProps {
@@ -1167,7 +1163,7 @@ function RetryPill(
       {/* Static sentence fragments ellipsize around the fixed-width countdown value. */}
       <span style={{ display: 'flex', minWidth: 0 }}>
         <span style={CLIPPED}>{prefix}</span>
-        <b style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', display: 'inline-block', flex: '0 0 auto' }}>
+        <b style={{ fontWeight: roleWeight('chip'), fontVariantNumeric: 'tabular-nums', display: 'inline-block', flex: '0 0 auto' }}>
           {/* Keying by value mounts one clipped upward roll per countdown second. */}
           <span style={{ display: 'inline-block', overflow: 'hidden', verticalAlign: 'bottom' }}>
             <motion.span

@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { isDenseScript, readableWeight } from '../../design/text-weight';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
@@ -36,12 +37,12 @@ export const MIN_PX = 26;
 
 /** The mark's face at a given size (css px): fill, ink, weight and the size's own ratios. The one
  *  place both the live drag marker and the Help Center's still figure draw a gate pill from. */
-export function gateMarkStyle(size: number): CSSProperties {
+export function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperties {
   return {
     background: ACTIVE,
     color: PLATE_INK,
     fontFamily: font.family,
-    fontWeight: 900,
+    fontWeight: readableWeight(900, size * 0.42, dense, dpr),
     lineHeight: 1,
     whiteSpace: 'nowrap',
     borderRadius: '999px',
@@ -84,7 +85,7 @@ function Marker({ end, text, testId, onMove }: {
     // whole point of naming the two ends is that a person should not have to work out which is
     // which. The height is the cell's, the width is whatever the word needs, and the pill grows
     // around it — so a longer language reads rather than being cut.
-    Object.assign(el.style, gateMarkStyle(size));
+    Object.assign(el.style, gateMarkStyle(size, window.devicePixelRatio || 1, isDenseScript(useEditorStore.getState().locale)));
     el.style.width = 'auto';
     // Measured after the text has its size, so the pill is centred on its cell by its OWN width.
     const w = el.offsetWidth;

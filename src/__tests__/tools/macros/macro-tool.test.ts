@@ -52,11 +52,13 @@ describe('a press', () => {
     tool.onActivate();
 
     tool.onPointerDown(at(10, 10), { x: 10, y: 10 }, ctx);
+    tool.onPointerUp(at(10, 10), { x: 10, y: 10 }, ctx);
     expect(exec.getUndoStackSize()).toBe(1);
-    expect(state.cells[10]![10]!.terrain, 'the hill stands where the press named').toBeTruthy();
+    expect(state.cells[10]![10]!.terrain?.elevation).toBe(2);
 
     tool.onPointerDown(at(22, 22), { x: 22, y: 22 }, ctx);
-    // TWO hills stand, not one replaced by another.
+    tool.onPointerUp(at(22, 22), { x: 22, y: 22 }, ctx);
+    expect(state.cells[22]![22]!.terrain?.elevation).toBe(2);
     expect(exec.getUndoStackSize()).toBe(2);
 
     exec.undo();
@@ -76,23 +78,21 @@ describe('a press', () => {
 });
 
 describe('the ghost', () => {
-  it('answers a MOVING pointer: each answer draws, and the next cell is asked at once', async () => {
+  it('coalesces pointer movement into the latest local footprint preview', async () => {
     const { state, exec } = installMap();
     const { ctx, overlay } = ctxFor(state, exec);
     const tool = new MacroTool();
     tool.onActivate();
 
     tool.onPointerMove(at(10, 10), { x: 10, y: 10 }, ctx);
-    // While the first answer is airborne the pointer keeps moving; the pump takes the NEWEST cell
-    // when it lands, never queueing the ones crossed in between.
     tool.onPointerMove(at(12, 10), { x: 12, y: 10 }, ctx);
     tool.onPointerMove(at(14, 10), { x: 14, y: 10 }, ctx);
     await new Promise((r) => { setTimeout(r, 0); });
     expect(overlay.showGhost).toHaveBeenCalled();
     const cells = overlay.showGhost.mock.calls[0]![0] as MacroCoord[];
     expect(cells.length).toBeGreaterThan(0);
-    // Two answers at most: the first cell's, then the newest — the middle cell was superseded.
-    expect(overlay.showGhost.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(overlay.showGhost).toHaveBeenCalledTimes(1);
+    expect(exec.getUndoStackSize()).toBe(0);
   });
 
   it('is cleared when the tool is put away, and an airborne answer is dropped', async () => {

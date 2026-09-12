@@ -10,10 +10,12 @@
  * the mounted tree — so the spotlight ring bounds exactly what the shell drew, and a section CUT
  * crops the same mount to one cluster's measured box.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { Shell } from '../../../../../shell/Shell';
 import { tourTargetSelector } from '../../../../tour/steps';
 import { drawCursorImg } from '../demo-cursor';
+import { useInView } from '../use-in-view';
+import { useFigureReady } from '../figure-ready';
 import { UiPreviewProvider, type UiPreviewPose } from '../../../../../primitives/ui-preview';
 import { FIT_REF } from '../../../../../design/scale';
 import { useEditorStore } from '../../../../../../state/store';
@@ -122,14 +124,20 @@ const noop = () => {};
 
 /** The real shell, pictured: window-sized inside its own containing block, zoomed to fit. The pose
  *  holds a mode armed so the selected icon's name and its bottom toolbar are in the picture. */
-export function PicturedShell({ win, zoom, layerPanel, children }: {
+export function PicturedShell({ win, zoom, layerPanel, notesRow, children }: {
   win: { w: number; h: number };
   zoom: number;
   layerPanel?: UiPreviewPose['layerPanel'];
+  notesRow?: UiPreviewPose['notesRow'];
   children?: ReactNode;
 }) {
   const backdrop = useMapBackdrop(win.w / win.h);
-  const [pose] = useState<UiPreviewPose>(() => ({ viewport: win, mode: 'mountain', layerPanel }));
+  // One pose object per distinct state, so the pictured subtree re-renders only when a posed
+  // fact changes.
+  const pose = useMemo<UiPreviewPose>(
+    () => ({ viewport: win, mode: 'mountain', layerPanel, ...(notesRow ? { notesRow } : {}) }),
+    [win, layerPanel, notesRow?.visible, notesRow?.locked],
+  );
   return (
     <div style={{ position: 'relative', width: win.w, height: win.h, overflow: 'hidden', contain: 'paint', zoom }}>
       {backdrop && (
@@ -156,6 +164,7 @@ const CYCLE: readonly FrameCorner[] = ['modes', 'agent', 'topright', 'rail', 'ba
 
 /** The whole window at a glance, the spotlight walking cluster to cluster. */
 export function FrameOverview() {
+  const ready = useFigureReady();
   const t = useT();
   const win = useWindowSnapshot();
   const width = 560;
@@ -166,15 +175,15 @@ export function FrameOverview() {
   const still = useRef(isMotionReduced());
 
   useEffect(() => {
-    if (still.current) return undefined;
+    if (!ready || still.current) return undefined;
     const timer = setInterval(() => setStep((n) => (n + 1) % CYCLE.length), 2200);
     return () => clearInterval(timer);
-  }, []);
+  }, [ready]);
 
   const corner = CYCLE[step]!;
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!root || still.current) return undefined;
+    if (!ready || !root || still.current) return undefined;
     const read = () => {
       const b = measure(root, corner, win.w);
       if (b) setBox(b);
@@ -186,11 +195,11 @@ export function FrameOverview() {
     read();
     const timer = setTimeout(() => { if (!read()) setStep((n) => (n + 1) % CYCLE.length); }, 80);
     return () => clearTimeout(timer);
-  }, [corner, scale]);
+  }, [corner, scale, ready]);
 
   return (
     <div ref={rootRef} aria-hidden {...INERT} style={{ position: 'relative', width, height: Math.round(win.h * scale), overflow: 'hidden', borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none' }}>
-      <PicturedShell win={win} zoom={scale}>
+      {ready && <PicturedShell win={win} zoom={scale}>
         {!still.current && box && (
           <>
             {/* Figure annotations stand at the ladder's top: the pictured chrome carries the
@@ -215,7 +224,7 @@ export function FrameOverview() {
             </span>
           </>
         )}
-      </PicturedShell>
+      </PicturedShell>}
     </div>
   );
 }
@@ -227,21 +236,10 @@ export function FrameOverview() {
 export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?: ReactNode }) {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(false);
+  const near = useInView(holdRef);
   const rootRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Box | null>(null);
   const [settled, setSettled] = useState(false);
-
-  useEffect(() => {
-    const hold = holdRef.current;
-    if (!hold || near) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setNear(true); return undefined; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: '600px' });
-    io.observe(hold);
-    return () => io.disconnect();
-  }, [near]);
 
   const scale = box ? Math.min(620 / box.w, 340 / box.h, 1.25) : 0.4;
 
@@ -276,6 +274,113 @@ export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?:
               <PicturedShell win={win} zoom={1} />
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The Notes row's two toggles, walked on the pictured panel standing open: the mark lands on the
+ *  eye, the eye closes; then on the lock, the lock shuts; then each opens again. The row is POSED
+ *  through the preview context rather than pressed, because the pictured panel is the live one and
+ *  a real press would hide or lock the reader's own notes. */
+type NotesPress = 'eye' | 'lock';
+const NOTES_TAP: Record<NotesPress, readonly string[]> = {
+  eye: ['[data-testid="shell-layer-annotation-eye"]'],
+  lock: ['[data-testid="shell-layer-annotation-lock"]'],
+};
+const NOTES_WALK: readonly NotesPress[] = ['eye', 'eye', 'lock', 'lock'];
+const NOTES_VIEW = { w: 560, h: 300, pad: 14 } as const;
+
+export function NotesRowTour() {
+  const win = useWindowSnapshot();
+  const holdRef = useRef<HTMLDivElement>(null);
+  const near = useInView(holdRef);
+  const still = useRef(isMotionReduced());
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [step, setStep] = useState(0);
+  const [row, setRow] = useState({ visible: true, locked: false });
+  const [box, setBox] = useState<Box | null>(null);
+  const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
+  const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
+  const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
+
+  useEffect(() => {
+    if (still.current || !near) return undefined;
+    const timer = setInterval(() => setStep((n) => (n + 1) % NOTES_WALK.length), LAYER_BEAT_MS);
+    return () => clearInterval(timer);
+  }, [near]);
+
+  useEffect(() => {
+    if (!near) return undefined;
+    const readBox = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      setBox((was) => {
+        if (was) return was;
+        const anchor = measureBox(root, ['[data-testid="shell-layer-annotation-help"]', '[data-help="layers"]'], win.w, 0);
+        if (!anchor) return was;
+        return { x: anchor.x + anchor.w + NOTES_VIEW.pad + 200 - NOTES_VIEW.w, y: anchor.y - NOTES_VIEW.pad - 60, w: NOTES_VIEW.w, h: NOTES_VIEW.h };
+      });
+    };
+    const readTap = (selectors: readonly string[]) => () => {
+      const root = rootRef.current;
+      const p = root ? measurePoint(root, selectors, win.w) : null;
+      setTap((was) => (was && p && Math.abs(was.x - p.x) < 1 && Math.abs(was.y - p.y) < 1 ? was : p));
+      if (p) setCur(p);
+    };
+    if (still.current) {
+      const read = () => { readBox(); readTap(NOTES_TAP.eye)(); };
+      const timers = [setTimeout(read, 120), setTimeout(read, 900)];
+      return () => timers.forEach(clearTimeout);
+    }
+    const press = NOTES_WALK[step]!;
+    const timers = [
+      setTimeout(() => { readBox(); readTap(NOTES_TAP[press])(); }, 150),
+      setTimeout(readTap(NOTES_TAP[press]), 650),
+      setTimeout(() => setRow((r) => (press === 'eye' ? { ...r, visible: !r.visible } : { ...r, locked: !r.locked })), 1200),
+      setTimeout(() => { setTap(null); readBox(); }, 1500),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [step, near, win.w]);
+
+  const scale = 620 / NOTES_VIEW.w;
+  const view = box
+    ? { w: 620, h: Math.round(NOTES_VIEW.h * scale), dx: box.x, dy: box.y }
+    : { w: 620, h: Math.round(NOTES_VIEW.h * scale), dx: 0, dy: 0 };
+  return (
+    <div
+      ref={holdRef}
+      aria-hidden
+      {...INERT}
+      style={{
+        position: 'relative', width: 620, height: Math.round(NOTES_VIEW.h * scale), overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none',
+        opacity: box ? 1 : 0,
+        transition: 'opacity 0.2s ease',
+      }}
+    >
+      {near && (
+        <div style={{ position: 'relative', width: view.w, height: view.h, overflow: 'hidden' }}>
+        <div style={{ zoom: scale }}>
+          <div style={{ marginLeft: -view.dx, marginTop: -view.dy }}>
+            <div ref={rootRef} style={{ position: 'relative', width: win.w }}>
+              <PicturedShell win={win} zoom={1} layerPanel="column" notesRow={row} />
+              {tap && <TapMark x={tap.x} y={tap.y} />}
+              {cur && (
+                <div
+                  ref={cursorHost}
+                  style={{
+                    position: 'absolute', left: cur.x, top: cur.y, zIndex: z.unmissable,
+                    pointerEvents: 'none',
+                    transition: still.current ? undefined : 'left 0.6s cubic-bezier(0.4, 0, 0.2, 1), top 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
         </div>
       )}
     </div>
@@ -352,7 +457,7 @@ const LAYERS_VIEW = { w: 560, h: 430, pad: 14 } as const;
 export function LayersTour() {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(false);
+  const near = useInView(holdRef);
   const still = useRef(isMotionReduced());
   const rootRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
@@ -362,17 +467,6 @@ export function LayersTour() {
   const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
   // The pointer wears the app's own cursor art; the host's position is the acting point.
   const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
-
-  useEffect(() => {
-    const hold = holdRef.current;
-    if (!hold || near) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setNear(true); return undefined; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: '600px' });
-    io.observe(hold);
-    return () => io.disconnect();
-  }, [near]);
 
   useEffect(() => {
     if (still.current || !near) return undefined;

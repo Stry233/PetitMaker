@@ -15,10 +15,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../canvas/interaction/usePointerInteraction';
-import { registerToolManager, setActiveView } from '../../canvas/active-view';
-import { __resetCursorController } from '../../canvas/interaction/cursor-controller';
+import { getActiveToolManager, registerToolManager, setActiveView } from '../../canvas/active-view';
+import { __resetCursorController, registerCursorSurface, setToolCursor } from '../../canvas/interaction/cursor-controller';
+import { cursorCss } from '../../assets/cursors/cursor-css';
 import type { ActiveView } from '../../canvas/view-projection';
-import { ToolType, type GridState, type PlacedObject } from '../../core/model/types';
+import { CellZone, ToolType, type GridState, type PlacedObject } from '../../core/model/types';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -41,7 +42,7 @@ function makeView() {
   const view = {
     projection: {
       screenToMacro: (sx: number, sy: number) => ({ x: Math.floor(sx / 10), y: Math.floor(sy / 10) }),
-      screenToMicro: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
+      screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / 5), y: Math.floor(sy / 5) }),
       cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
       pan: vi.fn(),
     },
@@ -122,6 +123,20 @@ afterEach(() => {
 });
 
 describe('a touch tap decides from the arming as it stands, not as it stood', () => {
+  it('refreshes terrain refusal when the pointer crosses a terrain boundary inside one object cell', () => {
+    arm(null);
+    gs.cells[5]![5]!.zone = CellZone.Beach;
+    const manager = getActiveToolManager()!;
+    manager.setActiveTool(ToolType.TerrainBrush);
+    setStoreState({ activeTool: ToolType.TerrainBrush, contentType: 'mountain', autoEdgeCut: 'off' });
+    registerCursorSurface(el);
+    setToolCursor('mountain');
+    el.dispatchEvent(pointer('pointermove', { clientX: 42, clientY: 42 }));
+    expect(el.style.cursor).toBe(cursorCss('mountain'));
+    el.dispatchEvent(pointer('pointermove', { clientX: 47, clientY: 47 }));
+    expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
+  });
+
   it('selects the road under a fresh, unspannable bridge arming — even though the ctx last settled on a tree', () => {
     // A road tile is a COATING: V-PLACE-OVERLAP exempts it, so a point item that is otherwise legal
     // here (a tree, on flat open grass) reads `placementAllowed: true` over it — that is the ctx

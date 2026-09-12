@@ -56,8 +56,8 @@ function stoneStreet(): Kit {
 
 const settle = (): Promise<void> => new Promise((r) => { setTimeout(r, 0); });
 
-/** The two-tap gesture as a hand makes it, on a tool armed with the given context. */
-async function twoTaps(kit: Kit, over: Partial<ToolContext>, from: MacroCoord, to: MacroCoord): Promise<Set<string>> {
+/** The endpoint gesture as a hand makes it, on a tool armed with the given context. */
+async function dragRoad(kit: Kit, over: Partial<ToolContext>, from: MacroCoord, to: MacroCoord): Promise<Set<string>> {
   const ctx = makeToolCtx(kit.state, kit.executor, 1, 1, { armedMacro: 'road-link', ...over });
   const tool = new MacroTool();
   tool.onActivate();
@@ -65,7 +65,7 @@ async function twoTaps(kit: Kit, over: Partial<ToolContext>, from: MacroCoord, t
   tool.onPointerDown(from, from as never, ctx);
   tool.onPointerMove(to, to as never, ctx);
   await settle();
-  tool.onPointerDown(to, to as never, ctx);
+  tool.onPointerUp(to, to as never, ctx);
   const laid = new Set<string>();
   for (const [id, o] of kit.state.objects) {
     if (!before.has(id) && categoryOf(o) === ItemCategory.Road) laid.add(o.catalogId);
@@ -77,14 +77,14 @@ describe('which surface a road macro lays', () => {
   it('matches the street already standing when nobody has picked one', async () => {
     const kit = stoneStreet();
     // The store's own fresh state: dirt armed for the tile brush, chosen by no one.
-    const laid = await twoTaps(kit, { tileMaterial: 'path-overgrown-dirt', tileMaterialPicked: false }, { x: 12, y: 20 }, { x: 30, y: 20 });
+    const laid = await dragRoad(kit, { tileMaterial: 'path-overgrown-dirt', tileMaterialPicked: false }, { x: 12, y: 20 }, { x: 30, y: 20 });
     expect(laid.size, 'the route laid nothing to read a material off').toBeGreaterThan(0);
     expect([...laid]).toEqual(['path-park-stone']);
   });
 
   it('takes the bar\'s own surface once a hand has picked one', async () => {
     const kit = stoneStreet();
-    const laid = await twoTaps(kit, { tileMaterial: 'path-simple-brick', tileMaterialPicked: true }, { x: 12, y: 20 }, { x: 30, y: 20 });
+    const laid = await dragRoad(kit, { tileMaterial: 'path-simple-brick', tileMaterialPicked: true }, { x: 12, y: 20 }, { x: 30, y: 20 });
     expect([...laid]).toEqual(['path-simple-brick']);
   });
 });

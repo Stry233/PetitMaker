@@ -1,7 +1,7 @@
 /*
  * annotation-layer.ts — the plan-notes layer of the 2D map: zone washes with dashed rounded
- * outlines and their number + name labels, text notes (map lettering or a colored chip), and
- * route arrows, drawn between the objects and the tool overlay.
+ * outlines and their number + tag captions, tag chips, and route arrows, drawn between the
+ * objects and the tool overlay.
  *
  * It draws from the store's annotation data rather than the EventBus — annotations are not grid
  * state, and their epoch is bumped by every slice verb. EVERY NOTE IS ITS OWN NODE, reconciled by
@@ -15,10 +15,11 @@
  * framing is the shared image, not the close-up.
  */
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import {
-  ANNOTATION_INK, INK_CELLS, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneCentroid,
-  type AnnotationsState, type MapAnnotation, type RouteNote, type TextNote, type ZoneNote,
+  ANNOTATION_INK, INK_CELLS, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneLabelAnchor,
+  type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
 import { isMotionReduced } from '../motion-state';
 import { requestRender } from '../render-scheduler';
@@ -27,10 +28,6 @@ import { requestRender } from '../render-scheduler';
  *  (`ui/design/tokens.ts:MAP_LABEL`), restated as numbers because a canvas takes no CSS. */
 const MAP_TEXT = 0xfffee3;
 const INK = 0x43413f;
-
-/** The UI's own stack; the browser has these faces loaded document-wide, so a canvas may name
- *  them too. Falls back per glyph exactly as the DOM does. */
-const FONT = "'Alibaba PuHuiTi 3','PW Rounded Sans','PingFang SC',sans-serif";
 
 const WASH_ALPHA = 0.3;
 const WASH_ALPHA_INK = 0.38;
@@ -47,6 +44,8 @@ export interface AnnotationDrawOpts {
   selectionIds: readonly string[];
   /** `annotationInkScale(template)`, handed in because the layer draws DATA, not a grid. */
   inkScale: number;
+  /** The drawn label for a tag, in the interface language. */
+  tagLabel: (tag: TagId) => string;
 }
 
 /** One note's screen presence: what it was built FROM (staleness by identity — the slice replaces
@@ -127,12 +126,12 @@ export class AnnotationLayer {
   private build(note: MapAnnotation, selected: boolean, opts: AnnotationDrawOpts): PIXI.Container[] {
     if (note.kind === 'zone') {
       const parts: PIXI.Container[] = [this.washPass.addChild(zoneBody(note, selected, opts.inkScale))];
-      const label = zoneLabel(note, opts.inkScale);
+      const label = zoneLabel(note, note.tag ? opts.tagLabel(note.tag) : '', opts.inkScale);
       if (label) parts.push(this.labelPass.addChild(label));
       return parts;
     }
     if (note.kind === 'route') return [this.routePass.addChild(routeBody(note, selected, opts.inkScale))];
-    return [this.labelPass.addChild(textBody(note, selected, opts.inkScale))];
+    return [this.labelPass.addChild(chipBody(note, opts.tagLabel(note.tag), selected, opts.inkScale))];
   }
 
   private drop(node: NoteNode): void {
@@ -216,17 +215,17 @@ function zoneBody(zone: ZoneNote, selected: boolean, inkScale: number): PIXI.Gra
   return g;
 }
 
-function zoneLabel(zone: ZoneNote, inkScale: number): PIXI.Container | null {
+function zoneLabel(zone: ZoneNote, label: string, inkScale: number): PIXI.Container | null {
   const withNum = zone.num > 0;
-  if (!withNum && !zone.name) return null;
+  if (!withNum && !label) return null;
   const box = new PIXI.Container();
   const fs = INK_CELLS.zoneLabel[zone.size ?? 'm'] * inkScale * TILE_SIZE;
-  const { x, y } = zoneCentroid(zone.cells);
+  const { x, y } = zoneLabelAnchor(zone.cells);
   const X = x * TILE_SIZE;
   const Y = y * TILE_SIZE;
-  const text = zone.name ? makeText(zone.name, labelStyle(fs, MAP_TEXT)) : null;
+  const text = label ? makeText(label, labelStyle(fs, MAP_TEXT)) : null;
   const numR = fs * 0.62;
-  const total = (withNum ? numR * 2 + (zone.name ? fs * 0.3 : 0) : 0) + (text?.width ?? 0);
+  const total = (withNum ? numR * 2 + (label ? fs * 0.3 : 0) : 0) + (text?.width ?? 0);
   let x0 = X - total / 2;
   if (withNum) {
     const g = new PIXI.Graphics();
@@ -236,12 +235,12 @@ function zoneLabel(zone: ZoneNote, inkScale: number): PIXI.Container | null {
     g.endFill();
     box.addChild(g);
     const num = makeText(String(zone.num), {
-      fontFamily: FONT, fontSize: fs * 0.68, fontWeight: '800', fill: 0xffffff,
+      fontFamily: APP_FONT_FAMILY, fontSize: fs * 0.68, fontWeight: '800', fill: 0xffffff,
     });
     num.anchor.set(0.5, 0.5);
     num.position.set(x0 + numR, Y + fs * 0.04);
     box.addChild(num);
-    x0 += numR * 2 + (zone.name ? fs * 0.3 : 0);
+    x0 += numR * 2 + (label ? fs * 0.3 : 0);
   }
   if (text) {
     text.anchor.set(0, 0.5);
@@ -251,34 +250,27 @@ function zoneLabel(zone: ZoneNote, inkScale: number): PIXI.Container | null {
   return box;
 }
 
-function textBody(note: TextNote, selected: boolean, inkScale: number): PIXI.Container {
+/** A tag on its own plate. */
+function chipBody(note: ChipNote, label: string, selected: boolean, inkScale: number): PIXI.Container {
   const box = new PIXI.Container();
   const X = note.x * TILE_SIZE;
   const Y = note.y * TILE_SIZE;
   const fs = INK_CELLS.text[note.size] * inkScale * TILE_SIZE;
-  if (note.style === 'chip') {
-    const text = makeText(note.text, {
-      fontFamily: FONT, fontSize: fs, fontWeight: '800', fill: isInk(note.color) ? INK : 0xffffff,
-    });
-    const padX = fs * 0.5;
-    const h = fs * 1.6;
-    const g = new PIXI.Graphics();
-    g.lineStyle(Math.max(1.8, fs * 0.07), 0xffffff, 0.85);
-    g.beginFill(hex(note.color), 1);
-    g.drawRoundedRect(X - text.width / 2 - padX, Y - h / 2, text.width + padX * 2, h, h * 0.36);
-    g.endFill();
-    box.addChild(g);
-    text.anchor.set(0.5, 0.5);
-    text.position.set(X, Y + fs * 0.05);
-    box.addChild(text);
-    if (selected) box.addChild(selectionBox(X, Y, text.width + padX * 2 + fs * 0.4, h + fs * 0.4, inkScale));
-    return box;
-  }
-  const text = makeText(note.text, labelStyle(fs, isInk(note.color) ? MAP_TEXT : hex(note.color)));
+  const text = makeText(label, {
+    fontFamily: APP_FONT_FAMILY, fontSize: fs, fontWeight: '800', fill: isInk(note.color) ? INK : 0xffffff,
+  });
+  const padX = fs * 0.5;
+  const h = fs * 1.6;
+  const g = new PIXI.Graphics();
+  g.lineStyle(Math.max(1.8, fs * 0.07), 0xffffff, 0.85);
+  g.beginFill(hex(note.color), 1);
+  g.drawRoundedRect(X - text.width / 2 - padX, Y - h / 2, text.width + padX * 2, h, h * 0.36);
+  g.endFill();
+  box.addChild(g);
   text.anchor.set(0.5, 0.5);
-  text.position.set(X, Y);
+  text.position.set(X, Y + fs * 0.05);
   box.addChild(text);
-  if (selected) box.addChild(selectionBox(X, Y, text.width + fs * 0.5, fs * 1.8, inkScale));
+  if (selected) box.addChild(selectionBox(X, Y, text.width + padX * 2 + fs * 0.4, h + fs * 0.4, inkScale));
   return box;
 }
 
@@ -354,7 +346,7 @@ function makeText(content: string, style: Partial<PIXI.ITextStyle>): PIXI.Text {
 
 function labelStyle(px: number, fill: number): Partial<PIXI.ITextStyle> {
   return {
-    fontFamily: FONT, fontSize: px, fontWeight: '800', fill,
+    fontFamily: APP_FONT_FAMILY, fontSize: px, fontWeight: '800', fill,
     stroke: INK, strokeThickness: px * 0.15, lineJoin: 'round',
   };
 }

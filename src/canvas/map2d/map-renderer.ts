@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import '@pixi/unsafe-eval'; // self-installs on import (7.1+) — keeps strict-CSP shader builds
 import type { ActiveView } from '../view-projection';
 import type { CellFrame } from '../thumbnail';
@@ -26,6 +27,8 @@ import { TerrainLayer } from './layers/terrain-layer';
 import { ObjectLayer, objectSpriteUrl } from './layers/object-layer';
 import { AnnotationLayer } from './layers/annotation-layer';
 import { annotationInkScale } from '../../core/model/annotations';
+import { tagLabel } from '../../i18n/annotation-tags';
+import { useEditorStore } from '../../state/store';
 import { OverlayLayer } from './layers/overlay-layer';
 import { Viewport } from './viewport';
 import { addRenderRequester } from './render-scheduler';
@@ -773,7 +776,10 @@ export class MapRenderer {
         const notes = new AnnotationLayer();
         notes.requestRender = () => {};
         world.addChild(notes.container);
-        notes.draw(state.annotations, { draft: null, selectionIds: [], inkScale: annotationInkScale(state.template) });
+        notes.draw(state.annotations, {
+          draft: null, selectionIds: [], inkScale: annotationInkScale(state.template),
+          tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
+        });
         for (const pass of notes.container.children) {
           if (pass instanceof PIXI.Container) for (const part of pass.children) part.alpha = 1;
         }
@@ -829,7 +835,7 @@ export class MapRenderer {
     const chunksX = Math.ceil(width / CHUNK_SIZE);
     const chunksY = Math.ceil(height / CHUNK_SIZE);
     const fontSize = 400;
-    const textStyle = { fontSize, fill: 0x000000, fontFamily: 'sans-serif', fontWeight: 'bold' as const };
+    const textStyle = { fontSize, fill: 0x000000, fontFamily: APP_FONT_FAMILY, fontWeight: 'bold' as const };
 
     // Precompute the label specs (cheap); the cost is PIXI.Text rasterization.
     interface Spec { label: string; x: number; y: number; ax: number; ay: number; }

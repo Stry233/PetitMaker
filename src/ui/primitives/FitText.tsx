@@ -9,7 +9,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { font } from '../design/styles';
-import { usePx } from '../design/scale';
+import { usePx, useReadableWeight } from '../design/scale';
 import { useFontsReady } from '../hooks/useFontsReady';
 
 interface Props {
@@ -34,14 +34,19 @@ interface Props {
 }
 
 export function FitText({ cx = 0, cy = 0, maxW, anchor = 'center', flow = false, size, color, weight = 900, outline, style, children }: Props) {
-  const { px, pxf, fw } = usePx();
+  const { px, pxf } = usePx();
+  const weightAt = useReadableWeight();
   const ref = useRef<HTMLSpanElement>(null);
   const [scale, setScale] = useState(1);
 
   const fit = () => {
     const el = ref.current;
     if (!el) return;
+    // Measure before fitting so lighter text cannot repeatedly enlarge and shrink its own fit.
+    const paintedWeight = el.style.fontWeight;
+    if (size != null) el.style.fontWeight = String(weightAt(weight, pxf(size)));
     const natural = el.scrollWidth; // layout width — unaffected by the scale transform
+    el.style.fontWeight = paintedWeight;
     const max = px(maxW);
     setScale(natural > max && natural > 0 ? max / natural : 1);
   };
@@ -49,7 +54,7 @@ export function FitText({ cx = 0, cy = 0, maxW, anchor = 'center', flow = false,
   useFontsReady(fit); // re-fit once the web font loads (first measure may use a fallback metric)
 
   const inner: CSSProperties = size != null
-    ? { fontFamily: font.family, fontWeight: fw(weight), fontSize: pxf(size), color, lineHeight: 1, ...(outline ? { textShadow: outline } : {}) }
+    ? { fontFamily: font.family, fontWeight: weightAt(weight, pxf(size) * scale), fontSize: pxf(size), color, lineHeight: 1, ...(outline ? { textShadow: outline } : {}) }
     : {};
 
   // The outer box is a FLEX container (not inline-block): an inline outer joins an inline

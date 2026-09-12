@@ -7,6 +7,7 @@
  * name renderable help scenes or surfaces.
  */
 import type { HelpPage } from '../page-schema';
+import { hasCustomCard } from '../../../../shell/bars/generate-shelf';
 
 export const GENERATE_PAGES: readonly HelpPage[] = [
   {
@@ -101,13 +102,13 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     ledeKey: 'help.genpicture.lede',
     figure: { kind: 'surface', surface: 'stencil-picture', captionKey: 'help.genpicture.figcap' },
     sections: [
-      { kind: 'prose', anchor: 'genpicture-what', titleKey: 'help.genpicture.what_t', bodyKeys: ['help.genpicture.what_b1'] },
+      { kind: 'prose', anchor: 'genpicture-what', titleKey: 'help.genpicture.what_t', bodyKeys: ['help.genpicture.what_b1', ...(hasCustomCard('image') ? ['help.genpicture.what_b2'] : [])] },
       { kind: 'prose', anchor: 'genpicture-material', titleKey: 'help.genpicture.material_t', bodyKeys: ['help.genpicture.material_b1'], figure: { kind: 'surface', surface: 'picture-materials', captionKey: 'help.genpicture.materials_figcap' } },
       { kind: 'prose', anchor: 'genpicture-tune', titleKey: 'help.genpicture.tune_t', bodyKeys: ['help.genpicture.tune_b1'], figure: { kind: 'surface', surface: 'picture-tuning', captionKey: 'help.genpicture.tune_figcap' } },
       { kind: 'prose', anchor: 'genpicture-room', titleKey: 'help.genpicture.room_t', bodyKeys: ['help.genpicture.room_b1'] },
     ],
     qa: [
-      { qKey: 'help.genpicture.q1', aKey: 'help.genpicture.a1' },
+      ...(hasCustomCard('image') ? [{ qKey: 'help.genpicture.q1', aKey: 'help.genpicture.a1' }] : []),
       { qKey: 'help.genpicture.q2', aKey: 'help.genpicture.a2' },
       { qKey: 'help.genpicture.q3', aKey: 'help.genpicture.a3' },
     ],
@@ -122,7 +123,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     sections: [
       { kind: 'prose', anchor: 'candidates-real', titleKey: 'help.candidates.real_t', bodyKeys: ['help.candidates.real_b1'] },
       { kind: 'prose', anchor: 'candidates-click', titleKey: 'help.candidates.click_t', bodyKeys: ['help.candidates.click_b1'] },
-      { kind: 'prose', anchor: 'candidates-own', titleKey: 'help.candidates.own_t', bodyKeys: ['help.candidates.own_b1'] },
+      { kind: 'prose', anchor: 'candidates-own', titleKey: 'help.candidates.own_t', bodyKeys: ['help.candidates.own_b1', ...(hasCustomCard('text') ? ['help.candidates.own_b2'] : [])] },
       { kind: 'prose', anchor: 'candidates-stale', titleKey: 'help.candidates.stale_t', bodyKeys: ['help.candidates.stale_b1'] },
       { kind: 'prose', anchor: 'candidates-notes', titleKey: 'help.candidates.notes_t', bodyKeys: ['help.candidates.notes_b1'] },
     ],

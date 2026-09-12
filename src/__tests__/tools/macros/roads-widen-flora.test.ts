@@ -24,7 +24,7 @@ import { categoryOf, getCatalogByCategory } from '../../../state/catalog';
 import { applyMacro } from '../../../tools/macros';
 import { layRoadNetwork, type RoadNetworkResult } from '../../../tools/macros/roads';
 import { MacroTool } from '../../../tools/macros/macro-tool';
-import { __resetRouteSession } from '../../../tools/macros/route-session';
+import { __resetCurveSession } from '../../../tools/paint/curve-session';
 import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import type { MacroContext } from '../../../tools/macros/context';
 import { generateObjectId } from '../../../core/model/object-id';
@@ -134,7 +134,7 @@ describe('a necked road says so', () => {
     expect(outcome.narrowedByPlanting).toBeUndefined();
   });
 
-  it('the two-tap route carries it too', () => {
+  it('the endpoint route carries it too', () => {
     const { state, ctx, place } = setup();
     place(floraId, BESIDE_THE_LINE.x, BESIDE_THE_LINE.y);
 
@@ -157,10 +157,10 @@ describe('a necked road says so', () => {
       tool.onPointerDown(LINK_FROM, LINK_FROM, toolCtx);
       tool.onPointerMove(LINK_TO, LINK_TO, toolCtx);
       await new Promise((r) => { setTimeout(r, 0); });
-      tool.onPointerDown(LINK_TO, LINK_TO, toolCtx);
+      tool.onPointerUp(LINK_TO, LINK_TO, toolCtx);
     } finally {
       stop();
-      __resetRouteSession();
+      __resetCurveSession();
     }
     expect(said, 'the pinch reached no one').toContain('smart.road_necked');
   });

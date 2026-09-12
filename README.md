@@ -13,6 +13,9 @@ _A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/e
 &nbsp;![Release](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&color=8CC9A1&labelColor=43413F)
 &nbsp;[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](./LICENSE)
 
+[![Support on Patreon](https://img.shields.io/badge/Patreon-Support-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
+&nbsp;[![Support on Afdian](https://img.shields.io/badge/Afdian-Support-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
+
 <img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished island, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
 
 <sub>The header shows 鱼松的爱心桃花岛, created by project contributor 鱼松. An importable share image is available below.</sub>
@@ -220,6 +223,10 @@ In alphabetical order, not a ranking.
 <td align="center"><a href="https://space.bilibili.com/3632319829116985"><img src="./src/assets/team/3632319829116985.jpg" width="72" alt="鱼松吃点吗's avatar"><br><sub><b>鱼松吃点吗</b></sub></a></td>
 </tr>
 </table>
+
+## Support the project
+
+You can support PetitMaker’s ongoing development on [Patreon](https://www.patreon.com/c/PetitMaker) or [Afdian](https://afdian.com/a/PetitMaker). Thank you for your support.
 
 ## Legal & policy documents
 

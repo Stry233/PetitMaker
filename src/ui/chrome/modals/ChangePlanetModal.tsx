@@ -1,32 +1,10 @@
-/*
- * ChangePlanetModal.tsx — moving to another planet, as a plain form.
- *
- * Reading order is doing order: where you are, where you are going, what happens to what you built,
- * and the one verb that does it. Every part is an idiom the windows already use — the unsaved-export
- * warn row, the planet cards, a settings row (label + receding hint, the shared segmented control),
- * and a footer of one primary action over a quiet way out.
- *
- * THE PLANET YOU ARE ON IS NOT A CHOICE. It recedes onto the inset fill and carries what stands on
- * it instead, so the grid reads as "here, and where else" rather than as a row of equal options.
- *
- * THE CARRY ROW ONLY EXISTS WHEN THERE IS SOMETHING TO CARRY. On an untouched map the question has
- * one answer and asking it would be furniture.
- *
- * WHICH MAKES THE CARD A DIFFERENT HEIGHT as the visitor chooses, so it EASES there
- * (`ui/hooks/use-size-glide`, the same glide the arrival notice's width uses). The card is centred
- * by the backdrop, so it grows and shrinks about its own middle rather than hanging from its top
- * edge: that is how a modal sits, and an anchored top would slide the title up the screen every
- * time a row appeared. What travels is the BODY inside the card — `ModalShell` owns the card
- * element — and the card's own box follows it. The window's enter and exit are untouched: the glide
- * runs only on a content change under a card that is already open.
- */
+// Content-height changes animate inside ModalShell independently of its open/close motion.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useT, localizedName } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import type { GridState } from '../../../core/model/types';
 import { MAP_LIST, getMapTemplate } from '../../../config/maps';
-import { getMapStats } from '../../../state/map-stats';
 import { hasCarriableContent } from '../../../kit/operations';
 import { btnReset, buttonMotion, font, inkTint, pressable, cursors, radii } from '../../design/styles';
 import { LoadingDots } from '../../primitives/LoadingDots';
@@ -35,6 +13,7 @@ import { SegmentedControl } from '../../primitives/SegmentedControl';
 import { useSizeGlide } from '../../hooks/use-size-glide';
 import { skin, windowCard, windowLabel, windowPrimary, windowRow, windowTitle } from '../../design/window-skin';
 import { roleFont } from '../../design/text-weight';
+import { cssMotion } from '../../shell/motion/use-motion';
 import { iconUrl } from '../../../assets/icon-urls';
 
 export interface ChangePlanetModalProps {
@@ -45,8 +24,7 @@ export interface ChangePlanetModalProps {
   /** The verb: open `templateId`, carrying this island's build along or leaving it behind. */
   onSwitch: (templateId: string, carry: boolean) => void;
   onClose: () => void;
-  /** A still map to stand in for the live one (the Help Center's figure), so the carry row and
-   *  stats read off it; absent, the modal reads the open map. */
+  /** The Help Center's preview map; when absent, carry availability reads the open map. */
   subject?: GridState;
   /** Open with this planet already picked, so a picture can show the chosen state: the carry row
    *  standing and the confirm button naming its destination. */
@@ -84,7 +62,6 @@ const gridStyle: CSSProperties = {
   flexWrap: 'wrap',
 };
 
-/** One planet: art, name, and the one line that says what it is to this visitor. */
 const planetCardStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -100,12 +77,7 @@ const planetCardStyle: CSSProperties = {
   color: skin.ink,
   fontFamily: font.family,
   WebkitTapHighlightColor: 'transparent',
-};
-
-const planetLineStyle: CSSProperties = {
-  ...roleFont('caption'),
-  color: skin.muted,
-  fontFamily: font.family,
+  transition: cssMotion('planet.choice.select', 'background-color'),
 };
 
 /** The unsaved-work notice above the planet choices, and the way out of it. */
@@ -170,10 +142,6 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
     setBusy(false);
   }, [open, initialChosen]);
 
-  const stats = gridState ? getMapStats(gridState) : null;
-  // WHAT THE VISITOR PLACED, which is what "建设 / pieces built" names: `objectsByLayer` already
-  // leaves out the locked plaza, which every planet supplies itself and nobody built.
-  const built = stats ? stats.objectsByLayer.reduce((a, b) => a + b, 0) : 0;
   /*
    * WHETHER THERE IS ANYTHING TO CARRY, asked of the operation that would carry it.
    *
@@ -221,17 +189,9 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
     }, 0);
   };
 
-  // EVERY FACT THAT CAN CHANGE THE CARD'S HEIGHT, and the glide runs on nothing else: the
-  // destination (which shows or hides the carry row and can rewrap the verb), whether that
-  // destination is this same planet (which swaps the carry row for the start-over line even when the
-  // choice itself has not moved), whether there is anything to carry at all, the unsaved-work row,
-  // the busy state the verb wears while a transfer runs, and the LANGUAGE, since every line in the
-  // card rewraps at a different length in the next one. A height change the key does not name both
-  // snaps AND leaves the hook measuring from a size the box no longer has, so the glide after it
-  // starts from the wrong place. The card's own tween rather than the hook's spring: a card-sized
-  // traveller shows a spring's overshoot as a pump (`SIZE_MORPH_TWEEN`'s comment has the measurement).
+  // Opening replaces the measured element and initializes the size used by its next transition.
   const body = useSizeGlide<HTMLDivElement>(
-    `${chosen ?? ''}|${startingOver}|${hasBuild}|${unsaved}|${busy}|${locale}`,
+    `${open}|${chosen ?? ''}|${startingOver}|${hasBuild}|${unsaved}|${busy}|${locale}`,
     { axis: 'height', transition: SIZE_MORPH_TWEEN },
   );
 
@@ -292,11 +252,6 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
               >
                 {art}
                 <span>{name}</span>
-                <span style={planetLineStyle}>
-                  {here
-                    ? (built > 0 ? t('planet.here_built', { n: built }) : t('planet.here'))
-                    : `${tmpl.width} × ${tmpl.height}`}
-                </span>
               </motion.button>
             );
           })}
@@ -331,7 +286,7 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
           <motion.button
             type="button"
             data-testid="planet-switch"
-            style={{ ...windowPrimary, minWidth: 200, opacity: destination && !busy ? 1 : 0.45, cursor: destination ? cursors.clickable : cursors.blocked }}
+            style={{ ...windowPrimary, minWidth: 200, opacity: destination && !busy ? 1 : 0.45, transition: cssMotion('planet.choice.select', 'opacity'), cursor: destination ? cursors.clickable : cursors.blocked }}
             disabled={!destination || busy}
             onClick={go}
             {...(destination && !busy ? buttonMotion : {})}

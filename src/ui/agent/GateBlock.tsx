@@ -121,7 +121,6 @@ export function VerdictChip({ verdict, word }: { verdict: VerdictMark; word?: st
         padding: '3px 10px',
         ...roleFont('small'),
         fontFamily: font.family,
-        fontWeight: 800,
         maxWidth: '100%',
         minWidth: 0,
         overflow: 'hidden',

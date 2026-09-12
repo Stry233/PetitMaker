@@ -7,21 +7,26 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { parseLegalMarkdown, type Inline, type MdNode } from '../../legal/markdown';
 import { colors } from '../design/styles';
+import { useFrameReadableWeight } from '../shell/use-frame-zoom';
+import { TEXT_ROLES, roleWeight } from '../design/text-weight';
 import { PLATE } from '../design/tokens';
 
 /** A code span, at the one rung a chip of machine text earns beside prose. */
 const CODE: CSSProperties = {
   fontFamily: 'monospace',
   fontSize: '0.92em',
+  fontWeight: 400,
   background: PLATE,
   borderRadius: 4,
   padding: '1px 4px',
 };
 
+const EMPHASIS: CSSProperties = { fontWeight: `var(--model-emphasis-weight, ${roleWeight('note')})` };
+
 const BLOCK: CSSProperties = { margin: 0 };
 const LIST: CSSProperties = { ...BLOCK, paddingLeft: 20 };
 /** Model headings use a lead line without changing the card's surrounding hierarchy. */
-const LEAD: CSSProperties = { ...BLOCK, fontWeight: 700 };
+const LEAD: CSSProperties = { ...BLOCK, ...EMPHASIS };
 const QUOTE: CSSProperties = { ...BLOCK, paddingLeft: 10, borderLeft: `2px solid ${colors.brownText}`, opacity: 0.9 };
 const RULE: CSSProperties = { border: 'none', borderTop: `1px solid ${colors.brownText}`, opacity: 0.35, margin: 0 };
 const ROW: CSSProperties = { display: 'flex', gap: 8 };
@@ -29,7 +34,7 @@ const CELL: CSSProperties = { flex: 1, minWidth: 0 };
 
 /** One inline run. Link nodes keep their visible text but not their href. */
 function inlineNode(node: Inline, key: string | number): ReactNode {
-  if (node.t === 'strong') return <strong key={key}>{node.text}</strong>;
+  if (node.t === 'strong') return <strong key={key} style={{ ...EMPHASIS }}>{node.text}</strong>;
   if (node.t === 'em') return <em key={key}>{node.text}</em>;
   if (node.t === 'code') return <code key={key} style={CODE}>{node.text}</code>;
   return <Fragment key={key}>{node.text}</Fragment>;
@@ -61,7 +66,7 @@ function blockNode(node: MdNode, key: number): ReactNode {
     case 'table':
       return (
         <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={ROW}>{node.header.map((cell, i) => <span key={i} style={{ ...CELL, fontWeight: 700 }}>{inlineRun(cell)}</span>)}</div>
+          <div style={ROW}>{node.header.map((cell, i) => <span key={i} style={{ ...CELL, ...EMPHASIS }}>{inlineRun(cell)}</span>)}</div>
           {node.rows.map((row, i) => (
             <div key={i} style={ROW}>{row.map((cell, j) => <span key={j} style={CELL}>{inlineRun(cell)}</span>)}</div>
           ))}
@@ -79,12 +84,16 @@ export function ModelProse({ text, style, testId }: {
   style?: CSSProperties;
   testId?: string;
 }) {
+  const weightAt = useFrameReadableWeight();
+  const emphasis = {
+    '--model-emphasis-weight': weightAt(700, typeof style?.fontSize === 'number' ? style.fontSize : TEXT_ROLES.note.px),
+  } as CSSProperties;
   return (
     <div
       {...(testId !== undefined ? { 'data-testid': testId } : {})}
       // `overflow-wrap` inherits, so one declaration covers every block: a model's own 500-char URL
       // or id has no space for the line breaker, and without this it walks out of the card.
-      style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style, ...emphasis }}
     >
       {parseLegalMarkdown(text).map((node, i) => blockNode(node, i))}
     </div>

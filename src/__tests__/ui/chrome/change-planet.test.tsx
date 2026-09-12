@@ -16,7 +16,7 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { createGrid } from '../../../core/model/grid-model';
 import { MAP_TEMPLATES } from '../../../config/maps';
-import { CommandType, TerrainType, type Corners, type EditorEvents, type GridState, type PlacedObject } from '../../../core/model/types';
+import { CommandType, TerrainType, type Corners, type EditorEvents, type GridState } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -41,15 +41,6 @@ const paint = (executor: CommandExecutor, x: number) => act(() => {
     terrainType: TerrainType.Mountain, elevation: 1,
   });
 });
-
-/** Objects are put on the map directly: the count under the planet's name is a reading of the map,
- *  not of the path anything took to get there. */
-function stand(state: GridState, ids: string[]) {
-  for (const id of ids) {
-    const obj: PlacedObject = { id, catalogId: 'tree-a', position: { x: 40, y: 60 }, rotation: 0, elevation: 0 };
-    state.objects.set(id, obj);
-  }
-}
 
 /** A ground-level edge cut: a `None` cell at elevation 0 carrying corners. It occupies no layer, so
  *  no per-layer tally can see it, and it is exactly the work a "the island is empty" guard must not
@@ -127,20 +118,6 @@ describe('the planet cards', () => {
     const other = screen.getByTestId(`planet-${TAFA.id}`);
     expect(other.tagName).toBe('BUTTON');
     expect(other.getAttribute('aria-current')).toBeNull();
-  });
-
-  it('says what stands on the planet you are on, and how big the ones you could go to are', () => {
-    const w = world();
-    stand(w.state, ['a', 'b', 'c']);
-    show();
-    expect(screen.getByText('You are here, 3 placed')).toBeTruthy();
-    expect(screen.getByText(`${TAFA.width} × ${TAFA.height}`)).toBeTruthy();
-  });
-
-  it('and says only where you are when nothing has been built', () => {
-    world();
-    show();
-    expect(screen.getByText('You are here')).toBeTruthy();
   });
 });
 

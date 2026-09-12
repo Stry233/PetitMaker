@@ -24,6 +24,8 @@ export interface UiPreviewPose {
   layerPanel?: 'pill' | 'column' | 'grid';
   /** The assistant panel's past-jobs list stands open in the picture; absent means collapsed, as live. */
   historyOpen?: boolean;
+  /** The Notes row's eye and lock as the picture shows them; its presses then change nothing. */
+  notesRow?: { visible: boolean; locked: boolean };
 }
 
 const UiPreviewContext = createContext<UiPreviewPose | null>(null);

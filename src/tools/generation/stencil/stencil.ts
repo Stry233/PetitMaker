@@ -98,45 +98,15 @@ const AIR_CELLS = 1;
 const GLYPH_ABSOLUTE_FLOOR = 5;
 
 /** Short-side floors shared by the shelf gate and region brush. */
-export const STENCIL_MIN_SIDE = { text: GLYPH_ABSOLUTE_FLOOR, image: 20 } as const;
+export const STENCIL_MIN_SIDE = { text: GLYPH_ABSOLUTE_FLOOR, image: 7 } as const;
+
+/** Smaller image boxes retain area-averaged detail before matching the material palette. */
+export const COMPACT_IMAGE_LIMIT = 20;
 
 /** Minimum box accounts for the width divided among all characters. */
 export function textMinBox(text: string): { width: number; height: number } {
   const side = textMinSide(text);
   return { width: side * Math.max(1, textGraphemes(text).length), height: side };
-}
-
-/**
- * Promote near-threshold gaps and touched notches to reconnect strokes, preserving each cell's
- * quadrant coverage. Iterate to a fixpoint, but reject promotions that enclose ground or bridge an
- * open channel between strokes; diagonal connectivity is repaired separately.
- */
-export function smoothShape(s: Stencil): void {
-  const { width: w, height: h, coverage } = s;
-  const NEAR = COVERAGE_ON / 2;
-  const TOUCHED = TOUCHED_INK;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (coverage[i]! >= COVERAGE_ON) continue;
-        let neighbours = 0;
-        if (x > 0 && coverage[i - 1]! >= COVERAGE_ON) neighbours++;
-        if (x < w - 1 && coverage[i + 1]! >= COVERAGE_ON) neighbours++;
-        if (y > 0 && coverage[i - w]! >= COVERAGE_ON) neighbours++;
-        if (y < h - 1 && coverage[i + w]! >= COVERAGE_ON) neighbours++;
-        // A cell walled in on all four sides is a pinhole in a stroke however little ink the face
-        // left in it; a three-sided dent has to have been touched, or it is the letter's own daylight.
-        const notch = neighbours === 4 || (neighbours === 3 && coverage[i]! >= TOUCHED);
-        if (!notch && !(neighbours >= 2 && coverage[i]! >= NEAR)) continue;
-        if (bridgesDaylight(s, x, y) || sealsGround(s, x, y)) continue;
-        coverage[i] = 255;
-        changed = true;
-      }
-    }
-  }
 }
 
 /**
@@ -159,49 +129,6 @@ export function bridgesDaylight(s: Stencil, x: number, y: number): boolean {
   for (const [dx, dy] of [[0, 1], [1, 0]] as const) {
     if (!ink(x - dx, y - dy) || !ink(x + dx, y + dy)) continue;
     if (!ink(x - 2 * dx, y - 2 * dy) && !ink(x + 2 * dx, y + 2 * dy)) return true;
-  }
-  return false;
-}
-
-/**
- * Whether covering (x, y) would shut ground in: any one of the open sides it leaves is cut off from
- * the outside once this cell is covered.
- *
- * EACH SIDE ON ITS OWN. A cell can have one side opening onto the world and another onto a pocket
- * that reaches the world only THROUGH this cell — and a walk that stops at the first way out declares
- * the promotion safe and seals the pocket anyway. So every open side is walked separately, and one
- * that cannot get out is enough to refuse.
- *
- * Ground walks the EDGES only, the way the map does: a diagonal touch is a point, and nothing passes
- * through a point. Each walk stops the moment it reaches the edge of the picture, so a dent that opens
- * outward costs a handful of steps and only a genuine pocket is walked whole.
- */
-export function sealsGround(s: Stencil, x: number, y: number): boolean {
-  const { width: w, height: h, coverage } = s;
-  const blocked = y * w + x;
-  for (const [dx, dy] of EDGE_STEPS) {
-    const sx = x + dx, sy = y + dy;
-    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;      // this side is the outside already
-    const start = sy * w + sx;
-    if (coverage[start]! >= COVERAGE_ON) continue;
-    const seen = new Uint8Array(w * h);
-    seen[blocked] = 1;
-    seen[start] = 1;
-    const stack = [start];
-    let escapes = false;
-    while (stack.length && !escapes) {
-      const i = stack.pop()!;
-      const cx = i % w, cy = (i / w) | 0;
-      for (const [ex, ey] of EDGE_STEPS) {
-        const nx = cx + ex, ny = cy + ey;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) { escapes = true; break; }
-        const n = ny * w + nx;
-        if (coverage[n]! >= COVERAGE_ON || seen[n]) continue;
-        seen[n] = 1;
-        stack.push(n);
-      }
-    }
-    if (!escapes) return true;
   }
   return false;
 }

@@ -19,6 +19,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { fadeMask } from '../../primitives/scroll-fade';
 import { MAP_LABEL } from '../../design/tokens';
 import { TEXT } from '../units';
+import { useFrameReadableWeight } from '../use-frame-zoom';
 import { MOTIONS } from '../motion/registry';
 import { STILL, useMotion, useMotionAllowed } from '../motion/use-motion';
 
@@ -110,6 +111,7 @@ function NameText({ name }: { name: string }) {
  *  where the row already reserves that room above itself, as the object shelf's does. */
 export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach | null; lift?: number }) {
   const nameMotion = useMotion('item.name.reach');
+  const weightAt = useFrameReadableWeight();
   return (
     <AnimatePresence>
       {reached ? (
@@ -127,7 +129,7 @@ export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach |
             position: 'absolute', display: 'block',
             bottom: lift ? `calc(100% + ${lift}px)` : '100%', left: reached.centre,
             maxWidth: `${MAX_EM}em`,
-            fontSize: TEXT.label, fontWeight: 800, lineHeight: 1.15,
+            fontSize: TEXT.label, fontWeight: weightAt(800, TEXT.label), lineHeight: 1.15,
             pointerEvents: 'none', ...MAP_LABEL,
           }}
         >

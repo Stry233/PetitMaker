@@ -6,7 +6,7 @@
  * their command ids through the live keymap (`resolveTokenSpecs`), which is what keeps a rebind
  * and its documentation the same fact.
  */
-import { Fragment, memo, useId, useState, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../../../state/store';
 import { startTour } from '../../tour/use-tour';
@@ -14,7 +14,7 @@ import { useT } from '../../../../i18n/context';
 import { useKeybinds } from '../../../../core/runtime/keybindings';
 import { resolveTokenSpecs } from '../../../hints/catalogue';
 import { HintTokens } from '../../../hints/tokens';
-import { roleFont } from '../../../design/text-weight';
+import { roleWeight, roleFont } from '../../../design/text-weight';
 import { INK, INSET, LINE, PLATE_INK } from '../../../design/tokens';
 import { buttonMotion, colors, cursors, primaryButton, radii, springs } from '../../../design/styles';
 import { withAlpha } from '../../../design/styles';
@@ -26,6 +26,8 @@ import { helpFacts } from './facts';
 import { HELP_SCENES } from './figures/scenes';
 import { HelpDemo } from './figures/HelpDemo';
 import { HELP_SURFACES } from './figures/surfaces';
+import { FigureReadyContext } from './figures/figure-ready';
+import { useInView } from './figures/use-in-view';
 import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
 import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
 
@@ -117,7 +119,7 @@ function inlineIcons(text: string, keyBase: string): ReactNode[] {
 function emphasize(text: string): ReactNode {
   const parts = text.split('**');
   return parts.map((part, i) => (i % 2 === 1
-    ? <b key={i} style={{ fontWeight: 800, color: INK }}>{inlineIcons(part, `b${i}`)}</b>
+    ? <b key={i} style={{ fontWeight: roleWeight('head'), color: INK }}>{inlineIcons(part, `b${i}`)}</b>
     : <Fragment key={i}>{inlineIcons(part, `t${i}`)}</Fragment>));
 }
 
@@ -173,6 +175,8 @@ function SectionView({ section }: { section: HelpSection }) {
 function Figure({ fig }: { fig: HelpPage['figure'] }) {
   const t = useT();
   const facts = helpFacts(useEditorStore((s) => s.locale));
+  const ref = useRef<HTMLElement>(null);
+  const ready = useInView(ref);
   if (!fig) return null;
   let body: ReactNode = null;
   if (fig.kind === 'demo') {
@@ -199,8 +203,8 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   if (!body) return null;
   // A demo narrates itself with its animated caption; only a surface carries a static one.
   return (
-    <figure style={{ background: withAlpha(INSET, 0.42), borderRadius: 18, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
-      {body}
+    <figure ref={ref} style={{ background: withAlpha(INSET, 0.42), borderRadius: 18, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
+      <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
       {fig.kind === 'surface' && (
         <figcaption style={{ ...roleFont('note'), color: colors.brownText, textAlign: 'center', lineHeight: 1.5, paddingBottom: 4 }}>
           {t(fig.captionKey, facts)}
@@ -272,7 +276,8 @@ function ActionButton({ action }: { action: NonNullable<HelpPage['action']> }) {
 /** Memoized on its props: the window re-renders on every search keystroke, and an unchanged page
  *  standing behind the dropdown can hold a dozen live demo figures — locale and keymap changes
  *  still arrive through the hooks' own subscriptions. */
-export const PageView = memo(function PageView({ page, onGo }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void }) {
+export const PageView = memo(function PageView({ page, onGo, onReady }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void; onReady?: (page: HelpPageId) => void | (() => void) }) {
+  useEffect(() => onReady?.(page.id), [onReady, page.id]);
   const t = useT();
   const facts = helpFacts(useEditorStore((s) => s.locale));
   return (

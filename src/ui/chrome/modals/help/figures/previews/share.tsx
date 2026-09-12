@@ -12,6 +12,7 @@ import { DEFAULT_MAP } from '../../../../../../config/maps';
 import { generateDesigned } from '../../../../../../tools/generation/designer/pipeline';
 import { DemoWorld } from '../demo-world';
 import { useInView } from '../use-in-view';
+import { useFigureReady } from '../figure-ready';
 import { figureCaption } from '../caption';
 import type { ExportOptions } from '../../../../../../io/export/types';
 import { buildChecklist } from '../../../../../../state/build-checklist';
@@ -53,22 +54,21 @@ function fallbackGridState(): GridState {
 /** The map every figure below stands in for its subject: the visitor's own, or the fallback. */
 function useFigureGridState(): GridState {
   const live = useEditorStore((s) => s.gridState);
-  const fallback = useMemo(() => fallbackGridState(), []);
+  const fallback = useMemo(() => live ?? fallbackGridState(), [live]);
   return live ?? fallback;
 }
 
-/** The visitor's map once it holds anything, a built island until then: a cover or a code band
- *  over an empty sea teaches nothing. The island builds after first paint. Exported for the
- *  sibling figures whose subject is the same choice (the planet window's carry row). */
+/** Use the reader's nonempty map, or one shared generated island after figure admission. */
 export function useShownMap(): GridState | null {
+  const ready = useFigureReady();
   const live = useEditorStore((s) => s.gridState);
-  const liveHasContent = live !== null && checklistHasContent(live);
+  const liveHasContent = ready && live !== null && checklistHasContent(live);
   const [island, setIsland] = useState<GridState | null>(null);
   useEffect(() => {
-    if (liveHasContent) return undefined;
+    if (!ready || liveHasContent) return undefined;
     const timer = setTimeout(() => setIsland(fullIslandState()), 0);
     return () => clearTimeout(timer);
-  }, [liveHasContent]);
+  }, [ready, liveHasContent]);
   return liveHasContent ? live : island;
 }
 
@@ -94,10 +94,11 @@ const SHARE_CREATED_AT = new Date(0).toISOString();
 const SHARE_OPTIONS: ExportOptions = DEFAULT_OPTIONS;
 
 export function SharePreview() {
+  const ready = useFigureReady();
   // The window pictures the visitor's OWN map: its map band captures the live view, so the code
   // band must encode the same map or the two halves of the picture would disagree.
   const state = useEditorStore((st) => st.gridState);
-  const code = useShareCode(true, state, null, SHARE_OPTIONS.importable, SHARE_OPTIONS.title, SHARE_OPTIONS.resolution, SHARE_CREATED_AT);
+  const code = useShareCode(ready, state, null, SHARE_OPTIONS.importable, SHARE_OPTIONS.title, SHARE_OPTIONS.resolution, SHARE_CREATED_AT);
   return (
     <PreviewFrame width={640} height={508}>
       <div style={{ display: 'flex', flexDirection: 'column', width: 640, height: 508, boxSizing: 'border-box' }}>
@@ -171,17 +172,7 @@ function ChecklistHead() {
 }
 
 export function ChecklistPreview() {
-  const live = useEditorStore((st) => st.gridState);
-  // A fresh visitor's map lists nothing, and an empty checklist teaches nothing: the figure
-  // shows their own map only once it has something to list, and a built island until then.
-  const [subject, setSubject] = useState<GridState | null>(null);
-  const liveHasContent = live !== null && checklistHasContent(live);
-  useEffect(() => {
-    if (liveHasContent) return undefined;
-    const timer = setTimeout(() => setSubject(fullIslandState()), 0);
-    return () => clearTimeout(timer);
-  }, [liveHasContent]);
-  const shown = liveHasContent ? live : subject;
+  const shown = useShownMap();
   return (
     <PreviewFrame width={372} height={456} zoom={0.6} align="top">
       <div style={{ ...cardChrome, width: 620, height: 760, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -218,15 +209,15 @@ export function fullIslandState(): GridState {
   return fullIsland;
 }
 
-/** The "Into the game" list filled by a whole island: real categories, counts and layer rows.
- *  The island builds after first paint — a designed run is half a second the page's first frame
- *  should not carry. */
+/** The full checklist uses the real generator and checklist, once its figure is admitted. */
 export function FullChecklistPreview() {
+  const ready = useFigureReady();
   const [subject, setSubject] = useState<GridState | null>(null);
   useEffect(() => {
+    if (!ready) return undefined;
     const timer = setTimeout(() => setSubject(fullIslandState()), 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [ready]);
   return (
     <PreviewFrame width={372} height={430} zoom={0.6} align="top">
       <div style={{ ...cardChrome, width: 620, height: 760, padding: '24px 26px 20px', overflow: 'hidden' }}>

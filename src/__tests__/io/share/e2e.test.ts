@@ -32,8 +32,8 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
     const { state } = (await corpusCases()).find((c) => c.name === 'hand-edit-small')!;
     state.annotations = {
       items: [
-        { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', name: 'Homes', num: 1, size: 'm' },
-        { kind: 'text', id: 't1', x: 5.5, y: 6, text: 'Town square', style: 'chip', size: 'l', color: '#FFB347' },
+        { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
+        { kind: 'chip', id: 't1', x: 5.5, y: 6, tag: 'plaza', size: 'l', color: '#FFB347' },
         { kind: 'route', id: 'r1', points: [{ x: 1, y: 1 }, { x: 4.5, y: 2 }], color: '#2FBF9B', dashed: true },
       ],
       visible: false,
