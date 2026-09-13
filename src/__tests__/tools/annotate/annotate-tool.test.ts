@@ -266,6 +266,8 @@ describe('the eraser', () => {
 });
 
 describe('chips', () => {
+  beforeEach(() => { multiHeld = false; __resetCurveSession(); });
+
   it('one press drops the armed tag on a plate, selected', () => {
     const tool = new AnnotateTool();
     s().initMap(makeTemplate(24, 24), createDefaultRegistry());
@@ -276,6 +278,53 @@ describe('chips', () => {
     const chip = items()[0] as ChipNote;
     expect(chip).toMatchObject({ kind: 'chip', tag: 'landmark', size: 'l', x: 5.5, y: 6.5 });
     expect(s().annotationSelection).toEqual([chip.id]);
+  });
+
+  it.each(['none', 'chip'] as const)('%s requires a separate selection before moving a tag', (mode) => {
+    const tool = new AnnotateTool();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().addAnnotation({ kind: 'chip', id: 'tag', x: 6, y: 6, tag: 'plaza', size: 'm', color: '#FFB347' });
+    s().setAnnotationTool(mode);
+    s().setAnnotationSelection([]);
+    expect(tool.grabAt(at(6, 6), press(6, 6))).toBe(false);
+    drag(tool, [6, 6], [9, 8]);
+    expect(items()).toHaveLength(1);
+    expect(items()[0]).toMatchObject({ x: 6, y: 6 });
+    expect(s().annotationSelection).toEqual(['tag']);
+    expect(tool.grabAt(at(6, 6), press(6, 6))).toBe(true);
+    drag(tool, [6, 6], [9, 8]);
+    expect(items()).toHaveLength(1);
+    expect(items()[0]).toMatchObject({ x: 9, y: 8 });
+    expect(s().undoAnnotation()).toBe(true);
+    expect(items()[0]).toMatchObject({ x: 6, y: 6 });
+  });
+
+  it('selects a tag near its edge without creating an overlapping plate', () => {
+    const tool = new AnnotateTool();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().addAnnotation({ kind: 'chip', id: 'tag', x: 6, y: 6, tag: 'plaza', size: 'm', color: '#FFB347' });
+    s().setAnnotationTool('chip');
+    s().setAnnotationSelection([]);
+    click(tool, 6, 6.9);
+    expect(items()).toHaveLength(1);
+    expect(s().annotationSelection).toEqual(['tag']);
+    click(tool, 20, 20);
+    expect(items()).toHaveLength(2);
+  });
+
+  it('selects a locked tag without moving or duplicating it', () => {
+    const tool = new AnnotateTool();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().addAnnotation({ kind: 'chip', id: 'tag', x: 6, y: 6, tag: 'plaza', size: 'm', color: '#FFB347' });
+    s().setAnnotationTool('chip');
+    s().setAnnotationSelection([]);
+    s().setAnnotationsLocked(true);
+    click(tool, 6, 6);
+    expect(s().annotationSelection).toEqual(['tag']);
+    expect(tool.grabAt(at(6, 6), press(6, 6))).toBe(false);
+    drag(tool, [6, 6], [9, 8]);
+    expect(items()).toHaveLength(1);
+    expect(items()[0]).toMatchObject({ x: 6, y: 6 });
   });
 });
 
@@ -376,10 +425,12 @@ describe('the select state', () => {
     s().setAnnotationTool('none');
   });
 
-  it('a press selects and a drag moves, as one undo entry', () => {
+  it('a press selects and a subsequent drag moves, as one undo entry', () => {
     s().addAnnotation({ kind: 'chip', id: 'c1', x: 5.5, y: 15.5, tag: 'plaza', size: 'm', color: '#FFB347' });
     tool.onPointerDown(at(5, 15), at(0, 0), press(5.5, 15.5));
     expect(s().annotationSelection).toEqual(['c1']);
+    tool.onPointerUp(at(5, 15), at(0, 0), press(5.5, 15.5));
+    tool.onPointerDown(at(5, 15), at(0, 0), press(5.5, 15.5));
     tool.onPointerMove(at(8, 15), at(0, 0), press(8.5, 15.5));
     tool.onPointerMove(at(9, 15), at(0, 0), press(9.5, 15.5));
     tool.onPointerUp(at(9, 15), at(0, 0), press(9.5, 15.5));
@@ -389,7 +440,9 @@ describe('the select state', () => {
     expect((items().find((n) => n.id === 'c1') as ChipNote).x).toBe(5.5);
   });
 
-  it('grabAt answers the select state only, and only over a note', () => {
+  it('grabAt requires an already-selected note and an editable layer', () => {
+    expect(tool.grabAt(at(4, 8), press(4, 8))).toBe(false);
+    s().setAnnotationSelection(['z1']);
     expect(tool.grabAt(at(4, 8), press(4, 8))).toBe(true);
     expect(tool.grabAt(at(20, 20), press(20.5, 20.5))).toBe(false);
     s().setAnnotationTool('zone');

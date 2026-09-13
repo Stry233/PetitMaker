@@ -10,8 +10,9 @@ const TABLE = (() => {
   return t;
 })();
 
-export function crc32(bytes: Uint8Array): number {
-  let c = 0xffffffff;
+/** Pass a previous result to continue the checksum across chunks. */
+export function crc32(bytes: Uint8Array, previous = 0): number {
+  let c = previous ^ 0xffffffff;
   for (let i = 0; i < bytes.length; i++) c = TABLE[(c ^ bytes[i]!) & 0xff]! ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }

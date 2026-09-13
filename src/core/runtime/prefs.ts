@@ -101,7 +101,6 @@ export const PREF_STORAGE_KEYS: readonly string[] = Object.values(PREFS).map((d)
 
 export function readPref<K extends PrefId>(id: K): ValueOf<K> {
   const def = PREFS[id] as unknown as PrefDef<ValueOf<K>>;
-  if (typeof localStorage === 'undefined') return def.fallback();
   let stored: string | null = null;
   try { stored = localStorage.getItem(def.key); } catch { /* storage disabled */ }
   if (stored === null) return def.fallback();
@@ -111,7 +110,6 @@ export function readPref<K extends PrefId>(id: K): ValueOf<K> {
 /** Whether localStorage accepted the write. */
 export function writePref<K extends PrefId>(id: K, value: ValueOf<K>): boolean {
   const def = PREFS[id] as unknown as PrefDef<ValueOf<K>>;
-  if (typeof localStorage === 'undefined') return false;
   try { localStorage.setItem(def.key, def.write ? def.write(value) : String(value)); return true; } catch { /* storage disabled, or quota exceeded */ }
   return false;
 }

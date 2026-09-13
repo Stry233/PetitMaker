@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font, exitTransition } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
@@ -15,6 +15,7 @@ import type { ShareCodeIssue } from './use-share-code';
 import { angleKey } from '../../../../canvas/map3d/capture';
 import { usePanZoom } from './use-pan-zoom';
 import { useStylizeVersions } from './stylize/use-stylize-versions';
+import { useMotion } from '../../../shell/motion/use-motion';
 
 /** Interactive export preview. Expensive captures (map, 3D) are cached and refresh only when the
  *  map / resolution / 3D toggle change; typing title/description re-paints cheaply. Pan with drag,
@@ -22,14 +23,18 @@ import { useStylizeVersions } from './stylize/use-stylize-versions';
  *
  *  `open` gates every capture and resets the view, and is a PROP rather than a store read: the
  *  window this preview sits in is not always the one the `modals.export` flag describes. */
-export function ExportPreview({ open, options, summary, codeImg, codePending, codeIssue }: { open: boolean; options: ExportOptions; summary: MapProvenanceSummary | null; codeImg?: HTMLCanvasElement | null; codePending?: boolean; codeIssue?: ShareCodeIssue | null }) {
+export function ExportPreview({ open, preparing = open, checkingMap = false, options, summary, codeImg, codePending, codeIssue, footerTokens }: { open: boolean; preparing?: boolean; checkingMap?: boolean; options: ExportOptions; summary: MapProvenanceSummary | null; codeImg?: HTMLCanvasElement | null; codePending?: boolean; codeIssue?: ShareCodeIssue | null; footerTokens?: Record<string, string> }) {
   const t = useT();
+  const statusTransition = useMotion('export.preview.status');
   const state = useEditorStore((s) => s.gridState);
   const locale = useEditorStore((s) => s.locale);
   const [baseMap, setBaseMap] = useState<BaseMapSource | null>(null);
   const [brandLockup, setBrandLockup] = useState<HTMLImageElement | null>(null);
   const [card3d, setCard3d] = useState<HTMLImageElement[]>([]);
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [picture, setPicture] = useState<HTMLCanvasElement | null>(null);
+  const displayPicture = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (canvas && picture) canvas.getContext('2d')?.drawImage(picture, 0, 0);
+  }, [picture]);
   const [loading, setLoading] = useState(true);
   // Drag/wheel/double-click and the transient reset hint, shared with the stylize studio's canvas.
   const pz = usePanZoom();
@@ -83,36 +88,47 @@ export function ExportPreview({ open, options, summary, codeImg, codePending, co
   const summaryRef = useRef(summary);
   summaryRef.current = summary;
   useEffect(() => {
-    if (!baseMap || !state) return;
+    if (!open || !baseMap || !state) return;
     if (codePending) { if (!hasPicture.current) setLoading(true); return; }
     const id = setTimeout(() => {
-      setDataUrl(paintPreview({ options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup }));
+      setPicture(paintPreview({ options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup, footerTokens }));
       hasPicture.current = true;
       setLoading(false);
     }, 50);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- summary rides in a ref, see above
-  }, [options, state, locale, baseMap, card3d, codeImg, codePending, brandLockup]);
+  }, [open, options, state, locale, baseMap, card3d, codeImg, codePending, brandLockup, footerTokens]);
 
   const resetView = pz.reset;
   useEffect(() => { resetView(); }, [open, baseMap]); // a fresh picture opens at rest
 
   // The maker's band's lockup art, per locale; the preview repaints when it lands.
   useEffect(() => {
+    if (!open) return;
     let live = true;
     void loadBrandLockup(locale).then((img) => { if (live) setBrandLockup(img); });
     return () => { live = false; };
-  }, [locale]);
+  }, [open, locale]);
+
+  const busy = checkingMap || (preparing && loading);
+  const statusLabel = t(checkingMap ? 'export.map_check.checking' : 'export.load_t');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, flex: 1 }}>
       <div {...pz.stageProps} style={{ ...stage, ...pz.stageProps.style }}>
-        {loading && <div style={hintStyle}><Spinner /><div>{t('export.load_t')}</div></div>}
-        {dataUrl && !loading && (
-          <img src={dataUrl} alt="" draggable={false}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', ...pz.viewStyle }} />
+        {busy && <div role="status" aria-live="polite" aria-label={statusLabel} style={{ ...hintStyle, textAlign: 'center', padding: 16 }}>
+          <Spinner />
+          <div aria-hidden style={{ display: 'grid' }}>
+            <AnimatePresence initial={false}>
+              <motion.div key={statusLabel} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={statusTransition} style={{ gridArea: '1 / 1' }}>{statusLabel}</motion.div>
+            </AnimatePresence>
+          </div>
+        </div>}
+        {open && picture && !busy && (
+          <canvas ref={displayPicture} width={picture.width} height={picture.height} data-export-preview aria-hidden
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', ...pz.viewStyle }} />
         )}
-        {!loading && !dataUrl && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
+        {open && !busy && !picture && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
         {/* Transient reset hint: hidden at rest, appears once the user has actually panned/zoomed
             the picture, fades back out after a quiet spell (see HINT_QUIET_MS) or on reset itself. */}
         <AnimatePresence>

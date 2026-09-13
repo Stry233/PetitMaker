@@ -13,6 +13,7 @@ import { cropBackRect, planNormalize, type AspectOption } from '../normalize';
 import { MODEL_URLS, type NeuralStyle } from './models';
 import { modelSize, rgbaToTensor, tensorToRgba } from './tensor';
 import { variationFor } from './variation';
+import { hasNeuralConsumers, observeNeuralConsumers } from './lifecycle';
 
 export const NEURAL_MAX_EDGE = 1536;
 export const NEURAL_ASPECTS: readonly AspectOption[] = [
@@ -26,6 +27,16 @@ interface Pending { resolve(r: Reply): void; reject(e: Error): void }
 let worker: Worker | null = null;
 let nextId = 1;
 const pending = new Map<number, Pending>();
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function updateIdleTimer(): void {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
+  if (!worker || pending.size || hasNeuralConsumers()) return;
+  // Keep a short reopen warm without retaining model heaps for the rest of the editor session.
+  idleTimer = setTimeout(() => { worker?.terminate(); worker = null; idleTimer = null; }, 30_000);
+}
+observeNeuralConsumers(updateIdleTimer);
 
 function ensureWorker(): Worker {
   if (worker) return worker;
@@ -36,6 +47,7 @@ function ensureWorker(): Worker {
     if (!p) return;
     pending.delete(e.data.id);
     p.resolve(e.data);
+    updateIdleTimer();
   };
   worker.onerror = () => {
     const err = new StylizeError('device', 'inference worker broke');
@@ -43,7 +55,9 @@ function ensureWorker(): Worker {
     pending.clear();
     worker?.terminate();
     worker = null;
+    updateIdleTimer();
   };
+  worker.onmessageerror = () => worker?.onerror?.(new ErrorEvent('error'));
   return worker;
 }
 
@@ -52,7 +66,13 @@ function infer(modelUrl: string, data: Float32Array, width: number, height: numb
   const id = nextId++;
   return new Promise<Reply>((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    w.postMessage({ id, modelUrl, width, height, data }, [data.buffer]);
+    updateIdleTimer();
+    try { w.postMessage({ id, modelUrl, width, height, data }, [data.buffer]); }
+    catch (error) {
+      pending.delete(id);
+      reject(error);
+      updateIdleTimer();
+    }
   });
 }
 
@@ -97,7 +117,9 @@ export async function stylizeNeural(source: CanvasImageSource, style: NeuralStyl
 
   const size = modelSize(frame.width, frame.height);
   const pixels = fctx.getImageData(0, 0, frame.width, frame.height).data;
-  const reply = await infer(MODEL_URLS[style], rgbaToTensor(pixels, frame.width, size), size.width, size.height);
+  const tensor = rgbaToTensor(pixels, frame.width, size);
+  frame.width = frame.height = 0;
+  const reply = await infer(MODEL_URLS[style], tensor, size.width, size.height);
   if (!reply.ok) throw new StylizeError('device', reply.error);
   lastBackend = reply.backend;
   lastGpuError = reply.gpuError;
@@ -119,6 +141,7 @@ export async function stylizeNeural(source: CanvasImageSource, style: NeuralStyl
     uctx.translate(v.flipX ? upright.width : 0, v.flipY ? upright.height : 0);
     uctx.scale(v.flipX ? -1 : 1, v.flipY ? -1 : 1);
     uctx.drawImage(painted, 0, 0);
+    painted.width = painted.height = 0;
     painted = upright;
   }
   const rect = cropBackRect(plan, outSize.width, outSize.height);
@@ -126,5 +149,6 @@ export async function stylizeNeural(source: CanvasImageSource, style: NeuralStyl
   out.width = Math.max(1, Math.round(rect.w));
   out.height = Math.max(1, Math.round(rect.h));
   out.getContext('2d')!.drawImage(painted, rect.x, rect.y, rect.w, rect.h, 0, 0, out.width, out.height);
+  painted.width = painted.height = 0;
   return out;
 }

@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, Usage } from '../core/types';
 import { streamFailureEvent } from './http-failure';
+import { reasoningBody } from './reasoning';
 import type { Adapter, AdapterRequest } from './types';
 
 /** Adaptive thinking and the answer share this budget. */
@@ -46,7 +47,7 @@ export function toAnthropicMessages(messages: ProviderMessage[], sameModel: bool
   return messages.map((m): Anthropic.MessageParam => {
     if (m.role === 'user') return { role: 'user', content: userContent(m.text, m.images) };
     if (m.role === 'assistant') {
-      if (m.raw !== undefined && sameModel) return { role: 'assistant', content: m.raw as Anthropic.ContentBlockParam[] };
+      if (Array.isArray(m.raw) && sameModel) return { role: 'assistant', content: m.raw as Anthropic.ContentBlockParam[] };
       return { role: 'assistant', content: assistantContent(m.text, m.toolCalls) };
     }
     return {
@@ -112,7 +113,8 @@ export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
           {
             model: req.model,
             max_tokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-            thinking: { type: 'adaptive' },
+            ...(req.capabilities?.reasoning && !req.capabilities.budget ? { thinking: { type: 'adaptive' as const } } : {}),
+            ...reasoningBody('claude', req.thinking, req.capabilities),
             system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
             tools: req.tools.map((t) => ({
               name: t.name,

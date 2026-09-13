@@ -52,6 +52,28 @@ describe('background image decoding', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
+  it('recovers detached pixels after a worker failure and retires the worker before decoding again', async () => {
+    const rgba = new Uint8Array([1, 2, 3, 255]);
+    const recovered = rgba.slice();
+    const terminate = vi.fn();
+    vi.stubGlobal('Worker', class {
+      onerror?: () => void;
+      terminate = terminate;
+      postMessage(data: unknown, transfer: Transferable[]) {
+        structuredClone(data, { transfer });
+        queueMicrotask(() => this.onerror?.());
+      }
+    });
+    const recoverPixels = vi.fn(async () => {
+      expect(terminate).toHaveBeenCalledOnce();
+      return recovered;
+    });
+    await decodeGlyphAsync(rgba, 1, 1, { recoverPixels });
+    expect(rgba.byteLength).toBe(0);
+    expect(recoverPixels).toHaveBeenCalledOnce();
+    expect(decodeGlyph).toHaveBeenCalledWith(recovered, 1, 1);
+  });
+
   it('falls back when workers are unavailable or cannot start', async () => {
     vi.stubGlobal('Worker', undefined);
     await decodeGlyphAsync(new Uint8Array(4), 1, 1);

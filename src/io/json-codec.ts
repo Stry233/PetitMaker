@@ -155,7 +155,7 @@ function tokenToCell(token: string, zone: CellZone): MacroCell {
 }
 
 /** Serializes map state with optional camera session data supplied by the caller. */
-export function serialize(state: GridState, camera?: PersistedCamera): string {
+export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveFile {
   const { template, cells, objects } = state;
 
   const tokens: string[] = [];
@@ -204,7 +204,11 @@ export function serialize(state: GridState, camera?: PersistedCamera): string {
     ...(camera && (camera.view2d || camera.view3d) ? { camera } : {}),
   };
 
-  return JSON.stringify(saveFile);
+  return saveFile;
+}
+
+export function serialize(state: GridState, camera?: PersistedCamera): string {
+  return JSON.stringify(buildSaveFile(state, camera));
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -219,6 +223,10 @@ export function readSaveCamera(json: string): PersistedCamera | undefined {
   } catch {
     return undefined;
   }
+  return readParsedSaveCamera(raw);
+}
+
+export function readParsedSaveCamera(raw: unknown): PersistedCamera | undefined {
   if (!raw || typeof raw !== 'object' || !('camera' in raw)) return undefined;
   const cam = (raw as { camera?: unknown }).camera;
   if (!cam || typeof cam !== 'object') return undefined;
@@ -272,8 +280,12 @@ export function stackedCoatingIds(objects: Iterable<PlacedObject>): Set<string> 
 }
 
 export function deserialize(json: string, template: MapTemplate): GridState {
-  // Migration rejects unsupported future versions and inputs without a migration path.
-  const save = migrateToCurrent(JSON.parse(json) as RawSave) as unknown as SaveFile;
+  return deserializeParsed(JSON.parse(json), template);
+}
+
+/** Validates and migrates a parsed save through the same path as the string decoder. */
+export function deserializeParsed(raw: unknown, template: MapTemplate): GridState {
+  const save = migrateToCurrent(raw as RawSave) as unknown as SaveFile;
   // Row-major cell data is meaningful only for its declared template dimensions.
   if (save.templateId && save.templateId !== template.id) {
     throw new Error(`Save was made for map template "${save.templateId}", not "${template.id}".`);

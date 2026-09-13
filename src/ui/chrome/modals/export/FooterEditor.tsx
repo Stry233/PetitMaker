@@ -13,6 +13,7 @@ import { useChromeScale } from '../../../design/scale';
 import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
 import { useScrollFade } from '../../../primitives/scroll-fade';
 import { FOOTER_TOKENS, FOOTER_FILL, parseFooter } from '../../../../io/export/footer-template';
+import { ReviewIndicator } from './review/ReviewIndicator';
 
 const MENU_W = 250;
 const ZW = '\u200B'; // zero-width space: an invisible, editable caret slot placed around chips
@@ -20,12 +21,15 @@ const ZW = '\u200B'; // zero-width space: an invisible, editable caret slot plac
 /** Menu order = the token list, then Fill last. */
 const MENU_IDS = [...FOOTER_TOKENS.map((tk) => tk.id), FOOTER_FILL];
 
-export function FooterEditor({ value, onChange, samples, t }: {
+export function FooterEditor({ value, onChange, samples, t, checking = false, refused = false, reviewLabel = '' }: {
   value: string;
   onChange: (template: string) => void;
   /** Current value of each token id (date/dims/name/…) shown in the menu as a reference. */
   samples: Record<string, string>;
   t: (key: string) => string;
+  checking?: boolean;
+  refused?: boolean;
+  reviewLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -192,18 +196,25 @@ export function FooterEditor({ value, onChange, samples, t }: {
         .ppfe-field:empty:before{content:attr(data-ph);color:${skin.muted};}
       `}</style>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
         <div
           ref={ref}
           className="ppfe-field"
           contentEditable
+          role="textbox"
+          aria-label={t('export.opt_footer')}
+          aria-busy={checking}
+          aria-invalid={refused}
           suppressContentEditableWarning
           data-ph={t('export.footer_ph')}
           onInput={onInput}
           onPaste={onPaste}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !menu) e.preventDefault(); }}
           onBlur={sync}
-          style={fieldStyle}
+          style={{ ...fieldStyle, paddingRight: 34 }}
         />
+        {checking && <ReviewIndicator label={reviewLabel} />}
+        </div>
         <button type="button" onClick={() => { const b = ref.current!.getBoundingClientRect(); openMenu({ left: clampLeft(b.left, MENU_W, chrome), top: b.top, bottom: b.bottom, fromSlash: false }); }} style={addBtn}>+ {t('export.footer_insert')}</button>
       </div>
       <div style={hintStyle}>{t('export.footer_slash_hint')}</div>

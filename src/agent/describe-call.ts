@@ -1,22 +1,16 @@
-/**
- * Human-readable one-line descriptions of agent tool calls, for the approval
- * prompt and other user-facing surfaces. Non-professional users cannot parse
- * `place_object {"catalogId":"building-myhouse","x":3,…}` — this renders the
- * same call as `place_object: building-myhouse at (3,4)`.
- *
- * Read by HUMANS only (the gate summary, the ticket sub-line and the
- * blueprint's running line), so every connecting word goes through the caller's `t`. The
- * English the MODEL reads — rule text, `REVERTED: …`, the (system) nudges —
- * is produced elsewhere and stays English.
- *
- * Coordinates, arrows, counts and catalog/object ids carry no per-locale form
- * and are printed as-is; enum tokens the model sends (terrain, trim style,
- * algorithm, zone theme) are words on screen, so they get keys.
- */
+/** Localized approval descriptions with map coordinates and object names. */
+import { displayAgentText, toolVerbKey } from './tool-labels';
 import type { ToolCall } from './tools/types';
 import { normalizeGeometry, rectInput, type FlatDefault } from './tools/geometry';
 
 type In = Record<string, unknown>;
+
+export interface DescribeNames {
+  catalog(id: string): string | undefined;
+  object(id: string): string | undefined;
+}
+const NO_NAMES: DescribeNames = { catalog: () => undefined, object: () => undefined };
+const itemName = (id: unknown, t: Translate, names: DescribeNames): string => names.catalog(String(id)) ?? t('agent3.object_name');
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -46,11 +40,10 @@ const TRIM_KEY: Record<string, string> = {
   tri: 'agent2.dc_cs_tri',
   empty: 'agent2.dc_cs_empty',
 };
-/** A schema enum the model sends: named for the panel, or printed raw when the
- *  schema grows a value this table has not caught up with. */
+/** Unknown enum values receive the generic operation label. */
 const word = (map: Record<string, string>, v: unknown, t: Translate): string => {
   const key = map[String(v)];
-  return key ? t(key) : String(v);
+  return key ? t(key) : t('agent3.verb_operation');
 };
 
 /** Compact area phrase for the shared rect/circle/line/cells shape input, either spelling. */
@@ -73,8 +66,8 @@ function shape(rawInput: In, t: Translate, flatDefault: FlatDefault = 'rect'): s
 const at = (input: In): string => `(${n(input.x)},${n(input.y)})`;
 const box = (i: In): string => `${at(i)}+${n(i.w)}×${n(i.h)}`;
 
-/** Per-tool phrasing; unknown tools fall back to compact key=value pairs. */
-const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
+/** Arguments worth reviewing before a map operation. */
+const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames) => string> = {
   paint_terrain: (i, t) => {
     const painted = t('agent2.dc_paint', {
       terrain: word(TERRAIN_KEY, i.terrain, t),
@@ -85,20 +78,20 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
   },
   erase_terrain: (i, t) => t('agent2.dc_erase', { area: shape(i, t) }),
   clear_area: (i, t) => t('agent2.dc_clear', { area: shape(i, t) }),
-  place_object: (i, t) => {
-    const placed = t('agent2.dc_at', { what: String(i.catalogId), at: at(i) });
+  place_object: (i, t, names) => {
+    const placed = t('agent2.dc_at', { what: itemName(i.catalogId, t, names), at: at(i) });
     return i.rotation ? `${placed} ${t('agent2.dc_rot', { deg: n(i.rotation) })}` : placed;
   },
-  remove_object: (i) => String(i.objectId),
-  rotate_object: (i) => `${String(i.objectId)} → ${n(i.rotation)}°`,
+  remove_object: (i, t, names) => names.object(String(i.objectId)) ?? t('agent3.object_name'),
+  rotate_object: (i, t, names) => `${names.object(String(i.objectId)) ?? t('agent3.object_name')} → ${n(i.rotation)}°`,
   trim_corner: (i, t) => t('agent2.dc_corner', {
-    corner: String(i.corner),
+    corner: ({ TL: '\u2196', TR: '\u2197', BL: '\u2199', BR: '\u2198' } as Record<string, string>)[String(i.corner)] ?? '',
     at: at(i),
     style: word(TRIM_KEY, i.style, t),
   }),
-  build_road: (i, t) => t('agent2.dc_along', { what: String(i.catalogId ?? 'path-rustic-dirt'), area: shape(i, t, 'line') }),
-  scatter_objects: (i, t) => {
-    const ids = (i.catalogIds as string[] | undefined) ?? [];
+  build_road: (i, t, names) => t('agent2.dc_along', { what: itemName(i.catalogId ?? 'path-rustic-dirt', t, names), area: shape(i, t, 'line') }),
+  scatter_objects: (i, t, names) => {
+    const ids = ((i.catalogIds as string[] | undefined) ?? []).map((id) => itemName(id, t, names));
     const pool = ids.length > 2 ? `${ids.slice(0, 2).join(', ')} +${ids.length - 2}` : ids.join(', ');
     const rect = rectInput(i);
     return t('agent2.dc_scatter', {
@@ -114,10 +107,10 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
     flood: i.flood === true ? t('agent2.dc_wall_flood') : '',
   }),
   draw_figure: (i, t) => t('agent2.dc_figure', {
-    shape: String(i.shape ?? ''),
+    shape: t('agent3.figure_name'),
     size: n(i.size),
     at: `(${n(i.cx)},${n(i.cy)})`,
-    ring: typeof i.ringId === 'string' ? t('agent2.dc_figure_ring', { ring: i.ringId }) : '',
+    ring: typeof i.ringId === 'string' ? t('agent2.dc_figure_ring', { ring: t('agent3.object_name') }) : '',
   }),
   sculpt_terrace: (i, t) => t('agent2.dc_terrace', {
     tiers: n(i.tiers) || 2,
@@ -153,24 +146,22 @@ const DESCRIBERS: Record<string, (input: In, t: Translate) => string> = {
 /** What the call is ABOUT, without the tool's own name: the half a ticket shows as its sub-line.
  *  Undefined when there is nothing to say beyond the name. Read directly rather than split back out
  *  of the line below, so the two can never disagree about where one half ends. */
-export function describeToolArgs(call: Pick<ToolCall, 'name' | 'input'>, t: Translate): string | undefined {
+export function describeToolArgs(call: Pick<ToolCall, 'name' | 'input'>, t: Translate, names: DescribeNames = NO_NAMES): string | undefined {
   const input = call.input ?? {};
   const d = DESCRIBERS[call.name];
   if (d) {
     try {
-      return d(input, t);
+      const detail = d(input, t, names);
+      return /NaN|Infinity|undefined/.test(detail) ? undefined : displayAgentText(detail, t);
     } catch {
-      /* fall through to the generic form */
+      /* Invalid arguments receive the localized operation name. */
     }
   }
-  const pairs = Object.entries(input)
-    .filter(([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v))
-    .map(([k, v]) => `${k}=${String(v)}`)
-    .join(' ');
-  return pairs || undefined;
+  return undefined;
 }
 
-export function describeToolCall(call: Pick<ToolCall, 'name' | 'input'>, t: Translate): string {
-  const args = describeToolArgs(call, t);
-  return args ? `${call.name}: ${args}` : call.name;
+export function describeToolCall(call: Pick<ToolCall, 'name' | 'input'>, t: Translate, names?: DescribeNames): string {
+  const args = describeToolArgs(call, t, names);
+  const label = t(toolVerbKey(call.name));
+  return args ? `${label} (${args})` : label;
 }

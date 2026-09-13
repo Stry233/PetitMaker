@@ -6,7 +6,7 @@
  */
 import './_pixi-env';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Container } from 'pixi.js-legacy';
+import { Graphics, Text, type Container } from 'pixi.js-legacy';
 import { AnnotationLayer } from '../../canvas/map2d/layers/annotation-layer';
 import { setReducedMotion, __resetMotionState } from '../../canvas/map2d/motion-state';
 import type { AnnotationsState, ZoneNote } from '../../core/model/annotations';
@@ -46,6 +46,18 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
+  it('draws and rebuilds a brush draft whose islands meet diagonally', () => {
+    const layer = new AnnotationLayer();
+    const draft: ZoneNote = {
+      kind: 'zone', id: 'draft', num: 0, color: '#2FBF9B', tag: 'farm',
+      cells: [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }],
+    };
+    layer.draw({ items: [], visible: true, locked: false }, { ...OPTS, draft });
+    layer.draw({ items: [], visible: true, locked: false }, { ...OPTS, draft: { ...draft, cells: [...draft.cells, { x: 2, y: 1 }] } });
+    expect(passes(layer).wash.children).toHaveLength(1);
+    layer.destroy();
+  });
+
   it('the eye hides the whole layer', () => {
     const layer = new AnnotationLayer();
     layer.draw({ ...data(), visible: false }, OPTS);
@@ -80,6 +92,26 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
+  it('refreshes existing tags when their translation changes without editing the notes', () => {
+    const layer = new AnnotationLayer();
+    const notes = data();
+    let language = 'en';
+    const opts = { ...OPTS, tagLabel: (tag: string) => `${language}:${tag}` };
+    layer.draw(notes, opts);
+    const previousLabels = [...passes(layer).label.children];
+    const route = passes(layer).route.children[0];
+    language = 'zh';
+    layer.draw(notes, opts);
+    const labels = [...passes(layer).label.children] as Container[];
+    expect(labels.every((label) => !previousLabels.includes(label))).toBe(true);
+    expect(labels.flatMap((label) => label.children.filter((child): child is Text => child instanceof Text).map((text) => text.text)))
+      .toEqual(['1', 'zh:homes', 'zh:plaza', 'zh:entrance']);
+    expect(passes(layer).route.children[0]).toBe(route);
+    layer.draw(notes, { ...opts, tagLabel: (tag) => `zh:${tag}` });
+    expect(passes(layer).label.children).toEqual(labels);
+    layer.destroy();
+  });
+
   it('with motion on, a removed note LEAVES: its node stands while its fade runs', () => {
     setReducedMotion(false);
     const layer = new AnnotationLayer();
@@ -96,6 +128,35 @@ describe('AnnotationLayer', () => {
     layer.draw(data(), OPTS);
     const withNum = passes(layer).label.children[0] as Container;
     expect(withNum.children).toHaveLength(3);
+    layer.destroy();
+  });
+
+  it('closes the selected chip outline along its left edge', () => {
+    const layer = new AnnotationLayer();
+    layer.draw(data(), { ...OPTS, selectionIds: ['t1'] });
+    const chip = passes(layer).label.children[1] as Container;
+    const outline = chip.children[2] as Graphics;
+    outline.getLocalBounds();
+    const paths = outline.geometry.graphicsData.map((entry) => (entry.shape as { points?: number[] }).points ?? []);
+    const left = Math.min(...paths.flatMap((points) => points.filter((_, i) => i % 2 === 0)));
+    expect(paths.some((points) => points.some((x, i) => i % 2 === 0 && i + 3 < points.length
+      && x === left && points[i + 2] === left && points[i + 1] !== points[i + 3]))).toBe(true);
+    layer.destroy();
+  });
+
+  it('centers trimmed glyph ink on the chip and number-disc centers', () => {
+    const layer = new AnnotationLayer();
+    layer.draw(data(), OPTS);
+    const caption = passes(layer).label.children[0] as Container;
+    const digit = caption.children[1] as Text;
+    const disc = (caption.children[0] as Graphics).geometry.graphicsData[0]!.shape as { y: number };
+    expect(digit.style.trim).toBe(true);
+    expect(digit.y).toBe(disc.y);
+    const chip = passes(layer).label.children[1] as Container;
+    const text = chip.children[1] as Text;
+    const plate = (chip.children[0] as Graphics).geometry.graphicsData[0]!.shape as { y: number; height: number };
+    expect(text.style.trim).toBe(true);
+    expect(text.y).toBe(plate.y + plate.height / 2);
     layer.destroy();
   });
 

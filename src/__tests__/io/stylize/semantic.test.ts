@@ -18,7 +18,7 @@ function spyFillRects(): { rects: FillCall[]; restore: () => void } {
       rects.push({ color: this.fillStyle, x, y, w, h });
     },
   };
-  const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
+  const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as ReturnType<HTMLCanvasElement['getContext']>);
   return { rects, restore: () => spy.mockRestore() };
 }
 
@@ -94,7 +94,7 @@ describe('renderSemanticLayout', () => {
     const strokeRect = vi.fn();
     const fillText = vi.fn();
     const ctx = { fillStyle: '', fillRect: vi.fn(), strokeRect, fillText };
-    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as ReturnType<HTMLCanvasElement['getContext']>);
     renderSemanticLayout(state, plan);
     spy.mockRestore();
     expect(strokeRect).not.toHaveBeenCalled();

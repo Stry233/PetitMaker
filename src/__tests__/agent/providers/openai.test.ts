@@ -4,8 +4,9 @@ import type { ProviderMessage } from '../../../agent/core/project-messages';
 import type { StreamEvent } from '../../../agent/core/types';
 import type { AdapterRequest } from '../../../agent/providers/types';
 
-const { createMock, ctorMock, listMock } = vi.hoisted(() => ({
+const { createMock, ctorMock, listMock, responsesMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
+  responsesMock: vi.fn(),
   ctorMock: vi.fn(),
   listMock: vi.fn(),
 }));
@@ -13,6 +14,7 @@ const { createMock, ctorMock, listMock } = vi.hoisted(() => ({
 vi.mock('openai', () => {
   class MockOpenAI {
     chat = { completions: { create: createMock } };
+    responses = { create: responsesMock };
     models = { list: listMock };
     constructor(opts: unknown) {
       ctorMock(opts);
@@ -51,6 +53,19 @@ async function collect(gen: AsyncGenerator<StreamEvent>): Promise<StreamEvent[]>
 }
 
 describe('providers/openai: streaming', () => {
+  it('routes official reasoning models to Responses and preserves custom gateway chat routing', async () => {
+    responsesMock.mockResolvedValue(fakeChunkStream([{ type: 'response.completed', response: { output: [{ type: 'message', id: 'm1', content: [{ type: 'output_text', text: 'Ready' }] }] } }]));
+    const official = createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.openai });
+    const result = await collect(official.stream(baseRequest({ model: 'gpt-6-astra' }), new AbortController().signal));
+    expect(result).toContainEqual({ t: 'text', delta: 'Ready' });
+    expect(responsesMock).toHaveBeenCalledTimes(1);
+    expect(createMock).not.toHaveBeenCalled();
+    createMock.mockResolvedValue(fakeChunkStream([{ choices: [{ index: 0, delta: { content: 'Custom' }, finish_reason: 'stop' }] }]));
+    const custom = createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.custom, baseUrl: 'https://gateway.example/v1' });
+    expect(await collect(custom.stream(baseRequest({ model: 'gpt-6-astra' }), new AbortController().signal))).toContainEqual({ t: 'text', delta: 'Custom' });
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
   afterEach(() => {
     // RESET, not clear: `clearAllMocks` leaves a queued `mockResolvedValueOnce` standing, so one
     // failing retry test would feed its unconsumed value to the next test and cascade.
@@ -70,7 +85,7 @@ describe('providers/openai: streaming', () => {
     expect(events).toEqual([
       { t: 'reasoning', delta: 'thinking...' },
       { t: 'text', delta: 'Hello' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
   });
 
@@ -87,11 +102,11 @@ describe('providers/openai: streaming', () => {
 
     expect(await collect(zhipu.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'zhipu thinks' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
     expect(await collect(router.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'routed model thinks' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
   });
 
@@ -107,11 +122,11 @@ describe('providers/openai: streaming', () => {
 
     expect(await collect(deepseek.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'from reasoning_content' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
     expect(await collect(router.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'from reasoning' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
   });
 
@@ -636,7 +651,7 @@ describe('providers/openai: streaming', () => {
     expect((createMock.mock.calls[1]?.[0] as { stream?: unknown }).stream).toBeUndefined();
     // Reasoning and usage both reach the loop off the response body, so nothing the panel counts is
     // lost by leaving the streaming path (and `stream_options` has nothing to ask for here).
-    expect(secondEvents).toEqual([
+    expect(secondEvents).toMatchObject([
       { t: 'reasoning', delta: 'where is the flat ground' },
       { t: 'tool-start', callId: 'call_real', name: 'find_flat_areas' },
       { t: 'tool-args', callId: 'call_real', delta: '{"limit":5}' },

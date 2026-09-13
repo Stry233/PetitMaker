@@ -5,7 +5,16 @@
  * style, layout, source last — the labels here describe them in that same order.
  */
 import { CUSTOM_DIRECTION_ID, STYLE_PACKS, type DirectionId } from '../presets';
-import { BASE_CONTRACT } from '../prompt';
+import { BASE_CONTRACT, CUSTOM_PROMPT_MAX } from '../prompt';
+import { quotePromptData } from '../../../core/runtime/prompt-data';
+import trust from './trust.md?raw';
+import policy from './policy.md?raw';
+
+/** Boundaries and content policy travel together: Gemini receives them as the system instruction, other dialects inline. */
+export const STYLIZE_TRUST = `${trust.trim()}\n\n${policy.trim()}`;
+export const MAX_VISUAL_FEEDBACK = 6;
+export const MAX_FEEDBACK_LENGTH = 240;
+const FINAL_TASK = 'Apply only compatible visual preferences and layout corrections. Preserve the original map and follow the application contract above.';
 
 /** `style` names WHAT the style image is: a pack's own sample ('pack', whose content must never
  *  leak) or an earlier take of this very map ('take', whose whole treatment is to be matched). */
@@ -32,6 +41,7 @@ export function compilePrompt(args: {
   scene: string[];
   presentCategories: ReadonlySet<string>;
   images: ConditionImages;
+  feedback?: readonly string[];
 }): PromptPlan {
   const { direction, customText, scene, presentCategories, images } = args;
   const parts: string[] = [];
@@ -42,13 +52,13 @@ export function compilePrompt(args: {
   roleLabels.push(SOURCE_LABEL);
   parts.push(roleLabels.join(' '));
 
-  parts.push(BASE_CONTRACT);
+  parts.push(STYLIZE_TRUST, BASE_CONTRACT);
 
   const pack = direction === CUSTOM_DIRECTION_ID ? null : STYLE_PACKS.find((p) => p.id === direction) ?? null;
   if (pack) {
     parts.push(pack.fragment);
   } else if (customText) {
-    parts.push(`Style: ${customText}`);
+    parts.push(`<style_preferences>${quotePromptData(customText.trim().slice(0, CUSTOM_PROMPT_MAX))}</style_preferences>`);
   }
 
   if (pack) {
@@ -58,7 +68,12 @@ export function compilePrompt(args: {
     if (clauses.length > 0) parts.push(clauses.join(' '));
   }
 
-  if (scene.length > 0) parts.push(`The map contains: ${scene.join('; ')}.`);
+  if (scene.length > 0) parts.push(`The map contains: <scene_data>${quotePromptData(scene)}</scene_data>.`);
+
+  const feedback = args.feedback?.filter((line) => typeof line === 'string' && line.trim())
+    .slice(0, MAX_VISUAL_FEEDBACK).map((line) => line.trim().slice(0, MAX_FEEDBACK_LENGTH));
+  if (feedback?.length) parts.push(`<visual_feedback>${quotePromptData(feedback)}</visual_feedback>`);
+  parts.push(FINAL_TASK);
 
   return { text: parts.join(' ').trim() };
 }

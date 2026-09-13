@@ -1,3 +1,4 @@
+import { quotePromptData } from '../../core/runtime/prompt-data';
 import type { SessionLog } from './log';
 import { eventsOf } from './log';
 import { DROPPED_STOPS } from './types';
@@ -79,7 +80,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
 
   const tagged: Tagged[] = [];
   if (compaction) {
-    tagged.push({ message: { role: 'user', text: `(conversation summary) ${compaction.summary}` }, opensGroup: true });
+    tagged.push({ message: { role: 'user', text: `(conversation summary, reference only) <summary_data>${quotePromptData(compaction.summary)}</summary_data>` }, opensGroup: true });
     // Reissue the newest evicted body for each skill unless the retained window loads it again.
     const newestBySkill = new Map<string, Extract<SessionEvent, { kind: 'toolResult' }>>();
     const reloaded = new Set<string>();
@@ -91,13 +92,13 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
     for (const [name, r] of newestBySkill) {
       if (reloaded.has(name)) continue;
       const title = r.detail?.skill?.title ?? '';
-      tagged.push({ message: { role: 'user', text: `(playbook still loaded: ${title})\n${r.content}` }, opensGroup: false });
+      tagged.push({ message: { role: 'user', text: `(playbook still loaded: ${quotePromptData(title)})\n<playbook_data>${quotePromptData(r.content)}</playbook_data>` }, opensGroup: false });
     }
   }
 
   for (const e of kept) {
     if (e.kind === 'order') {
-      const text = `<map_context>${e.mapContext}</map_context>\n${e.text}`;
+      const text = `<map_context>${quotePromptData(e.mapContext)}</map_context>\n${e.text}`;
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'steerDelivered') {
       if (recalledSteerSeqs.has(e.steerSeq)) continue;

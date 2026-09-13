@@ -64,8 +64,13 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 const EXPECTED_BUILD_LINE = `${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`;
 
 describe('AboutModal — view A (About)', () => {
-  it('shows the team, eight local documents, then sponsorship links', () => {
+  it('on a desktop viewport lays out a brand band over a people pane and a documents pane', () => {
     renderModal();
+    const view = document.querySelector('[data-about-view]')!;
+    expect(view.getAttribute('data-about-layout')).toBe('wide');
+    expect(screen.getByTestId('about-band')).toBeTruthy();
+    const people = screen.getByTestId('about-people');
+    const documents = screen.getByTestId('about-documents');
     const grid = screen.getByTestId('legal-grid');
     // 8 drill-in doc rows (privacy…changelog; the About doc is view A itself).
     // There is no origin-gated "open the About page" row — it would duplicate view A.
@@ -73,6 +78,10 @@ describe('AboutModal — view A (About)', () => {
     expect(screen.queryByTestId('legal-open-page-row')).toBeNull();
     const team = screen.getByTestId('team-grid');
     const sponsorship = screen.getByTestId('sponsorship-links');
+    expect(people.contains(team)).toBe(true);
+    expect(people.contains(screen.getByTestId('acknowledgements-grid'))).toBe(true);
+    expect(documents.contains(grid)).toBe(true);
+    expect(documents.contains(sponsorship)).toBe(true);
     expect(team.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(grid.compareDocumentPosition(sponsorship) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const links = within(sponsorship).getAllByRole('link');
@@ -80,6 +89,24 @@ describe('AboutModal — view A (About)', () => {
     for (const link of links) {
       expect(link.getAttribute('target')).toBe('_blank');
       expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    }
+  });
+
+  it('stacks into one column on a narrow viewport: team, documents, then sponsorship', () => {
+    const original = window.innerWidth;
+    // A phone-width window: the fitted chrome scale cannot shrink the 800 px card into it.
+    Object.defineProperty(window, 'innerWidth', { value: 320, configurable: true });
+    try {
+      renderModal();
+      expect(document.querySelector('[data-about-view]')!.getAttribute('data-about-layout')).toBe('stack');
+      expect(screen.queryByTestId('about-band')).toBeNull();
+      const team = screen.getByTestId('team-grid');
+      const grid = screen.getByTestId('legal-grid');
+      const sponsorship = screen.getByTestId('sponsorship-links');
+      expect(team.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(grid.compareDocumentPosition(sponsorship) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: original, configurable: true });
     }
   });
 
@@ -132,6 +159,26 @@ describe('AboutModal — team avatar cards', () => {
   it('states that the order carries no meaning', () => {
     renderModal();
     expect(screen.getByText(en['about.team_order'] as string)).toBeTruthy();
+  });
+
+  it('places the acknowledgements under the team in the people pane, before the documents', () => {
+    renderModal();
+    const team = screen.getByTestId('team-grid');
+    const acknowledgements = screen.getByTestId('acknowledgements-grid');
+    const grid = screen.getByTestId('legal-grid');
+    expect(team.compareDocumentPosition(acknowledgements) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(acknowledgements.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const cards = screen.getAllByTestId('acknowledged-member');
+    expect(cards).toHaveLength(LEGAL.acknowledgements.length);
+    const ordered = teamInReadingOrder(LEGAL.acknowledgements);
+    cards.forEach((card, i) => {
+      const member = ordered[i]!;
+      expect(card.getAttribute('href')).toBe(member.url);
+      expect(card.getAttribute('rel')).toContain('noopener');
+      expect(card.getAttribute('aria-label')).toContain(member.name);
+      expect(within(card).getByRole('img').getAttribute('alt')).toBe(member.name);
+    });
+    expect(screen.getByText(en['about.acknowledgements_note'] as string)).toBeTruthy();
   });
 
   it('runs A to Z by romanized name, with Han and Latin names interleaved', () => {

@@ -1,3 +1,5 @@
+import { displayAgentText } from '../../agent/tool-labels';
+import { translate, useT } from '../../i18n/context';
 /*
  * Renders model-authored Markdown through the same constrained parser used by legal documents. Raw
  * HTML is unsupported and model-authored links retain their text without becoming navigable.
@@ -84,6 +86,7 @@ export function ModelProse({ text, style, testId }: {
   style?: CSSProperties;
   testId?: string;
 }) {
+  const t = useT();
   const weightAt = useFrameReadableWeight();
   const emphasis = {
     '--model-emphasis-weight': weightAt(700, typeof style?.fontSize === 'number' ? style.fontSize : TEXT_ROLES.note.px),
@@ -95,7 +98,7 @@ export function ModelProse({ text, style, testId }: {
       // or id has no space for the line breaker, and without this it walks out of the card.
       style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style, ...emphasis }}
     >
-      {parseLegalMarkdown(text).map((node, i) => blockNode(node, i))}
+      {parseLegalMarkdown(displayAgentText(text, t)).map((node, i) => blockNode(node, i))}
     </div>
   );
 }
@@ -103,9 +106,9 @@ export function ModelProse({ text, style, testId }: {
 /** Every block's own words, run together with the line breaks between them — for a seat that is one
  *  clamped line of a card. A list item keeps its markdown marker, which is the only thing in that
  *  box that can say it is one. */
-export function inlineProseRuns(text: string): ReactNode[] {
+export function inlineProseRuns(text: string, t = translate): ReactNode[] {
   const blocks: ReactNode[][] = [];
-  for (const node of parseLegalMarkdown(text)) {
+  for (const node of parseLegalMarkdown(displayAgentText(text, t))) {
     const runs = runsOf(node);
     if (runs.length > 0) blocks.push(runs);
   }

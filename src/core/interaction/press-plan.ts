@@ -272,7 +272,8 @@ export function cursorFactsFor(f: PressFacts): CursorFacts {
   }
   return {
     ctrlHint,
-    pressSelects: p.down.some((i) => i.kind === 'select') && !p.down.some((i) => i.kind === 'tool-stroke'),
+    pressSelects: (p.down.some((i) => i.kind === 'select') && !p.down.some((i) => i.kind === 'tool-stroke'))
+      || (f.toolSelects && f.toolSelectHit !== null && !f.toolGrabs && p.down.some((i) => i.kind === 'tool-stroke')),
     // A press that would pick something up: the machine's own move gesture, or a tool-owned grab
     // (the annotate select state's note) — the open hand promises the same closed hand either way.
     overSelected: p.onDrag.some((i) => i.kind === 'move-selection')

@@ -3,8 +3,8 @@
  * `viewMode`. The scene is created lazily on first 3D activation (the three
  * chunk stays out of the main bundle), then kept alive across mode switches:
  * hidden means paused (no rAF, GL resources warm), visible means resumed. A
- * different GridState identity (new map / import / generate) rebuilds the
- * scene on the next activation.
+ * different GridState identity disposes the obsolete scene immediately; the
+ * replacement is built on the next activation.
  */
 import { useEffect, useRef } from 'react';
 import { tagLabel } from '../../i18n/annotation-tags';
@@ -45,6 +45,13 @@ export function Editor3DCanvas() {
 
   useEffect(() => {
     const host = hostRef.current;
+    if (sceneRef.current && builtFor.current !== gridState) {
+      sceneRef.current.dispose();
+      sceneRef.current = null;
+      builtFor.current = null;
+      builtQuality.current = null;
+      setScene3D(null, null);
+    }
     if (!active) {
       sceneRef.current?.pause();
       return;
@@ -108,6 +115,7 @@ export function Editor3DCanvas() {
   }, [layerVisibility]);
 
   // The plan-notes layer redraws off the same store facts the 2D layer draws from.
+  const locale = useEditorStore((s) => s.locale);
   const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
   const annotationDraft = useEditorStore((s) => s.annotationDraft);
   const annotationSelection = useEditorStore((s) => s.annotationSelection);
@@ -118,7 +126,7 @@ export function Editor3DCanvas() {
       draft: annotationDraft, selection: annotationSelection,
       tagLabel: (tag) => tagLabel(tag, useEditorStore.getState().locale),
     });
-  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState]);
+  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState, locale]);
 
   // Note labels bake into canvas textures, so lettering rasterised before the app's fonts landed
   // must be baked again once they do (the 2D view redraws on the same signal).

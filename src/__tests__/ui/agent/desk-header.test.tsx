@@ -447,7 +447,6 @@ describe('the setup family, as dock faces', () => {
     const table: [SetupFace['step'], string][] = [
       ['typing', 'idle'], ['shaped', 'work'], ['ambiguous', 'work'], ['unknown', 'ask'],
       ['refused', 'danger'], ['no-answer', 'danger'], ['endpoint', 'idle'],
-      ['confirmed', 'work'], ['chosen', 'work'],
     ];
     for (const [step, paper] of table) {
       const { view, ctx } = dock({ step });
@@ -461,8 +460,8 @@ describe('the setup family, as dock faces', () => {
   it('gives the three key-entry poses the producer they were declared for', () => {
     const poses: [SetupFace['step'], string][] = [
       ['typing', 'keylean'], ['shaped', 'keylean'], ['ambiguous', 'keylean'],
-      ['confirmed', 'pleased'], ['refused', 'trouble'],
-      ['unknown', 'asking'], ['no-answer', 'trouble'], ['chosen', 'pleased'],
+      ['refused', 'trouble'],
+      ['unknown', 'asking'], ['no-answer', 'trouble'],
     ];
     for (const [step, pose] of poses) {
       const { view, ctx } = dock({ step });
@@ -482,15 +481,6 @@ describe('the setup family, as dock faces', () => {
       .toBe(translations.en['agent3.dock_setup_shaped']!.replace('{name}', 'Anthropic'));
     shaped.unmount();
 
-    const confirmed = renderWithI18n(
-      <DeskHeader view={makeView()} connected={false} now={0} setupFace={{ step: 'confirmed', name: 'DeepSeek' }} />,
-    );
-    expect(confirmed.getByTestId('dock-sentence').textContent)
-      .toBe(translations.en['agent3.dock_setup_confirmed']!.replace('{name}', 'DeepSeek'));
-    confirmed.unmount();
-
-    // A step whose row carries no meta of its own SAYS THE NAME: the endpoint's host, the model
-    // step's provider.
     const endpoint = renderWithI18n(
       <DeskHeader view={makeView()} connected={false} now={0} setupFace={{ step: 'endpoint', name: 'localhost:11434' }} />,
     );
@@ -995,8 +985,8 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     });
   });
 
-  /** Filing does not hide an unfinished job or an unanswered question. */
-  it('keeps a capped job\'s reading after its card is filed, and a standing question\'s too', () => {
+  /** Filing dismisses a closing question while capped work still reports its remaining stages. */
+  it('keeps capped work visible but retires a dismissed closing question', () => {
     const plan = { stages: PLAN, currentIndex: 3, doneCount: 3, revision: 1 };
     const capped = renderWithI18n(
       <DeskHeader
@@ -1017,7 +1007,9 @@ describe('the two decks, and the clock that steps up beside the word', () => {
         recordFiled
       />,
     );
-    expect(asking.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_gated']);
+    expect(asking.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_idle']);
+    expect(asking.getByTestId('dock').getAttribute('data-paper')).toBe('idle');
+    expect(asking.getByTestId('dock-glyph').getAttribute('data-icon')).not.toBe('pw-question');
   });
 
   /**
@@ -1332,7 +1324,6 @@ describe('the dock\'s words, in every locale', () => {
     'agent3.dock_setup_reading', 'agent3.dock_setup_watching', 'agent3.dock_setup_shaped',
     'agent3.dock_setup_asking_both', 'agent3.dock_setup_new_one', 'agent3.dock_setup_refused',
     'agent3.dock_setup_paste_again', 'agent3.dock_setup_no_provider', 'agent3.dock_setup_point_me',
-    'agent3.dock_setup_confirmed', 'agent3.dock_setup_confirmed_sub',
     'agent3.action_stop',
     'agent3.action_resume', 'agent3.action_cancel', 'agent3.action_retry_now',
   ] as const;
@@ -1358,7 +1349,7 @@ describe('the dock\'s words, in every locale', () => {
       for (const key of ['agent3.dock_thoughts', 'agent3.dock_reads', 'agent3.dock_after_tries'] as const) {
         expect(translations[locale][key], `${locale}.${key}`).toContain('{n}');
       }
-      for (const key of ['agent3.dock_setup_shaped', 'agent3.dock_setup_confirmed'] as const) {
+      for (const key of ['agent3.dock_setup_shaped'] as const) {
         expect(translations[locale][key], `${locale}.${key}`).toContain('{name}');
       }
     }

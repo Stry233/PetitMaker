@@ -1,7 +1,10 @@
+import { providerName } from '../../i18n/providers';
+import { en } from '../../i18n/locales/en';
+import { zh } from '../../i18n/locales/zh';
 import { expect } from 'vitest';
 import { docBody, type DocId } from '../../legal/registry';
 import type { LegalConfig } from '../../legal/config';
-import { PROVIDER_IDS, PROVIDER_META } from '../../agent/providers/defaults';
+import { PROVIDER_IDS } from '../../agent/providers/defaults';
 
 /**
  * Generic translation-parity assertions for a bilingual legal doc, shared by
@@ -10,12 +13,6 @@ import { PROVIDER_IDS, PROVIDER_META } from '../../agent/providers/defaults';
  * and every factual anchor (h2 count, emails, dates, provider names) must
  * match. No English-only disclosure is allowed.
  */
-
-/** The named provider brand labels (custom endpoint excluded — it is a
- *  described category, not a brand, and its line is language-specific). */
-const PROVIDER_LABELS = PROVIDER_IDS.filter((id) => id !== 'custom').map(
-  (id) => PROVIDER_META[id].name,
-);
 
 /** Count of `##` (h2) headings — the material-section skeleton. */
 export function h2Count(body: string): number {
@@ -32,9 +29,10 @@ export function datesIn(body: string): string[] {
   return [...new Set(body.match(/\d{4}-\d{2}-\d{2}/g) ?? [])].sort();
 }
 
-/** The provider brand labels present in a body, sorted. */
-export function providersIn(body: string): string[] {
-  return PROVIDER_LABELS.filter((label) => body.includes(label)).sort();
+/** Compare provider identities after resolving each document's language. */
+export function providersIn(body: string, lang: 'en' | 'zh'): string[] {
+  const strings = lang === 'zh' ? zh : en;
+  return PROVIDER_IDS.filter(id => id !== 'custom' && body.includes(providerName(id, key => strings[key] ?? key))).sort();
 }
 
 /**
@@ -48,5 +46,5 @@ export function assertDocParity(id: DocId, cfg: LegalConfig): void {
   expect(h2Count(zh), `${id}: h2 section count must match across languages`).toBe(h2Count(en));
   expect(emailsIn(zh), `${id}: same emails in both languages`).toEqual(emailsIn(en));
   expect(datesIn(zh), `${id}: same dates in both languages`).toEqual(datesIn(en));
-  expect(providersIn(zh), `${id}: same provider names in both languages`).toEqual(providersIn(en));
+  expect(providersIn(zh, 'zh'), `${id}: same provider names in both languages`).toEqual(providersIn(en, 'en'));
 }

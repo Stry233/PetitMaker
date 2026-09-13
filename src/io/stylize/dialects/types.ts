@@ -5,7 +5,8 @@ import type { AspectOption } from '../normalize';
 
 /** `device` is the one outcome with no provider behind it: an on-device model that this machine could
  *  not load or run. */
-export type StylizeStatus = 'bad_key' | 'refused' | 'network' | 'bad_response' | 'device';
+/** `inappropriate` and `unchecked` come from the local text check of custom preferences, before any provider call. */
+export type StylizeStatus = 'bad_key' | 'refused' | 'network' | 'bad_response' | 'device' | 'inappropriate' | 'unchecked';
 
 export class StylizeError extends Error {
   status: StylizeStatus;

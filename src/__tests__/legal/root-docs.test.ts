@@ -48,7 +48,7 @@ describe('SECURITY.md — reporting policy', () => {
     expect(SEC).toContain('systems we control');
     expect(SEC).toMatch(/HoYoverse/);
     // no immunity we lack authority to grant
-    expect(SEC.toLowerCase()).toContain('authority to grant');
+    expect(SEC.toLowerCase()).toContain('only matters within our authority');
   });
 
   it('documents the report-handling lifecycle (triage → assessment → disclosure)', () => {
@@ -145,7 +145,7 @@ describe('ASSET_LICENSES.md — four-way scope split', () => {
   });
 
   it('makes clear the provenance audit summary is not itself a permission grant', () => {
-    expect(A).toContain('not itself a permission');
+    expect(A).toContain('do not themselves grant you or the project rights');
   });
 
   it('carries the affiliation disclaimer (miHoYo/HoYoverse) and an IP-request channel', () => {
@@ -188,14 +188,14 @@ describe('ASSET_LICENSES.zh-CN.md — authored equivalent + parity', () => {
   });
 
   it('keeps the permission to share exports, and its two limits', () => {
-    expect(ZH).toContain('non-exclusive, royalty-free, worldwide');
+    expect(ZH).toContain('非独占、免版税且在全球有效');
     expect(ZH).toMatch(/不包括提取素材/);
     expect(ZH).toMatch(/不转移/);
   });
 
   it('keeps the audit disclaimer: a provenance record is not a permission', () => {
-    expect(EN).toContain('not itself a permission'); // the sentence being mirrored
-    expect(ZH).toMatch(/并不构成授权或许可/);
+    expect(EN).toContain('do not themselves grant you or the project rights'); // the sentence being mirrored
+    expect(ZH).toContain('本身不授予您或本项目再利用、再分发或转授权相关素材的权利');
   });
 
   it('carries the affiliation disclaimer (米哈游/HoYoverse) and the IP channel', () => {
@@ -327,6 +327,12 @@ describe('README.md — public front page', () => {
     expect(R).toContain('https://space.bilibili.com/3632319829116985');
   });
 
+  it('acknowledges the three community members with clean Bilibili links', () => {
+    for (const name of ['晶焰EXFire', '奕言君', '星灭散落']) expect(R).toContain(`<b>${name}</b>`);
+    for (const mid of ['215541807', '397542864', '671142687']) expect(R).toContain(`https://space.bilibili.com/${mid}"`);
+    expect(R).not.toContain('spm_id_from');
+  });
+
   it('carries the contact email', () => {
     expect(R).toContain('selka.craft@outlook.com');
   });
@@ -407,6 +413,8 @@ describe('README.zh-CN.md — authored equivalent + parity', () => {
     ]) {
       expect(ZH).toContain(url);
     }
+    for (const mid of ['215541807', '397542864', '671142687']) expect(ZH).toContain(`https://space.bilibili.com/${mid}"`);
+    expect(ZH).not.toContain('spm_id_from');
   });
 
   it('has the same heading count as the English source', () => {

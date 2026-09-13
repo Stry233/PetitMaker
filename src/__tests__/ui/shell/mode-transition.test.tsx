@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
-import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -37,6 +37,7 @@ const plates = () => document.querySelectorAll(`[data-testid="${MODE_PLATE_ID}"]
 
 beforeEach(() => {
   setStoreState({ locale: 'en' });
+  useEditorStore.getState().setSelectingRegion(false);
   useEditorStore.getState().setEditMode({ mode: null });
   useEditorStore.getState().setAssistantOpen(false);
 });
@@ -143,5 +144,39 @@ describe('a beat waits its turn', () => {
     const { result } = renderHook(() => useBeat('mode.switch', 'bar.arriving'), { wrapper: motionAs('always') });
     expect(result.current.delay, 'a withheld motion must not also be a late one').toBeUndefined();
     expect(result.current.duration, 'and it arrives with no travel').toBe(0);
+  });
+});
+
+
+describe('assistant region selection owns the bottom controls', () => {
+  it.each(['mountain', 'water', 'object', 'generate', 'annotate'] as const)('covers and restores the %s panel without changing editing mode', async (mode) => {
+    useEditorStore.getState().setEditMode({ mode });
+    useEditorStore.getState().setAssistantOpen(true);
+    mount();
+    const bar = screen.getByTestId('shell-mode-bar');
+    const previous = bar.firstElementChild;
+    act(() => useEditorStore.getState().setSelectingRegion(true, 'agent'));
+    expect(bar.hasAttribute('inert')).toBe(true);
+    expect(bar.getAttribute('aria-hidden')).toBe('true');
+    await waitFor(() => expect(screen.getAllByTestId('shell-scope-screen')).toHaveLength(1));
+    expect(useEditorStore.getState().editMode.mode).toBe(mode);
+    act(() => useEditorStore.getState().setSelectingRegion(false));
+    await waitFor(() => expect(screen.queryByTestId('shell-scope-screen')).toBeNull());
+    await waitFor(() => expect(bar.hasAttribute('inert')).toBe(false));
+    expect(bar.firstElementChild).toBe(previous);
+    expect(useEditorStore.getState().regionSelectionOwner).toBeNull();
+  });
+
+  it('retains an object search query when returning from region selection', async () => {
+    useEditorStore.getState().setEditMode({ mode: 'object' });
+    useEditorStore.getState().setAssistantOpen(true);
+    mount();
+    const field = screen.getByRole('searchbox') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'tree' } });
+    act(() => useEditorStore.getState().setSelectingRegion(true, 'agent'));
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    act(() => useEditorStore.getState().setSelectingRegion(false));
+    await waitFor(() => expect(screen.getByRole('searchbox')).toBe(field));
+    expect(field.value).toBe('tree');
   });
 });

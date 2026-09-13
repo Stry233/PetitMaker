@@ -494,6 +494,17 @@ export class ObjectLayer {
     }
   }
 
+  /** Synchronous capture preserves in-flight fades without advancing or cancelling them. */
+  withAllLayersVisible<T>(capture: () => T): T {
+    const previous = [...this.layerContainers.values()].map(layer => ({ layer, visible: layer.visible, alpha: layer.alpha }));
+    try {
+      for (const { layer } of previous) { layer.visible = true; layer.alpha = 1; }
+      return capture();
+    } finally {
+      for (const { layer, visible, alpha } of previous) { layer.visible = visible; layer.alpha = alpha; }
+    }
+  }
+
   /** The zoom×resolution (and icon-LOD cache version) the LOD sprites were last settled
    *  at; −1 forces the next updateLod to run (async icon decodes swap cache entries under
    *  us — see iconLodVersion). */

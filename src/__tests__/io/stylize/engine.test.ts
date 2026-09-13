@@ -13,8 +13,8 @@ import { STYLE_PACKS } from '../../../io/stylize/presets';
 import { makeState } from '../../rules/_helpers';
 
 const CAPTURED_URL = 'data:image/png;base64,CAPTURED';
-const OUTPUT_URL = 'data:image/png;base64,OUTPUT';
-const RETRY_URL = 'data:image/png;base64,RETRY';
+const OUTPUT_URL = 'data:image/png;base64,iVBOR09VVFBVVA==';
+const RETRY_URL = 'data:image/png;base64,iVBOR1JFVFJZ';
 const PAINTED_URL = 'data:image/png;base64,PAINTED';
 
 function cfg(): DialectConfig {
@@ -56,7 +56,7 @@ function stubBrowser(): void {
     fillStyle: '',
     fillRect: vi.fn(),
     drawImage: (...args: unknown[]) => { drawCalls.push(args); },
-  } as unknown as CanvasRenderingContext2D);
+  } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(PAINTED_URL);
 }
 
@@ -141,7 +141,7 @@ describe('runEngine', () => {
     const firstImages = generate.mock.calls[0]![1].images;
     const secondReq = generate.mock.calls[1]![1];
     expect(secondReq.images).toEqual(firstImages);
-    expect(secondReq.prompt).toContain('Corrections: ');
+    expect(secondReq.prompt).toContain('<visual_feedback>');
     expect(secondReq.prompt).toContain('fix the bridge position');
   });
 

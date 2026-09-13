@@ -4,6 +4,7 @@
  * tool's first data line. Refusals with details open automatically. `OpsList` initially collapses
  * older rows beyond the newest three and is shared by flat tickets and active plan stages.
  */
+import { displayAgentText } from '../../agent/tool-labels';
 import { Fragment, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { amplitude, cssMotion, framerMotion } from './motion';
@@ -14,20 +15,12 @@ import { Lane, laneRollup, type LaneView } from './Lane';
 import { withAlpha } from '../design/styles';
 import { INK, INSET, PLATE_INK } from '../design/tokens';
 import { colors, cursors, font } from '../design/styles';
-import { roleWeight, roleFont } from '../design/text-weight';
+import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { OpRow as OpRowData } from '../../agent/core/project-view';
 
 /** The tool whose work runs in a helper lane rather than on this row. */
 const DELEGATE = 'delegate_task';
-
-/** The rule categories the error taxonomy uses ("Category: reason", `docs/ARCHITECTURE.md`). The
- *  prefix reads BOLD in a detail well, because which rule refused the call is the lesson in it.
- *  ENGLISH ON PURPOSE: this list answers for the rule text lifted out of the MODEL's own copy, which
- *  reaches the panel already translated for the model (`translateFor('en', …)`). A refusal carrying
- *  its rule structurally (`op.detail.violations`) is translated here instead, and its category is
- *  read off the taxonomy's own punctuation — see `boldToColon`. */
-const RULE_CATEGORIES = ['Placement', 'Water', 'Terrain', 'Bridge', 'Zone', 'Layer'];
 
 /** A loop-authored note standing where a tool's own answer would be (`project-messages.ts`'s
  *  `(system) …` convention: a nudge, a budget warning, the reissue demand). */
@@ -44,46 +37,13 @@ function ruleText(summary: string): string {
     .trim();
 }
 
-/** The rule line with its `Category:` prefix in the panel's one emphasis weight (`.op .dt b`). A
- *  bare `<b>` resolves bolder to 900, so the weight is written rather than inherited. */
-function withBoldCategory(text: string): ReactNode {
-  for (const category of RULE_CATEGORIES) {
-    const prefix = `${category}:`;
-    if (!text.startsWith(prefix)) continue;
-    return (
-      <>
-        <span style={{ fontWeight: roleWeight('chip') }}>{prefix}</span>
-        {text.slice(prefix.length)}
-      </>
-    );
-  }
-  return text;
-}
-
-/**
- * THE CATEGORY IS THE TAXONOMY'S OWN PUNCTUATION, in whatever language the rule was just said in.
- *
- * Every one of these messages is "Category: reason" by the error-message standard, in all seven
- * locales, and each locale writes the colon its own way (fr spaces it, zh and ja use the fullwidth
- * form). So the prefix is what stands before the first colon — the format itself rather than a guess
- * — and the English name list above cannot answer for a localized string.
- */
-function boldToColon(text: string): ReactNode {
-  const at = text.search(/[:：]/);
-  if (at <= 0 || at > 24) return text;
-  return (
-    <>
-      <span style={{ fontWeight: roleWeight('chip') }}>{text.slice(0, at + 1)}</span>
-      {text.slice(at + 1)}
-    </>
-  );
-}
-
 /** The refusal's own rule, said in the reader's language, or nothing where the result carried none
  *  (an older log, a refusal that is not a rule violation at all). */
 function localizedRule(op: OpRowData, t: Translate): ReactNode | undefined {
   const first = op.detail?.violations?.[0];
-  return first === undefined ? undefined : boldToColon(t(first.message, first.params));
+  if (first === undefined) return undefined;
+  const message = t(first.message, first.params);
+  return message === first.message ? undefined : displayAgentText(message.replace(/^[^:：]{1,24}[:：]\s*/, ''), t);
 }
 
 /** A translated sentence with a rich fragment standing in for its one `{text}` token. `t()`'s own
@@ -107,10 +67,7 @@ const OPENS_ON_ARRIVAL: ReadonlySet<OpRowData['status']> = new Set<OpRowData['st
  */
 function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
   const text = ruleText(op.summary);
-  // THE RULE IN THE READER'S LANGUAGE FIRST. Where the result carried its violation structurally,
-  // that is the same refusal the model was sent, keyed — so the well says it in the panel's own
-  // locale instead of standing three lines of English inside a Russian card. The model's English
-  // copy remains the fallback, for a log written before the carrier existed.
+  // Structured rule feedback is translated without exposing model-facing diagnostics.
   const rule = localizedRule(op, t);
   if (op.status === 'blocked') return t('agent3.op_detail_region');
   if (op.status === 'revert') {
@@ -119,16 +76,14 @@ function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
       return rule !== undefined ? <>{prefix} {rule}</> : prefix;
     }
     if (rule !== undefined) return withFragment(t('agent3.op_detail_put_back'), rule);
-    if (text === '' || isSystemNote(text)) return t('agent3.op_reverted_reason');
-    return withFragment(t('agent3.op_detail_put_back'), withBoldCategory(text));
+    return t('agent3.op_reverted_reason');
   }
   if (op.status === 'error') {
     if (rule !== undefined) return withFragment(t('agent3.op_detail_sent_back'), rule);
     if (isSystemNote(text)) return t('agent3.op_detail_unreadable');
-    if (text === '') return undefined;
-    return withFragment(t('agent3.op_detail_sent_back'), withBoldCategory(text));
+    return t('agent3.op_detail_failed');
   }
-  return op.summary === '' ? undefined : op.summary;
+  return undefined;
 }
 
 /** The chip beside a row: the outcome in a word or two, where the mark alone cannot say it. A live
@@ -136,7 +91,7 @@ function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
 function chipFor(
   op: OpRowData, helper: LaneView | undefined, t: Translate,
 ): { text: string; tone?: 'warn' | 'bad' } | undefined {
-  if (helper?.error !== undefined) return { text: helper.error, tone: 'bad' };
+  if (helper?.error !== undefined) return { text: t('agent3.op_detail_failed'), tone: 'bad' };
   if (op.name === DELEGATE && helper === undefined) return laneRollup(op.detail, t);
   if (op.skill) return { text: op.skill.title };
   // A row that carries the picture the model was shown says so at a glance; the click opens it.
@@ -186,7 +141,7 @@ const GHOST_EDGE = `1px dashed ${withAlpha(INK, 0.35)}`;
 export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
   const t = useT();
   const verbKey = verbKeyForTool(op.name);
-  const phrase = verbKey ? t(verbKey) : op.name;
+  const phrase = t(verbKey);
   // A LANE ONLY STANDS WHILE THE HELPER DOES: a settled call's child log is gone, and what it left
   // behind rolls up onto this row as a chip instead (`laneRollup`).
   const helper = op.name === DELEGATE && op.status === 'run' ? lane : undefined;
@@ -300,7 +255,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           </AnimatePresence>
         </span>
         {/* The detail line carries the whole answer, so the chip yields its space while open. */}
-        {!open && chip !== undefined && <ResultChip {...(chip.tone ? { tone: chip.tone } : {})}>{chip.text}</ResultChip>}
+        {!open && chip !== undefined && <ResultChip {...(chip.tone ? { tone: chip.tone } : {})}>{displayAgentText(chip.text, t)}</ResultChip>}
         <span style={{ flex: '0 0 auto', marginTop: open ? 2 : 0 }}>
           <TickDot status={op.status} />
         </span>
@@ -310,7 +265,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           that opened it rather than at the foot of the whole job. Only a STYLE skill is a playbook:
           a method is transferable craft and names no set piece to build from. */}
       {op.skill?.kind === 'style' && (
-        <Stamp icon="pw-skill">{t('agent3.stamp_skill', { title: op.skill.title })}</Stamp>
+        <Stamp icon="pw-skill">{t('agent3.stamp_skill', { title: displayAgentText(op.skill.title, t) })}</Stamp>
       )}
     </>
   );

@@ -31,6 +31,8 @@ export type LegalConfig = {
 
   /** `sort` is lowercase romanization; `avatar` is the member's Bilibili MID. */
   team: ReadonlyArray<{ name: string; sort: string; url: string; avatar?: string }>;
+  /** Community members thanked on the About surfaces; same shape and ordering rule as `team`. */
+  acknowledgements: ReadonlyArray<{ name: string; sort: string; url: string; avatar?: string }>;
   repoUrl: string;
   sponsorship: { patreon: string; afdian: string };
 };
@@ -53,12 +55,12 @@ export const LEGAL: LegalConfig = {
   psbUrl: TARGET.psbUrl,
 
   effectiveDates: {
-    privacy: '2026-09-03',
-    terms: '2026-09-03',
+    privacy: '2026-09-13',
+    terms: '2026-09-13',
   },
   policyVersions: {
-    privacy: '1.3',
-    terms: '1.1',
+    privacy: '1.5',
+    terms: '1.3',
   },
 
   // Each surface sorts this roster by `sort` before display.
@@ -67,6 +69,11 @@ export const LEGAL: LegalConfig = {
     { name: '鱼松吃点吗', sort: 'yusongchidianma', url: 'https://space.bilibili.com/3632319829116985', avatar: '3632319829116985' },
     { name: '火山野牛王', sort: 'huoshanyeniuwang', url: 'https://space.bilibili.com/16699168', avatar: '16699168' },
     { name: 'Selka', sort: 'selka', url: 'https://space.bilibili.com/3546659724200757', avatar: '3546659724200757' },
+  ],
+  acknowledgements: [
+    { name: '晶焰EXFire', sort: 'jingyanexfire', url: 'https://space.bilibili.com/215541807', avatar: '215541807' },
+    { name: '奕言君', sort: 'yiyanjun', url: 'https://space.bilibili.com/397542864', avatar: '397542864' },
+    { name: '星灭散落', sort: 'xingmiesanluo', url: 'https://space.bilibili.com/671142687', avatar: '671142687' },
   ],
   repoUrl: 'https://github.com/Stry233/PetitMaker',
   sponsorship: {

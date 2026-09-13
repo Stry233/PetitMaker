@@ -80,9 +80,6 @@ const SETUP_FACE: Record<SetupStep, {
   refused: { paper: 'danger', pose: 'trouble', word: 'agent3.dock_setup_refused', meta: 'agent3.dock_setup_paste_again' },
   'no-answer': { paper: 'danger', pose: 'trouble', word: 'agent3.dock_setup_no_provider', meta: 'agent3.setup_row_no_answer' },
   endpoint: { paper: 'idle', pose: 'idle', word: 'agent3.dock_setup_point_me' },
-  confirmed: { paper: 'work', pose: 'pleased', word: 'agent3.dock_setup_confirmed', meta: 'agent3.dock_setup_confirmed_sub' },
-  // The chosen step reports the selected model; the provider remains visible below.
-  chosen: { paper: 'work', pose: 'pleased', word: 'agent3.dock_setup_confirmed', meta: 'agent3.dock_setup_chosen_sub' },
 };
 
 /** Exhaustive dock-paper mapping for every session phase. */
@@ -170,10 +167,10 @@ const ERROR_ACT: Record<ErrorClass, { id: DockActId; labelKey: string }> = {
 /** Settled result distinctions not represented by the idle phase alone. */
 type Settled = 'none' | 'build' | 'answer' | 'quiet' | 'capped' | 'question';
 
-function settledKind(view: PanelView): { job?: JobView; kind: Settled } {
+function settledKind(view: PanelView, ctx: DockContext): { job?: JobView; kind: Settled } {
   const job = view.jobs[view.jobs.length - 1];
   if (!job) return { kind: 'none' };
-  if (job.question === true) return { job, kind: 'question' };
+  if (job.question === true) return ctx.recordFiled ? { kind: 'none' } : { job, kind: 'question' };
   if (job.outcome === 'capped') return { job, kind: 'capped' };
   if (job.outcome !== 'done') return { job, kind: 'none' };
   return { job, kind: job.kind === 'answer' ? 'answer' : job.kind === 'quiet' ? 'quiet' : 'build' };
@@ -211,7 +208,7 @@ export interface DockContext {
 }
 
 /** Settled states that remain owed after their record is filed. */
-const OWED_AFTER_FILING: ReadonlySet<Settled> = new Set<Settled>(['capped', 'question']);
+const OWED_AFTER_FILING: ReadonlySet<Settled> = new Set<Settled>(['capped']);
 
 /** The paper the dock paints for this view. */
 export function dockPaper(view: PanelView, ctx: DockContext = {}): PaperState {
@@ -222,10 +219,10 @@ export function dockPaper(view: PanelView, ctx: DockContext = {}): PaperState {
   if (step) return SETUP_FACE[step.step].paper;
   if (keylessSleep(view, ctx)) return 'idle';
   if (view.phase === 'incident') {
-    return EXHAUSTED.has(settledKind(view).job?.errorCls ?? 'unknown') ? 'wait' : 'danger';
+    return EXHAUSTED.has(settledKind(view, ctx).job?.errorCls ?? 'unknown') ? 'wait' : 'danger';
   }
   if (view.phase === 'idle') {
-    const settled = settledKind(view);
+    const settled = settledKind(view, ctx);
     // Only a question with no applied edits owns the ask-paper face.
     if (settled.kind === 'question' && editCount(settled.job!) === 0) return 'ask';
   }
@@ -245,7 +242,7 @@ export function dockGlyph(view: PanelView, ctx: DockContext = {}): IconId {
   if (view.phase === 'aborted') return 'pw-stop';
   if (view.phase === 'gated') return 'pw-question';
   if (view.phase === 'idle') {
-    switch (settledKind(view).kind) {
+    switch (settledKind(view, ctx).kind) {
       case 'question': return 'pw-question';
       case 'answer': return 'pw-reply-bubble';
       case 'quiet': return 'pw-history';
@@ -309,10 +306,10 @@ export function dockFaceKey(view: PanelView, ctx: DockContext = {}): string {
   if (keylessSleep(view, ctx)) return 'disconnected';
   if (view.phase === 'retrying') return `retrying:${view.retry?.cls ?? 'unknown'}`;
   if (view.phase === 'incident') {
-    const cls = settledKind(view).job?.errorCls ?? 'unknown';
+    const cls = settledKind(view, ctx).job?.errorCls ?? 'unknown';
     return `incident:${cls}${keyGone(view, ctx.connected !== false, cls) ? ':gone' : ''}`;
   }
-  if (view.phase === 'idle') return `idle:${settledKind(view).kind}`;
+  if (view.phase === 'idle') return `idle:${settledKind(view, ctx).kind}`;
   return view.phase;
 }
 
@@ -324,7 +321,7 @@ export function dockPose(view: PanelView, ctx: DockContext = {}): PoseName | nul
   const step = setupFaceOf(view, ctx);
   if (step) return SETUP_FACE[step.step].pose;
   if (view.phase === 'idle') {
-    const settled = settledKind(view);
+    const settled = settledKind(view, ctx);
     if (settled.kind === 'question' && editCount(settled.job!) === 0) return 'asking';
   }
   return null;
@@ -650,8 +647,8 @@ const AWAITING_STREAM: ReadonlySet<SessionPhase> = new Set<SessionPhase>(['think
 function buildFace(view: PanelView, ctx: DockContext, now: number, activeAt: number, t: T): Face {
   const paper = dockPaper(view, ctx);
   const glyph = dockGlyph(view, ctx);
-  /** Filing hides completed records but not capped jobs or standing questions. */
-  const settledNow = settledKind(view);
+  /** Filing dismisses completed turns, including their closing questions; capped jobs remain visible. */
+  const settledNow = settledKind(view, ctx);
   const settled = ctx.recordFiled === true && !OWED_AFTER_FILING.has(settledNow.kind)
     ? { kind: 'none' as const }
     : settledNow;

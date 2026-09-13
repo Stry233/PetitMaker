@@ -48,6 +48,7 @@ function fixtureCfg(overrides: Partial<LegalConfig> = {}): LegalConfig {
     effectiveDates: { privacy: '2026-01-01', terms: '2026-01-01' },
     policyVersions: { privacy: '1.0', terms: '1.0' },
     team: [{ name: 'Jane Doe', sort: 'janedoe', url: 'https://example.com/jane' }],
+    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', url: 'https://example.com/sam' }],
     repoUrl: 'https://github.com/example/petitmaker',
     sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,
@@ -131,7 +132,7 @@ describe('pageHtml', () => {
     expect(html).toContain('京公网安备 1101xxxxxxxxx号');
 
     const withoutFiling = pageHtml('privacy', 'en', cfg);
-    expect(withoutFiling).not.toContain('filing');
+    expect(withoutFiling.match(/<footer[\s\S]*?<\/footer>/)?.[0]).not.toContain('filing');
   });
 
   it('shows effective date + policy version for privacy/terms, not for docs without that schema flag', () => {

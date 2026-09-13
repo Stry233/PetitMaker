@@ -183,8 +183,43 @@ describe('Composer: sending', () => {
   });
 });
 
+describe('Composer: IME input', () => {
+  it.each(['inline', 'expanded'])('keeps confirmation and candidate keys inside the %s field', (surface) => {
+    const onSend = vi.fn();
+    const onDrop = vi.fn();
+    const view = renderWithI18n(
+      <Composer route="order" running={false} onSend={onSend} onStop={noop} onDropSuggestion={onDrop} />,
+    );
+    let field = view.getByTestId('composer-input') as HTMLTextAreaElement;
+    if (surface === 'expanded') {
+      measureField(lineBox(field) * (FIELD_MAX_LINES + 2));
+      fireEvent.change(field, { target: { value: '长篇草稿' } });
+      fireEvent.click(view.getByTestId('composer-expand'));
+      field = view.getByTestId('composer-expanded-input') as HTMLTextAreaElement;
+    }
+    fireEvent.compositionStart(field);
+    fireEvent.change(field, { target: { value: '建造花园' } });
+    for (const key of ['Enter', 'Escape', 'Tab']) fireEvent.keyDown(field, { key });
+    expect(field.value).toBe('建造花园');
+    expect(field.isConnected).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onDrop).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(field);
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229, isComposing: false });
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.keyDown(field, { key: 'Enter' });
+    if (surface === 'expanded') {
+      expect(onSend).not.toHaveBeenCalled();
+      fireEvent.click(view.getByTestId('composer-expanded-send'));
+    }
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith('建造花园');
+  });
+});
+
 describe('Composer: the stop square, geometry held stable', () => {
-  it('the stop button is disabled and invisible (opacity 0) while idle, but stays MOUNTED (reserved slot)', () => {
+  it('folds the idle stop button away without leaving a gap', () => {
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} />,
     );
@@ -192,6 +227,8 @@ describe('Composer: the stop square, geometry held stable', () => {
     expect(stop.isConnected).toBe(true);
     expect(stop.disabled).toBe(true);
     expect(stop.style.opacity).toBe('0');
+    expect(stop.style.width).toBe('0px');
+    expect(Number.parseFloat(stop.style.marginLeft)).toBeLessThan(0);
   });
 
   it('the stop button becomes enabled and visible while running, and calls onStop when clicked', () => {
@@ -463,6 +500,7 @@ describe('Composer: long text', () => {
     expect(field.rows).toBe(1);
     // Its own scroller once there is something in it to scroll, and never the corner grabber: the
     // well is a pill of a fixed shape and a hand-dragged field would tear straight out of it.
+    measureField(lineBox(field) * (FIELD_MAX_LINES + 1));
     fireEvent.change(field, { target: { value: PARAGRAPH } });
     expect(field.style.overflowY).toBe('auto');
     expect(field.style.resize).toBe('none');
@@ -583,12 +621,14 @@ describe('Composer: long text', () => {
       expect((getByTestId('composer-input') as HTMLTextAreaElement).value).toBe('');
     });
 
-    it('sends on Enter there too, and breaks the line on a modifier', () => {
+    it('leaves Enter and modified Enter to insert line breaks, and sends only from the button', () => {
       const { getByTestId, onSend } = open();
       const big = getByTestId('composer-expanded-input');
       fireEvent.keyDown(big, { key: 'Enter', shiftKey: true });
       expect(onSend).not.toHaveBeenCalled();
-      fireEvent.keyDown(big, { key: 'Enter' });
+      expect(fireEvent.keyDown(big, { key: 'Enter' })).toBe(true);
+      expect(onSend).not.toHaveBeenCalled();
+      fireEvent.click(getByTestId('composer-expanded-send'));
       expect(onSend).toHaveBeenCalledWith(PARAGRAPH);
     });
 
@@ -680,9 +720,7 @@ describe('Composer: the field s own line rules', () => {
     // Three rows' worth of grey line, measured: the row count does not read it.
     measureField(lineBox(field) * 3);
     fireEvent.change(field, { target: { value: '' } });
-    // An empty field takes its height from its own `rows`, which is one, rather than from a
-    // measurement any grey line contributes to.
-    expect(field.style.height).toBe('');
+    expect(field.style.height).toBe(`${Math.ceil(lineBox(field))}px`);
     expect(field.rows).toBe(1);
     // And nothing scrolls in a field with nothing in it, so no scrollbar rides the grey line.
     expect(field.style.overflowY).toBe('hidden');
@@ -697,13 +735,14 @@ describe('Composer: the field s own line rules', () => {
 
     measureField(line * 2);
     fireEvent.change(field, { target: { value: 'two lines of order' } });
-    expect(field.style.height).toBe(`${line * 2}px`);
-    expect(field.style.overflowY).toBe('auto');
+    expect(field.style.height).toBe(`${Math.ceil(line * 2)}px`);
+    expect(field.style.overflowY).toBe('hidden');
 
     // Past the cap the height stops and the field's own scroller takes over.
     measureField(line * (FIELD_MAX_LINES + 3));
     fireEvent.change(field, { target: { value: 'a paragraph of order' } });
-    expect(field.style.height).toBe(`${line * FIELD_MAX_LINES}px`);
+    expect(field.style.height).toBe(`${Math.ceil(line * FIELD_MAX_LINES)}px`);
+    expect(field.style.overflowY).toBe('auto');
   });
 
   /** The growth is a TWEEN and the number is the panel's own: the well's foot and the panel's box are

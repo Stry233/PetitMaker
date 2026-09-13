@@ -1,0 +1,222 @@
+{
+  "version": 2,
+  "artifact": "political-index.json",
+  "bytes": 1151760,
+  "sha256": "7f50bcf080cb4cc6e1b4f5c5f5b7c61773e71090d2da732323eca1eb9466fb9f",
+  "sources": [
+    {
+      "id": "zhin",
+      "url": "https://unpkg.com/@zhin.js/sensitive-filter@2.0.1/lib/sensitive-words.js",
+      "revision": "2.0.1",
+      "sha256": "a4b4aeba4959bb2a3080db4d23e5aca2c21f65908676ba52c8061d361badba07",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 凉菜"
+    },
+    {
+      "id": "fwwdn",
+      "revision": "a7d06bb1c321e669943b6841570d9da6dad8ce2b",
+      "sha256": "bb4079468345a5ed1e630c82a43ab947828ae2c263e8702a6432bfe253d70f90",
+      "license": "Apache-2.0",
+      "copyright": "fwwdn and sensitive-stop-words contributors",
+      "repository": "fwwdn/sensitive-stop-words",
+      "pathId": "75afd41befe32e7889e8d7a09210e91f5a11fab7909d5c483d9bf031eb6a53c5"
+    },
+    {
+      "id": "houbb",
+      "url": "https://raw.githubusercontent.com/houbb/sensitive-word-data/fe6fc2921836217b8c90619db81b24af8b22d80f/src/main/resources/sensitive_word_tags.txt",
+      "revision": "fe6fc2921836217b8c90619db81b24af8b22d80f",
+      "sha256": "37cea2687a1525a436aaa080e918f6c263310bd21b4bce8b05ba5185ee3e5ae8",
+      "license": "Apache-2.0",
+      "copyright": "houbb and sensitive-word-data contributors"
+    },
+    {
+      "id": "zhin-homophone",
+      "url": "https://unpkg.com/@zhin.js/sensitive-filter@2.0.1/lib/sensitive-words.js",
+      "revision": "2.0.1",
+      "sha256": "a4b4aeba4959bb2a3080db4d23e5aca2c21f65908676ba52c8061d361badba07",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 凉菜"
+    },
+    {
+      "id": "konsheng-numeric",
+      "revision": "d967c30b053fa40b06c5a0dddf0be493f2dfae46",
+      "sha256": "fac55e314c39532c64b5aba8c3a7bc534ab87e3830f6c3861ad29e08d1d4ac96",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2024~2099 Konsheng",
+      "repository": "konsheng/Sensitive-lexicon",
+      "pathId": "f7417d8accf65410999fef67ea112585aa4d8008b56a4af0c2a04b94a5d690af"
+    }
+  ],
+  "konsheng": {
+    "revision": "d967c30b053fa40b06c5a0dddf0be493f2dfae46",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2024~2099 Konsheng",
+    "files": [
+      {
+        "id": "27dab6db3f995c4ed6fec6874847ebe5325322d18e7a4155f9f07168d4392107",
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "category": "political",
+        "entries": 0
+      },
+      {
+        "id": "4419718a4d69c1d7f382196aaa5b3738e684a37ad025bd15354eacbdb7e2b04b",
+        "sha256": "eac53d942934a0787db51744b35f533aee52b0ad5bead935c5f044caa1503891",
+        "category": "omnibus",
+        "entries": 2408
+      },
+      {
+        "id": "40619b4c89558706411e2fe2f8d49e144914becd29b26711ed768d7ef57dfa14",
+        "sha256": "019d56e1dd5dd88907c17f66511fe34c5512d83ae2de511fafc443b3fc9bdf4d",
+        "category": "excluded",
+        "entries": 76
+      },
+      {
+        "id": "f7417d8accf65410999fef67ea112585aa4d8008b56a4af0c2a04b94a5d690af",
+        "sha256": "fac55e314c39532c64b5aba8c3a7bc534ab87e3830f6c3861ad29e08d1d4ac96",
+        "category": "supplement",
+        "entries": 6414
+      },
+      {
+        "id": "04bf568df6694d8f6a07c203e42b95b1cb3e98829f09205996512edd649bad9c",
+        "sha256": "504ac4dcffa2a078957750c3ad06713cd1ee883af23310507ed85a01bac0ec2f",
+        "category": "supplement",
+        "entries": 157
+      },
+      {
+        "id": "13c7b45ff1021b39a3fdd01bbf97895d7fd54442cb98647b28cbadb0b96dbc8e",
+        "sha256": "b1f24a2b856445f0d4f106a487f9fd1c114c17dac64853108539874ffc3c6714",
+        "category": "political",
+        "entries": 557
+      },
+      {
+        "id": "9f76e1bf342cb867ce94169e032239ec82989539b5368690b7edacfdf36a7807",
+        "sha256": "8f3d5451b8392c1a6b629d504e437b92ef1fdb3128581f6362a495d6fec41473",
+        "category": "solicitation",
+        "entries": 123
+      },
+      {
+        "id": "773739454b524a5a53af422f54f57b5d85f5afa8fcec74606fc2b91c406a15a2",
+        "sha256": "0aa2ea38cb8164705068cab8f0ef060bc65b2bb8053bc07ff2b5bd96f928743e",
+        "category": "political",
+        "entries": 326
+      },
+      {
+        "id": "18d0580473a478c22f16fdd19679037da1218567d35888a7236f537d027ce2a9",
+        "sha256": "63460b19174237e686a549f7b7756eefbd03f13f8a6a0103a9ab3d032ab7feec",
+        "category": "excluded",
+        "entries": 16
+      },
+      {
+        "id": "794246ce5a5b0aac84af6100f12f80a2641a11d0612b0c4ab6520ecb54942d7a",
+        "sha256": "16221e4c76641b13513bb8e775840f08716b80dcd285f8cc78fb040314814631",
+        "category": "violence",
+        "entries": 178
+      },
+      {
+        "id": "a29971f6e10ad6a18d25ef38b5f6fd47f0441f618773b7dae8a4393d65ba14da",
+        "sha256": "d61b97b789daf977ee78e6fccc5e143d22bc7f2a829a1f150b682dbf102ec97a",
+        "category": "solicitation",
+        "entries": 571
+      },
+      {
+        "id": "cfdcb15ca8e69b7acf1d34adf03310f85eff223dcd78381f204b3b21bc58a1cd",
+        "sha256": "b0323790e2e91d6453c944022b90a10aa5110ecfd857c9ec0e84a478e5f9a8fe",
+        "category": "violence",
+        "entries": 437
+      },
+      {
+        "id": "04daa81707d380785d99168718c84865a95ef01a6b6373643b46531165cab32b",
+        "sha256": "36f071c80440f3fccec32340324ad45ade6df6ab423b9a2641c9fcf8f0e5f95a",
+        "category": "omnibus",
+        "entries": 7746
+      },
+      {
+        "id": "0f468ed20bd4191976515ab0f027baaa007838a38d6bda50eabbe0d4c805b874",
+        "sha256": "3e844e67b1f3dd50c21273beffa0c2f4c9f3b8fe3f7999353a0b5e6ff0cf94bc",
+        "category": "explicit",
+        "entries": 304
+      },
+      {
+        "id": "5f72c7f64f23007cff3e91bfeb87643a588a72d9de6cfe148e88087cc7da06be",
+        "sha256": "9e3a27bf849acb3a907278218cd883c33347edd9f55d7bb26cc4b84bf956bc99",
+        "category": "explicit",
+        "entries": 929
+      },
+      {
+        "id": "c55443362fb11d3fb9c1b6cabc923c30c1fe96680640cda590d4ca84a545a32d",
+        "sha256": "4fa11b6a2f5e33f3227613a92c4579c37f12bd533090db0720f15025ae19ce65",
+        "category": "supplement",
+        "entries": 1064
+      },
+      {
+        "id": "a19c1a951e014677f7fca7f82d224dcf3fd9d9b0f41f06e8d263b2158bcb40c4",
+        "sha256": "2b76b487081d81817c9097a04267435abf5fdb4b87ce25ceecb27d6d70cc78d3",
+        "category": "political",
+        "entries": 244
+      },
+      {
+        "id": "3f6f5b0726f4c784fd405fba48a62135ce527cd5b9a592d032d0c0a4d1a6c279",
+        "sha256": "292d12724734f29e8ecc776b1aa3f6167029a015b64fcddc660c9b8ec2378a34",
+        "category": "omnibus",
+        "entries": 53308
+      },
+      {
+        "id": "6d714c926fbfc400686e89cd07c16a1b1cca34f345d1877b3a5e0d91a0043bf8",
+        "sha256": "09452d23f6acf0be7bcdd113e0b91b2dfde79ae818f9d8746c305439c3d9a6d1",
+        "category": "excluded",
+        "entries": 14594
+      }
+    ],
+    "dropped": {
+      "phrase": 1210,
+      "word": 402,
+      "website": 19709,
+      "token": 1303,
+      "anywhere": 1,
+      "view": 1986
+    }
+  },
+  "evidence": [
+    "zhin-political",
+    "fwwdn-political",
+    "houbb-political",
+    "zhin-homophone",
+    "konsheng-numeric",
+    "konsheng-political",
+    "konsheng-explicit",
+    "konsheng-violence",
+    "konsheng-solicitation",
+    "konsheng-supplement",
+    "konsheng-omnibus",
+    "owner-political",
+    "owner-content"
+  ],
+  "owner": {
+    "political": 3,
+    "content": 2
+  },
+  "counts": {
+    "zhin": 90,
+    "fwwdn": 326,
+    "houbb": 1929,
+    "zhin-homophone": 27,
+    "konsheng-numeric": 8,
+    "konsheng-political": 1014,
+    "konsheng-explicit": 546,
+    "konsheng-violence": 557,
+    "konsheng-solicitation": 543,
+    "konsheng-supplement": 6455,
+    "konsheng-omnibus": 23615,
+    "owner-political": 3,
+    "owner-content": 2
+  },
+  "uniqueEntries": 26463,
+  "romanEntries": 18653,
+  "regexRules": 40,
+  "pronunciation": {
+    "package": "pinyin-pro",
+    "version": "3.29.3",
+    "license": "MIT"
+  },
+  "transformation": "NFKC and OpenCC Simplified Chinese normalization; entries stored as dual 32-bit fingerprints grouped by length. Political categories, Zhin homophone phrases of 3 to 12 Han characters, Konsheng numeric entries of 4 to 12 digits, Konsheng files by upstream category with supplement and omnibus entries kept only when corroborated by the political sources, a profanity package or absence from the segmentation lexicon, and owner-ruled fingerprints. Link-shaped entries, single characters and bare numbers from uncorroborated lists are omitted. Regex constructs compile with RE2JS; tone-free readings derive from pinyin-pro."
+}

@@ -4,6 +4,8 @@ The markdown in this directory is **authored for the app**: `privacy`, `terms`, 
 
 Write one line per paragraph, list item, or table row. Hard-wrapping a paragraph across several lines is a manual line feed the renderer has to undo, and it makes every later edit rewrap the block.
 
+Lead with factual, affirmative descriptions of the service, data uses, user choices and responsibilities. Explain exclusions where they clarify a real boundary; avoid defensive lists of things the project does not do or claims of virtue. Preserve legally meaningful limits, permissions and rights. Chinese legal prose addresses the reader as 「您」 and uses natural, complete sentences. Export reminders remain warm and concise; the full terms carry detailed legal responsibilities.
+
 ## Other documents rendered from repository sources
 
 Each of the following IS a repo file that exists for its own sake, so the app renders that file directly and the GitHub view, the static page, and the in-app doc view cannot drift from one another. Copying them here would mean two files per document plus a guard to hold them equal.

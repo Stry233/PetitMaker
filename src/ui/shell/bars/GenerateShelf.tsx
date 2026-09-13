@@ -117,6 +117,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const region = useEditorStore((s) => s.region);
   const locale = useEditorStore((s) => s.locale);
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
+  const agentSelecting = useEditorStore((s) => s.regionSelectionOwner === 'agent');
   const setSelectingRegion = useEditorStore((s) => s.setSelectingRegion);
   /** `[]` is "no region painted", which means the whole island: the run takes null for it. */
   const scope = region.length > 0 ? region : null;
@@ -696,7 +697,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   // A SCREEN, NOT A SWAP: the shelf goes away while a region is painted, because the return is a
   // regeneration — every candidate is stale the moment the region changes, and cards left standing
   // would be a promise the next stroke breaks.
-  if (selectingRegion) {
+  if (selectingRegion && !agentSelecting) {
     return (
       <ScopeScreen
         onDone={() => setSelectingRegion(false)}

@@ -63,93 +63,96 @@ export interface DocMeta {
 }
 
 const TERMS_SECTIONS_EN = [
-  'Definitions',
-  'Acceptance & Capacity',
-  'Service Description',
-  'BYOK & AI Providers',
-  'Acceptable Use',
-  'User Content & Third-Party Material',
-  'Importable Images',
-  'Availability, Updates & Discontinuation',
-  'User Backup Responsibility',
-  'Warranty Disclaimer',
-  'Limitation of Liability',
-  'Consumer-Law Savings Clause',
-  'Intellectual-Property Complaints',
-  'Governing Law & Disputes',
-  'Entire Agreement',
-  'Severability',
-  'No Waiver',
-  'No Assignment & Succession',
-  'Notices',
-  'Interpretation',
-  'Changes',
+  "Scope and Definitions",
+  "Reading and Acceptance",
+  "Service Description",
+  "AI Features, Keys and Fees",
+  "Content Rules and User Responsibility",
+  "Creative Rights and Asset Use",
+  "Exports, Sharing and Recoverable Data",
+  "Service Changes and Discontinuation",
+  "Saving and Backups",
+  "Functional Limits and Warranties",
+  "Allocation and Limitation of Liability",
+  "Statutory Rights",
+  "Content and Intellectual-Property Complaints",
+  "Governing Law and Disputes",
+  "Relationship Between Documents",
+  "Severability",
+  "Exercise of Rights",
+  "Changes of Operator",
+  "Notices and Contact",
+  "Language and Interpretation",
+  "Updates to These Terms",
 ];
 
 const TERMS_SECTIONS_ZH = [
-  '定义',
-  '接受条款与行为能力',
-  '服务说明',
-  '自带密钥（BYOK）与 AI 服务提供商',
-  '可接受使用',
-  '用户内容与第三方素材',
-  '可导入图片',
-  '服务可用性、更新与终止',
-  '用户备份责任',
-  '保证免责声明',
-  '责任限制',
-  '消费者权益保留条款',
-  '知识产权投诉',
-  '适用法律与争议解决',
-  '完整协议',
-  '可分割性',
-  '不弃权',
-  '不得转让与运营继受',
-  '通知',
-  '解释',
-  '变更',
+  "适用范围与用语",
+  "阅读与接受",
+  "本工具提供什么",
+  "AI 功能、密钥与费用",
+  "内容规范与使用责任",
+  "作品权利与素材使用",
+  "导出、分享与可恢复数据",
+  "服务变化与停止提供",
+  "保存与备份",
+  "功能局限与保证",
+  "责任分担与限制",
+  "法定权利",
+  "内容问题与知识产权投诉",
+  "适用法律与争议处理",
+  "文件之间的关系",
+  "部分条款无效",
+  "权利的行使",
+  "运营主体变化",
+  "通知与联系",
+  "语言与解释",
+  "条款更新",
 ];
 
 const PRIVACY_SECTIONS_EN = [
-  'At a Glance',
-  'What We Store',
-  'Share Images',
-  'Local Data & "Clear Local Data"',
-  'AI Providers (BYOK)',
-  'API Keys',
-  'Analytics & Consent',
-  'Where Your Data Goes',
-  'Data Retention',
-  'Your Rights',
-  'Changes to This Policy',
-  'Contact Us',
+  "Scope",
+  "How Information Is Used",
+  "Information Stored in Your Browser",
+  "Exported Files and Content Checks",
+  "Clearing Local Data",
+  "Online AI and Model Information",
+  "API-Key Storage and Protection",
+  "Site Visits, Logs and Analytics",
+  "Where Information May Be Processed",
+  "Retention",
+  "Content Checks and Automated Processing",
+  "Your Choices and Rights",
+  "Minors",
+  "Security Measures and Incident Handling",
+  "Policy Updates",
+  "Contact and Complaints",
 ];
 
 const PRIVACY_SECTIONS_ZH = [
-  '概览',
-  '我们存储的内容',
-  '分享图片',
-  '本地数据与「清除本地数据」',
-  'AI 服务提供商（自带密钥）',
-  'API 密钥',
-  '数据分析与同意',
-  '数据去向',
-  '数据保留',
-  '你的权利',
-  '政策变更',
-  '联系我们',
+  "适用范围",
+  "信息处理方式",
+  "保存在浏览器中的信息",
+  "导出文件与内容检查",
+  "清除本地数据",
+  "在线 AI 与模型信息服务",
+  "API 密钥的保存与保护",
+  "网站访问、日志与数据分析",
+  "信息可能在哪里处理",
+  "保留期限",
+  "内容检查与自动化处理",
+  "您的选择与权利",
+  "未成年人",
+  "安全措施与事件处理",
+  "政策更新",
+  "联系与投诉",
 ];
 
-const ABOUT_SECTIONS_EN = ['Mission', 'The Team', 'Support the Project', 'Fan-Project Disclaimer', 'Filing Information'];
-const ABOUT_SECTIONS_ZH = ['使命', '团队', '支持项目', '同人项目声明', '备案信息'];
+const ABOUT_SECTIONS_EN = ["The Team", "Acknowledgements", "Using and Saving Your Work", "Fan-Project Disclosure", "Operator and Filing Information", "Support the Project"];
+const ABOUT_SECTIONS_ZH = ["团队", "鸣谢", "使用与保存", "同人项目说明", "运营与备案", "支持项目"];
 
-const CONTACT_SECTIONS_EN = [
-  'General Inquiries',
-  'Security Reports',
-  'Intellectual Property / Takedown Requests',
-  'Privacy Requests',
-];
-const CONTACT_SECTIONS_ZH = ['一般咨询', '安全问题报告', '知识产权 / 下架请求', '隐私相关请求'];
+const CONTACT_SECTIONS_EN = ["Questions and Suggestions", "Security Reports", "Asset Permission and IP Complaints", "Content-Check Feedback", "Privacy Requests", "Community Updates"];
+const CONTACT_SECTIONS_ZH = ["使用问题与建议", "安全漏洞", "素材授权与知识产权投诉", "内容检查反馈", "隐私请求", "社区动态"];
 
 function minimalSchema(en: string[], zh: string[] = []): DocSchema {
   return { requiresEffectiveDate: false, requiresPolicyVersion: false, requiredTokens: { en, zh } };
@@ -252,7 +255,7 @@ export function teamInReadingOrder(team: LegalConfig['team']): LegalConfig['team
   return [...team].sort((a, b) => (a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0));
 }
 
-/** Markdown table for the About document's `{team}` token. */
+/** Markdown table for the About document's `{team}` and `{acknowledgements}` tokens. */
 function teamTable(lang: 'en' | 'zh', team: LegalConfig['team']): string {
   const header = lang === 'zh' ? '| 名称 | 链接 |' : '| Name | Link |';
   const sep = '| --- | --- |';
@@ -315,6 +318,7 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
   }
   if (id === 'about') {
     tokens.team = teamTable(lang, cfg.team);
+    tokens.acknowledgements = teamTable(lang, cfg.acknowledgements);
     tokens.patreon = cfg.sponsorship.patreon;
     tokens.afdian = cfg.sponsorship.afdian;
   }

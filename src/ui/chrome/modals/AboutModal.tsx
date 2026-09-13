@@ -16,7 +16,7 @@ import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../.
 import { ModalShell } from '../../primitives/ModalShell';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { BrandLockup } from '../BrandLockup';
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useViewportSize } from '../../design/scale';
 import { LoadingDots } from '../../primitives/LoadingDots';
 import { DOCS, docIdForPath, teamInReadingOrder, type DocId } from '../../../legal/registry';
 import { DocIcon } from '../../../legal/doc-icons';
@@ -40,6 +40,10 @@ type View = { kind: 'about' } | { kind: 'doc'; id: DocId };
 // one. Freezing ONE width flattens the proportions; snapping between two is an
 // unanimated jump that desyncs from the content crossfade.
 const ABOUT_WIDTH = 440;
+// The desktop About layout: a brand band over two panes, spending width instead of height.
+const ABOUT_WIDE_WIDTH = 800;
+// Window px the wide card must leave free beside itself; below that the About view stacks into one column.
+const WIDE_MARGIN = 32;
 const DOC_WIDTH = 640;
 const ABOUT_MAX_VH = 88;
 
@@ -136,6 +140,52 @@ const aboutScroll: CSSProperties = {
   gap: 26,
 };
 
+// The wide layout keeps the same scroll container and gutters; only the content arranges itself in bands.
+const aboutWide: CSSProperties = {
+  ...aboutScroll,
+  width: ABOUT_WIDE_WIDTH,
+  padding: '30px 32px 26px',
+};
+
+// Brand at the left, version and source link at the right.
+const brandBand: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 18,
+};
+
+const bandRight: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 6,
+  minWidth: 0,
+};
+
+const hairline: CSSProperties = { height: 1, background: skin.line };
+
+// Two equal panes: people on the left, documents and support on the right.
+const panes: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 30,
+  alignItems: 'start',
+};
+
+const pane: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 22,
+  minWidth: 0,
+};
+
+const paneDivider: CSSProperties = {
+  ...pane,
+  borderLeft: `1px solid ${skin.line}`,
+  paddingLeft: 30,
+};
+
 /* ── Brand block (the anchor) ─────────────────────────────── */
 
 const brandBlock: CSSProperties = {
@@ -157,11 +207,16 @@ const versionLine: CSSProperties = {
   letterSpacing: '0.01em',
 };
 
+// The one outbound link in the brand block reads as a link: heavier than the version line, underlined.
 const repositoryLink: CSSProperties = {
   ...versionLine,
+  ...roleFont('small'),
   marginTop: 0,
-  textDecoration: 'none',
+  opacity: 1,
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
 };
+
 
 const versionButton: CSSProperties = {
   ...btnReset,
@@ -368,6 +423,10 @@ const memberName: CSSProperties = {
   maxWidth: '100%',
 };
 
+// The wide layout's cards: four equal columns in both rows so team and acknowledgement cards share one width.
+const wideCard: CSSProperties = { ...memberCard, padding: '8px 0 6px' };
+const wideGrid: CSSProperties = { ...teamGrid, gap: 4 };
+
 /* ── Filing rows ──────────────────────────────────────────── */
 
 const filingRow: CSSProperties = {
@@ -430,7 +489,10 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   const [docLang, setDocLang] = useState<'en' | 'zh'>(locale === 'zh' ? 'zh' : 'en');
 
   const isDoc = view.kind === 'doc';
-  const width = isDoc ? DOC_WIDTH : ABOUT_WIDTH;
+  // The card renders at `width × chrome` window px (ModalShell applies the chrome scale as css zoom).
+  const viewport = useViewportSize();
+  const wide = ABOUT_WIDE_WIDTH * chrome + WIDE_MARGIN <= viewport.w;
+  const width = isDoc ? DOC_WIDTH : wide ? ABOUT_WIDE_WIDTH : ABOUT_WIDTH;
 
   // CONSTANT CARD height, shared by both views. About is measured after it
   // mounts (and on any content change while it's showing — locale swap) and
@@ -468,7 +530,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     const ro = new ResizeObserver(remeasure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [open, isDoc, locale, capPx]);
+  }, [open, isDoc, locale, capPx, wide]);
 
   // Flip morphing on only AFTER the first measured height has painted, so the
   // estimate→measured correction on open is an instant snap, not a visible morph.
@@ -572,6 +634,173 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   useLayoutEffect(() => { aboutViewRef.current = document.querySelector<HTMLElement>('[data-about-view]'); });
   const aboutFade = useScrollFade(aboutViewRef, 'y');
 
+  const versionRow = (
+    <>
+      <div style={versionButtonWrap}>
+        <motion.button
+          type="button"
+          style={{ ...versionButton, ...(wide ? { textAlign: 'right' } : {}) }}
+          onClick={copyBuildInfo}
+          aria-label={t('about.copy_build')}
+          whileHover={{ opacity: 1 }}
+          whileTap={{ opacity: 0.7 }}
+          transition={springs.stiff}
+        >
+          {[
+            `${t('about.version')} ${APP_VERSION}`,
+            `${t('about.build')} ${BUILD_NUMBER}`,
+            BUILD_SHA,
+            BUILD_DATE,
+          ]
+            .filter(Boolean)
+            .join(', ')}
+        </motion.button>
+        {/* Confirmation bubble — the row's own text never changes; this
+            floats above it and auto-dismisses (see copyBuildInfo). */}
+        <AnimatePresence>
+          {copied && (
+            <motion.div
+              key="copied-bubble"
+              role="status"
+              aria-live="polite"
+              style={copiedBubble}
+              initial={{ opacity: 0, y: 6, scale: 0.9, x: '-50%' }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+              exit={{ opacity: 0, y: 6, scale: 0.9, x: '-50%', transition: exitTransition }}
+              transition={springs.stiff}
+            >
+              {t('about.copied')}
+              <span style={copiedBubbleTail} aria-hidden />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
+        {t('about.repository_link')} <span aria-hidden>↗</span>
+      </motion.a>
+    </>
+  );
+
+  const brand = wide ? (
+    <div style={brandBand} data-testid="about-band">
+      <BrandLockup size={60} tagline />
+      <div style={bandRight}>{versionRow}</div>
+    </div>
+  ) : (
+    <div style={brandBlock}>
+      <BrandLockup size={72} tagline />
+      {versionRow}
+    </div>
+  );
+
+  const roster = (members: typeof LEGAL.team, gridTestId: string, cardTestId: string) => (
+    <div style={wide ? wideGrid : teamGrid} data-testid={gridTestId}>
+      {teamInReadingOrder(members).map((m) => {
+        const avatar = teamAvatarUrl(m.avatar);
+        return (
+          <motion.a
+            key={m.url}
+            data-testid={cardTestId}
+            style={wide ? wideCard : memberCard}
+            href={m.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t('about.team_link', { name: m.name })}
+            {...buttonMotion}
+          >
+            <span style={avatarRing}>
+              {avatar && <img src={avatar} alt={m.name} style={avatarImg} />}
+              <span style={avatarBadge} aria-hidden>
+                ↗
+              </span>
+            </span>
+            <span style={memberName}>{m.name}</span>
+          </motion.a>
+        );
+      })}
+    </div>
+  );
+
+  const legalGrid = (
+    <div>
+      <div style={sectionLabel}>{t('legal.section_title')}</div>
+      <div style={gridStyle} data-testid="legal-grid">
+        {GRID_DOCS.map((id) => (
+          <motion.button
+            key={id}
+            type="button"
+            data-testid={`legal-row-${id}`}
+            ref={(el) => {
+              rowRefs.current[id] = el;
+            }}
+            style={gridRow}
+            onClick={() => openDoc(id)}
+            {...buttonMotion}
+          >
+            <span style={gridIcon}>
+              <DocIcon id={id} size={16} />
+            </span>
+            <span style={gridLabel}>{t(DOCS[id].titleKey)}</span>
+            <span style={chevron} aria-hidden>
+              ›
+            </span>
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const support = (
+    <div>
+      <div style={sectionLabel}>{t('about.sponsorship_title')}</div>
+      <div style={gridStyle} data-testid="sponsorship-links">
+        {[
+          { href: LEGAL.sponsorship.patreon, key: 'about.patreon' },
+          { href: LEGAL.sponsorship.afdian, key: 'about.afdian' },
+        ].map(({ href, key }) => (
+          <motion.a key={key} href={href} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="M12 20 4.5 12.5a5 5 0 0 1 7.5-6.6 5 5 0 0 1 7.5 6.6L12 20Z" />
+            </svg>
+            <span style={gridLabel}>{t(key)}</span>
+            <span style={chevron} aria-hidden>↗</span>
+          </motion.a>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Only a complete number+URL pair renders.
+  const filing = (hasIcp || hasPsb) && (
+    <div>
+      {hasIcp && (
+        <div style={filingRow} data-testid="filing-icp">
+          <span style={filingLabel}>{t('about.filing_icp')}</span>
+          <a style={filingLink} href={LEGAL.icpUrl!} target="_blank" rel="noopener noreferrer">
+            {LEGAL.icpNumber} ↗
+          </a>
+        </div>
+      )}
+      {hasPsb && (
+        <div style={filingRow} data-testid="filing-psb">
+          <span style={filingLabel}>{t('about.filing_psb')}</span>
+          <a style={filingLink} href={LEGAL.psbUrl!} target="_blank" rel="noopener noreferrer">
+            {LEGAL.psbNumber} ↗
+          </a>
+        </div>
+      )}
+    </div>
+  );
+
+  const footer = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={disclaimerStyle}>{t('about.disclaimer')}</div>
+      <div style={footerRow}>
+        <span>{t('about.copyright', { year: 2026 })}</span>
+      </div>
+    </div>
+  );
+
   return (
     <ModalShell
       open={open}
@@ -628,163 +857,60 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
             key="about"
             data-about-view
             data-scroll
-            style={{ ...aboutScroll, maxHeight: capPx, ...aboutFade }}
+            data-about-layout={wide ? 'wide' : 'stack'}
+            style={{ ...(wide ? aboutWide : aboutScroll), maxHeight: capPx, ...aboutFade }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             // See the "doc" view's exit prop above — same pointer-events gate.
             exit={exiting ? undefined : { opacity: 0, pointerEvents: 'none', transition: exitTransition }}
             transition={MORPH_SPRING}
           >
-            {/* Brand block — the anchor: name, tagline, one muted version line. */}
-            <div style={brandBlock}>
-              <BrandLockup size={72} tagline />
-              <div style={versionButtonWrap}>
-                <motion.button
-                  type="button"
-                  style={versionButton}
-                  onClick={copyBuildInfo}
-                  aria-label={t('about.copy_build')}
-                  whileHover={{ opacity: 1 }}
-                  whileTap={{ opacity: 0.7 }}
-                  transition={springs.stiff}
-                >
-                  {[
-                    `${t('about.version')} ${APP_VERSION}`,
-                    `${t('about.build')} ${BUILD_NUMBER}`,
-                    BUILD_SHA,
-                    BUILD_DATE,
-                  ]
-                    .filter(Boolean)
-                    .join(', ')}
-                </motion.button>
-                {/* Confirmation bubble — the row's own text never changes; this
-                    floats above it and auto-dismisses (see copyBuildInfo). */}
-                <AnimatePresence>
-                  {copied && (
-                    <motion.div
-                      key="copied-bubble"
-                      role="status"
-                      aria-live="polite"
-                      style={copiedBubble}
-                      initial={{ opacity: 0, y: 6, scale: 0.9, x: '-50%' }}
-                      animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-                      exit={{ opacity: 0, y: 6, scale: 0.9, x: '-50%', transition: exitTransition }}
-                      transition={springs.stiff}
-                    >
-                      {t('about.copied')}
-                      <span style={copiedBubbleTail} aria-hidden />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
-                {t('about.repository_link')} <span aria-hidden>↗</span>
-              </motion.a>
-            </div>
-
-            <div>
-              <div style={sectionLabel}>{t('about.team_title')}</div>
-              <div style={teamNote}>{t('about.team_order')}</div>
-              <div style={teamGrid} data-testid="team-grid">
-                {teamInReadingOrder(LEGAL.team).map((m) => {
-                  const avatar = teamAvatarUrl(m.avatar);
-                  return (
-                    <motion.a
-                      key={m.url}
-                      data-testid="team-member"
-                      style={memberCard}
-                      href={m.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={t('about.team_link', { name: m.name })}
-                      {...buttonMotion}
-                    >
-                      <span style={avatarRing}>
-                        {avatar && <img src={avatar} alt={m.name} style={avatarImg} />}
-                        <span style={avatarBadge} aria-hidden>
-                          ↗
-                        </span>
-                      </span>
-                      <span style={memberName}>{m.name}</span>
-                    </motion.a>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div style={sectionLabel}>{t('legal.section_title')}</div>
-              <div style={gridStyle} data-testid="legal-grid">
-                {GRID_DOCS.map((id) => (
-                  <motion.button
-                    key={id}
-                    type="button"
-                    data-testid={`legal-row-${id}`}
-                    ref={(el) => {
-                      rowRefs.current[id] = el;
-                    }}
-                    style={gridRow}
-                    onClick={() => openDoc(id)}
-                    {...buttonMotion}
-                  >
-                    <span style={gridIcon}>
-                      <DocIcon id={id} size={16} />
-                    </span>
-                    <span style={gridLabel}>{t(DOCS[id].titleKey)}</span>
-                    <span style={chevron} aria-hidden>
-                      ›
-                    </span>
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filing rows — only a complete number+URL pair renders. */}
-            {(hasIcp || hasPsb) && (
-              <div>
-                {hasIcp && (
-                  <div style={filingRow} data-testid="filing-icp">
-                    <span style={filingLabel}>{t('about.filing_icp')}</span>
-                    <a style={filingLink} href={LEGAL.icpUrl!} target="_blank" rel="noopener noreferrer">
-                      {LEGAL.icpNumber} ↗
-                    </a>
+            {wide ? (
+              <>
+                {brand}
+                <div style={hairline} />
+                <div style={panes}>
+                  <div style={pane} data-testid="about-people">
+                    <div>
+                      <div style={sectionLabel}>{t('about.team_title')}</div>
+                      {roster(LEGAL.team, 'team-grid', 'team-member')}
+                    </div>
+                    <div>
+                      <div style={sectionLabel}>{t('about.acknowledgements_title')}</div>
+                      {roster(LEGAL.acknowledgements, 'acknowledgements-grid', 'acknowledged-member')}
+                    </div>
+                    <div style={{ ...teamNote, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                      <span>{t('about.team_order')}</span>
+                      <span>{t('about.acknowledgements_note')}</span>
+                    </div>
                   </div>
-                )}
-                {hasPsb && (
-                  <div style={filingRow} data-testid="filing-psb">
-                    <span style={filingLabel}>{t('about.filing_psb')}</span>
-                    <a style={filingLink} href={LEGAL.psbUrl!} target="_blank" rel="noopener noreferrer">
-                      {LEGAL.psbNumber} ↗
-                    </a>
+                  <div style={paneDivider} data-testid="about-documents">
+                    {legalGrid}
+                    {filing}
+                    {support}
                   </div>
-                )}
-              </div>
+                </div>
+                {footer}
+              </>
+            ) : (
+              <>
+                {brand}
+                <div>
+                  <div style={sectionLabel}>{t('about.team_title')}</div>
+                  <div style={teamNote}>{t('about.team_order')}</div>
+                  {roster(LEGAL.team, 'team-grid', 'team-member')}
+                </div>
+                <div>
+                  <div style={sectionLabel}>{t('about.acknowledgements_title')}</div>
+                  <div style={teamNote}>{t('about.acknowledgements_note')}</div>
+                  {roster(LEGAL.acknowledgements, 'acknowledgements-grid', 'acknowledged-member')}
+                </div>
+                {legalGrid}
+                {filing}
+                {support}
+                {footer}
+              </>
             )}
-
-            <div>
-              <div style={sectionLabel}>{t('about.sponsorship_title')}</div>
-              <div style={gridStyle} data-testid="sponsorship-links">
-                {[
-                  { href: LEGAL.sponsorship.patreon, key: 'about.patreon' },
-                  { href: LEGAL.sponsorship.afdian, key: 'about.afdian' },
-                ].map(({ href, key }) => (
-                  <motion.a key={key} href={href} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={gridIcon}>
-                      <path d="M12 20 4.5 12.5a5 5 0 0 1 7.5-6.6 5 5 0 0 1 7.5 6.6L12 20Z" />
-                    </svg>
-                    <span style={gridLabel}>{t(key)}</span>
-                    <span style={chevron} aria-hidden>↗</span>
-                  </motion.a>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={disclaimerStyle}>{t('about.disclaimer')}</div>
-              <div style={footerRow}>
-                <span>{t('about.copyright', { year: 2026 })}</span>
-              </div>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

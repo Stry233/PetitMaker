@@ -36,7 +36,7 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'default-src': ["'self'"],
     'base-uri': ["'self'"],
     'object-src': ["'none'"],
-    // The bundled on-device illustration runtime requires WebAssembly compilation, not JavaScript eval.
+    // Local illustration and map checks require WebAssembly compilation, not JavaScript eval.
     'script-src': ["'self'", "'wasm-unsafe-eval'"],
     // React uses inline styles; fonts are self-hosted.
     'style-src': ["'self'", "'unsafe-inline'"],

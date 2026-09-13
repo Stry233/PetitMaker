@@ -7,6 +7,15 @@ describe('buildSystemPrompt', () => {
   const registry = createDefaultRegistry();
   const prompt = buildSystemPrompt(registry);
 
+  it('applies the user language to thinking and preserves structured tool formats', () => {
+    for (const uiLocale of ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr']) {
+      const localized = buildSystemPrompt(registry, { uiLocale });
+      expect(localized).toContain('same language throughout your thinking process');
+      expect(localized).toContain('structured tool arguments in their required formats');
+      expect(localized).toContain('follow immediately if they switch mid-conversation');
+    }
+  });
+
   it('covers every registered rule id', () => {
     for (const { id } of registry.getRules()) expect(prompt).toContain(id);
   });

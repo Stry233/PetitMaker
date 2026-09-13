@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { quotePromptData } from '../../../core/runtime/prompt-data';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveMessages, rawIsAllFrom, type ProviderMessage } from '../../../agent/core/project-messages';
 
 /** Mirrors the template `deriveMessages` builds for an `order`, so budget-math tests can predict
  *  exact message text without hardcoding the wire format twice. */
 function orderText(mapContext: string, text: string): string {
-  return `<map_context>${mapContext}</map_context>\n${text}`;
+  return `<map_context>${quotePromptData(mapContext)}</map_context>\n${text}`;
 }
 
 describe('deriveMessages', () => {
@@ -33,7 +34,7 @@ describe('deriveMessages', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'build a village', mapContext: 'elevation: flat' });
     const out = deriveMessages(log, { budgetTokens: 10_000 });
-    expect(out).toEqual([{ role: 'user', text: '<map_context>elevation: flat</map_context>\nbuild a village' }]);
+    expect(out).toEqual([{ role: 'user', text: '<map_context>"elevation: flat"</map_context>\nbuild a village' }]);
   });
 
   it('projects an assistant\'s parsed tool calls and joins their results into one ordered tool message', () => {
@@ -196,7 +197,7 @@ describe('deriveMessages', () => {
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
     expect(out).toEqual([
-      { role: 'user', text: '(conversation summary) did some early stuff' },
+      { role: 'user', text: '(conversation summary, reference only) <summary_data>"did some early stuff"</summary_data>' },
       { role: 'user', text: orderText('', 'second') },
     ]);
   });
@@ -212,7 +213,7 @@ describe('deriveMessages', () => {
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
     expect(out).toEqual([
-      { role: 'user', text: '(conversation summary) fresh summary' },
+      { role: 'user', text: '(conversation summary, reference only) <summary_data>"fresh summary"</summary_data>' },
       { role: 'user', text: orderText('', 'third') },
     ]);
   });
@@ -254,8 +255,8 @@ describe('deriveMessages', () => {
 
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
-      expect(out[0]).toEqual({ role: 'user', text: '(conversation summary) a village is going up' });
-      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: Cozy Village)\n${COZY}` });
+      expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
+      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
       // The steer that opened the retained group still speaks: its own `steer` event necessarily
       // sits BEFORE the cut (a steer is logged when typed, delivered later), so reading the text
       // from the retained window alone would drop the user's words at exactly this boundary.
@@ -274,8 +275,8 @@ describe('deriveMessages', () => {
 
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
-      expect(out[0]).toEqual({ role: 'user', text: '(conversation summary) a village is going up' });
-      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: Cozy Village)\n${COZY}` });
+      expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
+      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
       expect(out[2]).toEqual({ role: 'user', text: orderText('ctx', 'now add the pines') });
     });
 
@@ -291,7 +292,7 @@ describe('deriveMessages', () => {
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: Cozy Village)\n${COZY}` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       // The retained load replays natively as its own tool result, so it is present but not doubled.
       const zenCarriers = out.filter((m) => JSON.stringify(m).includes('rake the gravel'));
       expect(zenCarriers).toHaveLength(1);
@@ -309,7 +310,7 @@ describe('deriveMessages', () => {
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: Cozy Village)\n${COZY}` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       expect(JSON.stringify(out)).not.toContain('STALE BODY');
     });
 
@@ -345,7 +346,7 @@ describe('deriveMessages', () => {
       append(log, { kind: 'compaction', summary: 'carrying on', retainedFromSeq: second.seq });
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: Cozy Village)\n${COZY}` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       expect(JSON.stringify(out)).not.toContain('Unknown skill');
     });
   });
@@ -686,7 +687,7 @@ describe('deriveMessages: system notes', () => {
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
     expect(out).toEqual([
-      { role: 'user', text: '<map_context></map_context>\nbridge the river' },
+      { role: 'user', text: '<map_context>""</map_context>\nbridge the river' },
       { role: 'assistant', text: 'All done.', toolCalls: [] },
       { role: 'user', text: '(system) Nothing has landed on the map yet.' },
     ]);

@@ -2,6 +2,9 @@
 // which sets a custom header that fails browser preflight). Images ride as `inline_data` parts,
 // source LAST: that final image is what dictates the model's own sense of output aspect.
 import type { AspectOption } from '../normalize';
+import { STYLIZE_TRUST } from '../prompt/compile';
+import judgeInstructions from '../prompt/judge.md?raw';
+import { quotePromptData } from '../../../core/runtime/prompt-data';
 import { classify, scrub } from './errors';
 import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from './types';
 
@@ -94,7 +97,8 @@ export const geminiDialect: StylizeDialect = {
       { text: req.prompt },
     ];
     const body = {
-      contents: [{ parts }],
+      systemInstruction: { parts: [{ text: STYLIZE_TRUST }] },
+      contents: [{ role: 'user', parts }],
       generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: req.aspectId } },
     };
     const json = (await post(cfg, `/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`, body, signal)) as GenerateContentResponse;
@@ -107,15 +111,14 @@ export const geminiDialect: StylizeDialect = {
 
   async judge(cfg, req, signal) {
     const body = {
+      systemInstruction: { parts: [{ text: judgeInstructions.trim() }] },
       contents: [{
+        role: 'user',
         parts: [
           { inline_data: parseDataUrl(req.source) },
           { inline_data: parseDataUrl(req.output) },
           {
-            text: 'Compare the second image against the first as a redraw of the same planning map. '
-              + `The map is known to contain: ${req.scene.join('; ')}. `
-              + 'List, as short imperative lines, anything the second image drew in the wrong place or omitted. '
-              + 'If it faithfully preserves the layout, answer exactly "all clear".',
+            text: `Scene facts: <scene_data>${quotePromptData(req.scene)}</scene_data>`,
           },
         ],
       }],

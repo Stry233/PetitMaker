@@ -545,3 +545,41 @@ describe('the leave verbs: filing a settled record away, and clearing one', () =
     expect(marks()).toEqual({ filed: [], cleared: [] });
   });
 });
+
+describe('clearing removes provider context and stored transcripts', () => {
+  it('erases the transcript immediately and cancels the older pending save', () => {
+    const log = useAgentSession.getState().log;
+    const order = append(log, { kind: 'order', text: 'deleted private request', mapContext: '' });
+    append(log, { kind: 'jobEnd', outcome: 'done' });
+    useAgentSession.getState().clearRecord(order.seq);
+    expect(useAgentSession.getState().log.events).toEqual([]);
+    expect(localStorage.getItem(PREFS.agentLogV3.key)).not.toContain('deleted private request');
+    vi.advanceTimersByTime(600);
+    expect(localStorage.getItem(PREFS.agentLogV3.key)).not.toContain('deleted private request');
+    useAgentSession.getState().hydrate();
+    expect(useAgentSession.getState().log.events).toEqual([]);
+    const next = append(useAgentSession.getState().log, { kind: 'order', text: 'new request', mapContext: '' });
+    expect(useAgentSession.getState().cleared.has(next.seq)).toBe(false);
+  });
+
+  it('erases legacy hidden records and their summaries on hydration', () => {
+    const log = useAgentSession.getState().log;
+    const order = append(log, { kind: 'order', text: 'legacy secret', mapContext: '' });
+    append(log, { kind: 'jobEnd', outcome: 'done' });
+    append(log, { kind: 'compaction', summary: 'legacy secret summary', retainedFromSeq: order.seq });
+    vi.advanceTimersByTime(600);
+    localStorage.setItem(PREFS.agentMarksV3.key, JSON.stringify({ v: 3, filed: [order.seq], cleared: [order.seq] }));
+    useAgentSession.getState().hydrate();
+    expect(useAgentSession.getState().log.events).toEqual([]);
+    expect(localStorage.getItem(PREFS.agentLogV3.key)).not.toContain('legacy secret');
+  });
+
+  it('keeps filed records in context until they are explicitly cleared', () => {
+    const log = useAgentSession.getState().log;
+    const order = append(log, { kind: 'order', text: 'keep this record', mapContext: '' });
+    append(log, { kind: 'jobEnd', outcome: 'done' });
+    useAgentSession.getState().fileAway(order.seq);
+    expect(useAgentSession.getState().log).toBe(log);
+    expect(JSON.stringify(log.events)).toContain('keep this record');
+  });
+});

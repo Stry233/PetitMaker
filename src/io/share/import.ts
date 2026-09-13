@@ -4,7 +4,7 @@ import { migrateToCurrent, type RawSave } from '../save-format';
 import { deserialize } from '../json-codec';
 import { getMapTemplate } from '../../config/maps';
 import { ShareError, DEFAULT_LIMITS, type ShareLimits } from './errors';
-import { decodeGlyphAsync } from './glyph/decode-async';
+import { decodeGlyphAsync, type PixelOwnership } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
 import { isGenerationConfig } from '../import-sections';
 import { toSaveJSON } from './canonical';
@@ -15,9 +15,9 @@ export interface ImportSuccess { ok: true; state: GridState; warnings: string[];
 export interface ImportFailure { ok: false; error: ShareError }
 export type ImportResult = ImportSuccess | ImportFailure;
 
-export async function importFromRaster(rgba: Uint8Array, width: number, height: number): Promise<ImportResult> {
+export async function importFromRaster(rgba: Uint8Array, width: number, height: number, ownership?: PixelOwnership): Promise<ImportResult> {
   try {
-    const payload = await decodeGlyphAsync(rgba, width, height);
+    const payload = await decodeGlyphAsync(rgba, width, height, ownership);
     if (!payload) return { ok: false, error: new ShareError('no-payload', 'No share code found in this image.') };
     const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
     const saveJson = toSaveJSON(dec.canonical, dec.annotations);

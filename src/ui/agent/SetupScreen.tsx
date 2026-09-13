@@ -1,3 +1,4 @@
+import { providerName } from '../../i18n/providers';
 /*
  * Guides key entry, provider detection and connection completion. Automatic advance waits for an
  * idle interval or Enter so typing never loses focus. Explicit provider choices override key-shape
@@ -5,17 +6,17 @@
  * providers; custom endpoints require an address. Model choice and oversight remain in management.
  * Network functions are injected, and default adapters load dynamically by provider dialect.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useUiPreview } from '../primitives/ui-preview';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { zoneEnter } from './atoms';
 import { useT } from '../../i18n/context';
-import { AMBIGUOUS_CANDIDATES, PROBE_DEADLINE_MS, probeAmbiguousKey } from '../../agent/providers/detect';
-import { baseUrlFor, PROVIDER_META, QUIRKS, type ProviderId } from '../../agent/providers/defaults';
+import { AMBIGUOUS_CANDIDATES, probeAmbiguousKey } from '../../agent/providers/detect';
+import { type ProviderId } from '../../agent/providers/defaults';
 import { classify } from '../../agent/core/errors';
 import { Spinner } from '../primitives/Spinner';
 import { FloatMenu, type FloatMenuItem } from '../primitives/FloatMenu';
-import { colors, cursors, font, radii } from '../design/styles';
+import { colors, cursors } from '../design/styles';
 import { INK, PLATE_INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
@@ -23,62 +24,24 @@ import { windowFooterGhost, windowFooterPrimary } from '../design/window-skin';
 import { useFrameZoom, useZoomedLayoutTransform } from '../shell/use-frame-zoom';
 import { Icon } from './icons';
 import { amplitude, framerMotion } from './motion';
-import { prettyModel } from './pretty-model';
+import { ManageScreen } from './ManageScreen';
+import { defaultListModels, IDLE_MS, type ListModels } from './model-discovery';
+import { rememberRoster, rosterKey } from './model-roster';
 import { connectionGaps, runnerSettings, useAgentPanelSettings } from './settings';
 import {
-  endpointCheckVerdict, endpointOwed, FIELD_STYLE, FOOT_STYLE, GATED, GROUP_STYLE, INPUT_STYLE,
+  endpointOwed, FIELD_STYLE, FOOT_STYLE, GATED, GROUP_STYLE, INPUT_STYLE,
   keyDestination, keyLooksUsable, NOTE_STYLE, PROVIDER_ROSTER, rawFailure, readKeyShape, SAY_STYLE,
   stepSlide, urlLooksUsable, WRAP_STYLE,
   type KeyDestination, type KeyShape, type SetupEntry, type SetupFace, type T,
 } from './setup-parts';
 
-/** How long the hands must be still before the screen moves itself on, in ms. */
-export const IDLE_MS = 900;
+export { defaultListModels, IDLE_MS, withModelsDeadline, type ListModels } from './model-discovery';
 
 /** How far the refused field shakes, per its own declaration. */
 const SHAKE = amplitude('panel.setup.refuse') ?? 0;
 
 /** The mark the field and the provider row carry together: the reading's own state. */
 export type Mark = 'spin' | 'cross' | null;
-
-/** Bounds model discovery with the provider-probe deadline and aborts a silent endpoint. */
-export function withModelsDeadline<T>(
-  run: (signal: AbortSignal) => Promise<T>, deadlineMs: number = PROBE_DEADLINE_MS,
-): Promise<T> {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(new Error(`The endpoint answered nothing in ${Math.round(deadlineMs / 1000)}s; the request timed out.`));
-    }, deadlineMs);
-  });
-  // Promise.race attaches handlers to the request, so a late rejection cannot become unhandled.
-  return Promise.race([run(controller.signal), deadline]).finally(() => { clearTimeout(timer); });
-}
-
-/** Loads the selected provider adapter dynamically and lists models through its native dialect. */
-export function defaultListModels(cfg: {
-  provider: ProviderId; apiKey: string; customBaseUrl?: string;
-}): Promise<string[]> {
-  return withModelsDeadline(async (signal) => {
-    if (cfg.provider === 'claude') {
-      const { createAnthropicAdapter } = await import('../../agent/providers/anthropic');
-      return createAnthropicAdapter({ apiKey: cfg.apiKey }).listModels(signal);
-    }
-    const { createOpenAIAdapter } = await import('../../agent/providers/openai');
-    const baseUrl = baseUrlFor(cfg.provider, { ...(cfg.customBaseUrl ? { customBaseUrl: cfg.customBaseUrl } : {}) });
-    return createOpenAIAdapter({
-      apiKey: cfg.apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
-      quirks: QUIRKS[cfg.provider],
-    }).listModels(signal);
-  });
-}
-
-export type ListModels = (cfg: {
-  provider: ProviderId; apiKey: string; customBaseUrl?: string;
-}) => Promise<string[]>;
 
 /** Stateless key input shared by key and endpoint steps; the caller owns value, masking and refusal state. */
 export function SetupKeyField({
@@ -145,7 +108,7 @@ export interface SetupScreenProps {
   onFace?: (face: SetupFace | null) => void;
   /** Initial setup step, read once at mount. */
   entry?: SetupEntry;
-  /** Opens connection management for model entry or custom-endpoint review. */
+  /** Opens connection management after credential checking. */
   onManage?: () => void;
 }
 
@@ -167,12 +130,12 @@ export function SetupScreen({
   const pictured = useUiPreview();
   const settings = useAgentPanelSettings();
 
-  /** Named repair steps take priority; otherwise an existing partial connection opens at confirmation. */
-  const [phase, setPhase] = useState<'key' | 'custom' | 'confirm'>(() => {
+  /** Restore missing addresses directly; existing credentials resume validation. */
+  const [phase, setPhase] = useState<'key' | 'custom' | 'checking' | 'manage'>(() => {
     if (entry === 'endpoint') return 'custom';
     if (entry === 'chooser') return 'key';
     const gaps = connectionGaps(useAgentPanelSettings.getState());
-    return gaps.length > 0 && !gaps.includes('key') ? 'confirm' : 'key';
+    return gaps.includes('key') || gaps.length === 0 ? 'key' : gaps.includes('endpoint') ? 'custom' : 'checking';
   });
   const [keyDraft, setKeyDraft] = useState('');
   /** The key masks while unfocused and remains visible while editing. */
@@ -185,7 +148,7 @@ export function SetupScreen({
   const [probing, setProbing] = useState(false);
   const [probeFailed, setProbeFailed] = useState(false);
   const [refused, setRefused] = useState(false);
-  const [modelsFailed, setModelsFailed] = useState(false);
+  const [modelsSettled, setModelsSettled] = useState(false);
   /** Bumped on every refusal, so a second refusal of the same key shakes again. */
   const [shakeSeq, setShakeSeq] = useState(0);
   /** Provider and key currently used by model discovery; the store remains authoritative for rendering. */
@@ -197,13 +160,11 @@ export function SetupScreen({
   const reading = useRef(0);
 
   const provider = armed.current ?? settings.provider;
-  const model = settings.model[provider] ?? '';
   /** Explicit provider choice, including a custom provider still awaiting its endpoint. */
   const pinned = settings.providerPinned || endpointOwed(settings) ? settings.provider : null;
   const customBaseUrl = settings.customBaseUrl;
   const forgetKey = settings.forgetKey;
   const connectKey = settings.connectKey;
-  const setModel = settings.setModel;
 
   const shape: KeyShape = pinned ?? readKeyShape(keyDraft);
   const accepted = keyLooksUsable(keyDraft);
@@ -213,32 +174,35 @@ export function SetupScreen({
   /** Whether a custom provider still needs an endpoint before its key can be checked. */
   const needsEndpoint = shape === 'custom' && customBaseUrl === '';
 
-  /** Tests the connection through model discovery and files the first result only when no model is set. */
+  /** Checks the credential and caches the available models without choosing one. */
   const loadModels = useCallback((id: ProviderId, apiKey: string) => {
-    setModelsFailed(false);
+    setModelsSettled(false);
     // Never send a custom-provider key until its endpoint is explicit.
     if (apiKey === '' || (id === 'custom' && customBaseUrl === '')) return;
     // Capture the reading generation so superseded results cannot mutate current setup.
     const mine = reading.current;
-    listModels({ provider: id, apiKey, ...(customBaseUrl ? { customBaseUrl } : {}) })
+    const region = runnerSettings(useAgentPanelSettings.getState()).region;
+    listModels({ provider: id, apiKey, ...(region === undefined ? {} : { region }), ...(customBaseUrl ? { customBaseUrl } : {}) })
       .then((ids) => {
         if (mine !== reading.current) return;
-        // Any custom-provider response proves the endpoint reachable.
+        rememberRoster(rosterKey(id, customBaseUrl), ids);
+        setModelsSettled(true);
+        // Discovery cannot establish whether the generation route is reachable.
         if (id === 'custom') useAgentPanelSettings.getState().recordEndpointCheck(true);
-        // An empty list provides no default model.
-        const first = ids[0];
-        if (first === undefined) { setModelsFailed(true); return; }
-        if ((useAgentPanelSettings.getState().model[id] ?? '') === '') setModel(first);
       })
       .catch((err: unknown) => {
         if (mine !== reading.current) return;
-        // Store custom-endpoint reachability using the same verdict shared with management.
+        // Retire legacy discovery failures without blocking manual model entry.
         if (id === 'custom') {
-          useAgentPanelSettings.getState().recordEndpointCheck(endpointCheckVerdict(err) !== 'unreachable');
+          useAgentPanelSettings.getState().recordEndpointCheck(true);
         }
         // Authentication failure removes the key and returns focus to key entry.
         if (classify(rawFailure(err)).cls === 'auth') {
+          const state = useAgentPanelSettings.getState();
+          const explicit = state.providerPinned && state.provider === id;
           forgetKey(id);
+          // Authentication failure does not revoke the user's explicit provider choice.
+          if (explicit) state.pinProvider(id);
           armed.current = null;
           setRefused(true);
           setProbing(false);
@@ -246,11 +210,11 @@ export function SetupScreen({
           setPhase('key');
           return;
         }
-        setModelsFailed(true);
+        setModelsSettled(true);
       });
-  }, [listModels, customBaseUrl, forgetKey, setModel]);
+  }, [listModels, customBaseUrl, forgetKey]);
 
-  /** Files the key and provider, enters confirmation and starts model discovery. */
+  /** Files the key and provider while keeping the key field visible during validation. */
   const commit = useCallback((id: ProviderId, key: string) => {
     armed.current = id;
     armedKey.current = key;
@@ -259,7 +223,7 @@ export function SetupScreen({
     setProbing(false);
     setProbeFailed(false);
     setRefused(false);
-    setPhase('confirm');
+    setPhase('checking');
     loadModels(id, key);
   }, [connectKey, loadModels]);
 
@@ -309,25 +273,25 @@ export function SetupScreen({
 
   useEffect(() => { setUrlDraft(customBaseUrl); }, [customBaseUrl]);
 
-  // Confirmation returns to key entry if its stored key disappears.
+  // Validation returns to key entry if its stored key disappears.
   const keyMissing = gaps.includes('key');
-  useEffect(() => { if (phase === 'confirm' && keyMissing) setPhase('key'); }, [phase, keyMissing]);
+  useEffect(() => { if (phase === 'checking' && keyMissing) setPhase('key'); }, [phase, keyMissing]);
 
-  /** Hands custom review or listless model entry to management once per setup mount. */
-  const owed = gaps.join(',');
+  /** Model selection belongs to management even when no model has been chosen yet. */
   const handedOff = useRef(false);
   useEffect(() => {
-    if (handedOff.current || phase !== 'confirm' || !onManage) return;
-    const review = provider === 'custom' && owed === '';
-    const listless = modelsFailed && owed === 'model';
-    if (!review && !listless) return;
+    if (phase !== 'checking' || !modelsSettled || gaps.includes('key') || gaps.includes('endpoint')) return;
+    setPhase('manage');
+  }, [phase, modelsSettled, gaps.join(',')]);
+  useLayoutEffect(() => {
+    if (phase !== 'manage' || handedOff.current) return;
     handedOff.current = true;
-    onManage();
-  }, [phase, provider, owed, modelsFailed, onManage]);
+    onManage?.();
+  }, [phase, onManage]);
 
   const askedOnMount = useRef(false);
   useEffect(() => {
-    if (pictured || askedOnMount.current || phase !== 'confirm' || armed.current !== null) return;
+    if (pictured || askedOnMount.current || phase !== 'checking' || armed.current !== null) return;
     askedOnMount.current = true;
     const held = runnerSettings(useAgentPanelSettings.getState()).apiKey;
     armedKey.current = held;
@@ -354,6 +318,8 @@ export function SetupScreen({
   /** Returns to key entry while retaining the draft and suspending its automatic advance. */
   function reenter(): void {
     reading.current += 1;
+    setPhase('key');
+    setModelsSettled(false);
     setProbing(false);
     setProbeFailed(false);
     setRefused(false);
@@ -364,6 +330,8 @@ export function SetupScreen({
   /** Opens an explicit provider override and invalidates automatic detection for the current draft. */
   function chooseByHand(): void {
     reading.current += 1;
+    if (phase === 'checking') setPhase('key');
+    setModelsSettled(false);
     setProbing(false);
     setHeldBack(keyDraft);
     setRowOpen(true);
@@ -381,17 +349,17 @@ export function SetupScreen({
     const key = keyDraft.trim() || armedKey.current;
     if (key !== '') { commit(id, key); return; }
     setHeldBack(null);
-    /** A provider with an existing key can finish immediately or resume through the shared commit path. */
+    /** Existing credentials resume management or credential checking. */
     const held = runnerSettings({ ...settings, provider: id }).apiKey;
     if (held === '') return;
-    // Use the same readiness test as the confirmation action.
-    if (connectionGaps(settings, id).length === 0) { onDone?.(); return; }
+    // Existing selections still open the model-management page.
+    if (connectionGaps(settings, id).length === 0) { setPhase('manage'); return; }
     commit(id, held);
   }
 
-  const mark: Mark = refused || probeFailed ? 'cross' : probing || (gate !== null && gate !== 'ask') ? 'spin' : null;
+  const mark: Mark = refused || probeFailed ? 'cross' : phase === 'checking' || probing || (gate !== null && gate !== 'ask') ? 'spin' : null;
   /** Whether idle advance or an active probe is currently checking the key. */
-  const checking = accepted && !needsEndpoint && (gate !== null || probing);
+  const checking = phase === 'checking' || accepted && !needsEndpoint && (gate !== null || probing);
   /** Whether the open chooser is asking the user to identify an unknown key shape. */
   const asking = rowOpen && !pinned && (shape === 'unknown' || shape === 'empty') && !refused && !probeFailed;
   const row = phase === 'custom'
@@ -411,14 +379,9 @@ export function SetupScreen({
       t, shape, pinned, typing, probeFailed, refused, needsEndpoint, checking, probing,
       held: settings.keyed.length > 0,
     });
-  const foot = footVerbs({ probeFailed, refused, needsEndpoint, probing, waiting: gate !== null });
+  const foot = footVerbs({ probeFailed, refused, needsEndpoint, probing, waiting: gate !== null || phase === 'checking' });
   /** Leaving is available only before configuration starts or after the connection is complete. */
   const canLeave = gaps.length === 0 || gaps.includes('key');
-  /** Confirmation exits, waits, requests an address or routes to model management based on gaps. */
-  const exit: 'done' | 'wait' | 'address' | 'route' = gaps.length === 0
-    ? 'done'
-    : gaps.includes('endpoint') ? 'address' : modelsFailed ? 'route' : 'wait';
-
   /** Derives the desk face from the same facts used by this screen's row, note and footer. */
   const step: SetupFace = (() => {
     // The active screen step takes priority over status retained from an earlier step.
@@ -426,14 +389,7 @@ export function SetupScreen({
       const host = urlHost(urlDraft);
       return host ? { step: 'endpoint', name: host } : { step: 'endpoint' };
     }
-    if (phase === 'confirm') {
-      // Missing endpoint status takes priority over provider confirmation.
-      if (gaps.includes('endpoint')) return { step: 'endpoint' };
-      // A settled model identifies the final confirmation face.
-      if (model !== '') return { step: 'chosen', name: prettyModel(model) };
-      // While model discovery is pending, report the confirmed provider.
-      return { step: 'confirmed', name: PROVIDER_META[provider].name };
-    }
+    if (phase === 'checking' || phase === 'manage') return { step: 'shaped', name: providerName(provider, t) };
     if (refused) return row.id ? { step: 'refused', name: row.name } : { step: 'refused' };
     if (probeFailed) return { step: 'no-answer' };
     // A missing custom endpoint takes priority over key-shape status.
@@ -448,8 +404,8 @@ export function SetupScreen({
   const stepId = step.step;
   const stepName = step.name ?? '';
   useEffect(() => {
-    onFace?.({ step: stepId, ...(stepName ? { name: stepName } : {}) });
-  }, [onFace, stepId, stepName]);
+    onFace?.(phase === 'manage' ? null : { step: stepId, ...(stepName ? { name: stepName } : {}) });
+  }, [onFace, stepId, stepName, phase]);
 
   const slides = stepSlide(reduced, zoomedLayout);
 
@@ -464,6 +420,8 @@ export function SetupScreen({
         // A changed key invalidates pending results and re-enables idle advance.
         reading.current += 1;
         setHeldBack(null);
+        if (phase === 'checking') setPhase('key');
+        setModelsSettled(false);
         setKeyDraft(next);
         setRefused(false);
         setProbeFailed(false);
@@ -491,9 +449,11 @@ export function SetupScreen({
     />
   );
 
+  if (phase === 'manage' && !onManage) return <ManageScreen jobCount={0} listModels={listModels} onDone={onDone} />;
+
   return (
     <motion.div {...zoneEnter(reduced)} data-testid="setup-screen" data-phase={phase} style={WRAP_STYLE}>
-      {phase === 'key' && (
+      {(phase === 'key' || phase === 'checking' || phase === 'manage') && (
         <>
           {!typing && <p style={SAY_STYLE}>{t('agent3.setup_say_key')}</p>}
           <motion.div {...slides} style={GROUP_STYLE}>{keyField}</motion.div>
@@ -580,7 +540,7 @@ export function SetupScreen({
                   // Filing the endpoint invalidates older readings and re-enables advance for the current key.
                   reading.current += 1;
                   setHeldBack(null);
-                  setPhase('key');
+                  setPhase(keyDraft === '' && runnerSettings(useAgentPanelSettings.getState()).apiKey ? 'checking' : 'key');
                 }}
                 style={urlLooksUsable(urlDraft) ? FOOT_PRIMARY : { ...FOOT_PRIMARY, ...GATED }}
               >
@@ -590,69 +550,6 @@ export function SetupScreen({
                 type="button"
                 data-testid="setup-act-reenter"
                 onClick={() => { setUrlBad(false); setPhase('key'); }}
-                style={FOOT_GHOST}
-              >
-                {t('agent3.setup_back')}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {phase === 'confirm' && (
-        <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Confirmation reports the armed provider without adding a second chooser. */}
-            <div data-testid="setup-armed-provider" data-provider={provider} style={LIT_ROW}>
-              <Icon id="pw-check" size={15} />
-              <span style={{ marginRight: 'auto' }}>{PROVIDER_META[provider].name}</span>
-            </div>
-            {/* Confirmation reports the model; management owns model choice. */}
-            {exit === 'address' ? (
-              <p data-testid="setup-endpoint-missing" style={NOTE_STYLE}>{t('agent3.setup_say_custom')}</p>
-            ) : model !== '' ? (
-              <p data-testid="setup-model-note" style={NOTE_STYLE}>
-                {t('agent3.setup_note_model_default', { name: prettyModel(model) })}
-              </p>
-            ) : null}
-          </div>
-
-          <div style={FOOT_STYLE}>
-            {/* Confirmation keeps one context-sensitive primary action beside Back. */}
-            <div style={FOOT_ROW}>
-              {exit === 'address' ? (
-                <button
-                  type="button"
-                  data-testid="setup-need-address"
-                  onClick={() => setPhase('custom')}
-                  style={FOOT_PRIMARY}
-                >
-                  {t('agent3.setup_give_address')}
-                </button>
-              ) : exit === 'route' ? null : (
-                <button
-                  type="button"
-                  data-testid="setup-done"
-                  data-gated={exit === 'wait' || undefined}
-                  disabled={exit === 'wait'}
-                  onClick={onDone}
-                  style={{
-                    ...FOOT_PRIMARY,
-                    ...(exit === 'wait' ? GATED : {}),
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 7,
-                  }}
-                >
-                  <Icon id="pw-check" size={15} />
-                  {t('agent3.setup_done')}
-                </button>
-              )}
-              <button
-                type="button"
-                data-testid="setup-confirm-back"
-                onClick={() => { setPhase('key'); reenter(); }}
                 style={FOOT_GHOST}
               >
                 {t('agent3.setup_back')}
@@ -685,7 +582,7 @@ export function rowFace(a: {
       && shape !== 'unknown' && shape !== 'empty' ? shape : null);
     return {
       id,
-      name: id ? PROVIDER_META[id].name : t('agent3.setup_row_provider'),
+      name: id ? providerName(id, t) : t('agent3.setup_row_provider'),
       sub: t('agent3.setup_row_refused'),
       dim: false,
     };
@@ -694,7 +591,7 @@ export function rowFace(a: {
   if (pinned) {
     return {
       id: pinned,
-      name: PROVIDER_META[pinned].name,
+      name: providerName(pinned, t),
       sub: t(checking ? 'agent3.setup_row_pinned_checking' : 'agent3.setup_row_pinned'),
       dim: false,
     };
@@ -716,7 +613,7 @@ export function rowFace(a: {
   }
   return {
     id: shape,
-    name: PROVIDER_META[shape].name,
+    name: providerName(shape, t),
     sub: t(checking ? 'agent3.setup_row_checking' : 'agent3.setup_row_sofar'),
     dim: false,
   };
@@ -778,9 +675,9 @@ function noteLine(a: {
   if (shape === 'ambiguous') {
     return { text: t(probing ? 'agent3.setup_note_ambiguous' : 'agent3.setup_note_ambiguous_wait'), danger: false };
   }
-  if (pinned && checking) return { text: t('agent3.setup_note_pinned_checking', { name: PROVIDER_META[pinned].name }), danger: false };
+  if (pinned && checking) return { text: t('agent3.setup_note_pinned_checking', { name: providerName(pinned, t) }), danger: false };
   if (shape !== 'empty' && shape !== 'partial' && shape !== 'unknown' && checking) {
-    return { text: t('agent3.setup_note_shaped', { name: PROVIDER_META[shape].name }), danger: false };
+    return { text: t('agent3.setup_note_shaped', { name: providerName(shape, t) }), danger: false };
   }
   if (!typing) return held ? { text: t('agent3.setup_note_replaces'), danger: false } : null;
   if (shape === 'partial') return { text: t('agent3.setup_note_partial'), danger: false };
@@ -813,7 +710,7 @@ function rosterItems(t: T, shape: KeyShape): FloatMenuItem[] {
   const amb = shape === 'ambiguous';
   const items: FloatMenuItem[] = PROVIDER_ROSTER.map((id) => ({
     id,
-    label: PROVIDER_META[id].name,
+    label: providerName(id, t),
     ...(amb && id === 'deepseek' ? { sub: t('agent3.setup_fits_this_key') } : {}),
   }));
   items.push({
@@ -843,11 +740,3 @@ function LeaveRow({ t, onLeave }: { t: T; onLeave?: () => void }) {
 const FOOT_ROW: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 };
 const FOOT_PRIMARY: CSSProperties = { ...windowFooterPrimary, flex: '2 1 auto', whiteSpace: 'nowrap', padding: '12px 14px', cursor: cursors.clickable };
 const FOOT_GHOST: CSSProperties = { ...windowFooterGhost, flex: '1 1 auto', whiteSpace: 'nowrap', padding: '12px 13px', cursor: cursors.clickable };
-
-/** Confirmed-provider row constrained to the job-zone width. */
-const LIT_ROW: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 9, width: '100%', boxSizing: 'border-box',
-  background: colors.tileYellow, color: INK, borderRadius: radii.md, padding: '10px 12px',
-  // Match the closed provider dropdown's typography.
-  ...roleFont('menu'), fontFamily: font.family, textAlign: 'left', border: 'none',
-};

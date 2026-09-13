@@ -5,6 +5,7 @@
  * dialect with no map, no window and no network.
  */
 import { loadImage } from '../../export/canvas-helpers';
+import { assertRasterDataUrl } from '../dialects/image-response';
 import { ItemCategory, TerrainType, type GridState } from '../../../core/model/types';
 import { categoryOf } from '../../../state/catalog';
 import { renderSemanticLayout } from '../control/semantic';
@@ -117,19 +118,22 @@ export async function runEngine(
 
   const scene = verbalizeScene(buildManifest(deps.state));
   const presentCategories = presentCategoriesOf(deps.state);
-  const prompt = compilePrompt({ direction, customText, scene, presentCategories, images: conditionImages }).text;
+  const promptArgs = { direction, customText, scene, presentCategories, images: conditionImages };
+  const prompt = compilePrompt(promptArgs).text;
 
   let outputDataUrl = await deps.dialect.generate(deps.cfg, { images, prompt, aspectId: plan.aspectId }, signal);
 
+  assertRasterDataUrl(outputDataUrl);
   if (recipe.judge && deps.dialect.judge) {
     const clauses = await deps.dialect.judge(deps.cfg, { source: sourceDataUrl, output: outputDataUrl, scene }, signal);
     if (clauses.length > 0) {
-      const correctionPrompt = `${prompt} Corrections: ${clauses.join(' ')}`;
+      const correctionPrompt = compilePrompt({ ...promptArgs, feedback: clauses }).text;
       // Re-anchored on the ORIGINAL images, never the drifted output, and never chained again.
       outputDataUrl = await deps.dialect.generate(deps.cfg, { images, prompt: correctionPrompt, aspectId: plan.aspectId }, signal);
     }
   }
 
+  assertRasterDataUrl(outputDataUrl);
   const outputImg = await loadImage(outputDataUrl);
   const crop = cropBackRect(plan, outputImg.width, outputImg.height);
   const cropCanvas = document.createElement('canvas');

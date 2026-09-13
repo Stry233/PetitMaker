@@ -17,6 +17,8 @@ import { translate } from '../../i18n/context';
 export interface DelegateOpts {
   adapter: Adapter;
   model: string;
+  capabilities?: LoopDeps['capabilities'];
+  thinking?: LoopDeps['thinking'];
   system: string;
   oversight: Oversight;
   signal: AbortSignal;
@@ -136,6 +138,7 @@ async function delegateTask(
   const childLoopDeps: LoopDeps = {
     adapter: delegate.adapter,
     model: delegate.model,
+    capabilities: delegate.capabilities, thinking: delegate.thinking,
     system: delegate.system,
     tools: wireSchemas({ subagent: true }),
     executor: createExecutor(deps, { subagent: true }), // no `delegate`: depth capped at 1
@@ -224,7 +227,13 @@ export function createExecutor(
     describe(call) {
       // The gate summary stands in front of a human, so it reads in whatever locale they are
       // using right now (imperative `translate`, not a locale pinned at executor construction).
-      return describeToolCall({ name: call.name, input: call.args }, translate);
+      return describeToolCall({ name: call.name, input: call.args }, translate, {
+        catalog: (id) => deps.catalogName?.(id),
+        object: (id) => {
+          const object = deps.getState().objects.get(id);
+          return object ? deps.catalogName?.(object.catalogId) : undefined;
+        },
+      });
     },
   };
 }

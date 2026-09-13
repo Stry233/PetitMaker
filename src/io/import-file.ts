@@ -6,13 +6,13 @@
  * Returns a RESULT rather than raising toasts, so the routing needs no DOM and
  * `ui/chrome/modals/import/import-toast.ts` is the single place a result becomes a message.
  */
-import { deserialize } from './json-codec';
+import { deserializeParsed } from './json-codec';
 import { MAX_IMPORT_BYTES } from './import-limits';
 import { verifyIntegrity } from './export-json';
 import { applyOptionalSections, type SectionRestoreDeps } from './import-sections';
 import { getMapTemplate } from '../config/maps';
 import { importFromRaster, type ShareErrorCode } from './share';
-import { DEFAULT_LIMITS } from './share/errors';
+import { readRasterImage } from './raster-image';
 import type { GridState } from '../core/model/types';
 
 /** One warning surfaced from a successful import. Carries enough shape for the toast mapper to
@@ -67,7 +67,7 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
       // means it was hand-edited after export. A caution, not a hard failure, so the import still
       // runs. 'absent' (legacy / hand-made / autosave) is silent.
       const integrity = verifyIntegrity(parsed);
-      const state = deserialize(text, getMapTemplate(parsed.templateId));
+      const state = deserializeParsed(parsed, getMapTemplate(parsed.templateId));
       deps.loadMap(state);
       const sections = applyOptionalSections(parsed, deps.getSectionDeps());
       const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
@@ -77,22 +77,10 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
 
     if (!isImageFile(file, name)) return { status: 'unsupported' };
 
-    const bmp = await createImageBitmap(file);
-    if (bmp.width * bmp.height > (DEFAULT_LIMITS.maxRasterPixels ?? Infinity)) {
-      bmp.close?.();
-      return { status: 'failed' };
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(bmp, 0, 0);
-    const imageData = ctx.getImageData(0, 0, bmp.width, bmp.height);
-    const result = await importFromRaster(
-      new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
-      bmp.width,
-      bmp.height,
-    );
+    const { pixels, width, height } = await readRasterImage(file);
+    const result = await importFromRaster(pixels, width, height, {
+      recoverPixels: async () => (await readRasterImage(file)).pixels,
+    });
     if (!result.ok) return { status: 'failed', code: result.error.code };
     deps.loadMap(result.state);
     const warnings: ImportWarning[] = result.warnings.map((w) => (w === 'template-drift' ? { kind: 'template-drift' as const } : { kind: 'catalog-drift' as const }));

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "source": {
+    "package": "@coffeeandfun/google-profanity-words",
+    "version": "3.0.7",
+    "license": "MIT",
+    "revision": "0ae3460863120bc671361b9403cc65d5f2075b89",
+    "url": "https://raw.githubusercontent.com/coffee-and-fun/google-profanity-words/0ae3460863120bc671361b9403cc65d5f2075b89/data/zh.txt",
+    "sha256": "66f8f2ede8fc4b50cd6498409538239c43053a25ca245f155881f8dfc5933bc6"
+  },
+  "terms": {
+    "1": [
+      "489c0798565838ec",
+      "5f92b9cdeaf0fd05",
+      "609a9a60dc72c6c4",
+      "c944aaab307cf6e3",
+      "cb44add13c548bd1",
+      "e424c1bfacaa40df"
+    ],
+    "2": [
+      "0a6ab79289c4ca9e",
+      "0a6c04c8bb5a2a34",
+      "13bd4f006765633c",
+      "1da122c9fd6c7725",
+      "38fadf52ee2df36e",
+      "414154b7694a4253",
+      "4606de686af80a14",
+      "7f72f3e4c818ddf8",
+      "a15165b30ad2d6e7",
+      "a58f40379b0c16b3",
+      "a64655451c2cfca5",
+      "aa87a1a6eff8a786",
+      "ac1cda0fc817e663",
+      "ad30e1be86268c52",
+      "c7dcd4f384fb5e43",
+      "d37a0cc71b2b0faf"
+    ],
+    "3": [
+      "044abfa823441a78",
+      "1c47e5a0779bf584",
+      "29a13f95e457ac05",
+      "44abd325bb49a94d",
+      "485680e9159edcd5",
+      "9aaa7818579c51ac"
+    ],
+    "4": [
+      "33545b65ebfec8f9",
+      "a874190276c6a54e"
+    ]
+  }
+}

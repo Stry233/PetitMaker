@@ -422,7 +422,7 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: 0.14, amplitude: 8, amplitudeUnit: 'px',
     says: 'the panel switched to the screen your press asked for',
   },
-  /** Indeterminate construction tape moves exactly one stripe period per seamless linear cycle. */
+  /** Active construction tape moves exactly one stripe period per seamless linear cycle. */
   'panel.tape.crawl': {
     tier: 'ambient', curve: 'linear', duration: 1.6, loop: true,
     amplitude: TAPE_STRIPE_PX, amplitudeUnit: 'px',
@@ -494,6 +494,10 @@ export const MOTIONS = {
   'stylize.status.pop': {
     tier: 'inform', curve: 'punchy', duration: 0.3,
     says: 'the status line has something it did not say a moment ago',
+  },
+  'export.preview.status': {
+    tier: 'inform', curve: 'punchy', duration: 0.2,
+    says: 'the preview has moved to its next preparation task',
   },
   /** A refused field shakes horizontally while static error styling preserves the evidence. */
   'stylize.fail.shake': {

@@ -81,7 +81,7 @@ describe('compact', () => {
         }
       }
     }
-    expect(out[0]).toEqual({ role: 'user', text: '(conversation summary) summary of jobs 1-5' });
+    expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"summary of jobs 1-5"</summary_data>' });
   });
 
   it('folds INSIDE a single exchange at an assistant boundary when no group boundary can be used', async () => {
@@ -114,7 +114,7 @@ describe('compact', () => {
 
     // Pairs intact and the window opens on the summary, exactly as a group-boundary cut does.
     const out = deriveMessages(log, { budgetTokens: Number.MAX_SAFE_INTEGER, estimate });
-    expect(out[0]).toEqual({ role: 'user', text: '(conversation summary) summary of the one big job' });
+    expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"summary of the one big job"</summary_data>' });
     for (let i = 0; i < out.length; i++) {
       const m = out[i];
       if (m?.role === 'assistant' && m.toolCalls.length > 0) {
@@ -338,7 +338,7 @@ describe('compact', () => {
 
     // The second request's derived messages already carry the first summary as a plain user
     // message, since deriveMessages replays from the latest compaction forward.
-    expect(secondReq?.messages.some((m) => m.role === 'user' && m.text === '(conversation summary) summary one')).toBe(true);
+    expect(secondReq?.messages.some((m) => m.role === 'user' && m.text === '(conversation summary, reference only) <summary_data>"summary one"</summary_data>')).toBe(true);
 
     const compactions = log.events.filter((e) => e.kind === 'compaction');
     expect(compactions).toHaveLength(2);

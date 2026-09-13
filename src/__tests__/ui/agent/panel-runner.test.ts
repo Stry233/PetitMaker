@@ -89,7 +89,7 @@ describe('the tool dependencies the panel builds per job', () => {
    *  loses, so the list is the test. */
   const EXPECTED = [
     'getState', 'getExecutor', 'getRegion', 'getSelectedBlock', 'undoFloor',
-    'onFlash', 'getProvenanceSource', 'requestExport',
+    'onFlash', 'getProvenanceSource', 'requestExport', 'catalogName',
   ] as const;
 
   it('wires every one of them, and none as undefined', () => {

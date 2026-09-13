@@ -1,3 +1,5 @@
+import { localizedName } from '../../i18n/context';
+import { getCatalogItem } from '../../state/catalog';
 /**
  * Supplies the panel runner with its connection and live editor dependencies.
  * Provider, key, endpoint, model, region, locale, and map dependencies are sampled at job launch;
@@ -18,7 +20,7 @@ import { useAgentPanelSettings } from './settings';
 
 /** The armed connection as `settings.ts:runnerSettings` reports it: `RunnerConfig`'s data half, with
  *  the two situational fields ABSENT rather than undefined when they do not apply. */
-type Armed = Pick<RunnerConfig, 'providerId' | 'apiKey' | 'model' | 'oversight' | 'customBaseUrl' | 'region'>;
+type Armed = Pick<RunnerConfig, 'providerId' | 'apiKey' | 'model' | 'oversight' | 'customBaseUrl' | 'region' | 'effort'>;
 
 /** The live pieces the panel supplies alongside the armed connection. */
 interface Live {
@@ -34,6 +36,7 @@ export function refreshRunnerConfig(cfg: RunnerConfig, armed: Armed, live: Live)
   cfg.providerId = armed.providerId;
   cfg.apiKey = armed.apiKey;
   cfg.model = armed.model;
+  cfg.effort = armed.effort;
   cfg.oversight = armed.oversight;
   cfg.customBaseUrl = armed.customBaseUrl;
   cfg.region = armed.region;
@@ -79,6 +82,10 @@ export function makePanelToolDeps(opts: { vision: boolean }): AgentToolDeps {
     throw new Error('the assistant has no map to work on');
   }
   const deps: AgentToolDeps = {
+    catalogName: (id) => {
+      const item = getCatalogItem(id);
+      return item ? localizedName(item.name, useEditorStore.getState().locale) : undefined;
+    },
     getState: () => gridState,
     getExecutor: () => commandExecutor,
     // The painted region, read from the store: a job's scope is whatever the user has painted when

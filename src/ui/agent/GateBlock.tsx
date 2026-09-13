@@ -1,3 +1,4 @@
+import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Shared card, verdict and quick-answer primitives for approval gates. An open gate uses an active
  * left spine; after settlement the card remains in the record with a neutral spine and verdict. Ask
@@ -14,7 +15,7 @@ import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK } from '../design/tokens';
 import { colors, cursors, font, UNAVAILABLE } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowFooterPrimary } from '../design/window-skin';
-import { useT } from '../../i18n/context';
+import { translate, useT } from '../../i18n/context';
 import type { AskRecord, GateVerdict } from '../../agent/core/project-view';
 
 /** How far short of its own size a card starts, per its declaration. */
@@ -191,7 +192,7 @@ export function QuickRow({
       style={{ display: 'flex', gap: 8, minHeight: QUICK_ROW_HEIGHT, alignItems: 'center', flexWrap: 'wrap' }}
     >
       {(answers ?? []).map((answer) => (
-        <AskPill key={answer} testId="gate-quick" demoted={demoted} onClick={() => onAnswer?.(answer)}>{answer}</AskPill>
+        <AskPill key={answer} testId="gate-quick" demoted={demoted} onClick={() => onAnswer?.(answer)}>{displayAgentText(answer, translate)}</AskPill>
       ))}
       {children}
     </div>
@@ -363,7 +364,7 @@ export function GateBlock({
             overflowWrap: 'anywhere',
           }}
         >
-          {ask.summary}
+          {displayAgentText(ask.summary, translate)}
         </div>
         {thumb && (
           <div

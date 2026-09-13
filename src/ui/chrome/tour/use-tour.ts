@@ -22,7 +22,6 @@ export const TOUR_SEEN_KEY = PREFS.tourSeen.key;
  *  unreadable/absent flag means "seen" here, the opposite of readPref's generic false fallback,
  *  since a browser this offer cannot persist to must not repeat it. */
 export function hasSeenTour(): boolean {
-  if (typeof localStorage === 'undefined') return true;
   try {
     return localStorage.getItem(PREFS.tourSeen.key) === '1';
   } catch {
@@ -31,7 +30,6 @@ export function hasSeenTour(): boolean {
 }
 
 export function markTourSeen(): void {
-  if (typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(PREFS.tourSeen.key, '1');
   } catch { /* nothing to do: the tour simply offers itself again next time */ }

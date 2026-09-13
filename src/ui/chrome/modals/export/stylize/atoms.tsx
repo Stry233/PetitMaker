@@ -29,6 +29,8 @@ const STATUS_KEYS: Record<SlotStatus, string> = {
   network: 'stylize.status_network',
   bad_response: 'stylize.status_bad_response',
   device: 'stylize.status_device',
+  inappropriate: 'stylize.status_inappropriate',
+  unchecked: 'stylize.status_unchecked',
   map_changed: 'stylize.status_map_changed',
 };
 

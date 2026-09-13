@@ -57,6 +57,7 @@ export function PixiCanvas() {
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const layerLocked = useEditorStore((s) => s.layerLocked);
   const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
+  const locale = useEditorStore((s) => s.locale);
   const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
   const annotationDraft = useEditorStore((s) => s.annotationDraft);
   const annotationSelection = useEditorStore((s) => s.annotationSelection);
@@ -171,7 +172,7 @@ export function PixiCanvas() {
     let stale = false;
     document.fonts?.ready.then(() => { if (!stale) draw(); });
     return () => { stale = true; };
-  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState]);
+  }, [annotationsEpoch, annotationDraft, annotationSelection, gridState, locale]);
 
   // Re-draw when gridState changes (new project)
   useEffect(() => {

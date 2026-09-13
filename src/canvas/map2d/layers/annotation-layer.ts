@@ -53,6 +53,7 @@ export interface AnnotationDrawOpts {
 interface NoteNode {
   ref: MapAnnotation;
   selected: boolean;
+  label: string;
   inkScale: number;
   parts: PIXI.Container[];
   /** A fade in flight: negative-going means the note is leaving and the parts go at 0. */
@@ -90,11 +91,12 @@ export class AnnotationLayer {
     }
     for (const note of items) {
       const node = this.nodes.get(note.id);
+      const label = note.kind !== 'route' && note.tag ? opts.tagLabel(note.tag) : '';
       const fresh = node === undefined || node.fade?.to === 0
-        ? this.rebuild(note, opts, node)
+        ? this.rebuild(note, label, opts, node)
         : node.ref !== note || node.selected !== (opts.selectionIds.includes(note.id))
-          || node.inkScale !== opts.inkScale
-          ? this.rebuild(note, opts, node)
+          || node.inkScale !== opts.inkScale || node.label !== label
+          ? this.rebuild(note, label, opts, node)
           : node;
       // Later notes paint over earlier within each pass, the same order the hit test reads back.
       for (const part of fresh.parts) part.parent?.addChild(part);
@@ -107,7 +109,7 @@ export class AnnotationLayer {
     this.nodes.clear();
   }
 
-  private rebuild(note: MapAnnotation, opts: AnnotationDrawOpts, old: NoteNode | undefined): NoteNode {
+  private rebuild(note: MapAnnotation, label: string, opts: AnnotationDrawOpts, old: NoteNode | undefined): NoteNode {
     // A note re-arriving mid-leave keeps its alpha, so an undo right after a delete fades back
     // from wherever the leave had got to; a brand-new note arrives from 0.
     const arriveFrom = old ? this.alphaOf(old) : 0;
@@ -115,23 +117,23 @@ export class AnnotationLayer {
     if (old) this.drop(old);
     const selected = opts.selectionIds.includes(note.id);
     const node: NoteNode = {
-      ref: note, selected, inkScale: opts.inkScale,
-      parts: this.build(note, selected, opts),
+      ref: note, selected, label, inkScale: opts.inkScale,
+      parts: this.build(note, selected, label, opts),
     };
     this.nodes.set(note.id, node);
     if (!wasHere) this.beginFade(note.id, node, 1, arriveFrom);
     return node;
   }
 
-  private build(note: MapAnnotation, selected: boolean, opts: AnnotationDrawOpts): PIXI.Container[] {
+  private build(note: MapAnnotation, selected: boolean, label: string, opts: AnnotationDrawOpts): PIXI.Container[] {
     if (note.kind === 'zone') {
       const parts: PIXI.Container[] = [this.washPass.addChild(zoneBody(note, selected, opts.inkScale))];
-      const label = zoneLabel(note, note.tag ? opts.tagLabel(note.tag) : '', opts.inkScale);
-      if (label) parts.push(this.labelPass.addChild(label));
+      const caption = zoneLabel(note, label, opts.inkScale);
+      if (caption) parts.push(this.labelPass.addChild(caption));
       return parts;
     }
     if (note.kind === 'route') return [this.routePass.addChild(routeBody(note, selected, opts.inkScale))];
-    return [this.labelPass.addChild(chipBody(note, opts.tagLabel(note.tag), selected, opts.inkScale))];
+    return [this.labelPass.addChild(chipBody(note, label, selected, opts.inkScale))];
   }
 
   private drop(node: NoteNode): void {
@@ -238,7 +240,7 @@ function zoneLabel(zone: ZoneNote, label: string, inkScale: number): PIXI.Contai
       fontFamily: APP_FONT_FAMILY, fontSize: fs * 0.68, fontWeight: '800', fill: 0xffffff,
     });
     num.anchor.set(0.5, 0.5);
-    num.position.set(x0 + numR, Y + fs * 0.04);
+    num.position.set(x0 + numR, Y);
     box.addChild(num);
     x0 += numR * 2 + (label ? fs * 0.3 : 0);
   }
@@ -268,7 +270,7 @@ function chipBody(note: ChipNote, label: string, selected: boolean, inkScale: nu
   g.endFill();
   box.addChild(g);
   text.anchor.set(0.5, 0.5);
-  text.position.set(X, Y + fs * 0.05);
+  text.position.set(X, Y);
   box.addChild(text);
   if (selected) box.addChild(selectionBox(X, Y, text.width + padX * 2 + fs * 0.4, h + fs * 0.4, inkScale));
   return box;
@@ -333,13 +335,14 @@ function selectionBox(cx: number, cy: number, w: number, h: number, inkScale: nu
   dashPolyline(g, [
     cx - w / 2, cy - h / 2, cx + w / 2, cy - h / 2,
     cx + w / 2, cy + h / 2, cx - w / 2, cy + h / 2,
+    cx - w / 2, cy - h / 2,
   ], lw * 4, lw * 3.3);
   g.lineStyle();
   return g;
 }
 
 function makeText(content: string, style: Partial<PIXI.ITextStyle>): PIXI.Text {
-  const text = new PIXI.Text(content, style);
+  const text = new PIXI.Text(content, { ...style, trim: true });
   text.resolution = 2;
   return text;
 }

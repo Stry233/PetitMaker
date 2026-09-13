@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "nsfw": {
+    "package": "nsfwjs",
+    "version": "4.4.0",
+    "source": "https://github.com/infinitered/nsfwjs",
+    "license": "MIT",
+    "transformation": "Decoded the packaged MobileNetV2 base64 weights to binary and renamed the manifest shard path.",
+    "files": [
+      {
+        "file": "nsfw/model.json",
+        "bytes": 117923,
+        "sha256": "7fb4f4e845ba0997e936361cbcb48111f07d8ddf1ab9776bdd617e7403937aa9"
+      },
+      {
+        "file": "nsfw/weights.bin",
+        "bytes": 2619461,
+        "sha256": "8e7dddbb16acacc1bf1601b1b8a761e730ff934b7f2d7771312b2f000e5f5f13"
+      }
+    ]
+  },
+  "ocr": {
+    "source": "https://github.com/tesseract-ocr/tessdata_fast",
+    "license": "Apache-2.0",
+    "transformation": "Deterministic gzip compression of upstream English, Simplified Chinese and Traditional Chinese LSTM language files.",
+    "files": [
+      {
+        "file": "eng.traineddata.gz",
+        "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/eng.traineddata",
+        "sourceSha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+        "sha256": "384e37bf0f5ddcc4a1e24802322a837e0b5692e18150e6078ff1d4379b191f98",
+        "bytes": 1967599
+      },
+      {
+        "file": "chi_sim.traineddata.gz",
+        "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/chi_sim.traineddata",
+        "sourceSha256": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730",
+        "sha256": "7c01e805b4944cb0e0f64047ac35afe17e23152e7cb2b1cf2aac24917d59a017",
+        "bytes": 1723376
+      },
+      {
+        "file": "chi_tra.traineddata.gz",
+        "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/chi_tra.traineddata",
+        "sourceSha256": "529c5b5797d64b126065cd55f2bb4c7fd7b15790798091b1ff259941a829330b",
+        "sha256": "134c386ec954d4993ba0301d92e879163595a29f2e814d6f3ed44c954ecb323f",
+        "bytes": 1663276
+      }
+    ]
+  }
+}

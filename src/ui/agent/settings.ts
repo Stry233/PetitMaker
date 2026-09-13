@@ -1,3 +1,4 @@
+import { forgetRosters } from './model-roster';
 /*
  * Connection settings shared by setup and the runner. Secrets stay in a module keyring rather than
  * Zustand state, and persistence is delegated to the encrypted key-storage module. Hydration merges
@@ -46,6 +47,7 @@ export interface AgentPanelSettingsState {
   /** Per-provider model id, keyed like the stored record so switching providers keeps each pick. */
   model: Record<ProviderId, string>;
   oversight: Oversight;
+  effort: Record<string, string>;
   /** The `custom` provider's endpoint, already sanitized. Empty means none configured. */
   customBaseUrl: string;
   /** Address whose latest completed verification failed, or empty; not persisted. */
@@ -70,6 +72,7 @@ export interface AgentPanelSettingsState {
   pinProvider(provider: ProviderId): void;
   setModel(model: string): void;
   setOversight(oversight: Oversight): void;
+  setEffort(effort: string): void;
   /** Sanitizes the endpoint and returns the stored value. */
   setCustomBaseUrl(raw: string): string;
   /** Records endpoint reachability; failure clears and remembers the custom model selection. */
@@ -106,7 +109,7 @@ export function connectionReady(state: AgentPanelSettingsState, provider?: Provi
 /** Builds runner connection data and derives a regional-host index from persisted host metadata. */
 export function runnerSettings(state: AgentPanelSettingsState): {
   providerId: ProviderId; apiKey: string; model: string; oversight: Oversight;
-  customBaseUrl?: string; region?: 0 | 1;
+  customBaseUrl?: string; region?: 0 | 1; effort?: string;
 } {
   const providerId = state.provider;
   const out: ReturnType<typeof runnerSettings> = {
@@ -114,6 +117,7 @@ export function runnerSettings(state: AgentPanelSettingsState): {
     apiKey: keyring[providerId] ?? '',
     model: state.model[providerId] ?? '',
     oversight: state.oversight,
+    effort: state.effort[effortKey(state)],
   };
   if (state.customBaseUrl) out.customBaseUrl = state.customBaseUrl;
   const host = carried.regionBaseUrl?.[providerId];
@@ -152,6 +156,7 @@ function persist(state: AgentPanelSettingsState): void {
     keys,
     askBeforeEdits: state.oversight === 'strict',
     oversight: state.oversight,
+    effort: state.effort,
   };
   if (state.customBaseUrl) record.customBaseUrl = state.customBaseUrl;
   else delete record.customBaseUrl;
@@ -170,6 +175,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
       provider: 'claude',
       model: emptyModels(),
       oversight: 'checkpoint',
+      effort: {},
       customBaseUrl: '',
       endpointDown: '',
       formerModel: '',
@@ -186,6 +192,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
           provider: stored.provider,
           model: { ...emptyModels(), ...stored.model },
           oversight: stored.oversight,
+          effort: stored.effort ?? {},
           customBaseUrl: stored.customBaseUrl ?? '',
           keyed: keyedFrom(keyring),
         });
@@ -204,6 +211,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
         const trimmed = key.trim();
         if (trimmed === '') return;
         forgotten.delete(provider);
+        forgetRosters();
         keyring = { ...keyring, [provider]: trimmed };
         commit({ provider, keyed: keyedFrom(keyring) });
       },
@@ -215,6 +223,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
         // Stop only work using the armed provider, before its key disappears.
         if (id === get().provider) stopLiveJob?.();
         forgotten.add(id);
+        forgetRosters();
         const next = { ...keyring };
         delete next[id];
         keyring = next;
@@ -232,6 +241,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
         ...(model !== '' && get().provider === 'custom' ? { formerModel: '' } : {}),
       }),
 
+      setEffort: (effort) => commit({ effort: { ...get().effort, [effortKey(get())]: effort } }),
       setOversight: (oversight) => commit({ oversight }),
 
       setCustomBaseUrl: (raw) => {
@@ -255,3 +265,8 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
       },
     };
   });
+
+/** Effort belongs to one provider, endpoint and model selection. */
+export function effortKey(state: AgentPanelSettingsState): string {
+  return `${state.provider}|${state.provider === 'custom' ? state.customBaseUrl : ''}|${state.model[state.provider]}`;
+}

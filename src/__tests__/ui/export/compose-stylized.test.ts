@@ -29,7 +29,7 @@ describe('composeStylizedBaseMap', () => {
   let spy: ReturnType<typeof spyContext>;
   beforeEach(() => {
     spy = spyContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(spy.ctx as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(spy.ctx as unknown as ReturnType<HTMLCanvasElement['getContext']>);
   });
   afterEach(() => vi.restoreAllMocks());
 

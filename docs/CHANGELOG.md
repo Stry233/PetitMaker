@@ -4,6 +4,31 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.44] - 2026-09-13
+
+### Added
+
+- The About window and About page show an acknowledgements row for community members who supported the project.
+- JSON export has a separate planning-annotations option, enabled by default. Turn it off to save the map without annotations while keeping the working map intact.
+
+### Changed
+
+- The About window uses a wider layout on desktop: the brand and version across the top, the team and acknowledgements beside the documents and support links, and the disclaimer along the bottom. Narrow windows keep the single column.
+- The assistant and custom illustrations decline requests for political, violent or adult content, and custom style text is checked locally before it is sent to a provider.
+- Export previews use one loading indicator with animated task labels.
+- Export text checks recognize more inappropriate wording and use consistent, neutral feedback.
+- Annotation chips can be selected and moved while the chip tool is active. Select a note before dragging it. Workshop and Ranch are no longer offered in the tag list; existing notes remain readable.
+- Selected regions are easier to distinguish in the 2D view.
+
+- Updated legal pages and sharing guidance with clearer explanations of saved data, optional online features, content responsibilities and asset permissions. Chinese wording is more natural, with equivalent updates in English.
+
+### Fixed
+
+- Centered lettering in annotation chips and numbered badges, restored the complete selection outline around chips, and made existing labels follow language changes.
+
+- Selecting a region for the assistant temporarily hides the editing panel and restores it afterward, keeping its previous settings.
+- Object search text is vertically centered, including placeholders and mixed Chinese and English queries.
+
 ## [0.11.10] - 2026-09-11
 
 ### Changed

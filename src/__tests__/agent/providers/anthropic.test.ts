@@ -136,7 +136,7 @@ describe('providers/anthropic: streaming', () => {
     })));
 
     const adapter = createAnthropicAdapter({ apiKey: 'sk-ant-test' });
-    await collect(adapter.stream(baseRequest({ system: 'SYSTEM PROMPT' }), new AbortController().signal));
+    await collect(adapter.stream(baseRequest({ system: 'SYSTEM PROMPT', capabilities: { reasoning: true, efforts: ['low', 'high'] } }), new AbortController().signal));
 
     expect(ctorMock).toHaveBeenCalledWith({ apiKey: 'sk-ant-test', maxRetries: 0, dangerouslyAllowBrowser: true });
 
