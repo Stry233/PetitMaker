@@ -115,7 +115,7 @@ describe('importFile routing', () => {
     const getImageDataMock = vi.fn(() => ({ data: new Uint8ClampedArray(2 * 2 * 4) }));
     const ctxSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       drawImage: vi.fn(), getImageData: getImageDataMock,
-    } as unknown as CanvasRenderingContext2D);
+    } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
     const state = makeState();
     vi.mocked(importFromRaster).mockResolvedValue({ ok: true, state, warnings: ['template-drift'], provenance: null } as unknown as RasterImportResult);
 
@@ -132,7 +132,7 @@ describe('importFile routing', () => {
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(2 * 2 * 4) }),
-    } as unknown as CanvasRenderingContext2D);
+    } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
     vi.mocked(importFromRaster).mockResolvedValue({ ok: true, state: makeState(), warnings: ['catalog-drift'], provenance: null } as unknown as RasterImportResult);
 
     const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', makeDeps());
@@ -165,7 +165,7 @@ describe('importFile routing', () => {
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(2 * 2 * 4) }),
-    } as unknown as CanvasRenderingContext2D);
+    } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
     vi.mocked(importFromRaster).mockResolvedValue({ ok: false, error: { code: 'no-payload' } } as unknown as RasterImportResult);
 
     const deps = makeDeps();

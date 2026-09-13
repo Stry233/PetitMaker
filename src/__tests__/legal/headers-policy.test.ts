@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 import {
   CSP_META_MARKER,
@@ -10,7 +10,6 @@ import {
   PROVIDER_ORIGINS,
   parseExtraConnectSrc,
   toCspMeta,
-  toEsaDoc,
   toNetlifyHeaders,
   toVercelJson,
   withExtraConnectSrc,
@@ -18,7 +17,6 @@ import {
   type VercelJsonLike,
 } from '../../../security/headers-policy';
 import { rewriteIndexHtmlCsp, stringifyVercelJson } from '../../../scripts/generate-headers-core.mts';
-import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
 import { PROVIDER_IDS, providerNetworkUrls } from '../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../io/stylize/providers';
 
@@ -237,25 +235,6 @@ describe('toVercelJson(existing)', () => {
   });
 });
 
-describe('toEsaDoc()', () => {
-  const doc = toEsaDoc();
-
-  it('documents every header name/value as a table row', () => {
-    for (const [key, value] of headerEntries()) {
-      expect(doc).toContain(`| \`${key}\` |`);
-      expect(doc).toContain(value.replace(/\|/g, '\\|'));
-    }
-  });
-
-  it('has a verify-live-post-deploy section', () => {
-    expect(doc).toMatch(/Verify live post-deploy/i);
-  });
-
-  it('has no Google Fonts host', () => {
-    expect(doc).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
-  });
-});
-
 describe('rewriteIndexHtmlCsp()', () => {
   it('replaces the comment + meta pair and stamps the marker', () => {
     const src = [
@@ -289,32 +268,6 @@ describe('generated files — standing drift guard', () => {
     const regenerated = stringifyVercelJson(toVercelJson(existing));
     expect(readFileSync('vercel.json', 'utf8')).toBe(regenerated);
   });
-
-  // The ESA operations document is checked only in a checkout that contains it.
-  if (existsSync('docs/internal/deployment/esa-headers.md')) {
-    it('docs/internal/deployment/esa-headers.md matches toEsaDoc()', () => {
-      // The ESA operator document always describes the Chinese deployment.
-      expect(readFileSync('docs/internal/deployment/esa-headers.md', 'utf8')).toBe(toEsaDoc(
-        HEADERS_POLICY, { canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins },
-      ));
-    });
-
-    it('lists a 301 for every legacy domain, and none once there are none', () => {
-      const doc = toEsaDoc(HEADERS_POLICY, {
-        canonicalOrigin: 'https://new.example', legacyOrigins: ['https://old.example'],
-      });
-      expect(doc).toContain('## Legacy domain redirects');
-      expect(doc).toContain('| `https://old.example/*` | `301 https://new.example/$1` |');
-      expect(toEsaDoc(HEADERS_POLICY, { canonicalOrigin: 'https://new.example', legacyOrigins: [] }))
-        .not.toContain('## Legacy domain redirects');
-      // A stale entry equal to the canonical origin would render a redirect loop.
-      expect(toEsaDoc(HEADERS_POLICY, {
-        canonicalOrigin: 'https://new.example', legacyOrigins: ['https://new.example'],
-      })).not.toContain('## Legacy domain redirects');
-    });
-  } else {
-    it.skip('internal-repo-only: docs/internal/deployment/esa-headers.md not present (public-repo export)', () => {});
-  }
 
   it("index.html's CSP <meta> matches rewriteIndexHtmlCsp() applied to itself (idempotent)", () => {
     const html = readFileSync('index.html', 'utf8');

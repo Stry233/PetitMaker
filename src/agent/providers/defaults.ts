@@ -9,11 +9,12 @@ export type ProviderId =
   | 'zhipu'
   | 'qwen'
   | 'moonshot'
+  | 'doubao'
   | 'perplexity'
   | 'custom';
 
 export const PROVIDER_IDS: readonly ProviderId[] = [
-  'claude', 'openai', 'deepseek', 'gemini', 'openrouter', 'zhipu', 'qwen', 'moonshot', 'perplexity',
+  'claude', 'openai', 'deepseek', 'gemini', 'openrouter', 'zhipu', 'qwen', 'moonshot', 'doubao', 'perplexity',
   'custom',
 ];
 
@@ -93,6 +94,13 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     keyUrlIntl: 'https://platform.kimi.ai/console/api-keys',
     accent: '#16091B',
     vision: () => false,
+  },
+  doubao: {
+    id: 'doubao',
+    name: 'Doubao',
+    keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apikey',
+    accent: '#4D6BFE',
+    vision: (model) => /vision|doubao-seed-(?:1[.-][68]|2[.-]0)/.test(lower(model)),
   },
   perplexity: {
     id: 'perplexity',
@@ -187,6 +195,13 @@ export const QUIRKS: Record<ProviderId, Quirks> = {
     dialect: 'openai',
     baseUrls: ['https://api.moonshot.ai/v1', 'https://api.moonshot.cn/v1'],
     reasoningFields: ['reasoning_content', 'reasoning'],
+    imageInToolResult: false,
+    streamUsage: true,
+  },
+  doubao: {
+    dialect: 'openai',
+    baseUrls: ['https://ark.cn-beijing.volces.com/api/v3'],
+    reasoningFields: ['reasoning_content'],
     imageInToolResult: false,
     streamUsage: true,
   },

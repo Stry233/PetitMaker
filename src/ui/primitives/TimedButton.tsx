@@ -52,6 +52,8 @@ export interface TimedButtonProps {
    * when someone is reading it, which the button cannot see from where it is.
    */
   paused?: boolean;
+  /** Prevents activation and pauses an automatic countdown. External clocks remain caller-owned. */
+  disabled?: boolean;
   /** The ring's colour. The accent by default, which is what an interface uses to say "this one". */
   ring?: string;
   /** How the countdown is drawn: the outline ring the button already is, or the yellow STADIUM
@@ -79,7 +81,7 @@ export interface TimedButtonProps {
 }
 
 export function TimedButton({
-  after, onPress, paused: pausedProp = false, ring = colors.accentPrimary, clock = 'ring', external,
+  after, onPress, paused: pausedProp = false, disabled = false, ring = colors.accentPrimary, clock = 'ring', external,
   pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
   const t = useT();
@@ -136,7 +138,10 @@ export function TimedButton({
   useEffect(() => {
     if (!lentClock) return undefined;
     const draw = (spent: number) => {
-      if (arc.current) arc.current.style.strokeDashoffset = String(spent);
+      if (!arc.current) return;
+      arc.current.style.strokeDashoffset = String(spent);
+      // Round SVG caps still paint a dot when the remaining dash has zero length.
+      arc.current.style.visibility = spent >= 1 ? 'hidden' : '';
     };
     if (reduced || lentSpan <= 0 || lent >= 1) {
       draw(lent);
@@ -156,7 +161,7 @@ export function TimedButton({
     // without it the first laid-out frame would carry no writer at all.
   }, [lentClock, reduced, lentSpan, lent, box.w]);
 
-  const running = !lentClock && after > 0 && !cancelled && !paused && !hovered;
+  const running = !lentClock && after > 0 && !cancelled && !paused && !hovered && !disabled;
   /** What is left of the countdown, in ms. Held across a pause, which is what makes a pause a pause
    *  rather than a restart. */
   const left = useRef(after * 1000);
@@ -170,7 +175,9 @@ export function TimedButton({
     // The dash is the whole outline and the offset walks it off the end, so `spent` at 1 leaves
     // nothing drawn. `pathLength` made both numbers fractions of the ring rather than lengths.
     const draw = (spent: number) => {
-      if (arc.current) arc.current.style.strokeDashoffset = String(spent);
+      if (!arc.current) return;
+      arc.current.style.strokeDashoffset = String(spent);
+      arc.current.style.visibility = spent >= 1 ? 'hidden' : '';
     };
     const tick = (now: number) => {
       left.current -= now - last;
@@ -207,11 +214,12 @@ export function TimedButton({
       <motion.button
         ref={btn}
         type="button"
-        {...(pressMotion ? buttonMotion : {})}
+        disabled={disabled}
+        {...(pressMotion && !disabled ? buttonMotion : {})}
         aria-label={ariaLabel}
         aria-describedby={after > 0 ? hintId : undefined}
         data-testid={testId}
-        onClick={() => onPress(selfPress.current)}
+        onClick={() => { if (!disabled) onPress(selfPress.current); }}
         onFocus={stop}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}

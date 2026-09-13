@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "artifact": "political-index.json",
+  "bytes": 153513,
+  "sha256": "f3156d868cc9a4efe4418f35cc45398bbce64429940223e01e896c7ea236d04d",
+  "sources": [
+    {
+      "id": "zhin",
+      "url": "https://unpkg.com/@zhin.js/sensitive-filter@2.0.1/lib/sensitive-words.js",
+      "revision": "2.0.1",
+      "sha256": "a4b4aeba4959bb2a3080db4d23e5aca2c21f65908676ba52c8061d361badba07",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 凉菜"
+    },
+    {
+      "id": "fwwdn",
+      "url": "https://raw.githubusercontent.com/fwwdn/sensitive-stop-words/a7d06bb1c321e669943b6841570d9da6dad8ce2b/%E6%94%BF%E6%B2%BB%E7%B1%BB.txt",
+      "revision": "a7d06bb1c321e669943b6841570d9da6dad8ce2b",
+      "sha256": "bb4079468345a5ed1e630c82a43ab947828ae2c263e8702a6432bfe253d70f90",
+      "license": "Apache-2.0",
+      "copyright": "fwwdn and sensitive-stop-words contributors"
+    },
+    {
+      "id": "houbb",
+      "url": "https://raw.githubusercontent.com/houbb/sensitive-word-data/fe6fc2921836217b8c90619db81b24af8b22d80f/src/main/resources/sensitive_word_tags.txt",
+      "revision": "fe6fc2921836217b8c90619db81b24af8b22d80f",
+      "sha256": "37cea2687a1525a436aaa080e918f6c263310bd21b4bce8b05ba5185ee3e5ae8",
+      "license": "Apache-2.0",
+      "copyright": "houbb and sensitive-word-data contributors"
+    }
+  ],
+  "counts": {
+    "zhin": 90,
+    "fwwdn": 326,
+    "houbb": 1929
+  },
+  "uniqueEntries": 2279,
+  "romanEntries": 1390,
+  "pronunciation": {
+    "package": "pinyin-pro",
+    "version": "3.29.3",
+    "license": "MIT"
+  },
+  "transformation": "NFKC and OpenCC Simplified Chinese. Political categories only; broad dataset entries require at least three Han characters. Dual 32-bit fingerprints replace literal vocabulary. Tone-free readings derive from pinyin-pro. This is a lexical index, not a learned classifier or encrypted dictionary."
+}

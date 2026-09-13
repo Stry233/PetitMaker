@@ -154,25 +154,42 @@ export function removeZoneCells(cells: readonly MacroCoord[], gone: readonly Mac
 export function zoneLoops(cells: readonly MacroCoord[]): Array<Array<[number, number]>> {
   const set = zoneCellSet(cells);
   const has = (x: number, y: number): boolean => set.has(key(x, y));
-  const byStart = new Map<string, [[number, number], [number, number]]>();
+  type Edge = { a: [number, number]; b: [number, number] };
+  const byStart = new Map<string, Edge[]>();
+  const edges = new Map<string, Edge>();
+  const add = (a: [number, number], b: [number, number]): void => {
+    const id = `${key(...a)}>${key(...b)}`;
+    if (edges.has(id)) return;
+    const edge = { a, b };
+    edges.set(id, edge);
+    const from = key(...a);
+    byStart.set(from, [...(byStart.get(from) ?? []), edge]);
+  };
   for (const { x, y } of cells) {
-    if (!has(x, y - 1)) byStart.set(key(x, y), [[x, y], [x + 1, y]]);
-    if (!has(x + 1, y)) byStart.set(key(x + 1, y), [[x + 1, y], [x + 1, y + 1]]);
-    if (!has(x, y + 1)) byStart.set(key(x + 1, y + 1), [[x + 1, y + 1], [x, y + 1]]);
-    if (!has(x - 1, y)) byStart.set(key(x, y + 1), [[x, y + 1], [x, y]]);
+    if (!has(x, y - 1)) add([x, y], [x + 1, y]);
+    if (!has(x + 1, y)) add([x + 1, y], [x + 1, y + 1]);
+    if (!has(x, y + 1)) add([x + 1, y + 1], [x, y + 1]);
+    if (!has(x - 1, y)) add([x, y + 1], [x, y]);
   }
   const loops: Array<Array<[number, number]>> = [];
-  const used = new Set<string>();
-  for (const [start, seg] of byStart) {
-    if (used.has(start)) continue;
+  const used = new Set<Edge>();
+  for (const first of edges.values()) {
+    if (used.has(first)) continue;
     const loop: Array<[number, number]> = [];
-    let cur: [[number, number], [number, number]] | undefined = seg;
-    while (cur) {
-      const k = key(cur[0][0], cur[0][1]);
-      if (used.has(k)) break;
-      used.add(k);
-      loop.push(cur[0]);
-      cur = byStart.get(key(cur[1][0], cur[1][1]));
+    let cur: Edge | undefined = first;
+    while (cur && !used.has(cur)) {
+      used.add(cur);
+      loop.push(cur.a);
+      if (cur.b[0] === first.a[0] && cur.b[1] === first.a[1]) break;
+      const dx = cur.b[0] - cur.a[0], dy = cur.b[1] - cur.a[1];
+      // Diagonal cells share a vertex, not an edge. Turn right to keep their contours separate.
+      const rank = (edge: Edge): number => {
+        const ex = edge.b[0] - edge.a[0], ey = edge.b[1] - edge.a[1];
+        const cross = dx * ey - dy * ex;
+        return cross > 0 ? 3 : dx * ex + dy * ey > 0 ? 2 : cross < 0 ? 1 : 0;
+      };
+      cur = (byStart.get(key(...cur.b)) ?? []).filter((edge) => !used.has(edge))
+        .sort((a, b) => rank(b) - rank(a))[0];
     }
     if (loop.length < 3) continue;
     const merged: Array<[number, number]> = [];
@@ -182,7 +199,7 @@ export function zoneLoops(cells: readonly MacroCoord[]): Array<Array<[number, nu
       const c = loop[(i + 1) % loop.length]!;
       if ((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) !== 0) merged.push(b);
     }
-    loops.push(merged);
+    if (merged.length >= 3) loops.push(merged);
   }
   return loops;
 }

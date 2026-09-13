@@ -3,6 +3,8 @@
  * SDK-free by design, like the rest of `core/`: a caller (the loop, a test) can read this file
  * without pulling in either SDK.
  */
+import type { ModelCapabilities } from './model-catalog';
+import type { ThinkingChoice } from './reasoning';
 import type { ProviderMessage } from '../core/project-messages';
 import type { StreamEvent } from '../core/types';
 
@@ -15,6 +17,8 @@ export interface AdapterRequest {
    *  back into the request (see each adapter's message-mapping function). */
   sameModel: boolean;
   maxOutputTokens?: number;
+  capabilities?: ModelCapabilities;
+  thinking?: ThinkingChoice;
 }
 
 export interface Adapter {

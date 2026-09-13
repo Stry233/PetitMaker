@@ -191,10 +191,11 @@ describe('the answer paper: the words are the product', () => {
     expect(text.querySelectorAll('p')).toHaveLength(2);
     expect(text.querySelectorAll('ol > li')).toHaveLength(2);
     expect(text.querySelectorAll('strong')).toHaveLength(2);
-    expect(text.querySelector('code')?.textContent).toBe('paint_terrain');
+    expect(text.querySelector('code')?.textContent).toBe('Painting terrain');
     // The WORDS are untouched: rendering the markers is not the same act as deleting them.
     expect(text.textContent).toContain('Create a Lake');
-    expect(text.textContent).toContain('paint_terrain');
+    expect(text.textContent).not.toContain('paint_terrain');
+    expect(text.textContent).toContain('Painting terrain');
     expect(text.textContent).not.toContain('**');
     expect(text.textContent).not.toContain('`');
     expect(text.style.color).toBe(rgb(PLATE_INK));
@@ -294,9 +295,8 @@ describe('File it away', () => {
     expect(filed).toEqual([ANSWER.orderSeq]);
   });
 
-  /** Answering is what files an ask, or the next order is: a File-it-away beside a standing question
-   *  would offer to put away a job that is still waiting on the user. */
-  it('offers none while the ask stands', () => {
+  /** The panel supplies the shared Cancel task action for standing questions. */
+  it('leaves question dismissal to the panel', () => {
     const { queryByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} onFileAway={() => {}} />);
     expect(queryByTestId('answer-file-away')).toBeNull();
   });

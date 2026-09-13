@@ -1,3 +1,4 @@
+import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Renders completed, active and pending plan stages as a connected rail. The active stage owns the
  * job's flat operation list and its reverted-operation rollup. Completed stages expose recorded
@@ -158,7 +159,7 @@ export function PlanRail({
                     minWidth: 0,
                   }}
                 >
-                  {label}
+                  {displayAgentText(label, t)}
                 </div>
                 {rollup !== null && (
                   <span data-testid="stage-rollup" style={ROLLUP_STYLE}>{rollup}</span>

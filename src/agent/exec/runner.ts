@@ -24,6 +24,8 @@ import { queueSteer } from '../core/steering';
 import { baseUrlFor, QUIRKS, type ProviderId } from '../providers/defaults';
 import { createAnthropicAdapter } from '../providers/anthropic';
 import { createOpenAIAdapter } from '../providers/openai';
+import { modelCapabilities } from '../providers/model-catalog';
+import { thinkingChoices, thinkingChoiceKey } from '../providers/reasoning';
 import type { Adapter } from '../providers/types';
 import { redactSecrets } from '../security/redact';
 import { composerRoute, submitComposer } from '../session/composer-routing';
@@ -43,6 +45,7 @@ export interface RunnerConfig {
    *  (the default), 1 = the CN host. Ignored by every other provider. */
   region?: 0 | 1;
   oversight: Oversight;
+  effort?: string;
   /** The editor's display language, as the system prompt's `{uiLanguage}` fallback: the language to
    *  open in when the user has not typed anything readable yet (a first message, bare coordinates).
    *  Absent reads as English, which is the prompt's own default. Read per job, like everything else
@@ -82,7 +85,7 @@ export function buildAdapter(cfg: AdapterConfig): Adapter {
   if (cfg.providerId === 'claude') return createAnthropicAdapter({ apiKey: cfg.apiKey });
   try {
     return createOpenAIAdapter({
-      apiKey: cfg.apiKey,
+      apiKey: cfg.apiKey, providerId: cfg.providerId,
       baseUrl: baseUrlFor(cfg.providerId, { customBaseUrl: cfg.customBaseUrl, region: cfg.region }),
       quirks: QUIRKS[cfg.providerId],
     });
@@ -144,6 +147,8 @@ export function createRunner(cfg: RunnerConfig): {
       if (state.log !== log) controller.abort();
     });
     const adapter = buildAdapter(cfg);
+    const capabilities = modelCapabilities(cfg.providerId, cfg.model, cfg.customBaseUrl);
+    const thinking = thinkingChoices(capabilities, cfg.providerId).find((choice) => thinkingChoiceKey(choice) === cfg.effort);
     launched = {
       providerId: cfg.providerId,
       model: cfg.model,
@@ -154,6 +159,7 @@ export function createRunner(cfg: RunnerConfig): {
     const delegateOpts: DelegateOpts = {
       adapter, // same instance the parent turn itself runs on, never a second build
       model: cfg.model,
+      capabilities, thinking,
       system,
       get oversight() { return cfg.oversight; },
       signal: controller.signal,
@@ -167,6 +173,7 @@ export function createRunner(cfg: RunnerConfig): {
     const loopDeps: LoopDeps = {
       adapter,
       model: cfg.model,
+      capabilities, thinking,
       system,
       tools: wireSchemas(),
       executor,

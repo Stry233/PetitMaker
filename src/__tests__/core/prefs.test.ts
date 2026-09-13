@@ -29,6 +29,20 @@ function sourceFiles(): { path: string; text: string }[] {
 beforeEach(() => localStorage.clear());
 
 describe('prefs', () => {
+  it('uses defaults when the storage property itself is denied', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() { throw new DOMException('Storage denied', 'SecurityError'); },
+    });
+    try {
+      expect(readPref('uiZoom')).toBe(1);
+      expect(writePref('uiZoom', 1.4)).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', descriptor);
+    }
+  });
+
   it('falls back when nothing is stored', () => {
     expect(readPref('uiZoom')).toBe(1);
   });

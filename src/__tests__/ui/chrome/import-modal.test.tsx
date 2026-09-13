@@ -47,7 +47,7 @@ describe('ImportModal', () => {
     vi.stubGlobal('createImageBitmap', createImageBitmapMock);
     const getImageDataMock = vi.fn(() => ({ data: new Uint8ClampedArray(4 * 4 * 4) }));
     const fakeCtx = { drawImage: vi.fn(), getImageData: getImageDataMock } as unknown as CanvasRenderingContext2D;
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx);
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx as never);
 
     setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });

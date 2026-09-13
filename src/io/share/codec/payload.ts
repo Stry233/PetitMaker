@@ -15,7 +15,6 @@ import { decodeAnnotations } from '../../json-codec';
 import { CompressionMethod, deflate, inflate } from '../raster/zlib';
 
 export interface ShareCodeMeta {
-  title?: string;
   appVersion: string;
   saveVersion: number;
   createdAt?: string;
@@ -36,7 +35,6 @@ const MAGIC1 = 0x32; // '2'
  * record between the generation note and map residual. */
 const EARLIEST_FRAME_VERSION = 3;
 const FRAME_VERSION = 4;
-const TITLE_MAX_CHARS = 48;
 
 // ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──
 
@@ -104,27 +102,25 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 // ── Provenance record (binary) ──────────────────────────────────────────────────────────────
 
-const FLAG_AI = 1, FLAG_PROCEDURAL = 2, FLAG_CREATED_AT = 4, FLAG_TITLE = 8;
+const FLAG_AI = 1, FLAG_PROCEDURAL = 2, FLAG_CREATED_AT = 4;
+// The title bit remains reserved for reading older provenance records.
+const FLAG_TITLE = 8;
 
 function encodeProvenanceRecord(summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Uint8Array {
   const aiUsed = summary?.containsAi ?? false;
   const proceduralUsed = summary?.containsProcedural ?? false;
   const hasCreatedAt = meta.createdAt !== undefined;
-  const title = meta.title !== undefined ? meta.title.slice(0, TITLE_MAX_CHARS) : undefined;
-  const hasTitle = !!title;
 
   let flags = 0;
   if (aiUsed) flags |= FLAG_AI;
   if (proceduralUsed) flags |= FLAG_PROCEDURAL;
   if (hasCreatedAt) flags |= FLAG_CREATED_AT;
-  if (hasTitle) flags |= FLAG_TITLE;
 
   const w = new ByteWriter();
   w.u8(flags);
   w.u8(meta.saveVersion);
   w.str8(meta.appVersion);
   if (hasCreatedAt) w.u32(Math.floor(new Date(meta.createdAt!).getTime() / 1000));
-  if (hasTitle) w.str8(title!);
   return w.toBytes();
 }
 

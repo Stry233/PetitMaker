@@ -46,6 +46,8 @@ export type SelectedBlock = { kind: 'object'; id: string } | { kind: 'terrain'; 
 
 export interface AgentToolDeps {
   getState(): GridState;
+  /** Resolves catalog names for human-facing approval summaries. */
+  catalogName?(id: string): string | undefined;
   getExecutor(): CommandExecutor;
   getRegion(): MacroCoord[];
   /** The clicked/selected block on canvas, if any. */

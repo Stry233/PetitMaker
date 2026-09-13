@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMapReview } from './review/use-map-review';
+import { MapReviewStatus } from './review/MapReviewStatus';
+import { useExportNotice } from './review/ExportNotice';
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { radii, font, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
@@ -29,6 +32,10 @@ import { downloadBlob } from '../../../../io/image-export';
 import { showToast } from '../../floating/Toast';
 import { selectedVersion } from './stylize/use-stylize-versions';
 import { composeStylizedBaseMap } from './stylize/compose-stylized';
+import { exportText, type ReviewProgress, type ReviewResult } from '../../../../io/moderation/text/policy';
+import { ReviewTooLong } from '../../../../io/moderation/text/reviewer';
+import { Expand } from '../../../primitives/Expand';
+import { reviewReasonKey, useTextReview } from './review/use-text-review';
 
 /** What either baseMap producer (a real capture, or a stylized composite) actually is — narrower
  *  than `CanvasImageSource` so `.width`/`.height` stay plain numbers downstream. */
@@ -42,10 +49,6 @@ export const DEFAULT_OPTIONS: ExportOptions = { title: '', description: '', pres
 
 /** Minimum dimension (px) to consider a 3D still usable. */
 const MIN_3D_PX = 32;
-
-/** How long the title/description must be STILL before the preview redraws with them. Long enough
- *  to outlast an IME's per-keystroke composition updates, short enough to read as "done typing". */
-const TEXT_SETTLE_MS = 1000;
 
 /** Illustrative dims for the footer editor's reference menu (the real footer is resolved at paint
  *  time from the actual composition). */
@@ -74,6 +77,19 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   // The window opens the way it was left: every choice but the map's own words is remembered.
   const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_OPTIONS, ...loadRememberedExportOptions() }));
   const [exporting, setExporting] = useState(false);
+  const [reviewProgress, setReviewProgress] = useState<ReviewProgress | null>(null);
+  const [reviewIssue, setReviewIssue] = useState<Exclude<ReviewResult, { allowed: true }> | 'unavailable' | 'too-long' | null>(null);
+  const notice = useExportNotice(open, options, gridState);
+  const exportRun = useRef<AbortController | null>(null);
+  function cancelExport() {
+    exportRun.current?.abort(); exportRun.current = null;
+    setExporting(false); setReviewProgress(null);
+  }
+  useEffect(() => {
+    if (!open) cancelExport();
+    return () => { exportRun.current?.abort(); exportRun.current = null; };
+  }, [open]);
+  useEffect(() => { setReviewIssue(null); }, [options]);
 
   // THE ENTRANCE COMES FIRST. The preview's capture, its paint and the share-code encode are all
   // synchronous main-thread work that would land inside the card's opening spring and stall it, so
@@ -86,67 +102,92 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
     const id = setTimeout(() => setSettled(true), ENTRANCE_SETTLE_MS);
     return () => clearTimeout(id);
   }, [open, reduced]);
-  const ready = open && settled;
+  const mapReview = useMapReview(open, settled, true);
+  useEffect(() => { cancelExport(); }, [gridState, mapReview.revision]);
+  const ready = open && settled && mapReview.previewReady;
 
   // One timestamp per modal session: it goes into the code's payload, so fixing it at open makes
   // the PREVIEWED band pixel-identical to the exported one (the export reuses the cached asset).
   const [createdAt, setCreatedAt] = useState('');
   useEffect(() => { if (open) setCreatedAt(new Date().toISOString()); }, [open]);
 
-  // TYPING SETTLES BEFORE THE PICTURE MOVES. The inputs stay live, but the preview (and the
-  // share-code build, whose band carries the title) reads the text only once it has been still
-  // for a moment. Keyed on stillness rather than per change because an IME hands the field a new
-  // value on every composition step, so "repaint per change" is a picture that reloads on every
-  // keystroke of a Chinese title. The export itself always reads the LIVE options: what is typed
-  // at the moment of the click is what ships, settled or not.
-  const [settledText, setSettledText] = useState({ title: options.title, description: options.description });
-  useEffect(() => {
-    const { title, description } = options;
-    const id = setTimeout(() => {
-      setSettledText((was) => (was.title === title && was.description === description ? was : { title, description }));
-    }, TEXT_SETTLE_MS);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the two text fields are the timer's subject
-  }, [options.title, options.description]);
-  // Rebuilt only when a NON-TEXT option or the settled text changes. Keyed on the rest's CONTENT,
-  // not on `options` identity: the live title and description ride through every keystroke, and a
-  // fresh object per keystroke would repaint the very picture the settle exists to hold still.
+  const [composing, setComposing] = useState(false);
+  useEffect(() => { if (!open) setComposing(false); }, [open]);
+  const footerValues = open && gridState ? footerTokenValues(gridState, options, locale, summary ?? null) : {};
+  const reviewParts = exportText(options, { ...footerValues, date: formatFooterDate(), dims: '0×0' });
+  const textReview = useTextReview(open, reviewParts, composing);
+  const issue = reviewIssue ?? textReview.issue;
+  const textlessExportDisabled = exporting || mapReview.pending || mapReview.result?.status === 'blocked';
+  const exportDisabled = textlessExportDisabled || (issue !== null && typeof issue === 'object');
+
+  // Unreviewed drafts never reach the preview painter, even for one frame.
+  const safeOptions = textReview.allowed ? options : { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
+  const previewKey = JSON.stringify(safeOptions);
+  const previewOptions = useMemo(() => safeOptions, [previewKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
+  const safeFooter = { ...footerValues, title: previewOptions.title };
+  const footerKey = JSON.stringify(safeFooter);
+  const previewFooter = useMemo(() => safeFooter, [footerKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
   const { title: _liveTitle, description: _liveDescription, ...optionRest } = options;
   const optionRestKey = JSON.stringify(optionRest);
-  // Remembered on CHANGE, not on opening: the slot fills only once the user has chosen something.
   const openedWith = useRef(optionRestKey);
   useEffect(() => {
     if (optionRestKey !== openedWith.current) rememberExportOptions(options);
   }, [optionRestKey]); // eslint-disable-line react-hooks/exhaustive-deps -- the remembered fields ARE optionRest
-  const previewOptions = useMemo(
-    () => ({ ...optionRest, title: settledText.title, description: settledText.description }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- optionRest rides under its content key
-    [optionRestKey, settledText],
-  );
 
   // The real share-code band, built async + debounced — never on the open animation frame and
   // never per keystroke, because a synchronous build is heavy enough to freeze the modal's
   // entrance. While it builds, the preview keeps its last picture (or its loading state when
   // there is none yet — no placeholder band).
-  const code = useShareCode(ready, gridState ?? null, summary ?? null, options.importable, settledText.title, options.resolution, createdAt);
+  const code = useShareCode(ready, gridState ?? null, summary ?? null, options.importable, options.resolution, createdAt);
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
-  async function handleExport() {
-    if (exporting) return;
+  async function handleExport(withoutText = false) {
+    if (exportRun.current || !open || (withoutText ? textlessExportDisabled : exportDisabled)) return;
+    const controller = new AbortController();
+    exportRun.current = controller;
+    const { signal } = controller;
+    if (!await notice.request() || signal.aborted) {
+      if (exportRun.current === controller) exportRun.current = null;
+      return;
+    }
+    const mapResult = await mapReview.check().catch(() => null);
+    if (!mapResult || mapResult.status === 'blocked' || signal.aborted) {
+      if (exportRun.current === controller) exportRun.current = null;
+      return;
+    }
+    const selectedOptions = withoutText ? { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER } : options;
+    setReviewIssue(null);
+    if (withoutText) textReview.cancel();
+    signal.addEventListener('abort', textReview.cancel, { once: true });
     setExporting(true);
     await nextFrame(); // let the loading overlay paint before the heavy synchronous work begins
     try {
+      if (signal.aborted) return;
       const store = useEditorStore.getState();
       const executor = store.commandExecutor;
       const gridState = store.gridState;
       if (!executor || !gridState) {
-        setExporting(false);
         return;
       }
 
       const now = Date.now();
       const sum = executor.getProvenanceSummary();
+      const footerValues = footerTokenValues(gridState, selectedOptions, store.locale, sum);
+      const parts = exportText(selectedOptions, { ...footerValues, date: formatFooterDate(), dims: '0×0' });
+      if (parts.length) {
+        setReviewProgress({ phase: 'checking' });
+        try {
+          const result = await textReview.check(parts);
+          if (signal.aborted) return;
+          if (!result.allowed) { setReviewIssue(result); return; }
+        } catch (error) {
+          if (!signal.aborted) setReviewIssue(error instanceof ReviewTooLong ? 'too-long' : 'unavailable');
+          return;
+        }
+        setReviewProgress(null);
+      }
+      if (signal.aborted) return;
 
       // A selected stylize version REPLACES the map bitmap: the map itself is never captured, and
       // the user's own ink (if any) is composed back over the generated picture at its own rect.
@@ -156,9 +197,9 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       let mapAspect: number;
       let mapPx: { w: number; h: number };
       if (stylizeSelected) {
-        const inkUrl = options.annotations ? host.capture2dAnnotations(2048) : null;
+        const inkUrl = selectedOptions.annotations ? host.capture2dAnnotations(2048) : null;
         const inkImg = inkUrl ? await loadImage(inkUrl).catch(() => null) : null;
-        const gridUrl = options.grid ? host.capture2dGrid(2048) : null;
+        const gridUrl = selectedOptions.grid ? host.capture2dGrid(2048) : null;
         const gridImg = gridUrl ? await loadImage(gridUrl).catch(() => null) : null;
         baseImg = composeStylizedBaseMap(stylizeSelected.image, inkImg, stylizeSelected.kind === 'model' ? translate('export.ai_tag') : '', gridImg);
         mapAspect = (baseImg.width / baseImg.height) || 1.2;
@@ -167,11 +208,10 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
         // Capture the 2D map. Native mode asks for the map's native resolution (so the composed map
         // band is full-resolution); presets use a bounded capture. The renderer clamps to GPU
         // MAX_TEXTURE_SIZE, so the achieved size is read back from the loaded image.
-        const capturePx = options.resolution === 'original' ? originalCaptureRequestPx(gridState.template) : 2400;
-        const baseUrl = host.capture2d(capturePx, options.grid, options.annotations);
+        const capturePx = selectedOptions.resolution === 'original' ? originalCaptureRequestPx(gridState.template) : 2400;
+        const baseUrl = host.capture2d(capturePx, selectedOptions.grid, selectedOptions.annotations);
         if (!baseUrl) {
-          setExporting(false);
-          showToast(translate('toast.export_image_failed'), 'error');
+            showToast(translate('toast.export_image_failed'), 'error');
           return;
         }
         baseImg = await loadImage(baseUrl);
@@ -194,13 +234,13 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           codeTooSmall = true; // chosen Size can't host a legible code (Compact)
         } else if (comp.codeBand) {
           // Reuse the previewed asset only when its pixel width and payload inputs match this slot.
-          if (codeAsset && codeAsset.canvas.width === comp.codeBand.w && codeAsset.builtKey === shareCodeKey(comp.codeBand.w, options.title, createdAt)) {
+          if (codeAsset && codeAsset.canvas.width === comp.codeBand.w && codeAsset.builtKey === shareCodeKey(comp.codeBand.w, createdAt)) {
             codeImg = codeAsset.canvas;
             codeNotice = codeAsset.notice;
           } else {
             // A failed code leaves the picture export available, with a warning after download.
             try {
-              const asset = await renderShareCodeAsset(gridState, sum, { title: options.title, createdAt }, comp.codeBand.w);
+              const asset = await renderShareCodeAsset(gridState, sum, { createdAt }, comp.codeBand.w);
               codeImg = asset?.canvas ?? null;
               codeNotice = asset?.notice ?? null;
               if (!codeImg) codeTooSmall = true;
@@ -214,7 +254,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
 
         // Optionally capture several smart-angle 3D thumbnails (degrades to none if 3D unavailable).
         let card3dAngles: HTMLImageElement[] = [];
-        if (options.card3d && comp.card3d) {
+        if (selectedOptions.card3d && comp.card3d) {
           // Render the user's edited shots (the 3D-shots menu); fall back to fresh smart angles if
           // the strip was never opened, so the exported card always matches what the preview showed.
           const chosen = useEditorStore.getState().export3dShots;
@@ -236,14 +276,14 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           baseMap: baseImg,
           card3dAngles,
           codeImg,
-          grid: options.grid,
-          brand: brandInfo(store.locale, options, brandLockup),
-          footerTemplate: options.footerTemplate,
-          footerTokens: footerTokenValues(gridState, options, store.locale, sum),
+          grid: selectedOptions.grid,
+          brand: brandInfo(store.locale, selectedOptions, brandLockup),
+          footerTemplate: selectedOptions.footerTemplate,
+          footerTokens: footerValues,
           state: gridState,
           summary: sum,
-          title: options.title,
-          description: options.description,
+          title: selectedOptions.title,
+          description: selectedOptions.description,
           translate,
         });
 
@@ -264,7 +304,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       const { blob } = await renderExport({
         summary: sum,
         gridState,
-        options,
+        options: selectedOptions,
         mapAspect,
         mapPx,
         capture,
@@ -273,21 +313,25 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
 
       if (!blob) {
         showToast(translate('toast.export_image_failed'), 'error');
-        setExporting(false);
         return;
       }
 
+      if (signal.aborted) return;
       downloadBlob(blob, `petit-planet-${now}.png`);
       useEditorStore.getState().markExported();   // this map has now left the browser
       if (codeTooSmall) showToast(translate('export.code_too_small'), 'info');
       if (codeFailed) showToast(translate(codeFailed), 'info');
       showToast(translate(codeNotice ?? (codeImg ? 'toast.exported_embedded' : 'toast.exported_image')), 'info');
-      setExporting(false);
       onDone();
     } catch (e) {
+      if (signal.aborted) return;
       console.error('[export] export failed', e);
       showToast(translate('toast.export_image_failed'), 'error');
-      setExporting(false);
+    } finally {
+      signal.removeEventListener('abort', textReview.cancel);
+      if (exportRun.current === controller) {
+        exportRun.current = null; setExporting(false); setReviewProgress(null);
+      }
     }
   }
 
@@ -295,9 +339,11 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const footerSamples = open && gridState ? { ...footerTokenValues(gridState, options, locale, summary ?? null), date: formatFooterDate(), dims: footerDimsSample(options.resolution) } : {};
 
   const settingsRef = useRef<HTMLDivElement>(null);
+  const activeProgress = textReview.progress ?? reviewProgress;
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
+      {notice.notice}
       {/* Loading overlay — covers the panel while the (partly synchronous) export runs, so the
           modal reads as busy instead of frozen. */}
       <AnimatePresence>
@@ -308,14 +354,16 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
             style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(253,251,224,0.82)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radii.lg }}
           >
             <Spinner size={38} thickness={4} />
-            <div style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{t('export.exporting')}</div>
+            <div role="status" style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{t(activeProgress ? 'export.review.checking' : 'export.exporting')}</div>
+            {activeProgress && <div style={{ ...roleFont('caption'), color: skin.muted, maxWidth: 320, textAlign: 'center' }}>{t('export.review.private')}</div>}
+            <button autoFocus style={windowFooterGhost} onClick={cancelExport}>{t('export.review.cancel')}</button>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Body: left column = settings (scroll) + buttons; right column = preview spanning the
           FULL height of the left column (so the buttons row never wastes the preview's space). */}
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 24, flex: '1 1 auto', minHeight: 0 }}>
+      <div {...(exporting ? { inert: '' } as unknown as HTMLAttributes<HTMLDivElement> : {})} style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 24, flex: '1 1 auto', minHeight: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {/* scrollbar-gutter: stable reserves the scrollbar track so the
               settings column doesn't shift sideways when expanding a panel
@@ -327,18 +375,35 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
               mask clips its WHOLE painted subtree including fixed descendants, so
               a scroller whose subtree renders fixed-position overlays inline
               cannot wear one; the menu would be clipped along with it. */}
-          <div ref={settingsRef} style={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, scrollbarGutter: 'stable', paddingLeft: 6, paddingRight: 8, flex: '1 1 auto' }}>
-            <ExportControls options={options} setOptions={setOptions} summary={summary ?? null} footerSamples={footerSamples} />
+          <div ref={settingsRef} onCompositionStartCapture={() => setComposing(true)} onCompositionEndCapture={() => setComposing(false)} style={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, scrollbarGutter: 'stable', paddingLeft: 6, paddingRight: 8, flex: '1 1 auto' }}>
+            <ExportControls options={options} setOptions={setOptions} summary={summary ?? null} footerSamples={footerSamples} checkingFields={textReview.pending && !exporting ? reviewParts.map((part) => part.field) : []} refusedFields={issue && typeof issue === 'object' ? issue.fields : []} reviewLabel={t('export.review.checking')} />
+          </div>
+          {!mapReview.pending && <MapReviewStatus result={mapReview.result} pending={false} onRetry={mapReview.retry} />}
+          {/* Keep hover and focus inside the collapsing clip without narrowing the controls. */}
+          <div style={{ margin: '0 -12px' }}>
+            <Expand open={!!issue || textReview.paused}>
+              <div role={issue ? "alert" : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('caption'), lineHeight: 1.5 }}>
+                {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : issue ? t(reviewReasonKey(issue.reason), { fields: issue.fields.map((field) => t(field === 'title' ? 'export.field_title' : field === 'description' ? 'export.field_desc' : 'export.opt_footer')).join(', ') }) : ''}
+                {(textReview.paused || issue === 'unavailable') && <button style={{ ...windowFooterGhost, marginTop: 8, width: '100%' }} onClick={() => { setReviewIssue(null); textReview.retry(); }}>{t('export.review.retry')}</button>}
+                {issue && <motion.button disabled={textlessExportDisabled} style={{ ...windowFooterGhost, marginTop: 8, width: '100%', opacity: textlessExportDisabled ? 0.6 : 1 }} onClick={() => void handleExport(true)} {...(textlessExportDisabled ? {} : buttonMotion)}>{t('export.review.without_text')}</motion.button>}
+              </div>
+            </Expand>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 14, flex: 'none' }}>
             {/* A render in flight is BUSY, not refused, so it names the busy cursor rather than
                 letting the sheet's disabled rule call it blocked (same as ExportJsonModal). */}
-            <motion.button style={{ ...windowFooterPrimary, opacity: exporting ? 0.6 : 1, cursor: exporting ? busy : cursors.clickable }} onClick={handleExport} disabled={exporting} {...(exporting ? {} : buttonMotion)} aria-busy={exporting}>{exporting ? '…' : t('export.btn_export')}</motion.button>
+            <motion.button style={{ ...windowFooterPrimary, opacity: exportDisabled ? 0.6 : 1, cursor: exporting ? busy : exportDisabled ? cursors.default : cursors.clickable }} onClick={() => void handleExport()} disabled={exportDisabled} {...(exportDisabled ? {} : buttonMotion)} aria-busy={exporting}>{exporting ? '…' : t('export.btn_export')}</motion.button>
             <motion.button style={windowFooterGhost} onClick={onDone} {...buttonMotion}>{t('export.btn_cancel')}</motion.button>
           </div>
         </div>
         <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <ExportPreview open={ready} options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} />
+          {ready && <ExportPreview key={mapReview.revision} open={ready} options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending} codeIssue={codeIssue} footerTokens={previewFooter} />}
+          {!ready && <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+            {mapReview.pending && <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, textAlign: 'center', fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>
+              <Spinner size={38} thickness={4} />
+              <span>{t('export.map_check.checking')}</span>
+            </div>}
+          </div>}
         </div>
       </div>
     </div>

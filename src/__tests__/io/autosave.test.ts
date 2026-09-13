@@ -6,6 +6,7 @@ vi.mock('../../kit/host', () => ({
 
 import { scheduleAutosave, readAutosave, clearAutosave, hasAutosave, autosaveWorthy } from '../../io/autosave';
 import { serialize } from '../../io/json-codec';
+import { encodeHistory } from '../../io/history-codec';
 import { CURRENT_VERSION } from '../../io/save-format';
 import { DEFAULT_MAP } from '../../config/maps';
 import { createGrid } from '../../core/model/grid-model';
@@ -19,8 +20,7 @@ import { useEditorStore } from '../../state/store';
 
 const STORAGE_KEY = 'petit-planet-autosave';
 
-// Node's native localStorage is disabled in this runner and jsdom doesn't supply
-// one (the app guards with `typeof localStorage`), so install a tiny in-memory shim.
+// The runner needs an in-memory Web Storage implementation for persistence assertions.
 class MemStorage {
   private m = new Map<string, string>();
   get length() { return this.m.size; }
@@ -62,6 +62,8 @@ describe('autosave', () => {
     vi.useFakeTimers();
   });
   afterEach(() => {
+    clearAutosave();
+    vi.restoreAllMocks();
     vi.useRealTimers();
     host.camera.get2d = () => undefined;
     host.camera.get3d = () => undefined;
@@ -222,6 +224,14 @@ describe('autosave', () => {
       expect(fresh.getUndoStackSize()).toBe(exec.getUndoStackSize());
     });
 
+    it('restores legacy map and separate history records', () => {
+      const state = makeWorkingMap();
+      const executor = withHistory(state, 5);
+      localStorage.setItem(STORAGE_KEY, serialize(state));
+      localStorage.setItem('petit-planet-autosave-history', JSON.stringify(encodeHistory(executor.getUndoEntries(), 60)));
+      expect(readAutosave()?.history).toHaveLength(executor.getUndoStackSize());
+    });
+
     it('keeps only the most recent HISTORY_STEPS entries', () => {
       const state = makeWorkingMap();
       const exec = withHistory(state, 70);
@@ -262,11 +272,55 @@ describe('autosave', () => {
 
       // A snapshot outside the grid: undo replays entries with no rule validation, so the decoder
       // is the gate and one bad coordinate drops the whole section.
-      const saved = JSON.parse(localStorage.getItem('petit-planet-autosave-history')!);
-      saved.entries[0].after[0].coord = { x: 9999, y: 9999 };
-      localStorage.setItem('petit-planet-autosave-history', JSON.stringify(saved));
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      saved.history.entries[0].after[0].coord = { x: 9999, y: 9999 };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
       expect(readAutosave()!.history).toBeUndefined();
     });
+  });
+
+  it('retries the current map immediately after reclaiming obsolete legacy history', () => {
+    localStorage.setItem(STORAGE_KEY, serialize(makeWorkingMap()));
+    localStorage.setItem('petit-planet-autosave-history', 'occupies remaining quota');
+    const original = localStorage.setItem.bind(localStorage);
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === STORAGE_KEY && localStorage.getItem('petit-planet-autosave-history')) throw new DOMException('Full', 'QuotaExceededError');
+      original(key, value);
+    });
+    host.camera.get2d = () => ({ x: 99, y: 0, zoom: 1 });
+    scheduleAutosave(makeWorkingMap());
+    vi.advanceTimersByTime(2000);
+    expect(readAutosave()?.camera?.view2d?.x).toBe(99);
+    expect(localStorage.getItem('petit-planet-autosave-history')).toBeNull();
+  });
+
+  it('keeps the previous map and history when every replacement exceeds quota', () => {
+    const previous = serialize(makeWorkingMap());
+    localStorage.setItem(STORAGE_KEY, previous);
+    localStorage.setItem('petit-planet-autosave-history', 'old history');
+    const original = localStorage.setItem.bind(localStorage);
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === STORAGE_KEY) throw new DOMException('Full', 'QuotaExceededError');
+      original(key, value);
+    });
+    scheduleAutosave(makeWorkingMap());
+    vi.advanceTimersByTime(2000);
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(previous);
+    expect(localStorage.getItem('petit-planet-autosave-history')).toBe('old history');
+  });
+
+  it('clearing a pending save prevents it from reappearing', () => {
+    scheduleAutosave(makeWorkingMap());
+    clearAutosave();
+    vi.advanceTimersByTime(4000);
+    expect(hasAutosave()).toBe(false);
+  });
+
+  it('ignores unrelated legacy history when an atomic snapshot has none', () => {
+    scheduleAutosave(makeWorkingMap());
+    vi.advanceTimersByTime(2000);
+    localStorage.setItem('petit-planet-autosave-history', '{"v":1,"entries":[]}');
+    expect(readAutosave()?.history).toBeUndefined();
   });
 
   it('walks a grid with a sparse row instead of throwing', () => {

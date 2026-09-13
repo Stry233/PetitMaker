@@ -92,3 +92,9 @@
 4. 如果你的来信是**下架**请求（takedown）或侵权主张，请说明你所持有的权利及其依据，并附上你善意相信该主张属实的声明，其要素与[使用条款](/terms)中「知识产权投诉」一节所列一致。
 
 在收到完整的请求后，我们会本着善意审阅知识产权请求与下架通知，就其中涉及我们确实掌控的材料作出回应；对于依据充分的下架请求，我们会移除或替换相关材料，并告知你处理结果。如果请求不清楚或不完整，我们可能会先询问所需的进一步信息，然后再采取行动。我们作出的授权均以书面形式给出，且仅限于我们所描述的用途；沉默不构成许可。
+
+中文词语证据使用 LDNOOBW 项目及其贡献者提供的 `naughty-words` 软件包，词库最初在 Shutterstock 汇集（© 2012–2020 Shutterstock, Inc.），采用 CC-BY-4.0 许可。分析时进行繁简转换，不改动用户提交的原文。来源与许可见 `THIRD_PARTY_NOTICES.md` 和 `licenses/naughty-words/LICENSE`。
+
+政治话题匹配使用 `src/assets/moderation/political-index.json` 中的衍生数据，来源为 @zhin.js/sensitive-filter 2.0.1（MIT）、fwwdn/sensitive-stop-words（Apache-2.0）和 houbb/sensitive-word-data（Apache-2.0）。所选类别经过规范化、筛选、去重，并转换为指纹。无声调的汉字读音与词语读音指纹来自 pinyin-pro 3.29.3（MIT）。转换记录见 `src/assets/moderation/provenance.json`。这些数据用于词语匹配，不是学习得到的模型权重，也不是加密保密数据。来源链接、版权声明及完整许可证见 `THIRD_PARTY_NOTICES.md` 与 `licenses/`。
+
+地图图像检查包含 NSFWJS 4.4.0 的 MobileNetV2 权重（MIT，© 2019 Infinite Red, Inc.），以及 tesseract-ocr/tessdata_fast 的英语、简体中文和繁体中文 LSTM 数据（Apache-2.0）。权重由上游软件包解码得到，OCR 文件经过 gzip 压缩，内容保持不变。来源版本、文件哈希及处理方式记录在 `public/moderation/provenance.json` 中。模型完整许可证位于 `licenses/nsfwjs-model/LICENSE` 和 `licenses/tessdata-fast/LICENSE`，运行库许可证列于 `THIRD_PARTY_NOTICES.md`。

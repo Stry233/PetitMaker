@@ -416,7 +416,7 @@ describe('the zoo: silence on a 200, which is the platform\'s and not the model\
 
     expect(events).toEqual([
       { t: 'reasoning', delta: 'weighing the ridge' },
-      { t: 'done', stop: 'stop', final: [] },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
     ]);
   });
 

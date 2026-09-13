@@ -113,8 +113,20 @@ export const host = {
     show(cells: MacroCoord[]): void { getActiveView()?.overlay.showRoute(cells); },
     clear(): void { getActiveView()?.overlay.clearRoute(); },
   },
+  capture2dCanvas(maxPx = 1024, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureMapCanvas(maxPx, includeGrid, undefined, annotations) ?? null;
+  },
+  captureComplete2dCanvas(maxPx = 1024): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureCompleteMapCanvas(maxPx) ?? null;
+  },
+  capture2dAnnotationsCanvas(maxPx = 1024): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureAnnotationsCanvas(maxPx) ?? null;
+  },
   capture2d(maxPx = 1024, includeGrid = false, annotations?: boolean): string | null {
     return getMapRenderer()?.captureMapImage(maxPx, includeGrid, undefined, annotations) ?? null;
+  },
+  captureComplete2d(maxPx = 1024): string | null {
+    return getMapRenderer()?.captureCompleteMapImage(maxPx) ?? null;
   },
   /** The plan-notes ink alone, transparent everywhere else: the stylize compose step's source for
    *  drawing the user's ink back over a redrawn map bitmap. */

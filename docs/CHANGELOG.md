@@ -4,6 +4,38 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-09-12
+
+### Added
+
+- On-device content checks for maps and added text when sharing images or JSON. The export dialog shows checking progress and feedback to help prepare content for sharing.
+- A brief reminder about honest, considerate sharing before every image and JSON export. A timed confirmation button gives users a moment to read before continuing.
+- Doubao connections in the assistant, with model suggestions and support for manually entered inference endpoints.
+- Live model information updates and a thinking-effort slider for supported models. Thinking content appears separately from the assistant's answer when available.
+
+### Changed
+
+- Large maps and undo history take less local storage in automatic saves. JSON export prepares large maps more quickly.
+- The ICP registration bubble hides while a bottom editing panel is open.
+
+- Removed the selected-cell count badge beside the assistant. Selection details remain available in the prompt area.
+- Export previews automatically fit the full image as the preview area changes size. Manual pan, zoom and double-click reset remain available.
+- PetitGlyph fills the whole code area consistently, including for empty or sparse maps. Previously shared images remain compatible with import.
+
+### Fixed
+
+- The editor opens with default settings when browser storage is unavailable, and startup can finish when an asset download stalls.
+- The 2D map stays visible while resizing the window with the assistant docked.
+
+- Assistant progress stripes keep moving while a task is active, including between progress updates. The extra loading dots below the bar have been removed.
+- Questions in the assistant panel now offer a Cancel task action, including questions shown after the assistant finishes a turn.
+- Confirming IME input no longer sends the assistant prompt. The input uses the available width and fits wrapped text without extra blank rows; Enter inserts a new line in the expanded editor, and the Send button submits the message.
+- Clearing assistant history consistently removes the selected conversations from the history available to the assistant. Active tasks pause and use the updated conversation when resumed.
+- Entering a valid assistant API key opens the provider's model list directly so users can choose their models and set a default. Provider selection stays consistent during key entry, and custom connections remain configurable when a model list is unavailable.
+- Improved compatibility with OpenAI reasoning models, including GPT-6 Astra, so the assistant can carry out map-editing tasks more reliably.
+- Assistant approvals and operation details use readable, localized descriptions, making proposed changes and task progress easier to follow.
+- Annotation brushes no longer crash when painted cells touch diagonally.
+
 ## [0.11.10] - 2026-09-11
 
 ### Changed

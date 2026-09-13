@@ -33,9 +33,7 @@ export function zoneEnter(reduced: boolean): {
 }
 
 
-/** The crawl's length, read from its declaration rather than typed here — `.pw-stripes` carries the
- *  keyframes and the reduced-motion gate but its own 1s belongs to the shell's other users of the
- *  class, so this overrides the duration alone. */
+/** The construction tape shares its cycle duration with the motion registry. */
 const CRAWL_SECONDS = MOTIONS['panel.tape.crawl'].duration;
 
 /** React's `CSSProperties` has no room for a custom property; this widens it for exactly the
@@ -55,20 +53,12 @@ const INDETERMINATE_FRACTION = 0.26;
  *  than as still working. Not a motion (nothing here travels), so it is not a registry entry. */
 const HELD_OPACITY = 0.45;
 
-/** The diagonal stripe fill, static at rest. `mode: 'indeterminate'` stands as the short pill above
- *  and crawls one stripe period (`.pw-stripe-drift`, reduced-motion gated both here and in CSS,
- *  which carries the reason the crawl travels the LAYER rather than its background-position); a
- *  determinate fraction sizes the fill and never animates the pattern itself, only its width
- *  (`panel.tape.fill`).
- *
- *  `held` (a pause, a stop, a retry wait) freezes the fill in place and dims it: the crawl stops
- *  even where motion is otherwise allowed, and a determinate fraction keeps the width it already
- *  had — a hold reports that work is not moving, never how much of it is done. */
+/** Stripes crawl independently of the completed fraction; held and reduced-motion bars stay still. */
 export function TapeBar({ mode, held = false }: { mode: TapeMode; held?: boolean }) {
   const reduced = useReducedMotionConfig() === true;
   const indeterminate = mode === 'indeterminate';
   const fraction = indeterminate ? INDETERMINATE_FRACTION : Math.max(0, Math.min(1, mode.fraction));
-  const crawling = indeterminate && !reduced && !held;
+  const crawling = !reduced && !held;
   const fill: CSSProperties = {
     display: 'block',
     position: 'relative',

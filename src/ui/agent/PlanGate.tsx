@@ -1,3 +1,4 @@
+import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Presents a proposed plan in the shared gate card. Stages come from the held `update_plan` call
  * because the plan event is recorded only after approval. The list preserves checkpoint flags that
@@ -147,7 +148,7 @@ export function PlanGate({
         >
           <Bead n={i + 1} />
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {stage.label}
+            {displayAgentText(stage.label, t)}
           </span>
           {stage.checkpoint === true && (
             <span

@@ -63,9 +63,10 @@ describe('TapeBar', () => {
     expect(fillOf(under.container).style.width).toBe('0%');
   });
 
-  it('determinate paints a STATIC stripe: no crawl class, ever', () => {
+  it('crawls while the measured fraction stays unchanged', () => {
     const { container } = render(<TapeBar mode={{ fraction: 0.5 }} />);
-    expect(stripesOf(container).className).not.toContain('pw-stripe-drift');
+    expect(stripesOf(container).className).toContain('pw-stripe-drift');
+    expect(fillOf(container).style.width).toBe('50%');
   });
 
   /** Unknown work is never a FULL bar: a short left-anchored pill (26% of the track) with its
@@ -100,6 +101,7 @@ describe('TapeBar', () => {
     const { container } = render(<TapeBar mode={{ fraction: 0.6 }} held />);
     expect(fillOf(container).style.width).toBe('60%');
     expect(fillOf(container).style.opacity).toBe('0.45');
+    expect(stripesOf(container).className).not.toContain('pw-stripe-drift');
   });
 
   it('unheld determinate and indeterminate both stand at full opacity', () => {
@@ -123,7 +125,7 @@ describe('TapeBar', () => {
   });
 
   it('sets no duration where there is no crawl to time', () => {
-    const { container } = render(<TapeBar mode={{ fraction: 0.5 }} />);
+    const { container } = render(<TapeBar mode={{ fraction: 0.5 }} held />);
     expect(stripesOf(container).style.animationDuration).toBe('');
   });
 

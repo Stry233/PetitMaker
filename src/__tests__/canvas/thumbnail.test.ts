@@ -153,3 +153,15 @@ describe('framing a map for a picture that is not its shape', () => {
     }
   });
 });
+
+ it('shares simultaneous captures of the same map version', async () => {
+    let captures = 0;
+    setMapRenderer({ captureState: async () => {
+      captures++;
+      return { toDataURL: () => 'data:image/png;base64,shared' };
+    } } as unknown as MapRenderer);
+    const state = makeState(8, 8);
+    const images = await Promise.all(Array.from({ length: 8 }, () => renderThumbnail(state, 640)));
+    expect(captures).toBe(1);
+    expect(new Set(images).size).toBe(1);
+  });

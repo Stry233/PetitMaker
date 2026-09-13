@@ -1,3 +1,4 @@
+vi.mock('../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMapReview: () => ({ result: { status: 'clear' }, pending: false, previewReady: true, revision: '0', check: async () => ({ status: 'clear' }), retry: vi.fn(), cancel: vi.fn() }) }));
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExportJsonModal } from '../../../ui/chrome/modals/export/ExportJsonModal';
@@ -6,6 +7,10 @@ import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { I18nProvider } from '../../../i18n/context';
+
+vi.mock('../../../ui/chrome/modals/export/review/ExportNotice', () => ({
+  useExportNotice: () => ({ request: async () => true, notice: null }),
+}));
 
 vi.mock('../../../io/image-export', async (orig) => ({ ...(await orig<typeof import('../../../io/image-export')>()), downloadJSON: vi.fn() }));
 import { downloadJSON } from '../../../io/image-export';

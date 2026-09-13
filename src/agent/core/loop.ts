@@ -34,6 +34,8 @@ export interface ToolExecutor {
 }
 export interface LoopDeps {
   adapter: Adapter; model: string; system: string;
+  capabilities?: AdapterRequest['capabilities'];
+  thinking?: AdapterRequest['thinking'];
   tools: { name: string; description: string; parameters: Record<string, unknown> }[];
   executor: ToolExecutor;
   oversight: Oversight;
@@ -139,7 +141,7 @@ function gateAnswerFor(events: readonly SessionEvent[], callId: string): { answe
 }
 
 /** A skip or typed gate answer resolves a call without a tool-result event. */
-function isCallResolved(events: readonly SessionEvent[], callId: string): boolean {
+export function isCallResolved(events: readonly SessionEvent[], callId: string): boolean {
   if (events.some((e) => e.kind === 'toolResult' && e.callId === callId)) return true;
   const answer = gateAnswerFor(events, callId);
   return answer !== undefined && (answer.answer === 'skip' || answer.answer === 'words');
@@ -607,6 +609,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
       system: deps.system,
       messages: deriveMessages(log, { budgetTokens, estimate, appendSystemNote }),
       tools: deps.tools, model: deps.model, sameModel: deps.sameModel,
+      capabilities: deps.capabilities, thinking: deps.thinking,
     });
 
     // Apply the provider pacing floor learned from rate-limit responses; the job signal can skip it.

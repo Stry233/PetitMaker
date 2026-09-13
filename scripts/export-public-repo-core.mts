@@ -181,7 +181,6 @@ export function findByBasename(paths: readonly string[], names: readonly string[
 /** Files that necessarily hold instruction-document names as scanner data. */
 export const AGENT_DOC_SCAN_EXEMPT: readonly string[] = [
   'scripts/export-public-repo-core.mts',
-  'src/__tests__/legal/repo-hygiene.test.ts',
 ];
 
 /** Finds shipped files that point at a withheld instruction document. */
@@ -277,15 +276,9 @@ export function planPublicSync(
   };
 }
 
-/**
- * The two files that carry the markers as DATA: this module defines them, and the test
- * exercises them. Scanning them would report the guard itself, so they are skipped; their
- * occurrences ARE the marker list, read whenever it changes. Keep this list at exactly
- * those two.
- */
+/** The scanner itself carries attribution markers as data. */
 export const ATTRIBUTION_SCAN_EXEMPT: readonly string[] = [
   'scripts/export-public-repo-core.mts',
-  'src/__tests__/legal/repo-hygiene.test.ts',
 ];
 
 /** Paths whose text contains an AI-attribution trailer, with the marker found. */

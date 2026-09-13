@@ -10,11 +10,11 @@
  * caller (CommandExecutor.getUndoEntries()), session/camera come pre-built.
  */
 
-import type { GridState, MapNotes, GenerateConfig } from '../core/model/types';
+import type { GridState, MapNotes } from '../core/model/types';
 import type { HistoryEntry } from '../core/commands/command-apply';
 import { ELEVATION_MAX } from '../core/model/constants';
-import { serialize } from './json-codec';
-import { encodeHistory, type HistorySection } from './history-codec';
+import { buildSaveFile } from './json-codec';
+import { encodeHistory } from './history-codec';
 import { getCatalogItem } from '../state/catalog';
 import { templateHash, catalogHash } from './share/canonical';
 import { crc32 } from './share/crypto/crc32';
@@ -159,7 +159,7 @@ function hasNotes(n: MapNotes | undefined | null): n is MapNotes {
 
 /** Builds the sectioned save object (shared by serializeWithSections + sectionSizes). */
 function assemble(state: GridState, opts: ExportJsonOptions): SaveFile {
-  const out = JSON.parse(serialize(state)) as SaveFile;
+  const out = buildSaveFile(state);
 
   if (!opts.includeProvenance) delete out.provenance;
 
@@ -216,10 +216,10 @@ export function verifyIntegrity(parsed: unknown): 'ok' | 'modified' | 'absent' {
   if (!parsed || typeof parsed !== 'object') return 'absent';
   const stored = (parsed as { manifest?: { integrity?: unknown } }).manifest?.integrity;
   if (typeof stored !== 'string') return 'absent';
-  // Recompute over a deep clone with the code removed — matches the pre-stamp assembled object
-  // (integrity was inserted last into manifest), independent of the file's whitespace/formatting.
-  const clone = JSON.parse(JSON.stringify(parsed)) as { manifest?: Record<string, unknown> };
-  if (clone.manifest) delete clone.manifest.integrity;
+  // Copy only the containers whose keys change; nested values retain their serialized ordering.
+  const source = parsed as { manifest: Record<string, unknown> };
+  const clone = { ...source, manifest: { ...source.manifest } };
+  delete clone.manifest.integrity;
   return crcHex(clone) === stored ? 'ok' : 'modified';
 }
 
@@ -241,37 +241,41 @@ function byteLen(v: unknown, pretty = false): number {
  * the expensive step, so the modal computes per-section sizes ONCE and derives the live
  * total by summing the toggled sections — no re-serialize per toggle.
  */
-export function sectionSizes(state: GridState, opts: ExportJsonOptions, sizeOpts?: { withTotal?: boolean; pretty?: boolean }): SectionSizes {
-  const p = sizeOpts?.pretty ?? false; // measure each section as it would be pretty-printed, so
-                                        // the modal can show a pretty-aware total that moves when
-                                        // Pretty-print is toggled (without re-serializing per toggle).
-  const plain = JSON.parse(serialize(state)) as SaveFile;
-  const provenanceValue = plain.provenance;
+function sectionValues(state: GridState, opts: ExportJsonOptions): Record<Exclude<keyof SectionSizes, 'total'>, unknown> {
+  const plain = buildSaveFile(state);
+  const provenance = plain.provenance;
   delete plain.provenance;
   const coreNotes = plain.notes;
   delete plain.notes;
-  const core = byteLen(plain, p);
-
-  const effectiveNotes =
-    opts.notes === null ? undefined :
-    opts.notes !== undefined ? (hasNotes(opts.notes) ? opts.notes : undefined) :
-    coreNotes;
-
-  const generation: GenerateConfig | undefined =
-    opts.includeGeneration && state.generation ? state.generation : undefined;
-  const history: HistorySection | undefined =
-    opts.history ? encodeHistory(opts.history.entries, opts.history.depth) : undefined;
-
+  const notes = opts.notes === null ? undefined : opts.notes !== undefined
+    ? (hasNotes(opts.notes) ? opts.notes : undefined) : coreNotes;
   return {
-    core,
-    notes: byteLen(effectiveNotes, p),
-    generation: byteLen(generation, p),
-    provenance: opts.includeProvenance ? byteLen(provenanceValue, p) : 0,
-    history: byteLen(history, p),
-    session: byteLen(opts.session ?? undefined, p),
-    stats: opts.includeStats ? byteLen(buildStats(state), p) : 0,
-    catalogInfo: opts.includeCatalogInfo ? byteLen(buildCatalogInfo(state), p) : 0,
-    manifest: byteLen(buildManifest(state), p),
-    total: sizeOpts?.withTotal === false ? 0 : enc.encode(serializeWithSections(state, opts)).length,
+    core: plain,
+    notes,
+    generation: opts.includeGeneration ? state.generation : undefined,
+    provenance: opts.includeProvenance ? provenance : undefined,
+    history: opts.history ? encodeHistory(opts.history.entries, opts.history.depth) : undefined,
+    session: opts.session ?? undefined,
+    stats: opts.includeStats ? buildStats(state) : undefined,
+    catalogInfo: opts.includeCatalogInfo ? buildCatalogInfo(state) : undefined,
+    manifest: buildManifest(state),
   };
+}
+
+function measureSections(values: ReturnType<typeof sectionValues>, pretty: boolean): SectionSizes {
+  const sizes = { total: 0 } as SectionSizes;
+  for (const key of Object.keys(values) as (keyof typeof values)[]) sizes[key] = byteLen(values[key], pretty);
+  return sizes;
+}
+
+/** Both display formats share one snapshot of the map, history and optional sections. */
+export function sectionSizeFormats(state: GridState, opts: ExportJsonOptions): { compact: SectionSizes; pretty: SectionSizes } {
+  const values = sectionValues(state, opts);
+  return { compact: measureSections(values, false), pretty: measureSections(values, true) };
+}
+
+export function sectionSizes(state: GridState, opts: ExportJsonOptions, sizeOpts?: { withTotal?: boolean; pretty?: boolean }): SectionSizes {
+  const sizes = measureSections(sectionValues(state, opts), sizeOpts?.pretty ?? false);
+  if (sizeOpts?.withTotal !== false) sizes.total = enc.encode(serializeWithSections(state, opts)).length;
+  return sizes;
 }

@@ -19,7 +19,7 @@ export const PROVIDER_ROSTER: readonly ProviderId[] = PROVIDER_IDS.filter((id) =
 /** Connection-flow progress projected into the desk header while setup owns the job zone. */
 export type SetupStep =
   | 'awake' | 'typing' | 'shaped' | 'ambiguous' | 'unknown' | 'refused' | 'no-answer'
-  | 'endpoint' | 'confirmed' | 'chosen';
+  | 'endpoint';
 
 /** Setup entry point selected by a repair action. */
 export type SetupEntry = 'key' | 'chooser' | 'endpoint';

@@ -46,6 +46,18 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
+  it('draws and rebuilds a brush draft whose islands meet diagonally', () => {
+    const layer = new AnnotationLayer();
+    const draft: ZoneNote = {
+      kind: 'zone', id: 'draft', num: 0, color: '#2FBF9B', tag: 'farm',
+      cells: [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }],
+    };
+    layer.draw({ items: [], visible: true, locked: false }, { ...OPTS, draft });
+    layer.draw({ items: [], visible: true, locked: false }, { ...OPTS, draft: { ...draft, cells: [...draft.cells, { x: 2, y: 1 }] } });
+    expect(passes(layer).wash.children).toHaveLength(1);
+    layer.destroy();
+  });
+
   it('the eye hides the whole layer', () => {
     const layer = new AnnotationLayer();
     layer.draw({ ...data(), visible: false }, OPTS);

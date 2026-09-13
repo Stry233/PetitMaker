@@ -56,7 +56,7 @@ function stubBrowser(): void {
     fillStyle: '',
     fillRect: vi.fn(),
     drawImage: (...args: unknown[]) => { drawCalls.push(args); },
-  } as unknown as CanvasRenderingContext2D);
+  } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(PAINTED_URL);
 }
 

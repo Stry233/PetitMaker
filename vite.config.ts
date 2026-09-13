@@ -157,7 +157,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       // Worker-only imports escape the initial scan; discovering them during inference reloads the page.
-      include: ['onnxruntime-web/webgpu', 'onnxruntime-web'],
+      include: ['onnxruntime-web/webgpu', 'onnxruntime-web', 'opencc-js/t2cn', 'obscenity', '@2toad/profanity', '@tensorflow/tfjs', '@tensorflow/tfjs-backend-wasm', 'nsfwjs/core', 'tesseract.js', 'wasm-feature-detect', 'cuss', 'linkify-it'],
     },
     server: {
       /**

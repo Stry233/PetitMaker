@@ -355,6 +355,8 @@ export class ThreeScene {
   /** The plan-notes layer's own group; asks arrive through `setAnnotations` and re-drape with the
    *  terrain flush, since its heights are baked into its vertices. */
   private annotations3d = new Annotations3D();
+  private pendingAnnotations: { data: AnnotationsState | null; opts: Annotations3DOpts } | null = null;
+  private annotationsTerrainDirty = false;
   private editorView: ActiveView | null = null;
   private bus: EventBus<EditorEvents> | null = null;
   /** One mesh per road material present (each wears that material's tile art). */
@@ -415,6 +417,8 @@ export class ThreeScene {
   private onContextLost = (e: Event): void => {
     e.preventDefault();
     this.contextLost = true;
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
   };
 
   private onContextRestored = (): void => {
@@ -615,13 +619,19 @@ export class ThreeScene {
       this.boxWatch.observe(this.container);
     }
     this.requestRender();
-    this.loop();
   }
 
   private boxWatch: ResizeObserver | null = null;
 
   /** Open a short keep-alive render window (coalesced, spam-safe). */
-  requestRender = (): void => { this.renderWindow = 4; };
+  requestRender = (): void => {
+    this.renderWindow = 4;
+    this.scheduleFrame();
+  };
+
+  private scheduleFrame(): void {
+    if (!this.raf && this.running && !this.disposed && !this.contextLost) this.raf = requestAnimationFrame(this.loop);
+  }
 
   /** One-shot waiters for "a frame was actually DRAWN" (see onNextPaint). */
   private paintWaiters: Array<() => void> = [];
@@ -690,6 +700,7 @@ export class ThreeScene {
     if (this.contextLost) return;
     this.flushTerrainDirty();
     this.flushObjectDirty();
+    this.flushAnnotations();
     this.overlay3d?.flush();
     if (this.msaaTarget && this.copyScene) {
       this.renderer.setRenderTarget(this.msaaTarget);
@@ -801,8 +812,8 @@ export class ThreeScene {
   }
 
   private loop = (): void => {
-    if (!this.running) return;
-    this.raf = requestAnimationFrame(this.loop);
+    this.raf = 0;
+    if (!this.running || this.contextLost) return;
     // The lines below are read verbatim by src/__tests__/canvas3d/water-rest.test.ts (lines 30-40).
     // Do not reformat this section without updating that test's expectations.
     let move = this.tickInertia();
@@ -829,6 +840,7 @@ export class ThreeScene {
       if (!restingNow) this.bus?.emit('viewport-changed', { zoom: this.zoomPercent() / 100 });
     }
     this.renderFrame();
+    if (this.renderWindow > 0) this.scheduleFrame();
   };
 
   private addLights(): void {
@@ -1182,15 +1194,23 @@ export class ThreeScene {
   /** The plan-notes layer as the store holds it; the scene re-drapes the same ask itself when the
    *  ground moves. */
   setAnnotations(data: AnnotationsState | null, opts: Annotations3DOpts): void {
-    this.annotations3d.update(this.meshState(), data, opts);
+    this.pendingAnnotations = { data, opts };
     this.requestRender();
+  }
+
+  private flushAnnotations(): void {
+    const pending = this.pendingAnnotations;
+    this.pendingAnnotations = null;
+    if (pending) this.annotations3d.update(this.meshState(), pending.data, pending.opts);
+    else if (this.annotationsTerrainDirty) this.annotations3d.refresh(this.meshState());
+    this.annotationsTerrainDirty = false;
   }
 
   /** Re-rasterise the note labels — for when the app's own fonts finish loading after the first
    *  bake, which would otherwise leave fallback-face lettering standing for the session. */
   rebakeAnnotationText(): void {
     this.annotations3d.dropBakes();
-    this.annotations3d.refresh(this.meshState());
+    this.annotationsTerrainDirty = true;
     this.requestRender();
   }
 
@@ -1270,7 +1290,7 @@ export class ThreeScene {
     // Re-baked HERE, with the terrain flush, so the drape and the ground under it are one frame's
     // worth of the same map. Coalesced with it too: a generation fires thousands of cells-changed.
     if (this.buildableDirty) { this.buildableDirty = false; this.overlay3d?.refreshBuildable(); }
-    this.annotations3d.refresh(this.meshState());
+    this.annotationsTerrainDirty = true;
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -2081,6 +2101,7 @@ export class ThreeScene {
     this.inertia.cancel(); // a glide must not resume when the view comes back, minutes later
     this.zoomInertia.cancel();
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
   }
 
   resume(): void {
@@ -2091,7 +2112,6 @@ export class ThreeScene {
       this.resetObjects();
     }
     this.requestRender();
-    this.loop();
   }
 
   /** Rebuild the instanced-object set from the live map: every slot, road id, elevation record and

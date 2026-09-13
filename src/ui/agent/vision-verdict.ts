@@ -9,7 +9,7 @@ import { probeVision } from '../../agent/providers/vision-probe';
 import { buildAdapter, type AdapterConfig } from '../../agent/exec/runner';
 
 /** The providers whose vision answer is a guess from the model id rather than a platform fact. */
-const ID_OPAQUE: ReadonlySet<ProviderId> = new Set(['custom', 'perplexity', 'openrouter']);
+const ID_OPAQUE: ReadonlySet<ProviderId> = new Set(['custom', 'perplexity', 'openrouter', 'doubao']);
 
 const VERDICTS = new Map<string, boolean>();
 const IN_FLIGHT = new Set<string>();

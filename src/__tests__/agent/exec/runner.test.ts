@@ -678,7 +678,7 @@ describe('exec/runner', () => {
     const gate2 = pendingGate(log);
     expect(gate2).toBeDefined();
     expect(gate2!.gateId).not.toBe(gate1!.gateId);
-    expect(gate2!.summary).toContain('paint_terrain');
+    expect(gate2!.summary).toContain('Painting terrain');
     answerGate(log, gate2!.gateId, 'allow');
     await flush();
 
@@ -1202,5 +1202,98 @@ describe('a job with no loop behind it', () => {
     const held = eventsOf(log).length;
     runner.pause(); // already held: a second hold would be a second answer to one press
     expect(eventsOf(log)).toHaveLength(held);
+  });
+});
+
+describe('history erasure reaches provider requests', () => {
+  it('excludes cleared records from the next job after a storage round trip', async () => {
+    const adapter = createScriptedAdapter([textTurn('PRIVATE_REPLY?'), textTurn('Clean answer?')]);
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    runner.send('PRIVATE_ORDER');
+    await flush();
+    const order = eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'order')!;
+    useAgentSession.getState().clearRecord(order.seq);
+    useAgentSession.getState().hydrate();
+    runner.send('A new request');
+    await flush();
+    expect(adapter.requests).toHaveLength(2);
+    expect(JSON.stringify(adapter.requests[1])).not.toContain('PRIVATE_');
+    expect(JSON.stringify(adapter.requests[1])).toContain('A new request');
+  });
+
+  it('retires a pending write when history is cleared and requests a fresh decision on resume', async () => {
+    const adapter = createScriptedAdapter([
+      textTurn('PRIVATE_REPLY?'),
+      toolTurn([{ callId: 'pending-write', name: 'paint_terrain', args: { cells: [{ x: 2, y: 2 }], terrain: 'grass' } }]),
+      textTurn('I will inspect the map first. What next?'),
+    ]);
+    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    runner.send('PRIVATE_ORDER');
+    await flush();
+    const old = useAgentSession.getState().log;
+    const deleted = eventsOf(old).find((e) => e.kind === 'order')!;
+    runner.send('Continue building');
+    await flush();
+    expect(deriveView(old).phase).toBe('gated');
+    useAgentSession.getState().clearRecord(deleted.seq);
+    await flush();
+    const current = useAgentSession.getState().log;
+    expect(deriveView(current).phase).toBe('paused');
+    expect(pendingGate(current)).toBeUndefined();
+    runner.resume();
+    await flush();
+    expect(adapter.requests).toHaveLength(3);
+    expect(JSON.stringify(adapter.requests[2])).not.toContain('PRIVATE_');
+    expect(JSON.stringify(adapter.requests[2])).toContain('Inspect the current map');
+    expect(eventsOf(current).filter((e) => e.kind === 'toolResult')).toEqual([
+      expect.objectContaining({ callId: 'pending-write', isError: true, write: false }),
+    ]);
+    expect(runner.active()).toBe(false);
+  });
+
+  it('pauses an active request, discards late output and resumes with the erased history absent', async () => {
+    const requests: unknown[] = [];
+    let release: () => void = () => {};
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: Adapter = {
+      async *stream(req) {
+        requests.push(req);
+        if (requests.length === 1) yield { t: 'text', delta: 'PRIVATE_REPLY?' };
+        else if (requests.length === 2) {
+          yield { t: 'text', delta: 'STALE_PRIVATE_OUTPUT' };
+          await waiting;
+          yield { t: 'text', delta: 'LATE_PRIVATE_OUTPUT' };
+        } else yield { t: 'text', delta: 'A clean continuation?' };
+        yield { t: 'done', stop: 'stop' };
+      },
+      listModels: async () => [],
+    };
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    runner.send('PRIVATE_ORDER');
+    await flush();
+    const old = useAgentSession.getState().log;
+    const deleted = eventsOf(old).find((e) => e.kind === 'order')!;
+    runner.send('Keep this current task');
+    await flush();
+    expect(requests).toHaveLength(2);
+    expect(JSON.stringify(requests[1])).toContain('PRIVATE_ORDER');
+
+    useAgentSession.getState().clearRecord(deleted.seq);
+    await flush();
+    const current = useAgentSession.getState().log;
+    expect(current).not.toBe(old);
+    expect(deriveView(current).phase).toBe('paused');
+    expect(useAgentSession.getState().live).toBeNull();
+    expect(runner.active()).toBe(false);
+    runner.resume();
+    await flush();
+    expect(requests).toHaveLength(3);
+    expect(JSON.stringify(requests[2])).not.toContain('PRIVATE_');
+    expect(JSON.stringify(requests[2])).toContain('Keep this current task');
+    release();
+    await flush();
+    expect(JSON.stringify(eventsOf(current))).not.toContain('PRIVATE_');
+    expect(eventsOf(current)[eventsOf(current).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
+    expect(runner.active()).toBe(false);
   });
 });

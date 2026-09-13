@@ -6,13 +6,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { writePref } from '../../../core/runtime/prefs';
 import {
-  markSplashDone, preloadAssets, probeWarmCache, shouldShowSplash, splashTag,
+  markSplashDone, preloadAssets, probeWarmCache, shouldShowSplash, splashTag, resetPreloadForTest,
 } from '../../../ui/shell/splash/preload';
 import { splashAssetUrls } from '../../../ui/shell/splash/asset-list';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
 import { I18nProvider } from '../../../i18n/context';
 
-beforeEach(() => { localStorage.clear(); });
+beforeEach(() => { localStorage.clear(); resetPreloadForTest(); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('the preload', () => {
@@ -22,6 +22,31 @@ describe('the preload', () => {
     expect(new Set(urls).size).toBe(urls.length);
     expect(urls.some((u: string) => u.includes('banner.svg'))).toBe(true);
     expect(urls.some((u: string) => u.includes('cursors'))).toBe(true);
+  });
+
+  it('waits for response bodies and releases an unmounted subscriber', async () => {
+    let release!: () => void;
+    const body = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: () => body })));
+    const progress = vi.fn();
+    const subscription = new AbortController();
+    const run = preloadAssets(progress, subscription.signal);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(progress).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.length).toBeLessThanOrEqual(8);
+    subscription.abort();
+    release();
+    expect(await run).toBe(true);
+    expect(progress).not.toHaveBeenCalled();
+  });
+
+  it('finishes an incomplete warmup after a stalled request', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    const run = preloadAssets(vi.fn());
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await run).toBe(false);
+    expect(shouldShowSplash()).toBe(true);
   });
 
   it('reports monotone progress and never rejects, failures included', async () => {

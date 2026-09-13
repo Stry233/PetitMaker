@@ -22,7 +22,10 @@ function concat(chunks: Uint8Array[], total: number): Uint8Array {
 
 export async function deflate(bytes: Uint8Array, method: CompressionMethod): Promise<Uint8Array> {
   if (method === CompressionMethod.Store) return bytes.slice();
-  const cs = new CompressionStream(streamFormat(method));
+  const format = streamFormat(method);
+  let cs: CompressionStream;
+  try { cs = new CompressionStream(format); }
+  catch { return (await import('./compression-fallback')).compress(bytes, method); }
   const w = cs.writable.getWriter();
   // Capture the write+close chain so a later cancel can't surface as an unhandled rejection.
   const pump = w.write(bytes).then(() => w.close()).catch(() => {});
@@ -45,7 +48,10 @@ export async function inflate(
   // Abort once output would exceed the smaller of the absolute cap and the ratio guard.
   const ratioCap = Math.max(64, bytes.length * opts.maxRatio);
   const cap = Math.min(opts.maxBytes, ratioCap);
-  const ds = new DecompressionStream(streamFormat(method));
+  const format = streamFormat(method);
+  let ds: DecompressionStream;
+  try { ds = new DecompressionStream(format); }
+  catch { return (await import('./compression-fallback')).decompress(bytes, method, cap); }
   const w = ds.writable.getWriter();
   const pump = w.write(bytes).then(() => w.close()).catch(() => {});
   const reader = ds.readable.getReader();

@@ -17,24 +17,24 @@ export interface ShareCodeAsset {
 }
 
 /** Fingerprint of everything that changes the encoded band for a given map. */
-export function shareCodeKey(bandWidth: number, title: string, createdAt: string): string {
-  return `${bandWidth}|${title}|${createdAt}`;
+export function shareCodeKey(bandWidth: number, createdAt: string): string {
+  return `${bandWidth}|${createdAt}`;
 }
 
 /** Render a built ShareCode to a canvas (shared by the preview asset and the export path). */
 export async function renderShareCodeAsset(
   state: GridState,
   summary: MapProvenanceSummary | null,
-  meta: { title: string; createdAt: string },
+  meta: { createdAt: string },
   width: number,
 ): Promise<ShareCodeAsset | null> {
-  const code = await buildShareCode(state, summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, title: meta.title, createdAt: meta.createdAt }, width);
+  const code = await buildShareCode(state, summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, createdAt: meta.createdAt }, width);
   if (!code) return null;
   const gc = document.createElement('canvas');
   gc.width = code.width;
   gc.height = code.height;
   gc.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(code.rgba), code.width, code.height), 0, 0);
-  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.title, meta.createdAt), notice: code.shareOriginalRecommended ? 'export.code_dense' : null };
+  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt), notice: code.shareOriginalRecommended ? 'export.code_dense' : null };
 }
 
 /** Native exports use a High-size preview; the final capture rebuilds at the reserved native width. */
@@ -42,7 +42,7 @@ function shareCodeBuildWidth(resolution: ExportOptions['resolution']): number {
   return resolution === 'original' ? RESOLUTION_WIDTHS.high : RESOLUTION_WIDTHS[resolution];
 }
 
-/** Debounce size/map changes; the modal already debounces title input. */
+/** Coalesce map and size changes before building the glyph. */
 const BUILD_DEBOUNCE_MS = 250;
 
 export interface ShareCodeState {
@@ -67,7 +67,6 @@ export function useShareCode(
   state: GridState | null,
   summary: MapProvenanceSummary | null,
   importable: boolean,
-  title: string,
   resolution: ExportOptions['resolution'],
   createdAt: string,
 ): ShareCodeState {
@@ -90,7 +89,7 @@ export function useShareCode(
     setCode({ asset: null, pending: true, issue: null });
     let alive = true;
     const id = setTimeout(() => {
-      void renderShareCodeAsset(state, summaryRef.current, { title, createdAt }, width)
+      void renderShareCodeAsset(state, summaryRef.current, { createdAt }, width)
         .then((asset) => {
           if (alive) setCode({ asset, pending: false, issue: asset?.notice ?? null });
         })
@@ -100,7 +99,7 @@ export function useShareCode(
         });
     }, BUILD_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(id); };
-  }, [open, state, importable, title, resolution, createdAt]);
+  }, [open, state, importable, resolution, createdAt]);
 
   return code;
 }

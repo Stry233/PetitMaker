@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  annotationsInRect, chipApproxWidthCells, generateAnnotationId, nextZoneNumber, routeSamples,
+  roundedZoneLoops, annotationsInRect, chipApproxWidthCells, generateAnnotationId, nextZoneNumber, routeSamples,
   zoneCentroid, zoneLoops,
   type ChipNote, type MapAnnotation,
 } from '../../core/model/annotations';
@@ -108,5 +108,34 @@ describe('annotationsInRect', () => {
 
   it('a rect over everything returns every id once', () => {
     expect(annotationsInRect({ x: 0, y: 0, w: 40, h: 40 }, items)).toEqual(['z', 't', 'r']);
+  });
+});
+
+
+describe('painted zone boundaries', () => {
+  it('preserves every boundary around diagonal brush contacts', () => {
+    const cells = [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }];
+    const loops = roundedZoneLoops(cells);
+    expect(loops).toHaveLength(3);
+    for (const loop of loops) {
+      expect(loop.length).toBeGreaterThan(3);
+      expect(loop.every((point) => point.every(Number.isFinite))).toBe(true);
+      expect(loop[loop.length - 1]).toEqual(loop[0]);
+    }
+  });
+
+  it('returns valid contours covering every 4 by 4 brush footprint', () => {
+    const failures: number[] = [];
+    for (let mask = 1; mask < 65536; mask++) {
+      const cells = Array.from({ length: 16 }, (_, i) => ({ x: i % 4, y: Math.floor(i / 4) }))
+        .filter((_, i) => (mask & (1 << i)) !== 0);
+      const loops = zoneLoops(cells);
+      const area = loops.reduce((sum, loop) => sum + loop.reduce((a, [x, y], i) => {
+        const next = loop[(i + 1) % loop.length]!;
+        return a + (x * next[1] - next[0] * y) / 2;
+      }, 0), 0);
+      if (area !== cells.length || loops.some((loop) => loop.length < 3)) failures.push(mask);
+    }
+    expect(failures).toEqual([]);
   });
 });

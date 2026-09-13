@@ -40,7 +40,7 @@ import { ObjectShelf } from './bars/ObjectShelf';
 import { TerrainBar } from './bars/TerrainBar';
 import { terrainSurface, type TerrainSurface } from './bars/terrain-cells';
 import {
-  ASSISTANT_BLOCK, ASSISTANT_INK, ASSISTANT_ROW_TOP, MODES, MODE_PLATE, MODE_PLATE_ID, MODE_ROW_LEFT,
+  ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODES, MODE_PLATE, MODE_PLATE_ID, MODE_ROW_LEFT,
   MODE_ROW_TOP, TOP_RIGHT, TOP_RIGHT_TOP, blockCentre, topRightHeight, topRightSlack,
   type BlockArt, type FrameArt,
 } from './frame';
@@ -50,8 +50,7 @@ import { cssMotion, useBeat, useMotion, useMotionAllowed } from './motion/use-mo
 import { Rail } from './Rail';
 import { FrameLayoutProvider, useFrameLayout } from './frame-layout';
 import { RestoreShelf } from './bars/RestoreShelf';
-import { BarText } from './bars/bar-atoms';
-import { ACTIVE, EDGE_VIGNETTE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, FOCUS_SHAPE_RADIUS, INK, MAP_EDGE_ALPHA, MAP_LABEL, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID, VIGNETTE_DEPTH, mapShape } from '../design/tokens';
+import { EDGE_VIGNETTE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, FOCUS_SHAPE_RADIUS, INK, MAP_EDGE_ALPHA, MAP_LABEL, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID, VIGNETTE_DEPTH, mapShape } from '../design/tokens';
 import { ShapeEdge } from '../design/shape-edge';
 import {
   captionShift, EDGE_RIGHT, MODE, MODE_SCALE, SCALE, TEXT, TOP_RIGHT_GAP, ZOOM,
@@ -322,40 +321,6 @@ const ENTRANCE_SLOT: CSSProperties = {
   height: CHARACTER_SEAT.h,
 };
 
-/** The painted region, shown at the character's shoulder: while one stands it is a hard boundary for
- *  every edit the assistant makes, and it has to be readable with the panel shut. */
-function RegionBadge() {
-  const t = useT();
-  const cells = useEditorStore((s) => s.region.length);
-  const selecting = useEditorStore((s) => s.selectingRegion);
-  // While the marking screen is open the count lives on the screen itself; a second bubble at the
-  // shoulder would shadow every stroke of the brush.
-  if (cells === 0 || selecting) return null;
-  return (
-    <div
-      data-testid="shell-assistant-region-badge"
-      role="status"
-      style={{
-        position: 'fixed',
-        left: ASSISTANT_INK.right - 6,
-        top: ASSISTANT_INK.top - 6,
-        height: 22,
-        padding: '0 9px',
-        borderRadius: 999,
-        background: ACTIVE,
-        display: 'flex',
-        alignItems: 'center',
-        zIndex: z.panel + 1,
-        pointerEvents: 'none',
-      }}
-    >
-      <BarText size={TEXT.small} color={INK} weight={900}>
-        {t(cells === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: cells })}
-      </BarText>
-    </div>
-  );
-}
-
 /**
  * The second row: the assistant's block, on its own because the character has a state and the five
  * modes do not.
@@ -407,7 +372,6 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
         slot={preview ? undefined : <div ref={entranceRef} data-testid="entrance-plate-anchor" style={ENTRANCE_SLOT} />}
         onPress={() => setOpen(!open)}
       />
-      <RegionBadge />
     </div>
   );
 }

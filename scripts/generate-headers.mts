@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join } from 'node:path';
 
-import { HEADERS_POLICY, toEsaDoc, toNetlifyHeaders, toVercelJson, type VercelJsonLike } from './../security/headers-policy';
+import { HEADERS_POLICY, toEsaDoc, toNetlifyHeaders, toVercelJson, type VercelJsonLike } from '../security/headers-policy';
 // The site's domains live in the legal config (the single source for canonicalOrigin);
 // the ESA runbook lists the legacy-domain 301s from there rather than repeating them.
 import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';

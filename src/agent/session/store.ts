@@ -4,6 +4,7 @@ import { createLog, subscribe, type SessionLog } from '../core/log';
 import { isJobActive } from '../core/loop';
 import { deriveView, type PanelView } from '../core/project-view';
 import type { Part } from '../core/types';
+import { eraseRecords } from './erase-records';
 import {
   clearMarks, loadLog, loadMarks, NO_MARKS, saveLog, saveMarks, type StorageHealth,
 } from './persist';
@@ -32,6 +33,8 @@ export interface AgentSessionState {
   cleared: ReadonlySet<number>;
   fileAway(orderSeq: number): void;
   clearRecord(orderSeq: number): void;
+  /** Erases settled transcripts together, including summaries that may contain them. */
+  clearRecords(orderSeqs: readonly number[]): void;
   /** Flushes pending storage and adopts a stored log unless the current log has an active job. */
   hydrate(): void;
 }
@@ -153,12 +156,18 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       set({ filed });
       saveMarks({ filed: [...filed], cleared: [...get().cleared] });
     },
-    clearRecord: (orderSeq) => {
-      const filed = withSeq(get().filed, orderSeq);
-      const cleared = withSeq(get().cleared, orderSeq);
+    clearRecord: (orderSeq) => get().clearRecords([orderSeq]),
+    clearRecords: (orderSeqs) => {
+      const filed = orderSeqs.reduce(withSeq, get().filed);
+      const cleared = orderSeqs.reduce(withSeq, get().cleared);
       if (filed === get().filed && cleared === get().cleared) return;
+      cancelPendingSave();
+      const previous = get().log;
+      const retained = eraseRecords(previous, cleared);
+      if (retained !== previous) adopt(retained);
       set({ filed, cleared });
       saveMarks({ filed: [...filed], cleared: [...cleared] });
+      applyStorageHealth(saveLog(retained));
     },
     storageNotice: null,
     corruptRaw: null,
@@ -198,11 +207,13 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       if (isJobActive(get().log)) return;
       const { log: loaded, corrupt, corruptRaw } = loadLog();
       if (corrupt) set({ storageNotice: 'corrupt', corruptRaw: corruptRaw ?? null });
-      // Adoption is a partial state merge and preserves any storage notice.
-      adopt(loaded ?? createLog());
       // Record marks are valid only with the log whose order sequence they reference.
       if (!loaded) clearMarks();
       const marks = loaded ? loadMarks() : NO_MARKS;
+      // Older releases hid cleared records without erasing their provider context.
+      const retained = loaded ? eraseRecords(loaded, new Set(marks.cleared)) : createLog();
+      adopt(retained);
+      if (loaded && retained !== loaded) applyStorageHealth(saveLog(retained));
       // Only a log read from storage begins in the restored state.
       set({ filed: new Set(marks.filed), cleared: new Set(marks.cleared), restored: loaded !== null });
     },

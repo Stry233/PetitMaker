@@ -220,8 +220,7 @@ export function AnswerPaper({
           {...(onClear ? { onClear } : {})}
         />
       ) : (
-        /* ANSWERING IS WHAT FILES AN ASK, or the next order is: a File it away beside a standing
-           question would offer to put away a job that is still waiting on the user. */
+        /* Standing questions use the panel’s shared Cancel task action. */
         !asking && onFileAway && (
           <div style={FOOT}>
             <Pill variant="quiet" on="inset" data-testid="answer-file-away" onClick={() => onFileAway(job.orderSeq)}>

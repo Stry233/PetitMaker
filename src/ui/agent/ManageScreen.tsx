@@ -10,6 +10,8 @@
  * Destructive actions use inline two-step confirmation. Stop is available for any running job;
  * set-aside is limited to retry backoff, the hold state that can be resumed safely.
  */
+import { EffortControl } from './EffortControl';
+import { ensureModelCatalog } from '../../agent/providers/model-catalog';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
 import { PROVIDER_META, type ProviderId } from '../../agent/providers/defaults';
@@ -29,7 +31,7 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { CONFIRM_ARM, framerMotion } from './motion';
 import { forgetRoster, forgetRosters, rememberedRoster, rememberRoster, rosterKey } from './model-roster';
 import { prettyModel } from './pretty-model';
-import { defaultListModels, IDLE_MS, type ListModels } from './SetupScreen';
+import { defaultListModels, IDLE_MS, type ListModels } from './model-discovery';
 import {
   endpointCheckVerdict, FIELD_STYLE, FOOT_STYLE, GATED, INPUT_STYLE, NOTE_STYLE, OVERSIGHT_COPY,
   OVERSIGHTS, PROVIDER_ROSTER, urlLooksUsable, WRAP_STYLE,
@@ -49,6 +51,8 @@ export interface ManageScreenProps {
   /** Whether the job is in a retry backoff that can be set aside. */
   parkable?: boolean;
   onDone?: () => void;
+  /** Opens key entry directly when the selected provider has no saved credential. */
+  onNeedKey?: () => void;
   onStopJob?: () => void;
   /** Parks a retry backoff so the request can be resumed later. */
   onSetAside?: () => void;
@@ -62,7 +66,7 @@ export interface ManageScreenProps {
 
 export function ManageScreen({
   jobCount, stoppable = false, parkable = false,
-  onDone, onStopJob, onSetAside, onClearJobs, listModels = defaultListModels, liveConnection,
+  onDone, onNeedKey, onStopJob, onSetAside, onClearJobs, listModels = defaultListModels, liveConnection,
 }: ManageScreenProps) {
   const t = useT();
   const zoom = useFrameZoom();
@@ -72,7 +76,6 @@ export function ManageScreen({
   const [modelsOpen, setModelsOpen] = useState(false);
   const [models, setModels] = useState<readonly string[]>([]);
   const [asking, setAsking] = useState<Asking>(null);
-  const [modelDraft, setModelDraft] = useState('');
   const [urlDraft, setUrlDraft] = useState(settings.customBaseUrl);
   const [urlBad, setUrlBad] = useState(false);
   /** Forces the roster effect to rerun when the stored address itself did not change. */
@@ -81,8 +84,6 @@ export function ManageScreen({
   const [listing, setListing] = useState(false);
   const [reached, setReached] = useState<boolean | null>(null);
 
-  /** Marks checks caused by an address edit, which may reconcile the saved model. */
-  const justChecked = useRef(false);
   /** Limits the next-job notification to once per running job. */
   const noted = useRef(false);
   useEffect(() => { if (!liveConnection) noted.current = false; }, [liveConnection]);
@@ -94,68 +95,37 @@ export function ManageScreen({
     showToast(t('agent3.setup_manage_next_job'), 'info');
   }, [liveConnection, t]);
 
+  useEffect(() => { if (listModels === defaultListModels) void ensureModelCatalog(); }, [listModels]);
+
   const provider = settings.provider;
   const model = settings.model[provider] ?? '';
   // Read the credential only for the request that needs it; never put it in component state.
   const armedKey = runnerSettings(settings).apiKey;
   const customBaseUrl = settings.customBaseUrl;
 
-  /**
-   * Reconciles a filed model only after this screen checks the endpoint. A listed model remains; a
-   * missing one switches visibly to the first offered model. An answered but unavailable catalogue
-   * keeps a typed id unverified. An unreachable endpoint clears readiness through the check recorder.
-   */
-  const reconcileModel = useCallback((ids: readonly string[]) => {
-    if (!justChecked.current) return;
-    justChecked.current = false;
-    if (ids.length === 0) return;
-    const state = useAgentPanelSettings.getState();
-    const filed = state.model[state.provider] ?? '';
-    if (filed === '' || ids.includes(filed)) return;
-    const next = ids[0]!;
-    state.setModel(next);
-    showToast(t('agent3.setup_manage_model_swapped', { was: prettyModel(filed), now: prettyModel(next) }), 'warning');
-    noteNextJob();
-  }, [t, noteNextJob]);
-
-  // THE LIST IS A CONVENIENCE HERE, NOT A GATE. Setup already proved the key; a manage card whose
-  // list will not load still lets the provider, the oversight and both verbs be used, so a failure
-  // simply leaves the dropdown holding the model already filed. Cancellation follows each request
-  // so rapidly switching providers cannot let an older answer land last.
-  //
-  // AND ASKED ONCE PER ENDPOINT PER SESSION (`model-roster.ts`). This is the panel's one settings
-  // door, so a request per visit is a request per glance at the oversight caption — and the answer
-  // does not change between two presses of the same gear.
-  // IT IS ALSO THE ADDRESS CHECK. A `custom` connection's address is edited on this card, and asking
-  // the new one what it can run is the only way to find out whether it answers at all — so the one
-  // request serves both, and `listing`/`reached` are what the address row reads its face off.
+  // Discovery failures preserve the selection; superseded requests cannot update the card.
   useEffect(() => {
     if (armedKey === '') { setModels([]); setListing(false); setReached(null); return undefined; }
     const key = rosterKey(provider, customBaseUrl);
     const held = rememberedRoster(key);
-    // The cached path reconciles too: a filed address the user comes back to is still an address
-    // that decides which models exist, and a list read from memory says exactly what a fresh one did.
-    if (held) { setModels(held); setListing(false); setReached(true); reconcileModel(held); return undefined; }
+    if (held) { setModels(held); setListing(false); setReached(true); return undefined; }
     let cancelled = false;
+    setModels([]);
     setListing(true);
-    listModels({ provider, apiKey: armedKey, ...(customBaseUrl ? { customBaseUrl } : {}) })
+    const region = runnerSettings(useAgentPanelSettings.getState()).region;
+    listModels({ provider, apiKey: armedKey, ...(region === undefined ? {} : { region }), ...(customBaseUrl ? { customBaseUrl } : {}) })
       .then((ids) => {
-        rememberRoster(key, ids);
         if (cancelled) return;
+        rememberRoster(key, ids);
         setModels(ids);
         setListing(false);
         // An endpoint that answers with an empty catalogue HAS answered: the address is reachable and
         // the model is what has to be typed, which is a different repair from an address that is not.
         setReached(true);
         if (provider === 'custom') useAgentPanelSettings.getState().recordEndpointCheck(true);
-        reconcileModel(ids);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // Consumed here as the success path consumes it in `reconcileModel`: whatever this failure
-        // decides, it has answered the check it belongs to.
-        const wasChecked = justChecked.current;
-        justChecked.current = false;
         setModels([]);
         setListing(false);
         if (endpointCheckVerdict(err) === 'no-list') {
@@ -166,12 +136,11 @@ export function ManageScreen({
           return;
         }
         setReached(false);
-        // THE FAILED VERDICT IS FILED ONLY FOR A CHECK MADE ON THIS CARD. A gear press re-asks the
-        // same list, and a transient fault under that glance must not empty a pick the user made.
-        if (provider === 'custom' && wasChecked) useAgentPanelSettings.getState().recordEndpointCheck(false);
+        // A discovery failure cannot prove that the generation endpoint is unreachable.
+        if (provider === 'custom') useAgentPanelSettings.getState().recordEndpointCheck(true);
       });
     return () => { cancelled = true; };
-  }, [listModels, provider, armedKey, customBaseUrl, checkSeq, reconcileModel]);
+  }, [listModels, provider, armedKey, customBaseUrl, checkSeq]);
 
   // The rosters go with the key: what an endpoint can run is an answer about the credential that
   // asked for it, and the next key on this provider deserves to have its own asked.
@@ -190,7 +159,6 @@ export function ManageScreen({
     if (stored === '') { setUrlBad(true); return; }
     setUrlBad(false);
     forgetRoster(rosterKey('custom', stored));
-    justChecked.current = true;
     setCheckSeq((n) => n + 1);
     noteNextJob();
   }, [settings, urlDraft, noteNextJob]);
@@ -217,32 +185,30 @@ export function ManageScreen({
    *  that failed outright), and Done reads the whole answer: the card is the door to idle, and idle
    *  says it can carry an order. */
   const gaps = connectionGaps(settings);
-  /** Whether the FILED address is the one whose last completed check failed. The model row stands
-   *  empty behind it and offers nothing at all: any list this card could offer came from a server
-   *  that is not answering, and a typed id would file a model no request can reach. */
-  const down = provider === 'custom' && customBaseUrl !== '' && settings.endpointDown === customBaseUrl;
+  /** Custom model selection requires an explicit server address. */
+  const down = provider === 'custom' && customBaseUrl === '';
   const modelItems: FloatMenuItem[] = down
     ? []
     : models.length > 0
-      ? models.map((id) => ({
+      ? models.map((id, index) => ({
         id,
-        label: prettyModel(id),
+        label: index === 0 ? t('agent3.setup_default_model_entry', { name: prettyModel(id) }) : prettyModel(id),
         // The pick a failed check CLEARED, offered back visibly where the recovered list serves it:
         // it was the user's own, and one press restores it, but the row stands empty until that press.
         ...(id === settings.formerModel ? { sub: t('agent3.setup_model_former') } : {}),
       }))
-      // The one KNOWN DEFAULT this card can offer with no list: the model already filed for this
-      // provider, from a session that did reach one.
-      : model === '' ? [] : [{ id: model, label: prettyModel(model), sub: t('agent3.setup_known_default') }];
-  /** No list AND nothing filed: there is nothing to choose from, so the id is typed. A down endpoint
-   *  is NOT that case — its repair is the address row above, and the sub-line under the model says so. */
-  const typeIt = !down && models.length === 0 && model === '';
+      // Keep an earlier choice available when discovery cannot supply a list.
+      : model === '' ? [] : [{ id: model, label: prettyModel(model), sub: t('agent3.setup_model_former') }];
+  /** Manual model entry remains mounted through every keystroke. */
+  const typeIt = !down && !listing && (models.length === 0 || provider === 'custom' || provider === 'doubao');
   /** The verdict under the address field; empty where the address answered. */
   const endpointNote = urlBad ? t('agent3.setup_endpoint_invalid')
-    : reached === false ? t('agent3.setup_manage_endpoint_failed')
+    : reached === false ? t('agent3.setup_list_unavailable')
       : reached === true && models.length === 0 && model !== ''
         ? t('agent3.setup_manage_endpoint_unlisted')
         : '';
+
+  const clearQuestion = stoppable ? 'agent3.setup_manage_clear_pause_q' : 'agent3.setup_manage_clear_q';
 
   return (
     <motion.div {...zoneEnter(reduced)} data-testid="manage-screen" style={WRAP_STYLE}>
@@ -253,7 +219,11 @@ export function ManageScreen({
           open={provOpen}
           onOpen={() => setProvOpen(true)}
           onClose={() => setProvOpen(false)}
-          onPick={(id) => { settings.pinProvider(id as ProviderId); noteNextJob(); }}
+          onPick={(id) => {
+            settings.pinProvider(id as ProviderId);
+            if (!settings.keyed.includes(id as ProviderId)) onNeedKey?.();
+            noteNextJob();
+          }}
           activeId={provider}
           zoom={zoom}
           items={[
@@ -340,8 +310,12 @@ export function ManageScreen({
             its own, so the row carries the same small label the endpoint and oversight rows are
             titled by. It stands whatever the row below holds — a pick, an empty seat, a typed id —
             so no state moves it. */}
-        <div data-testid="manage-model-label" style={LABEL_STYLE}>
-          {t('agent3.setup_manage_model')}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div data-testid="manage-model-label" style={LABEL_STYLE}>{t('agent3.setup_manage_model')}</div>
+          <Pill on="plate" variant="quiet" data-testid="manage-refresh-models" disabled={listing}
+            onClick={() => { forgetRoster(rosterKey(provider, customBaseUrl)); if (listModels === defaultListModels) void ensureModelCatalog(true); setCheckSeq((n) => n + 1); }}>
+            {t('agent3.setup_refresh_models')}
+          </Pill>
         </div>
         <FloatMenu
           data-testid="manage-model-dd"
@@ -369,7 +343,7 @@ export function ManageScreen({
         {typeIt && (
           <>
             <p data-testid="manage-models-unavailable" style={NOTE_STYLE}>
-              {t('agent3.setup_models_unavailable')}
+              {t(provider === 'doubao' ? 'agent3.setup_doubao_model' : models.length ? 'agent3.setup_manual_model' : 'agent3.setup_models_unavailable')}
             </p>
             <label className={FIELD_WRAP_CLASS} style={FIELD_STYLE}>
               <input
@@ -379,8 +353,8 @@ export function ManageScreen({
                 spellCheck={false}
                 autoComplete="off"
                 placeholder={t('agent3.setup_model_placeholder')}
-                value={modelDraft}
-                onChange={(e) => { setModelDraft(e.target.value); settings.setModel(e.target.value.trim()); noteNextJob(); }}
+                value={model}
+                onChange={(e) => { settings.setModel(e.target.value.trim()); noteNextJob(); }}
                 style={{ ...INPUT_STYLE, letterSpacing: 0 }}
               />
             </label>
@@ -388,20 +362,23 @@ export function ManageScreen({
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <div style={LABEL_STYLE}>
-          {t('agent3.setup_oversight')}
+      <div>
+        <EffortControl onChange={noteNextJob} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={LABEL_STYLE}>
+            {t('agent3.setup_oversight')}
+          </div>
+          <SegmentedControl
+            value={settings.oversight}
+            options={OVERSIGHTS}
+            onChange={(o) => settings.setOversight(o)}
+            render={(o) => t(OVERSIGHT_COPY[o].label)}
+            idPrefix="agent3-oversight"
+          />
+          <p data-testid="manage-oversight-caption" style={NOTE_STYLE}>
+            {t(OVERSIGHT_COPY[settings.oversight].caption)}
+          </p>
         </div>
-        <SegmentedControl
-          value={settings.oversight}
-          options={OVERSIGHTS}
-          onChange={(o) => settings.setOversight(o)}
-          render={(o) => t(OVERSIGHT_COPY[o].label)}
-          idPrefix="agent3-oversight"
-        />
-        <p data-testid="manage-oversight-caption" style={NOTE_STYLE}>
-          {t(OVERSIGHT_COPY[settings.oversight].caption)}
-        </p>
       </div>
 
       <div data-testid="manage-verbs" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -432,7 +409,7 @@ export function ManageScreen({
           </span>
           <span style={asking === 'forget' ? HUSHED : undefined}>
             <InlineConfirm
-              question={t('agent3.setup_manage_clear_q', { n: jobCount })}
+              question={t(clearQuestion, { n: jobCount })}
               arm={CONFIRM_ARM}
               open={asking === 'clear'}
               onOpenChange={(open) => setAsking(open ? 'clear' : null)}
@@ -447,7 +424,7 @@ export function ManageScreen({
                   disabled={jobCount === 0}
                 >
                   <Icon id="pw-history" size={13} />
-                  {t(armed ? 'agent3.setup_manage_clear_q' : 'agent3.setup_manage_clear_jobs', { n: jobCount })}
+                  {t(armed ? clearQuestion : 'agent3.setup_manage_clear_jobs', { n: jobCount })}
                 </Pill>
               )}
             </InlineConfirm>

@@ -1,6 +1,7 @@
 /* Illustration workspace. Takes remain in memory for the current map state, and only the Generate
  * action is disabled while a job is running. */
 import { useEffect, useRef, useState } from 'react';
+import { retainNeuralRuntime } from '../../../../../io/stylize';
 import { useT } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { host } from '../../../../../kit/host';
@@ -87,6 +88,7 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
   const [originalSrc] = useState(capture);
 
   // Closing the window cancels its active generation.
+  useEffect(retainNeuralRuntime, []);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const original: Picture = { key: 'original', src: originalSrc, label: t('stylize.original') };
@@ -194,8 +196,8 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
       const roll = versionStore.getState().versions.reduce(
         (m, v) => (v.direction === packId && v.roll !== undefined ? Math.max(m, v.roll + 1) : m), 0);
       // Headless callers fall back to the renderer's field-based source.
-      const shot = host.capture2d(PROC_RENDER_PX, false, false);
-      const sourceImage = shot ? await loadDataUrl(shot) : undefined;
+      const shot = host.capture2dCanvas(PROC_RENDER_PX, false, false);
+      const sourceImage = shot ?? undefined;
       const canvas = await renderProcPackAsync({
         state: gridState, packId, maxPx: PROC_RENDER_PX, seed: takeSeed(gridState, roll),
         locale: useEditorStore.getState().locale,

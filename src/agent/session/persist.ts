@@ -10,7 +10,7 @@ import { validStoredEvents } from './validate-log';
 
 export const LOG_VERSION = 3;
 
-interface StoredEnvelope { v: number; events: SessionEvent[] }
+interface StoredEnvelope { v: number; events: SessionEvent[]; nextSeq?: number }
 
 /** Stores a reasoning excerpt with its original length and marks the persisted part complete. */
 function digestReasoning(p: Part): Part {
@@ -33,7 +33,7 @@ function stripForStorage(e: SessionEvent): SessionEvent {
 }
 
 export function serializeLog(log: SessionLog): string {
-  const envelope: StoredEnvelope = { v: LOG_VERSION, events: eventsOf(log).map(stripForStorage) };
+  const envelope: StoredEnvelope = { v: LOG_VERSION, events: eventsOf(log).map(stripForStorage), nextSeq: log.nextSeq };
   return JSON.stringify(envelope);
 }
 
@@ -42,11 +42,12 @@ export function deserializeLog(raw: string | null, now: () => number = Date.now)
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed !== 'object') return null;
-  const { v, events } = parsed as Partial<StoredEnvelope>;
+  const { v, events, nextSeq } = parsed as Partial<StoredEnvelope>;
   if (v !== LOG_VERSION || !validStoredEvents(events)) return null;
   const frozen = events.map((e) => deepFreeze(e)) as SessionEvent[];
   const maxSeq = frozen.reduce((m, e) => Math.max(m, e.seq), 0);
-  return { events: frozen, now, nextSeq: maxSeq + 1, listeners: new Set() };
+  if (nextSeq !== undefined && (!Number.isSafeInteger(nextSeq) || nextSeq <= maxSeq)) return null;
+  return { events: frozen, now, nextSeq: nextSeq ?? maxSeq + 1, listeners: new Set() };
 }
 
 /** Keeps the latest compacted window plus the newest pre-window load of each active skill. */
@@ -102,7 +103,6 @@ export function loadMarks(): RecordMarks {
 
 /** Removes the marks envelope. */
 export function clearMarks(): void {
-  if (typeof localStorage === 'undefined') return;
   try { localStorage.removeItem(PREFS.agentMarksV3.key); } catch { /* storage is gone */ }
 }
 

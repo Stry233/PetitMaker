@@ -49,23 +49,15 @@ export class MapRenderer {
   private chunkGridContainer = new PIXI.Container();
   private labelsContainer = new PIXI.Container();
 
-  // ── Render-on-demand loop ─────────────────────────────────────────────────
-  // The app does not auto-render; this ticker callback draws only while a render
-  // window is open (requestRender refreshes it) so a static editor costs no GPU.
-  // A low-frequency heartbeat is a safety floor: should some mutation path forget
-  // to requestRender, the canvas still refreshes within a few frames rather than
-  // going stale.
+  // The ticker sleeps between requested frames; a timed heartbeat retains missed-invalidation recovery.
   private renderWindow = 0;            // frames left to render
-  private framesIdle = 0;              // frames since the last draw
   private destroyed = false;           // guards deferred initMap work after teardown
   private labelBuildRaf = 0;           // incremental chunk-label build
   private showGrid = false;            // current editor grid visibility (restored after a grid capture)
   private showChunks = false;          // current editor chunk-grid visibility
-  private static readonly HEARTBEAT_FRAMES = 15; // ~4fps safety floor
-  /** The floor once the scene has PROVEN still (several untouched heartbeats in a row): a dense
-   *  map redrawn 4x a second forever is a standing cost a resting editor has no reason to pay,
-   *  and a hypothetically missed invalidation still self-heals within about a second. */
-  private static readonly HEARTBEAT_REST_FRAMES = 60;
+  private heartbeat: ReturnType<typeof setTimeout> | null = null;
+  private static readonly HEARTBEAT_MS = 250;
+  private static readonly HEARTBEAT_REST_MS = 1000;
   private static readonly REST_AFTER_HEARTBEATS = 8;
   private stillHeartbeats = 0;
   /** Whether this canvas is the view on screen. The 3D view stands over the 2D canvas while it is
@@ -86,7 +78,32 @@ export class MapRenderer {
 
   /** Open the render window for a few frames (coalesced; spam-safe). Called by
    *  every scene mutation + every canvas-animation frame (via render-scheduler). */
-  requestRender = (): void => { this.renderWindow = 4; this.stillHeartbeats = 0; };
+  requestRender = (): void => {
+    if (this.destroyed) return;
+    this.renderWindow = 4;
+    this.stillHeartbeats = 0;
+    this.clearHeartbeat();
+    if (this.presenting || this.paintWaiters.length > 0) this.app.ticker.start();
+  };
+
+  private clearHeartbeat(): void {
+    if (this.heartbeat !== null) clearTimeout(this.heartbeat);
+    this.heartbeat = null;
+  }
+
+  private restTicker(): void {
+    this.app.ticker.stop();
+    if (!this.presenting || this.destroyed || this.heartbeat !== null) return;
+    const delay = this.stillHeartbeats >= MapRenderer.REST_AFTER_HEARTBEATS
+      ? MapRenderer.HEARTBEAT_REST_MS : MapRenderer.HEARTBEAT_MS;
+    this.heartbeat = setTimeout(() => {
+      this.heartbeat = null;
+      if (this.destroyed || !this.presenting) return;
+      this.stillHeartbeats = Math.min(MapRenderer.REST_AFTER_HEARTBEATS, this.stillHeartbeats + 1);
+      this.renderWindow = 1;
+      this.app.ticker.start();
+    }, delay);
+  }
 
   /** Presented or not, decided by whoever owns the canvas element (`PixiCanvas`, on the view
    *  mode). Coming back on screen opens the render window, which is what flushes whatever the
@@ -95,35 +112,24 @@ export class MapRenderer {
     if (this.presenting === on) return;
     this.presenting = on;
     if (on) this.requestRender();
+    else {
+      this.clearHeartbeat();
+      if (this.paintWaiters.length === 0) this.app.ticker.stop();
+    }
   }
 
   /** One-shot waiters for "a frame was actually DRAWN" (see onNextPaint). */
   private paintWaiters: Array<() => void> = [];
 
   private renderTick = (): void => {
-    if (this.renderWindow > 0) {            // keep-alive window after a mutation/anim
+    if (!this.presenting && this.paintWaiters.length === 0) { this.restTicker(); return; }
+    if (this.renderWindow > 0) {
       this.renderWindow--;
-      this.framesIdle = 0;
-      // A hidden canvas draws only for a waiter: a paint promised (`onNextPaint`) is owed its
-      // frame whatever stands on top, and everything else can wait for the next presented one.
-      if (!this.presenting && this.paintWaiters.length === 0) return;
-      // Edits marked terrain chunks dirty (per command); repaint them once per
-      // FRAME, right before the render that shows them. No-op when clean.
       if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
       this.app.render();
       this.notifyPainted();
-    } else {
-      const floor = this.stillHeartbeats >= MapRenderer.REST_AFTER_HEARTBEATS
-        ? MapRenderer.HEARTBEAT_REST_FRAMES
-        : MapRenderer.HEARTBEAT_FRAMES;
-      if (++this.framesIdle < floor) return;
-      this.framesIdle = 0;
-      if (!this.presenting) return;
-      this.stillHeartbeats = Math.min(MapRenderer.REST_AFTER_HEARTBEATS, this.stillHeartbeats + 1);
-      if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
-      this.app.render();                      // the safety floor (see HEARTBEAT_FRAMES)
-      this.notifyPainted();
     }
+    if (this.renderWindow <= 0) this.restTicker();
   };
 
   /** Run `cb` after the next frame this renderer DRAWS. Render-on-demand means a frame boundary
@@ -489,6 +495,8 @@ export class MapRenderer {
     // smaller canvas). Left in the model, that change would sit invisible until the next pan or
     // zoom applied it, and the map would jump then.
     this.applyViewportTransform();
+    // Buffer allocation clears the canvas; paint before ResizeObserver returns to the compositor.
+    this.renderTick();
   }
 
   /** Capture the full map (independent of current pan/zoom) as a PNG data URL
@@ -532,6 +540,17 @@ export class MapRenderer {
     }
   }
 
+  /** Saved maps include hidden layers; their detached capture must include them too. */
+  captureCompleteMapImage(maxPx: number): string | null {
+    try { return this.captureCompleteMapCanvas(maxPx)?.toDataURL('image/png') ?? null; } catch { return null; }
+  }
+
+  captureCompleteMapCanvas(maxPx: number): HTMLCanvasElement | null {
+    if (!this.currentState) return null;
+    return this.terrainLayer.withAllLayersVisible(this.currentState, () =>
+      this.objectLayer.withAllLayersVisible(() => this.captureMapCanvas(maxPx, false, undefined, true)));
+  }
+
   /** Export-focused capture: a TIGHTLY-FRAMED PNG of just the map CONTENT (zones /
    *  terrain / objects) with the editor chrome hidden (no grid, chunk bounds,
    *  coordinates or chunk labels). Framed to the EXACT template region so the map
@@ -539,6 +558,10 @@ export class MapRenderer {
    *  chrome that extends past the map and leaves it tiny in a corner. Long side
    *  capped at maxPx. Used by the export preview/compose pipeline. */
   captureMapImage(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }, annotations?: boolean): string | null {
+    try { return this.captureMapCanvas(maxPx, includeGrid, rect, annotations)?.toDataURL('image/png') ?? null; } catch { return null; }
+  }
+
+  captureMapCanvas(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }, annotations?: boolean): HTMLCanvasElement | null {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
     // `annotations` overrides the plan-notes layer's eye for this capture. Omitted values preserve
@@ -588,7 +611,7 @@ export class MapRenderer {
       this.worldContainer.scale.set(1, 1);
       this.worldContainer.position.set(0, 0);
       this.worldContainer.updateTransform(); // ensure the identity matrix is current before generateTexture bakes it
-      let dataUrl: string | null = null;
+      let captured: HTMLCanvasElement | null = null;
       try {
         // Clamp the request to the GPU limits so a native-resolution ("Original") request never
         // exceeds them (which would upload black). Two separate limits matter: MAX_TEXTURE_SIZE
@@ -607,9 +630,8 @@ export class MapRenderer {
         const cap = Number.isFinite(hardMax) ? Math.min(maxPx, hardMax) : maxPx;
         const resolution = Math.min(1, cap / Math.max(region.width, region.height));
         const rt = this.app.renderer.generateTexture(this.worldContainer, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
-        const canvas = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement;
-        rt.destroy(true);
-        dataUrl = canvas.toDataURL('image/png');
+        try { captured = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement; }
+        finally { rt.destroy(true); }
       } finally {
         this.worldContainer.scale.set(sx, sy);
         this.worldContainer.position.set(px, py);
@@ -621,7 +643,7 @@ export class MapRenderer {
         }
         this.requestRender();
       }
-      return dataUrl;
+      return captured;
     } catch {
       return null;
     } finally {
@@ -641,13 +663,17 @@ export class MapRenderer {
    *  An empty annotation layer would capture as a blank sheet the compose step cannot use, so an
    *  empty map returns null instead of a picture. */
   captureAnnotationsImage(maxPx: number): string | null {
+    try { return this.captureAnnotationsCanvas(maxPx)?.toDataURL('image/png') ?? null; } catch { return null; }
+  }
+
+  captureAnnotationsCanvas(maxPx: number): HTMLCanvasElement | null {
     if (!this.currentState) return null;
     if ((this.currentState.annotations?.items.length ?? 0) === 0) return null;
     const prevAnnotations = this.annotationLayer.container.visible;
     this.annotationLayer.container.visible = true;
     try {
       this.flushNumbers();
-      return this.bakeLayersImage(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.chunkGridContainer, this.overlayLayer.container, this.labelsContainer]);
+      return this.bakeLayersCanvas(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.chunkGridContainer, this.overlayLayer.container, this.labelsContainer]);
     } finally {
       this.annotationLayer.container.visible = prevAnnotations;
     }
@@ -675,6 +701,10 @@ export class MapRenderer {
    *  single-layer captures. Same template-framed rect, same reset-transform-then-restore dance and
    *  the same GPU-limit clamp as `captureMapImage` (see its body for why each is there). */
   private bakeLayersImage(maxPx: number, hidden: PIXI.Container[]): string | null {
+    try { return this.bakeLayersCanvas(maxPx, hidden)?.toDataURL('image/png') ?? null; } catch { return null; }
+  }
+
+  private bakeLayersCanvas(maxPx: number, hidden: PIXI.Container[]): HTMLCanvasElement | null {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
     try {
@@ -689,7 +719,7 @@ export class MapRenderer {
       this.worldContainer.scale.set(1, 1);
       this.worldContainer.position.set(0, 0);
       this.worldContainer.updateTransform();
-      let dataUrl: string | null = null;
+      let captured: HTMLCanvasElement | null = null;
       try {
         const glr = this.app.renderer as unknown as { gl?: WebGLRenderingContext };
         const getP = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
@@ -699,16 +729,15 @@ export class MapRenderer {
         const cap = Number.isFinite(hardMax) ? Math.min(maxPx, hardMax) : maxPx;
         const resolution = Math.min(1, cap / Math.max(region.width, region.height));
         const rt = this.app.renderer.generateTexture(this.worldContainer, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
-        const canvas = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement;
-        rt.destroy(true);
-        dataUrl = canvas.toDataURL('image/png');
+        try { captured = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement; }
+        finally { rt.destroy(true); }
       } finally {
         this.worldContainer.scale.set(sx, sy);
         this.worldContainer.position.set(px, py);
         hidden.forEach((c, i) => { c.visible = prevVisible[i]!; });
         this.requestRender();
       }
-      return dataUrl;
+      return captured;
     } catch {
       return null;
     } finally {
@@ -816,6 +845,7 @@ export class MapRenderer {
 
   destroy(): void {
     this.destroyed = true;
+    this.clearHeartbeat();
     this.notifyPainted();  // a destroyed renderer never draws again; a waiter must not hang on it
     for (const off of this.busSubscriptions) off();
     this.busSubscriptions = [];

@@ -50,6 +50,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
           { provider: 'zhipu', stepKeys: ['help.agentsetup.keys_zhipu_1', 'help.agentsetup.keys_zhipu_2', 'help.agentsetup.keys_zhipu_3'] },
           { provider: 'qwen', stepKeys: ['help.agentsetup.keys_qwen_1', 'help.agentsetup.keys_qwen_2', 'help.agentsetup.keys_qwen_3', 'help.agentsetup.keys_qwen_4'] },
           { provider: 'moonshot', stepKeys: ['help.agentsetup.keys_moonshot_1', 'help.agentsetup.keys_moonshot_2', 'help.agentsetup.keys_moonshot_3'] },
+          { provider: 'doubao', stepKeys: ['help.agentsetup.keys_doubao_1', 'help.agentsetup.keys_doubao_2', 'help.agentsetup.keys_doubao_3'] },
           { provider: 'perplexity', stepKeys: ['help.agentsetup.keys_perplexity_1', 'help.agentsetup.keys_perplexity_2', 'help.agentsetup.keys_perplexity_3', 'help.agentsetup.keys_perplexity_4'] },
         ],
       },

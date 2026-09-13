@@ -160,12 +160,19 @@ function encodePlannedGlyph(payload: Uint8Array, moduleBase: number, plan: Glyph
     const value = (bits[i]! << 1) | (bits[i + 1] ?? 0);
     symbols.push([0, 1, 3, 2][value]!);
   }
-  const size = moduleBase / profile.div;
+  // Readers sample only active cells; repeat the coded pattern across unused capacity.
+  const modules = Uint8Array.from({ length: plan.moduleCount }, (_, k) => symbols[k % symbols.length]!);
   for (let k = 0; k < symbols.length; k++) {
     const { col, row } = dataCellAt(k, plan);
+    modules[row * profile.dataCols + col] = symbols[k]!;
+  }
+  const size = moduleBase / profile.div;
+  for (let k = 0; k < modules.length; k++) {
+    const col = k % profile.dataCols;
+    const row = Math.floor(k / profile.dataCols);
     const x = col * size;
     const y = CURRENT_TOP_ROWS * moduleBase + row * size;
-    fillRect(rgba, width, height, Math.round(x), Math.round(y), Math.round(x + size), Math.round(y + size), profile.palette[symbols[k]!]!);
+    fillRect(rgba, width, height, Math.round(x), Math.round(y), Math.round(x + size), Math.round(y + size), profile.palette[modules[k]!]!);
   }
 
   return { rgba, width, height, profile, plan };

@@ -814,6 +814,42 @@ describe('PanelShell: the terminal card is keyed by its own record', () => {
   });
 });
 
+describe('PanelShell: cancelling a question', () => {
+  it.each(['answer', 'build'] as const)('dismisses a closing question from a %s without sending an answer', (kind) => {
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    const onFileAway = vi.fn();
+    const job = makeJob({ kind, outcome: 'done', question: true, summary: 'Where should it go?' });
+    const view = makeView({ jobs: [job] });
+    const props = { view, connected: true, now: 0, ...VERBS, onSend, onStop, onFileAway };
+    const ui = renderWithI18n(<PanelShell {...props} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Cancel task' }));
+    expect(onFileAway).toHaveBeenCalledWith(job.orderSeq);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onStop).not.toHaveBeenCalled();
+    ui.rerender(<PanelShell {...props} filed={new Set([job.orderSeq])} />);
+    expect(ui.queryByTestId('question-cancel-task')).toBeNull();
+    expect(ui.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_idle']);
+    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).placeholder).toBe('Give an order');
+  });
+
+  it('offers cancellation beside a live question and uses the shared stop confirmation', () => {
+    const onStop = vi.fn();
+    const onGateAnswer = vi.fn();
+    const ask = { gateId: 'ask-1', scope: 'tool' as const, summary: 'Where should it go?' };
+    const view = makeView({ phase: 'gated', current: makeJob({ asks: [ask] }), gate: ask });
+    const ui = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} onStop={onStop} onGateAnswer={onGateAnswer} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Cancel task' }));
+    expect(onStop).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByTestId('dock-confirm-cancel'));
+    expect(ui.getByTestId('question-cancel-task')).toBeTruthy();
+    fireEvent.click(ui.getByTestId('question-cancel-task'));
+    fireEvent.click(ui.getByTestId('dock-confirm-stop'));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onGateAnswer).not.toHaveBeenCalled();
+  });
+});
+
 describe('PanelShell: the verbs', () => {
   it('routes the composer by phase and sends through the runner verb', () => {
     const sent: string[] = [];
@@ -2024,11 +2060,13 @@ describe('PanelShell: the phase-derived ticket facts', () => {
     expect(landed.queryByTestId('says-caret')).toBeNull();
   });
 
-  it('carries the three dots only while the model thinks with nothing said yet', () => {
+  it('shows the progress bar without a spare loading row before words arrive', () => {
     const thinking = renderWithI18n(
       <PanelShell view={makeView({ phase: 'thinking', current: makeJob() })} connected now={0} {...VERBS} />,
     );
-    expect(thinking.getByTestId('says-dots')).toBeTruthy();
+    expect(thinking.getByTestId('tape-bar')).toBeTruthy();
+    expect(thinking.queryByTestId('says-dots')).toBeNull();
+    expect(thinking.queryByTestId('says')).toBeNull();
     thinking.unmount();
 
     // Off `thinking` with nothing said yet, the says line has nothing to show at all.

@@ -126,13 +126,13 @@ describe('the presence counter: the dock says how much has been thought, and nev
     expect(getByTestId('dock-meta').textContent).toBe('1 thought');
   });
 
-  /** A THINKING TURN IS NOT A SPEAKING ONE. The ticket's says row is three dots and nothing else:
-   *  the reasoning is behind the affordance beside them, never quoted in the assistant's own line. */
+  /** Reasoning stays behind its control without a placeholder answer or extra loading indicator. */
   it('leaves the says line unwritten while only reasoning has arrived', () => {
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
-    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live thinking />);
+    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live />);
 
-    expect(getByTestId('says-dots')).toBeTruthy();
+    expect(queryByTestId('says-dots')).toBeNull();
+    expect(getByTestId('thoughts-toggle')).toBeTruthy();
     expect(queryByTestId('says-line')).toBeNull();
     expect(getByTestId('job-ticket').textContent).not.toContain('the plaza is locked');
   });
@@ -147,8 +147,9 @@ describe('the presence counter: the dock says how much has been thought, and nev
     expect(dock.queryByTestId('dock-meta')).toBeNull();
     dock.unmount();
 
-    const ticket = renderWithI18n(<JobTicket job={makeJob()} live thinking />);
-    expect(ticket.getByTestId('says-dots')).toBeTruthy();
+    const ticket = renderWithI18n(<JobTicket job={makeJob()} live />);
+    expect(ticket.queryByTestId('says-dots')).toBeNull();
+    expect(ticket.queryByTestId('says')).toBeNull();
     expect(ticket.queryByTestId('thoughts-toggle')).toBeNull();
     expect(ticket.queryByTestId('thoughts-box')).toBeNull();
   });
@@ -230,7 +231,7 @@ describe('the stall face: past the threshold the dock states the fact', () => {
 describe('the thoughts affordance: one deliberate press into a bounded box', () => {
   it('offers the current turn behind a control, collapsed', () => {
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
-    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live thinking />);
+    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live />);
 
     expect(queryByTestId('thoughts-box')).toBeNull();
     const toggle = getByTestId('thoughts-toggle');
@@ -244,7 +245,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
 
   it('stands the box in its own bounded scroller', () => {
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
-    const { getByTestId } = renderWithI18n(<JobTicket job={job} live thinking />);
+    const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     fireEvent.click(getByTestId('thoughts-toggle'));
 
     const box = getByTestId('thoughts-box');
@@ -262,7 +263,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
   it('renders the thought as the markdown it is written in', () => {
     const written = 'First, the shore:\n\n1. clear the bank\n2. lay the walk\n\nThe **plaza** is `locked`.';
     const job = makeJob({ thought: { chars: written.length, turns: 1, marks: [], ms: 0, live: written } });
-    const { getByTestId } = renderWithI18n(<JobTicket job={job} live thinking />);
+    const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     fireEvent.click(getByTestId('thoughts-toggle'));
 
     const box = getByTestId('thoughts-box');
@@ -276,7 +277,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
 
   it('closes again on a second press', async () => {
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
-    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live thinking />);
+    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live />);
     fireEvent.click(getByTestId('thoughts-toggle'));
     expect(queryByTestId('thoughts-box')).not.toBeNull();
     fireEvent.click(getByTestId('thoughts-toggle'));
@@ -292,7 +293,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     const seen: boolean[] = [];
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
     const { getByTestId } = renderWithI18n(
-      <JobTicket job={job} live thinking onThoughtsOpenChange={(open) => seen.push(open)} />,
+      <JobTicket job={job} live onThoughtsOpenChange={(open) => seen.push(open)} />,
     );
     fireEvent.click(getByTestId('thoughts-toggle'));
     fireEvent.click(getByTestId('thoughts-toggle'));

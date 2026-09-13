@@ -1,5 +1,6 @@
+vi.mock('../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMapReview: () => ({ result: { status: 'clear' }, pending: false, previewReady: true, revision: '0', check: async () => ({ status: 'clear' }), retry: vi.fn(), cancel: vi.fn() }) }));
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import { ExportModal } from '../../../ui/chrome/modals/export/ExportModal';
 import { useEditorStore } from '../../../state/store';
@@ -9,6 +10,17 @@ import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { I18nProvider } from '../../../i18n/context';
 import { roadLookup } from '../../../state/object-index';
+import * as PreviewBridge from '../../../ui/chrome/modals/export/render-preview-bridge';
+import { reviewText } from '../../../io/moderation/text/reviewer';
+
+vi.mock('../../../ui/chrome/modals/export/review/ExportNotice', () => ({
+  useExportNotice: () => ({ request: async () => true, notice: null }),
+}));
+
+vi.mock('../../../io/moderation/text/reviewer', async (original) => ({
+  ...await original<typeof import('../../../io/moderation/text/reviewer')>(),
+  reviewText: vi.fn(async () => ({ allowed: true })),
+}));
 
 // Synthetic test maps lack a registered template; preserve the real glyph footprint in the stub.
 vi.mock('../../../io/share', async (importOriginal) => {
@@ -70,7 +82,10 @@ function makeFakeCtx(): CanvasRenderingContext2D {
 
 describe('ExportModal', () => {
   // The window remembers its choices between openings; each test opens it fresh.
-  beforeEach(() => { localStorage.clear(); setStoreState({ locale: 'en' }); });
+  beforeEach(() => {
+    localStorage.clear(); setStoreState({ locale: 'en' });
+    vi.mocked(reviewText).mockReset().mockResolvedValue({ allowed: true });
+  });
 
   it('a human-only map shows the provenance badge control DISABLED (not hidden) and no "No AI" text', () => {
     mountStateWith();
@@ -123,7 +138,7 @@ describe('ExportModal', () => {
           this.height = height ?? data.length / (4 * width);
         }
       });
-      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(makeFakeCtx());
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(makeFakeCtx() as never);
       vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA');
       vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (this: HTMLCanvasElement, cb: BlobCallback) {
         cb(new Blob(['fake-png']));
@@ -161,7 +176,7 @@ describe('ExportModal', () => {
       const { container } = render(<ExportModal />, { wrapper: Wrapper });
       const message = 'Image sharing: this map may not import after resizing. Share the original image or a map file.';
       await waitFor(() => expect(screen.getByText(message)).toBeTruthy(), { timeout: 3000 });
-      await waitFor(() => expect(container.querySelector('img')).toBeTruthy());
+      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy());
       fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
       await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
@@ -204,16 +219,17 @@ describe('ExportModal', () => {
       // composition (with any stand-in band) is never shown. Sampled inside the debounce window.
       await new Promise((r) => setTimeout(r, 120));
       expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
-      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelector('[data-export-preview]')).toBeNull();
       // Once the real code exists, the preview paints and the image appears.
-      await waitFor(() => expect(container.querySelector('img')).toBeTruthy(), { timeout: 3000 });
+      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy(), { timeout: 3000 });
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
     });
 
-    it('typing in the title leaves the picture standing, and rebuilds once the text settles', async () => {
+    it('typing in the title repaints the image without rebuilding the glyph', async () => {
+      const paints = vi.spyOn(PreviewBridge, 'paintPreview');
       mountStateWith();
       const { container } = render(<ExportModal />, { wrapper: Wrapper });
-      await waitFor(() => expect(container.querySelector('img')).toBeTruthy(), { timeout: 3000 });
+      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy(), { timeout: 3000 });
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
       const paintsBefore = vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length;
 
@@ -222,15 +238,15 @@ describe('ExportModal', () => {
       for (const value of ['山', '山下', '山下的家']) fireEvent.change(input, { target: { value } });
 
       // Inside the settle window nothing moves: no rebuild, no repaint, the picture stays up.
-      await new Promise((r) => setTimeout(r, 400));
+      await act(() => new Promise<void>((r) => setTimeout(r, 200)));
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length).toBe(paintsBefore);
-      expect(container.querySelector('img')).toBeTruthy();
+      expect(container.querySelector('[data-export-preview]')).toBeTruthy();
 
-      // Settled: one rebuild carrying the final text, then the repaint.
-      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(2), { timeout: 3000 });
-      expect(vi.mocked(buildShareCode).mock.calls[1]![2]).toMatchObject({ title: '山下的家' });
-      await waitFor(() => expect(container.querySelector('img')).toBeTruthy());
+      await waitFor(() => expect(paints.mock.calls.some(([args]) => args.options.title === '山下的家')).toBe(true), { timeout: 3000 });
+      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(buildShareCode).mock.calls[0]![2]).not.toHaveProperty('title');
+      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy());
     });
 
     it('the preview builds the REAL code once (debounced) and the export reuses it — one encode total', async () => {

@@ -4,6 +4,7 @@ This project includes the following third-party open-source packages, resolved f
 
 | Package | Version | License | Copyright / Author | Homepage |
 |---|---|---|---|---|
+| @2toad/profanity | 3.3.0 | MIT | 2Toad | https://github.com/2Toad/Profanity |
 | @anthropic-ai/sdk | 0.104.1 | MIT | Anthropic <support@anthropic.com> | — |
 | @babel/runtime | 7.29.2 | MIT | The Babel Team (https://babel.dev/team) | https://babel.dev/docs/en/next/babel-runtime |
 | @pixi/accessibility | 7.4.3 | MIT | Mat Groves | http://pixijs.com/ |
@@ -65,39 +66,90 @@ This project includes the following third-party open-source packages, resolved f
 | @protobufjs/pool | 1.1.0 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
 | @protobufjs/utf8 | 1.1.2 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | — |
 | @stablelib/base64 | 1.0.1 | MIT | Dmitry Chestnykh | https://github.com/StableLib/stablelib/tree/master/packages/base64 |
+| @tensorflow/tfjs | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-backend-cpu | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-backend-wasm | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-backend-webgl | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-converter | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-core | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-data | 4.22.0 | Apache-2.0 | — | — |
+| @tensorflow/tfjs-layers | 4.22.0 | Apache-2.0 AND MIT | — | — |
 | @types/css-font-loading-module | 0.0.12 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/css-font-loading-module |
 | @types/earcut | 2.1.4 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/earcut |
+| @types/emscripten | 0.0.34 | MIT | — | — |
+| @types/long | 4.0.2 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/long |
 | @types/node | 26.4.0 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node |
+| @types/node-fetch | 2.6.13 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node-fetch |
+| @types/offscreencanvas | 2019.7.3 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/offscreencanvas |
+| @types/offscreencanvas | 2019.3.0 | MIT | — | — |
+| @types/seedrandom | 2.4.34 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/seedrandom |
+| @webgpu/types | 0.1.38 | BSD-3-Clause | — | https://github.com/gpuweb/types |
+| ansi-regex | 5.0.1 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| ansi-styles | 4.3.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| ansi-styles | 4.3.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| argparse | 1.0.10 | MIT | — | — |
+| asynckit | 0.4.0 | MIT | Alex Indigo <iam@alexindigo.com> | https://github.com/alexindigo/asynckit#readme |
+| bmp-js | 0.1.0 | MIT | shaozilee <shaozilee@gmail.com> | — |
 | call-bind-apply-helpers | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bind-apply-helpers#readme |
 | call-bound | 1.0.4 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bound#readme |
+| chalk | 4.1.2 | MIT | — | — |
+| cliui | 7.0.4 | ISC | Ben Coe <ben@npmjs.com> | — |
+| color-convert | 2.0.1 | MIT | Heather Arthur <fayearthur@gmail.com> | — |
+| color-name | 1.1.4 | MIT | DY <dfcreative@gmail.com> | https://github.com/colorjs/color-name |
+| combined-stream | 1.0.8 | MIT | Felix Geisendörfer <felix@debuggable.com> (http://debuggable.com/) | https://github.com/felixge/node-combined-stream |
+| core-js | 3.29.1 | MIT | Denis Pushkarev <zloirock@zloirock.ru> (http://zloirock.ru) | — |
+| cuss | 2.2.0 | MIT | Titus Wormer <tituswormer@gmail.com> (https://wooorm.com) | — |
+| delayed-stream | 1.0.0 | MIT | Felix Geisendörfer <felix@debuggable.com> (http://debuggable.com/) | https://github.com/felixge/node-delayed-stream |
 | dunder-proto | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/dunder-proto#readme |
 | earcut | 2.2.4 | ISC | Vladimir Agafonkin | — |
+| emoji-regex | 8.0.0 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/emoji-regex |
 | es-define-property | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-define-property#readme |
 | es-errors | 1.3.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-errors#readme |
 | es-object-atoms | 1.1.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-object-atoms#readme |
+| es-set-tostringtag | 2.1.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/es-set-tostringtag#readme |
+| escalade | 3.2.0 | MIT | Luke Edwards <luke.edwards05@gmail.com> (https://lukeed.com) | — |
 | eventemitter3 | 4.0.7 | MIT | Arnout Kazemier | — |
 | fast-sha256 | 1.3.0 | Unlicense | Dmitry Chestnykh | — |
+| fflate | 0.8.3 | MIT | Arjun Barrett <arjunbarrett@gmail.com> | https://101arrowz.github.io/fflate |
 | flatbuffers | 25.9.23 | Apache-2.0 | The FlatBuffers project | https://google.github.io/flatbuffers/ |
+| form-data | 4.0.6 | MIT | Felix Geisendörfer <felix@debuggable.com> (http://debuggable.com/) | — |
 | framer-motion | 12.43.0 | MIT | Matt Perry | — |
 | function-bind | 1.1.2 | MIT | Raynos <raynos2@gmail.com> | https://github.com/Raynos/function-bind |
+| get-caller-file | 2.0.5 | ISC | Stefan Penner | https://github.com/stefanpenner/get-caller-file#readme |
 | get-intrinsic | 1.3.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/get-intrinsic#readme |
 | get-proto | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/get-proto#readme |
 | gopd | 1.2.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/gopd#readme |
 | guid-typescript | 1.0.9 | ISC | nicolas | — |
+| has-flag | 4.0.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
 | has-symbols | 1.1.0 | MIT | Jordan Harband <ljharb@gmail.com> (http://ljharb.codes) | https://github.com/ljharb/has-symbols#readme |
+| has-tostringtag | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> (http://ljharb.codes) | https://github.com/inspect-js/has-tostringtag#readme |
+| hasown | 2.0.4 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/inspect-js/hasOwn#readme |
 | hasown | 2.0.3 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/inspect-js/hasOwn#readme |
+| idb-keyval | 6.3.0 | Apache-2.0 | Jake Archibald | https://github.com/jakearchibald/idb-keyval#readme |
+| is-fullwidth-code-point | 3.0.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| is-url | 1.2.4 | MIT | — | — |
 | ismobilejs | 1.1.1 | MIT | Kai Mallea <kmallea@gmail.com> | https://github.com/kaimallea/isMobile |
 | js-tokens | 4.0.0 | MIT | Simon Lydell | — |
 | json-schema-to-ts | 3.1.1 | MIT | Thomas Aribart | https://github.com/ThomasAribart/json-schema-to-ts#readme |
+| linkify-it | 6.1.0 | MIT | — | — |
+| long | 4.0.0 | Apache-2.0 | Daniel Wirtz <dcode@dcode.io> | — |
 | long | 5.3.2 | Apache-2.0 | Daniel Wirtz <dcode@dcode.io> | — |
 | loose-envify | 1.4.0 | MIT | Andres Suarez <zertosh@gmail.com> | https://github.com/zertosh/loose-envify |
 | math-intrinsics | 1.1.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/math-intrinsics#readme |
+| mime-db | 1.52.0 | MIT | — | — |
+| mime-types | 2.1.35 | MIT | — | — |
 | motion-dom | 12.43.0 | MIT | Matt Perry | — |
 | motion-utils | 12.39.0 | MIT | Matt Perry | — |
+| naughty-words | 1.2.0 | CC-BY-4.0 | — | https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words#readme |
+| node-fetch | 2.6.13 | MIT | David Frank | https://github.com/bitinn/node-fetch |
+| nsfwjs | 4.4.0 | MIT | Gant Laborde | https://nsfwjs.com |
 | object-inspect | 1.13.4 | MIT | James Halliday <mail@substack.net> (http://substack.net) | https://github.com/inspect-js/object-inspect |
+| obscenity | 0.4.6 | MIT | Joseph Liu <https://github.com/jo3-l> | https://github.com/jo3-l/obscenity#readme |
 | onnxruntime-common | 1.29.0 | MIT | fs-eire | — |
 | onnxruntime-web | 1.29.0 | MIT | fs-eire | — |
 | openai | 6.42.0 | Apache-2.0 | OpenAI <support@openai.com> | — |
+| opencc-js | 1.4.2 | MIT AND Apache-2.0 | The nk2028 Project | https://github.com/nk2028/opencc-js#readme |
+| opencollective-postinstall | 2.0.3 | MIT | Xavier Damman (@xdamman) | https://github.com/opencollective/opencollective-postinstall#readme |
 | pixi.js | 7.4.3 | MIT | Mat Groves | http://www.pixijs.com/ |
 | pixi.js-legacy | 7.4.3 | MIT | Mat Groves | http://www.pixijs.com/ |
 | platform | 1.3.6 | MIT | Benjamin Tan <demoneaux@gmail.com> | — |
@@ -107,18 +159,40 @@ This project includes the following third-party open-source packages, resolved f
 | qs | 6.16.0 | BSD-3-Clause | — | https://github.com/ljharb/qs |
 | react | 18.3.1 | MIT | — | https://reactjs.org/ |
 | react-dom | 18.3.1 | MIT | — | https://reactjs.org/ |
+| regenerator-runtime | 0.13.11 | MIT | Ben Newman <bn@cs.stanford.edu> | — |
+| require-directory | 2.1.1 | MIT | Troy Goode <troygoode@gmail.com> (http://github.com/troygoode/) | https://github.com/troygoode/node-require-directory/ |
+| safe-buffer | 5.2.1 | MIT | Feross Aboukhadijeh <feross@feross.org> (https://feross.org) | https://github.com/feross/safe-buffer |
 | scheduler | 0.23.2 | MIT | — | https://reactjs.org/ |
+| seedrandom | 3.0.5 | MIT | David Bau | http://davidbau.com/archives/2010/01/30/random_seeds_coded_hints_and_quintillions.html |
 | side-channel | 1.1.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel#readme |
 | side-channel-list | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-list#readme |
 | side-channel-map | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-map#readme |
 | side-channel-weakmap | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/side-channel-weakmap#readme |
+| sprintf-js | 1.0.3 | BSD-3-Clause | Alexandru Marasteanu <hello@alexei.ro> (http://alexei.ro/) | — |
 | standardwebhooks | 1.0.0 | MIT | Standard Webhooks | https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries/javascript |
+| string_decoder | 1.3.0 | MIT | — | https://github.com/nodejs/string_decoder |
+| string-width | 4.2.3 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| strip-ansi | 6.0.1 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| supports-color | 7.2.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | — |
+| tesseract.js | 6.0.1 | Apache-2.0 | — | https://github.com/naptha/tesseract.js |
+| tesseract.js-core | 6.1.2 | Apache-2.0 | antimatter15 | https://github.com/naptha/tesseract.js-core |
 | three | 0.169.0 | MIT | mrdoob | https://threejs.org/ |
+| tlds | 1.261.0 | MIT | Stephen Mathieson | — |
+| tr46 | 0.0.3 | MIT | Sebastian Mayr <npm@smayr.name> | https://github.com/Sebmaster/tr46.js#readme |
 | ts-algebra | 2.0.0 | MIT | Thomas Aribart | https://github.com/ThomasAribart/ts-algebra#readme |
 | tslib | 2.8.1 | 0BSD | Microsoft Corp. | https://www.typescriptlang.org/ |
+| uc.micro | 3.0.0 | MIT | — | — |
 | undici-types | 8.3.0 | MIT | — | https://undici.nodejs.org |
 | url | 0.11.4 | MIT | defunctzombie | — |
 | use-sync-external-store | 1.6.0 | MIT | — | — |
+| wasm-feature-detect | 1.8.0 | Apache-2.0 | Surma <surma@surma.link> | — |
+| webidl-conversions | 3.0.1 | BSD-2-Clause | Domenic Denicola <d@domenic.me> (https://domenic.me/) | — |
+| whatwg-url | 5.0.0 | MIT | Sebastian Mayr <github@smayr.name> | — |
+| wrap-ansi | 7.0.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com) | — |
+| y18n | 5.0.8 | ISC | Ben Coe <bencoe@gmail.com> | https://github.com/yargs/y18n |
+| yargs | 16.2.2 | MIT | — | https://yargs.js.org/ |
+| yargs-parser | 20.2.9 | ISC | Ben Coe <ben@npmjs.com> | — |
+| zlibjs | 0.3.1 | MIT | Yuta Imaya <imaya.devel@gmail.com> | https://github.com/imaya/zlib.js |
 | zustand | 4.5.7 | MIT | Paul Henschel | https://github.com/pmndrs/zustand |
 
 ## Fonts
@@ -145,6 +219,69 @@ Fonts are not npm packages and are not part of the lockfile closure above; their
 ## Vendored assets
 
 These are copied into the source tree rather than installed, so they are not part of the lockfile closure above and no dependency audit can discover them. Their license texts are fetched and verified manually and recorded here.
+
+### NSFWJS MobileNetV2 model
+
+- License: MIT
+- Copyright: Copyright (c) 2019 Infinite Red, Inc.
+- Source: [NSFWJS source and models](https://github.com/infinitered/nsfwjs)
+- Full text: `licenses/nsfwjs-model/LICENSE`
+- Used in: MobileNetV2 weights from nsfwjs 4.4.0, decoded from base64 into public/moderation/nsfw/weights.bin; the manifest shard path was renamed.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### Tesseract fast language models
+
+- License: Apache-2.0
+- Copyright: Tesseract contributors
+- Source: [Tesseract language data](https://github.com/tesseract-ocr/tessdata_fast)
+- Full text: `licenses/tessdata-fast/LICENSE`
+- Used in: English, Simplified Chinese and Traditional Chinese LSTM data at 87416418657359cb625c412a48b6e1d6d41c29bd, gzip-compressed under public/moderation/ocr/.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### Zhin sensitive-filter political category
+
+- License: MIT
+- Copyright: Copyright (c) 2025 凉菜
+- Source: [Upstream source](https://github.com/zhinjs/zhin)
+- Full text: `licenses/zhin-sensitive-filter/LICENSE`
+- Used in: Selected category from @zhin.js/sensitive-filter 2.0.1; normalized, deduplicated and converted to fingerprints in src/assets/moderation/political-index.json.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### sensitive-stop-words political category
+
+- License: Apache-2.0
+- Copyright: fwwdn and sensitive-stop-words contributors
+- Source: [Upstream source](https://github.com/fwwdn/sensitive-stop-words)
+- Full text: `licenses/sensitive-stop-words/LICENSE`
+- Used in: Selected category at a7d06bb1c321e669943b6841570d9da6dad8ce2b; normalized, deduplicated and converted to fingerprints in src/assets/moderation/political-index.json.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### sensitive-word-data political category
+
+- License: Apache-2.0
+- Copyright: houbb and sensitive-word-data contributors
+- Source: [Upstream source](https://github.com/houbb/sensitive-word-data)
+- Full text: `licenses/sensitive-word-data/LICENSE`
+- Used in: Selected category at fe6fc2921836217b8c90619db81b24af8b22d80f; filtered to phrases with at least three Han characters, normalized and converted to fingerprints in src/assets/moderation/political-index.json.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### pinyin-pro derived pronunciation data
+
+- License: MIT
+- Copyright: Copyright (c) 2022-present zh-lx
+- Source: [Upstream source](https://github.com/zh-lx/pinyin-pro)
+- Full text: `licenses/pinyin-pro-data/LICENSE`
+- Used in: Tone-free character readings and phrase pronunciation fingerprints derived from pinyin-pro 3.29.3 in src/assets/moderation/political-index.json; no pinyin-pro runtime is bundled.
+- Rights NOT granted: No trademark rights or claim of endorsement.
+
+### OpenCC conversion data bundled by opencc-js
+
+- License: Apache-2.0
+- Copyright: OpenCC and opencc-data contributors
+- Source: [opencc-js third-party notices](https://github.com/nk2028/opencc-js/blob/main/THIRD_PARTY_LICENSES.md)
+- Full text: `licenses/opencc-data/LICENSE`
+- Used in: Traditional-to-Simplified Chinese conversion of analysis copies in the image text review worker. The source text is preserved.
+- Rights NOT granted: No trademark rights or claim of endorsement.
 
 ### Lobe Icons (AI/LLM provider brand marks)
 

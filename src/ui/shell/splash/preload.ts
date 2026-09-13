@@ -28,57 +28,79 @@ type Progress = (done: number, total: number) => void;
 /** ONE preload per page, multiplexed: React's dev StrictMode mounts the splash twice, and the
  *  remount must attach to the run already in flight (getting the current count at once) rather
  *  than starting a second sweep or, worse, being the run nobody finishes. */
-let inflight: Promise<void> | null = null;
-let subscribers: Progress[] = [];
+let inflight: Promise<boolean> | null = null;
+const subscribers = new Set<Progress>();
 let lastDone = 0;
 let lastTotal = 0;
 
 /**
  * Fetch everything, reporting `(done, total)` after each settled item. Fonts count as items too.
- * Resolves when every item has settled; never rejects.
+ * Resolves whether all items completed successfully within the warmup deadline; never rejects.
  */
-export function preloadAssets(onProgress: Progress): Promise<void> {
-  subscribers.push(onProgress);
-  if (inflight) {
-    if (lastTotal > 0) onProgress(lastDone, lastTotal);
-    return inflight;
-  }
-  inflight = (async () => {
-    // The enumeration lives in its own chunk (see asset-list.ts) so warm boots never pay for it.
+export function preloadAssets(onProgress: Progress, signal?: AbortSignal): Promise<boolean> {
+  if (!signal?.aborted) subscribers.add(onProgress);
+  const unsubscribe = () => subscribers.delete(onProgress);
+  signal?.addEventListener('abort', unsubscribe, { once: true });
+  if (lastTotal > 0 && !signal?.aborted) onProgress(lastDone, lastTotal);
+  inflight ??= runPreload();
+  return inflight.finally(() => {
+    unsubscribe();
+    signal?.removeEventListener('abort', unsubscribe);
+  });
+}
+
+async function runPreload(): Promise<boolean> {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout>;
+  const expired = new Promise<false>(resolve => {
+    timeout = setTimeout(() => { controller.abort(); resolve(false); }, 30_000);
+  });
+  const work = async (): Promise<boolean> => {
     const { splashAssetUrls } = await import('./asset-list');
+    if (controller.signal.aborted) return false;
     const urls = splashAssetUrls();
     const fonts = typeof document !== 'undefined' && typeof (document.fonts as FontFaceSet | undefined)?.load === 'function' ? FONT_FAMILIES : [];
     lastTotal = urls.length + fonts.length;
     lastDone = 0;
+    let complete = true;
     const settle = (): void => {
+      if (controller.signal.aborted) return;
       lastDone++;
       for (const sub of subscribers) sub(lastDone, lastTotal);
     };
-
-    const queue = [...urls];
+    let cursor = 0;
     const worker = async (): Promise<void> => {
-      for (;;) {
-        const url = queue.shift();
-        if (url === undefined) return;
-        // force-cache: a warm entry answers without a request; a cold one fetches and fills it.
-        await fetch(url, { cache: 'force-cache' }).catch(() => undefined);
+      while (!controller.signal.aborted && cursor < urls.length) {
+        const url = urls[cursor++]!;
+        try {
+          const response = await fetch(url, { cache: 'force-cache', signal: controller.signal });
+          if (!response.ok) complete = false;
+          // Headers alone do not mean the body has reached the browser cache.
+          if (response.body) {
+            const reader = response.body.getReader();
+            try { while (!(await reader.read()).done) { /* drain without retaining asset bytes */ } }
+            finally { reader.releaseLock(); }
+          } else { await response.blob(); }
+        } catch { complete = false; }
         settle();
       }
     };
     await Promise.all(Array.from({ length: FETCH_POOL }, worker));
-    // Fonts AFTER the art: the CJK families are megabytes, and loading them beside 140 image
-    // fetches saturates a slow link — the art (most of the visible progress) would crawl, and a
-    // reload landing mid-preload would cut that much more in flight.
-    await Promise.all(fonts.map((family) =>
-      document.fonts.load(`16px "${family}"`).catch(() => undefined).then(settle)));
-  })();
-  return inflight;
+    if (controller.signal.aborted) return false;
+    await Promise.all(fonts.map(async family => {
+      try { await document.fonts.load(`16px "${family}"`); } catch { complete = false; }
+      settle();
+    }));
+    return complete;
+  };
+  try { return await Promise.race([work().catch(() => false), expired]); }
+  finally { clearTimeout(timeout!); subscribers.clear(); }
 }
 
 /** Test hook: forget the in-flight run and its subscribers. */
 export function resetPreloadForTest(): void {
   inflight = null;
-  subscribers = [];
+  subscribers.clear();
   lastDone = 0;
   lastTotal = 0;
 }
@@ -97,7 +119,10 @@ export async function probeWarmCache(): Promise<boolean> {
   const url = `${import.meta.env.BASE_URL}${activeTarget().bootBanner}`;
   if (!url || url.startsWith('data:') || typeof performance === 'undefined' || !performance.getEntriesByName) return true;
   try {
-    await fetch(url, { cache: 'force-cache' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    try { await (await fetch(url, { cache: 'force-cache', signal: controller.signal })).blob(); }
+    finally { clearTimeout(timer); }
     const entries = performance.getEntriesByName(new URL(url, location.href).href) as PerformanceResourceTiming[];
     const entry = entries[entries.length - 1];
     if (!entry || typeof entry.transferSize !== 'number') return true;

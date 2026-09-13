@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeWithSections, sectionSizes, buildStats, verifyIntegrity } from '../../io/export-json';
+import { serializeWithSections, sectionSizes, sectionSizeFormats, buildStats, verifyIntegrity } from '../../io/export-json';
 import { serialize, deserialize } from '../../io/json-codec';
 import { makeState } from '../rules/_helpers';
 import { TerrainType, type GenerateConfig } from '../../core/model/types';
@@ -75,6 +75,13 @@ describe('serializeWithSections', () => {
     // A structured section (stats: nested objects) is meaningfully bigger pretty-printed.
     expect(pretty.stats).toBeGreaterThan(compact.stats);
     expect(pretty.core).toBeGreaterThanOrEqual(compact.core);
+  });
+
+  it('shares preparation while preserving both displayed section-size formats', () => {
+    const state = edited();
+    const formats = sectionSizeFormats(state, BASE);
+    expect(formats.compact).toEqual(sectionSizes(state, BASE, { withTotal: false }));
+    expect(formats.pretty).toEqual(sectionSizes(state, BASE, { withTotal: false, pretty: true }));
   });
 
   describe('integrity code', () => {
