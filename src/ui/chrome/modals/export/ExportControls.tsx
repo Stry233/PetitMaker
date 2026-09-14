@@ -15,19 +15,24 @@ import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
 import { StylizeEntry } from './stylize/StylizeEntry';
+import type { TextField } from '../../../../io/moderation/text/policy';
+import { ReviewIndicator } from './review/ReviewIndicator';
 
 const RES_KEYS: ResolutionKey[] = ['compact', 'standard', 'high', 'original'];
 const PRESETS: ExportPreset[] = ['share', 'plain'];
 const hasCurrentProv = (s: MapProvenanceSummary | null) => !!s && (s.containsAi || s.containsProcedural);
 
 /** Settings only — the modal renders the fixed footer (Cancel / Export) outside the scroll region. */
-export function ExportControls({ options, setOptions, summary, footerSamples, initialOpen = false }: {
+export function ExportControls({ options, setOptions, summary, footerSamples, initialOpen = false, checkingFields = [], refusedFields = [], reviewLabel = '' }: {
   options: ExportOptions; setOptions: (o: ExportOptions) => void; summary: MapProvenanceSummary | null;
   /** Current value of each footer token (date/dims/name/…), shown in the footer editor's menu. */
   footerSamples: Record<string, string>;
   /** Open the Appearance disclosure from the first render (a picture of the column can pose the
    *  rows a live visitor reaches with one press). */
   initialOpen?: boolean;
+  checkingFields?: TextField[];
+  refusedFields?: TextField[];
+  reviewLabel?: string;
 }) {
   const t = useT();
   const [details, setDetails] = useState(initialOpen);
@@ -48,10 +53,16 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
 
       {/* Title + description */}
       <Field label={t('export.field_title')}>
-        <input value={options.title} maxLength={48} onChange={(e) => set('title', e.target.value)} style={inputStyle} placeholder={t('export.optional')} />
+        <div style={{ position: 'relative' }}>
+          <input value={options.title} maxLength={48} onChange={(e) => set('title', e.target.value)} style={inputStyle} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
+          {checkingFields.includes('title') && <ReviewIndicator label={reviewLabel} />}
+        </div>
       </Field>
       <Field label={t('export.field_desc')}>
-        <textarea value={options.description} maxLength={120} onChange={(e) => set('description', e.target.value)} style={{ ...inputStyle, minHeight: 44 }} placeholder={t('export.optional')} />
+        <div style={{ position: 'relative' }}>
+          <textarea value={options.description} maxLength={120} onChange={(e) => set('description', e.target.value)} style={{ ...inputStyle, display: 'block', minHeight: 44 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
+          {checkingFields.includes('description') && <ReviewIndicator label={reviewLabel} />}
+        </div>
       </Field>
 
       {/* Size */}
@@ -101,7 +112,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
               <Row><Label text={t('export.opt_footer')} /><Switch on={options.footer} onClick={() => set('footer', !options.footer)} label={t('export.opt_footer')} /></Row>
               <Expand open={options.footer}>
                 <div style={{ paddingTop: 10 }}>
-                  <FooterEditor value={options.footerTemplate} onChange={(tpl) => set('footerTemplate', tpl)} samples={footerSamples} t={t} />
+                  <FooterEditor value={options.footerTemplate} onChange={(tpl) => set('footerTemplate', tpl)} samples={footerSamples} t={t} checking={checkingFields.includes('footer')} refused={refusedFields.includes('footer')} reviewLabel={reviewLabel} />
                 </div>
               </Expand>
             </div>
@@ -128,7 +139,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
   );
 }
 
-const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 34px 9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 // Attention note (amber, calm — not an error): the chosen size can't carry the share code.
 /** The amber note this modal says share-code trouble with. Shared with the preview, which reports

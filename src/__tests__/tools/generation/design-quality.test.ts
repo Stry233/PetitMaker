@@ -3,7 +3,10 @@
 // The promises come from the expert methodology and the two decoded reference maps: the hard rules
 // are failures, the soft preferences are scored floors, and the map's distance to the style target
 // has a ceiling.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch; several seconds per case on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';

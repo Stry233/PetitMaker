@@ -28,6 +28,8 @@ import catalogSection from './prompts/04-catalog.md?raw';
 import designPrinciples from './prompts/05-design-principles.md?raw';
 import workflow from './prompts/06-workflow.md?raw';
 import recipes from './prompts/07-recipes.md?raw';
+import trust from './prompts/08-trust.md?raw';
+import contentPolicy from './prompts/10-content-policy.md?raw';
 
 /** Replace all occurrences of {key} in template with the corresponding value. */
 function inject(template: string, vars: Record<string, string>): string {
@@ -84,6 +86,8 @@ export function buildSystemPrompt(registry: RuleDispatcher, opts?: { uiLocale?: 
     designPrinciples,
     workflow,
     recipes,
+    trust,
+    contentPolicy,
   ];
 
   return sections.join('\n\n');

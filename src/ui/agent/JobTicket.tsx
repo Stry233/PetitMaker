@@ -19,7 +19,6 @@ import { INSET, PLATE, PLATE_INK } from '../design/tokens';
 import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
-import { LoadingDots } from '../primitives/LoadingDots';
 import { cssMotion, framerMotion } from './motion';
 import { useT } from '../../i18n/context';
 import type { JobView } from '../../agent/core/project-view';
@@ -125,8 +124,6 @@ export interface JobTicketProps {
   held?: boolean;
   /** The words are still arriving, so the says line carries its caret. */
   streaming?: boolean;
-  /** The model is working and has said nothing yet, so the says line is three dots. */
-  thinking?: boolean;
   /** The job is on hold: its own mark, and the two verbs that end the hold. */
   paused?: boolean;
   /** The live helper lane (`store.childLive`), for the delegate row that has one. */
@@ -154,7 +151,6 @@ export function JobTicket({
   live = false,
   held = false,
   streaming = false,
-  thinking = false,
   paused = false,
   lane,
   regionVignette,
@@ -169,7 +165,7 @@ export function JobTicket({
   const [saysOpen, setSaysOpen] = useState(false);
   // The says line re-renders on every epoch bump while a job streams; the markdown parse only
   // owes the renders where the text itself moved.
-  const saysRuns = useMemo(() => (job.says === undefined ? null : inlineProseRuns(job.says)), [job.says]);
+  const saysRuns = useMemo(() => (job.says === undefined ? null : inlineProseRuns(job.says, t)), [job.says, t]);
   const tapeMode = tapeModeFor(job, live);
   const toggleSays = () => setSaysOpen((o) => !o);
   /**
@@ -268,14 +264,10 @@ export function JobTicket({
 
       {tapeMode !== undefined && <TapeBar mode={tapeMode} held={held} />}
 
-      {(job.says !== undefined || thinking) && (
+      {(job.says !== undefined || liveThought !== undefined) && (
         <>
         <div data-testid="says" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minHeight: 17 }}>
-          {job.says === undefined ? (
-            <span data-testid="says-dots" style={{ paddingTop: 5 }}>
-              <LoadingDots color={colors.brownText} size={5} />
-            </span>
-          ) : (
+          {job.says !== undefined && (
             <>
               {/* The unclamp UNFOLDS on the shared beat (`panel.detail.unfold`): the wrapper's height
                   opens to the whole text and closes back to the two-line cap, which is the same cut
@@ -354,11 +346,7 @@ export function JobTicket({
               </button>
             </>
           )}
-          {/* THE THOUGHTS AFFORDANCE, and the only way into the current turn's thinking. It stands
-              beside the dots and beside a spoken line alike: what the model is thinking and what it
-              has said are two different things, and the pill never becomes the second one. Where no
-              reasoning text arrived there is no pill — a control that opened onto nothing would
-              promise a transcript the provider does not send. */}
+          {/* Reasoning remains accessible even before the model writes its first answer text. */}
           {liveThought !== undefined && (
             <button
               type="button"

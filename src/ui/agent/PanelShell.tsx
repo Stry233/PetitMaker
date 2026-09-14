@@ -17,7 +17,7 @@ import { helpTargetAttr } from '../chrome/modals/help/targets';
 import { PLATE, PLATE_INK } from '../design/tokens';
 import { radii } from '../design/styles';
 import { AnswerPaper, isAnswerJob } from './AnswerPaper';
-import { IconButton, PIN_KNOB, PIN_KNOB_OUT, PinKnob, RESUME_PRIMARY } from './atoms';
+import { IconButton, PIN_KNOB, PIN_KNOB_OUT, PinKnob, Pill, RESUME_PRIMARY } from './atoms';
 import { Banner, type BannerActionId, type BannerClass } from './Banner';
 import { ArchiveCard, FlipTicket, IncidentCard, StopCard, type Checkpoint } from './FlipTicket';
 import { Composer, COMPOSER_HEIGHT } from './Composer';
@@ -989,7 +989,7 @@ export function PanelShell({
               onDone={() => { setInSetup(false); onSetupDone?.(); }}
               onFace={setSetupFace}
               // Model selection moves to the management card and can return to incomplete setup.
-              {...(onManage ? { onManage: () => { setInSetup(false); onManage(); } } : {})}
+              {...(onManage ? { onManage: () => { setInSetup(false); if (!managing) onManage(); } } : {})}
               onLeave={() => setInSetup(false)}
             />
           ) : showWelcome ? (
@@ -1012,6 +1012,7 @@ export function PanelShell({
               stoppable={isRunning || view.phase === 'retrying' || view.phase === 'gated'}
               parkable={view.phase === 'retrying'}
               {...(onManageDone ? { onDone: onManageDone } : {})}
+              onNeedKey={() => { setSetupEntry('key'); setInSetup(true); }}
               {...(onClearJobs ? { onClearJobs } : {})}
               onStopJob={onStop}
               onSetAside={onPause}
@@ -1092,7 +1093,6 @@ export function PanelShell({
                   live
                   held={HELD.has(view.phase)}
                   streaming={view.current.saysStreaming === true}
-                  thinking={view.phase === 'thinking'}
                   paused={ON_HOLD.has(view.phase)}
                   {...(lane ? { lane } : {})}
                   {...(view.current.region && regionShot
@@ -1153,6 +1153,19 @@ export function PanelShell({
                 />
               )}
               {askCards}
+              {(view.phase === 'gated' || (settled?.job.question === true && onFileAway)) && (
+                <div style={HOLD_ACTIONS_STYLE}>
+                  <Pill
+                    data-testid="question-cancel-task"
+                    onClick={() => {
+                      if (view.phase === 'gated') setStopAsks((n) => n + 1);
+                      else if (settled) onFileAway?.(settled.job.orderSeq);
+                    }}
+                  >
+                    {t('agent3.action_cancel_task')}
+                  </Pill>
+                </div>
+              )}
               {holdAfterAsk && (onResume !== undefined || onStop !== undefined) && (
                 <div data-testid="hold-actions" style={HOLD_ACTIONS_STYLE}>
                   {onResume !== undefined && (

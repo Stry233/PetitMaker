@@ -276,6 +276,17 @@ describe('the two destructive verbs ask first', () => {
     expect(cleared).toHaveBeenCalledTimes(1);
   });
 
+  it('explains that clearing records pauses an active job', () => {
+    const cleared = vi.fn();
+    mount({ jobCount: 2, stoppable: true, onClearJobs: cleared });
+    fireEvent.click(screen.getByTestId('manage-clear-jobs'));
+    expect(screen.getByTestId('manage-clear-jobs').textContent)
+      .toContain(translations.en['agent3.setup_manage_clear_pause_q']!.replace('{n}', '2'));
+    expect(cleared).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('manage-clear-jobs'));
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses to ask about a record that is not there', () => {
     mount({ jobCount: 0 });
     expect((screen.getByTestId('manage-clear-jobs') as HTMLButtonElement).disabled).toBe(true);
@@ -571,7 +582,7 @@ describe('the address of the user\'s own server', () => {
     forgetRosters();
     await act(async () => { mount({ listModels: () => Promise.reject(new Error('Failed to fetch')) }); });
     expect(screen.getByTestId('manage-endpoint-note').textContent)
-      .toBe(translations.en['agent3.setup_manage_endpoint_failed']);
+      .toBe(translations.en['agent3.setup_list_unavailable']);
   });
 
   /** THE ADDRESS SURVIVES THE PAGE, which is the other half of being able to change it: it is written
@@ -624,7 +635,7 @@ describe('a change made over a running job says which job it reaches', () => {
     expect(toasts).toEqual([translations.en['agent3.setup_manage_next_job']]);
 
     await act(async () => { fireEvent.click(screen.getByTestId('manage-model-dd')); });
-    await act(async () => { fireEvent.click(screen.getByText(prettyModel('a'))); });
+    await act(async () => { fireEvent.click(screen.getByText('Default model (A)')); });
     expect(toasts, 'one note per job, not per press').toHaveLength(1);
   });
 
@@ -679,18 +690,13 @@ describe('changing the address re-judges the model', () => {
     expect(toasts).toEqual([]);
   });
 
-  it('replaces the model where the new address answers without it, and says both names', async () => {
+  it('preserves the chosen model when a new address lists different models', async () => {
     armCustom();
     await act(async () => { mount({ listModels: () => Promise.resolve(['served-a', 'served-b']) }); });
     await fileAddress('https://new.example/v1');
-
-    expect(useAgentPanelSettings.getState().model.custom, 'the address\'s own first offer').toBe('served-a');
-    expect(toasts).toEqual([
-      translations.en['agent3.setup_manage_model_swapped']!
-        .replace('{now}', prettyModel('served-a')).replace('{was}', prettyModel('kept-model')),
-    ]);
-    // The face reads the new model, so the row and the connection agree.
-    expect(screen.getByTestId('manage-model-face').textContent).toBe(prettyModel('served-a'));
+    expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
+    expect(toasts).toEqual([]);
+    expect(screen.getByTestId('manage-model-face').textContent).toBe(prettyModel('kept-model'));
   });
 
   it('keeps the typed model where the address lists nothing, and says the row is unverified', async () => {
@@ -714,60 +720,28 @@ describe('changing the address re-judges the model', () => {
     expect(toasts).toEqual([]);
   });
 
-  /**
-   * BOTH VALIDITY TRANSITIONS, and no note or verdict outlives the state it described.
-   *
-   * BREAKING is the fourth outcome acted on in full: the pick is GONE (not flagged), the sub-line
-   * says the address must answer first, the dropdown offers nothing at all — the dead endpoint's
-   * list included — the typed-id fallback stands down, and Done blocks with the endpoint named.
-   * FIXING re-runs the check and retires the failure, and the arriving list OFFERS the cleared pick
-   * (marked as the user's own earlier one) without restoring it: the row emptied, so the re-pick is
-   * theirs, at the cost of one press.
-   */
-  it('walks valid to invalid and back: the model empties, the door blocks, and the re-pick is offered', async () => {
+  it('keeps a model editable when discovery fails and preserves it when the list returns', async () => {
     armCustom();
     let answer: () => Promise<string[]> = () => Promise.resolve(['kept-model']);
     await act(async () => { mount({ listModels: () => answer() }); });
-    const note = () => screen.getByTestId('manage-endpoint-note').textContent;
     const done = () => screen.getByTestId('manage-done') as HTMLButtonElement;
-    expect(note(), 'the address answered, so nothing stands under it').toBe('');
-    expect(done().disabled, 'a ready connection may leave').toBe(false);
-
-    // VALID → INVALID.
     answer = () => Promise.reject(new Error('Failed to fetch'));
-    await fileAddress('https://broken.example/v1');
-    expect(note()).toBe(translations.en['agent3.setup_manage_endpoint_failed']);
-    expect(useAgentPanelSettings.getState().model.custom, 'the pick is gone').toBe('');
-    expect(screen.getByTestId('manage-model-face').textContent)
-      .toBe(translations.en['agent3.setup_model_pick']);
-    expect(screen.getByTestId('manage-model-blocked').textContent)
-      .toBe(translations.en['agent3.setup_manage_model_needs_endpoint']);
-    expect(screen.queryByTestId('manage-model-input'), 'no typed id against a server that is not there')
-      .toBeNull();
-    fireEvent.click(screen.getByTestId('manage-model-dd'));
-    expect(screen.queryAllByRole('menuitemradio'), 'the dead endpoint offers no list').toEqual([]);
-    fireEvent.click(screen.getByTestId('manage-model-dd'));
-    expect(done().disabled, 'the door out blocks').toBe(true);
-    expect(done().getAttribute('data-gap'), 'with the endpoint as the named gap').toBe('endpoint');
-
-    // INVALID → VALID.
-    answer = () => Promise.resolve(['kept-model', 'other']);
-    await fileAddress('https://fixed.example/v1');
-    expect(note(), 'no failure note survives the fix').toBe('');
-    expect(useAgentPanelSettings.getState().model.custom, 'nothing is restored silently').toBe('');
-    expect(toasts, 'an empty row swaps nothing').toEqual([]);
-    expect(done().disabled, 'no model stands yet').toBe(true);
-    expect(done().getAttribute('data-gap'), 'the model is what is owed now').toBe('model');
-
-    fireEvent.click(screen.getByTestId('manage-model-dd'));
-    const rows = screen.getAllByRole('menuitemradio');
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.textContent, 'the old pick is offered visibly').toContain(prettyModel('kept-model'));
-    expect(rows[0]!.textContent, 'as the user\'s own earlier one')
-      .toContain(translations.en['agent3.setup_model_former']!);
-    fireEvent.click(rows[0]!);
-    expect(useAgentPanelSettings.getState().model.custom, 'one press restores the old name').toBe('kept-model');
-    expect(done().disabled, 'and the door opens').toBe(false);
+    await fileAddress('https://listless.example/v1');
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe(translations.en['agent3.setup_list_unavailable']);
+    expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
+    expect(done().disabled).toBe(false);
+    expect(screen.queryByTestId('manage-model-blocked')).toBeNull();
+    for (const value of ['e', 'ep', 'ep-', 'ep-my-model']) {
+      fireEvent.change(screen.getByTestId('manage-model-input'), { target: { value } });
+      expect((screen.getByTestId('manage-model-input') as HTMLInputElement).value).toBe(value);
+    }
+    expect(useAgentPanelSettings.getState().model.custom).toBe('ep-my-model');
+    answer = () => Promise.resolve(['ep-my-model', 'other']);
+    await fileAddress('https://listed.example/v1');
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe('');
+    expect(useAgentPanelSettings.getState().model.custom).toBe('ep-my-model');
+    expect(done().disabled).toBe(false);
+    expect(toasts).toEqual([]);
   });
 
   /** THE OTHER SIDE OF THE BOUNDARY: a server that ANSWERS badly (here an auth refusal) is reachable,
@@ -784,20 +758,20 @@ describe('changing the address re-judges the model', () => {
     expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('swaps on the way back up where the fixed address does not serve what was standing', async () => {
+  it('preserves the chosen model when a repaired address lists different models', async () => {
     armCustom();
     let answer: () => Promise<string[]> = () => Promise.reject(new Error('Failed to fetch'));
     await act(async () => { mount({ listModels: () => answer() }); });
     expect(screen.getByTestId('manage-endpoint-note').textContent)
-      .toBe(translations.en['agent3.setup_manage_endpoint_failed']);
+      .toBe(translations.en['agent3.setup_list_unavailable']);
     // A GEAR PRESS IS NOT A CHECK: the fetch this card makes on mount failing must not empty a pick
     // the user made — only a check they pressed carries that authority.
     expect(useAgentPanelSettings.getState().model.custom, 'a glance clears nothing').toBe('kept-model');
 
     answer = () => Promise.resolve(['only-this']);
     await fileAddress('https://fixed.example/v1');
-    expect(useAgentPanelSettings.getState().model.custom).toBe('only-this');
-    expect(toasts).toHaveLength(1);
+    expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
+    expect(toasts).toEqual([]);
   });
 });
 
@@ -884,7 +858,7 @@ describe('manage copy, in every locale', () => {
     'agent3.setup_manage_stop_job', 'agent3.setup_manage_set_aside',
     'agent3.dock_connection', 'agent3.action_cancel', 'agent3.setup_oversight',
     'agent3.setup_manage_endpoint', 'agent3.setup_manage_model',
-    'agent3.setup_manage_endpoint_failed', 'agent3.setup_manage_model_needs_endpoint',
+    'agent3.setup_list_unavailable', 'agent3.setup_manage_model_needs_endpoint',
     'agent3.setup_model_former',
   ];
   const locales = Object.keys(translations) as Locale[];

@@ -5,7 +5,10 @@
 // a finished map with — so what passes here is what the ledger passes, not a restatement of the
 // planner's own arithmetic. Three of the stage's load-bearing claims live here: ramps never stand on
 // pavement, the streets read straight rather than random, and the blocks they cut front onto them.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch; several seconds per case on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { existsSync, readFileSync } from 'fs';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { createGrid, createPlazaObject } from '../../../../../core/model/grid-model';

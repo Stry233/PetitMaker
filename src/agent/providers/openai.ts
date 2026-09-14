@@ -4,15 +4,17 @@
  * Tool results precede any follow-up image messages. Streamed tool-call fragments are joined by
  * chunk index, with call id as a fallback. A response containing only a requested tool-call object
  * is normalized to a tool call, and that endpoint uses non-streaming requests thereafter.
- * Assistant history is rebuilt from neutral text and tool calls because this dialect has no
- * portable equivalent of Anthropic's signed raw content blocks.
+ * Neutral history retains recognized thinking fields and tool signatures for same-model replay.
  */
 import OpenAI from 'openai';
 import { classify, NO_ENDPOINT_ADDRESS, PROVIDER_SILENCE } from '../core/errors';
 import { parseArgs } from '../core/json';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, TurnQuirk, Usage } from '../core/types';
-import type { Quirks } from './defaults';
+import { QUIRKS, PROVIDER_IDS, type ProviderId, type Quirks } from './defaults';
+import { modelCapabilities, rememberNativeModels } from './model-catalog';
+import { ChatReasoning, savedChat } from './chat-reasoning';
+import { reasoningBody } from './reasoning';
 import { streamFailureEvent } from './http-failure';
 import type { Adapter, AdapterRequest } from './types';
 
@@ -36,13 +38,14 @@ function userContent(text: string, images: string[] | undefined): OpenAI.ChatCom
 }
 
 /** Converts neutral session history to the provider wire format. */
-export function toOpenAIMessages(system: string, messages: ProviderMessage[], imageInToolResult = false): OpenAI.ChatCompletionMessageParam[] {
+export function toOpenAIMessages(system: string, messages: ProviderMessage[], imageInToolResult = false, sameModel = false, endpoint?: string): OpenAI.ChatCompletionMessageParam[] {
   const out: OpenAI.ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'user') {
       out.push({ role: 'user', content: userContent(m.text, m.images) });
     } else if (m.role === 'assistant') {
-      // `raw` is deliberately ignored here regardless of `sameModel` — see the file header.
+      const saved = sameModel ? savedChat(m.raw) : undefined;
+      const raw = endpoint === undefined || saved?.endpoint === endpoint ? saved : undefined;
       // NEVER `content: null`: the spec makes content optional only beside tool_calls, and a strict
       // gateway rejects an explicit null either way. Empty text is the field omitted where calls
       // carry the turn, and an empty string where nothing else would.
@@ -55,6 +58,13 @@ export function toOpenAIMessages(system: string, messages: ProviderMessage[], im
           type: 'function' as const,
           function: { name: c.name, arguments: JSON.stringify(c.args) },
         }));
+      }
+      if (raw) {
+        Object.assign(msg, raw.fields);
+        for (const call of msg.tool_calls ?? []) {
+          const extra = raw.calls.find((item) => item.callId === call.id)?.extra;
+          if (extra) Object.assign(call, { extra_content: extra });
+        }
       }
       out.push(msg);
     } else {
@@ -186,7 +196,7 @@ const PROSE_HOLD_MAX = 8192;
  */
 const PROSE_ENDPOINTS = new Set<string>();
 
-export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; quirks: Quirks }): Adapter {
+export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; providerId?: ProviderId; quirks: Quirks }): Adapter {
   // A PROVIDER WHOSE HOST IS THE USER'S OWN IS NEVER BUILT WITHOUT IT (`Quirks.needsBaseUrl`). The
   // SDK's default host is another company's API and the key was issued by whatever runs at the
   // user's address, so no client exists on this path at all — the throw is the floor under every
@@ -201,6 +211,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
     dangerouslyAllowBrowser: true,
     defaultHeaders: NO_TELEMETRY_HEADERS,
   });
+  const providerId = opts.providerId ?? PROVIDER_IDS.find((id) => QUIRKS[id] === opts.quirks) ?? 'custom';
   const reasoningFields = opts.quirks.reasoningFields ?? [];
   const imageInToolResult = opts.quirks.imageInToolResult;
   const streamUsage = opts.quirks.streamUsage === true;
@@ -234,10 +245,9 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
       return;
     }
     const message = choice.message as OpenAI.ChatCompletionMessage & { [key: string]: unknown };
-    for (const field of reasoningFields) {
-      const reasoning = message[field];
-      if (typeof reasoning === 'string' && reasoning) { yield { t: 'reasoning', delta: reasoning }; break; }
-    }
+    const thinking = new ChatReasoning(reasoningFields, endpointKey);
+    for (const thought of thinking.add(message)) yield { t: 'reasoning', delta: thought };
+    for (const call of message.tool_calls ?? []) thinking.tool(call.id, (call as unknown as Record<string, unknown>).extra_content);
     const wireCalls = (message.tool_calls ?? [])
       .filter((c): c is OpenAI.ChatCompletionMessageFunctionToolCall => c.type === 'function')
       .map((c) => ({ callId: c.id, name: c.function.name, rawArgs: c.function.arguments }));
@@ -260,6 +270,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
       t: 'done',
       stop: prose !== undefined ? 'tool-calls' : mapStop(choice.finish_reason),
       final,
+      ...(thinking.raw() ? { raw: thinking.raw() } : {}),
       ...(usage !== undefined && { usage }),
       ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
     };
@@ -269,14 +280,23 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
     async *stream(req: AdapterRequest, signal: AbortSignal): AsyncGenerator<StreamEvent> {
       const toolNames = new Set(req.tools.map((t) => t.name));
       try {
+        const capabilities = req.capabilities ?? modelCapabilities(providerId, req.model, opts.baseUrl);
+        if ((!opts.baseUrl || /^https:\/\/api\.openai\.com\/v1\/?$/.test(opts.baseUrl))
+          && (capabilities?.reasoning || /^(?:gpt-(?:[5-9]|[1-9]\d)|o[1-9])/.test(req.model))) {
+          const { streamResponses } = await import('./openai-responses');
+          yield* streamResponses(client, { ...req, capabilities }, signal, opts.apiKey);
+          return;
+        }
         const base: OpenAI.ChatCompletionCreateParamsNonStreaming = {
           model: req.model,
-          max_tokens: req.maxOutputTokens,
-          messages: toOpenAIMessages(req.system, req.messages, imageInToolResult),
-          tools: req.tools.map((t) => ({
+          ...reasoningBody(providerId, req.thinking, capabilities),
+          ...(req.maxOutputTokens === undefined ? {} : /^(gpt-[5-9]|o[1-9])/.test(req.model)
+            ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
+          messages: toOpenAIMessages(req.system, req.messages, imageInToolResult, req.sameModel, endpointKey),
+          ...(req.tools.length ? { tools: req.tools.map((t) => ({
             type: 'function' as const,
             function: { name: t.name, description: t.description, parameters: t.parameters },
-          })),
+          })) } : {}),
         };
         if (PROSE_ENDPOINTS.has(endpointKey)) {
           yield* unstreamed(base, toolNames, signal);
@@ -309,6 +329,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
         // concatenated JSON: one bad call reported, every real one lost. `startedCalls` gates
         // `tool-start` to once per key, since a gateway can repeat the name on a later chunk of the
         // same call.
+        const thinking = new ChatReasoning(reasoningFields, endpointKey);
         const buffers = new Map<string, CallBuffer>();
         const startedCalls = new Set<string>();
         let keylessCalls = 0;
@@ -351,17 +372,8 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
               yield { t: 'text', delta: delta.content };
             }
           }
-          for (const field of reasoningFields) {
-            const reasoningDelta = delta[field];
-            if (typeof reasoningDelta === 'string' && reasoningDelta) {
-              // First match wins: a gateway that echoes a backend's field alongside its own
-              // normalized one sends the same thought twice, and both spellings are declared.
-              said = true;
-              yield { t: 'reasoning', delta: reasoningDelta };
-              break;
-            }
-          }
-          for (const tc of (delta.tool_calls ?? []) as { index?: number; id?: string; function?: { name?: string; arguments?: string } }[]) {
+          for (const thought of thinking.add(delta)) { said = true; yield { t: 'reasoning', delta: thought }; }
+          for (const tc of (delta.tool_calls ?? []) as { index?: number; id?: string; extra_content?: unknown; function?: { name?: string; arguments?: string } }[]) {
             said = true;
             const key = tc.index !== undefined ? `i${tc.index}` : tc.id !== undefined ? `d${tc.id}` : `k${keylessCalls++}`;
             let entry = buffers.get(key);
@@ -371,6 +383,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
               entry = { callId: tc.id ?? `call-${tc.index ?? 'x'}-${synthCounter++}`, name: '', args: '' };
               buffers.set(key, entry);
             }
+            thinking.tool(entry.callId, tc.extra_content);
             if (tc.function?.name && !startedCalls.has(key)) {
               entry.name = tc.function.name;
               startedCalls.add(key);
@@ -429,6 +442,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
           t: 'done',
           stop: prose !== undefined ? 'tool-calls' : mapStop(finishReason),
           final,
+          ...(thinking.raw() ? { raw: thinking.raw() } : {}),
           ...(usage !== undefined && { usage }),
           ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
         };
@@ -439,7 +453,9 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; qu
 
     async listModels(signal: AbortSignal): Promise<string[]> {
       const ids: string[] = [];
-      for await (const m of client.models.list({ signal })) ids.push(m.id);
+      const rows: unknown[] = [];
+      for await (const m of client.models.list({ signal })) { ids.push(m.id); rows.push(m); }
+      rememberNativeModels(providerId, rows, providerId === 'custom' ? opts.baseUrl : undefined);
       return ids;
     },
   };

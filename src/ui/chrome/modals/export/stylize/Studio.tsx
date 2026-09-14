@@ -1,9 +1,12 @@
 /* Illustration workspace. Takes remain in memory for the current map state, and only the Generate
  * action is disabled while a job is running. */
 import { useEffect, useRef, useState } from 'react';
+import { retainNeuralRuntime } from '../../../../../io/stylize';
 import { useT } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { host } from '../../../../../kit/host';
+import { reviewText, ReviewWorkerLease } from '../../../../../io/moderation/text/reviewer';
+import { CUSTOM_PROMPT_MAX } from '../../../../../io/stylize/prompt';
 import {
   CUSTOM_DIRECTION_ID,
   STYLE_PACKS,
@@ -72,6 +75,8 @@ function loadDataUrl(url: string): Promise<HTMLImageElement> {
 
 export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runEngine, captureOriginal, procRenderer = loadProcRenderer }: StudioProps) {
   const t = useT();
+  const [lease] = useState(() => new ReviewWorkerLease());
+  useEffect(() => () => lease.dispose(), [lease]);
   const { state } = useStylizeVersions();
   // Load persisted inputs once; edits in this page own their live values afterward.
   const [settings] = useState(loadStylizeSettings);
@@ -87,6 +92,7 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
   const [originalSrc] = useState(capture);
 
   // Closing the window cancels its active generation.
+  useEffect(retainNeuralRuntime, []);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const original: Picture = { key: 'original', src: originalSrc, label: t('stylize.original') };
@@ -145,6 +151,17 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
     const fingerprint = versionStore.currentFingerprint();
     try {
       if (!gridState) throw new StylizeError('bad_response');
+      // Custom preferences are user text bound for a provider; the local content check runs first and refuses on its own.
+      if (custom && text.trim()) {
+        let verdict;
+        try {
+          verdict = await reviewText([{ field: 'description', text: text.trim().slice(0, CUSTOM_PROMPT_MAX) }], abort.signal, () => {}, lease);
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') throw err;
+          throw new StylizeError('unchecked');
+        }
+        if (!verdict.allowed) throw new StylizeError('inappropriate');
+      }
       const { image } = await run(
         {
           captureMap: () => host.capture2d(dialect.maxEdge, false, false),
@@ -194,8 +211,8 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
       const roll = versionStore.getState().versions.reduce(
         (m, v) => (v.direction === packId && v.roll !== undefined ? Math.max(m, v.roll + 1) : m), 0);
       // Headless callers fall back to the renderer's field-based source.
-      const shot = host.capture2d(PROC_RENDER_PX, false, false);
-      const sourceImage = shot ? await loadDataUrl(shot) : undefined;
+      const shot = host.capture2dCanvas(PROC_RENDER_PX, false, false);
+      const sourceImage = shot ?? undefined;
       const canvas = await renderProcPackAsync({
         state: gridState, packId, maxPx: PROC_RENDER_PX, seed: takeSeed(gridState, roll),
         locale: useEditorStore.getState().locale,

@@ -1,5 +1,5 @@
-import { DEPLOY_TARGETS, type DeployTarget } from '../src/legal/deploy-targets';
-import { brandName } from '../src/version';
+import { DEPLOY_TARGETS, type DeployTarget } from '../src/legal/deploy-targets.ts';
+import { brandName } from '../src/version.ts';
 
 export function escapeHtml(value: string): string {
   return value

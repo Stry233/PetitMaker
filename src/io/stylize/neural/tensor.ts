@@ -33,7 +33,7 @@ export function rgbaToTensor(rgba: Uint8ClampedArray | Uint8Array, srcWidth: num
 
 /** A planar RGB float tensor back to opaque RGBA bytes. Values are clamped to 0..1 first: a model's
  *  output overshoots by a fraction at hard edges. */
-export function tensorToRgba(tensor: Float32Array, size: ModelSize): Uint8ClampedArray {
+export function tensorToRgba(tensor: Float32Array, size: ModelSize): Uint8ClampedArray<ArrayBuffer> {
   const { width, height } = size;
   const plane = width * height;
   const out = new Uint8ClampedArray(plane * 4);

@@ -18,7 +18,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import {
-  ANNOTATION_COLORS, ANNOTATION_TAGS, type AnnotationTool, type AnnotationZoneShape, type TagId,
+  ANNOTATION_COLORS, SELECTABLE_ANNOTATION_TAGS, type AnnotationTool, type AnnotationZoneShape, type TagId,
 } from '../../../core/model/annotations';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, ToolRow } from './ToolRow';
@@ -272,7 +272,7 @@ function TagRow() {
   const { rowRef, rowProps } = useSwatchStripRow();
   return (
     <div ref={rowRef} role="group" aria-label={t('annot.tag')} {...rowProps}>
-      {ANNOTATION_TAGS.map((entry) => <TagPill key={entry.id} id={entry.id} label={t(entry.labelKey)} on={entry.id === tag} onPick={setTag} />)}
+      {SELECTABLE_ANNOTATION_TAGS.map((entry) => <TagPill key={entry.id} id={entry.id} label={t(entry.labelKey)} on={entry.id === tag} onPick={setTag} />)}
     </div>
   );
 }

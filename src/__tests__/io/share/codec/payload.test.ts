@@ -18,6 +18,8 @@ function registerSynthetic(state: GridState): GridState {
 }
 
 const META = { appVersion: '1.0-test', saveVersion: 3 };
+// Frozen frame 4 output from the title-writing encoder for an empty hexia map.
+const TITLED_FRAME = 'UDIEAAEFaGV4aWH9MTTxYIZ2ORwMAwgxLjAtdGVzdMA+pWoMUml2ZXIgZ2FyZGVuImORXyjzweenS9Daf97mj015JNQfV7RQbP0gTTWuQwUAAAAAAAAAAAAAAAAAAAA=';
 
 function annotations(): AnnotationsState {
   return {
@@ -67,6 +69,26 @@ function annotationBlobRange(frame: Uint8Array): { lengthOffset: number; start: 
 }
 
 describe('payload frame', () => {
+  it('omits supplied titles from new payloads without changing the frame version', async () => {
+    const state = createBlankGridState('hexia');
+    const meta = { ...META, createdAt: '2026-09-12T12:00:00.000Z' };
+    const oldCallerMeta = { ...meta, title: 'River garden' };
+    const bytes = await encodeMapPayload(state, null, oldCallerMeta);
+    expect(bytes).toEqual(await encodeMapPayload(state, null, meta));
+    expect(bytes[2]).toBe(4);
+    expect(bytes.length).toBe(95 - 1 - new TextEncoder().encode(oldCallerMeta.title).length);
+    expect((await decodeMapPayload(bytes)).provenance).toEqual({ ...meta, aiUsed: false, proceduralUsed: false });
+  });
+
+  it.each([3, 4])('reads titles in older frame %i records without changing the imported map', async version => {
+    const state = createBlankGridState('hexia');
+    const frozen = Uint8Array.from(atob(TITLED_FRAME), char => char.charCodeAt(0));
+    const bytes = version === 3 ? await asFrame3(frozen, state) : frozen;
+    const decoded = await decodeMapPayload(bytes);
+    expect(decoded.provenance).toEqual({ ...META, createdAt: '2026-09-12T12:00:00.000Z', title: 'River garden', aiUsed: false, proceduralUsed: false });
+    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes(canonicalize(state)));
+  });
+
   it('empty map round-trips tiny (< 150 B) and hash-exact', async () => {
     const state = createBlankGridState('hexia');
     const bytes = await encodeMapPayload(state, null, META);
@@ -113,10 +135,10 @@ describe('payload frame', () => {
   it('edited map round-trips exactly', async () => {
     const state = registerSynthetic(makeState(24, 24));
     for (let y = 3; y < 9; y++) for (let x = 3; x < 12; x++) state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
-    const bytes = await encodeMapPayload(state, null, { ...META, title: 'test map' });
+    const bytes = await encodeMapPayload(state, null, META);
     const dec = await decodeMapPayload(bytes);
     expect(canonicalBytes(dec.canonical)).toEqual(canonicalBytes(canonicalize(state)));
-    expect(dec.provenance.title).toBe('test map');
+    expect(dec.provenance.title).toBeUndefined();
   });
   it('falls back to an unmasked model when a state contains data outside the template mask', async () => {
     const state = createBlankGridState('hexia');

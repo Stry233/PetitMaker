@@ -112,6 +112,7 @@ function frameInSea(shot: HTMLCanvasElement, aspect: number): HTMLCanvasElement 
  *  the eviction LRU rather than FIFO. */
 const SHOTS_PER_GRID = 12;
 const shots = new WeakMap<GridState, Map<string, string>>();
+const pendingShots = new WeakMap<GridState, Map<string, Promise<string | null>>>();
 
 function rememberShot(state: GridState, key: string, png: string): void {
   const per = shots.get(state) ?? new Map<string, string>();
@@ -155,6 +156,10 @@ export async function renderThumbnail(
     return seen;
   }
 
+  const pending = pendingShots.get(state) ?? new Map<string, Promise<string | null>>();
+  const running = pending.get(key);
+  if (running) return running;
+
   const take = capturing.then(async (): Promise<string | null> => {
     const renderer = getMapRenderer();
     if (!renderer) return null;
@@ -163,7 +168,14 @@ export async function renderThumbnail(
     return (aspect ? frameInSea(shot, aspect) : shot).toDataURL('image/png');
   });
   capturing = take.catch(() => null);
-  const png = await take;
-  if (png) rememberShot(state, key, png);
-  return png;
+  pending.set(key, take);
+  pendingShots.set(state, pending);
+  try {
+    const png = await take;
+    if (png) rememberShot(state, key, png);
+    return png;
+  } finally {
+    pending.delete(key);
+    if (pending.size === 0) pendingShots.delete(state);
+  }
 }

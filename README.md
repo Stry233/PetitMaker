@@ -22,7 +22,7 @@ _A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/e
 
 </div>
 
-**PetitMaker** is a map editor for *Petit Planet* that runs in your browser. Plan an island here, then build it in the game. Every edit is checked against the game's building rules for terrain, water, placement, edge cuts, bridges, ramps and roads, and an edit the game would not allow is undone.
+**PetitMaker** is a map editor for *Petit Planet* that runs in your browser. Plan an island here, then build it in the game. Edits are checked against the implemented rules for terrain, water, placement, edge cuts, bridges, ramps and roads. Game updates and actual building conditions may differ; check your plan in the game before building.
 
 PetitMaker is an independent, **unofficial** fan project. It is **not affiliated** with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.). *Petit Planet* and related names, characters, and material are the property of their respective owners. See [Affiliation & licensing](#affiliation--licensing) below.
 
@@ -80,7 +80,9 @@ The layer readout opens a panel with three display sizes, including a grid of al
 
 This share image contains the complete map data. **[Download the original image](./docs/media/share-map.png)** (save the file rather than taking a screenshot), then drop it into the Import window at **[petitmaker.cc](https://petitmaker.cc/)**. The editor will restore 鱼松's island from the header, including its terrain, water, and objects.
 
-The band at the bottom is a **PetitGlyph**, which stores the map and its planning notes in the image. Error correction helps keep shared maps readable after resizing and JPEG or WebP compression. Import verifies the data before restoring the map. Processing takes place in the browser, and the image is not uploaded.
+The band at the bottom is a **PetitGlyph** code, which stores the map and its planning annotations in the image. Error correction tolerates some resizing and JPEG or WebP compression. Preserve the original file for reliable sharing; platform processing may make a code unreadable. Import verifies the data before restoring the map. Processing takes place in the browser, and the image is not uploaded.
+
+For a separate backup, export a JSON save. Planning annotations are included by default and can be omitted with their own switch; Notes separately controls the title, description and author. Plain images cannot restore an editable map. Browser storage is separate for the mainland China and international sites, so use exported files to move a map between them.
 
 ## Turn the plan into an illustration
 
@@ -100,7 +102,7 @@ Before exporting a 2D image, the map can be redrawn as an illustration. Built-in
 <sub>The generator creates terrain, water, roads, bridges and ramps, buildings, and vegetation in six stages.</sub>
 </div>
 
-The generator provides four modes: **Island**, **Maze**, **Letter**, and **Picture**. Island and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
+The generator provides four modes: **Island**, **Maze**, **Letter**, and **Picture**. Island and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter and Picture offer built-in designs. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
 
 <div align="center">
 <img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Island and Maze: on the left a settled island of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
@@ -126,7 +128,7 @@ The generator provides four modes: **Island**, **Maze**, **Letter**, and **Pictu
 
 ## Use the agent to edit a map
 
-The agent requires your own API key. Where supported, the browser key vault encrypts it on the device; otherwise, the app stores an obfuscated copy in the current browser. The key is sent only to the selected provider. The agent's tools can read and modify the current map, but cannot access browser storage, other page content, or the general network. Provider requests use the selected integration.
+The agent requires your own API key. Where supported, the browser key vault encrypts it on the device; otherwise, the app stores an obfuscated copy in the current browser. The key authenticates provider requests; automatic identification may also validate it with candidate providers whose key formats match. The agent's tools can read and modify the current map, but cannot access browser storage, other page content, or the general network. Provider requests use the selected integration.
 
 <div align="center">
 <img src="./docs/media/providers.png" alt="A band of provider tiles, each carrying the platform's brand mark and name, followed by a Custom tile for OpenAI-compatible endpoints" width="900">
@@ -138,7 +140,7 @@ The agent can follow natural-language instructions to create or modify areas suc
 
 You can first select a region to restrict the agent's edits to that part of the map.
 
-The agent presents a plan for approval before execution when the selected oversight level requires it. While a task is running, you can add instructions, pause after the current step, or return to an earlier stage and continue with revised requirements. Each stage is a rollback point, and the complete task can be undone as one operation.
+The agent presents a plan for approval before execution when the selected oversight level requires it. While a task is running, you can add instructions, pause after the current step, or return to an earlier stage and continue with revised requirements. Each stage is a rollback point, and task rollback uses the available undo history. Returning to an earlier stage also undoes later edits.
 
 <div align="center">
 <img src="./docs/media/agent-run.png" alt="The agent panel at three points in one task: a four-stage plan awaiting approval, plan execution with two placements in progress, and a completed receipt with a map image, change counts, and a How it was built button" width="900">
@@ -167,7 +169,7 @@ Agent edits use the same rule checks as manual edits. If an operation is invalid
 
 Four design constraints keep map data and editing results consistent:
 
-- **Every editor uses the same command path.** Manual tools, the generator, and the agent all produce commands handled by the same executor (`core/commands/command-executor`). Rules may reject a command before it runs and validate the completed stroke afterward, reverting it if the result is invalid.
+- **Every editor uses the same command path.** Manual tools, the generator, and the agent all produce commands handled by the same executor (`core/commands/command-executor`). Rules may reject a command before it runs and validate the completed stroke afterward, reverting invalid changes.
 - **A share image imports completely or fails.** The PetitGlyph band carries the map through Reed-Solomon error correction, and its SHA-256 covers the canonical map and planning notes. Import decodes, rebuilds, and compares the data. It either returns the complete exported map or reports that the image is too damaged to read. Validation runs locally.
 - **Generation is reproducible from its complete inputs.** Within the same app version, the recipe, generation kind, and settings drive one seeded generator (mulberry32), with ties broken by index. A share image does not rely on replaying that algorithm: its payload contains the complete canonical map, while an optional recipe note records how the map was generated.
 - **Automated tests verify these constraints.** `npm run test:run` covers the rules, codec, and generator. One test imports the share image on this page and fails if it can no longer restore its map.
@@ -202,7 +204,7 @@ Contributions are welcome. Code contributions are accepted **inbound = outbound*
 
 PetitMaker is an independent, unofficial fan project, **not affiliated** with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.). *Petit Planet* and related names, characters, and material are the property of their respective owners.
 
-This repository mixes materials under different terms. **Do not assume that because the code is open source, the art, brand, or any game-referential material is free to reuse:**
+Code, artwork, branding and third-party material in this repository have separate licenses. **Check the applicable permissions before using or redistributing each category:**
 
 1. **Code**: licensed **Apache-2.0** (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)).
 2. **Brand, logo, and original art**: the PetitMaker name (and its Chinese name 谷地工坊), logo, and original artwork are **All Rights Reserved** unless a specific file states otherwise.
@@ -221,6 +223,18 @@ In alphabetical order, not a ranking.
 <td align="center"><a href="https://space.bilibili.com/25599535"><img src="./src/assets/team/25599535.jpg" width="72" alt="镜喵MirrorCat's avatar"><br><sub><b>镜喵MirrorCat</b></sub></a></td>
 <td align="center"><a href="https://space.bilibili.com/3546659724200757"><img src="./src/assets/team/3546659724200757.jpg" width="72" alt="Selka's avatar"><br><sub><b>Selka</b></sub></a></td>
 <td align="center"><a href="https://space.bilibili.com/3632319829116985"><img src="./src/assets/team/3632319829116985.jpg" width="72" alt="鱼松吃点吗's avatar"><br><sub><b>鱼松吃点吗</b></sub></a></td>
+</tr>
+</table>
+
+## Acknowledgements
+
+Thanks to these community members for their support. In alphabetical order, not a ranking.
+
+<table align="center">
+<tr>
+<td align="center"><a href="https://space.bilibili.com/215541807"><img src="./src/assets/team/215541807.jpg" width="72" alt="晶焰EXFire's avatar"><br><sub><b>晶焰EXFire</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/671142687"><img src="./src/assets/team/671142687.jpg" width="72" alt="星灭散落's avatar"><br><sub><b>星灭散落</b></sub></a></td>
+<td align="center"><a href="https://space.bilibili.com/397542864"><img src="./src/assets/team/397542864.jpg" width="72" alt="奕言君's avatar"><br><sub><b>奕言君</b></sub></a></td>
 </tr>
 </table>
 

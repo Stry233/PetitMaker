@@ -74,7 +74,7 @@ function blur3(src: Float32Array, w: number, h: number, passes: number): Float32
  *  weights that die on colour distance, so fields melt together and boundaries hold. */
 function abstractWash(px: Float32Array, w: number, h: number, passes: number): Float32Array {
   let a = px;
-  let b = new Float32Array(px.length);
+  let b: Float32Array = new Float32Array(px.length);
   const sigma2 = 2 * 26 * 26;
   for (let p = 0; p < passes; p++) {
     for (let y = 0; y < h; y++) {
@@ -117,7 +117,7 @@ export function watercolorize(img: Bitmap, o: WatercolorizeOptions): void {
 
   /* 1. wash abstraction at half resolution: melt the detail, hold the boundaries. */
   const hw = Math.max(2, w >> 1), hh = Math.max(2, h >> 1);
-  let half = new Float32Array(hw * hh * 3);
+  let half: Float32Array = new Float32Array(hw * hh * 3);
   for (let y = 0; y < hh; y++) {
     for (let x = 0; x < hw; x++) {
       const sx = Math.min(w - 2, x * 2), sy = Math.min(h - 2, y * 2);

@@ -72,7 +72,8 @@ describe('exec/executor', () => {
     const executor = createExecutor(deps);
     const line = executor.describe({ name: 'place_object', args: { catalogId: 'building-myhouse', x: 3, y: 4 } });
     expect(line).not.toContain('{');
-    expect(line).toContain('building-myhouse');
+    expect(line).not.toContain('building-myhouse');
+    expect(line).toContain('(3,4)');
   });
 
   it('an unknown tool name is reported as an isError result, not a throw', async () => {

@@ -168,6 +168,15 @@ export class OverlayLayer {
    * Draw cell grid and sub-grid (2x2 inside each cell).
    * Chunk borders are drawn separately by MapRenderer.drawChunkGrid().
    */
+  /** Hide every child except the grid lines for a bake that wants the grid alone; the returned
+   *  restore puts each child's own visibility back, so a hidden preview glyph stays hidden. */
+  hideFeedback(): () => void {
+    const children = [...this.container.children];
+    const was = children.map((c) => c.visible);
+    for (const c of children) if (c !== this.gridGraphics) c.visible = false;
+    return () => { children.forEach((c, i) => { c.visible = was[i]!; }); };
+  }
+
   drawGridLines(mapWidth: number, mapHeight: number, visible: boolean): void {
     this.gridGraphics.clear();
     if (!visible) return;
@@ -744,9 +753,19 @@ export class OverlayLayer {
 
     if (cells.length === 0) return;
 
-    this.buildableGraphics.beginFill(0xffffff, 0.12);
+    this.buildableGraphics.beginFill(0xffffff, 0.24);
     for (const { x, y } of cells) cellRect(this.buildableGraphics, x, y, terrainMode);
     this.buildableGraphics.endFill();
+    const offset = terrainMode ? HALF_TILE : 0;
+    const edges = boundaryEdges(cells);
+    for (const [width, color, alpha] of [[4, 0x43413f, 0.55], [1.75, 0xffffff, 0.95]] as const) {
+      this.buildableGraphics.lineStyle(width, color, alpha);
+      for (const edge of edges) {
+        this.buildableGraphics.moveTo(edge.ax * TILE_SIZE - offset, edge.ay * TILE_SIZE - offset);
+        this.buildableGraphics.lineTo(edge.bx * TILE_SIZE - offset, edge.by * TILE_SIZE - offset);
+      }
+    }
+    this.buildableGraphics.lineStyle();
   }
 
   clearBuildableRegion(): void {

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "artifact": "lexicon-index.json",
+  "bytes": 686019,
+  "sha256": "7197c3211ddd98962b036cdf40324d1ea2bfaa12bd028e68faa70111a88e12a8",
+  "id": "jieba-dict",
+  "url": "https://raw.githubusercontent.com/fxsjy/jieba/67fa2e36e72f69d9134b8a1037b83fbb070b9775/jieba/dict.txt",
+  "revision": "67fa2e36e72f69d9134b8a1037b83fbb070b9775",
+  "license": "MIT",
+  "copyright": "Copyright (c) 2013 Sun Junyi",
+  "minimumFrequency": 20,
+  "maximumLength": 8,
+  "sourceRows": 349046,
+  "words": 82656,
+  "transformation": "Han-only words from the jieba dictionary with NFKC and OpenCC Simplified Chinese normalization; every single character plus longer words at or above the minimum frequency; frequencies stored as scaled natural logarithms, one byte per word, grouped by length."
+}

@@ -37,7 +37,7 @@ describe.runIf(PERF)('perf: io', () => {
   it('share codec: encode and decode the dense island as a PetitGlyph payload', async () => {
     const { state } = denseIsland();
     const meta: ShareCodeMeta = { appVersion: 'perf', saveVersion: 1 };
-    let payload = new Uint8Array(0);
+    let payload: Uint8Array = new Uint8Array(0);
     await s.bench('share/encode-map', async () => { payload = await encodeMapPayload(state, null, meta); }, {
       minSamples: 3, maxSamples: 20,
     });

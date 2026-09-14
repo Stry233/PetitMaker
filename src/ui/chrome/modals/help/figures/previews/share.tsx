@@ -98,7 +98,7 @@ export function SharePreview() {
   // The window pictures the visitor's OWN map: its map band captures the live view, so the code
   // band must encode the same map or the two halves of the picture would disagree.
   const state = useEditorStore((st) => st.gridState);
-  const code = useShareCode(ready, state, null, SHARE_OPTIONS.importable, SHARE_OPTIONS.title, SHARE_OPTIONS.resolution, SHARE_CREATED_AT);
+  const code = useShareCode(ready, state, null, SHARE_OPTIONS.importable, SHARE_OPTIONS.resolution, SHARE_CREATED_AT);
   return (
     <PreviewFrame width={640} height={508}>
       <div style={{ display: 'flex', flexDirection: 'column', width: 640, height: 508, boxSizing: 'border-box' }}>

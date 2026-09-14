@@ -1,42 +1,4 @@
-/**
- * setup-readiness.test.tsx — the connection screen as a STATE MACHINE, and the one thing no path
- * through it may do.
- *
- * THE INVARIANT: a panel at idle says it is waiting for an order, so every door out of this screen
- * has to leave a connection that could carry one — a key filed, an address where the provider is the
- * user's own server, and a model id to name in the request (`settings.ts:connectionGaps`). The
- * screen's own faces are three readings of that same answer: Done leaves only when nothing is
- * missing, the foot otherwise carries the door to whatever is, and Back is drawn only where leaving
- * is honest.
- *
- * AND NO STEP OF IT MAY READ AS PICKING A MODEL. A model is chosen in one place, the settings card, so
- * the confirmation is a plain statement (the provider as a fact line, the model as a sentence, one
- * Done and the flow's own Back) — a control offered beside a reported model is read as the control
- * that chose it, whatever it does. The user's own server is not confirmed here at all: its address and
- * its model are both the card's, so the screen hands the panel over once nothing is owed, and the
- * whole custom journey is key, address, review, done.
- *
- * A LISTLESS ENDPOINT IS NOT A STEP EITHER. Where no list is coming and no model stands, the flow
- * ROUTES to the settings card, whose model row already owns that state (the typed id, the unverified
- * note): setup keeps no dead end of its own for it, so a hand-off may leave the MODEL owed — the one
- * gap the card exists to repair — and nothing else.
- *
- * A FAILED ENDPOINT CHECK IS THE ONE EVENT THAT TAKES READINESS BACK DOWN (`recordEndpointCheck`):
- * an address nothing answered cannot stand behind a model, so the filed model empties, the endpoint
- * is the named gap, and every door to idle blocks until the address answers and a model is picked
- * again. A server that ANSWERS without a list is the other side of that boundary
- * (`endpointCheckVerdict`) and keeps the typed-id trust.
- *
- * WHAT IS UNDER TEST IS THE TRAVERSAL, not any one step's drawing (`setup.test.tsx` owns that). Three
- * layers of it: the walk that put a panel on "Ready for orders" with no endpoint and no model, a
- * TABLE of every case the machine can be in (key shape × entry × endpoint outcome × model outcome ×
- * detour), each row naming the face it must show and the exit it must offer, and a MODEL-BASED SWEEP
- * that walks random legal sequences and asserts after every single event that idle-without-ready is
- * unreachable, that some control is live, and that no face claims something that is not standing.
- *
- * The network is never touched: `probe` and `listModels` are injected, and the sweep chooses each
- * run's answers from a seeded generator so a failure replays exactly.
- */
+/** Setup validates credentials; management owns every model choice and completion. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useState } from 'react';
 import { render, fireEvent, act, screen } from '@testing-library/react';
@@ -47,7 +9,7 @@ import { translations } from '../../../i18n/translations';
 import { SetupScreen } from '../../../ui/agent/SetupScreen';
 import { ManageScreen } from '../../../ui/agent/ManageScreen';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { prettyModel } from '../../../ui/agent/pretty-model';
+import { forgetRosters } from '../../../ui/agent/model-roster';
 import {
   connectionGaps, connectionReady, useAgentPanelSettings, type AgentPanelSettingsState,
 } from '../../../ui/agent/settings';
@@ -91,11 +53,16 @@ const IDLE = 900;
 const GATEWAY_URL = 'https://gateway.example/v1';
 
 const store = () => useAgentPanelSettings.getState();
-const phaseOf = () => screen.getByTestId('setup-screen').getAttribute('data-phase');
+const phaseOf = () => screen.queryByTestId('manage-screen') ? 'manage' : screen.getByTestId('setup-screen').getAttribute('data-phase');
+const pickDefault = () => {
+  press('manage-model-dd');
+  fireEvent.click(screen.getAllByRole('menuitemradio')[0]!);
+};
 const has = (id: string) => screen.queryByTestId(id) !== null;
 
 beforeEach(() => {
   backing.clear();
+  forgetRosters();
   useEditorStore.setState({ locale: 'en' });
   useAgentPanelSettings.setState({
     provider: 'claude', model: emptyModels(), oversight: 'checkpoint',
@@ -210,9 +177,11 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
 
     expect(listModels).toHaveBeenCalledWith({ provider: 'custom', apiKey: KEY.gateway, customBaseUrl: GATEWAY_URL });
-    expect(phaseOf()).toBe('confirm');
-    expect(connectionReady(store()), 'key, address and model all stand').toBe(true);
-    fireEvent.click(screen.getByTestId('setup-done'));
+    expect(phaseOf()).toBe('manage');
+    expect(connectionReady(store())).toBe(false);
+    pickDefault();
+    fireEvent.click(screen.getByTestId('manage-done'));
+    expect(connectionReady(store())).toBe(true);
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -238,7 +207,7 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
     await act(async () => {});
 
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(store().model.custom).toBe('');
     expect(has('setup-done'), 'no way out into a panel with no model').toBe(false);
     expect(has('setup-models-unavailable'), 'no dead-end note').toBe(false);
@@ -261,7 +230,7 @@ interface Row {
   drive: () => Promise<void> | void;
   /** The face that must be standing at the end: the phase, the step reported to the desk, and the
    *  one foot control the step offers. */
-  face: { phase: string; step: string; control: string };
+  face: { phase: string; step: string | null; control: string };
   /** Whether the walk may have left setup, and what must be true of the connection if it did. */
   exit: 'left' | 'stayed' | 'manage';
 }
@@ -304,22 +273,22 @@ const ROWS: Row[] = [
     name: 'a named provider, typed, listing its models',
     list: LISTS.named,
     drive: async () => { type(KEY.claude); await quiet(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'a named provider, released by Enter rather than by the quiet',
     list: LISTS.named,
     drive: async () => { type(KEY.claude); await enter(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'the tenth provider\'s own prefix',
     list: LISTS.named,
     drive: async () => { type(KEY.perplexity); await quiet(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'a key still being typed',
@@ -345,8 +314,8 @@ const ROWS: Row[] = [
     probe: () => Promise.resolve<ProviderId>('deepseek'),
     list: LISTS.named,
     drive: async () => { type(KEY.gateway); await enter(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'a key the provider refuses',
@@ -367,7 +336,7 @@ const ROWS: Row[] = [
       address(GATEWAY_URL);
       await quiet();
     },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-confirm-back' },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
     exit: 'manage',
   },
   {
@@ -381,7 +350,7 @@ const ROWS: Row[] = [
       address(GATEWAY_URL);
       await quiet();
     },
-    face: { phase: 'confirm', step: 'confirmed', control: 'setup-confirm-back' },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
     exit: 'manage',
   },
   {
@@ -396,8 +365,8 @@ const ROWS: Row[] = [
       address(GATEWAY_URL);
       await quiet();
     },
-    face: { phase: 'confirm', step: 'endpoint', control: 'setup-need-address' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     // THE BROKEN STATE, MET AGAIN, STILL BROKEN: a check already failed (the model was emptied and
@@ -412,9 +381,9 @@ const ROWS: Row[] = [
       store().recordEndpointCheck(false);
     },
     list: LISTS.unreachable,
-    drive: async () => { await act(async () => {}); },
-    face: { phase: 'confirm', step: 'endpoint', control: 'setup-need-address' },
-    exit: 'stayed',
+    drive: async () => { press('setup-endpoint-save'); await act(async () => {}); },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     // AND THE SAME STATE WITH THE SERVER BACK UP: the mount's re-ask reaches it, the verdict
@@ -429,8 +398,8 @@ const ROWS: Row[] = [
       store().recordEndpointCheck(false);
     },
     list: LISTS.named,
-    drive: async () => { await act(async () => {}); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-confirm-back' },
+    drive: async () => { press('setup-endpoint-save'); await act(async () => {}); },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
     exit: 'manage',
   },
   {
@@ -455,7 +424,7 @@ const ROWS: Row[] = [
     before: () => { store().setCustomBaseUrl(GATEWAY_URL); store().pinProvider('custom'); },
     list: LISTS.named,
     drive: async () => { type(KEY.gateway); await quiet(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-confirm-back' },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
     exit: 'manage',
   },
   {
@@ -483,8 +452,8 @@ const ROWS: Row[] = [
     },
     list: LISTS.named,
     drive: async () => { type(KEY.claude); await quiet(); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'Back at the waiting step: the reading stops, the key stays',
@@ -514,15 +483,15 @@ const ROWS: Row[] = [
     },
     drive: () => { pick(PROVIDER_META.claude.name); },
     face: { phase: '', step: '', control: '' },
-    exit: 'left',
+    exit: 'manage',
   },
   {
     name: 'a session that comes back holding a key and no model',
     before: () => { store().connectKey('claude', KEY.claude); },
     list: LISTS.named,
     drive: async () => { await act(async () => {}); },
-    face: { phase: 'confirm', step: 'chosen', control: 'setup-done' },
-    exit: 'stayed',
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
   },
   {
     name: 'a session that comes back holding a key against a server it cannot name',
@@ -532,7 +501,7 @@ const ROWS: Row[] = [
       store().setModel('qwen3:32b');
     },
     drive: async () => { await act(async () => {}); },
-    face: { phase: 'confirm', step: 'endpoint', control: 'setup-need-address' },
+    face: { phase: 'custom', step: 'endpoint', control: 'setup-endpoint-save' },
     exit: 'stayed',
   },
 ];
@@ -571,9 +540,12 @@ describe('every case the machine can be in', () => {
         // takes as a typed id, so the two screens cannot pass the panel back and forth.
         const owed = connectionGaps(store());
         expect(owed.every((gap) => gap === 'model'), `handed over owing ${owed.join('+')}`).toBe(true);
+        expect(screen.queryByTestId('manage-screen'), 'the parent mounts management once').toBeNull();
+        return;
       } else {
         expect(onManage, 'nothing handed the panel over').not.toHaveBeenCalled();
       }
+      if (!row.face.phase) return;
       expect(phaseOf()).toBe(row.face.phase);
       expect(seen[seen.length - 1], 'the desk describes the screen that is standing').toBe(row.face.step);
       expect(has(row.face.control), `the step's own control: ${row.face.control}`).toBe(true);
@@ -584,55 +556,42 @@ describe('every case the machine can be in', () => {
 /* ── no door out lands on a panel that cannot carry an order ── */
 
 describe('the exits', () => {
-  it('draws no Back where leaving would leave half a connection standing', async () => {
-    vi.useFakeTimers();
+  it('keeps management open until the user chooses a model', async () => {
+    const onDone = vi.fn();
     const onLeave = vi.fn();
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={LISTS.named} onLeave={onLeave} />);
-
-    // KEYLESS IS HONEST: nothing is claimed, so the rest the form was walked into from is true.
+    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={LISTS.named} onDone={onDone} onLeave={onLeave} />);
     expect(has('setup-leave')).toBe(true);
     type(KEY.claude);
-    await quiet();
-    expect(phaseOf()).toBe('confirm');
-    expect(connectionReady(store())).toBe(true);
-
-    // A KEY FILED WITH NOTHING TO NAME IN THE REQUEST IS NOT. The model goes away behind the
-    // screen's back (the settings card's own typed id, emptied), and the way out goes with it.
-    await act(async () => { press('setup-confirm-back'); });
-    expect(phaseOf()).toBe('key');
-    expect(has('setup-leave'), 'a ready connection may be walked away from').toBe(true);
-    await act(async () => { useAgentPanelSettings.setState({ model: emptyModels() }); });
-    expect(has('setup-leave'), 'a half-made one may not').toBe(false);
+    await enter();
+    expect(phaseOf()).toBe('manage');
+    expect(connectionReady(store())).toBe(false);
+    expect(has('setup-leave')).toBe(false);
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
+    press('manage-done');
+    expect(onDone).not.toHaveBeenCalled();
     expect(onLeave).not.toHaveBeenCalled();
+    pickDefault();
+    expect(connectionReady(store())).toBe(true);
+    press('manage-done');
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('holds Done dimmed while the model list is still out, and never for good', async () => {
+  it('keeps the key editable while checking and opens management when the list arrives', async () => {
     let settle: (ids: string[]) => void = () => {};
     const onDone = vi.fn();
-    renderWithI18n(
-      <SetupScreen
-        probe={pendingProbe}
-        listModels={() => new Promise<string[]>((resolve) => { settle = resolve; })}
-        onDone={onDone}
-      />,
-    );
+    renderWithI18n(<SetupScreen probe={pendingProbe}
+      listModels={() => new Promise<string[]>((resolve) => { settle = resolve; })} onDone={onDone} />);
     type(KEY.claude);
     await enter();
-
-    const done = () => screen.getByTestId('setup-done') as HTMLButtonElement;
-    expect(phaseOf()).toBe('confirm');
-    expect(done().disabled, 'nothing to name in the request yet').toBe(true);
-    fireEvent.click(done());
-    expect(onDone).not.toHaveBeenCalled();
-    // AND BACK IS STILL A LIVE WAY OUT of the step, which is what keeps the wait from being a dead
-    // end. It is the foot's own ghost button, not a control beside the model: a pill offered next to
-    // a reported model is read as the one that chose it.
-    expect(has('setup-confirm-back')).toBe(true);
-    expect(has('setup-rechoose'), 'nothing on the confirmation reads as picking a model').toBe(false);
-
+    expect(phaseOf()).toBe('checking');
+    expect(has('setup-key-input')).toBe(true);
+    expect(has('setup-act-reenter')).toBe(true);
+    expect(has('setup-done')).toBe(false);
     await act(async () => { settle(['claude-sonnet-4-5']); });
-    expect(done().disabled).toBe(false);
-    fireEvent.click(done());
+    expect(phaseOf()).toBe('manage');
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
+    pickDefault();
+    press('manage-done');
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -684,7 +643,7 @@ describe('the exits', () => {
     // The form stood up by itself over the half-made connection and asked the endpoint what it
     // runs: an empty catalogue leaves the model as the one thing owed, which routes the panel to the
     // card that takes a typed id — no press in between.
-    expect(screen.getByTestId('setup-screen').getAttribute('data-phase')).toBe('confirm');
+    expect(screen.getByTestId('setup-screen').getAttribute('data-phase')).toBe('checking');
     await settle();
     expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull();
     expect(screen.getByTestId('manage-screen')).toBeTruthy();
@@ -745,7 +704,7 @@ function moves(next: () => number): { name: string; run: () => void | Promise<vo
     out.push({ name: `pick ${entry.textContent ?? ''}`, run: () => { fireEvent.click(entry); } });
   }
   for (const id of ['setup-act-recheck', 'setup-act-manual', 'setup-act-address', 'setup-act-reenter',
-    'setup-need-address', 'setup-confirm-back', 'setup-done']) {
+    'manage-model-dd', 'manage-done']) {
     const el = screen.queryByTestId(id) as HTMLButtonElement | null;
     if (el && !el.disabled) out.push({ name: `press ${id}`, run: () => { press(id); } });
   }
@@ -764,13 +723,13 @@ function lies(): string[] {
     return el !== null && !el.disabled;
   };
 
-  if (enabled('setup-done') && gaps.length > 0) bad.push(`Done offered with ${gaps.join('+')} missing`);
+  if (enabled('manage-done') && gaps.length > 0) bad.push(`Done offered with ${gaps.join('+')} missing`);
   if (has('setup-need-address') && !gaps.includes('endpoint')) bad.push('the address door over an address that stands');
   if (has('setup-act-address') && !gaps.includes('endpoint')) bad.push('the address verb over an address that stands');
   if (has('setup-leave') && !(gaps.length === 0 || gaps.includes('key'))) {
     bad.push(`Back offered over ${gaps.join('+')}`);
   }
-  if (phase === 'confirm' && gaps.includes('key')) bad.push('a confirmation with no key filed');
+  if (phase === 'manage' && gaps.includes('key')) bad.push('management with no key filed');
 
   const sub = screen.queryByTestId('setup-prov-sub')?.textContent ?? '';
   const claimsCheck = sub === translations.en['agent3.setup_row_checking']
@@ -783,12 +742,6 @@ function lies(): string[] {
     if (has(id)) bad.push(`${id} may not render in setup`);
   }
 
-  const note = screen.queryByTestId('setup-model-note')?.textContent ?? '';
-  if (note !== '') {
-    const model = state.model[state.provider] ?? '';
-    if (model === '') bad.push('a model reported with none filed');
-    else if (!note.includes(prettyModel(model))) bad.push(`the note names a model that is not filed: ${note}`);
-  }
   return bad;
 }
 
@@ -815,7 +768,7 @@ describe('a sweep over event sequences', () => {
     () => { store().connectKey('claude', KEY.claude); store().setModel('claude-sonnet-4-5'); },
   ];
   const RUNS = 40;
-  const STEPS = 8;
+  const STEPS = 16;
 
   // A WALK PER RUN AND AN ASSERTION PER EVENT: the whole sweep is one test, and it is a long one by
   // construction, so it carries its own ceiling rather than the suite's five seconds.
@@ -849,7 +802,6 @@ describe('a sweep over event sequences', () => {
           candidates={['deepseek']}
           onDone={onDone}
           onLeave={() => {}}
-          onManage={() => { visited.add('managed'); }}
         />,
       );
 
@@ -869,11 +821,12 @@ describe('a sweep over event sequences', () => {
           break;
         }
         visited.add(`phase:${phaseOf() ?? ''}`);
-        for (const id of ['setup-done', 'setup-need-address', 'setup-act-address',
+        if (phaseOf() === 'manage') visited.add('managed');
+        for (const id of ['manage-done', 'setup-act-address',
           'setup-act-recheck', 'setup-leave', 'setup-row-cross']) {
           if (has(id)) visited.add(id);
         }
-        const live = [...screen.getByTestId('setup-screen').querySelectorAll('button, input')]
+        const live = [...screen.getByTestId(phaseOf() === 'manage' ? 'manage-screen' : 'setup-screen').querySelectorAll('button, input')]
           .filter((el) => !(el as HTMLButtonElement).disabled);
         expect(live.length, `${where}: nothing on this face can be pressed`).toBeGreaterThan(0);
         expect(lies(), `${where}`).toEqual([]);
@@ -885,7 +838,7 @@ describe('a sweep over event sequences', () => {
 
     // THE GROUND THE SWEEP HAS TO HAVE COVERED for its silence to mean anything: all three steps, a
     // hand-off to the card, a dead end, a way back, and at least one walk that finished.
-    for (const face of ['phase:key', 'phase:custom', 'phase:confirm', 'setup-done', 'managed',
+    for (const face of ['phase:key', 'phase:custom', 'phase:manage', 'manage-done', 'managed',
       'setup-act-address', 'setup-row-cross', 'setup-leave', 'left']) {
       expect([...visited], `the sweep never reached ${face}`).toContain(face);
     }

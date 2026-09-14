@@ -34,6 +34,8 @@ export interface ToolExecutor {
 }
 export interface LoopDeps {
   adapter: Adapter; model: string; system: string;
+  capabilities?: AdapterRequest['capabilities'];
+  thinking?: AdapterRequest['thinking'];
   tools: { name: string; description: string; parameters: Record<string, unknown> }[];
   executor: ToolExecutor;
   oversight: Oversight;
@@ -42,6 +44,8 @@ export interface LoopDeps {
   maxTurns?: number;
   signal: AbortSignal;
   undoStackSize: () => number;
+  /** Local content check of the order's text before the first turn; a returned reply refuses the job without a provider call. */
+  screen?: (orderText: string) => Promise<string | null>;
   onLive?: (parts: readonly Part[] | null) => void;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>; // injected for fake-timer tests
   contextWindow?: number; // default 128000
@@ -139,7 +143,7 @@ function gateAnswerFor(events: readonly SessionEvent[], callId: string): { answe
 }
 
 /** A skip or typed gate answer resolves a call without a tool-result event. */
-function isCallResolved(events: readonly SessionEvent[], callId: string): boolean {
+export function isCallResolved(events: readonly SessionEvent[], callId: string): boolean {
   if (events.some((e) => e.kind === 'toolResult' && e.callId === callId)) return true;
   const answer = gateAnswerFor(events, callId);
   return answer !== undefined && (answer.answer === 'skip' || answer.answer === 'words');
@@ -567,6 +571,17 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
   const resumed = await resumeLeftoverCalls(log, deps, toolNames);
   if (resumed) return resumed;
 
+  if (deps.screen && countAssistantTurns(log) === 0) {
+    const order = [...eventsOf(log)].reverse().find((e): e is Extract<SessionEvent, { kind: 'order' }> => e.kind === 'order');
+    const refusal = order ? await deps.screen(order.text) : null;
+    if (deps.signal.aborted) { endJob(log, deps, { outcome: 'aborted' }); return 'aborted'; }
+    if (refusal) {
+      append(log, { kind: 'assistant', parts: [{ kind: 'text', text: refusal, done: true }], stop: 'stop' });
+      endJob(log, deps, { outcome: 'done' });
+      return 'done';
+    }
+  }
+
   for (;;) {
     if (deps.signal.aborted) { endJob(log, deps, { outcome: 'aborted' }); return 'aborted'; }
     if (pauseIsPending(log)) { append(log, { kind: 'paused' }); return 'paused'; }
@@ -607,6 +622,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
       system: deps.system,
       messages: deriveMessages(log, { budgetTokens, estimate, appendSystemNote }),
       tools: deps.tools, model: deps.model, sameModel: deps.sameModel,
+      capabilities: deps.capabilities, thinking: deps.thinking,
     });
 
     // Apply the provider pacing floor learned from rate-limit responses; the job signal can skip it.

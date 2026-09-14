@@ -38,7 +38,7 @@ const EXPECTED_STORE_FIELDS: readonly string[] = [
   'editMode', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'helpTarget', 'hintLevel', 'initMap',
   'layerLocked', 'layerPinned', 'layerVisibility', 'loadMap', 'locale', 'markExported', 'modals',
   'motionPref', 'placementRotation', 'portraitBlocked', 'preview3DEdit', 'region', 'regionBrushSize',
-  'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',
+  'regionSelectionOwner', 'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',
   'setAutoEdgeCut',
   'setBrushSize', 'setContextMenu', 'setDeletePopover', 'setDisplayLayer',
   'setEditMode', 'setEraserShape', 'setExport3dShots', 'setHintLevel', 'setLayerLocked', 'setLayerVisibility',

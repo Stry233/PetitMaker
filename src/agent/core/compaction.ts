@@ -3,6 +3,8 @@
  *  (project-messages.ts), so a second compaction summarizes forward from the first's boundary
  *  with no special-casing here: the request it builds naturally carries the prior summary. */
 import { append, eventsOf, type SessionLog } from './log';
+import { quotePromptData } from '../../core/runtime/prompt-data';
+import SUMMARY_SYSTEM from '../prompts/09-summary.md?raw';
 import { deriveMessages, messageText } from './project-messages';
 import { withIdleTimeout } from './stream-idle';
 import type { SessionEvent } from './types';
@@ -20,10 +22,7 @@ export const COMPACTION_RESERVE = 16000;
 /** Tail tokens kept verbatim behind the summary, rounded up to the nearest whole exchange group. */
 export const KEEP_RECENT = 8000;
 
-const SUMMARY_SYSTEM = 'Summarize this conversation in two or three sentences: the objective, the '
-  + 'current state of the map, and the next step. Carry forward the map ledger facts given in the '
-  + 'final message below (the last order and the tool-call tally) so a reader who was not here can '
-  + 'pick the job up cold.';
+
 
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 
@@ -176,7 +175,7 @@ export async function compact(
     : assistantBoundary(window, deps.estimate) ?? firstEligibleSeq;
   if (retainedFromSeq <= firstEligibleSeq) return false;
 
-  const ledger = `Last order: "${lastOrderText(events)}". Tool calls so far this job: ${jobOpCount(events)}.`;
+  const ledger = `Last order: ${quotePromptData(lastOrderText(events))}. Tool calls so far this job: ${jobOpCount(events)}.`;
   const request: AdapterRequest = {
     system: SUMMARY_SYSTEM,
     messages: [

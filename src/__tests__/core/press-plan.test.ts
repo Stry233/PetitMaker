@@ -357,6 +357,17 @@ describe('a tool-owned select state answers the modifier as the map select mode 
   const annotate = (over: Partial<PressFacts> = {}): PressFacts =>
     facts({ tool: ToolType.Annotate, toolSelects: true, clickOnlyStroke: true, ...over });
 
+  it('offers selection over an unselected note and a grab over a selected note', () => {
+    const unselected = cursorFactsFor(annotate({ toolSelectHit: { id: 'n1', selected: false } }));
+    expect(unselected.pressSelects).toBe(true);
+    expect(unselected.overSelected).toBe(false);
+    const selected = cursorFactsFor(annotate({
+      toolSelectHit: { id: 'n1', selected: true }, toolGrabs: true, clickOnlyStroke: false,
+    }));
+    expect(selected.pressSelects).toBe(false);
+    expect(selected.overSelected).toBe(true);
+  });
+
   it('a ctrl press reaches the tool (its own toggle) and the drag is a band, never a pan', () => {
     const p = resolvePress(annotate({ multiSelectHeld: true }));
     expect(kinds(p.down)).toEqual(['tool-stroke']);

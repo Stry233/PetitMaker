@@ -28,6 +28,7 @@ import { seaFrame } from '../../../canvas/thumbnail';
 import { regionBounds } from '../../../state/region-bounds';
 import { host } from '../../../kit/host';
 import { PanelShell } from '../../../ui/agent/PanelShell';
+import { Shell } from '../../../ui/shell/Shell';
 import { OPTION_THUMB } from '../../../ui/agent/OptionPick';
 import { CHIP_VIGNETTE } from '../../../ui/agent/region-chip';
 import { useAgentPanelSettings } from '../../../ui/agent/settings';
@@ -83,12 +84,13 @@ function installMap(): GridState {
 
 /** The column in a tree, with a re-render that can put the panel AWAY: a fold is a prop change here,
  *  the same one the shell makes when the assistant block is pressed a second time. */
-async function mountColumn(): Promise<ReturnType<typeof render> & { fold(): Promise<void> }> {
+async function mountColumn(withShell = false): Promise<ReturnType<typeof render> & { fold(): Promise<void> }> {
   const { default: PanelColumn } = await import('../../../ui/agent/PanelColumn');
+  if (withShell) useEditorStore.getState().setAssistantOpen(true);
   const tree = (open: boolean) => (
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <PanelColumn open={open} />
+        {withShell ? <Shell onRestoreSession={() => {}}><div /></Shell> : <PanelColumn open={open} />}
       </I18nProvider>
     </MotionConfig>
   );
@@ -100,6 +102,7 @@ async function mountColumn(): Promise<ReturnType<typeof render> & { fold(): Prom
   return Object.assign(out, {
     async fold() {
       await act(async () => {
+        if (withShell) useEditorStore.getState().setAssistantOpen(false);
         out.rerender(tree(false));
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       });
@@ -120,6 +123,8 @@ function orderInFlight(): void {
 
 beforeEach(() => {
   backing.clear();
+  useEditorStore.getState().setEditMode({ mode: null });
+  useEditorStore.getState().setAssistantOpen(false);
   installMap();
   connect();
   useAgentSession.getState().clearSession();
@@ -233,7 +238,7 @@ describe('the chip is a view of the store\'s painted region', () => {
 describe('the marking state', () => {
   it('opens the map\'s own region screen, folds the job zone and hands the field over', async () => {
     orderInFlight();
-    const { getByTestId, queryByTestId } = await mountColumn();
+    const { getByTestId, queryByTestId } = await mountColumn(true);
     expect(queryByTestId('job-ticket')).not.toBeNull();
     expect(queryByTestId('shell-scope-screen')).toBeNull();
 
@@ -256,7 +261,7 @@ describe('the marking state', () => {
   /** DONE COMES BACK TO THE PANEL WITH THE REGION STANDING, which is the whole contract of the entry:
    *  the screen edits the store's one region fact and the chip is a view of it. */
   it('returns to the panel on the screen\'s own Done, with what was painted attached', async () => {
-    const { getByTestId, queryByTestId } = await mountColumn();
+    const { getByTestId, queryByTestId } = await mountColumn(true);
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
     await paint(rect(1, 1, 3, 3));
 

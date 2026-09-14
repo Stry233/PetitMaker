@@ -28,7 +28,7 @@ const b64 = (buf: ArrayBuffer): string => {
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
   return btoa(s);
 };
-const unb64 = (s: string): Uint8Array => {
+const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
   const raw = atob(s);
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);

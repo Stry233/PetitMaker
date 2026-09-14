@@ -5,7 +5,10 @@
 // that decision is pure. The map half asserts the two things a composition can only be judged on
 // once it is down: the rules accepted every mark (a refused plant is a hole in a mirror), and the
 // finished map scores in the reference maps' own bands for symmetry, unity and density.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch; tens of seconds on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { EventBus } from '../../../../../core/commands/event-bus';

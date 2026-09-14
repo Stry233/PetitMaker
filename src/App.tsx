@@ -7,6 +7,7 @@ import { PixiCanvas } from './canvas/map2d/PixiCanvas';
 import { Editor3DCanvas } from './canvas/map3d/Editor3DCanvas';
 import { preloadScene3D } from './canvas/map3d/preload';
 import { installSelectionViewSync } from './canvas/interaction/selection-view-sync';
+import { installRegionViewSync } from './canvas/interaction/region-view-sync';
 import { useCursorVars } from './ui/design/cursors/cursor-vars';
 import { useMotionEnabled } from './ui/hooks/useMotionEnabled';
 
@@ -167,6 +168,7 @@ export default function App() {
 
   // One subscription keeps the selection ring synchronized across both mounted views.
   useEffect(() => installSelectionViewSync(), []);
+  useEffect(() => installRegionViewSync(), []);
 
   // Install the worker-backed macro runners at the layer seam and warm them before first hover.
   // Headless environments keep the synchronous fallback when the pool is unavailable.

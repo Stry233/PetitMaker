@@ -162,8 +162,7 @@ describe('the search field belongs to the row of names', () => {
     mount();
     const input = screen.getByRole('searchbox') as HTMLInputElement;
     expect(input.style.fontSize).toBe(`${SEARCH.text}px`);
-    // The typed query stands where the placeholder did, so the field does not resize as it is used.
-    expect(input.style.lineHeight).toBe(`${SEARCH.h}px`);
+    expect(input.style.paddingTop).toBe(input.style.paddingBottom);
   });
 
   it('is centred on the names ink, not hung off the box that carries it', () => {

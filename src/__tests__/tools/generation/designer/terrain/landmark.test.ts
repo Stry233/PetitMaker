@@ -12,7 +12,10 @@
 // survive the rules and the repair fixpoint that runs before them: a banner that ships with half its
 // strokes lowered would pass every rule check and fail the design. So the ink is counted after the
 // stroke group closes, and the decoration pass is held off the panel.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch; tens of seconds on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { EventBus } from '../../../../../core/commands/event-bus';

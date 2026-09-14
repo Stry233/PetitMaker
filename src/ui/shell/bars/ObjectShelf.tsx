@@ -49,22 +49,6 @@ const CARD_ARRIVE_X = MOTIONS['shelf.category.swap'].amplitude;
 type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
 
 /**
- * How far the field's text sits below the pill's own top edge, in css px.
- *
- * A single-line `<input>` is not a plain block: Chromium positions its text off the padding box's
- * own TOP, at the font's own natural metrics, and does not honour `line-height` for this at all
- * once the box has an explicit height — setting `lineHeight` to the pill's own height (the usual
- * way to centre text in a fixed-height box) is therefore a no-op here, and with no padding the
- * placeholder lands noticeably above the pill's true centre, not on it. `padding-bottom` is just as
- * inert, for the same reason: the text never moves off the top-anchored line to make room for it.
- * `padding-top` is the one property that does move it, so it is the one lever left to centre the
- * word by (screenshot-verified against `SEARCH.h`; a taller or shorter pill needs a re-check). The
- * field's own `lineHeight` stays set to the pill's height regardless: it still sizes the native
- * caret and the drag-select highlight to the field's full height, which is a real job of its own.
- */
-const SEARCH_PAD_TOP = 4;
-
-/**
  * The search capsule as ONE part: the drawn plate, its silhouette hairline and the field laid over
  * it, at the sizes `SEARCH` declares. The shelf mounts it live; the Help Center's search figure
  * mounts the same part read-only, so the pictured field is this field rather than a copy of its
@@ -85,10 +69,10 @@ export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, read
     position: 'relative', display: 'block', boxSizing: 'border-box',
     width: '100%', height: '100%',
     paddingLeft: SEARCH.padX, paddingRight: SEARCH.padX,
-    paddingTop: SEARCH_PAD_TOP, paddingBottom: 0,
+    paddingTop: 0, paddingBottom: 0,
     background: 'transparent', border: 'none', outline: 'none',
     fontSize: SEARCH.text, fontWeight: weightAt(800, SEARCH.text), color: PLATE_INK,
-    lineHeight: `${SEARCH.h}px`, cursor: cursors.text,
+    lineHeight: 'normal', cursor: cursors.text,
     '--pw-placeholder': MUTED_INK,
   };
   return (

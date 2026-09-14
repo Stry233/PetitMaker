@@ -93,6 +93,8 @@ export interface PaintPreviewArgs {
   codeImg?: HTMLCanvasElement | null;
   /** The locale's logo lockup, preloaded by the caller (null = plain-text fallback). */
   brandLockup?: HTMLImageElement | null;
+  /** Resolved values approved by the text check; do not substitute fresh map metadata afterward. */
+  footerTokens?: Record<string, string>;
 }
 
 /** What a painted preview is made of: the picture, and the layout it was painted at, so a reader
@@ -100,11 +102,17 @@ export interface PaintPreviewArgs {
  *  the comp's coordinates onto the returned canvas's pixels. */
 export interface PaintedPreview { url: string; comp: ReturnType<typeof computeComposition>; scale: number }
 
-export function paintPreview(args: PaintPreviewArgs): string | null {
-  return paintPreviewLayout(args)?.url ?? null;
+/** Interactive previews display pixels directly instead of synchronously encoding a PNG on every edit. */
+export function paintPreview(args: PaintPreviewArgs): HTMLCanvasElement | null {
+  return paintCanvasLayout(args)?.canvas ?? null;
 }
 
 export function paintPreviewLayout(args: PaintPreviewArgs): PaintedPreview | null {
+  const painted = paintCanvasLayout(args);
+  return painted ? { url: painted.canvas.toDataURL('image/png'), comp: painted.comp, scale: painted.scale } : null;
+}
+
+function paintCanvasLayout(args: PaintPreviewArgs): { canvas: HTMLCanvasElement; comp: ReturnType<typeof computeComposition>; scale: number } | null {
   const { options, summary, state, locale, baseMap, card3dAngles, codeImg } = args;
   const sum = summary ?? EMPTY_SUMMARY;
   const mapAspect = (baseMap.width / baseMap.height) || 1.2;
@@ -128,15 +136,16 @@ export function paintPreviewLayout(args: PaintPreviewArgs): PaintedPreview | nul
   const scale = Math.min(1, PREVIEW_W / comp.width);
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(comp.width * scale); canvas.height = Math.round(comp.height * scale);
-  const ctx = canvas.getContext('2d'); if (!ctx) return null;
+  // The compositor copies these pixels immediately; avoid queuing thousands of thumbnail draws on the GPU.
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }); if (!ctx) return null;
   ctx.scale(scale, scale);
   paintComposition(ctx, comp, {
     baseMap, card3dAngles: options.card3d ? card3dAngles : [],
     codeImg: codeImg ?? null, grid: options.grid, footerDims,
-    footerTemplate: options.footerTemplate, footerTokens: footerTokenValues(state, options, locale, sum),
+    footerTemplate: options.footerTemplate, footerTokens: args.footerTokens ?? footerTokenValues(state, options, locale, sum),
     state, summary: sum, title: options.title, description: options.description,
     translate: (k, v) => translateFor(locale, k, v),
     brand: brandInfo(locale, options, args.brandLockup ?? null),
   });
-  return { url: canvas.toDataURL('image/png'), comp, scale };
+  return { canvas, comp, scale };
 }

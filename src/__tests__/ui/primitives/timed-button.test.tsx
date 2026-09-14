@@ -34,6 +34,19 @@ function mount(node: React.ReactNode) {
 const run = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 
 describe('a timed button', () => {
+  it('holds automatic and manual activation while disabled', () => {
+    const onPress = vi.fn();
+    const view = mount(<TimedButton after={2} disabled onPress={onPress}>Continue</TimedButton>);
+    fireEvent.click(screen.getByRole('button'));
+    run(3000);
+    expect(onPress).not.toHaveBeenCalled();
+    view.rerender(<I18nProvider><TimedButton after={2} onPress={onPress}>Continue</TimedButton></I18nProvider>);
+    run(1000);
+    expect(onPress).not.toHaveBeenCalled();
+    run(1200);
+    expect(onPress).toHaveBeenCalledOnce();
+  });
+
   it('presses itself once the time is up, through a real click', () => {
     const onPress = vi.fn();
     mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
@@ -150,7 +163,7 @@ describe('a clock the caller owns', () => {
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
   });
 
-  const ring = () => screen.getByRole('button').querySelector('svg rect')!;
+  const ring = () => screen.getByRole('button').querySelector('svg rect') as SVGRectElement;
 
   it('draws the fraction it is handed, spent from whole', () => {
     mount(<TimedButton after={9} external={{ fraction: 0.4 }} onPress={() => {}}>Retry now</TimedButton>);
@@ -196,6 +209,7 @@ describe('a clock the caller owns', () => {
   it('says EMPTY MEANS FIRED with the lit fill, the ring spent to nothing', () => {
     mount(<TimedButton after={9} external={{ fraction: 1 }} onPress={() => {}}>Retry now</TimedButton>);
     expect(ring().getAttribute('stroke-dashoffset')).toBe('1');
+    expect(ring().style.visibility).toBe('hidden');
     expect(screen.getByRole('button').style.backgroundColor).toBe(FIRED_RGB);
   });
 
@@ -315,6 +329,7 @@ describe('the lent fuse glides between the samples it is given', () => {
     mountLent('never', 8.5 / 9, 9_000);
     run(30_000);
     expect(drawn()).toBe(1);
+    expect(ring().style.visibility).toBe('hidden');
   });
 
   it('is re-seated by the next sample rather than accumulating its own drift', () => {
@@ -333,6 +348,7 @@ describe('the lent fuse glides between the samples it is given', () => {
       </MotionConfig>,
     );
     expect(drawn()).toBeCloseTo(0.05, 3);
+    expect(ring().style.visibility).toBe('');
   });
 
   it('STEPS under reduced motion, which is the same drawing the caller s sample rate makes', () => {

@@ -5,14 +5,14 @@ import { execSync } from 'node:child_process';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { bundleReportPlugin } from './security/bundle-report-plugin';
+import { bundleReportPlugin } from './security/bundle-report-plugin.ts';
 import {
   HEADERS_POLICY,
   parseExtraConnectSrc,
   toCspMeta,
   withExtraConnectSrc, withExtraFontSrc,
-} from './security/headers-policy';
-import { activeTarget } from './src/legal/deploy-targets';
+} from './security/headers-policy.ts';
+import { activeTarget } from './src/legal/deploy-targets.ts';
 
 /**
  * DEV-ONLY: append `VITE_EXTRA_CONNECT_SRC` origins to the served index.html CSP
@@ -157,7 +157,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       // Worker-only imports escape the initial scan; discovering them during inference reloads the page.
-      include: ['onnxruntime-web/webgpu', 'onnxruntime-web'],
+      include: ['onnxruntime-web/webgpu', 'onnxruntime-web', 'opencc-js/t2cn', 'obscenity', '@2toad/profanity', '@tensorflow/tfjs', '@tensorflow/tfjs-backend-wasm', 'nsfwjs/core', 'tesseract.js', 'wasm-feature-detect', 'cuss', 'linkify-it', 're2js'],
     },
     server: {
       /**
@@ -177,9 +177,6 @@ export default defineConfig(({ mode }) => {
       __BUILD_SHA__: JSON.stringify(BUILD_INFO.sha),
       __BUILD_DATE__: JSON.stringify(BUILD_INFO.date),
     },
-    // Strip console/debugger from the PRODUCTION bundle only (kept in dev for debugging) — less code
-    // shipped, no stray logging that could leak internals.
-    esbuild: { drop: mode === 'production' ? ['console', 'debugger'] : [] },
     // Module workers: the stylize inference worker code-splits (it loads one of two ONNX runtime
     // builds), which Rollup cannot do inside an IIFE.
     worker: { format: 'es' },
@@ -188,7 +185,8 @@ export default defineConfig(({ mode }) => {
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict
       // `script-src 'self'` (no 'unsafe-inline'). Modern browsers support modulepreload natively.
       modulePreload: { polyfill: false },
-      // (minify stays on Vite's prod default, esbuild)
+      // Console and debugger statements leave the production bundle here; the Oxc transform has no drop option.
+      rolldownOptions: { output: { minify: mode === 'production' ? { compress: { dropConsole: true, dropDebugger: true } } : undefined } },
     },
   };
 });

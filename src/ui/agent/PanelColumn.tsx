@@ -1,9 +1,10 @@
+import { providerName } from '../../i18n/providers';
 /*
  * Live assistant integration and lazy chunk boundary. Reads the session, settings and map; owns one
  * runner whose stable config is refreshed in place; and projects the result into PanelShell.
  * Keeping the column mounted preserves the runner's abort controller and in-flight job.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { answerGate } from '../../agent/core/gates';
 import { eventsOf } from '../../agent/core/log';
@@ -11,6 +12,7 @@ import type { AskRecord, JobView } from '../../agent/core/project-view';
 import { recallSteer } from '../../agent/core/steering';
 import type { GateOption } from '../../agent/core/types';
 import { createRunner, type RunnerConfig } from '../../agent/exec/runner';
+import { modelCapabilities, subscribeCatalog, catalogVersion, ensureModelCatalog } from '../../agent/providers/model-catalog';
 import { PROVIDER_META } from '../../agent/providers/defaults';
 import { serializeLog } from '../../agent/session/persist';
 import { panelView, setReadTools, useAgentSession } from '../../agent/session/store';
@@ -25,7 +27,6 @@ import { regionBounds, type RegionBounds } from '../../state/region-bounds';
 import { useEditorStore } from '../../state/store';
 import { ensureVisionVerdict, knownVision, visionKey } from './vision-verdict';
 import { z } from '../design/styles';
-import { ScopeScreen } from '../shell/bars/ScopeScreen';
 import {
   DOCK_PARALLAX, PANEL_LEFT, PINNED_PANEL, dockEdge, dockTravelSign, panelMaxHeight, panelTop,
 } from '../shell/panel-frame';
@@ -166,10 +167,18 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   const [, setVerdictEpoch] = useState(0);
   const keyed = armed.apiKey !== '';
   useEffect(() => {
+    if (!keyed) return;
+    void ensureModelCatalog();
+    const timer = setInterval(() => { void ensureModelCatalog(); }, 5 * 60_000);
+    return () => clearInterval(timer);
+  }, [keyed, armed.providerId, model]);
+  useEffect(() => {
     ensureVisionVerdict({ ...armed, model }, () => setVerdictEpoch((n) => n + 1));
     // Key presence retriggers a skipped probe; the secret itself is not a dependency.
   }, [probeKey, keyed]); // eslint-disable-line react-hooks/exhaustive-deps
-  const vision = knownVision(probeKey) ?? PROVIDER_META[armed.providerId].vision(model);
+  useSyncExternalStore(subscribeCatalog, catalogVersion);
+  const capability = modelCapabilities(armed.providerId, model, armed.customBaseUrl);
+  const vision = knownVision(probeKey) ?? (capability?.input ? capability.input.includes('image') : PROVIDER_META[armed.providerId].vision(model));
   const deps = useCallback(() => makePanelToolDeps({ vision }), [vision]);
 
   // The runner reads this stable object; every render refreshes values for the next job or gate.
@@ -282,7 +291,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   /** Removes settled records without changing the map. */
   const clearJobs = useCallback(() => {
     const store = useAgentSession.getState();
-    for (const job of panelView(store).jobs) store.clearRecord(job.orderSeq);
+    store.clearRecords(panelView(store).jobs.map((job) => job.orderSeq));
   }, []);
 
   const rewind = useCallback((checkpoint: Checkpoint) => { undoToCheckpoint(checkpoint.undoIndex); }, []);
@@ -424,18 +433,15 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   /** Toggles the shared scope screen and region brush for this panel. */
   const markRegion = useCallback(() => {
     const on = !useEditorStore.getState().selectingRegion;
-    setArmedHere(on);
-    setSelectingRegion(on);
+    setSelectingRegion(on, 'agent');
   }, [setSelectingRegion]);
 
   /** Tracks whether this panel, rather than the generate shelf, armed the shared region brush. */
-  const [armedHere, setArmedHere] = useState(false);
-  useEffect(() => { if (!selectingRegion) setArmedHere(false); }, [selectingRegion]);
+  const armedHere = useEditorStore((s) => s.selectingRegion && s.regionSelectionOwner === 'agent');
 
   // Closing the panel disarms a brush it owns and removes the overlay.
   useEffect(() => {
     if (open || !armedHere) return;
-    setArmedHere(false);
     setSelectingRegion(false);
     host.buildableRegion.clear();
   }, [open, armedHere, setSelectingRegion]);
@@ -516,10 +522,6 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
 
   return (
     <AnimatePresence>
-      {/* Render shared scope controls only for a brush armed by this panel. */}
-      {open && armedHere && selectingRegion && (
-        <ScopeScreen key="assistant-scope" onDone={() => setSelectingRegion(false)} />
-      )}
       {/* Keep one panel node through dock and fold stages; docked collapse stays until the sheet covers it. */}
       {(open || docked || place === 'folded') && (
         <div key="assistant-panel" ref={wrapRef} data-testid="shell-assistant-panel" style={wrapper}>
@@ -529,7 +531,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
             ready={ready}
             running={running}
             {...(mapName ? { mapName } : {})}
-            providerName={PROVIDER_META[armed.providerId].name}
+            providerName={providerName(armed.providerId, t)}
             {...(model ? { modelName: prettyModel(model) } : {})}
             {...(liveConnection ? { liveConnection } : {})}
             maxHeight={cap}

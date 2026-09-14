@@ -1,3 +1,4 @@
+import { providerName } from '../../../../i18n/providers';
 /*
  * PageView.tsx — one help page rendered from its descriptor.
  *
@@ -162,7 +163,7 @@ function SectionView({ section }: { section: HelpSection }) {
           return (
             <div key={group.provider} data-provider={group.provider} style={{ marginTop: 18 }}>
               <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 4px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                <span>{meta.name}</span>
+                <span>{providerName(group.provider, t)}</span>
                 {links.map((link) => (
                   <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={STEP_LINK}>
                     {link.label} <span aria-hidden>↗</span>

@@ -71,7 +71,7 @@ function usePaintedPicture(active: boolean): PaintedPreview | null {
     () => posedOptions(t('help.fig.pic_title'), t('help.fig.pic_desc')),
     [t],
   );
-  const code = useShareCode(run, island, POSED_SUMMARY, true, options.title, 'standard', POSED_CREATED_AT);
+  const code = useShareCode(run, island, POSED_SUMMARY, true, 'standard', POSED_CREATED_AT);
   const [painted, setPainted] = useState<PaintedPreview | null>(cached);
   const codeCanvas = code.asset?.canvas ?? null;
   const codeSettled = !code.pending;

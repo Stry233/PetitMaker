@@ -37,9 +37,41 @@ function makeRenderer(): MapRenderer {
 
 afterEach(() => {
   for (const r of renderers.splice(0)) r.destroy();
+  vi.useRealTimers();
 });
 
 describe('render-on-demand loop', () => {
+  it('paints a resized buffer with the new camera before returning to the compositor', () => {
+    const r = makeRenderer();
+    r.viewport.fitToMap(24, 24);
+    const centre = r.viewport.worldAtCentre();
+    const draw = vi.spyOn(r.app.renderer, 'render').mockImplementation(() => {
+      expect(r.app.renderer.screen.width).toBe(160);
+      expect(r.app.renderer.screen.height).toBe(180);
+      expect(r.viewport.worldAtCentre()).toEqual(centre);
+      expect(r.worldContainer.position.x).toBe(-r.viewport.getOffset().x);
+      expect(r.worldContainer.position.y).toBe(-r.viewport.getOffset().y);
+    });
+    const painted = vi.fn();
+    r.onNextPaint(painted);
+    r.resize(160, 180);
+    expect(draw).toHaveBeenCalledOnce();
+    expect(painted).toHaveBeenCalledOnce();
+  });
+
+  it('does not paint a hidden view for a resize unless a capture is waiting', () => {
+    const r = makeRenderer();
+    r.setPresenting(false);
+    const draw = vi.spyOn(r.app.renderer, 'render').mockImplementation(() => undefined);
+    r.resize(160, 180);
+    expect(draw).not.toHaveBeenCalled();
+    const painted = vi.fn();
+    r.onNextPaint(painted);
+    r.resize(150, 170);
+    expect(draw).toHaveBeenCalledOnce();
+    expect(painted).toHaveBeenCalledOnce();
+  });
+
   it('leaves exactly one listener on the ticker, and it is not pixi own render', () => {
     const r = makeRenderer();
     const listeners = tickerListeners(r.app.ticker);
@@ -47,7 +79,10 @@ describe('render-on-demand loop', () => {
     expect(listeners.some((l) => l.fn === r.app.render && l.context === r.app)).toBe(false);
   });
 
-  it('renders only while the window is open, then at the heartbeat', () => {
+  it('rests its ticker between elapsed-time heartbeats and wakes for requested paints', () => {
+    // Only the heartbeat timers are faked: pixi stamps `lastTime` from the real `performance.now()`
+    // when the ticker starts, and that stamp must stay behind the test's clock below.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const r = makeRenderer();
     const spy = vi.spyOn(r.app.renderer, 'render').mockImplementation(() => undefined);
     // Pixi's Ticker ignores an update whose time has not advanced, so the clock is monotonic across
@@ -63,7 +98,20 @@ describe('render-on-demand loop', () => {
     tick(14);                      // window closed, heartbeat not yet due
     expect(spy).not.toHaveBeenCalled();
 
-    tick(1);                       // the ~4fps safety floor
+    expect(r.app.ticker.started).toBe(false);
+    vi.advanceTimersByTime(250);
+    tick(1);
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(r.app.ticker.started).toBe(false);
+    r.setPresenting(false);
+    vi.advanceTimersByTime(2000);
+    expect(r.app.ticker.started).toBe(false);
+    const painted = vi.fn();
+    r.onNextPaint(painted);
+    expect(r.app.ticker.started).toBe(true);
+    tick(1);
+    expect(painted).toHaveBeenCalledOnce();
+    tick(1);
+    expect(r.app.ticker.started).toBe(false);
   });
 });

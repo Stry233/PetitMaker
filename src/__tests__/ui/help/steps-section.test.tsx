@@ -1,16 +1,10 @@
-/**
- * steps-section.test.tsx — the Help Center's per-provider key walkthrough on Connecting the agent.
- *
- * The provider names and their console links come from the provider registry, never from copy, so
- * a renamed provider or a moved console page reaches the help with no string edit. Each provider
- * gets a bulleted list of steps; a provider with separate China and international consoles offers
- * both links.
- */
+/** Provider walkthroughs pair localized names with the correct console links. */
 import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { I18nProvider } from '../../../i18n/context';
+import { providerName } from '../../../i18n/providers';
+import { I18nProvider, translateFor } from '../../../i18n/context';
 import { HelpModal } from '../../../ui/chrome/modals/help/HelpModal';
 import { PROVIDER_IDS, PROVIDER_META } from '../../../agent/providers/defaults';
 import { makeState } from '../../rules/_helpers';
@@ -33,14 +27,15 @@ function Help() {
 const agentIds = PROVIDER_IDS.filter((id) => id !== 'custom');
 
 describe('the key walkthrough on Connecting the agent', () => {
-  it('lists every provider from the registry with bulleted steps and its console link', async () => {
+  it.each(['en', 'zh'] as const)('lists localized providers with steps and console links (%s)', async (locale) => {
+    setStoreState({ locale });
     const { container } = render(<Help />);
     await waitFor(() => expect(container.querySelector('#help-agsetup-keys')).toBeTruthy());
     const section = container.querySelector('#help-agsetup-keys')!.closest('section')!;
     for (const id of agentIds) {
       const group = section.querySelector(`[data-provider="${id}"]`);
       expect(group, `${id} has a group`).toBeTruthy();
-      expect(group!.querySelector('h4')?.textContent).toContain(PROVIDER_META[id].name);
+      expect(group!.querySelector('h4')?.textContent).toContain(providerName(id, key => translateFor(locale, key)));
       expect(group!.querySelectorAll('li').length, `${id} has steps`).toBeGreaterThanOrEqual(3);
       const links = [...group!.querySelectorAll('a')];
       expect(links.map((a) => a.getAttribute('href'))).toContain(PROVIDER_META[id].keyUrl);

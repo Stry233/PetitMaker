@@ -8,6 +8,7 @@
  * A verb with no view to reach is a no-op. Both canvases unmount and remount, and a shell must not
  * have to know when.
  */
+import { showBuildableRegion, clearBuildableRegion } from '../canvas/interaction/region-view-sync';
 import { getActiveView } from '../canvas/active-view';
 import { animateCamera, type CameraTweenHandle } from '../canvas/map2d/interaction/camera-tween';
 import { getMapRenderer } from '../canvas/map2d/renderer-registry';
@@ -101,8 +102,8 @@ export const host = {
     poof(id: string): void { getActiveView()?.animateRemove?.(id); },
   },
   buildableRegion: {
-    show(cells: MacroCoord[]): void { getActiveView()?.overlay.showBuildableRegion(cells, true); },
-    clear(): void { getActiveView()?.overlay.clearBuildableRegion(); },
+    show(cells: MacroCoord[]): void { showBuildableRegion(cells); },
+    clear(): void { clearBuildableRegion(); },
     /** The standing region breathing once, as its own answer to "why was that refused": the caller
      *  brings the numbers, since a duration is declared in the motion registry and nowhere else. */
     pulse(durationMs: number, dip: number): void {
@@ -113,8 +114,20 @@ export const host = {
     show(cells: MacroCoord[]): void { getActiveView()?.overlay.showRoute(cells); },
     clear(): void { getActiveView()?.overlay.clearRoute(); },
   },
+  capture2dCanvas(maxPx = 1024, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureMapCanvas(maxPx, includeGrid, undefined, annotations) ?? null;
+  },
+  captureComplete2dCanvas(maxPx = 1024, annotations = true): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureCompleteMapCanvas(maxPx, annotations) ?? null;
+  },
+  capture2dAnnotationsCanvas(maxPx = 1024): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureAnnotationsCanvas(maxPx) ?? null;
+  },
   capture2d(maxPx = 1024, includeGrid = false, annotations?: boolean): string | null {
     return getMapRenderer()?.captureMapImage(maxPx, includeGrid, undefined, annotations) ?? null;
+  },
+  captureComplete2d(maxPx = 1024, annotations = true): string | null {
+    return getMapRenderer()?.captureCompleteMapImage(maxPx, annotations) ?? null;
   },
   /** The plan-notes ink alone, transparent everywhere else: the stylize compose step's source for
    *  drawing the user's ink back over a redrawn map bitmap. */

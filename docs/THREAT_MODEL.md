@@ -65,13 +65,14 @@ The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-o
 
 Agent settings support older or restricted browsers by storing a base64-obfuscated key until the asynchronous vault upgrade succeeds. Obfuscation only prevents casual reading and is not encryption. Illustration-provider keys have no obfuscation fallback: if the vault cannot seal a key, it remains in memory for that browser session and is not persisted.
 
-Provider keys go directly from the browser to the selected built-in or custom endpoint. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/agent/security/redact.ts`.
+Provider keys go directly from the browser to the selected built-in or custom endpoint. Automatic identification can also validate a key with candidate providers whose formats match. Public model-capability requests to Models.dev carry ordinary network metadata, without keys, map content or prompts. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/agent/security/redact.ts`.
 
 An unreadable sealed Agent blob is retained so temporary IndexedDB failure does not erase a user's stored key. A key removed while that blob is unreadable can reappear if the vault becomes readable later. Settings > Local data deletes local storage, session storage and the IndexedDB vault before reloading, which clears both readable and unreadable records.
 
 ## Agent threat model
 
 - **Published prompts.** Prompts and skills ship with the application. They must contain no secrets or private operating material.
+- **Instruction boundaries.** Application prompts distinguish user tasks from map data, tool results, helper reports and recalled summaries. Quoted reference data remains separate from application instructions during replay and summarization. These are model guidance; tool permissions and approval state are enforced independently.
 - **Tool boundary.** Tool inputs are schema-checked, and map mutations pass through the validated command executor. Agent tools cannot read browser storage, cookies or general network resources.
 - **Narrow host capabilities.** `view_map` captures map pixels for a vision request. `export_map` asks the application UI to run its export flow; the tool does not write a file directly.
 - **Atomic region lock.** When a region is active, every affected cell and complete object footprint must remain inside it. A violating tool call rolls back as one stroke.
@@ -86,10 +87,13 @@ The main remaining Agent impacts are undoable map edits, provider spend and disc
 
 - Procedural and bundled neural styles receive a rendered map in memory and return pixels in memory. Neural weights load from the same static origin and execute through ONNX Runtime in a module worker.
 - Online styles send only the image and instruction package disclosed in the privacy policy. They do not receive the editable map document, local storage or Agent conversation.
-- Returned image bytes, including bytes fetched from a provider-returned URL, are decoded into the session's version shelf. Generated takes are not persisted by the app unless the user exports them.
+- Custom style preferences and optional visual feedback are size-limited and quoted as reference data. Application instructions keep them within the map-redraw task; where supported by the adapter, system instructions are sent separately.
+- The engine accepts bounded PNG, JPEG or WebP image data before using a generated result. Provider image downloads omit cookies and referrers, reject redirects and enforce a streamed body-size limit. Returned image bytes are decoded into the session's version shelf. Generated takes are not persisted by the app unless the user exports them.
 - The illustration key follows the vault-only persistence rule above. Its provider, model, custom endpoint, direction and custom prompt are ordinary local preferences.
 
 ## Residual risks
+
+- Prompt instructions and data framing reduce ambiguity but cannot guarantee resistance to prompt injection or jailbreaks. Provider behavior varies; model guidance does not replace export checks, user review or application-enforced permissions. A frontend-only application cannot enforce its controls against someone modifying their own copy.
 
 - `connect-src` admits every HTTPS origin so that custom endpoints work. A script executing in this origin can send stored keys anywhere. The accepted mitigations are the same-origin script policy, lockfile-pinned dependencies installed without lifecycle scripts, Dependabot review, and a publish pipeline whose token never shares a step with dependency code.
 - Keys stored before the vault upgrade completes, or in browsers without WebCrypto and IndexedDB, are obfuscated rather than encrypted.

@@ -1,3 +1,4 @@
+import { providerName } from '../../i18n/providers';
 import { describe, it, expect } from 'vitest';
 import { DOCS, docBody, docNodes, localizeZhSlug, type DocId } from '../../legal/registry';
 import type { Inline, MdNode } from '../../legal/markdown';
@@ -350,29 +351,29 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
 // Factual anchors for material privacy disclosures beyond the schema's required headings.
 describe('privacy — required substance tokens', () => {
   const PRIVACY_TOKENS_EN = [
-    'not stored on a project-operated server',
-    'carries a visible PetitGlyph strip',
-    'does not remove them from an importable PetitGlyph',
-    'no request carrying your map data or prompts occurs until',
-    'cannot determine from a key which service tier or contract governs it',
-    'compromised browser, extension, script, or device',
-    'A child or minor must not connect an AI provider unless',
-    'will be reassessed',
-    'Depending on where you live',
-    'does not delete',
+      "Maps are edited and saved in the current browser",
+      "image includes a PetitGlyph ribbon",
+      "Turning off Show notes does not remove annotations from the code",
+      "After you submit or resume a task",
+      "cannot establish these conditions from a key alone",
+      "malicious extensions, a compromised device",
+      "A minor may connect an AI service only if",
+      "We will provide separate notice or obtain consent where required",
+      "Depending on applicable law",
+      "This does not clear downloaded files"
   ];
 
   const PRIVACY_TOKENS_ZH = [
-    '不使用服务器存储你的地图项目',
-    '带有一条可见的 PetitGlyph 色带',
-    '不会从可导入的 PetitGlyph 中移除标注',
-    '在你主动触发之前，不会有携带你的地图数据或提示词的请求发出',
-    '无法仅凭密钥判断其所属服务档位或适用合同',
-    '被攻陷的浏览器、扩展、脚本或设备',
-    '儿童或未成年人只有在所选提供商的条款允许时',
-    '将重新评估',
-    '根据你所在地区适用的法律',
-    '不会删除',
+      "地图在当前浏览器中编辑和保存",
+      "图片会包含 PetitGlyph 色带",
+      "关闭「显示标注」",
+      "提交或恢复任务",
+      "无法仅凭密钥",
+      "恶意扩展",
+      "未成年人连接 AI 服务时",
+      "需要单独告知或取得同意",
+      "适用法律",
+      "此操作不清除已下载文件"
   ];
 
   it('carries every en substance token', () => {
@@ -397,8 +398,8 @@ describe('privacy — required substance tokens', () => {
     for (const entry of illustrationProviderDisclosureList('en')) {
       expect(en, `privacy.en missing illustration provider entry "${entry}"`).toContain(`- ${entry}`);
     }
-    expect(en).toContain(`offers ${agentProviderDisclosureList('en').length} connection choices`);
-    expect(en).toContain(`offers ${illustrationProviderDisclosureList('en').length} connection choices`);
+    expect(en).toContain(`offers ${agentProviderDisclosureList('en').length} connection options`);
+    expect(en).toContain(`offers ${illustrationProviderDisclosureList('en').length} connection options`);
 
     const zh = docBody('privacy', 'zh', LEGAL);
     expect(zh).toContain(`提供 ${agentProviderDisclosureList('zh').length} 种连接选项`);
@@ -409,20 +410,20 @@ describe('privacy — required substance tokens', () => {
 // Deployment, mail, backend, and operator facts must remain explicit in the rendered policy.
 describe('privacy — deployment-facts disclosure (§8)', () => {
   const DEPLOY_TOKENS_EN = [
-    'Cloudflare',
-    'Workers static asset hosting',
-    "does not use Cloudflare's China Network",
-    'Microsoft Outlook',
-    'operates no application backend',
-    'This service is operated by',
+      "Cloudflare",
+      "Workers static asset hosting",
+      "does not use Cloudflare's China Network",
+      "Microsoft Outlook",
+      "no separate application-log service that receives maps",
+      "the tool's operator"
   ];
   const DEPLOY_TOKENS_ZH = [
-    'Cloudflare',
-    'Workers 静态资源托管',
-    '未使用 Cloudflare 中国网络',
-    '微软 Outlook',
-    '不运营任何接收、处理或存储你地图项目的应用后端',
-    '本服务由',
+      "Cloudflare",
+      "Workers 静态资源托管",
+      "未使用 Cloudflare 中国网络",
+      "微软 Outlook",
+      "应用日志",
+      "本工具的运营方"
   ];
 
   it('en carries every deployment fact', () => {
@@ -439,55 +440,55 @@ describe('privacy — deployment-facts disclosure (§8)', () => {
 // Factual anchors for material terms beyond the schema's required headings.
 describe('terms — required substance tokens', () => {
   const TERMS_TOKENS_EN = [
-    'Acceptance',
-    'free',
-    'local',
-    'your own key',
-    'age, territory, account, and permitted-use requirements',
-    'Acceptable use',
-    'As between you and us',
-    'technically accessible',
-    'discontinu',
-    'back up',
-    'AS IS',
-    'to the maximum extent permitted',
-    'consumer',
-    'applicable law',
-    'Changes',
-    'mandatory applicable law controls',
-    'mandatory consumer protections',
-    'parent or guardian',
-    'unofficial',
-    'miHoYo',
-    'HoYoverse',
-    'cannot lawfully be excluded',
-    '[IP]',
+      "Scope and Definitions",
+      "free",
+      "browser",
+      "API key you are entitled to use",
+      "account, region, age and permitted-use requirements",
+      "Content Rules and User Responsibility",
+      "You retain the rights you lawfully hold in your original contributions",
+      "recover its map and annotations",
+      "discontinue",
+      "backups",
+      "available",
+      "Where applicable law permits such a limitation",
+      "consumer",
+      "applicable law",
+      "Updates to These Terms",
+      "Mandatory applicable law prevails",
+      "mandatory consumer protections",
+      "parent or guardian",
+      "unofficial",
+      "miHoYo",
+      "HoYoverse",
+      "cannot lawfully be limited",
+      "[IP]"
   ];
 
   const TERMS_TOKENS_ZH = [
-    '接受',
-    '免费',
-    '本地',
-    '自己的密钥',
-    '年龄、地区、账户及允许用途的要求',
-    '可接受使用',
-    '在你与我们之间',
-    '在技术上可被',
-    '终止',
-    '备份',
-    '现状',
-    '在适用法律允许的最大范围内',
-    '消费者',
-    '适用法律',
-    '变更',
-    '以强制性适用法律为准',
-    '强制性消费者保护',
-    '父母或监护人',
-    '非官方',
-    '米哈游',
-    'HoYoverse',
-    '依法不可排除',
-    '[IP]',
+      "适用范围",
+      "免费",
+      "浏览器",
+      "有权使用的 API 密钥",
+      "账户、地区、年龄和使用范围的要求",
+      "内容规范与使用责任",
+      "您对原创贡献依法享有的权利",
+      "还原地图及规划标注",
+      "停止提供",
+      "备份",
+      "实际可用",
+      "在适用法律允许约定限制的范围内",
+      "消费者",
+      "适用法律",
+      "条款更新",
+      "以该规定为准",
+      "其他不可排除的权利",
+      "监护人的指导和同意",
+      "非官方",
+      "米哈游",
+      "HoYoverse",
+      "依法不得限制的责任",
+      "[IP]"
   ];
 
   it('carries every en substance token', () => {
@@ -521,25 +522,25 @@ describe('terms — required substance tokens', () => {
 // The rendered About document retains its mission, technology, ownership, and filing facts.
 describe('about — required substance tokens', () => {
   const ABOUT_TOKENS_EN = [
-    'unofficial',
-    'in your browser',
-    'reproduce in *Petit Planet*',
-    'PixiJS',
-    'not affiliated with',
-    'miHoYo',
-    'HoYoverse',
-    'an obtained registration number',
+      "unofficial",
+      "in your browser",
+      "use the game itself as the final reference",
+      "export a JSON save",
+      "not affiliated with",
+      "miHoYo",
+      "HoYoverse",
+      "applicable registration numbers it has obtained"
   ];
 
   const ABOUT_TOKENS_ZH = [
-    '非官方',
-    '浏览器',
-    '可在《星布谷地》中还原',
-    'PixiJS',
-    '无任何关联',
-    '米哈游',
-    'HoYoverse',
-    '已经取得的备案号',
+      "非官方",
+      "浏览器",
+      "搭建时请以游戏为准",
+      "导出 JSON 存档",
+      "无隶属关系",
+      "米哈游",
+      "HoYoverse",
+      "已取得且适用于本站的备案信息"
   ];
 
   it('carries every en substance token', () => {
@@ -587,9 +588,9 @@ describe('contact — required substance tokens', () => {
     '[SECURITY]',
     '[IP]',
     'GitHub',
-    'Bilibili',
+    '哔哩哔哩',
     '14',
-    '力求',
+    '目标',
     LEGAL.privacyContactEmail,
   ];
 
@@ -640,12 +641,17 @@ describe('provider disclosure lists', () => {
     expect(agentProviderDisclosureList('en')).toHaveLength(PROVIDER_IDS.length);
   });
 
-  it('localizes only the custom-endpoint line, keeping brand names stable', () => {
-    const en = agentProviderDisclosureList('en');
-    const zh = agentProviderDisclosureList('zh');
-    // brand entries identical; the final (custom) entry differs by language
-    expect(zh.slice(0, -1)).toEqual(en.slice(0, -1));
-    expect(zh[zh.length - 1]).not.toBe(en[en.length - 1]);
+  it('uses the same localized provider names as the interface', () => {
+    for (const lang of ['en', 'zh'] as const) {
+      const strings = lang === 'zh' ? zhStrings : enStrings;
+      const list = agentProviderDisclosureList(lang);
+      const ids = PROVIDER_IDS.filter(id => id !== 'custom');
+      expect(list.slice(0, -1)).toEqual(ids.map(id => providerName(id, key => strings[key] ?? key)));
+    }
+    expect(agentProviderDisclosureList('zh')).toContain('豆包');
+    expect(agentProviderDisclosureList('zh')).toContain('月之暗面');
+    expect(agentProviderDisclosureList('zh')).not.toContain('Doubao');
+    expect(agentProviderDisclosureList('zh').slice(-1)[0]).not.toBe(agentProviderDisclosureList('en').slice(-1)[0]);
   });
 
   it('derives the illustration list from its provider registry and locale labels', () => {
@@ -784,17 +790,17 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
 // cannot accidentally sync-break them (e.g. shortening one without the other).
 describe('IP-elements sync guard: contact mirrors terms required elements', () => {
   const IP_ELEMENTS_EN = [
-    'identify the material',
-    'the right you hold',
-    'your contact information',
-    'good-faith',  // "statement of your good-faith / belief" spans line break in terms.en
+      "location",
+      "basis of your rights",
+      "contact information",
+      "truthful and accurate"
   ];
 
   const IP_ELEMENTS_ZH = [
-    '足以识别该素材',
-    '你所持有的权利',
-    '你的联系方式',
-    '你善意相信',
+      "位置",
+      "权利依据",
+      "联系方式",
+      "真实、准确"
   ];
 
   it('en: terms and contact both carry all four IP elements', () => {

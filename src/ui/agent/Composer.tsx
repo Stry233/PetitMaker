@@ -1,13 +1,14 @@
 /*
  * One textarea serves all composer routes and expands from the docked well into a floating editor
  * when its value exceeds the inline capacity. Both forms share one value; closing the expanded form
- * keeps the draft. Enter sends, while Shift/Ctrl/Cmd+Enter inserts a line break.
+ * keeps the draft. Inline Enter sends; modified Enter and expanded Enter insert line breaks.
  *
- * The stop slot remains mounted while idle so the send button does not move. Region controls arrive
+ * The stop slot folds away while idle; the send button stays at the trailing edge. Region controls arrive
  * as caller-owned nodes. Suggestions are visual overlays: Enter accepts and sends one, Escape drops
  * it, and Tab copies it into the editable value. Row count is derived from the value because Blink
  * includes wrapped placeholder text in `scrollHeight`.
  */
+import { displayAgentText } from '../../agent/tool-labels';
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
   type CSSProperties, type KeyboardEvent, type MutableRefObject, type ReactNode,
@@ -201,6 +202,7 @@ export function Composer({
   /** Whether the draft exceeds the inline line limit. */
   const [overflows, setOverflows] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
   const wellRef = useRef<HTMLDivElement>(null);
   /** Whether focus should return to the docked field after folding. */
   const returning = useRef(false);
@@ -234,23 +236,31 @@ export function Composer({
     return () => { focusRef.current = null; };
   }, [focusRef]);
 
-  /*
-   * Measure wrapped draft height before paint, after resetting the old height. Empty fields retain
-   * their single row because Blink includes wrapped placeholder text in textarea scrollHeight.
-   */
+  // Measure without changing the live field's height or introducing a temporary scrollbar.
   useLayoutEffect(() => {
     const el = inputRef.current;
-    if (!el) return;
-    if (value === '') {
-      el.style.height = '';
-      setOverflows(false);
-      return;
-    }
-    const cap = lineBox(el) * FIELD_MAX_LINES;
-    el.style.height = 'auto';
-    const wanted = el.scrollHeight;
-    el.style.height = `${cap > 0 ? Math.min(wanted, cap) : wanted}px`;
-    setOverflows(cap > 0 && wanted > cap);
+    const wrap = el?.parentElement;
+    if (!el || !wrap) return;
+    const measure = (): void => {
+      const line = lineBox(el);
+      const wanted = value === '' ? Math.ceil(line) : draftHeight(el);
+      const cap = Math.ceil(line * FIELD_MAX_LINES);
+      el.style.height = `${cap > 0 ? Math.min(wanted, cap) : wanted}px`;
+      const overflow = cap > 0 && wanted > cap;
+      el.style.overflowY = overflow ? 'auto' : 'hidden';
+      setOverflows(overflow);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = wrap.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const next = wrap.getBoundingClientRect().width;
+      if (next === width) return;
+      width = next;
+      measure();
+    });
+    observer.observe(wrap);
+    return () => observer.disconnect();
   }, [value, expanded]);
 
   // Restore focus without moving the surrounding job-zone scroller.
@@ -291,6 +301,10 @@ export function Composer({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (composing.current || isCompositionKey(e.nativeEvent)) {
+      e.stopPropagation();
+      return;
+    }
     if (e.key === 'Enter') {
       // A modifier changes Enter from send to newline.
       if (e.shiftKey || e.ctrlKey || e.metaKey) return;
@@ -361,18 +375,20 @@ export function Composer({
               // The suggestion overlay replaces the ordinary placeholder while visible.
               placeholder={showGhost ? '' : t(placeholderKey)}
               onChange={(e) => setValue(e.target.value)}
+              onCompositionStart={() => { composing.current = true; }}
+              onCompositionEnd={() => { composing.current = false; }}
               onKeyDown={onKeyDown}
               style={{
                 ...INPUT_STYLE,
                 // Field growth shares the panel height transition.
                 transition: cssMotion('panel.height', ['height'], reduced),
                 // Empty placeholder text never shows a scrollbar.
-                overflowY: value === '' ? 'hidden' : 'auto',
+                overflowY: overflows ? 'auto' : 'hidden',
               }}
             />
             {showGhost && (
               <span data-testid="composer-ghost" aria-hidden="true" style={GHOST_STYLE}>
-                {suggestion}
+                {displayAgentText(suggestion ?? '', t)}
               </span>
             )}
           </div>
@@ -385,7 +401,15 @@ export function Composer({
             tabIndex={running ? 0 : -1}
             disabled={!running}
             onClick={onStop}
-            style={{ ...STOP_BASE_STYLE, opacity: running ? 1 : 0 }}
+            style={{
+              ...STOP_BASE_STYLE,
+              width: running ? CLUSTER_SIZE : 0,
+              marginLeft: running ? 0 : -WELL_GAP,
+              padding: 0,
+              overflow: 'hidden',
+              opacity: running ? 1 : 0,
+              transition: cssMotion('panel.composer.unfold', ['width', 'margin-left', 'opacity'], reduced),
+            }}
           >
             <Icon id="pw-stop" size={19} />
           </button>
@@ -450,6 +474,31 @@ function lineBox(el: HTMLElement): number {
   return style.lineHeight.trimEnd().endsWith('px') ? raw : raw * (Number.parseFloat(style.fontSize) || 0);
 }
 
+/** keyCode covers IMEs that end composition before dispatching the confirming keydown. */
+function isCompositionKey(event: globalThis.KeyboardEvent): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
+/** Measure at the full text width; the live field may still be animating or scrolling. */
+function draftHeight(el: HTMLTextAreaElement): number {
+  const probe = document.createElement('textarea');
+  probe.className = el.className;
+  probe.value = el.value;
+  probe.tabIndex = -1;
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = el.style.cssText;
+  Object.assign(probe.style, {
+    position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+    width: getComputedStyle(el).width, height: '0px', minHeight: '0px',
+    overflow: 'hidden', transition: 'none', top: '0px', left: '0px',
+  });
+  el.parentElement!.appendChild(probe);
+  const measured = probe.scrollHeight;
+  probe.remove();
+  const line = lineBox(el);
+  return line > 0 ? Math.ceil(Math.max(1, Math.round(measured / line)) * line) : measured;
+}
+
 /**
  * Floating form of the shared composer field. It morphs from the measured well, preserves the draft
  * on close, uses an explicit reduced-motion gate for box values, and leaves the panel interactive.
@@ -471,6 +520,7 @@ function ExpandedField({
   const t = useT();
   const [from, setFrom] = useState<SeatRect | null>(seat?.rect ?? null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
 
   // Remeasure the mounted well while resize or scrolling moves the portal's target.
   useLayoutEffect(() => {
@@ -501,7 +551,7 @@ function ExpandedField({
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || composing.current || isCompositionKey(e)) return;
       e.stopPropagation();
       close();
     };
@@ -543,10 +593,13 @@ function ExpandedField({
               value={value}
               placeholder={placeholder}
               onChange={(e) => onChange(e.target.value)}
+              onCompositionStart={() => { composing.current = true; }}
+              onCompositionEnd={() => { composing.current = false; }}
               onKeyDown={(e) => {
-                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
-                e.preventDefault();
-                onSend();
+                if (composing.current || isCompositionKey(e.nativeEvent)) {
+                  e.stopPropagation();
+                  return;
+                }
               }}
               style={CARD_FIELD_STYLE}
             />

@@ -1,3 +1,4 @@
+import { providerName } from '../../../../i18n/providers';
 /*
  * facts.ts — the numbers and names the help quotes but never owns.
  *
@@ -9,7 +10,7 @@ import { CHUNK_LOAD_LIMIT, ELEVATION_MAX } from '../../../../core/model/constant
 import { ANNOTATION_COLORS } from '../../../../core/model/annotations';
 import { ItemCategory, type PlacementTrait } from '../../../../core/model/types';
 import { getAllItems, getPlaceableByCategory } from '../../../../state/catalog';
-import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../../agent/providers/defaults';
+import { PROVIDER_IDS, providerBaseUrls } from '../../../../agent/providers/defaults';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../../io/autosave';
 import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../../agent/core/governor';
 import { STYLIZE_PROVIDERS } from '../../../../io/stylize/providers';
@@ -80,9 +81,9 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     roadCount: getPlaceableByCategory(ItemCategory.Road).length,
     oneEachCount: oneEach,
     agentProviderCount: agentIds.length,
-    agentProviders: naturalList(agentIds.map((id) => PROVIDER_META[id].name), locale),
-    regionalAgentProviders: naturalList(regionalAgentIds.map((id) => PROVIDER_META[id].name), locale),
-    agentCustomProvider: PROVIDER_META.custom.name,
+    agentProviders: naturalList(agentIds.map((id) => providerName(id, (key) => translateFor(locale, key))), locale),
+    regionalAgentProviders: naturalList(regionalAgentIds.map((id) => providerName(id, (key) => translateFor(locale, key))), locale),
+    agentCustomProvider: providerName('custom', (key) => translateFor(locale, key)),
     illustrationProviders: naturalList(
       illustrationIds.map(({ id }) => translateFor(locale, `stylize.provider_${id}`)),
       locale,

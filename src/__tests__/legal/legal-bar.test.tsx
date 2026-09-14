@@ -8,12 +8,13 @@
 // object) and restored in afterEach, following the pattern established by
 // about-modal.test.tsx.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { LegalBar } from '../../legal/LegalBar';
 import { I18nProvider } from '../../i18n/context';
 import { LEGAL } from '../../legal/config';
 import { colors } from '../../ui/design/styles';
 import { setStoreState } from '../_store';
+import { useEditorStore } from '../../state/store';
 
 // WCAG 2.x relative-luminance contrast (same formula as a11y.test.tsx).
 function channelLuminance(c8: number): number {
@@ -49,7 +50,7 @@ const snapshot = {
 };
 
 beforeEach(() => {
-  setStoreState({ locale: 'en' });
+  setStoreState({ locale: 'en', editMode: { ...useEditorStore.getState().editMode, mode: null }, selectingRegion: false });
   LEGAL.icpNumber = null;
   LEGAL.icpUrl = null;
   LEGAL.psbNumber = null;
@@ -61,6 +62,29 @@ afterEach(() => {
 });
 
 describe('LegalBar', () => {
+  it.each(['mountain', 'water', 'road', 'object', 'generate', 'annotate'] as const)(
+    'hides while the %s editing panel is open and returns when it closes', (mode) => {
+      LEGAL.icpNumber = '京ICP备2026xxxxxx号-1';
+      LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
+      renderBar();
+      expect(screen.getByRole('navigation')).toBeTruthy();
+      act(() => useEditorStore.getState().setEditMode({ mode }));
+      expect(screen.queryByRole('navigation')).toBeNull();
+      act(() => useEditorStore.getState().setEditMode({ mode: null }));
+      expect(screen.getByRole('link').getAttribute('href')).toBe(LEGAL.icpUrl);
+    },
+  );
+
+  it('hides while region selection occupies the bottom panel', () => {
+    LEGAL.icpNumber = '京ICP备2026xxxxxx号-1';
+    LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
+    renderBar();
+    act(() => setStoreState({ selectingRegion: true }));
+    expect(screen.queryByRole('navigation')).toBeNull();
+    act(() => setStoreState({ selectingRegion: false }));
+    expect(screen.getByRole('navigation')).toBeTruthy();
+  });
+
   it('renders nothing when both pairs are null', () => {
     const { container } = renderBar();
     expect(container.firstChild).toBeNull();

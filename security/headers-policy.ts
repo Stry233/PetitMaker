@@ -4,8 +4,8 @@
  * Run `npx vite-node scripts/generate-headers.mts` after changing this policy or either provider registry.
  */
 
-import { PROVIDER_IDS, providerNetworkUrls } from '../src/agent/providers/defaults';
-import { STYLIZE_PROVIDERS } from '../src/io/stylize/providers';
+import { PROVIDER_IDS, providerNetworkUrls } from '../src/agent/providers/defaults.ts';
+import { STYLIZE_PROVIDERS } from '../src/io/stylize/providers.ts';
 
 /** Named provider origins, derived from both provider registries. Custom endpoints are admitted by
  *  the scheme and loopback sources below. */
@@ -36,7 +36,7 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'default-src': ["'self'"],
     'base-uri': ["'self'"],
     'object-src': ["'none'"],
-    // The bundled on-device illustration runtime requires WebAssembly compilation, not JavaScript eval.
+    // Local illustration and map checks require WebAssembly compilation, not JavaScript eval.
     'script-src': ["'self'", "'wasm-unsafe-eval'"],
     // React uses inline styles; fonts are self-hosted.
     'style-src': ["'self'", "'unsafe-inline'"],

@@ -36,7 +36,6 @@ function defaultStylizeSettings(): StylizeSettings {
 }
 
 function readRecord(): StoredRecord | null {
-  if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(PREFS.stylize.key);
     return raw ? (JSON.parse(raw) as StoredRecord) : null;
@@ -62,7 +61,6 @@ export function loadStylizeSettings(): StylizeSettings {
 
 /** Write non-secret fields while preserving the sealed key. */
 export function saveStylizeSettings(s: StylizeSettings): void {
-  if (typeof localStorage === 'undefined') return;
   const cur = readRecord();
   const rec: StoredRecord = {
     provider: s.provider,
@@ -89,7 +87,6 @@ export async function loadStylizeKey(): Promise<string | null> {
 export async function saveStylizeKey(plain: string): Promise<void> {
   const sealed = await sealSecret(plain);
   if (!sealed) return;
-  if (typeof localStorage === 'undefined') return;
   const cur = readRecord() ?? {};
   try {
     localStorage.setItem(PREFS.stylize.key, JSON.stringify({ ...cur, keySealed: sealed } satisfies StoredRecord));
@@ -99,7 +96,6 @@ export async function saveStylizeKey(plain: string): Promise<void> {
 }
 
 export async function clearStylizeKey(): Promise<void> {
-  if (typeof localStorage === 'undefined') return;
   const cur = readRecord();
   if (!cur) return;
   try {

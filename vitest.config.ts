@@ -8,12 +8,14 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     // The public snapshot omits release-tooling tests, so this pattern simply matches nothing there.
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mts', 'scripts/**/*.test.ts', 'scripts/**/*.test.tsx'],
     onConsoleLog(log) {
       // Reduced-motion tests set the preference explicitly; Framer's device advisory is expected.
       if (log.startsWith('You have Reduced Motion enabled on your device.')) return false;
     },
   },
+  // Asset imports resolve to file URLs as in the dev server; the cursor tests read the file names.
+  build: { assetsInlineLimit: 0 },
   resolve: {
     alias: {
       '@': '/src',

@@ -1,3 +1,4 @@
+import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Renders a gate whose answer is one of two or three sketched options. The log stores a selection as
  * a words verdict, so `optionAskFrom` recovers the selected index by matching the answer to a caption.
@@ -149,7 +150,7 @@ function OptionRow({
           textOverflow: 'ellipsis',
         }}
       >
-        {card.cap}
+        {displayAgentText(card.cap, t)}
       </span>
       {picked && (
         <span

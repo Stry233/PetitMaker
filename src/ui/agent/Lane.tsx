@@ -1,3 +1,4 @@
+import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Shows a `delegate_task` child's live work inside the parent ticket: its name, step count, current
  * tool and any retry or error. When the child settles, `laneRollup` reduces its retained operation
@@ -74,7 +75,7 @@ function LaneHead({ lane }: { lane: LaneView }) {
   const t = useT();
   const name = lane.retry
     ? t('agent3.lane_retrying', { s: lane.retry.seconds })
-    : t('agent3.lane_helper', { task: helperName(lane) });
+    : t('agent3.lane_helper', { task: displayAgentText(helperName(lane), t) });
   // A LANE OPENS AT ZERO AND STAYS THERE FOR ITS WHOLE FIRST THINK: the executor reports the child
   // BEFORE running it, so the first `childLive` the panel sees carries no ops and holds none until
   // the child's first tool result — seconds to minutes on a reasoning model. "0 steps" beside a live
@@ -158,7 +159,7 @@ export function Lane({ lane }: { lane: LaneView }) {
   const erring = lane.error !== undefined;
   const glyph: IconId = lane.opName ? iconForTool(lane.opName) : 'pw-subagent';
   const verbKey = lane.opName ? verbKeyForTool(lane.opName) : null;
-  const phrase = verbKey ? t(verbKey) : lane.task;
+  const phrase = verbKey ? t(verbKey) : displayAgentText(lane.task, t);
 
   return (
     <div
@@ -193,7 +194,7 @@ export function Lane({ lane }: { lane: LaneView }) {
         </span>
         {/* The plate background separates the result chip from the lane's inset paper. */}
         {erring && <span style={{ marginLeft: 'auto', flex: '0 0 auto', background: PLATE, borderRadius: 999 }}>
-          <ResultChip tone="bad">{lane.error}</ResultChip>
+          <ResultChip tone="bad">{t('agent3.op_detail_failed')}</ResultChip>
         </span>}
       </div>
     </div>

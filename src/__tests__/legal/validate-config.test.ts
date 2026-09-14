@@ -22,6 +22,7 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
     team: [
       { name: 'Jane Doe', sort: 'janedoe', url: 'https://example.com/jane' },
     ],
+    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', url: 'https://example.com/sam' }],
     repoUrl: 'https://github.com/example/petitmaker',
     sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,

@@ -24,6 +24,8 @@ import { queueSteer } from '../core/steering';
 import { baseUrlFor, QUIRKS, type ProviderId } from '../providers/defaults';
 import { createAnthropicAdapter } from '../providers/anthropic';
 import { createOpenAIAdapter } from '../providers/openai';
+import { modelCapabilities } from '../providers/model-catalog';
+import { thinkingChoices, thinkingChoiceKey } from '../providers/reasoning';
 import type { Adapter } from '../providers/types';
 import { redactSecrets } from '../security/redact';
 import { composerRoute, submitComposer } from '../session/composer-routing';
@@ -32,6 +34,9 @@ import { buildSystemPrompt } from '../system-prompt';
 import { buildMapContext, type AgentToolDeps } from '../tools/tools';
 import { regionBounds } from '../tools/tools-common';
 import { createExecutor, wireSchemas, type DelegateOpts } from './executor';
+import { reviewText, ReviewWorkerLease } from '../../io/moderation/text/reviewer';
+import { translateFor } from '../../i18n/context';
+import { translations } from '../../i18n/translations';
 
 /** Same default `runJob` itself falls back to when `contextWindow` is omitted; kept explicit here
  *  since `budgetTokens` (unlike `contextWindow`) has no built-in fallback. */
@@ -43,6 +48,7 @@ export interface RunnerConfig {
    *  (the default), 1 = the CN host. Ignored by every other provider. */
   region?: 0 | 1;
   oversight: Oversight;
+  effort?: string;
   /** The editor's display language, as the system prompt's `{uiLanguage}` fallback: the language to
    *  open in when the user has not typed anything readable yet (a first message, bare coordinates).
    *  Absent reads as English, which is the prompt's own default. Read per job, like everything else
@@ -82,7 +88,7 @@ export function buildAdapter(cfg: AdapterConfig): Adapter {
   if (cfg.providerId === 'claude') return createAnthropicAdapter({ apiKey: cfg.apiKey });
   try {
     return createOpenAIAdapter({
-      apiKey: cfg.apiKey,
+      apiKey: cfg.apiKey, providerId: cfg.providerId,
       baseUrl: baseUrlFor(cfg.providerId, { customBaseUrl: cfg.customBaseUrl, region: cfg.region }),
       quirks: QUIRKS[cfg.providerId],
     });
@@ -105,6 +111,25 @@ export interface LiveConnection {
   model: string;
   customBaseUrl?: string;
   region?: 0 | 1;
+}
+
+/** One worker lease per module: orders arrive seconds apart, and an idle lease releases the worker on its own. */
+const screeningLease = new ReviewWorkerLease();
+
+/** Whether the export text check refuses an order; an unavailable check does not block because the model carries the policy. */
+async function orderRefused(text: string): Promise<boolean> {
+  try {
+    // Bounded so a slow first worker load never holds an order longer than a model turn would.
+    const verdict = await reviewText([{ field: 'description', text }], AbortSignal.timeout(8_000), () => {}, screeningLease);
+    return !verdict.allowed;
+  } catch {
+    return false;
+  }
+}
+
+function refusalText(uiLocale: string | undefined): string {
+  const locale = uiLocale !== undefined && uiLocale in translations ? uiLocale as keyof typeof translations : 'en';
+  return translateFor(locale, 'agent.refusal.content');
 }
 
 export function createRunner(cfg: RunnerConfig): {
@@ -144,6 +169,8 @@ export function createRunner(cfg: RunnerConfig): {
       if (state.log !== log) controller.abort();
     });
     const adapter = buildAdapter(cfg);
+    const capabilities = modelCapabilities(cfg.providerId, cfg.model, cfg.customBaseUrl);
+    const thinking = thinkingChoices(capabilities, cfg.providerId).find((choice) => thinkingChoiceKey(choice) === cfg.effort);
     launched = {
       providerId: cfg.providerId,
       model: cfg.model,
@@ -154,6 +181,7 @@ export function createRunner(cfg: RunnerConfig): {
     const delegateOpts: DelegateOpts = {
       adapter, // same instance the parent turn itself runs on, never a second build
       model: cfg.model,
+      capabilities, thinking,
       system,
       get oversight() { return cfg.oversight; },
       signal: controller.signal,
@@ -167,6 +195,7 @@ export function createRunner(cfg: RunnerConfig): {
     const loopDeps: LoopDeps = {
       adapter,
       model: cfg.model,
+      capabilities, thinking,
       system,
       tools: wireSchemas(),
       executor,
@@ -185,6 +214,8 @@ export function createRunner(cfg: RunnerConfig): {
       budgetTokens: DEFAULT_BUDGET_TOKENS,
       signal: controller.signal,
       undoStackSize: () => toolDeps.getExecutor().getUndoStackSize(),
+      // The order text meets the export content check before any provider does.
+      screen: (orderText) => orderRefused(orderText).then((refused) => (refused ? refusalText(cfg.uiLocale) : null)),
       sleep: sleeper.sleep,
       // The turn as it arrives. Everything the panel shows WHILE a turn is in flight comes through
       // here: the loop appends nothing until the turn closes, so without this the phase never

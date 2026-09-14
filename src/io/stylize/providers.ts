@@ -1,5 +1,5 @@
 // One row per supported BYOK image API, plus the custom endpoint. Display names live in i18n.
-import type { DialectId } from './dialects/types';
+import type { DialectId } from './dialects/types.ts';
 
 export interface StylizeProvider {
   id: 'gemini' | 'openai' | 'siliconflow' | 'stepfun' | 'modelscope' | 'doubao' | 'custom';

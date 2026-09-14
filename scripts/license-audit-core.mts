@@ -250,6 +250,19 @@ export const FONT_ENTRIES: FontEntry[] = [
       '"PW Rounded Sans" in their name tables and in this project\'s CSS, in compliance with OFL-1.1 clause 3 ' +
       '(no reuse of the Reserved Font Name "Quicksand" on a Modified Version).',
   },
+  {
+    dirName: 'mgopen-helvetiker',
+    displayName: 'MgOpen Helvetiker Bold (typeface.json for the 3D legend)',
+    license: 'MgOpen font license (permissive; the Font Software may not be sold by itself)',
+    copyright: 'Copyright (c) 2004 by MAGENTA Ltd.',
+    source:
+      '[https://github.com/mrdoob/three.js/tree/r169/examples/fonts](https://github.com/mrdoob/three.js/tree/r169/examples/fonts) ; ' +
+      'original: [MgOpen typefaces (archived)](https://web.archive.org/web/20050528114140/https://ellak.gr/fonts/mgopen/index.en)',
+    subsettingFinding:
+      'Permitted. The license grants reproduction, modification and distribution of the Font Software; ' +
+      'this project ships the unmodified helvetiker_bold.typeface.json from three.js r169, which later releases stopped bundling. ' +
+      'A modified copy may not be distributed under the "MgOpen" name, and the font may not be sold by itself.',
+  },
 ];
 
 export interface VendoredEntry {
@@ -271,6 +284,76 @@ export interface VendoredEntry {
 // ---------------------------------------------------------------------------
 
 export const VENDORED_ENTRIES: VendoredEntry[] = [
+  {
+    dirName: 'coffee-and-fun-data', displayName: 'Coffee & Fun Chinese vocabulary', license: 'MIT',
+    copyright: 'Copyright (c) Robert James Gabriel / Coffee & Fun LLC',
+    source: '[Upstream package](https://github.com/coffee-and-fun/google-profanity-words)',
+    usedIn: 'Chinese vocabulary from @coffeeandfun/google-profanity-words 3.0.7, normalized and converted to fingerprints in src/assets/moderation/lexical-index.json. The Node.js loader is not bundled.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'nsfwjs-model', displayName: 'NSFWJS MobileNetV2 model', license: 'MIT',
+    copyright: 'Copyright (c) 2019 Infinite Red, Inc.',
+    source: '[NSFWJS source and models](https://github.com/infinitered/nsfwjs)',
+    usedIn: 'MobileNetV2 weights from nsfwjs 4.4.0, decoded from base64 into public/moderation/nsfw/weights.bin; the manifest shard path was renamed.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'tessdata-fast', displayName: 'Tesseract fast language models', license: 'Apache-2.0',
+    copyright: 'Tesseract contributors',
+    source: '[Tesseract language data](https://github.com/tesseract-ocr/tessdata_fast)',
+    usedIn: 'English, Simplified Chinese and Traditional Chinese LSTM data at 87416418657359cb625c412a48b6e1d6d41c29bd, gzip-compressed under public/moderation/ocr/.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'zhin-sensitive-filter', displayName: 'Zhin sensitive-filter vocabulary', license: 'MIT',
+    copyright: 'Copyright (c) 2025 凉菜',
+    source: '[Upstream source](https://github.com/zhinjs/zhin)',
+    usedIn: 'Selected political and homophone categories from @zhin.js/sensitive-filter 2.0.1; normalized, deduplicated and converted to fingerprints in src/assets/moderation/political-index.json.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'konsheng-sensitive-lexicon', displayName: 'Konsheng Sensitive-lexicon', license: 'MIT',
+    copyright: 'Copyright (c) 2024~2099 Konsheng',
+    source: '[Upstream source](https://github.com/konsheng/Sensitive-lexicon)',
+    usedIn: 'Vocabulary files categorized by upstream file name, normalized and converted to fingerprints in src/assets/moderation/political-index.json together with the collection regex rules; file hashes, categories and the corroboration rule are recorded in src/assets/moderation/provenance.json.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'jieba-dict', displayName: 'jieba Chinese dictionary', license: 'MIT',
+    copyright: 'Copyright (c) 2013 Sun Junyi',
+    source: '[Upstream source](https://github.com/fxsjy/jieba)',
+    usedIn: 'Han words and corpus frequencies from jieba/dict.txt at 67fa2e36e72f69d9134b8a1037b83fbb070b9775, pruned and log-scaled into src/assets/moderation/lexicon-index.json for word segmentation; provenance in src/assets/moderation/lexicon-provenance.json.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'sensitive-stop-words', displayName: 'sensitive-stop-words political category', license: 'Apache-2.0',
+    copyright: 'fwwdn and sensitive-stop-words contributors',
+    source: '[Upstream source](https://github.com/fwwdn/sensitive-stop-words)',
+    usedIn: 'Selected category at a7d06bb1c321e669943b6841570d9da6dad8ce2b; normalized, deduplicated and converted to fingerprints in src/assets/moderation/political-index.json.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'sensitive-word-data', displayName: 'sensitive-word-data political category', license: 'Apache-2.0',
+    copyright: 'houbb and sensitive-word-data contributors',
+    source: '[Upstream source](https://github.com/houbb/sensitive-word-data)',
+    usedIn: 'Selected category at fe6fc2921836217b8c90619db81b24af8b22d80f; filtered to phrases with at least three Han characters, normalized and converted to fingerprints in src/assets/moderation/political-index.json.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'pinyin-pro-data', displayName: 'pinyin-pro derived pronunciation data', license: 'MIT',
+    copyright: 'Copyright (c) 2022-present zh-lx',
+    source: '[Upstream source](https://github.com/zh-lx/pinyin-pro)',
+    usedIn: 'Tone-free character readings and phrase pronunciation fingerprints derived from pinyin-pro 3.29.3 in src/assets/moderation/political-index.json; no pinyin-pro runtime is bundled.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
+  {
+    dirName: 'opencc-data', displayName: 'OpenCC conversion data bundled by opencc-js', license: 'Apache-2.0',
+    copyright: 'OpenCC and opencc-data contributors',
+    source: '[opencc-js third-party notices](https://github.com/nk2028/opencc-js/blob/main/THIRD_PARTY_LICENSES.md)',
+    usedIn: 'Traditional-to-Simplified Chinese conversion of analysis copies in the image text review worker. The source text is preserved.',
+    rightsNotGranted: 'No trademark rights or claim of endorsement.',
+  },
   {
     dirName: 'lobe-icons',
     displayName: 'Lobe Icons (AI/LLM provider brand marks)',

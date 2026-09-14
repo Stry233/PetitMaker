@@ -445,21 +445,21 @@ export class Annotations3D {
         ctx.stroke();
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'alphabetic';
         ctx.font = `800 ${fs * 0.68}px ${APP_FONT_FAMILY}`;
-        ctx.fillText(String(zone.num), x + numR, cy + fs * 0.04);
+        ctx.fillText(String(zone.num), x + numR, centeredBaseline(ctx, String(zone.num), cy));
         x += numR * 2 + (label ? 8 : 0);
       }
       if (label) {
         ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'alphabetic';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = INK;
         ctx.lineWidth = fs * 0.16;
-        ctx.strokeText(label, x, cy);
+        ctx.strokeText(label, x, centeredBaseline(ctx, label, cy));
         ctx.fillStyle = MAP_TEXT;
-        ctx.fillText(label, x, cy);
+        ctx.fillText(label, x, centeredBaseline(ctx, label, cy));
       }
       return total + 16;
     });
@@ -483,8 +483,8 @@ export class Annotations3D {
       ctx.stroke();
       ctx.fillStyle = isInk(note.color) ? INK : '#fff';
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, 4 + padX, cy + fs * 0.05);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(label, 4 + padX, centeredBaseline(ctx, label, cy));
       return w + padX * 2 + 8;
     });
   }
@@ -658,4 +658,10 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+/** Center visible glyph ink rather than the font's ascent/descent line box. */
+function centeredBaseline(ctx: CanvasRenderingContext2D, text: string, center: number): number {
+  const metrics = ctx.measureText(text);
+  return center + ((metrics.actualBoundingBoxAscent ?? 0) - (metrics.actualBoundingBoxDescent ?? 0)) / 2;
 }

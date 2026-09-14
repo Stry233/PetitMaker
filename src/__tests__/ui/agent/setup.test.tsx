@@ -25,13 +25,12 @@ import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { translations } from '../../../i18n/translations';
-import { SetupScreen, withModelsDeadline } from '../../../ui/agent/SetupScreen';
+import { SetupScreen, withModelsDeadline, type ListModels } from '../../../ui/agent/SetupScreen';
 import { classify } from '../../../agent/core/errors';
 import { keyDestination, readKeyShape, stepSlide } from '../../../ui/agent/setup-parts';
 import { framerMotion, seconds } from '../../../ui/agent/motion';
 import { useAgentPanelSettings } from '../../../ui/agent/settings';
-import { prettyModel } from '../../../ui/agent/pretty-model';
-import { roleFont } from '../../../ui/design/text-weight';
+import { forgetRosters } from '../../../ui/agent/model-roster';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../agent/providers/defaults';
 import type { Locale } from '../../../core/model/types';
 
@@ -70,6 +69,7 @@ const IDLE = 900;
 
 beforeEach(() => {
   backing.clear();
+  forgetRosters();
   useEditorStore.setState({ locale: 'en' });
   useAgentPanelSettings.setState({
     provider: 'claude', model: emptyModels(), oversight: 'checkpoint',
@@ -87,7 +87,11 @@ afterEach(() => { vi.useRealTimers(); });
 /** A probe that never settles, for the state a screen holds WHILE it is waiting. */
 const pendingProbe = () => new Promise<ProviderId | null>(() => {});
 
-const phaseOf = () => screen.getByTestId('setup-screen').getAttribute('data-phase');
+const phaseOf = () => screen.queryByTestId('manage-screen') ? 'manage' : screen.getByTestId('setup-screen').getAttribute('data-phase');
+const pickDefault = () => {
+  fireEvent.click(screen.getByTestId('manage-model-dd'));
+  fireEvent.click(screen.getAllByRole('menuitemradio')[0]!);
+};
 const noteText = () => screen.queryByTestId('setup-note')?.textContent ?? null;
 const rowFace = () => screen.getByTestId('setup-prov-face');
 
@@ -254,7 +258,7 @@ describe('the field never leaves while the hands are moving', () => {
     expect(listModels).not.toHaveBeenCalled();
 
     await act(async () => { vi.advanceTimersByTime(200); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(useAgentPanelSettings.getState().keyed).toContain('claude');
   });
 
@@ -263,7 +267,7 @@ describe('the field never leaves while the hands are moving', () => {
     renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: KEY.claude });
   });
 
@@ -315,7 +319,7 @@ describe('the field never leaves while the hands are moving', () => {
     // Editing the field arms it again.
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: `${KEY.claude}9` } });
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
   });
 });
 
@@ -359,20 +363,11 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.zhipu.name)); });
 
-    expect(phaseOf()).toBe('confirm');
-    expect(screen.getByTestId('setup-armed-provider').getAttribute('data-provider')).toBe('zhipu');
+    expect(phaseOf()).toBe('manage');
+    expect(screen.getByTestId('manage-prov-face').getAttribute('data-provider')).toBe('zhipu');
     expect(useAgentPanelSettings.getState().keyed).toContain('zhipu');
 
-    /*
-     * AND IT IS THE SAME ROW IT REPLACES. The confirmed provider stands in the seat the chooser row
-     * was in a press ago — one is the list put away, the other the list open — so the two are one
-     * rung. Drawn at `chip` this one was a rung lighter and half a pixel smaller than the row it
-     * replaced, which reads as the screen changing its mind about how important the answer is.
-     */
-    const rung = roleFont('menu');
-    const lit = screen.getByTestId('setup-armed-provider');
-    expect(lit.style.fontWeight).toBe(String(rung.fontWeight));
-    expect(lit.style.fontSize).toBe(`${rung.fontSize}px`);
+
   });
 
   /**
@@ -395,10 +390,11 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     fireEvent.click(screen.getByText(PROVIDER_META.claude.name));
 
     expect(useAgentPanelSettings.getState().provider).toBe('claude');
-    expect(onDone, 'nothing is owed: the key and the model both stand').toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
+    expect(phaseOf()).toBe('manage');
   });
 
-  it('goes to the confirmation where the pick is keyed but has no model yet, and strands nobody', async () => {
+  it('opens management for an existing key without selecting a model', async () => {
     const onDone = vi.fn();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
     useAgentPanelSettings.getState().connectKey('claude', KEY.claude);
@@ -408,12 +404,50 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.claude.name)); });
 
-    expect(phaseOf(), 'the confirmation is where Done lives').toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: KEY.claude });
     expect(onDone).not.toHaveBeenCalled();
     // AND THE WAY OUT IS LIVE. A step whose only control refuses is the strand this branch exists to
     // avoid: the key is filed, the provider is armed, and nothing else is owed.
-    expect((screen.getByTestId('setup-done') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('keeps an explicit provider and its refusal together when the key has another provider format', async () => {
+    vi.useFakeTimers();
+    const probe = vi.fn(pendingProbe);
+    const listModels = vi.fn(({ provider }: { provider: ProviderId; apiKey: string }) => provider === 'openai'
+      ? Promise.reject(Object.assign(new Error('Unauthorized'), { status: 401 }))
+      : Promise.resolve(['claude-sonnet-4-5']));
+    renderWithI18n(<SetupScreen probe={probe} listModels={listModels} />);
+    fireEvent.click(screen.getByTestId('setup-prov-row'));
+    fireEvent.click(screen.getByText(PROVIDER_META.openai.name));
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
+    expect(screen.getByTestId('setup-row-cross')).toBeTruthy();
+    expect(rowFace().getAttribute('data-provider')).toBe('openai');
+    expect(useAgentPanelSettings.getState().providerPinned).toBe(true);
+    expect(useAgentPanelSettings.getState().provider).toBe('openai');
+    await act(async () => { vi.advanceTimersByTime(IDLE * 3); });
+    expect(listModels).toHaveBeenCalledTimes(1);
+    expect(probe).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('setup-act-manual'));
+    await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.claude.name)); });
+    expect(phaseOf()).toBe('manage');
+    expect(screen.queryByTestId('setup-row-cross')).toBeNull();
+    expect(useAgentPanelSettings.getState().model.claude).toBe('');
+  });
+
+  it('leaves the management mount to the parent during handoff', async () => {
+    const onManage = vi.fn();
+    const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
+    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onManage={onManage} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    expect(onManage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('manage-screen')).toBeNull();
+    expect(screen.getByTestId('setup-key-input')).toBeTruthy();
+    expect(listModels).toHaveBeenCalledTimes(1);
   });
 
   it('names the two candidates on their own entries when the shape fits two', () => {
@@ -521,7 +555,7 @@ describe('the chooser outranks the check it was opened over', () => {
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: `${KEY.claude}x` } });
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
   });
 });
 
@@ -542,18 +576,18 @@ describe('a model answer is dropped once the user steps off its reading', () => 
   }
 
   /** Walks commit(claude) → Back → pick(openai), leaving claude's list request abandoned in flight. */
-  async function stepOffClaudeOntoOpenai(listModels: ReturnType<typeof vi.fn>) {
+  async function stepOffClaudeOntoOpenai(listModels: ListModels) {
     renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('checking');
 
-    fireEvent.click(screen.getByTestId('setup-confirm-back'));
+    fireEvent.click(screen.getByTestId('setup-act-reenter'));
     expect(phaseOf()).toBe('key');
 
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.openai.name)); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('checking');
     expect(useAgentPanelSettings.getState().provider).toBe('openai');
   }
 
@@ -566,13 +600,13 @@ describe('a model answer is dropped once the user steps off its reading', () => 
     expect(useAgentPanelSettings.getState().model.claude).toBe('');
   });
 
-  it('leaves the new confirmation standing when the abandoned reading is refused', async () => {
+  it('leaves the new check standing when the abandoned reading is refused', async () => {
     const { held, listModels } = heldLists();
     await stepOffClaudeOntoOpenai(listModels);
 
     await act(async () => { held.claude!.reject(Object.assign(new Error('Unauthorized'), { status: 401 })); });
-    expect(phaseOf()).toBe('confirm');
-    expect(screen.getByTestId('setup-armed-provider').getAttribute('data-provider')).toBe('openai');
+    expect(phaseOf()).toBe('checking');
+    expect(screen.getByTestId('setup-prov-face').getAttribute('data-provider')).toBe('openai');
     expect(useAgentPanelSettings.getState().keyed).toContain('openai');
   });
 });
@@ -698,7 +732,7 @@ describe('a check that failed says so on the row it failed at', () => {
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(onManage).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('setup-models-unavailable')).toBeNull();
     expect(screen.queryByTestId('setup-need-model')).toBeNull();
@@ -707,35 +741,33 @@ describe('a check that failed says so on the row it failed at', () => {
   });
 });
 
-/* ── the confirmation, and the model it defaults ───────────── */
-
-/**
- * SETUP DOES NOT ASK FOR A MODEL. The list it fetches to prove the key also names the default, the
- * settings card owns every later choice, and Done is never gated: a model an endpoint would not name
- * is a settings matter rather than a reason to hold the user on a step with nothing to do.
- */
-describe('the confirmation step', () => {
-  async function toConfirm(listModels: () => Promise<string[]>) {
+describe('model selection on the management page', () => {
+  async function toManage(listModels: () => Promise<string[]>) {
     renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
   }
 
-  it('files the endpoint\'s first model as the default, and offers no chooser', async () => {
-    await toConfirm(() => Promise.resolve(['claude-sonnet-4-5', 'claude-opus-4-1']));
-
-    expect(useAgentPanelSettings.getState().model.claude).toBe('claude-sonnet-4-5');
-    expect(screen.getByTestId('setup-model-note').textContent)
-      .toBe(translations.en['agent3.setup_note_model_default']!.replace('{name}', 'Claude Sonnet 4.5'));
-    expect(screen.queryByTestId('setup-model-dd'), 'the choice lives behind the gear').toBeNull();
-    expect((screen.getByTestId('setup-done') as HTMLButtonElement).disabled).toBe(false);
+  it('offers the default as an unselected list entry and waits for an explicit choice', async () => {
+    await toManage(() => Promise.resolve(['claude-sonnet-4-5', 'claude-opus-4-1']));
+    expect(phaseOf()).toBe('manage');
+    expect(screen.queryByTestId('setup-screen')).toBeNull();
+    expect(useAgentPanelSettings.getState().model.claude).toBe('');
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    const entries = screen.getAllByRole('menuitemradio');
+    expect(entries[0]!.textContent).toContain('Default model (Claude Sonnet 4.5)');
+    expect(entries.every((entry) => entry.getAttribute('aria-checked') === 'false')).toBe(true);
+    fireEvent.click(entries[1]!);
+    expect(useAgentPanelSettings.getState().model.claude).toBe('claude-opus-4-1');
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(false);
   });
 
   /** A PICK ALREADY MADE OUTRANKS THE LIST. The filed model is the user's own answer from a past
    *  session, and the settings card is the only place one is chosen. */
   it('leaves a model already filed for the provider exactly where it was', async () => {
     useAgentPanelSettings.getState().setModel('claude-haiku-4-5');
-    await toConfirm(() => Promise.resolve(['claude-sonnet-4-5', 'claude-opus-4-1']));
+    await toManage(() => Promise.resolve(['claude-sonnet-4-5', 'claude-opus-4-1']));
     expect(useAgentPanelSettings.getState().model.claude).toBe('claude-haiku-4-5');
   });
 
@@ -757,7 +789,8 @@ describe('the confirmation step', () => {
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    fireEvent.click(screen.getByTestId('setup-done'));
+    pickDefault();
+    fireEvent.click(screen.getByTestId('manage-done'));
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(useAgentPanelSettings.getState().keyed).toContain('claude');
   });
@@ -786,7 +819,7 @@ describe('the step the screen reports upward', () => {
     expect(f.last()).toBe('awake');
   });
 
-  it('walks the reading: typing, then the shape, then the confirmed provider, then the settled model', async () => {
+  it('reports key validation until management takes over', async () => {
     const f = faces();
     let settle: (ids: string[]) => void = () => {};
     const listModels = () => new Promise<string[]>((resolve) => { settle = resolve; });
@@ -801,13 +834,12 @@ describe('the step the screen reports upward', () => {
       .toEqual({ step: 'shaped', name: PROVIDER_META.claude.name });
 
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(f.last(), 'the provider is confirmed and the list is out').toBe('confirmed');
+    expect(f.last()).toBe('shaped');
 
-    // The list lands, the default is filed, and what is owed from there is the press alone — which
-    // is what the card names rather than a question it is not asking.
+    // Management owns the desk once discovery settles, without implying a model was selected.
     await act(async () => { settle(['claude-sonnet-4-5']); });
     expect(f.onFace.mock.calls[f.onFace.mock.calls.length - 1]![0])
-      .toEqual({ step: 'chosen', name: 'Claude Sonnet 4.5' });
+      .toBeNull();
   });
 
   it('says the ambiguity once it is being asked, the shape nobody claims, and each dead end', async () => {
@@ -868,8 +900,7 @@ describe('the step the screen reports upward', () => {
       .toEqual({ step: 'endpoint', name: 'localhost:11434' });
   });
 
-  /** A LIST THAT WOULD NOT LOAD HAS NO STEP OF ITS OWN: the flow routes to the settings card, so the
-   *  desk keeps the confirmed provider's word while the panel changes surface under it. */
+  /** Discovery failures hand off to management without a separate setup status. */
   it('reports no dead step for the list that would not load', async () => {
     const noList = faces();
     const onManage = vi.fn();
@@ -883,7 +914,7 @@ describe('the step the screen reports upward', () => {
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(noList.last()).toBe('confirmed');
+    expect(noList.last()).toBeNull();
     expect(onManage).toHaveBeenCalledTimes(1);
   });
 });
@@ -1012,22 +1043,13 @@ describe('one leave verb per screen', () => {
     expect(segments()).toHaveLength(0);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(phaseOf()).toBe('confirm');
-    expect(segments(), 'the model step must not ask either').toHaveLength(0);
+    expect(phaseOf()).toBe('manage');
+    expect(screen.getByTestId('manage-oversight-caption')).toBeTruthy();
     expect(screen.queryByTestId('setup-oversight-caption')).toBeNull();
   });
 });
 
-/**
- * THE CUSTOM ENDPOINT TAKES THE SAME THREE STEPS AS EVERY OTHER PROVIDER: key (with an address in
- * front of it), the reading that tests the key, done. There is no model screen on this path either.
- *
- * It is the path most likely to grow one, because a gateway nobody has heard of is the case where the
- * app knows least about what it runs — and that is exactly why the answer is a DEFAULT rather than a
- * question: whatever `/models` names first, or the typed id on the manage card where it names
- * nothing. A screen that asked would be a second place a model is chosen.
- */
-describe('the custom endpoint reaches Done with no model screen', () => {
+describe('custom providers use the same management page', () => {
   /** Walks the chooser to the custom endpoint and files an address, which lands back on the key step
    *  with `custom` pinned. */
   function armEndpoint(): void {
@@ -1037,7 +1059,7 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     fireEvent.click(screen.getByTestId('setup-endpoint-save'));
   }
 
-  it('defaults the endpoint\'s first model and offers only Done', async () => {
+  it('opens management without choosing the endpoint\'s first model', async () => {
     const done = vi.fn();
     const asked = vi.fn(() => Promise.resolve(['qwen2.5-coder:14b', 'llama3.2']));
     renderWithI18n(<SetupScreen probe={pendingProbe} listModels={asked} onDone={done} />);
@@ -1048,20 +1070,17 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
 
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     // The list was asked against the endpoint's own address, and its first id is what got filed.
     expect(asked).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'custom', customBaseUrl: 'http://localhost:11434/v1',
     }));
-    expect(useAgentPanelSettings.getState().model.custom).toBe('qwen2.5-coder:14b');
-    // REPORTED, never offered: the note names the default in the house's own spelling of it, and
-    // there is no list to pick from.
-    expect(screen.getByTestId('setup-model-note').textContent)
-      .toContain(prettyModel('qwen2.5-coder:14b'));
-    expect(screen.queryByText('llama3.2')).toBeNull();
-    expect(screen.queryByTestId('setup-model-dd')).toBeNull();
+    expect(useAgentPanelSettings.getState().model.custom).toBe('');
+    expect(screen.queryByTestId('setup-screen')).toBeNull();
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
 
-    fireEvent.click(screen.getByTestId('setup-done'));
+    pickDefault();
+    fireEvent.click(screen.getByTestId('manage-done'));
     expect(done).toHaveBeenCalledTimes(1);
   });
 
@@ -1083,7 +1102,7 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
 
-    expect(phaseOf()).toBe('confirm');
+    expect(phaseOf()).toBe('manage');
     expect(screen.queryByTestId('setup-models-unavailable'), 'no unavailable-model dead end').toBeNull();
     expect(screen.queryByTestId('setup-model-note')).toBeNull();
     // The key stayed filed: an unlisted model is not a refusal.
@@ -1112,7 +1131,7 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     expect(phaseOf()).toBe('key');
 
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(phaseOf(), 'a gate still held would leave the screen reading a key forever').toBe('confirm');
+    expect(phaseOf(), 'a gate still held would leave the screen reading a key forever').toBe('manage');
     expect(asked).toHaveBeenCalledWith({
       provider: 'custom', apiKey: KEY.unknown, customBaseUrl: 'https://gateway.example/v1',
     });
@@ -1134,10 +1153,10 @@ describe('the custom endpoint reaches Done with no model screen', () => {
     // id, while a check nothing answered is the ADDRESS's (`endpointCheckVerdict`) — the failed
     // check files the endpoint gap, so the step is the address.
     const cases: [string, () => Promise<string[]>, string][] = [
-      ['lists its models', () => Promise.resolve(['llama3.2']), 'chosen'],
+      ['lists its models', () => Promise.resolve(['llama3.2']), 'manage'],
       ['names nothing', () => Promise.resolve([]), 'manage'],
-      ['is unreachable', () => Promise.reject(new Error('Failed to fetch')), 'endpoint'],
-      ['refuses at CORS', () => Promise.reject(Object.assign(new Error('blocked'), { status: 0 })), 'endpoint'],
+      ['is unreachable', () => Promise.reject(new Error('Failed to fetch')), 'manage'],
+      ['refuses at CORS', () => Promise.reject(Object.assign(new Error('blocked'), { status: 0 })), 'manage'],
       ['refuses the key', () => Promise.reject(Object.assign(new Error('Unauthorized'), { status: 401 })), 'refused'],
     ];
 
@@ -1214,11 +1233,10 @@ describe('setup copy, in every locale', () => {
     'agent3.setup_note_custom', 'agent3.setup_endpoint_placeholder', 'agent3.setup_endpoint_invalid',
     'agent3.setup_endpoint_check', 'agent3.setup_model_placeholder',
     'agent3.setup_model_pick', 'agent3.setup_models_unavailable',
-    'agent3.setup_note_model_default',
-    'agent3.setup_manage_endpoint', 'agent3.setup_manage_endpoint_failed',
+    'agent3.setup_manage_endpoint', 'agent3.setup_list_unavailable',
     'agent3.setup_give_address',
-    'agent3.setup_done', 'agent3.setup_back', 'agent3.setup_use_this_key',
-    'agent3.setup_known_default',
+    'agent3.setup_done',
+    'agent3.setup_default_model_entry', 'agent3.setup_back', 'agent3.setup_use_this_key',
     'agent3.setup_fits_this_key', 'agent3.setup_gateway_fits',
     'agent3.setup_row_any', 'agent3.setup_row_any_sub', 'agent3.setup_row_asking',
     'agent3.setup_row_checking', 'agent3.setup_row_no_answer', 'agent3.setup_row_pinned',

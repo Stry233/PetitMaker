@@ -8,11 +8,11 @@
  *   tag. A press that lands on a zone and does not move selects it.
  * - ERASE subtracts cells from whatever zones it crosses (a zone emptied this way is removed) and
  *   deletes a chip or route it presses.
- * - CHIP drops a tag plate at the press.
+ * - CHIP selects an existing tag near the press, or drops a plate on open ground.
  * - ROUTE draws with a drag, simplified into editable anchors on release; a press that does not
  *   move lays a waypoint instead, and a press back on the last waypoint ends that route. A press
  *   near an existing route selects it and raises its handles.
- * - NONE selects and drags.
+ * - NONE selects; a subsequent press on a selected note can drag the selection.
  *
  * Everything speaks CELL coordinates, so the tool is view-agnostic exactly as the map tools are.
  * A hidden or locked layer refuses every edit with a toast; selection still works under a lock.
@@ -83,19 +83,19 @@ export class AnnotateTool implements Tool {
     return ctx.annotations == null || (ctx.annotations.visible && !ctx.annotations.locked);
   }
 
-  /** The select state's grab: a press on a note picks the selection up. */
+  /** Only a note selected before this press can start a move. */
   grabAt(coord: MacroCoord, ctx: ToolContext): boolean {
-    if (ctx.annotationTool !== 'none' || !ctx.annotations?.visible) return false;
-    return this.hitAt(this.fine(coord, ctx), ctx) !== null;
+    return !ctx.annotations?.locked && this.selectHit(coord, ctx)?.selected === true;
   }
 
   selects(ctx: ToolContext): boolean {
-    return ctx.annotationTool === 'none' && ctx.annotations?.visible !== false;
+    return (ctx.annotationTool === 'none' || ctx.annotationTool === 'chip') && ctx.annotations?.visible !== false;
   }
 
   selectHit(coord: MacroCoord, ctx: ToolContext): { id: string; selected: boolean } | null {
     if (!this.selects(ctx)) return null;
-    const hit = this.hitAt(this.fine(coord, ctx), ctx);
+    const p = this.fine(coord, ctx);
+    const hit = ctx.annotationTool === 'chip' ? this.chipAt(p, ctx) : this.hitAt(p, ctx);
     return hit ? { id: hit.id, selected: ctx.annotationSelection.includes(hit.id) } : null;
   }
 
@@ -277,6 +277,8 @@ export class AnnotateTool implements Tool {
   /* ── chip ─────────────────────────────────────────────────────────────── */
 
   private chipDown(p: MacroCoord, ctx: ToolContext): void {
+    const hit = ctx.annotations?.visible ? this.chipAt(p, ctx) : null;
+    if (hit || isMultiSelectHeld()) { this.selectDown(p, ctx, hit); return; }
     if (!this.editable(ctx)) return;
     const chip: ChipNote = {
       kind: 'chip', id: generateAnnotationId(), x: p.x, y: p.y,
@@ -414,8 +416,8 @@ export class AnnotateTool implements Tool {
 
   /* ── select ───────────────────────────────────────────────────────────── */
 
-  private selectDown(p: MacroCoord, ctx: ToolContext): void {
-    const hit = ctx.annotations?.visible ? this.hitAt(p, ctx) : null;
+  private selectDown(p: MacroCoord, ctx: ToolContext, hit = ctx.annotations?.visible ? this.hitAt(p, ctx) : null): void {
+    const wasSelected = hit !== null && ctx.annotationSelection.includes(hit.id);
     // Ctrl toggles the note in and out of the SET; a toggle never arms a drag.
     if (isMultiSelectHeld()) {
       if (hit) {
@@ -433,7 +435,7 @@ export class AnnotateTool implements Tool {
     ctx.annotationEdit.select(ids);
     const items = ctx.annotations?.items ?? [];
     const origs = ids.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
-    this.drag = hit ? { start: p, origs: structuredClone(origs), began: false } : null;
+    this.drag = wasSelected && !ctx.annotations?.locked ? { start: p, origs: structuredClone(origs), began: false } : null;
   }
 
   private dragMove(p: MacroCoord, ctx: ToolContext): void {
@@ -508,6 +510,22 @@ export class AnnotateTool implements Tool {
       && Math.abs(p.y - at.y) <= zoneLabelApproxHeightCells(n, ink) / 2;
   }
 
+  private chipContains(p: MacroCoord, note: ChipNote, ink: number, ctx: ToolContext): boolean {
+    const reach = Math.max(0.35, INK_CELLS.text[note.size] * ink * 0.3);
+    return Math.abs(p.x - note.x) <= chipApproxWidthCells(note, ctx.tagLabel(note.tag), ink) / 2 + reach
+      && Math.abs(p.y - note.y) <= chipApproxHeightCells(note, ink) / 2 + reach;
+  }
+
+  private chipAt(p: MacroCoord, ctx: ToolContext): ChipNote | null {
+    const ink = annotationInkScale(ctx.gridState.template);
+    const items = ctx.annotations?.items ?? [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const note = items[i]!;
+      if (note.kind === 'chip' && this.chipContains(p, note, ink, ctx)) return note;
+    }
+    return null;
+  }
+
   /** Topmost note under a press: chips and captions read over routes, routes over zone bodies,
    *  later notes over earlier — the same order the views paint them in. */
   private hitAt(p: MacroCoord, ctx: ToolContext): MapAnnotation | null {
@@ -516,8 +534,7 @@ export class AnnotateTool implements Tool {
     for (let i = items.length - 1; i >= 0; i--) {
       const n = items[i]!;
       if (n.kind === 'chip') {
-        const label = ctx.tagLabel(n.tag);
-        if (Math.abs(p.x - n.x) <= chipApproxWidthCells(n, label, ink) / 2 && Math.abs(p.y - n.y) <= chipApproxHeightCells(n, ink)) return n;
+        if (this.chipContains(p, n, ink, ctx)) return n;
       } else if (n.kind === 'zone' && this.captionHit(p, n, ink, ctx)) {
         return n;
       }

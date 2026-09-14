@@ -16,7 +16,10 @@
  * more than one region, with a crossing the traits snap several cells along its own axis, and every
  * hand-built fixture of that shape happened to join by luck. Both pairs are ones the sweep measured.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// Synchronous route search on the real island; over ten seconds for the ramp case.
+vi.setConfig({ testTimeout: 60_000 });
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';

@@ -1,11 +1,7 @@
-// LegalBar — persistent bottom filing bar. Mainland-China filing rules expect
-// the ICP/PSB registration numbers visible at the bottom of every page; this is
-// that surface for the SPA. It renders NOTHING until LEGAL
-// (src/legal/config.ts) carries at least one COMPLETE pair (number + URL both
-// set), and each pair is checked complete before it draws, so a partial pair
-// renders no row rather than a broken one.
+// The main map's filing links yield their space to the active bottom panel.
 import type { CSSProperties } from 'react';
 import { useT } from '../i18n/context';
+import { useEditorStore } from '../state/store';
 import { useChromeScale } from '../ui/design/scale';
 import { colors, font, radii, shadows } from '../ui/design/styles';
 import { LEGAL } from './config';
@@ -46,11 +42,12 @@ const linkStyle: CSSProperties = {
 export function LegalBar() {
   const t = useT();
   const chrome = useChromeScale();
+  const bottomPanelOpen = useEditorStore((s) => s.editMode.mode !== null || s.selectingRegion);
 
   const hasIcp = !!(LEGAL.icpNumber && LEGAL.icpUrl);
   const hasPsb = !!(LEGAL.psbNumber && LEGAL.psbUrl);
 
-  if (!hasIcp && !hasPsb) return null;
+  if (bottomPanelOpen || (!hasIcp && !hasPsb)) return null;
 
   return (
     <nav style={{ ...barStyle, zoom: chrome }} aria-label={t('legal.section_title')}>

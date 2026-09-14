@@ -79,6 +79,7 @@ interface Slot { worker: Worker; job: Job | null; templates: Set<string> }
 let slots: Slot[] | null = null;
 let broken = false;
 let nextId = 1;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
 const queue: Job[] = [];
 
 export function poolAvailable(): boolean {
@@ -94,6 +95,8 @@ const asError = (err: unknown): Error => (err instanceof Error ? err : new Error
 
 function breakPool(err: Error): void {
   broken = true;
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
   for (const slot of slots ?? []) {
     slot.worker.terminate();
     slot.job?.reject(err);
@@ -103,9 +106,9 @@ function breakPool(err: Error): void {
   for (const job of queue.splice(0)) job.reject(err);
 }
 
-function ensureSlots(): Slot[] {
-  if (slots) return slots;
-  slots = Array.from({ length: poolSize() }, () => {
+function ensureSlots(demand = 1): Slot[] {
+  slots ??= [];
+  while (slots.length < Math.min(poolSize(), Math.max(1, demand))) {
     const worker = new Worker(new URL('./candidate.worker.ts', import.meta.url), { type: 'module' });
     const slot: Slot = { worker, job: null, templates: new Set() };
     worker.onmessage = (e: MessageEvent) => {
@@ -119,9 +122,17 @@ function ensureSlots(): Slot[] {
       dispatch();
     };
     worker.onerror = () => breakPool(new Error('generation worker broke'));
-    return slot;
-  });
+    slots.push(slot);
+  }
   return slots;
+}
+
+function retireIdleSlots(): void {
+  if (idleTimer !== null || queue.length || !slots || slots.length < 2 || slots.some(slot => slot.job)) return;
+  idleTimer = setTimeout(() => {
+    for (const slot of slots?.splice(1) ?? []) slot.worker.terminate();
+    idleTimer = null;
+  }, 60_000);
 }
 
 /** DISPATCH NEVER THROWS: it runs inside a worker's own message handler as well as inside
@@ -131,14 +142,17 @@ function ensureSlots(): Slot[] {
  *  refuses therefore breaks the pool, which settles what it holds. */
 function dispatch(): void {
   if (broken) return;
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
+  if (!queue.length && slots?.every(slot => !slot.job)) { retireIdleSlots(); return; }
   let ready: Slot[];
-  try { ready = ensureSlots(); } catch (err) { breakPool(asError(err)); return; }
+  try { ready = ensureSlots((slots?.filter(slot => slot.job).length ?? 0) + queue.filter(job => !job.signal?.cancelled).length); } catch (err) { breakPool(asError(err)); return; }
   for (const slot of ready) {
     if (slot.job) continue;
     let job = queue.shift();
     // Drop cancelled jobs before they cost a worker: the caller has already moved on.
     while (job && job.signal?.cancelled) { job.resolve(null); job = queue.shift(); }
-    if (!job) return;
+    if (!job) { retireIdleSlots(); return; }
     slot.job = job;
     try { post(slot, job); } catch (err) { breakPool(asError(err)); return; }
   }
@@ -172,7 +186,7 @@ function enqueue(state: GridState, payload: Record<string, unknown>, opts: { sig
   });
 }
 
-/** Boot the workers now, while nothing is waiting on them: a worker's first job otherwise pays
+/** Warm one worker; concurrent jobs grow the pool to its hardware limit. The first job otherwise pays
  *  the module load, which is the one hitch the pool exists to remove. A no-op without Worker or
  *  once the pool is broken. */
 export function warmPool(): void {

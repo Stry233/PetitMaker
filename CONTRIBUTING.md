@@ -8,7 +8,7 @@ Thanks for your interest in PetitMaker, an unofficial map editor for *Petit Plan
 - Every commit must carry a **Developer Certificate of Origin** sign-off (`Signed-off-by:`), added with `git commit -s`.
 - **Contributors retain copyright** in their contributions; you license your work to the project, you do not assign ownership to it.
 - **Art / non-code asset contributions** require separate **written permission** before they can be merged.
-- We only publish a contributor's name with their **consent**.
+- Project-page credits follow the contributor's **consent**; Git authorship and DCO sign-offs are public commit records.
 
 ## Developer Certificate of Origin (DCO)
 
@@ -83,7 +83,7 @@ If you want to contribute an asset, contact us first (see below) so we can confi
 
 ## Credit & naming
 
-We only publish a contributor's name (in credits, the About screen, release notes, or elsewhere) **with that person's consent**. If you contribute, let us know whether and how you would like to be credited; we will record your preference and will not publish your name without permission.
+Names, email addresses and content in Git commits and DCO sign-offs enter version history and may remain public when submitted to the public repository. Choose a name and email suitable for publication before submitting. Separate credits in project pages, About and acknowledgements follow your preferences; please tell us whether and how you would like to be credited.
 
 ## Development setup
 

@@ -11,7 +11,7 @@
  * retreats differ, so both are pinned here — a mode leaves entirely, a tool leaves its surface
  * standing.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { RUN, type CommandContext } from '../../kit/commands';
 import { ACTION_BY_ID } from '../../kit/actions';
 import { offerSmartBuild } from '../../core/runtime/smart-build';
@@ -23,9 +23,9 @@ import { designModeToEditInputs } from '../../core/model/edit-mode';
 import type { DesignMode } from '../../core/model/types';
 
 function fakeCtx(): CommandContext & {
-  handleTileAction: ReturnType<typeof vi.fn>;
-  openBuild: ReturnType<typeof vi.fn>;
-  toggleMenu: ReturnType<typeof vi.fn>;
+  handleTileAction: Mock<CommandContext['handleTileAction']>;
+  openBuild: Mock<CommandContext['openBuild']>;
+  toggleMenu: Mock<CommandContext['toggleMenu']>;
 } {
   return {
     openBuild: vi.fn(),

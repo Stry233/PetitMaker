@@ -25,3 +25,5 @@ export {
   type DialectConfig,
   type StylizeImage,
 } from './dialects';
+
+export { retainNeuralRuntime } from './neural/lifecycle';

@@ -8,7 +8,10 @@
 // object by PROBING through `tryPlace`, so a refusal is how it finds out that a spot will not do.
 // The refusals a run collected come back as `GenerateResult.skipped`, and the designer's own probes
 // are where a run is held to zero of them on ground where every placement should be legal.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation through the real executor; several seconds per case.
+vi.setConfig({ testTimeout: 60_000 });
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';

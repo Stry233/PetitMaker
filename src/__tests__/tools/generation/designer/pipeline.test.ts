@@ -7,7 +7,10 @@
 // the water rules and keeps the ground under a building and its doorstep flat, and the router only
 // walks ground a coating can be laid on — so a refusal, a post-stroke violation or a missing anchor
 // is a defect, never an expected loss.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch over both templates and every seed; tens of seconds on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../config/maps/index';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { EventBus } from '../../../../core/commands/event-bus';

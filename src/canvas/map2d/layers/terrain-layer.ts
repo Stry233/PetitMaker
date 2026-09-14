@@ -67,6 +67,16 @@ export class TerrainLayer {
     this.requestRender();
   }
 
+  withAllLayersVisible<T>(state: GridState, capture: () => T): T {
+    const previous = Object.fromEntries([...this.hiddenLayers].map(layer => [layer, false]));
+    try {
+      this.applyLayerVisibility(state, {});
+      return capture();
+    } finally {
+      this.applyLayerVisibility(state, previous);
+    }
+  }
+
   /**
    * Apply a visibility change and redraw ONLY the cells it can affect. A
    * full-map rebuild here would destroy and refill every terrain Graphics

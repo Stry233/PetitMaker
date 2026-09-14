@@ -135,7 +135,7 @@ describe('Lane: the line', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ error: 'ground not flat' })} />);
     expect(getByTestId('lane').getAttribute('data-erring')).toBe('true');
     expect(asColor(getByTestId('lane-line').style.color)).toBe(asColor(colors.dangerText));
-    expect(getByTestId('op-chip').textContent).toBe('ground not flat');
+    expect(getByTestId('op-chip').textContent).toBe('This step could not be completed.');
   });
 });
 
@@ -162,7 +162,7 @@ describe('the delegate row and its lane', () => {
     );
     const chips = getAllByTestId('op-chip');
     // One on the row, one on the lane's line, both naming the same cause.
-    expect(chips.map((c) => c.textContent)).toEqual(['ground not flat', 'ground not flat']);
+    expect(chips.map((c) => c.textContent)).toEqual(['This step could not be completed.', 'This step could not be completed.']);
     expect(chips[0]!.getAttribute('data-tone')).toBe('bad');
   });
 

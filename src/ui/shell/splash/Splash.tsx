@@ -115,10 +115,11 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
     // network work still happens once.
     const begun = performance.now();
     let cancelled = false;
+    const subscription = new AbortController();
     void preloadAssets((done, total) => {
       if (!cancelled) setProgress(total === 0 ? 1 : done / total);
-    }).then(async () => {
-      markSplashDone();
+    }, subscription.signal).then(async (complete) => {
+      if (complete) markSplashDone();
       if (cancelled) return;
       const wait = (ms: number) => new Promise((r) => { setTimeout(r, ms); });
       await wait(Math.max(0, MIN_SHOW_MS - (performance.now() - begun)));
@@ -130,7 +131,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
       await wait(reduced ? 0 : handoff.duration! * 1000);
       if (!cancelled) onDone();
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; subscription.abort(); };
     // The preload runs once for the component's whole life; reduced/handlers are read live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -155,7 +155,7 @@ describe('exec/executor: delegate_task', () => {
       (e): e is Extract<SessionEvent, { kind: 'gateAsked' }> => e.kind === 'gateAsked',
     );
     expect(mirrored).toBeDefined();
-    expect(mirrored?.summary).toContain('paint_terrain');
+    expect(mirrored?.summary).toContain('Painting terrain');
     expect(exec.getUndoStackSize()).toBe(before); // nothing has run yet: still waiting on the gate
 
     answerGate(parentLog, mirrored!.gateId, 'allow');

@@ -84,6 +84,7 @@ export interface EditSlice {
   placementRotation: 0 | 90 | 180 | 270;
   setPlacementRotation: (r: 0 | 90 | 180 | 270) => void;
   selectingRegion: boolean;
+  regionSelectionOwner: 'agent' | 'generator' | null;
   regionTool: RegionTool;
   regionBrushSize: number;
   /** The painted region: the macro cells the region-select tool has collected, which scope a
@@ -94,7 +95,7 @@ export interface EditSlice {
    *  is dropped when the run that used it finishes. */
   region: MacroCoord[];
   setRegion: (cells: MacroCoord[]) => void;
-  setSelectingRegion: (v: boolean) => void;
+  setSelectingRegion: (v: boolean, owner?: 'agent' | 'generator') => void;
   setRegionTool: (t: RegionTool) => void;
   setRegionBrushSize: (s: number) => void;
   /** Resolves the patch against `editMode` and derives `activeTool`/`designMode`/`contentType`/
@@ -138,11 +139,12 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
   placementRotation: 0,
   setPlacementRotation: (r) => set({ placementRotation: r }),
   selectingRegion: false,
+  regionSelectionOwner: null,
   regionTool: 'brush' as const,
   regionBrushSize: 3,
   region: [],
   setRegion: (cells) => set({ region: cells }),
-  setSelectingRegion: (v) => set({ selectingRegion: v }),
+  setSelectingRegion: (v, owner = 'generator') => set({ selectingRegion: v, regionSelectionOwner: v ? owner : null }),
   setRegionTool: (t) => set({ regionTool: t }),
   setRegionBrushSize: (s) => set({ regionBrushSize: s }),
 
@@ -168,7 +170,7 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
       armedMacro: resolved.armedMacro,
       ...(macroChanged ? { armingEpoch: get().armingEpoch + 1 } : null),
       ...(armedChanged ? { placementRotation: 0 } : null),
-      ...(leftRegion ? { selectingRegion: false } : null),
+      ...(leftRegion ? { selectingRegion: false, regionSelectionOwner: null } : null),
     });
   },
   setTileMaterial: (m) => set({ tileMaterial: m, tileMaterialPicked: true }),

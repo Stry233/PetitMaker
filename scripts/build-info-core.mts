@@ -169,14 +169,14 @@ export function resolveVersion(opts: {
  * first is a human decision:
  *
  *   MAJOR  what you declare in package.json. Nothing else is read from that file.
- *   MINOR  how many syncs have happened in this MAJOR. The first is 1; declaring a new MAJOR
- *          starts the count over.
+ *   MINOR  how many syncs have happened in this MAJOR. The first line started at 1; a newly
+ *          declared MAJOR opens at 0.
  *   PATCH  commits since the previous sync. The first sync has no previous one, so it counts
  *          the whole history.
  *
  * So v0.1.1492 is "major 0, first sync, 1492 commits of history"; eight commits later the next
- * sync is v0.2.8; declaring 1.0.0 in package.json makes the sync after that v1.1.<commits
- * since>. MINOR always moving is also what keeps versions increasing whatever PATCH does.
+ * sync is v0.2.8; declaring 1.0.0 in package.json makes the sync after that v1.0.<commits
+ * since>. MINOR always moving within a line is what keeps versions increasing whatever PATCH does.
  *
  * Everything needed comes from the public repository's committed stamp (the version it was
  * published as and the build it came from), so nothing is written back to the source.
@@ -212,8 +212,8 @@ export function nextReleaseVersion(
       + 'the last published snapshot is newer than this one',
     );
   }
-  // A newly declared MAJOR restarts the sync count; otherwise it advances.
-  return major === lastMajor ? `${major}.${lastMinor + 1}.${since}` : `${major}.1.${since}`;
+  // A newly declared MAJOR opens its line at X.0; otherwise the sync count advances.
+  return major === lastMajor ? `${major}.${lastMinor + 1}.${since}` : `${major}.0.${since}`;
 }
 
 /** The newest `vMAJOR.MINOR.PATCH` among git tags, or '' when there is none. Ordering is

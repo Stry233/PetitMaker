@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeWithSections, sectionSizes, buildStats, verifyIntegrity } from '../../io/export-json';
+import { serializeWithSections, sectionSizes, sectionSizeFormats, buildStats, verifyIntegrity } from '../../io/export-json';
 import { serialize, deserialize } from '../../io/json-codec';
 import { makeState } from '../rules/_helpers';
 import { TerrainType, type GenerateConfig } from '../../core/model/types';
@@ -27,6 +27,38 @@ describe('serializeWithSections', () => {
     s.notes = { title: 'My Island', author: 'yue' };
     const back = deserialize(serialize(s), s.template);
     expect(back.notes).toEqual({ title: 'My Island', author: 'yue' });
+  });
+  it('can omit annotations independently of notes without changing the working map', () => {
+    const state = edited();
+    state.annotations = {
+      items: [{ kind: 'chip', id: 'garden-marker', x: 3, y: 4, tag: 'garden', size: 'm', color: '#B4D8A2' }],
+      visible: false,
+      locked: true,
+    };
+    state.notes = { title: 'Garden plan', author: 'Creator' };
+    const original = JSON.parse(serialize(state));
+    for (const pretty of [false, true]) {
+      const kept = JSON.parse(serializeWithSections(state, { ...BASE, pretty, notes: null }));
+      expect(kept.annotations).toEqual(state.annotations);
+      expect(kept.notes).toBeUndefined();
+      const options = { ...BASE, pretty, includeAnnotations: false };
+      const json = serializeWithSections(state, options);
+      const omitted = JSON.parse(json);
+      expect(omitted.annotations).toBeUndefined();
+      expect(omitted.notes).toEqual(state.notes);
+      expect(verifyIntegrity(omitted)).toBe('ok');
+      const restored = deserialize(json, state.template);
+      expect(restored.annotations).toBeUndefined();
+      expect(restored.cells).toEqual(state.cells);
+      expect(restored.notes).toEqual(state.notes);
+      const includedSizes = sectionSizes(state, { ...BASE, pretty }, { pretty });
+      const omittedSizes = sectionSizes(state, options, { pretty });
+      expect(includedSizes.annotations).toBeGreaterThan(0);
+      expect(omittedSizes.annotations).toBe(0);
+      expect(omittedSizes.core).toBe(includedSizes.core);
+      expect(omittedSizes.total).toBe(new TextEncoder().encode(json).length);
+    }
+    expect(JSON.parse(serialize(state))).toEqual({ ...original, metadata: expect.any(Object) });
   });
   it('generation + session + stats + catalogInfo sections appear on demand', () => {
     const s = edited();
@@ -75,6 +107,13 @@ describe('serializeWithSections', () => {
     // A structured section (stats: nested objects) is meaningfully bigger pretty-printed.
     expect(pretty.stats).toBeGreaterThan(compact.stats);
     expect(pretty.core).toBeGreaterThanOrEqual(compact.core);
+  });
+
+  it('shares preparation while preserving both displayed section-size formats', () => {
+    const state = edited();
+    const formats = sectionSizeFormats(state, BASE);
+    expect(formats.compact).toEqual(sectionSizes(state, BASE, { withTotal: false }));
+    expect(formats.pretty).toEqual(sectionSizes(state, BASE, { withTotal: false, pretty: true }));
   });
 
   describe('integrity code', () => {

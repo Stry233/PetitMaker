@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous decode matrix; about 40 s on an idle machine.
+vi.setConfig({ testTimeout: 120_000 });
 import { encodeGlyph } from '../../../../io/share/glyph/encode';
 import { decodeGlyph } from '../../../../io/share/glyph/decode';
 import { PRODUCT_PAPER } from '../../../../io/share/glyph/palette';

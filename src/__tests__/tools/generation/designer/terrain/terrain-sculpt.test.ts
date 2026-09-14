@@ -11,7 +11,10 @@
 // anything: the sculpt draws only shapes the water and base-support rules already accept, so the
 // finished state must re-validate with no violations and no refused layer — a repaired-away terrace
 // would pass a rule check while failing the design.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation batch; tens of seconds on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { EventBus } from '../../../../../core/commands/event-bus';

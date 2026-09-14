@@ -2,29 +2,24 @@
 // restored on the next load. Built on the versioned codec (json-codec →
 // io/save-format), so an autosave written by an older build still loads, and one
 // written by a newer build is ignored rather than mis-parsed.
-import { serialize, deserialize, readSaveCamera } from './json-codec';
-import { encodeHistory, decodeHistory } from './history-codec';
+import { buildSaveFile, deserializeParsed, readParsedSaveCamera } from './json-codec';
+import { encodeHistory, decodeHistory, type HistorySection } from './history-codec';
 import { getMapTemplate } from '../config/maps';
 import { host } from '../kit/host';
 import { useEditorStore } from '../state/store';
 import { PREFS } from '../core/runtime/prefs';
 import type { HistoryEntry } from '../core/commands/command-apply';
 import type { GridState } from '../core/model/types';
-import type { PersistedCamera } from './save-format';
+import type { PersistedCamera, SaveFile } from './save-format';
+import { COMPRESS_AUTOSAVE_AT, fitsAutosaveRestoreLimit, decodeAutosave, encodeAutosave, encodeAutosaveInWorker } from './autosave-codec';
 
 export const AUTOSAVE_DEBOUNCE_MS = 2000;
 
-/**
- * How many undo steps ride along with the map.
- *
- * An entry carries a cell snapshot per cell it touched, so a stroke over a large area is not small
- * and the whole stack is unbounded. This is the tail worth keeping: enough that resuming a session
- * can walk back through the last stretch of work, few enough that the history cannot be what pushes
- * the map out of the quota.
- */
 const HISTORY_STEPS = 60;
-
 let timer: ReturnType<typeof setTimeout> | null = null;
+let compression: AbortController | null = null;
+let revision = 0;
+type AutosaveFile = SaveFile & { autosave: 1; history?: HistorySection };
 
 /** The camera(s) to persist alongside the map, read live from whichever view(s) have ever been
  *  active — NOT hooked to camera movement itself (a pan/orbit fires continuously; hammering
@@ -45,62 +40,70 @@ function currentCamera(): PersistedCamera | undefined {
  * fires ~AUTOSAVE_DEBOUNCE_MS after the edit that triggered it, and `getUndoEntries` returns a copy, so a
  * list captured back then would describe a map that has since moved on.
  */
-function currentHistory(): string | null {
-  const executor = useEditorStore.getState().commandExecutor;
-  if (!executor) return null;
+function currentHistory(state: GridState): HistorySection | undefined {
+  const { commandExecutor: executor, gridState } = useEditorStore.getState();
+  if (!executor || (gridState && gridState !== state)) return undefined;
   const entries = executor.getUndoEntries();
-  if (entries.length === 0) return null;
-  return JSON.stringify(encodeHistory(entries, HISTORY_STEPS));
+  return entries.length ? encodeHistory(entries, HISTORY_STEPS) : undefined;
 }
 
-/** Write the history beside the map, or make sure none is left standing. The two are written in one
- *  tick so the pair always describes the same edit; a history that will not fit is dropped rather
- *  than kept, since a stack that does not match its map would undo into a state nobody was in. */
-function writeHistory(json: string | null): void {
+/** A single key replacement commits the map and its matching history together. */
+function writeSnapshot(storage: Storage, record: string): boolean {
   try {
-    if (json === null) localStorage.removeItem(PREFS.autosaveHistory.key);
-    else localStorage.setItem(PREFS.autosaveHistory.key, json);
+    storage.setItem(PREFS.autosave.key, record);
+    storage.removeItem(PREFS.autosaveHistory.key);
+    return true;
   } catch {
-    try { localStorage.removeItem(PREFS.autosaveHistory.key); } catch { /* storage is gone */ }
+    let priorHistory: string | null = null;
+    try {
+      priorHistory = storage.getItem(PREFS.autosaveHistory.key);
+      storage.removeItem(PREFS.autosaveHistory.key);
+      storage.setItem(PREFS.autosave.key, record);
+      return true;
+    } catch {
+      if (priorHistory !== null) {
+        try { storage.setItem(PREFS.autosaveHistory.key, priorHistory); } catch { /* storage unavailable */ }
+      }
+      return false;
+    }
   }
 }
 
-/** Debounced: persist the working map ~AUTOSAVE_DEBOUNCE_MS after the last edit. Safe to
- *  call on every mutation — only the trailing call writes. */
 export function scheduleAutosave(state: GridState): void {
+  const current = ++revision;
+  compression?.abort();
+  compression = null;
   if (timer !== null) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
-    // The content gate runs at write time: what matters is whether the map has
-    // content when the save actually lands, and the check is a grid walk that
-    // must not run once per command.
-    if (!autosaveWorthy(state)) return;
-    const camera = currentCamera();
-    const history = currentHistory();
-    let saved = false;
-    let droppedProvenance = false;
-    try {
-      localStorage.setItem(PREFS.autosave.key, serialize(state, camera));
-      saved = true;
-    } catch {
-      // Quota exceeded. The provenance section dominates the payload on generated
-      // maps (per-cell taint + the operation ledger); the map itself is what the
-      // restore bubble protects, so save it without provenance before giving up.
-      try {
-        const { provenance: _dropped, ...rest } = state;
-        localStorage.setItem(PREFS.autosave.key, serialize(rest as GridState, camera));
-        saved = true;
-        droppedProvenance = true;
-      } catch {
-        // Still failing (storage unavailable / truly full) — drop this autosave;
-        // the next edit tries again.
-      }
+    let storage: Storage;
+    try { storage = localStorage; } catch { return; }
+    if (!storage || !autosaveWorthy(state)) return;
+    const save: AutosaveFile = { ...buildSaveFile(state, currentCamera()), autosave: 1, history: currentHistory(state) };
+    let json = JSON.stringify(save);
+    if (!fitsAutosaveRestoreLimit(json)) {
+      const { history: _history, ...map } = save;
+      json = JSON.stringify(map);
+      if (!fitsAutosaveRestoreLimit(json)) return;
     }
-    // Only ever beside a map that landed: a history left over from an older map would be paired
-    // with it on the next resume. And never beside a map saved WITHOUT its provenance: the undo
-    // entries carry taint deltas keyed to the tracker that was dropped, and replaying them over
-    // the restored map's fresh legacy taint writes ghosts.
-    writeHistory(saved && !droppedProvenance ? history : null);
+    const write = (record: string) => {
+      if (current !== revision) return;
+      if (writeSnapshot(storage, record)) return;
+      // Preserve the map if storage cannot hold history, then try without provenance as a last resort.
+      const { history: _history, ...map } = JSON.parse(json) as AutosaveFile;
+      if (writeSnapshot(storage, encodeAutosave(JSON.stringify(map)))) return;
+      const { provenance: _provenance, ...minimal } = map;
+      writeSnapshot(storage, encodeAutosave(JSON.stringify(minimal)));
+    };
+    if (json.length < COMPRESS_AUTOSAVE_AT || typeof Worker === 'undefined') {
+      write(encodeAutosave(json));
+      return;
+    }
+    const controller = new AbortController();
+    compression = controller;
+    void encodeAutosaveInWorker(json, controller.signal).then(write, () => {
+      if (!controller.signal.aborted && current === revision) write(encodeAutosave(json));
+    }).finally(() => { if (compression === controller) compression = null; });
   }, AUTOSAVE_DEBOUNCE_MS);
 }
 
@@ -131,7 +134,10 @@ export interface RestoredAutosave {
 /** The saved undo steps, if they are readable and fit the map being restored. Bounds-checked
  *  against that map: undo replays entries straight into the grid with no rule validation, so a
  *  history written for a different template is dropped rather than trusted. */
-function readHistory(state: GridState): HistoryEntry[] | undefined {
+function readHistory(state: GridState, save: Partial<AutosaveFile>): HistoryEntry[] | undefined {
+  if (save.autosave === 1) {
+    return decodeHistory(save.history, state.template) ?? undefined;
+  }
   let json: string | null = null;
   try {
     json = localStorage.getItem(PREFS.autosaveHistory.key);
@@ -162,13 +168,13 @@ export function readAutosave(): RestoredAutosave | null {
   }
   if (!json) return null;
   try {
-    const { templateId } = JSON.parse(json) as { templateId?: string };
-    const state = deserialize(json, getMapTemplate(templateId));
+    const parsed = JSON.parse(decodeAutosave(json)) as Partial<AutosaveFile>;
+    const state = deserializeParsed(parsed, getMapTemplate(parsed.templateId));
     // A pre-camera autosave simply has no `camera` key — readSaveCamera reads undefined and the
     // restore leaves the camera alone (App.tsx only applies it when present). The history is read
     // the same way: absent or unreadable, the map still restores and simply arrives with nothing
     // to undo.
-    return { state, camera: readSaveCamera(json), history: readHistory(state) };
+    return { state, camera: readParsedSaveCamera(parsed), history: readHistory(state, parsed) };
   } catch {
     return null;
   }
@@ -176,6 +182,11 @@ export function readAutosave(): RestoredAutosave | null {
 
 /** Forget the autosave (e.g. a deliberate reset), its history with it. */
 export function clearAutosave(): void {
+  revision++;
+  compression?.abort();
+  compression = null;
+  if (timer !== null) clearTimeout(timer);
+  timer = null;
   try {
     localStorage.removeItem(PREFS.autosave.key);
     localStorage.removeItem(PREFS.autosaveHistory.key);

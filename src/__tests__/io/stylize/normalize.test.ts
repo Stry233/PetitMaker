@@ -82,7 +82,7 @@ describe('letterboxToCanvas', () => {
       fillRect: (x: number, y: number, w: number, h: number) => calls.push({ fillRect: [x, y, w, h] }),
       drawImage: (...args: unknown[]) => calls.push({ drawImage: args }),
     } as unknown as CanvasRenderingContext2D;
-    const ctxSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx);
+    const ctxSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx as never);
 
     const plan = planNormalize(1200, 800, 1536, GEMINI_ASPECTS);
     const img = {} as CanvasImageSource;

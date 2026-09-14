@@ -13,6 +13,7 @@ export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 export interface AgentSettings {
   provider: ProviderId;
   model: Record<ProviderId, string>;
+  effort?: Record<string, string>;
   keys: Partial<Record<ProviderId, string>>;
   /** Compatibility mirror of `oversight === 'strict'`. */
   askBeforeEdits: boolean;
@@ -37,6 +38,7 @@ const dec = (s: string): string => {
 interface StoredRecord {
   provider?: ProviderId;
   model?: Record<ProviderId, string>;
+  effort?: Record<string, string>;
   keys?: Record<string, string>;
   keysSealed?: SealedBlob;
   askBeforeEdits?: boolean;
@@ -85,7 +87,6 @@ function defaultAgentSettings(): AgentSettings {
 }
 
 export function loadAgentSettings(): AgentSettings {
-  if (typeof localStorage === 'undefined') return defaultAgentSettings();
   try {
     const raw = localStorage.getItem(PREFS.agentSettings.key);
     if (!raw) return defaultAgentSettings();
@@ -101,6 +102,7 @@ export function loadAgentSettings(): AgentSettings {
     return {
       provider: parsed.provider && parsed.provider in PROVIDER_META ? parsed.provider : base.provider,
       model: { ...base.model, ...parsed.model },
+      effort: parsed.effort && typeof parsed.effort === 'object' ? Object.fromEntries(Object.entries(parsed.effort).filter(([key, value]) => key.length < 500 && typeof value === 'string' && /^(?:[a-z]+|budget:\d{1,7})$/.test(value))) : {},
       keys,
       askBeforeEdits: oversight === 'strict',
       oversight,
@@ -136,7 +138,6 @@ let hydratedSignature: string | null = null;
 
 /** Decrypt stored keys for the startup merge. */
 export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
-  if (typeof localStorage === 'undefined') return null;
   try {
     const rec = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
     if (!rec?.keysSealed) {
@@ -192,7 +193,6 @@ async function upgradeToSealed(): Promise<void> {
 }
 
 export function saveAgentSettings(s: AgentSettings): void {
-  if (typeof localStorage === 'undefined') return;
   const keys: Record<string, string> = {};
   for (const [k, v] of Object.entries(s.keys)) if (v) keys[k] = enc(v);
   // The sealed blob still holds exactly these keys, so the obfuscated copy is left out.
@@ -212,7 +212,7 @@ export function saveAgentSettings(s: AgentSettings): void {
   localStorage.setItem(
     PREFS.agentSettings.key,
     JSON.stringify({
-      provider: s.provider, model: s.model, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
+      provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
       askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
       oversight: s.oversight,
       customBaseUrl: s.customBaseUrl,

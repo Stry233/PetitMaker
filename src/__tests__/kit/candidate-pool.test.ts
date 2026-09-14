@@ -103,9 +103,43 @@ beforeEach(() => {
   vi.stubGlobal('Worker', FakeWorker);
 });
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('a pool that works', () => {
+  it('warms one worker and grows only for concurrent jobs', async () => {
+    vi.stubGlobal('navigator', { hardwareConcurrency: 8 });
+    const pool = await loadPool();
+    pool.warmPool(); pool.warmPool();
+    expect(FakeWorker.all).toHaveLength(1);
+    const jobs = Array.from({ length: 3 }, () => pool.runCandidateInPool({ state: tinyState(), config, region: null }));
+    expect(FakeWorker.all).toHaveLength(3);
+    while (posted.length) deliverOne();
+    await Promise.all(jobs);
+  });
+
+  it('releases surplus idle workers while retaining one warm worker', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { hardwareConcurrency: 8 });
+    const pool = await loadPool();
+    const jobs = Array.from({ length: 3 }, () => pool.runCandidateInPool({ state: tinyState(), config, region: null }));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWorker.all.every(worker => !worker.terminated)).toBe(true);
+    while (posted.length) deliverOne();
+    await Promise.all(jobs);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWorker.all.map(worker => worker.terminated)).toEqual([false, true, true]);
+  });
+
+  it('retires the warm worker and settles its job if growing the pool fails', async () => {
+    vi.stubGlobal('navigator', { hardwareConcurrency: 8 });
+    const pool = await loadPool();
+    const first = pool.runCandidateInPool({ state: tinyState(), config, region: null });
+    constructFails = true;
+    const second = pool.runCandidateInPool({ state: tinyState(), config, region: null });
+    expect(await fates([first, second])).toEqual(['settled', 'settled']);
+    expect(FakeWorker.all.every(worker => worker.terminated)).toBe(true);
+  });
+
   it('drains its queue, one job per worker at a time, and sends each template once', async () => {
     const pool = await loadPool();
     const state = tinyState();

@@ -162,6 +162,7 @@ function hoverInputs(
   return [
     s.activeTool, s.selectedItemId, s.armedMacro, s.brushSize, s.selectingRegion, s.placementRotation, s.viewMode,
     s.autoEdgeCut, s.tileMaterial, s.selection,
+    s.annotationTool, s.annotationZoneShape, s.annotationSelection, s.annotationsEpoch, s.locale,
     mapEpoch, toolEpoch, multiSelectHeld,
   ];
 }
@@ -460,9 +461,11 @@ export function usePointerInteraction(
       // covers flat items and views without mesh picking.
       const hit = objectUnderPointer(gs, macro, activeView.projection.pickObject?.(x, y) ?? undefined);
       const tool = tools()?.getActiveTool();
-      const ctx = tools()?.getContext();
+      const context = tools()?.getContext();
+      const ctx = context ? { ...context, halfCoord: activeView.projection.screenToHalf?.(x, y) } : null;
       const micro = ctx && tool?.terrainGrid?.(ctx) ? activeView.projection.screenToMicro(x, y) : null;
       const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
+      const toolGrabs = !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false));
       return {
         button,
         tool: store.activeTool,
@@ -474,19 +477,15 @@ export function usePointerInteraction(
         macro,
         hit: hit ? { id: hit.id, draggable: isDraggableObject(hit), locked: !!hit.locked } : null,
         placementAllowed: !tool?.canActAt || !ctx || tool.canActAt(toolCoord, ctx),
-        toolGrabs: !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false)),
+        toolGrabs,
         toolSelects: !!(ctx && (tool?.selects?.(ctx) ?? false)),
         toolSelectHit: (ctx && tool?.selectHit) ? tool.selectHit(macro, ctx) : null,
         pendingGesture: (ctx ? tool?.hasPending?.(ctx) : false) ?? false,
         viewPansLeftDrag: activeView.leftDragPans !== false,
-        // The chip drops on a click and the curve figure lays anchors on clicks; the zone brush,
-        // the eraser and the route all draw with the drag. The select state: a press that grabs a
-        // note drags IT; empty ground presses only clear the selection, so their drag is the
-        // camera's — the empty-handed pan every other mode already answers with.
+        // Only an already-selected note owns a drag in chip and selection modes.
         clickOnlyStroke: store.activeTool === ToolType.Annotate
-          && (store.annotationTool === 'chip'
-            || (store.annotationTool === 'zone' && store.annotationZoneShape === 'curve')
-            || (store.annotationTool === 'none' && !(ctx && (tool?.grabAt?.(macro, ctx) ?? false)))),
+          && (((store.annotationTool === 'chip' || store.annotationTool === 'none') && !toolGrabs)
+            || (store.annotationTool === 'zone' && store.annotationZoneShape === 'curve')),
 
       };
     };
@@ -510,11 +509,8 @@ export function usePointerInteraction(
           return;
         case 'tool-stroke':
           toolDown = true;
-          // The annotate select state's note grab is an object drag to the hand: in the 'none'
-          // state, clickOnlyStroke false MEANS the press grabbed a note (see the facts above), so
-          // the cursor closes exactly as it does when a placed object is picked up.
-          if (store.activeTool === ToolType.Annotate && store.annotationTool === 'none'
-            && !f.clickOnlyStroke && !f.multiSelectHeld) {
+          // Annotation moves use the same closed hand as selected objects.
+          if (store.activeTool === ToolType.Annotate && f.toolGrabs && !f.multiSelectHeld) {
             setCursorDrag('object');
           }
           tools()?.handlePointerDown(e.clientX, e.clientY);
@@ -869,7 +865,8 @@ export function usePointerInteraction(
       // cell, the multi-select key, and everything `hoverInputs` names.
       const inputs = hoverInputs(store, mapEpoch, toolEpoch, isMultiSelectHeld());
       const tool = tools()?.getActiveTool();
-      const ctx = tools()?.getContext();
+      const context = tools()?.getContext();
+      const ctx = context ? { ...context, halfCoord: hoverView.projection.screenToHalf?.(e.clientX, e.clientY) } : null;
       const micro = ctx && tool?.terrainGrid?.(ctx) ? hoverView.projection.screenToMicro(e.clientX, e.clientY) : null;
       const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
       if (!hoverCell || hoverCell.x !== macro.x || hoverCell.y !== macro.y

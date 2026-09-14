@@ -20,7 +20,6 @@ import { JobTicket } from '../../../ui/agent/JobTicket';
 import { OpRow } from '../../../ui/agent/OpRow';
 import { tickInk } from '../../../ui/agent/tokens';
 import { ACTIVE, INK } from '../../../ui/design/tokens';
-import { roleWeight } from '../../../ui/design/text-weight';
 import type { JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/types';
 
@@ -129,8 +128,8 @@ describe('JobTicket: newest-3 collapse', () => {
 });
 
 describe('OpRow: one line, expandable detail, muted read tools', () => {
-  it('renders an icon, its verb phrase and a tick, one line, and expands a detail well on click', () => {
-    const op = makeOp({ name: 'view_map', status: 'ok', summary: 'Looked at the shore.' });
+  it('renders a readable verb and keeps model-facing read data out of the detail well', () => {
+    const op = makeOp({ name: 'view_map', status: 'ok', summary: 'view_map: terrain_type=water object_id=obj-4' });
     const { getByTestId, queryByTestId } = renderWithI18n(<OpRow op={op} />);
     const row = getByTestId('op-row');
     expect(row.querySelector('use')).not.toBeNull();
@@ -140,8 +139,8 @@ describe('OpRow: one line, expandable detail, muted read tools', () => {
     expect(queryByTestId('op-detail')).toBeNull();
 
     fireEvent.click(row);
-    expect(row.getAttribute('data-open')).toBe('true');
-    expect(getByTestId('op-detail').textContent).toBe('Looked at the shore.');
+    expect(row.getAttribute('data-open')).toBe('false');
+    expect(queryByTestId('op-detail')).toBeNull();
   });
 
   it('a row carrying the picture the model saw says so as a chip, and opens to the picture itself', () => {
@@ -327,26 +326,17 @@ describe('OpRow: a reverted row', () => {
     expect(asColor(getByTestId('tick-dot').style.color)).toBe(asColor(tickInk.revert));
     const detail = getByTestId('op-detail');
     expect(container.textContent).not.toContain('REVERTED');
-    // The rule id and the model-facing hint are stripped; the rule itself survives.
-    expect(detail.textContent).toContain('the pond needs a closed bank');
+    // Older logs without a keyed rule receive a localized explanation.
+    expect(detail.textContent).toContain('The edit broke a rule and was undone.');
     expect(detail.textContent).not.toContain('V-WTR-02');
     expect(detail.textContent).not.toContain('Hint:');
-    expect(detail.textContent).toContain('Put back:');
+    expect(detail.textContent).not.toContain('Put back:');
   });
 
-  /** The taxonomy is the lesson in a refusal, so the `Category:` prefix reads in the panel's one
-   *  emphasis weight rather than running on with the rest of the sentence. */
-  it('bolds the rule category inside the detail line', () => {
-    const op = makeOp({
-      name: 'place_object',
-      status: 'error',
-      summary: '[V-PLACE-TRAIT] Placement: requires flat ground with no elevation change nearby.',
-    });
+  it('does not expose diagnostics from older tool failures', () => {
+    const op = makeOp({ name: 'place_object', status: 'error', summary: '[V-PLACE-TRAIT] Placement: catalogId=building-house failed in place_object' });
     const { getByTestId } = renderWithI18n(<OpRow op={op} />);
-    const bolded = [...getByTestId('op-detail').querySelectorAll('span')]
-      .filter((el) => el.style.fontWeight === roleWeight('chip'))
-      .map((el) => el.textContent);
-    expect(bolded).toEqual(['Placement:']);
+    expect(getByTestId('op-detail').textContent).toBe(translations.en['agent3.op_detail_failed']);
   });
 
   /**
@@ -372,13 +362,9 @@ describe('OpRow: a reverted row', () => {
     });
     const { getByTestId } = renderWithI18n(<OpRow op={op} />);
     const detail = getByTestId('op-detail');
-    expect(detail.textContent).toContain(translations[locale]['error.placement_not_flat']);
+    expect(detail.textContent).toContain(translations[locale]['error.placement_not_flat']!.replace(/^[^:\uff1a]{1,24}[:\uff1a]\s*/, ''));
     expect(detail.textContent, 'no English left standing').not.toContain('requires flat ground');
-    // And the taxonomy still leads in the panel's one emphasis weight, at that locale's own colon.
-    const bolded = [...detail.querySelectorAll('span')]
-      .filter((el) => el.style.fontWeight === roleWeight('chip'))
-      .map((el) => el.textContent);
-    expect(bolded).toEqual([category]);
+    expect(detail.textContent).not.toContain(category);
     act(() => useEditorStore.setState({ locale: 'en' }));
   });
 
@@ -586,11 +572,11 @@ describe('JobTicket: the says-line', () => {
     expect(queryByTestId('says')).toBeNull();
   });
 
-  /** A model that is thinking has said nothing yet, and an empty row would read as a job that had
-   *  stalled: the three dots stand where its first words will. */
-  it('stands three dots while the model is thinking, and no caret', () => {
-    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={makeJob()} live thinking />);
-    expect(getByTestId('says-dots')).toBeTruthy();
+  it('uses the progress bar without a second loader or empty text row', () => {
+    const { getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={makeJob()} live />);
+    expect(getByTestId('tape-bar')).toBeTruthy();
+    expect(queryByTestId('says-dots')).toBeNull();
+    expect(queryByTestId('says')).toBeNull();
     expect(queryByTestId('says-line')).toBeNull();
     expect(queryByTestId('says-caret')).toBeNull();
   });

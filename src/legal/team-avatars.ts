@@ -12,13 +12,17 @@
  * absent MID renders no image.
  *
  * Provenance: each file is a downscaled (128×128, center-cropped) copy of the
- * member's own Bilibili space avatar, used with per-member consent (consent
- * records are kept in the maintainers' internal repository).
+ * person's own Bilibili space avatar, used with per-person consent (consent
+ * records are kept in the maintainers' internal repository). The map covers
+ * both `LEGAL.team` and `LEGAL.acknowledgements`.
  */
 import a25599535 from '../assets/team/25599535.jpg';
 import a3632319829116985 from '../assets/team/3632319829116985.jpg';
 import a16699168 from '../assets/team/16699168.jpg';
 import a3546659724200757 from '../assets/team/3546659724200757.jpg';
+import a215541807 from '../assets/team/215541807.jpg';
+import a397542864 from '../assets/team/397542864.jpg';
+import a671142687 from '../assets/team/671142687.jpg';
 
 // Keyed by Bilibili MID (the numeric id in space.bilibili.com/<mid>), which is
 // also the `avatar` field on each LEGAL.team entry.
@@ -27,6 +31,9 @@ export const TEAM_AVATARS: Record<string, string> = {
   '3632319829116985': a3632319829116985, // 鱼松吃点吗
   '16699168': a16699168, // 火山野牛王
   '3546659724200757': a3546659724200757, // Selka
+  '215541807': a215541807, // 晶焰EXFire
+  '397542864': a397542864, // 奕言君
+  '671142687': a671142687, // 星灭散落
 };
 
 /** Resolve a team member's bundled avatar URL from its MID, or undefined. */
