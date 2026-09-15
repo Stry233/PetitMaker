@@ -6,10 +6,40 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  groupRowMetrics, placeControlRow, GROUP_BTN, GROUP_GAP, GROUP_LIFT,
+  groupRowMetrics, singleRowMetrics, placeControlRow, placeSelectionRow, GROUP_BTN, GROUP_GAP, GROUP_LIFT,
 } from '../../../ui/chrome/floating/selection-handles-layout';
 
 const VIEWPORT = { width: 1024, height: 768 };
+
+describe('single selection toolbar', () => {
+  const metrics = singleRowMetrics(3);
+
+  it('keeps its full width above a selection smaller than one button', () => {
+    const position = placeSelectionRow({ x: 499, y: 400, w: 2, h: 2 }, metrics, VIEWPORT, 1);
+    expect(position).toEqual({ visible: true, left: 446, top: 356 });
+  });
+
+  it('keeps partly visible selections reachable at every viewport edge', () => {
+    for (const bounds of [
+      { x: -20, y: 200, w: 30, h: 30 }, { x: 1010, y: 200, w: 30, h: 30 },
+      { x: 500, y: -20, w: 30, h: 30 }, { x: 500, y: 760, w: 30, h: 30 },
+    ]) {
+      const p = placeSelectionRow(bounds, metrics, VIEWPORT, 1);
+      expect(p.visible).toBe(true);
+      if (!p.visible) throw new Error('unreachable');
+      expect(p.left).toBeGreaterThanOrEqual(8);
+      expect(p.left + metrics.width).toBeLessThanOrEqual(VIEWPORT.width - 8);
+      expect(p.top).toBeGreaterThanOrEqual(8);
+      expect(p.top + metrics.height).toBeLessThanOrEqual(VIEWPORT.height - 8);
+    }
+  });
+
+  it('hides fully offscreen or invalid bounds', () => {
+    for (const bounds of [{ x: -40, y: 200, w: 30, h: 30 }, { x: NaN, y: 200, w: 30, h: 30 }]) {
+      expect(placeSelectionRow(bounds, metrics, VIEWPORT, 1)).toEqual({ visible: false });
+    }
+  });
+});
 
 describe('groupRowMetrics', () => {
   it('takes no camera term: the row is button + gap + badge + gap + button, all constants', () => {

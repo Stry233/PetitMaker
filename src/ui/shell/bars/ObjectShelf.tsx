@@ -199,6 +199,17 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
 
   const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId, armedMacro));
   const [innerQuery, setInnerQuery] = useState('');
+  const [pendingReveal, setPendingReveal] = useState(() => pick ? null : selectedItemId);
+  useEffect(() => {
+    if (pick) return;
+    const reveal = ({ catalogId }: { catalogId: string }) => {
+      setCategory(initialCategory(catalogId, null));
+      setInnerQuery('');
+      setPendingReveal(catalogId);
+    };
+    eventBus.on('catalog-reveal', reveal);
+    return () => eventBus.off('catalog-reveal', reveal);
+  }, [eventBus, pick]);
   // The one point `query` is read from: a posed figure overrides it for both ranking and display,
   // and the field itself keeps typing into `innerQuery` untouched, so the live shelf never sees it.
   const query = posedQuery ?? innerQuery;
@@ -266,6 +277,16 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
     setScrollLeft(0);
     setReached(null);
   }, [category, query]);
+
+  useEffect(() => {
+    if (!pendingReveal || query || category !== getCatalogItem(pendingReveal)?.category) return;
+    const card = Array.from(rowRef.current?.querySelectorAll<HTMLElement>('[data-catalog-id]') ?? [])
+      .find(el => el.dataset.catalogId === pendingReveal);
+    const row = rowRef.current;
+    if (!card || !row) return;
+    scrollRowTo(card.offsetLeft + card.offsetWidth / 2 - row.clientWidth / 2, false);
+    setPendingReveal(null);
+  }, [pendingReveal, query, category, items, scrollRowTo]);
 
   useLayoutEffect(() => {
     const measure = (): void => {

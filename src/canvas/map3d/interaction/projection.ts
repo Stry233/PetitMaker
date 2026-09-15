@@ -6,8 +6,9 @@
  */
 import * as THREE from 'three';
 import type { GridState, MacroCoord } from '../../../core/model/types';
+import { getPlacedObjectSize, objectElevation } from '../../../state/object-geometry';
 import type { ViewProjection } from '../../view-projection';
-import { GROUND_SLAB_Y, mapCenterOffset } from '../core/coords';
+import { GROUND_SLAB_Y, cellCornerWorld, mapCenterOffset, surfaceY } from '../core/coords';
 import { pickSurface, surfaceHeightAt, type Vec3 } from './pick';
 
 export interface CameraHost {
@@ -115,12 +116,18 @@ export class Projection3D implements ViewProjection {
     return this.host.pickObjectAt(sx, sy);
   }
 
-  objectScreenBox(id: string): {
-    x: number; y: number; w: number; h: number; scale: number;
-    anchors: { left: { x: number; y: number }; right: { x: number; y: number } };
-  } | null {
-    const box = this.host.objectBoundingBox(id);
-    if (!box) return null;
+  objectScreenBox(id: string): { x: number; y: number; w: number; h: number } | null {
+    let box = this.host.objectBoundingBox(id);
+    if (!box) {
+      const state = this.host.state();
+      const object = state.objects.get(id);
+      if (!object) return null;
+      // Roads have no instanced body; their handles follow the footprint at its standing surface.
+      const corner = cellCornerWorld(object.position.x, object.position.y, state.template.width, state.template.height);
+      const size = getPlacedObjectSize(object);
+      const y = surfaceY(objectElevation(state, object));
+      box = new THREE.Box3(new THREE.Vector3(corner.x, y, corner.z), new THREE.Vector3(corner.x + size.w, y, corner.z + size.h));
+    }
     const cam = this.host.camera;
     // Off-camera guard: a box whose CENTRE is at or behind the camera plane projects with a sign
     // flip (perspective divide by a negative w), throwing the handles to a wrong spot. Return null
@@ -135,26 +142,15 @@ export class Projection3D implements ViewProjection {
       return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
     };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const top: Array<{ x: number; y: number }> = [];
     for (const cx of [box.min.x, box.max.x]) {
       for (const cy of [box.min.y, box.max.y]) {
         for (const cz of [box.min.z, box.max.z]) {
           const p = project(cx, cy, cz);
           minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
           minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-          if (cy === box.max.y) top.push(p);
         }
       }
     }
-    // The handles anchor to the TOP FACE's projected extremes — real box
-    // corners, not the screen AABB's (which sit in empty space around a
-    // perspective diamond).
-    top.sort((a, b) => a.x - b.x);
-    // Button size tracks the OBJECT'S own apparent size — one world unit projected AT the object —
-    // not a cell at the map origin (which balloons the handles when the origin sits near the camera).
-    const s0 = project(center.x, center.y, center.z);
-    const s1 = project(center.x + 1, center.y, center.z);
-    const scale = Math.hypot(s1.x - s0.x, s1.y - s0.y);
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY, scale, anchors: { left: top[0]!, right: top[top.length - 1]! } };
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 }

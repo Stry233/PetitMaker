@@ -1,39 +1,34 @@
 /**
- * HTML rotate/delete controls projected over the canvas selection. Repositioning follows viewport,
+ * HTML pick/rotate/delete controls projected over the canvas selection. Repositioning follows viewport,
  * object, resize, chrome-scale, and active-view registration changes; `viewMode` may change before
  * the replacement projection is registered. A group uses a fixed row anchored at its rotation
  * pivot and clamped to the viewport. That anchor is cached while rotation changes object bounds so
- * repeated clicks do not move the controls. A single selection stays attached to its projected box.
+ * repeated clicks do not move the controls. Single-selection toolbars sit above projected bounds.
  */
 import { useChromeScale, useWeightVars, useReadableWeight } from '../../design/scale';
-import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { singleSelection, selectedObjectIds } from '../../../state/selection';
 import { useT } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
+import { subscribeMapStats } from '../../../state/map-stats';
+import { pickedMaterial, pickSelection } from '../../../kit/pick-selection';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { groupMembers, groupBounds } from '../../../tools/objects';
 import { rotateGroupAction, rotateObjectAction, deleteSelection, isGroupRotationInFlight } from '../../../kit/group-edit';
 import { getCell } from '../../../core/model/grid-model';
-import { colors, font, radii, shadows, springs, cursors, z } from '../../design/styles';
+import { colors, font, radii, shadows, cursors, pressable, z } from '../../design/styles';
 import { TEXT_FLOOR } from '../../design/text-weight';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
-import { TILE_SIZE } from '../../../core/model/constants';
 import { helpTargetAttr } from '../modals/help/targets';
-import { placeControlRow, groupRowMetrics, type RowMetrics } from './selection-handles-layout';
+import { placeControlRow, placeSelectionRow, groupRowMetrics, singleRowMetrics } from './selection-handles-layout';
 
-// Single-object handles follow map zoom; group controls remain a fixed screen size.
-const BTN_BASE = 32, BTN_MIN = 20, BTN_MAX = 44;
-const handleSize = (zoom: number) =>
-  Math.round(Math.max(BTN_MIN, Math.min(BTN_MAX, BTN_BASE * zoom)));
-const currentZoom = (): number =>
-  (getActiveView()?.projection.cellToScreen(0, 0).scale ?? TILE_SIZE) / TILE_SIZE;
-
-// Shared control appearance; each mode supplies its own positioning.
+// Buttons share one face and leave the toolbar gaps transparent to map input.
 const handleFace = (danger: boolean, size: number): CSSProperties => ({
   width: size,
   height: size,
+  flex: '0 0 auto',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -46,21 +41,6 @@ const handleFace = (danger: boolean, size: number): CSSProperties => ({
   boxShadow: shadows.float,
   pointerEvents: 'auto',
   WebkitTapHighlightColor: 'transparent',
-});
-
-// Single selection: pinned to an object-box corner.
-const cornerHandleStyle = (danger: boolean, corner: 'left' | 'right', size: number): CSSProperties => ({
-  ...handleFace(danger, size),
-  position: 'absolute',
-  top: 0,
-  ...(corner === 'left' ? { left: 0, marginLeft: -size / 2 } : { right: 0, marginRight: -size / 2 }),
-  marginTop: -size / 2, // Margins leave the transform available to Framer Motion.
-});
-
-// Group selection: fixed-size flex item in the control row.
-const rowHandleStyle = (danger: boolean, size: number): CSSProperties => ({
-  ...handleFace(danger, size),
-  flex: '0 0 auto',
 });
 
 // The explicit width must match `groupRowMetrics` so viewport clamping uses the rendered size.
@@ -83,17 +63,24 @@ const countBadgeStyle = (size: number, width: number, weight: number): CSSProper
 });
 
 const RotateIcon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M20 11a8 8 0 1 0-2.1 5.4" />
     <path d="M20 4v6h-6" />
   </svg>
 );
 
 const TrashIcon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 7h16" />
     <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     <path d="M6.5 7l1 12.2a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9L18.5 7" />
+  </svg>
+);
+
+const PickIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m14 6 2.5-2.5a3 3 0 0 1 4 4L18 10" />
+    <path d="m12 5 7 7M14 7l-9 9-1 4 4-1 9-9" />
   </svg>
 );
 
@@ -105,6 +92,10 @@ export function SelectionHandles() {
   const block = plural ? null : singleSelection(selection);
   const gridState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
+  const [, repaint] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => selection.length > 0
+    ? subscribeMapStats(eventBus, () => useEditorStore.getState().gridState, repaint)
+    : undefined, [eventBus, selection.length]);
   const boxRef = useRef<HTMLDivElement>(null);
   const chrome = useChromeScale();
   const weightAt = useReadableWeight();
@@ -116,8 +107,6 @@ export function SelectionHandles() {
   // holds still across a rotation (see `reposition`'s group branch) — keyed by membership so a
   // different selection always recomputes.
   const groupAnchorRef = useRef<{ key: string; x: number; y: number } | null>(null);
-  const [btnSize, setBtnSize] = useState(() => handleSize(currentZoom()));
-  const [anchors, setAnchors] = useState<{ left: { x: number; y: number }; right: { x: number; y: number } } | null>(null);
   // Whether the selection is currently projectable on-screen. The tracker box stays MOUNTED while a
   // deletable target is selected (so reposition keeps running and can recover); this just toggles
   // its visibility, so an off-camera object hides its handles instead of stranding them at a
@@ -131,8 +120,12 @@ export function SelectionHandles() {
   const terrain = block?.kind === 'terrain' && gridState
     ? getCell(gridState.cells, block.x, block.y)?.terrain ?? null
     : null;
-  const rotatable = !!item?.rotatable;       // objects only
+  const rotatable = !!item?.rotatable && !obj?.locked;
   const deletable = (!!obj && !obj.locked) || !!terrain; // locked objects (the plaza) offer no delete
+  const pickable = pickedMaterial(gridState, selection) !== null;
+  const row = plural ? groupRowMetrics(selection.length) : singleRowMetrics(Number(rotatable) + Number(pickable) + Number(deletable));
+  const rowRef = useRef(row);
+  rowRef.current = row;
   const targetKey = block?.kind === 'object' ? block.id
     : block?.kind === 'terrain' ? `t:${block.x},${block.y}`
     // A group has no single id, so a member signature keys the tracker and re-attaches it on every
@@ -168,7 +161,6 @@ export function SelectionHandles() {
         setHandlesVisible(false);
         return;
       }
-      setAnchors(null);
       // The anchor holds still for as long as the membership (`key`) is unchanged, EXCEPT while this
       // module's own rotation call is in flight: a genuine group MOVE, or any other
       // membership-preserving edit, still recomputes fresh, and the two are idempotent there, so
@@ -200,28 +192,21 @@ export function SelectionHandles() {
     }
     const b = singleSelection(sel);
 
-    // 3D object: anchor the handles to the rendered body box (rotate/delete sit at the body's top
-    // corners, not the ground). A null box means the object is off-camera (behind the camera / not
-    // projectable) — HIDE the handles rather than place them at a sign-flipped, wrong position.
-    if (b?.kind === 'object' && typeof proj.objectScreenBox === 'function') {
-      const bodyBox = useEditorStore.getState().gridState?.objects.get(b.id) ? proj.objectScreenBox(b.id) : null;
-      if (!bodyBox) { setHandlesVisible(false); return; }
-      el.style.left = `${bodyBox.x / chromeZoom}px`;
-      el.style.top = `${bodyBox.y / chromeZoom}px`;
-      el.style.width = `${bodyBox.w / chromeZoom}px`;
-      el.style.height = `${bodyBox.h / chromeZoom}px`;
-      // Buttons pin to the top face's projected corners (box-relative).
-      setAnchors({
-        left: { x: (bodyBox.anchors.left.x - bodyBox.x) / chromeZoom, y: (bodyBox.anchors.left.y - bodyBox.y) / chromeZoom },
-        right: { x: (bodyBox.anchors.right.x - bodyBox.x) / chromeZoom, y: (bodyBox.anchors.right.y - bodyBox.y) / chromeZoom },
-      });
-      setBtnSize(handleSize(bodyBox.scale / TILE_SIZE));
+    const place = (bounds: { x: number; y: number; w: number; h: number }) => {
+      const placement = placeSelectionRow(bounds, rowRef.current, { width: window.innerWidth, height: window.innerHeight }, chromeZoom);
+      if (!placement.visible) { setHandlesVisible(false); return; }
+      el.style.left = `${placement.left}px`;
+      el.style.top = `${placement.top}px`;
       setHandlesVisible(true);
+    };
+
+    if (b?.kind === 'object' && proj.objectScreenBox) {
+      const body = useEditorStore.getState().gridState?.objects.has(b.id) ? proj.objectScreenBox(b.id) : null;
+      if (!body) { setHandlesVisible(false); return; }
+      place(body);
       return;
     }
 
-    // 2D object / terrain (any view): a footprint (or 1-cell) box via cellToScreen.
-    setAnchors(null);
     let pos: { x: number; y: number };
     let dim: { w: number; h: number };
     if (b?.kind === 'object') {
@@ -230,25 +215,18 @@ export function SelectionHandles() {
       pos = cur.position;
       dim = getPlacedObjectSize(cur);
     } else if (b?.kind === 'terrain') {
-      // Terrain renders on the micro-grid (offset −HALF_TILE = −0.5 macro cells), so the box sits
-      // half a cell up-left of the macro coord — match it so the handle lands on the box corner.
+      // Terrain's rendered footprint is shifted half a macro cell up-left.
       pos = { x: b.x - 0.5, y: b.y - 0.5 };
       dim = { w: 1, h: 1 };
     } else { setHandlesVisible(false); return; }
-    const tl = proj.cellToScreen(pos.x, pos.y);
-    const br = proj.cellToScreen(pos.x + dim.w, pos.y + dim.h);
-    const w = br.x - tl.x, h = br.y - tl.y;
-    // A non-positive extent means the projection wrapped (the cell is behind the camera in 3D):
-    // hide rather than draw a flipped box at a wrong spot.
-    if (!(w > 0 && h > 0)) { setHandlesVisible(false); return; }
-    // tl/br are VISUAL px from the viewport; the box renders under the chrome zoom, so divide it
-    // out of the css coords (same pattern as HelpBubble).
-    el.style.left = `${tl.x / chromeZoom}px`;
-    el.style.top = `${tl.y / chromeZoom}px`;
-    el.style.width = `${w / chromeZoom}px`;
-    el.style.height = `${h / chromeZoom}px`;
-    setBtnSize(handleSize(tl.scale / TILE_SIZE));
-    setHandlesVisible(true);
+    // All four corners remain valid when an orbit reverses the projected axes.
+    const corners = [
+      proj.cellToScreen(pos.x, pos.y), proj.cellToScreen(pos.x + dim.w, pos.y),
+      proj.cellToScreen(pos.x, pos.y + dim.h), proj.cellToScreen(pos.x + dim.w, pos.y + dim.h),
+    ];
+    if (corners.some(p => p.behind)) { setHandlesVisible(false); return; }
+    const x = Math.min(...corners.map(p => p.x)), y = Math.min(...corners.map(p => p.y));
+    place({ x, y, w: Math.max(...corners.map(p => p.x)) - x, h: Math.max(...corners.map(p => p.y)) - y });
   }, []);
 
   // The event-driven track: a (re)select places the handles before paint, then the camera, the
@@ -258,6 +236,7 @@ export function SelectionHandles() {
     reposition();
     eventBus.on('viewport-changed', reposition);
     eventBus.on('objects-changed', reposition);
+    eventBus.on('cells-changed', reposition);
     // A resize moves the projection without touching React state, so it needs its own listener.
     window.addEventListener('resize', reposition);
     // The 2D↔3D swap: re-track the moment the NEW view is registered (see the file header).
@@ -265,6 +244,7 @@ export function SelectionHandles() {
     return () => {
       eventBus.off('viewport-changed', reposition);
       eventBus.off('objects-changed', reposition);
+      eventBus.off('cells-changed', reposition);
       window.removeEventListener('resize', reposition);
       offView();
     };
@@ -275,15 +255,10 @@ export function SelectionHandles() {
   // coordinates computed under the old scale.
   useLayoutEffect(() => {
     if (targetKey) reposition();
-  }, [chrome, targetKey, reposition]);
+  }, [chrome, targetKey, row.width, reposition]);
 
   const rotate = () => {
-    // Read the LIVE object fresh from the store, not the render-closure `obj`:
-    // this component repositions imperatively and does NOT re-render on object
-    // changes, so the closure's rotation goes stale after the first rotate. Reading
-    // fresh makes each click advance the CURRENT angle (so it cycles 0→90→180→270→0)
-    // and validates the real next angle (so an impossible rotation surfaces a toast
-    // instead of silently no-op'ing on a stale angle).
+    // Repeated clicks can arrive before a render, so rotation reads the live object.
     const exec = useEditorStore.getState().commandExecutor;
     const gs = useEditorStore.getState().gridState;
     const sel = singleSelection(useEditorStore.getState().selection);
@@ -325,22 +300,12 @@ export function SelectionHandles() {
     deleteSelection(exec, gs, useEditorStore.getState().eventBus, t, ids);
   };
 
-  // Plural shows both corners unconditionally; single gates on having something to delete.
-  const show = plural || deletable;
+  const show = plural || deletable || pickable;
 
-  // GROUP: the fixed row metrics (member count is the only input). SINGLE: the zoom-tracked corner
-  // button on the object's own box.
-  const row: RowMetrics | null = plural ? groupRowMetrics(selection.length) : null;
-  const size = row ? row.btn : btnSize;
+  const size = row.btn;
+  const iconSize = size / 2;
 
-  // 3D anchor points (box-relative css px); null = 2D corner idiom.
-  const anchorStyle = (a: { x: number; y: number } | null): CSSProperties =>
-    a
-      ? { position: 'absolute', left: a.x, top: a.y, marginLeft: -size / 2, marginTop: -size / 2 }
-      : {};
-
-  // The tracked box: `left`/`top` are assigned imperatively by `reposition`; its SIZE is declared
-  // here for the group row (a constant) and imperatively for a single selection (its box).
+  // Camera updates write position imperatively; React owns the fixed toolbar dimensions.
   const trackedStyle: CSSProperties = {
     position: 'fixed',
     pointerEvents: 'none',
@@ -348,9 +313,7 @@ export function SelectionHandles() {
     zoom: chrome,
     ...weights,
     visibility: handlesVisible ? 'visible' : 'hidden',
-    ...(row
-      ? { display: 'flex', alignItems: 'center', gap: `${row.gap}px`, width: row.width, height: row.height }
-      : { display: 'block' }),
+    display: 'flex', alignItems: 'center', gap: row.gap, width: row.width, height: row.height,
   };
 
   return (
@@ -369,37 +332,45 @@ export function SelectionHandles() {
             <motion.button
               type="button"
               data-testid="handle-rotate"
+              {...pressable}
               // No cursor of its own: it is a button, and the global rule gives every button the
               // clickable pointer. `orbit` means the 3D CAMERA turning, not an object being turned.
-              style={row
-                ? rowHandleStyle(false, size)
-                : { ...cornerHandleStyle(false, 'left', size), ...anchorStyle(anchors?.left ?? null) }}
+              style={handleFace(false, size)}
               initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
-              whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
-              transition={springs.bouncy}
               onClick={plural ? onRotateGroup : rotate}
               aria-label={t('a11y.rotate')}
             >
-              <RotateIcon size={Math.round(size * 0.52)} />
+              <RotateIcon size={iconSize} />
             </motion.button>
           )}
-          {row && (
+          {plural && (
             <div data-testid="selection-count" style={countBadgeStyle(size, row.badge, weightAt(800, Math.max(TEXT_FLOOR, Math.round(size * 0.4))))}>{selection.length}</div>
           )}
-          <motion.button
+          {pickable && (
+            <motion.button
+              type="button"
+              data-testid="handle-pick"
+              {...pressable}
+              style={handleFace(false, size)}
+              initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+              onClick={pickSelection}
+              aria-label={t('a11y.pick_material')}
+              title={t('a11y.pick_material')}
+            >
+              <PickIcon size={iconSize} />
+            </motion.button>
+          )}
+          {(plural || deletable) && <motion.button
             type="button"
             data-testid="handle-delete"
-            style={row
-              ? rowHandleStyle(true, size)
-              : { ...cornerHandleStyle(true, 'right', size), ...anchorStyle(anchors?.right ?? null) }}
+            {...pressable}
+            style={handleFace(true, size)}
             initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
-            whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
-            transition={springs.bouncy}
             onClick={plural ? deleteGroupAction : remove}
             aria-label={t('a11y.delete')}
           >
-            <TrashIcon size={Math.round(size * 0.52)} />
-          </motion.button>
+            <TrashIcon size={iconSize} />
+          </motion.button>}
           </div>
         </motion.div>
       )}

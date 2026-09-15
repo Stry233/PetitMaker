@@ -1,7 +1,4 @@
-/**
- * SelectionHandles in both modes: the plural (group) corner buttons, and the singular ones they
- * sit alongside (rotatable gates the rotate corner, a locked-with-no-terrain block hides both).
- */
+/** Single and group selection controls follow projected bounds and item capabilities. */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { SelectionHandles } from '../../../ui/chrome/floating/SelectionHandles';
@@ -9,9 +6,10 @@ import { useEditorStore } from '../../../state/store';
 import { I18nProvider } from '../../../i18n/context';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
+import { PLAZA_ID } from '../../../core/model/constants';
 import { createDefaultRegistry } from '../../../rules';
 import { registerCatalogItem } from '../../../state/catalog';
-import { CommandType, ItemCategory } from '../../../core/model/types';
+import { CommandType, ItemCategory, TerrainType, ToolType } from '../../../core/model/types';
 import type { EditorEvents, GridState, PlacedObject, ValidationError } from '../../../core/model/types';
 import { makeState } from '../../rules/_helpers';
 import { setActiveView } from '../../../canvas/active-view';
@@ -100,14 +98,77 @@ afterEach(() => {
 });
 
 describe('SelectionHandles: single selection', () => {
-  it('shows only delete for a non-rotatable, unlocked object', () => {
+  it('shows pick and delete for a repeatable object without rotation', () => {
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
     expect(screen.getByTestId('handle-delete')).toBeTruthy();
+    expect(screen.getByTestId('handle-pick')).toBeTruthy();
     expect(screen.queryByTestId('handle-rotate')).toBeNull();
     expect(screen.queryByTestId('selection-count')).toBeNull();
   });
 
-  it('shows both corners for a rotatable object', () => {
+  it('picks the live object rotation without changing map content or history', () => {
+    const { gs, exec } = renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
+    gs.objects.get('a')!.rotation = 90;
+    const before = exec.getUndoStackSize();
+    fireEvent.click(screen.getByRole('button', { name: 'Pick for placement' }));
+    expect(useEditorStore.getState()).toMatchObject({
+      selectedItemId: 'sel-rot-hut', activeTool: ToolType.ObjectPlacer, placementRotation: 90, selection: [],
+      editMode: { mode: 'object' },
+    });
+    expect(gs.objects.size).toBe(1);
+    expect(exec.getUndoStackSize()).toBe(before);
+  });
+
+  it.each([TerrainType.Mountain, TerrainType.Water])('picks terrain type %s and its height into the brush panel', (type) => {
+    const gs = makeState(24, 24);
+    gs.cells[4]![4]!.terrain = { type, elevation: 2 };
+    useEditorStore.setState({ gridState: gs, selection: [{ kind: 'terrain', x: 4, y: 4 }], locale: 'en' });
+    render(<SelectionHandles />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByTestId('handle-pick'));
+    expect(useEditorStore.getState()).toMatchObject({
+      activeTool: ToolType.TerrainBrush, activeLayer: 2, layerPinned: true, selection: [],
+      contentType: type === TerrainType.Mountain ? 'mountain' : 'water',
+      editMode: { tool: 'brush', mode: type === TerrainType.Mountain ? 'mountain' : 'water' },
+    });
+    expect(gs.cells[4]![4]!.terrain).toEqual({ type, elevation: 2 });
+  });
+
+  it('picks a road material into the road brush instead of the object shelf', () => {
+    renderWithSelection([{ id: 'a', catalogId: 'path-overgrown-dirt', x: 4, y: 4 }]);
+    fireEvent.click(screen.getByTestId('handle-pick'));
+    expect(useEditorStore.getState()).toMatchObject({
+      tileMaterial: 'path-overgrown-dirt', tileMaterialPicked: true, activeTool: ToolType.TerrainBrush,
+      selectedItemId: null, editMode: { mode: 'road', tool: 'brush' },
+    });
+  });
+
+  it('does not offer picking for unique buildings or the central plaza', () => {
+    const gs = makeState(24, 24);
+    for (const catalogId of ['building-myhouse', PLAZA_ID]) {
+      gs.objects.set('unique', { id: 'unique', catalogId, position: { x: 4, y: 4 }, rotation: 0, elevation: 0 });
+      useEditorStore.setState({ gridState: gs, selection: [{ kind: 'object', id: 'unique' }] });
+      render(<SelectionHandles />, { wrapper: Wrapper });
+      expect(screen.queryByTestId('handle-pick')).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('does not offer picking for groups or bare ground', () => {
+    renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }, { id: 'b', catalogId: 'sel-hut', x: 6, y: 4 }]);
+    expect(screen.queryByTestId('handle-pick')).toBeNull();
+    act(() => { useEditorStore.setState({ selection: [{ kind: 'terrain', x: 10, y: 10 }] }); });
+    expect(screen.queryByTestId('handle-pick')).toBeNull();
+  });
+
+  it('ignores a pick when the selected object has already been removed', () => {
+    const { gs } = renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
+    const before = useEditorStore.getState().editMode;
+    gs.objects.delete('a');
+    fireEvent.click(screen.getByTestId('handle-pick'));
+    expect(useEditorStore.getState().editMode).toBe(before);
+  });
+
+  it('offers rotation for a rotatable object', () => {
     renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
     expect(screen.getByTestId('handle-delete')).toBeTruthy();
     expect(screen.getByTestId('handle-rotate')).toBeTruthy();
@@ -246,77 +307,69 @@ describe('SelectionHandles: the group row is anchored to a POINT, not a projecte
 });
 
 describe('SelectionHandles: single selection layout', () => {
-  it('keeps its exact box-derived position, never clamped, even pushed off-screen', () => {
-    // Pushed 5000px left/up of the origin — any clamp would pull this back toward 0; the
-    // single-selection path must not, so left/top stay strongly negative.
+  it('hides the toolbar when the selection leaves the viewport', () => {
     setActiveView(makeView(-5000, -5000));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    const el = box();
-    expect(parseFloat(el.style.left)).toBeLessThan(-1000);
-    expect(parseFloat(el.style.top)).toBeLessThan(-1000);
-    expect(el.style.visibility).toBe('visible');
+    expect(box().style.visibility).toBe('hidden');
   });
 
-  it('lands on the footprint box exactly, with corner-pinned buttons (no row layout)', () => {
-    setActiveView(makeView(0, 0, 10));
-    renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    const el = box();
-    expect(el.style.left).toBe('40px');   // cell 4 × 10
-    expect(el.style.top).toBe('40px');
-    expect(el.style.width).toBe('10px');  // the 1×1 footprint's projected size
-    expect(el.style.display).toBe('block');
-    expect(screen.getByTestId('handle-delete').style.position).toBe('absolute');
+  it('keeps the same controls and spacing as map zoom changes', () => {
+    for (const scale of [2, 10, 80]) {
+      setActiveView(makeView(300, 200, scale));
+      renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
+      expect(box().style.width).toBe('108px');
+      expect(box().style.height).toBe('32px');
+      expect(box().style.gap).toBe('6px');
+      expect([...box().querySelectorAll('button')].map(b => b.dataset.testid)).toEqual(['handle-rotate', 'handle-pick', 'handle-delete']);
+      expect(parseFloat(box().style.top) + 32).toBeLessThan(200 + 4 * scale);
+      cleanup();
+    }
   });
 
-  it('(3D body-box anchor): position is never clamped either', () => {
-    // objectScreenBox present ⇒ the single-object path anchors to the 3D body box, not the flat
-    // footprint idiom — a separate branch from the one above, and it must stay unclamped too.
-    const view = {
-      projection: {
-        cellToScreen: () => ({ x: 0, y: 0, scale: 10 }),
-        screenToMacro: () => ({ x: 0, y: 0 }),
-        screenToMicro: () => ({ x: 0, y: 0 }),
-        pan: () => {},
-        objectScreenBox: () => ({
-          x: -9000, y: -9000, w: 50, h: 50, scale: 10,
-          anchors: { left: { x: -9000, y: -9000 }, right: { x: -8950, y: -9000 } },
-        }),
-      },
-    } as unknown as ActiveView;
+  it('centres the toolbar above the 3D body instead of using the ground footprint', () => {
+    const view = makeView(0, 0, 10);
+    view.projection.objectScreenBox = () => ({ x: 400, y: 300, w: 50, h: 50 });
     setActiveView(view);
     renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
-    const el = box();
-    expect(parseFloat(el.style.left)).toBeLessThan(-1000);
-    expect(parseFloat(el.style.top)).toBeLessThan(-1000);
-    expect(el.style.visibility).toBe('visible');
+    expect(box().style.left).toBe('371px');
+    expect(box().style.top).toBe('256px');
+    expect(box().style.visibility).toBe('visible');
+  });
+
+  it('keeps terrain controls visible when an orbit reverses a projected axis', () => {
+    const view = makeView(0, 0);
+    view.projection.cellToScreen = (x, y) => ({ x: 500 - x * 20, y: 300 + y * 10, scale: 20 });
+    setActiveView(view);
+    const gs = makeState(24, 24);
+    gs.cells[4]![4]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
+    useEditorStore.setState({ gridState: gs, selection: [{ kind: 'terrain', x: 4, y: 4 }] });
+    render(<SelectionHandles />, { wrapper: Wrapper });
+    expect(box().style.visibility).toBe('visible');
+    expect(box().style.left).toBe('385px');
+    expect(box().style.top).toBe('291px');
   });
 });
 
 describe('SelectionHandles: what triggers a re-track', () => {
-  it('a UI-scale change repositions, and the VISUAL position is unchanged by the rescale', () => {
-    // The box renders inside a `zoom: chrome` subtree, so its css coords are visual px DIVIDED by the
-    // scale. Nothing emits an event when the scale moves, so without a re-track the old coords stay
-    // and the buttons slide off the object as the subtree rescales around them.
-    setActiveView(makeView(0, 0, 10));
+  it('keeps the toolbar centred while its chrome scale changes', () => {
+    setActiveView(makeView(300, 300, 10));
     const { rerender } = renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    expect(box().style.left).toBe('40px');
+    expect(box().style.left).toBe('310px');
     mockChrome = 2;
-    rerender(<SelectionHandles />); // RTL re-wraps in the same provider
-    // Recomputed (the value CHANGED, so a reposition ran) and still over the same visual pixel.
-    expect(box().style.left).toBe('20px');
-    expect(parseFloat(box().style.left) * mockChrome).toBe(40);
-    expect(parseFloat(box().style.top) * mockChrome).toBe(40);
-    expect(parseFloat(box().style.width) * mockChrome).toBe(10);
+    rerender(<SelectionHandles />);
+    expect(parseFloat(box().style.left) * mockChrome + 70).toBe(345);
+    expect(parseFloat(box().style.top) * mockChrome + (32 + 12) * mockChrome).toBe(340);
+    expect(box().style.width).toBe('70px');
   });
 
   it('a 2D↔3D view swap repositions against the NEW projection', () => {
     setActiveView(makeView(0, 0, 10));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    expect(box().style.left).toBe('40px');
+    expect(box().style.left).toBe('10px');
     // The registry is re-pointed at the other view on a mode switch; the switch emits no
     // viewport-changed, so only the active-view signal can make the handles follow.
     act(() => { useEditorStore.setState({ viewMode: '3d' }); setActiveView(makeView(500, 500, 10)); });
-    expect(box().style.left).toBe('540px');
+    expect(box().style.left).toBe('510px');
   });
 
   it('follows the REGISTERED view, not the mode: a cold 3D scene registers after the flip', () => {
@@ -325,11 +378,11 @@ describe('SelectionHandles: what triggers a re-track', () => {
     // coordinates; the signal is what says the projection is 3D's now.
     setActiveView(makeView(0, 0, 10));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    expect(box().style.left).toBe('40px');
+    expect(box().style.left).toBe('10px');
     act(() => { useEditorStore.setState({ viewMode: '3d' }); });
-    expect(box().style.left).toBe('40px'); // still the 2D framing: nothing else is registered yet
+    expect(box().style.left).toBe('10px'); // still the 2D framing: nothing else is registered yet
     act(() => { setActiveView(makeView(500, 500, 10)); }); // the scene, once built
-    expect(box().style.left).toBe('540px');
+    expect(box().style.left).toBe('510px');
   });
 
   it('re-tracks on the way back to 2D, where the registration lands after every layout effect', () => {
@@ -338,10 +391,10 @@ describe('SelectionHandles: what triggers a re-track', () => {
     setActiveView(makeView(500, 500, 10));
     useEditorStore.setState({ viewMode: '3d' });
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-    expect(box().style.left).toBe('540px');
+    expect(box().style.left).toBe('510px');
     act(() => { useEditorStore.setState({ viewMode: '2d' }); });
     act(() => { setActiveView(makeView(0, 0, 10)); });
-    expect(box().style.left).toBe('40px');
+    expect(box().style.left).toBe('10px');
   });
 });
 

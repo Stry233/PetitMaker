@@ -6,6 +6,7 @@ import { __resetCursorController } from '../../canvas/interaction/cursor-control
 import { cursorCss } from '../../assets/cursors/cursor-css';
 import { registerToolManager } from '../../canvas/active-view';
 import { ToolType } from '../../core/model/types';
+import { setPanDragKey } from '../../core/runtime/modifier-state';
 import { useEditorStore } from '../../state/store';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
 import { makeTestToolManager } from '../tools/_tool-manager';
@@ -34,6 +35,8 @@ function TwoHosts() {
 }
 
 beforeEach(() => {
+  window.dispatchEvent(new Event('blur'));
+  setPanDragKey('space');
   __resetCursorController();
   const tm = makeTestToolManager();
   tm.setActiveTool(ToolType.Eraser);
@@ -42,9 +45,56 @@ beforeEach(() => {
     activeTool: ToolType.Eraser, selectingRegion: false, viewMode: '2d', contentType: 'mountain',
   });
 });
-afterEach(() => { cleanup(); registerToolManager(null); });
+afterEach(() => { cleanup(); registerToolManager(null); window.dispatchEvent(new Event('blur')); setPanDragKey('space'); });
+
+const panKey = (type: 'keydown' | 'keyup', key = ' ', code = 'Space') => {
+  window.dispatchEvent(new KeyboardEvent(type, { key, code }));
+};
 
 describe('useCursor', () => {
+  it('shows move on Space press and restores the tool on release without pointer movement', () => {
+    const { getByTestId } = render(<Host />);
+    const surface = getByTestId('surface');
+    expect(surface.style.cursor).toBe(cursorCss('eraser'));
+    panKey('keydown');
+    expect(surface.style.cursor).toBe(cursorCss('move'));
+    panKey('keyup');
+    expect(surface.style.cursor).toBe(cursorCss('eraser'));
+  });
+
+  it('honors a rebound pan key and restores the cursor when that binding is disabled', () => {
+    const { getByTestId } = render(<Host />);
+    const surface = getByTestId('surface');
+    setPanDragKey('x');
+    panKey('keydown');
+    expect(surface.style.cursor).toBe(cursorCss('eraser'));
+    panKey('keyup');
+    panKey('keydown', 'x', 'KeyX');
+    expect(surface.style.cursor).toBe(cursorCss('move'));
+    setPanDragKey('');
+    expect(surface.style.cursor).toBe(cursorCss('eraser'));
+  });
+
+  it('carries held pan feedback between views and clears it on window blur', () => {
+    const { getByTestId } = render(<TwoHosts />);
+    panKey('keydown');
+    expect(getByTestId('surface-2d').style.cursor).toBe(cursorCss('move'));
+    act(() => { setStoreState({ viewMode: '3d' }); });
+    expect(getByTestId('surface-2d').style.cursor).toBe('');
+    expect(getByTestId('surface-3d').style.cursor).toBe(cursorCss('move'));
+    window.dispatchEvent(new Event('blur'));
+    expect(getByTestId('surface-3d').style.cursor).toBe(cursorCss('eraser'));
+  });
+
+  it('restores the newly selected tool when Space is released', () => {
+    const { getByTestId } = render(<Host />);
+    panKey('keydown');
+    act(() => { setStoreState({ selectingRegion: true }); });
+    expect(getByTestId('surface').style.cursor).toBe(cursorCss('move'));
+    panKey('keyup');
+    expect(getByTestId('surface').style.cursor).toBe(cursorCss('marquee'));
+  });
+
   it('writes the active tool\'s cursor to the container', () => {
     const { getByTestId } = render(<Host />);
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('eraser'));

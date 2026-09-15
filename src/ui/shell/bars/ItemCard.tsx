@@ -66,6 +66,7 @@ export function ItemCard({ item, placed, selected, onToggle, onReach }: Props) {
     <motion.button
       ref={ref}
       type="button"
+      data-catalog-id={item.id}
       {...buttonMotion}
       aria-label={name}
       aria-pressed={selected}

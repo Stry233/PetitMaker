@@ -69,7 +69,7 @@ export function readKeyShape(raw: string): KeyShape {
  * Chooses the next route for a key shape. Quiet advance ignores short or partial keys; an explicit
  * action opens the chooser, and custom providers require an endpoint before commit.
  */
-export type KeyDestination = 'commit' | 'probe' | 'ask' | 'endpoint' | null;
+export type KeyDestination = 'commit' | 'ask' | 'endpoint' | null;
 
 export function keyDestination(a: {
   shape: KeyShape; usable: boolean; endpointFiled: boolean; explicit: boolean;
@@ -79,7 +79,7 @@ export function keyDestination(a: {
   if (!a.usable && !a.explicit) return null;
   if (a.shape === 'partial') return a.explicit ? 'ask' : null;
   if (a.shape === 'custom') return a.endpointFiled ? 'commit' : 'endpoint';
-  if (a.shape === 'ambiguous') return 'probe';
+  if (a.shape === 'ambiguous') return 'ask';
   if (a.shape === 'unknown') return 'ask';
   return 'commit';
 }

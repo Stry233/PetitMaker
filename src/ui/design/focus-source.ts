@@ -9,10 +9,9 @@
  * — draws a ring around a control the yellow plate already marks as chosen. Two boxes, and the outer
  * one appeared for pressing a key that had nothing to do with it.
  *
- * So the source is recorded when focus is ACQUIRED and never re-read after: a pointer press arms
- * 'pointer', a key press arms 'keyboard', and whichever is armed at the next `focusin` is stamped on
- * the document. A key pressed at a standing focus moves nothing, which is the whole point, and a Tab
- * still stamps 'keyboard' because it moves the focus itself. `animations.css` reads the stamp.
+ * Focus acquisition records the last input source. Pointer presses also clear a standing keyboard
+ * ring because clicking an already-focused control emits no new `focusin`. A key at standing focus
+ * leaves its source unchanged; Tab moves focus and stamps 'keyboard'. `animations.css` reads it.
  *
  * A focus that arrives with NEITHER armed was moved by the page itself — the tour card and the
  * modals take focus on mount, before any input exists — and stamps 'program', which draws no ring
@@ -23,6 +22,7 @@
  * Capture phase, on the document, so a handler that stops propagation cannot hide an input from it.
  */
 import { useEffect } from 'react';
+import { anyOverlayOpen } from '../../core/runtime/overlay-state';
 
 /** The attribute `animations.css` reads, on the document element. */
 export const FOCUS_SOURCE_ATTR = 'data-focus-source';
@@ -56,9 +56,16 @@ export type FocusSource = 'pointer' | 'keyboard' | 'program';
  */
 export function trackFocusSource(root: HTMLElement = document.documentElement): () => void {
   let armed: FocusSource | null = null;
-  const arm = (source: FocusSource) => () => { armed = source; };
-  const onPointer = arm('pointer');
-  const onKey = arm('keyboard');
+  const onPointer = () => {
+    armed = 'pointer';
+    root.setAttribute(FOCUS_SOURCE_ATTR, 'pointer');
+  };
+  const onKey = (e: KeyboardEvent) => {
+    // Pointer-focused buttons retain focus; Space belongs to map panning, not another click.
+    if (e.code === 'Space' && !anyOverlayOpen() && root.getAttribute(FOCUS_SOURCE_ATTR) === 'pointer'
+      && e.target instanceof HTMLButtonElement) e.preventDefault();
+    armed = 'keyboard';
+  };
   const onFocusIn = () => { root.setAttribute(FOCUS_SOURCE_ATTR, armed ?? 'program'); };
 
   document.addEventListener('pointerdown', onPointer, true);

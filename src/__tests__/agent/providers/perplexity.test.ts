@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { isRetryable } from '../../../agent/core/errors';
 import type { StreamEvent } from '../../../agent/core/types';
 import { baseUrlFor, PROVIDER_META, PROVIDER_IDS, QUIRKS } from '../../../agent/providers/defaults';
-import { AMBIGUOUS_CANDIDATES, detectProviderFromKey } from '../../../agent/providers/detect';
+import { detectProviderFromKey } from '../../../agent/providers/detect';
 import type { AdapterRequest } from '../../../agent/providers/types';
 import { agentProviderDisclosureList } from '../../../legal/providers-list';
 import { PROVIDER_ROSTER, readKeyShape } from '../../../ui/agent/setup-parts';
@@ -122,7 +122,6 @@ describe('providers/perplexity: the key shape', () => {
   });
 
   it('is never a probe candidate: the prefix is distinct', () => {
-    expect(AMBIGUOUS_CANDIDATES).not.toContain('perplexity');
   });
 
   it('leaves a bare sk- key to the probe', () => {

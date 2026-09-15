@@ -565,27 +565,23 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   const rowRefs = useRef<Partial<Record<DocId, HTMLButtonElement | null>>>({});
   const refocusId = useRef<DocId | null>(null);
 
-  // Copy-build-info feedback: a floating bubble renders a localized "Copied"
-  // confirmation for ~1.2s, then auto-dismisses. Timeout ref so a fast
-  // re-click restarts the window instead of stacking timeouts, and so unmount
-  // (e.g. modal closed mid-timer) can clear it.
-  const [copied, setCopied] = useState(false);
+  // Repeated copies restart the confirmation timer.
+  const [copied, setCopied] = useState<'build' | 'qq' | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
   }, []);
 
-  const copyBuildInfo = async () => {
-    const line = `${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`;
+  const copyText = async (text: string, target: 'build' | 'qq') => {
     try {
-      await navigator.clipboard.writeText(line);
+      await navigator.clipboard.writeText(text);
     } catch {
       // Clipboard API unavailable/denied (e.g. insecure context) — silent no-op.
       return;
     }
-    setCopied(true);
+    setCopied(target);
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 1200);
+    copyTimeoutRef.current = setTimeout(() => setCopied(null), 1200);
   };
 
   const openDoc = (id: DocId) => setView({ kind: 'doc', id });
@@ -634,13 +630,33 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   useLayoutEffect(() => { aboutViewRef.current = document.querySelector<HTMLElement>('[data-about-view]'); });
   const aboutFade = useScrollFade(aboutViewRef, 'y');
 
+  const copyConfirmation = (target: 'build' | 'qq') => (
+    <AnimatePresence>
+      {copied === target && (
+        <motion.div
+          key="copied-bubble"
+          role="status"
+          aria-live="polite"
+          style={copiedBubble}
+          initial={{ opacity: 0, y: 6, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: 6, scale: 0.9, x: '-50%', transition: exitTransition }}
+          transition={springs.stiff}
+        >
+          {t('about.copied')}
+          <span style={copiedBubbleTail} aria-hidden />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   const versionRow = (
     <>
       <div style={versionButtonWrap}>
         <motion.button
           type="button"
           style={{ ...versionButton, ...(wide ? { textAlign: 'right' } : {}) }}
-          onClick={copyBuildInfo}
+          onClick={() => copyText(`${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`, 'build')}
           aria-label={t('about.copy_build')}
           whileHover={{ opacity: 1 }}
           whileTap={{ opacity: 0.7 }}
@@ -655,25 +671,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
             .filter(Boolean)
             .join(', ')}
         </motion.button>
-        {/* Confirmation bubble — the row's own text never changes; this
-            floats above it and auto-dismisses (see copyBuildInfo). */}
-        <AnimatePresence>
-          {copied && (
-            <motion.div
-              key="copied-bubble"
-              role="status"
-              aria-live="polite"
-              style={copiedBubble}
-              initial={{ opacity: 0, y: 6, scale: 0.9, x: '-50%' }}
-              animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-              exit={{ opacity: 0, y: 6, scale: 0.9, x: '-50%', transition: exitTransition }}
-              transition={springs.stiff}
-            >
-              {t('about.copied')}
-              <span style={copiedBubbleTail} aria-hidden />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {copyConfirmation('build')}
       </div>
       <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
         {t('about.repository_link')} <span aria-hidden>↗</span>
@@ -746,6 +744,37 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
             </span>
           </motion.button>
         ))}
+      </div>
+    </div>
+  );
+
+  const feedback = (
+    <div data-testid="feedback-links">
+      <div style={sectionLabel}>{t('about.feedback_title')}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <motion.a href={`${LEGAL.repoUrl}/issues`} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
+          <span style={gridLabel}>{t('about.github_issues')}</span>
+          <span style={chevron} aria-hidden>↗</span>
+        </motion.a>
+        <div style={{ position: 'relative' }} data-testid="qq-feedback-group">
+          <motion.button
+            type="button"
+            style={gridRow}
+            onClick={() => copyText(LEGAL.qqFeedbackGroup, 'qq')}
+            aria-label={t('about.copy_qq_group', { number: LEGAL.qqFeedbackGroup })}
+            {...buttonMotion}
+          >
+            <span style={{ ...gridLabel, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span>{t('about.qq_group_name')}</span>
+              <span style={{ ...teamNote, margin: 0 }}>{t('about.qq_group_number', { number: LEGAL.qqFeedbackGroup })}</span>
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: skin.muted }} aria-hidden="true" focusable="false">
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M16 8V4H4v12h4" />
+            </svg>
+          </motion.button>
+          {copyConfirmation('qq')}
+        </div>
       </div>
     </div>
   );
@@ -870,7 +899,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                 {brand}
                 <div style={hairline} />
                 <div style={panes}>
-                  <div style={pane} data-testid="about-people">
+                  <div style={{ ...pane, gap: 12 }} data-testid="about-people">
                     <div>
                       <div style={sectionLabel}>{t('about.team_title')}</div>
                       {roster(LEGAL.team, 'team-grid', 'team-member')}
@@ -887,6 +916,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                   <div style={paneDivider} data-testid="about-documents">
                     {legalGrid}
                     {filing}
+                    {feedback}
                     {support}
                   </div>
                 </div>
@@ -907,6 +937,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                 </div>
                 {legalGrid}
                 {filing}
+                {feedback}
                 {support}
                 {footer}
               </>

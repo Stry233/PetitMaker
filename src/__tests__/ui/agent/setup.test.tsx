@@ -1,24 +1,4 @@
-/**
- * setup.test.tsx — the panel with no key in it, at the B-below shape.
- *
- * ONE FIELD AND ONE ROW, and the two of them are the whole screen: there is no Connect button, so
- * what this file mostly tests is TIMING and what the row SAYS. The idle gate is the piece nothing
- * else can prove — a screen that advanced while characters were still arriving swapped the field node
- * out from under the hands and truncated the key at whatever had landed — so it is driven on fake
- * timers, and the keystroke-at-800ms case is the CONTRACT: a character landing with 100ms to go must
- * buy the whole 900 again. (What makes that hold is the gate effect's own deps, since the callback
- * it arms closes over the draft. There is nothing here to catch a same-value input event, because
- * React drops one before it ever reaches `onChange`.)
- *
- * Renders through `I18nProvider` under `MotionConfig reducedMotion="always"` (the wrapper every
- * other panel suite uses, for the same reason: jsdom has no Web Animations API and this file only
- * needs the screen to mount quietly), with a Map-backed `localStorage` stub the settings slice's
- * persistence can write into.
- *
- * THE NETWORK IS NEVER TOUCHED. `probe` and `listModels` are both injected props, so what is under
- * test is the screen's own decision-making: what the key's format says, what the screen does while a
- * probe is out, what it does when nothing answers, and what a refusal does to the field.
- */
+/** Setup interactions with injected model discovery and no live provider requests. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -29,7 +9,7 @@ import { SetupScreen, withModelsDeadline, type ListModels } from '../../../ui/ag
 import { classify } from '../../../agent/core/errors';
 import { keyDestination, readKeyShape, stepSlide } from '../../../ui/agent/setup-parts';
 import { framerMotion, seconds } from '../../../ui/agent/motion';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { runnerSettings, useAgentPanelSettings } from '../../../ui/agent/settings';
 import { forgetRosters } from '../../../ui/agent/model-roster';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../agent/providers/defaults';
 import type { Locale } from '../../../core/model/types';
@@ -84,8 +64,6 @@ beforeEach(() => {
 
 afterEach(() => { vi.useRealTimers(); });
 
-/** A probe that never settles, for the state a screen holds WHILE it is waiting. */
-const pendingProbe = () => new Promise<ProviderId | null>(() => {});
 
 const phaseOf = () => screen.queryByTestId('manage-screen') ? 'manage' : screen.getByTestId('setup-screen').getAttribute('data-phase');
 const pickDefault = () => {
@@ -121,7 +99,7 @@ describe('keyDestination', () => {
 
   it('sends each shape one place, and the quiet and the press differ only where nothing can be read', () => {
     expect(dest({ shape: 'claude' })).toBe('commit');
-    expect(dest({ shape: 'ambiguous' })).toBe('probe');
+    expect(dest({ shape: 'ambiguous' })).toBe('ask');
     expect(dest({ shape: 'unknown' })).toBe('ask');
     expect(dest({ shape: 'empty', usable: false })).toBe(null);
     expect(dest({ shape: 'partial' })).toBe(null);
@@ -145,7 +123,7 @@ describe('keyDestination', () => {
 /** API keys mask at rest and reveal on focus on both entry and verification screens. */
 describe('the key masks when the field rests, and reveals on focus', () => {
   it('rests masked once it holds a value, and reveals again on focus', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     // TYPED, so the focus comes first: a value arriving into an UNFOCUSED field is the password
     // manager's shape and masks on arrival (its own test below).
@@ -166,7 +144,7 @@ describe('the key masks when the field rests, and reveals on focus', () => {
    * the key stood on screen in plain text, unattended, until something happened to touch the field.
    */
   it('masks a value that arrives without the field ever being focused', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     expect(document.activeElement, 'the field must be unfocused for this to mean anything')
       .not.toBe(input);
@@ -176,7 +154,7 @@ describe('the key masks when the field rests, and reveals on focus', () => {
   });
 
   it('never masks an empty field', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     fireEvent.focus(input);
     fireEvent.blur(input);
@@ -184,7 +162,7 @@ describe('the key masks when the field rests, and reveals on focus', () => {
   });
 
   it('leaves typing and pasting alone: the type stays text while the field is focused', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: KEY.claude } });
@@ -199,13 +177,7 @@ describe('the key masks when the field rests, and reveals on focus', () => {
 
 /* ── the model list's own deadline ─────────────────────────── */
 
-/**
- * THE KEY'S FIRST REQUEST IS THE ONE THAT CAN HANG. An endpoint that accepts the connection and then
- * says nothing leaves it pending with no error and no end, and the step it is made from has one word
- * ("Reading the key") and no verb: the wait ending by itself is what turns that into a face the user
- * can act on. The bound is the key probe's own ceiling, and the wording is classified `network` so a
- * silent endpoint reads like every other connection that stopped carrying anything.
- */
+
 describe('a request for the model list ends by itself', () => {
   it('gives up at the deadline, aborts what it was waiting on, and reads as a network fault', async () => {
     vi.useFakeTimers();
@@ -240,7 +212,7 @@ describe('the field never leaves while the hands are moving', () => {
   it('holds a fully-typed Anthropic key until 900ms of quiet, and a keystroke at 800ms resets it', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     // The row already SAYS the reading, which is the point of B-below: the screen answers without
@@ -264,34 +236,27 @@ describe('the field never leaves while the hands are moving', () => {
 
   it('lets Enter release it at once', async () => {
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
     expect(phaseOf()).toBe('manage');
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: KEY.claude });
   });
-
-  it('sends a bare sk-hex key to the probe rather than to a guess', async () => {
-    vi.useFakeTimers();
-    const probe = vi.fn(pendingProbe);
-    renderWithI18n(<SetupScreen probe={probe} candidates={['deepseek', 'openai']} />);
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    // THE QUIET HAS NOT ASKED ANYBODY YET, and the screen's words wait with it: the shape's two
-    // candidates stand named, in what the screen is about to do rather than in what it is doing.
-    expect(noteText()).toBe(translations.en['agent3.setup_note_ambiguous_wait']);
-    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(translations.en['agent3.setup_row_sofar']);
-
-    await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(probe).toHaveBeenCalledTimes(1);
-    // While the probe is out the row spins and the field's own mark says the same thing once.
-    expect(noteText()).toBe(translations.en['agent3.setup_note_ambiguous']);
-    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(translations.en['agent3.setup_row_asking']);
-    expect(phaseOf()).toBe('key');
-  });
+  it('keeps ambiguous credentials local until an explicit provider selection', async () => {
+ vi.useFakeTimers(); const listModels = vi.fn((_cfg: { provider: ProviderId; apiKey: string; region?: 0 | 1 }) => Promise.resolve(['m']));
+ renderWithI18n(<SetupScreen listModels={listModels} />);
+ fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+ await act(async () => { vi.advanceTimersByTime(IDLE * 5); });
+ expect(listModels).not.toHaveBeenCalled();
+ expect(useAgentPanelSettings.getState().keyed).toEqual([]);
+ expect(screen.getByTestId('setup-prov-row').getAttribute('aria-expanded')).toBe('true');
+ await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.deepseek.name)); });
+ expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'deepseek', apiKey: KEY.ambiguous });
+});
 
   it('keeps the WHOLE key in the field and opens the row for a shape nobody claims', async () => {
     vi.useFakeTimers();
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: KEY.unknown } });
     expect(noteText()).toBe(translations.en['agent3.setup_note_unknown']);
@@ -307,7 +272,7 @@ describe('the field never leaves while the hands are moving', () => {
   it('stops the gate at Back until the key changes again', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
 
     // The waiting step carries Back, and pressing it means "I am still editing".
@@ -337,7 +302,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
   it('pins the provider a press names, and a later reading does not overrule it', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['gpt-5.1']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
 
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(PROVIDER_META.openai.name));
@@ -358,10 +323,10 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
 
   it('connects the key in hand the moment a platform is named', async () => {
     const listModels = vi.fn(() => Promise.resolve(['glm-4']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
     fireEvent.click(screen.getByTestId('setup-prov-row'));
-    await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.zhipu.name)); });
+    await act(async () => { fireEvent.click(screen.getAllByText(PROVIDER_META.zhipu.name)[0]!); });
 
     expect(phaseOf()).toBe('manage');
     expect(screen.getByTestId('manage-prov-face').getAttribute('data-provider')).toBe('zhipu');
@@ -385,7 +350,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     // The keyless provider the user tried, which is what put the screen up.
     useAgentPanelSettings.getState().pinProvider('openai');
 
-    renderWithI18n(<SetupScreen probe={pendingProbe} onDone={onDone} />);
+    renderWithI18n(<SetupScreen onDone={onDone} />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(PROVIDER_META.claude.name));
 
@@ -400,7 +365,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     useAgentPanelSettings.getState().connectKey('claude', KEY.claude);
     useAgentPanelSettings.getState().pinProvider('openai');
 
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onDone={onDone} />);
+    renderWithI18n(<SetupScreen listModels={listModels} onDone={onDone} />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.claude.name)); });
 
@@ -414,11 +379,10 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
 
   it('keeps an explicit provider and its refusal together when the key has another provider format', async () => {
     vi.useFakeTimers();
-    const probe = vi.fn(pendingProbe);
     const listModels = vi.fn(({ provider }: { provider: ProviderId; apiKey: string }) => provider === 'openai'
       ? Promise.reject(Object.assign(new Error('Unauthorized'), { status: 401 }))
       : Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={probe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(PROVIDER_META.openai.name));
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
@@ -429,7 +393,6 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     expect(useAgentPanelSettings.getState().provider).toBe('openai');
     await act(async () => { vi.advanceTimersByTime(IDLE * 3); });
     expect(listModels).toHaveBeenCalledTimes(1);
-    expect(probe).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('setup-act-manual'));
     await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.claude.name)); });
@@ -441,7 +404,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
   it('leaves the management mount to the parent during handoff', async () => {
     const onManage = vi.fn();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onManage={onManage} />);
+    renderWithI18n(<SetupScreen listModels={listModels} onManage={onManage} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
     expect(onManage).toHaveBeenCalledTimes(1);
@@ -449,17 +412,19 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     expect(screen.getByTestId('setup-key-input')).toBeTruthy();
     expect(listModels).toHaveBeenCalledTimes(1);
   });
-
-  it('names the two candidates on their own entries when the shape fits two', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    fireEvent.click(screen.getByTestId('setup-prov-row'));
-    expect(screen.getByText(translations.en['agent3.setup_fits_this_key']!)).toBeTruthy();
-    expect(screen.getByText(translations.en['agent3.setup_gateway_fits']!)).toBeTruthy();
-  });
+  it.each([0, 1] as const)('sends an ambiguous key only to the selected Qwen region %s', async region => {
+ const listModels = vi.fn(() => Promise.reject(new Error('offline')));
+ renderWithI18n(<SetupScreen listModels={listModels} onManage={() => {}} />);
+ fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+ await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+ expect(listModels).not.toHaveBeenCalled();
+ await act(async () => { fireEvent.click(screen.getAllByText(PROVIDER_META.qwen.name)[region]!); });
+ expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'qwen', apiKey: KEY.ambiguous, ...(region === 1 ? { region: 1 } : {}) });
+ expect(runnerSettings(useAgentPanelSettings.getState()).region ?? 0).toBe(region);
+});
 
   it('opens the endpoint field below the row from the row\'s own Custom entry', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     expect(phaseOf()).toBe('custom');
@@ -477,7 +442,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
   });
 
   it('refuses an address it cannot use, and says so in the note it already has', () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     // Sanitization is the store's; the shape gate only reads the prefix, so an address that LOOKS
@@ -493,19 +458,12 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
 
 /* ── the two dead ends ─────────────────────────────────────── */
 
-/**
- * AN EXPLICIT "LET ME CHOOSE" OUTRANKS THE READING IT WAS OPENED OVER.
- *
- * The key's shape arms an idle advance and a bare `sk-` shape sends a real request, and neither of
- * those knows the user has since asked for the list. Pressing the row over a detected key and then
- * stepping back walked them straight into the model list of the platform they were walking away from:
- * the standing gate fired 900ms later, and the probe's own answer committed whenever it landed.
- */
+
 describe('the chooser outranks the check it was opened over', () => {
   it('holds the advance while the list is open, and after Back', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     // The list, by hand, while the shape's own advance is armed.
@@ -521,33 +479,20 @@ describe('the chooser outranks the check it was opened over', () => {
     expect(listModels).not.toHaveBeenCalled();
     expect(useAgentPanelSettings.getState().keyed).toEqual([]);
   });
-
-  /** A PROBE CANNOT BE RECALLED, so its answer is DROPPED rather than acted on: it lands after the
-   *  user has left the reading it was asked about. */
-  it('discards a probe that comes back after the user has stepped off it', async () => {
-    let answer: (id: ProviderId | null) => void = () => {};
-    const probe = () => new Promise<ProviderId | null>((resolve) => { answer = resolve; });
-    const listModels = vi.fn(() => Promise.resolve(['deepseek-chat']));
-    renderWithI18n(
-      <SetupScreen probe={probe} candidates={['deepseek']} listModels={listModels} />,
-    );
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(screen.getByTestId('setup-row-spin')).toBeTruthy();
-
-    // Back, and only then does the platform answer.
-    fireEvent.click(screen.getByTestId('setup-act-reenter'));
-    await act(async () => { answer('deepseek'); });
-    expect(phaseOf()).toBe('key');
-    expect(listModels).not.toHaveBeenCalled();
-    expect(useAgentPanelSettings.getState().keyed).toEqual([]);
-  });
+  it('leaving an unanswered provider choice does not send or retain the key', async () => {
+ const listModels = vi.fn((_cfg: { provider: ProviderId; apiKey: string; region?: 0 | 1 }) => Promise.resolve(['m']));
+ renderWithI18n(<SetupScreen listModels={listModels} />);
+ fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+ await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+ fireEvent.click(screen.getByTestId('setup-act-reenter'));
+ expect(listModels).not.toHaveBeenCalled(); expect(useAgentPanelSettings.getState().keyed).toEqual([]);
+});
 
   /** AND A KEYSTROKE RE-ARMS IT. The hold is on the key that was stepped off, not on the screen. */
   it('advances again on the next keystroke', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { vi.advanceTimersByTime(IDLE * 2); });
@@ -559,13 +504,7 @@ describe('the chooser outranks the check it was opened over', () => {
   });
 });
 
-/**
- * THE MODEL REQUEST CANNOT BE RECALLED EITHER, and its answer carries more than the probe's: the
- * list files a default model and its refusal un-files the key and takes the screen back. Landing
- * either after the user has stepped off the reading acts on a connection the answer was never
- * about — the walk here is commit, Back, a pick of a different platform with the same key in hand,
- * and only then does the first platform answer.
- */
+
 describe('a model answer is dropped once the user steps off its reading', () => {
   /** One resolvable/rejectable list request per provider, so the abandoned one can answer last. */
   function heldLists() {
@@ -577,7 +516,7 @@ describe('a model answer is dropped once the user steps off its reading', () => 
 
   /** Walks commit(claude) → Back → pick(openai), leaving claude's list request abandoned in flight. */
   async function stepOffClaudeOntoOpenai(listModels: ListModels) {
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
     expect(phaseOf()).toBe('checking');
@@ -612,57 +551,27 @@ describe('a model answer is dropped once the user steps off its reading', () => 
 });
 
 describe('a check that failed says so on the row it failed at', () => {
-  it('crosses the row and asks, when nobody accepts the key', async () => {
-    renderWithI18n(
-      <SetupScreen probe={() => Promise.resolve<ProviderId | null>(null)} candidates={['deepseek']} />,
-    );
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+  it('asks for an ambiguous provider without reporting an authentication failure', async () => {
+ renderWithI18n(<SetupScreen />);
+ fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+ await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+ expect(screen.queryByTestId('setup-row-cross')).toBeNull();
+ expect(noteText()).toBe(translations.en['agent3.setup_note_unknown_pick']);
+ expect(useAgentPanelSettings.getState().keyed).toEqual([]);
+});
 
-    expect(screen.getByTestId('setup-row-cross')).toBeTruthy();
-    expect(screen.getByTestId('setup-prov-sub').textContent)
-      .toBe(translations.en['agent3.setup_row_no_answer']);
 
-    /* THE ROW'S TWO HALVES BOTH GIVE WAY. Held at its natural width, the provider NAME left the sub
-       as the only shrinkable thing on the line, and on the custom-endpoint face in French the sub
-       was cut from 112px to 54 — more than half the label gone. Same ruling the dock's own crowded
-       meta line already follows. */
-    const name = screen.getByTestId('setup-prov-face').querySelector('span:not([data-testid])') as HTMLElement;
-    expect(name.style.minWidth).toBe('0');
-    expect(name.style.textOverflow).toBe('ellipsis');
-    expect(screen.getByTestId('setup-prov-sub').style.textOverflow).toBe('ellipsis');
-    expect(noteText()).toBe(translations.en['agent3.setup_note_probe_failed']);
-    expect(useAgentPanelSettings.getState().keyed).toEqual([]);
-
-    // And the two ways on are the foot's own, both inside setup.
-    expect(screen.getByTestId('setup-act-recheck')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('setup-act-manual'));
-    expect(screen.getByTestId('setup-prov-row').getAttribute('aria-expanded')).toBe('true');
-  });
-
-  /**
-   * A PIN OUTRANKS A READING, on the row and on the card above it alike.
-   *
-   * The route: a bare `sk-` key, an honest failure, then "Pick the provider myself" and the
-   * Custom endpoint. A probe verdict that outlived the pick would leave the endpoint step wearing
-   * the crossed row and the desk saying "No provider answered" about a question the user had just
-   * answered themselves — with the cross riding the Custom row itself, marking the step they chose
-   * as failed before it had been tried.
-   */
-  it('retires the failed probe when the user picks a provider, on the endpoint step and after it', async () => {
+  it('keeps the custom endpoint choice free of an authentication error', async () => {
     const seen: (string | null)[] = [];
     renderWithI18n(
       <SetupScreen
-        probe={() => Promise.resolve<ProviderId | null>(null)}
-        candidates={['deepseek']}
         onFace={(face) => { seen.push(face?.step ?? null); }}
       />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(seen[seen.length - 1]).toBe('no-answer');
+    expect(seen[seen.length - 1]).toBe('unknown');
 
-    fireEvent.click(screen.getByTestId('setup-act-manual'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
 
     expect(phaseOf()).toBe('custom');
@@ -677,19 +586,19 @@ describe('a check that failed says so on the row it failed at', () => {
     expect(screen.queryByTestId('setup-row-cross')).toBeNull();
     expect(screen.getByTestId('setup-prov-face').getAttribute('data-provider')).toBe('custom');
     // The key is still in the field, so the pinned row is on its way to committing it — the face a
-    // pick that was never probed wears, which is the point.
     expect(screen.getByTestId('setup-prov-sub').textContent).toBe(translations.en['agent3.setup_row_pinned_checking']);
     expect(seen[seen.length - 1]).not.toBe('no-answer');
   });
-
-  it('a probe that throws is the same answer as one that refuses', async () => {
-    renderWithI18n(
-      <SetupScreen probe={() => Promise.reject(new Error('offline'))} candidates={['deepseek']} />,
-    );
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(noteText()).toBe(translations.en['agent3.setup_note_probe_failed']);
-  });
+  it('requires a region choice even for the distinctive Zhipu key format', async () => {
+ const listModels = vi.fn((_cfg: { provider: ProviderId; apiKey: string; region?: 0 | 1 }) => Promise.resolve(['m']));
+ renderWithI18n(<SetupScreen listModels={listModels} />);
+ fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: '0123456789abcdef0123456789abcdef.AbCdEfGh12345678' } });
+ await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+ expect(listModels).not.toHaveBeenCalled();
+ await act(async () => { fireEvent.click(screen.getAllByText(PROVIDER_META.zhipu.name)[1]!); });
+ expect(listModels.mock.calls[0]![0]).toMatchObject({ provider: 'zhipu', region: 1 });
+ expect(listModels).toHaveBeenCalledTimes(1);
+});
 
   /**
    * A REFUSED KEY IS NOT AN UNAVAILABLE LIST. The first request a key ever makes is the model list,
@@ -698,7 +607,7 @@ describe('a check that failed says so on the row it failed at', () => {
    */
   it('sends a refused key back to the field, un-filed, in danger, with the row crossed', async () => {
     const refusal = Object.assign(new Error('Unauthorized'), { status: 401 });
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={() => Promise.reject(refusal)} />);
+    renderWithI18n(<SetupScreen listModels={() => Promise.reject(refusal)} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
 
@@ -725,7 +634,6 @@ describe('a check that failed says so on the row it failed at', () => {
     const onManage = vi.fn();
     renderWithI18n(
       <SetupScreen
-        probe={pendingProbe}
         listModels={() => Promise.reject(Object.assign(new Error('teapot'), { status: 418 }))}
         onManage={onManage}
       />,
@@ -743,7 +651,7 @@ describe('a check that failed says so on the row it failed at', () => {
 
 describe('model selection on the management page', () => {
   async function toManage(listModels: () => Promise<string[]>) {
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} />);
+    renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
   }
@@ -774,7 +682,7 @@ describe('model selection on the management page', () => {
   it('reads an empty list as no list at all, and routes to the card that takes a typed id', async () => {
     const onManage = vi.fn();
     renderWithI18n(
-      <SetupScreen probe={pendingProbe} listModels={() => Promise.resolve([])} onManage={onManage} />,
+      <SetupScreen listModels={() => Promise.resolve([])} onManage={onManage} />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
@@ -785,7 +693,7 @@ describe('model selection on the management page', () => {
   it('leaves on Done, with the key filed and the provider armed', async () => {
     const onDone = vi.fn();
     renderWithI18n(
-      <SetupScreen probe={pendingProbe} listModels={() => Promise.resolve(['claude-sonnet-4-5'])} onDone={onDone} />,
+      <SetupScreen listModels={() => Promise.resolve(['claude-sonnet-4-5'])} onDone={onDone} />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
@@ -815,7 +723,7 @@ describe('the step the screen reports upward', () => {
    *  asking; the sleep belongs to a desk with no screen under it. */
   it('says it is awake at the mouth, where the screen is standing and asking', () => {
     const f = faces();
-    renderWithI18n(<SetupScreen probe={pendingProbe} onFace={f.onFace} />);
+    renderWithI18n(<SetupScreen onFace={f.onFace} />);
     expect(f.last()).toBe('awake');
   });
 
@@ -823,7 +731,7 @@ describe('the step the screen reports upward', () => {
     const f = faces();
     let settle: (ids: string[]) => void = () => {};
     const listModels = () => new Promise<string[]>((resolve) => { settle = resolve; });
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onFace={f.onFace} />);
+    renderWithI18n(<SetupScreen listModels={listModels} onFace={f.onFace} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: 'sk-' } });
     expect(f.last()).toBe('typing');
@@ -846,19 +754,18 @@ describe('the step the screen reports upward', () => {
     const f = faces();
     vi.useFakeTimers();
     const view = renderWithI18n(
-      <SetupScreen probe={pendingProbe} candidates={['deepseek']} onFace={f.onFace} />,
+      <SetupScreen onFace={f.onFace} />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
     // "Asking both" is the request being out. During the idle gate the key is still being READ,
-    // which is what the card says until the probe actually leaves.
     expect(f.last()).toBe('typing');
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(f.last()).toBe('ambiguous');
+    expect(f.last()).toBe('unknown');
     vi.useRealTimers();
     view.unmount();
 
     const unknown = faces();
-    const asked = renderWithI18n(<SetupScreen probe={pendingProbe} onFace={unknown.onFace} />);
+    const asked = renderWithI18n(<SetupScreen onFace={unknown.onFace} />);
     vi.useFakeTimers();
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
@@ -869,21 +776,19 @@ describe('the step the screen reports upward', () => {
     const failed = faces();
     renderWithI18n(
       <SetupScreen
-        probe={() => Promise.resolve<ProviderId | null>(null)}
-        candidates={['deepseek']}
         onFace={failed.onFace}
       />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-    expect(failed.last()).toBe('no-answer');
+    expect(failed.last()).toBe('unknown');
   });
 
   it('says a refusal, so the card above the field stops looking calm', async () => {
     const f = faces();
     const refusal = Object.assign(new Error('Unauthorized'), { status: 401 });
     renderWithI18n(
-      <SetupScreen probe={pendingProbe} listModels={() => Promise.reject(refusal)} onFace={f.onFace} />,
+      <SetupScreen listModels={() => Promise.reject(refusal)} onFace={f.onFace} />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
@@ -892,7 +797,7 @@ describe('the step the screen reports upward', () => {
 
   it('says the endpoint step with the host it is pointed at', () => {
     const f = faces();
-    renderWithI18n(<SetupScreen probe={pendingProbe} onFace={f.onFace} />);
+    renderWithI18n(<SetupScreen onFace={f.onFace} />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'http://localhost:11434/v1' } });
@@ -906,7 +811,6 @@ describe('the step the screen reports upward', () => {
     const onManage = vi.fn();
     renderWithI18n(
       <SetupScreen
-        probe={pendingProbe}
         listModels={() => Promise.reject(Object.assign(new Error('teapot'), { status: 418 }))}
         onFace={noList.onFace}
         onManage={onManage}
@@ -930,7 +834,7 @@ describe('one leave verb per screen', () => {
       ['reading', () => {
         fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
       }],
-      ['probe-failed', async () => {
+      ['provider-choice', async () => {
         fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
         await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
       }],
@@ -943,8 +847,6 @@ describe('one leave verb per screen', () => {
     for (const [name, drive] of steps) {
       const view = renderWithI18n(
         <SetupScreen
-          probe={() => Promise.resolve<ProviderId | null>(null)}
-          candidates={['deepseek']}
           onLeave={() => {}}
         />,
       );
@@ -960,12 +862,12 @@ describe('one leave verb per screen', () => {
 
   it('presses the caller\'s own way back, and draws nothing without one', () => {
     const left = vi.fn();
-    const withLeave = renderWithI18n(<SetupScreen probe={pendingProbe} onLeave={left} />);
+    const withLeave = renderWithI18n(<SetupScreen onLeave={left} />);
     fireEvent.click(screen.getByTestId('setup-leave'));
     expect(left).toHaveBeenCalledTimes(1);
     withLeave.unmount();
 
-    renderWithI18n(<SetupScreen probe={pendingProbe} />);
+    renderWithI18n(<SetupScreen />);
     expect(screen.queryByTestId('setup-leave')).toBeNull();
   });
 
@@ -975,7 +877,7 @@ describe('one leave verb per screen', () => {
   it('says Back wherever it stands, never a decline', async () => {
     const steps: [string, () => Promise<void> | void][] = [
       ['mouth', () => {}],
-      ['probe-failed', async () => {
+      ['provider-choice', async () => {
         fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
         await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
       }],
@@ -983,13 +885,11 @@ describe('one leave verb per screen', () => {
     for (const [name, drive] of steps) {
       const view = renderWithI18n(
         <SetupScreen
-          probe={() => Promise.resolve<ProviderId | null>(null)}
-          candidates={['deepseek']}
           onLeave={() => {}}
         />,
       );
       await drive();
-      expect(screen.getByTestId('setup-leave').textContent, name)
+      expect((screen.queryByTestId('setup-leave') ?? screen.getByTestId('setup-act-reenter')).textContent, name)
         .toBe(translations.en['agent3.setup_back']);
       view.unmount();
     }
@@ -1012,7 +912,7 @@ describe('one leave verb per screen', () => {
       fontWeight: el.style.fontWeight,
     });
 
-    const mouth = renderWithI18n(<SetupScreen probe={pendingProbe} onLeave={() => {}} />);
+    const mouth = renderWithI18n(<SetupScreen onLeave={() => {}} />);
     const atMouth = screen.getByTestId('setup-leave');
     expect(atMouth.tagName).toBe('BUTTON');
     // Never the underlined text idiom, which belongs where the room genuinely is not there.
@@ -1023,7 +923,7 @@ describe('one leave verb per screen', () => {
 
     // The waiting step's own Back, which is the foot's ghost verb: the two must be one control.
     vi.useFakeTimers();
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={() => Promise.resolve(['m'])} onLeave={() => {}} />);
+    renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['m'])} onLeave={() => {}} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     await act(async () => { vi.advanceTimersByTime(200); });
     expect(ghost(screen.getByTestId('setup-act-reenter'))).toEqual(shape);
@@ -1033,7 +933,7 @@ describe('one leave verb per screen', () => {
   /** OVERSIGHT IS NOT ASKED AT SETUP. A visitor pasting their first key has no way to judge the
    *  answer, so it defaults quietly and lives on the manage card. */
   it('never asks for oversight, on any step', async () => {
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={() => Promise.resolve(['claude-sonnet-4-5'])} />);
+    renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['claude-sonnet-4-5'])} />);
     const segments = () => [
       translations.en['agent3.oversight_strict']!,
       translations.en['agent3.oversight_checkpoint']!,
@@ -1062,7 +962,7 @@ describe('custom providers use the same management page', () => {
   it('opens management without choosing the endpoint\'s first model', async () => {
     const done = vi.fn();
     const asked = vi.fn(() => Promise.resolve(['qwen2.5-coder:14b', 'llama3.2']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={asked} onDone={done} />);
+    renderWithI18n(<SetupScreen listModels={asked} onDone={done} />);
     armEndpoint();
     expect(phaseOf()).toBe('key');
     expect(useAgentPanelSettings.getState().provider).toBe('custom');
@@ -1092,7 +992,6 @@ describe('custom providers use the same management page', () => {
     const manage = vi.fn();
     renderWithI18n(
       <SetupScreen
-        probe={pendingProbe}
         listModels={() => Promise.reject(Object.assign(new Error('teapot'), { status: 418 }))}
         onDone={done}
         onManage={manage}
@@ -1120,7 +1019,7 @@ describe('custom providers use the same management page', () => {
   it('reads the key already in the field once the address is filed', async () => {
     vi.useFakeTimers();
     const asked = vi.fn(() => Promise.resolve(['qwen2.5-coder:14b']));
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={asked} />);
+    renderWithI18n(<SetupScreen listModels={asked} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
     // BY HAND, which is what puts the idle gate down for the key in the field.
@@ -1165,7 +1064,6 @@ describe('custom providers use the same management page', () => {
       const onManage = vi.fn();
       const view = renderWithI18n(
         <SetupScreen
-          probe={pendingProbe}
           listModels={listModels}
           onManage={onManage}
           onFace={(face) => { seen.push(face?.step ?? null); }}
@@ -1228,7 +1126,7 @@ describe('a step change is a movement', () => {
 
 describe('setup copy, in every locale', () => {
   const KEYS = [
-    'agent3.setup_say_key', 'agent3.setup_key_placeholder', 'agent3.setup_note_probe_failed',
+    'agent3.setup_say_key', 'agent3.setup_key_placeholder',
     'agent3.setup_custom_endpoint', 'agent3.setup_pick_provider', 'agent3.setup_say_custom',
     'agent3.setup_note_custom', 'agent3.setup_endpoint_placeholder', 'agent3.setup_endpoint_invalid',
     'agent3.setup_endpoint_check', 'agent3.setup_model_placeholder',
@@ -1237,12 +1135,12 @@ describe('setup copy, in every locale', () => {
     'agent3.setup_give_address',
     'agent3.setup_done',
     'agent3.setup_default_model_entry', 'agent3.setup_back', 'agent3.setup_use_this_key',
-    'agent3.setup_fits_this_key', 'agent3.setup_gateway_fits',
-    'agent3.setup_row_any', 'agent3.setup_row_any_sub', 'agent3.setup_row_asking',
+    'agent3.setup_gateway_fits',
+    'agent3.setup_row_any', 'agent3.setup_row_any_sub',
     'agent3.setup_row_checking', 'agent3.setup_row_no_answer', 'agent3.setup_row_pinned',
     'agent3.setup_row_pinned_checking', 'agent3.setup_row_provider', 'agent3.setup_row_refused',
     'agent3.setup_row_sofar', 'agent3.setup_row_two',
-    'agent3.setup_note_ambiguous', 'agent3.setup_note_partial', 'agent3.setup_note_pinned_checking',
+    'agent3.setup_note_partial', 'agent3.setup_note_pinned_checking',
     'agent3.setup_note_replaces', 'agent3.setup_note_shaped', 'agent3.setup_note_unknown',
     'agent3.setup_key_refused',
   ];

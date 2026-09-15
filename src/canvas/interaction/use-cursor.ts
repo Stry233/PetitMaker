@@ -14,7 +14,8 @@ import { useEffect } from 'react';
 import type { RefObject } from 'react';
 import { useEditorStore } from '../../state/store';
 import { getActiveToolManager } from '../active-view';
-import { registerCursorSurface, releaseCursorSurface, setCursorForbidden, setToolCursor } from './cursor-controller';
+import { installModifierTracking, isPanDragHeld, onPanDragChange } from '../../core/runtime/modifier-state';
+import { registerCursorSurface, releaseCursorSurface, setCursorForbidden, setCursorPanReady, setToolCursor } from './cursor-controller';
 
 export function useCursor(containerRef: RefObject<HTMLElement | null>, active: boolean): void {
   const activeTool = useEditorStore((s) => s.activeTool);
@@ -23,6 +24,15 @@ export function useCursor(containerRef: RefObject<HTMLElement | null>, active: b
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const contentType = useEditorStore((s) => s.contentType);
   const annotationTool = useEditorStore((s) => s.annotationTool);
+
+  useEffect(() => {
+    if (!active) return;
+    installModifierTracking();
+    const sync = () => setCursorPanReady(isPanDragHeld());
+    sync();
+    const unsubscribe = onPanDragChange(sync);
+    return () => { unsubscribe(); setCursorPanReady(false); };
+  }, [active]);
 
   useEffect(() => {
     const el = containerRef.current;

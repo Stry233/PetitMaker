@@ -36,13 +36,8 @@ export interface ViewProjection {
   /** Object under the pointer by its RENDERED body (3D: mesh raycast — a tree's
    *  canopy selects the tree). Null falls back to footprint hit-testing. */
   pickObject?(sx: number, sy: number): string | null;
-  /** Screen AABB of an object's rendered bounding box (3D) plus the projected
-   *  top-face corner anchors — chrome pins its handles to real box corners,
-   *  not the AABB's (empty space around a perspective diamond). */
-  objectScreenBox?(id: string): {
-    x: number; y: number; w: number; h: number; scale: number;
-    anchors: { left: { x: number; y: number }; right: { x: number; y: number } };
-  } | null;
+  /** Screen bounds of an object's body, or its surface footprint without a body. */
+  objectScreenBox?(id: string): { x: number; y: number; w: number; h: number } | null;
 }
 
 /** The drawing surface tools and the pointer machine paint feedback through.

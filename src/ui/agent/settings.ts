@@ -70,6 +70,7 @@ export interface AgentPanelSettingsState {
   setProvider(provider: ProviderId): void;
   /** Arms and pins an explicitly selected provider. */
   pinProvider(provider: ProviderId): void;
+  setProviderRegion(provider: ProviderId, region: 0 | 1): void;
   setModel(model: string): void;
   setOversight(oversight: Oversight): void;
   setEffort(effort: string): void;
@@ -150,7 +151,8 @@ function persist(state: AgentPanelSettingsState): void {
   const keys = dropForgotten({ ...stored.keys, ...keyring });
 
   const record: AgentSettings = {
-    ...stored, // Preserve fields this store does not model, including regional host metadata.
+    ...stored,
+    ...carried,
     provider: state.provider,
     model: state.model,
     keys,
@@ -234,6 +236,14 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
       setProvider: (provider) => commit({ provider }),
 
       pinProvider: (provider) => commit({ provider, providerPinned: true }),
+
+      setProviderRegion: (provider, region) => {
+        const url = QUIRKS[provider].baseUrls?.[region];
+        if (!url) return;
+        carried = { regionBaseUrl: { ...carried.regionBaseUrl, [provider]: url } };
+        forgetRosters();
+        commit({});
+      },
 
       setModel: (model) => commit({
         model: { ...get().model, [get().provider]: model },

@@ -292,6 +292,7 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
     operator: operatorDisplay(lang, cfg),
   };
   if (id === 'contact') {
+    tokens.qqFeedbackGroup = cfg.qqFeedbackGroup;
     tokens.team = teamContactList(lang, cfg.team);
   }
   if (id === 'privacy') {

@@ -36,13 +36,15 @@ export interface CursorState {
    * Positional, like `overSelected`.
    */
   pressSelects: boolean;
+  /** The held pan key makes the next left drag move the map. */
+  panReady: boolean;
   drag: DragKind;
   busy: boolean;
 }
 
 const DEFAULT_STATE: CursorState = {
   tool: 'select', forbidden: false, overSelected: false, ctrlHint: null,
-  pressSelects: false, drag: 'none', busy: false,
+  pressSelects: false, panReady: false, drag: 'none', busy: false,
 };
 
 /**
@@ -76,6 +78,7 @@ export function resolveCursor(
   if (state.drag === 'object') return { id: 'hand-closed', forbidden: false };
   // Something long is running behind the app, and no tool can act until it lands.
   if (state.busy) return { id: 'busy', forbidden: false };
+  if (state.panReady) return { id: 'move', forbidden: false };
   // A live Ctrl hint outranks the tool's own cursor. None of the three ids it can carry is
   // FORBIDDABLE, so there is nothing to badge here.
   if (state.ctrlHint) return { id: state.ctrlHint, forbidden: false };
@@ -112,7 +115,7 @@ function retarget(): void {
  *  (a drag, busy) still outranking it exactly as it outranks a tool. */
 function effectiveState(): CursorState {
   const top = overlays[overlays.length - 1];
-  return top?.cursor ? { ...state, tool: top.cursor } : state;
+  return top ? { ...state, tool: top.cursor ?? state.tool, panReady: false } : state;
 }
 
 /**
@@ -221,6 +224,12 @@ export function setCursorPressSelects(pressSelects: boolean): void {
 export function setCursorDrag(drag: DragKind): void {
   if (state.drag === drag) return;
   state = { ...state, drag };
+  apply();
+}
+
+export function setCursorPanReady(panReady: boolean): void {
+  if (state.panReady === panReady) return;
+  state = { ...state, panReady };
   apply();
 }
 

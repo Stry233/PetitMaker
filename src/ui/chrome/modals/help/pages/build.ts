@@ -103,6 +103,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     figure: { kind: 'demo', scene: 'objects' },
     sections: [
       { kind: 'prose', anchor: 'objects-tabs', titleKey: 'help.objects.tabs_t', bodyKeys: ['help.objects.tabs_b1'], figure: { kind: 'surface', surface: 'object-shelf', captionKey: 'help.objects.shelf_figcap' } },
+      { kind: 'prose', anchor: 'objects-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       {
         kind: 'prose', anchor: 'objects-place', titleKey: 'help.objects.place_t', bodyKeys: ['help.objects.place_b1', 'help.objects.place_b2'],
         figure: { kind: 'demo', scene: 'spacing' },
@@ -160,6 +161,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     figure: { kind: 'demo', scene: 'select' },
     sections: [
       { kind: 'prose', anchor: 'select-click', titleKey: 'help.select.click_t', bodyKeys: ['help.select.click_b1'] },
+      { kind: 'prose', anchor: 'select-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       { kind: 'prose', anchor: 'select-multi', titleKey: 'help.select.multi_t', bodyKeys: ['help.select.multi_b1'] },
       { kind: 'prose', anchor: 'select-group', titleKey: 'help.select.group_t', bodyKeys: ['help.select.group_b1'] },
       {

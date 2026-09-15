@@ -4,6 +4,20 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.15] - 2026-09-15
+
+### Added
+
+- Open GitHub Issues from About or click the Chinese-language PetitMaker QQ feedback group card to copy its number. The Contact page also lists the group.
+
+- Pick an object, road, mountain, or water sample directly from the map with the selection eyedropper. Its placement tool and matching bottom panel open so you can keep building without searching the catalog. A compact toolbar keeps selection actions readable at every map zoom in 2D and 3D. Objects limited to one per map are excluded.
+
+### Fixed
+
+- Assistant setup lets you choose the provider and region for keys whose format is shared by several services. Connection checks use your selected endpoint.
+
+- Space-drag panning remains available after selecting an editing mode or using view and undo/redo controls, without repeating the last button action. Holding the pan key immediately shows the move cursor, and releasing it restores the tool cursor. Keyboard focus outlines clear when returning to pointer input.
+
 ## [1.0.51] - 2026-09-13
 
 ### Added

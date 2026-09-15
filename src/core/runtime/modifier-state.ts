@@ -36,6 +36,7 @@ let panDragKey = 'space';
 const heldTokens = new Set<string>();
 /** Notified when the multi-select key goes down or up — see `onMultiSelectChange`. */
 const multiSelectListeners = new Set<() => void>();
+const panDragListeners = new Set<() => void>();
 
 /**
  * Subscribe to the multi-select key changing. Returns an unsubscribe.
@@ -49,17 +50,24 @@ export function onMultiSelectChange(fn: () => void): () => void {
   return () => { multiSelectListeners.delete(fn); };
 }
 
+/** Notify cursor consumers when the held pan key changes, including rebinding and window blur. */
+export function onPanDragChange(fn: () => void): () => void {
+  panDragListeners.add(fn);
+  return () => { panDragListeners.delete(fn); };
+}
+
 /** Install the window keydown/keyup listeners once (idempotent, browser-only). */
 export function installModifierTracking(): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
-  // Compared around every mutation: `sync` fires on EVERY key, and only a change in this one
-  // fact is worth waking the pointer machine for.
-  const announceIfChanged = (was: boolean) => {
+  // Key repeats leave the held state unchanged and need no cursor update.
+  const announceIfChanged = (was: boolean, wasPan: boolean) => {
     if (isMultiSelectHeld() !== was) for (const fn of multiSelectListeners) fn();
+    if (isPanDragHeld() !== wasPan) for (const fn of panDragListeners) fn();
   };
   const sync = (e: KeyboardEvent) => {
     const was = isMultiSelectHeld();
+    const wasPan = isPanDragHeld();
     shiftHeld = e.shiftKey;
     // Cmd counts as Ctrl, matching what ShortcutManager already does for every `ctrl+*` binding:
     // on macOS Ctrl+click IS the secondary click, opening context menus rather than multi-selecting.
@@ -69,7 +77,7 @@ export function installModifierTracking(): void {
     const tok = eventKeyToken(e);
     if (e.type === 'keydown') heldTokens.add(tok);
     else heldTokens.delete(tok);
-    announceIfChanged(was);
+    announceIfChanged(was, wasPan);
   };
   window.addEventListener('keydown', sync, { passive: true });
   window.addEventListener('keyup', sync, { passive: true });
@@ -77,8 +85,9 @@ export function installModifierTracking(): void {
   // would silently turn every later click into a toggle / drag into a rubber band.
   window.addEventListener('blur', () => {
     const was = isMultiSelectHeld();
+    const wasPan = isPanDragHeld();
     shiftHeld = false; ctrlHeld = false; altHeld = false; spaceHeld = false; heldTokens.clear();
-    announceIfChanged(was);
+    announceIfChanged(was, wasPan);
   }, { passive: true });
 }
 
@@ -111,7 +120,9 @@ export function isConstrainHeld(): boolean {
 /** Set which key turns a left drag into a camera pan (from the keybind store; 'space' = default,
  *  '' = disabled). */
 export function setPanDragKey(token: string): void {
+  const was = isPanDragHeld();
   panDragKey = token;
+  if (isPanDragHeld() !== was) for (const fn of panDragListeners) fn();
 }
 
 /** Whether the (possibly rebound) pan-drag key is held. The pointer machine turns a left drag into

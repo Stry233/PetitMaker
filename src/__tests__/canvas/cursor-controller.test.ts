@@ -2,18 +2,39 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   __resetCursorController, pushCursorSurface, registerCursorSurface, releaseCursorSurface,
   resolveCursor, setCursorBusy, setCursorForbidden, setCursorOverSelected, setCursorCtrlHint,
-  setCursorDrag, setCursorPressSelects, setToolCursor, type CursorState,
+  setCursorDrag, setCursorPanReady, setCursorPressSelects, setToolCursor, type CursorState,
 } from '../../canvas/interaction/cursor-controller';
 import { cursorCss } from '../../assets/cursors/cursor-css';
 
 const state = (over: Partial<CursorState> = {}): CursorState => ({
   tool: 'mountain', forbidden: false, overSelected: false, ctrlHint: null,
-  pressSelects: false, drag: 'none', busy: false, ...over,
+  pressSelects: false, panReady: false, drag: 'none', busy: false, ...over,
 });
 
 beforeEach(() => __resetCursorController());
 
 describe('resolveCursor precedence', () => {
+  it('shows the held pan hint above tool refusal and selection hints in both cursor sets', () => {
+    for (const system of [false, true]) {
+      expect(resolveCursor(state({ panReady: true, forbidden: true, ctrlHint: 'select-add', overSelected: true }), { system }))
+        .toEqual({ id: 'move', forbidden: false });
+    }
+    expect(resolveCursor(state({ panReady: true, drag: 'object' })).id).toBe('hand-closed');
+    expect(resolveCursor(state({ panReady: true, drag: 'orbit' })).id).toBe('orbit');
+    expect(resolveCursor(state({ panReady: true, busy: true })).id).toBe('busy');
+  });
+
+  it('keeps an overlay cursor while the underlying map pan key is held', () => {
+    const surface = document.createElement('div');
+    const overlay = document.createElement('div');
+    registerCursorSurface(surface);
+    setCursorPanReady(true);
+    const release = pushCursorSurface(overlay, 'select');
+    expect(overlay.style.cursor).toBe(cursorCss('select'));
+    release();
+    expect(surface.style.cursor).toBe(cursorCss('move'));
+  });
+
   it('shows the tool when nothing else is happening', () => {
     expect(resolveCursor(state())).toEqual({ id: 'mountain', forbidden: false });
   });

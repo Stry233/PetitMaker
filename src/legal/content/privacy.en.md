@@ -81,7 +81,7 @@ Storage for the mainland China and international sites is separate. Clearing one
 
 ### 6.1 Connection and Key Validation
 
-Entering a key, validating a connection or managing models can send authentication and model-list requests to providers. To identify the provider automatically, the application may try to validate the key with candidate providers that use a matching key format. You explicitly configure a custom endpoint. Connection requests use the key but do not contain your map or creative instructions.
+Entering a key, validating a connection or managing models can send authentication and model-list requests to providers. Key-format recognition runs on your device. If the format does not identify one provider, you choose the provider before the key is sent. Providers with separate regional endpoints require a region choice; connection checks use only that selected endpoint. You explicitly configure a custom endpoint. Connection requests use the key but do not contain your map or creative instructions.
 
 Providers may log authentication and connection requests. Before connecting, review the endpoint, account eligibility and service terms. For custom services, check who operates the endpoint and what it receives.
 

@@ -103,8 +103,6 @@ const settle = async () => {
   }
 };
 
-/** A probe that never settles: the state a screen holds while it is waiting. */
-const pendingProbe = () => new Promise<ProviderId | null>(() => {});
 
 /** The panel at rest, for the two assertions that are about the PANEL's own choice of surface. */
 const IDLE_VIEW: PanelView = {
@@ -143,7 +141,7 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     const onDone = vi.fn();
     const listModels = vi.fn(() => Promise.resolve<string[]>([]));
     store().pinProvider('custom');
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onDone={onDone} onLeave={() => {}} />);
+    renderWithI18n(<SetupScreen listModels={listModels} onDone={onDone} onLeave={() => {}} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.gateway } });
     await act(async () => { vi.advanceTimersByTime(IDLE * 4); });
@@ -167,7 +165,7 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     const onDone = vi.fn();
     const listModels = vi.fn(() => Promise.resolve(['qwen3:32b']));
     store().pinProvider('custom');
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={listModels} onDone={onDone} />);
+    renderWithI18n(<SetupScreen listModels={listModels} onDone={onDone} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.gateway } });
     fireEvent.click(screen.getByTestId('setup-act-address'));
@@ -196,7 +194,6 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     store().pinProvider('custom');
     renderWithI18n(
       <SetupScreen
-        probe={pendingProbe}
         listModels={() => Promise.resolve<string[]>([])}
         onDone={onDone}
         onManage={onManage}
@@ -224,7 +221,6 @@ interface Row {
   name: string;
   /** The store before the screen mounts: a previous session, a pick made elsewhere. */
   before?: () => void;
-  probe?: () => Promise<ProviderId | null>;
   list?: () => Promise<string[]>;
   /** The events, in order. */
   drive: () => Promise<void> | void;
@@ -303,17 +299,15 @@ const ROWS: Row[] = [
     exit: 'stayed',
   },
   {
-    name: 'an ambiguous key nobody answers for',
-    probe: () => Promise.resolve(null),
+    name: 'an ambiguous key awaiting provider selection',
     drive: async () => { type(KEY.gateway); await enter(); },
-    face: { phase: 'key', step: 'no-answer', control: 'setup-act-recheck' },
+    face: { phase: 'key', step: 'unknown', control: 'setup-act-reenter' },
     exit: 'stayed',
   },
   {
-    name: 'an ambiguous key a probe places',
-    probe: () => Promise.resolve<ProviderId>('deepseek'),
+    name: 'an ambiguous key explicitly assigned to DeepSeek',
     list: LISTS.named,
-    drive: async () => { type(KEY.gateway); await enter(); },
+    drive: async () => { type(KEY.gateway); await enter(); await act(async () => { fireEvent.click(screen.getByText(PROVIDER_META.deepseek.name)); }); },
     face: { phase: 'manage', step: null, control: 'manage-done' },
     exit: 'manage',
   },
@@ -516,9 +510,7 @@ describe('every case the machine can be in', () => {
       const seen: (string | null)[] = [];
       renderWithI18n(
         <SetupScreen
-          probe={row.probe ?? pendingProbe}
           listModels={row.list ?? LISTS.named}
-          candidates={['deepseek']}
           onDone={onDone}
           onLeave={() => {}}
           onManage={onManage}
@@ -559,7 +551,7 @@ describe('the exits', () => {
   it('keeps management open until the user chooses a model', async () => {
     const onDone = vi.fn();
     const onLeave = vi.fn();
-    renderWithI18n(<SetupScreen probe={pendingProbe} listModels={LISTS.named} onDone={onDone} onLeave={onLeave} />);
+    renderWithI18n(<SetupScreen listModels={LISTS.named} onDone={onDone} onLeave={onLeave} />);
     expect(has('setup-leave')).toBe(true);
     type(KEY.claude);
     await enter();
@@ -579,7 +571,7 @@ describe('the exits', () => {
   it('keeps the key editable while checking and opens management when the list arrives', async () => {
     let settle: (ids: string[]) => void = () => {};
     const onDone = vi.fn();
-    renderWithI18n(<SetupScreen probe={pendingProbe}
+    renderWithI18n(<SetupScreen
       listModels={() => new Promise<string[]>((resolve) => { settle = resolve; })} onDone={onDone} />);
     type(KEY.claude);
     await enter();
@@ -754,12 +746,6 @@ function lies(): string[] {
  * (c) NO FACE LIES — every claim on screen matches what the store actually holds.
  */
 describe('a sweep over event sequences', () => {
-  const PROBES: (() => Promise<ProviderId | null>)[] = [
-    () => Promise.resolve(null),
-    () => Promise.resolve<ProviderId>('deepseek'),
-    () => Promise.resolve<ProviderId>('custom'),
-    () => Promise.reject(new Error('offline')),
-  ];
   const STARTS: (() => void)[] = [
     () => {},
     () => { store().pinProvider('custom'); },
@@ -779,7 +765,7 @@ describe('a sweep over event sequences', () => {
     for (let run = 0; run < RUNS; run += 1) {
       const next = rng(run * 7919 + 13);
       const start = STARTS[run % STARTS.length]!;
-      const probe = PROBES[Math.floor(next() * PROBES.length)]!;
+      next();
       const listNames = Object.keys(LISTS) as (keyof typeof LISTS)[];
       const listName = listNames[Math.floor(next() * listNames.length)]!;
 
@@ -794,12 +780,10 @@ describe('a sweep over event sequences', () => {
 
       vi.useFakeTimers();
       const onDone = vi.fn();
-      const trail: string[] = [`start ${run % STARTS.length}, probe/list ${listName}`];
+      const trail: string[] = [`start ${run % STARTS.length}, list ${listName}`];
       const view = renderWithI18n(
         <SetupScreen
-          probe={probe}
           listModels={LISTS[listName]}
-          candidates={['deepseek']}
           onDone={onDone}
           onLeave={() => {}}
         />,

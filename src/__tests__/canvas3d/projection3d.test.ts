@@ -31,6 +31,30 @@ function makeHost(state: GridState): { host: CameraHost; pans: Array<[number, nu
 }
 
 describe('Projection3D', () => {
+  it('projects a road footprint when it has no instanced body', () => {
+    const state = makeState(20, 20);
+    state.objects.set('road', { id: 'road', catalogId: 'path-overgrown-dirt', position: { x: 10, y: 10 }, rotation: 0, elevation: 0 });
+    const { host } = makeHost(state);
+    const projection = new Projection3D(host);
+    const box = projection.objectScreenBox('road')!;
+    expect(box.w).toBeGreaterThan(0);
+    expect(box.h).toBeGreaterThan(0);
+    expect(projection.objectScreenBox('missing')).toBeNull();
+  });
+
+  it.each([[1, 1], [-1, 1], [-1, -1], [1, -1]])('includes the visible base corner from quadrant %s, %s', (sx, sz) => {
+    const { host } = makeHost(makeState(20, 20));
+    host.camera.position.set(sx * 20, 22, sz * 20);
+    host.camera.lookAt(0, 0, 0);
+    host.camera.updateMatrixWorld(true);
+    host.objectBoundingBox = () => new THREE.Box3(new THREE.Vector3(-2, 0, -1), new THREE.Vector3(2, 4, 1));
+    const box = new Projection3D(host).objectScreenBox('sample')!;
+    const corner = new THREE.Vector3(sx * 2, 0, sz).project(host.camera);
+    expect(box.y + box.h).toBeCloseTo((1 - corner.y) * 300);
+    expect((corner.x + 1) * 400).toBeGreaterThan(box.x);
+    expect((corner.x + 1) * 400).toBeLessThan(box.x + box.w);
+  });
+
   it('cellToScreen and screenToMacro invert each other on flat ground', () => {
     const state = makeState(20, 20) as GridState;
     const { host } = makeHost(state);

@@ -79,7 +79,7 @@ export function AgentSetupDetectPreview() {
   const shape = readKeyShape(SAMPLE_KEY);
   // The row at the moment a shaped key has just settled: not pinned, not checking, not refused —
   // the same face `SetupScreen` shows once its idle gate opens on a key a provider claims.
-  const row = rowFace({ t, shape, pinned: null, checking: false, probeFailed: false, refused: false, probing: false });
+  const row = rowFace({ t, shape, pinned: null, checking: false, refused: false });
   return (
     <PreviewFrame height={140} fit>
       <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 8 }}>

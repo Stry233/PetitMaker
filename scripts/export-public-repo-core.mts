@@ -343,7 +343,7 @@ export function publicGitignore(): string {
   ].join('\n');
 }
 export interface AuditStatus {
-  /** Whether the provenance ledger marks its audit open. */
+  /** True unless the ledger has one CLOSED status and no unresolved permission rows. */
   open: boolean;
   /** Count of table rows whose permission-basis column is still "none-yet". */
   noneYetCount: number;
@@ -351,7 +351,7 @@ export interface AuditStatus {
 
 /** Parse the ledger status and count table rows with an unresolved permission basis. */
 export function parseAssetProvenanceStatus(markdown: string): AuditStatus {
-  const open = /^\*\*STATUS:\s*audit\s+OPEN\b/im.test(markdown);
+  const statuses = [...markdown.matchAll(/^\*\*STATUS:\s*audit\s+(\w+)\b/gim)];
   const noneYetCount = markdown.split(/\r?\n/).filter((line) => {
     if (!/^\s*\|.*\|\s*$/.test(line)) return false;
     return line.split('|').some((cell) => {
@@ -359,17 +359,18 @@ export function parseAssetProvenanceStatus(markdown: string): AuditStatus {
       return /^(?:permission basis:\s*)?none-yet\b/i.test(plain);
     });
   }).length;
+  const open = statuses.length !== 1 || statuses[0]![1]!.toUpperCase() !== 'CLOSED' || noneYetCount > 0;
   return { open, noneYetCount };
 }
 
-/** Reads the optional provenance ledger. Exported snapshots omit it and therefore report no gate. */
+/** Release verification needs the private ledger; ordinary public builds do not read it. */
 export function auditStatus(repoRoot: string): AuditStatus {
   const path = join(repoRoot, 'docs', 'internal', 'legal', 'asset-provenance.md');
-  if (!existsSync(path)) return { open: false, noneYetCount: 0 };
+  if (!existsSync(path)) return { open: true, noneYetCount: 0 };
   return parseAssetProvenanceStatus(readFileSync(path, 'utf8'));
 }
 
-/** Refuse publish-readiness verification while an unoverridden audit is open. */
-export function shouldRefuseVerify(status: AuditStatus, allowOpenAudit: boolean): boolean {
-  return status.open && !allowOpenAudit;
+/** A successful verification requires both the review decision and complete permission rows. */
+export function shouldRefuseVerify(status: AuditStatus): boolean {
+  return status.open || status.noneYetCount > 0;
 }

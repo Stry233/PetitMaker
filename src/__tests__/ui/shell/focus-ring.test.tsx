@@ -23,6 +23,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { EventBus } from '../../../core/commands/event-bus';
+import { acquireOverlayLock } from '../../../core/runtime/overlay-state';
 import type { EditorEvents } from '../../../core/model/types';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -186,6 +187,85 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     press('keydown');
     focus();
     expect(root.hasAttribute(FOCUS_SOURCE_ATTR)).toBe(false);
+  });
+
+  it('clears a keyboard ring when the same focused control is clicked', () => {
+    render(<button>Mode</button>);
+    const button = screen.getByRole('button', { name: 'Mode' });
+    press('keydown');
+    button.focus();
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('keyboard');
+
+    button.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(document.activeElement).toBe(button);
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
+  });
+
+  it('cancels native Space activation on pointer-focused buttons without stopping held-key listeners', () => {
+    render(<button>Mode</button>);
+    const button = screen.getByRole('button', { name: 'Mode' });
+    press('pointerdown');
+    button.focus();
+    let reachedWindow = false;
+    const onKey = () => { reachedWindow = true; };
+    window.addEventListener('keydown', onKey, { once: true });
+    const event = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(reachedWindow).toBe(true);
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
+  });
+
+  it('preserves Space activation after keyboard navigation and programmatic focus', () => {
+    render(<><button>First</button><button>Second</button></>);
+    const first = screen.getByRole('button', { name: 'First' });
+    const second = screen.getByRole('button', { name: 'Second' });
+    first.focus();
+    const space = () => new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+    const program = space();
+    first.dispatchEvent(program);
+    expect(program.defaultPrevented).toBe(false);
+
+    press('pointerdown');
+    first.focus();
+    press('keydown');
+    second.focus();
+    const keyboard = space();
+    second.dispatchEvent(keyboard);
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('keyboard');
+    expect(keyboard.defaultPrevented).toBe(false);
+  });
+
+  it('preserves spaces in fields and Enter activation on pointer-focused buttons', () => {
+    render(<><input aria-label="Title" /><button>Mode</button></>);
+    const input = screen.getByRole('textbox');
+    press('pointerdown');
+    input.focus();
+    const space = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+    input.dispatchEvent(space);
+    expect(space.defaultPrevented).toBe(false);
+
+    const button = screen.getByRole('button', { name: 'Mode' });
+    press('pointerdown');
+    button.focus();
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
+    button.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(false);
+  });
+
+  it('leaves Space activation to a modal while it owns the keyboard', () => {
+    render(<button>Confirm</button>);
+    const button = screen.getByRole('button', { name: 'Confirm' });
+    press('pointerdown');
+    button.focus();
+    const release = acquireOverlayLock();
+    try {
+      const event = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+      button.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    } finally {
+      release();
+    }
   });
 
   it('has a rule that draws nothing for a pointer- or page-placed focus, and the shell mounts the tracking', () => {

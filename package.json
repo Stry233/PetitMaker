@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "1.0.51",
+  "version": "1.1.15",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {

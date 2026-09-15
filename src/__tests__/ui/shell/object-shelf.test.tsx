@@ -20,6 +20,7 @@ import {
 } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
+import { pickSelection } from '../../../kit/pick-selection';
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { generateObjectId } from '../../../core/model/object-id';
 import { ScaleProvider } from '../../../ui/design/scale';
@@ -629,6 +630,22 @@ describe('scrolling the row', () => {
 });
 
 describe('a card arms the item the map places', () => {
+  it.each([null, 'tree-apple'])('reveals a sampled item through an existing search when %s is armed', (armed) => {
+    const gs = makeState(24, 24);
+    gs.objects.set('sample', { id: 'sample', catalogId: 'tree-apple', position: { x: 4, y: 4 }, rotation: 0, elevation: 0 });
+    useEditorStore.setState({ gridState: gs });
+    mount(armed);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'no-matching-item' } });
+    act(() => {
+      useEditorStore.getState().setSelection([{ kind: 'object', id: 'sample' }]);
+      pickSelection();
+    });
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('tab', { name: 'Trees' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(row()).getByRole('button', { name: 'Apple Tree' }).getAttribute('aria-pressed')).toBe('true');
+    expect(useEditorStore.getState().activeTool).toBe(ToolType.ObjectPlacer);
+  });
+
   it('arms on the first click and puts the item away on the second', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));

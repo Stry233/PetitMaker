@@ -2,8 +2,8 @@ import { providerName } from '../../i18n/providers';
 /*
  * Guides key entry, provider detection and connection completion. Automatic advance waits for an
  * idle interval or Enter so typing never loses focus. Explicit provider choices override key-shape
- * detection, and leaving a reading cancels its pending request. Ambiguous keys probe candidate
- * providers; custom endpoints require an address. Model choice and oversight remain in management.
+ * suggestions, and leaving a reading cancels its pending request. Ambiguous keys require a provider
+ * choice; custom endpoints require an address. Model choice and oversight remain in management.
  * Network functions are injected, and default adapters load dynamically by provider dialect.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
@@ -11,8 +11,7 @@ import { useUiPreview } from '../primitives/ui-preview';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { zoneEnter } from './atoms';
 import { useT } from '../../i18n/context';
-import { AMBIGUOUS_CANDIDATES, probeAmbiguousKey } from '../../agent/providers/detect';
-import { type ProviderId } from '../../agent/providers/defaults';
+import { QUIRKS, type ProviderId } from '../../agent/providers/defaults';
 import { classify } from '../../agent/core/errors';
 import { Spinner } from '../primitives/Spinner';
 import { FloatMenu, type FloatMenuItem } from '../primitives/FloatMenu';
@@ -96,12 +95,8 @@ export function SetupKeyField({
 export interface SetupScreenProps {
   /** Called once a key, a provider and a model are all settled. The shell leaves setup on it. */
   onDone?: () => void;
-  /** Injected for tests; defaults to the real `/models` probe. */
-  probe?: typeof probeAmbiguousKey;
   /** Injected for tests; the default reaches an SDK adapter by dynamic import. */
   listModels?: ListModels;
-  /** Candidate providers for ambiguous bare-sk keys. */
-  candidates?: readonly ProviderId[];
   /** Returns to the surface that opened setup. */
   onLeave?: () => void;
   /** Reports the active setup face to the desk above it. */
@@ -114,9 +109,7 @@ export interface SetupScreenProps {
 
 export function SetupScreen({
   onDone,
-  probe = probeAmbiguousKey,
   listModels = defaultListModels,
-  candidates = AMBIGUOUS_CANDIDATES,
   onLeave,
   onFace,
   entry = 'key',
@@ -145,8 +138,6 @@ export function SetupScreen({
   const [rowOpen, setRowOpen] = useState(entry === 'chooser');
   const [urlDraft, setUrlDraft] = useState(settings.customBaseUrl);
   const [urlBad, setUrlBad] = useState(false);
-  const [probing, setProbing] = useState(false);
-  const [probeFailed, setProbeFailed] = useState(false);
   const [refused, setRefused] = useState(false);
   const [modelsSettled, setModelsSettled] = useState(false);
   /** Bumped on every refusal, so a second refusal of the same key shakes again. */
@@ -205,7 +196,6 @@ export function SetupScreen({
           if (explicit) state.pinProvider(id);
           armed.current = null;
           setRefused(true);
-          setProbing(false);
           setShakeSeq((n) => n + 1);
           setPhase('key');
           return;
@@ -220,38 +210,17 @@ export function SetupScreen({
     armedKey.current = key;
     connectKey(id, key);
     setRowOpen(false);
-    setProbing(false);
-    setProbeFailed(false);
     setRefused(false);
     setPhase('checking');
     loadModels(id, key);
   }, [connectKey, loadModels]);
 
-  const runProbe = useCallback((key: string) => {
-    // Ignore a probe if any subsequent action advances the reading generation.
-    const mine = reading.current;
-    setProbing(true);
-    setProbeFailed(false);
-    probe(key, { candidates: [...candidates] })
-      .then((winner) => {
-        if (mine !== reading.current) return;
-        setProbing(false);
-        if (winner) { commit(winner, key); return; }
-        // With no responding candidate, leave provider choice to the user.
-        setProbeFailed(true);
-      })
-      .catch(() => {
-        if (mine !== reading.current) return;
-        setProbing(false);
-        setProbeFailed(true);
-      });
-  }, [probe, candidates, commit]);
-
   /** Automatic destination after the key remains idle, excluding the user-initiated endpoint step. */
   const gate: Exclude<KeyDestination, 'endpoint'> = (() => {
-    if (phase !== 'key' || probing || probeFailed || refused) return null;
+    if (phase !== 'key' || refused) return null;
     if (heldBack === keyDraft) return null;
     const dest = keyDestination({ shape, usable: accepted, endpointFiled: !needsEndpoint, explicit: false });
+    if (!pinned && shape === 'zhipu') return 'ask';
     return dest === 'endpoint' ? null : dest;
   })();
 
@@ -260,9 +229,8 @@ export function SetupScreen({
     if (what === 'endpoint') { setPhase('custom'); return; }
     if (key === '') return;
     if (what === 'ask') { setRowOpen(true); return; }
-    if (what === 'probe') { runProbe(key); return; }
     commit(shape as ProviderId, key);
-  }, [keyDraft, shape, runProbe, commit]);
+  }, [keyDraft, shape, commit]);
 
   // Draft-dependent callback identity restarts the idle timer after each value change.
   useEffect(() => {
@@ -312,7 +280,7 @@ export function SetupScreen({
     if (!dest) return;
     reading.current += 1;
     setHeldBack(null);
-    fire(dest);
+    fire(!pinned && shape === 'zhipu' ? 'ask' : dest);
   }
 
   /** Returns to key entry while retaining the draft and suspending its automatic advance. */
@@ -320,8 +288,6 @@ export function SetupScreen({
     reading.current += 1;
     setPhase('key');
     setModelsSettled(false);
-    setProbing(false);
-    setProbeFailed(false);
     setRefused(false);
     setRowOpen(false);
     setHeldBack(keyDraft);
@@ -332,19 +298,18 @@ export function SetupScreen({
     reading.current += 1;
     if (phase === 'checking') setPhase('key');
     setModelsSettled(false);
-    setProbing(false);
     setHeldBack(keyDraft);
     setRowOpen(true);
   }
 
-  function pickProvider(id: ProviderId): void {
+  function pickProvider(id: ProviderId, region?: 0 | 1): void {
     // An explicit pick clears status from the reading it supersedes.
-    setProbeFailed(false);
     setRefused(false);
     if (id === 'custom') { setRowOpen(false); setPhase('custom'); return; }
+    if (region !== undefined) settings.setProviderRegion(id, region);
     settings.pinProvider(id);
     setRowOpen(false);
-    // Invalidate any provider probe still in flight.
+    // Invalidate any previous model discovery.
     reading.current += 1;
     const key = keyDraft.trim() || armedKey.current;
     if (key !== '') { commit(id, key); return; }
@@ -357,11 +322,11 @@ export function SetupScreen({
     commit(id, held);
   }
 
-  const mark: Mark = refused || probeFailed ? 'cross' : phase === 'checking' || probing || (gate !== null && gate !== 'ask') ? 'spin' : null;
-  /** Whether idle advance or an active probe is currently checking the key. */
-  const checking = phase === 'checking' || accepted && !needsEndpoint && (gate !== null || probing);
+  const mark: Mark = refused ? 'cross' : phase === 'checking' || (gate !== null && gate !== 'ask') ? 'spin' : null;
+  /** Whether the selected provider is currently checking the key. */
+  const checking = phase === 'checking' || accepted && !needsEndpoint && (gate !== null && gate !== 'ask');
   /** Whether the open chooser is asking the user to identify an unknown key shape. */
-  const asking = rowOpen && !pinned && (shape === 'unknown' || shape === 'empty') && !refused && !probeFailed;
+  const asking = rowOpen && !pinned && (shape === 'unknown' || shape === 'empty' || shape === 'ambiguous' || shape === 'zhipu') && !refused;
   const row = phase === 'custom'
     // The endpoint step gives the provider row its custom-provider identity.
     ? { id: 'custom' as ProviderId, name: t('agent3.setup_custom_endpoint'), sub: t('agent3.setup_row_openai_compat'), dim: false }
@@ -372,14 +337,14 @@ export function SetupScreen({
         sub: t(typing ? 'agent3.setup_row_key_stays' : 'agent3.setup_row_pick_one'),
         dim: false,
       }
-      : rowFace({ t, shape, pinned, checking, probeFailed, refused, probing });
+      : rowFace({ t, shape, pinned, checking, refused });
   const note = asking && typing
     ? { text: t('agent3.setup_note_unknown_pick'), danger: false }
     : noteLine({
-      t, shape, pinned, typing, probeFailed, refused, needsEndpoint, checking, probing,
+      t, shape, pinned, typing, refused, needsEndpoint, checking,
       held: settings.keyed.length > 0,
     });
-  const foot = footVerbs({ probeFailed, refused, needsEndpoint, probing, waiting: gate !== null || phase === 'checking' });
+  const foot = footVerbs({ refused, needsEndpoint, waiting: gate !== null || phase === 'checking' });
   /** Leaving is available only before configuration starts or after the connection is complete. */
   const canLeave = gaps.length === 0 || gaps.includes('key');
   /** Derives the desk face from the same facts used by this screen's row, note and footer. */
@@ -391,12 +356,10 @@ export function SetupScreen({
     }
     if (phase === 'checking' || phase === 'manage') return { step: 'shaped', name: providerName(provider, t) };
     if (refused) return row.id ? { step: 'refused', name: row.name } : { step: 'refused' };
-    if (probeFailed) return { step: 'no-answer' };
     // A missing custom endpoint takes priority over key-shape status.
     if (needsEndpoint) return { step: 'endpoint' };
     if (asking) return { step: 'unknown' };
-    // Ambiguous status changes from typing to asking only after the probe starts.
-    if (shape === 'ambiguous') return probing ? { step: 'ambiguous' } : { step: 'typing' };
+    if (shape === 'ambiguous') return { step: 'typing' };
     if (row.id && accepted) return { step: 'shaped', name: row.name };
     return { step: typing ? 'typing' : 'awake' };
   })();
@@ -424,7 +387,6 @@ export function SetupScreen({
         setModelsSettled(false);
         setKeyDraft(next);
         setRefused(false);
-        setProbeFailed(false);
         // Mask password-manager or extension fills that arrive while the field is unfocused.
         if (!keyFocused.current) setKeyMasked(next.length > 0);
       }}
@@ -441,7 +403,10 @@ export function SetupScreen({
       open={rowOpen}
       onOpen={chooseByHand}
       onClose={() => setRowOpen(false)}
-      onPick={(id) => pickProvider(id as ProviderId)}
+      onPick={(choice) => {
+        const [id, region] = choice.split(':');
+        pickProvider(id as ProviderId, region === '1' ? 1 : region === '0' ? 0 : undefined);
+      }}
       {...(pinned ? { activeId: pinned } : {})}
       zoom={zoom}
       items={rosterItems(t, shape)}
@@ -483,7 +448,7 @@ export function SetupScreen({
                     }}
                     style={verb === 'recheck' || verb === 'address' ? FOOT_PRIMARY : FOOT_GHOST}
                   >
-                    {/* Refused keys offer deliberate reuse; unanswered probes offer another attempt. */}
+                    {/* Refused keys offer deliberate reuse. */}
                     {verb === 'recheck'
                       ? t(refused ? 'agent3.setup_use_this_key' : 'agent3.dock_act_try_again')
                       : t(FOOT_LABEL[verb])}
@@ -574,9 +539,9 @@ export interface RowFace { id: ProviderId | null; name: string; sub: string; dim
 /** Derives the provider row's identity, status copy and emphasis from setup state. */
 export function rowFace(a: {
   t: T; shape: KeyShape; pinned: ProviderId | null; checking: boolean;
-  probeFailed: boolean; refused: boolean; probing: boolean;
+  refused: boolean;
 }): RowFace {
-  const { t, shape, pinned, checking, probeFailed, refused, probing } = a;
+  const { t, shape, pinned, checking, refused } = a;
   if (refused) {
     const id = pinned ?? (typeof shape === 'string' && shape !== 'ambiguous' && shape !== 'partial'
       && shape !== 'unknown' && shape !== 'empty' ? shape : null);
@@ -596,15 +561,11 @@ export function rowFace(a: {
       dim: false,
     };
   }
-  if (probeFailed) {
-    return { id: null, name: t('agent3.setup_row_two'), sub: t('agent3.setup_row_no_answer'), dim: false };
-  }
   if (shape === 'ambiguous') {
     return {
       id: null,
       name: t('agent3.setup_row_two'),
-      // Report asking only after the ambiguous-provider request begins.
-      sub: t(probing ? 'agent3.setup_row_asking' : 'agent3.setup_row_sofar'),
+      sub: t('agent3.setup_row_sofar'),
       dim: false,
     };
   }
@@ -664,16 +625,14 @@ export function SetupProviderFace({ row, mark }: { row: RowFace; mark: Mark }) {
 /** The sentence under the row, or none. `danger` is the refusal's own ink. */
 function noteLine(a: {
   t: T; shape: KeyShape; pinned: ProviderId | null; typing: boolean; checking: boolean;
-  probeFailed: boolean; refused: boolean; needsEndpoint: boolean; probing: boolean; held: boolean;
+  refused: boolean; needsEndpoint: boolean; held: boolean;
 }): { text: string; danger: boolean } | null {
-  const { t, shape, pinned, typing, checking, probeFailed, refused, needsEndpoint, probing, held } = a;
+  const { t, shape, pinned, typing, checking, refused, needsEndpoint, held } = a;
   if (refused) return { text: t('agent3.setup_key_refused'), danger: true };
-  if (probeFailed) return { text: t('agent3.setup_note_probe_failed'), danger: true };
   // A missing endpoint prevents every key check and takes priority in the note.
   if (needsEndpoint) return { text: t('agent3.setup_say_custom'), danger: false };
-  // Ambiguous-key copy distinguishes idle detection from an active probe.
   if (shape === 'ambiguous') {
-    return { text: t(probing ? 'agent3.setup_note_ambiguous' : 'agent3.setup_note_ambiguous_wait'), danger: false };
+    return { text: t('agent3.setup_note_ambiguous_wait'), danger: false };
   }
   if (pinned && checking) return { text: t('agent3.setup_note_pinned_checking', { name: providerName(pinned, t) }), danger: false };
   if (shape !== 'empty' && shape !== 'partial' && shape !== 'unknown' && checking) {
@@ -681,7 +640,7 @@ function noteLine(a: {
   }
   if (!typing) return held ? { text: t('agent3.setup_note_replaces'), danger: false } : null;
   if (shape === 'partial') return { text: t('agent3.setup_note_partial'), danger: false };
-  if (shape === 'unknown' && checking) return { text: t('agent3.setup_note_unknown'), danger: false };
+  if (shape === 'unknown') return { text: t('agent3.setup_note_unknown'), danger: false };
   return null;
 }
 
@@ -697,22 +656,26 @@ const FOOT_LABEL: Record<FootVerb, string> = {
 
 /** Returns recovery actions for failures, missing endpoints and pending checks. */
 function footVerbs(a: {
-  probeFailed: boolean; refused: boolean; needsEndpoint: boolean; probing: boolean; waiting: boolean;
+  refused: boolean; needsEndpoint: boolean; waiting: boolean;
 }): FootVerb[] {
-  if (a.refused || a.probeFailed) return ['recheck', 'manual'];
+  if (a.refused) return ['recheck', 'manual'];
   if (a.needsEndpoint) return ['address'];
-  if (a.probing || a.waiting) return ['reenter'];
+  if (a.waiting) return ['reenter'];
   return [];
 }
 
 /** Provider-menu items, with compatibility hints for ambiguous keys. */
 function rosterItems(t: T, shape: KeyShape): FloatMenuItem[] {
   const amb = shape === 'ambiguous';
-  const items: FloatMenuItem[] = PROVIDER_ROSTER.map((id) => ({
-    id,
-    label: providerName(id, t),
-    ...(amb && id === 'deepseek' ? { sub: t('agent3.setup_fits_this_key') } : {}),
-  }));
+  const items: FloatMenuItem[] = PROVIDER_ROSTER.flatMap<FloatMenuItem>((id) => {
+    if ((QUIRKS[id].baseUrls?.length ?? 0) > 1) {
+      return ([0, 1] as const).map((region) => ({
+        id: `${id}:${region}`, label: providerName(id, t),
+        sub: t(region === 0 ? 'agent3.endpoint_global' : 'agent3.endpoint_cn'),
+      }));
+    }
+    return [{ id, label: providerName(id, t) }];
+  });
   items.push({
     id: 'custom',
     label: t('agent3.setup_custom_endpoint'),

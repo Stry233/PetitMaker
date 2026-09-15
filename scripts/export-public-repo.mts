@@ -36,15 +36,18 @@ import {
 
 declare const process: { argv: string[]; cwd(): string; exitCode?: number };
 
-function parseArgs(argv: string[]): { out: string; verify: boolean; allowOpenAudit: boolean } {
+function parseArgs(argv: string[]): { out: string; verify: boolean } {
+  if (argv.includes('--allow-open-audit')) {
+    throw new Error('--allow-open-audit is no longer supported; omit --verify for an inspection-only export.');
+  }
   const outIdx = argv.indexOf('--out');
   const out = outIdx !== -1 ? argv[outIdx + 1] : undefined;
   if (!out) {
     throw new Error(
-      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify] [--allow-open-audit]'
+      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify]'
     );
   }
-  return { out, verify: argv.includes('--verify'), allowOpenAudit: argv.includes('--allow-open-audit') };
+  return { out, verify: argv.includes('--verify') };
 }
 
 /** `git ls-files -z` — NUL-separated so filenames with non-ASCII bytes aren't quote-escaped. */
@@ -121,8 +124,16 @@ function runVerify(outDir: string): void {
 }
 
 async function main(): Promise<void> {
-  const { out, verify, allowOpenAudit } = parseArgs(process.argv.slice(2));
+  const { out, verify } = parseArgs(process.argv.slice(2));
   const rootDir = process.cwd();
+  const status = auditStatus(rootDir);
+  if (verify && shouldRefuseVerify(status)) {
+    throw new Error(
+      '[export-public-repo] REFUSED: verification requires a ledger with one CLOSED audit status '
+      + `and no unresolved permission rows (${status.noneYetCount} row(s) still "none-yet"). `
+      + 'A missing or malformed ledger also blocks verification. Omit --verify for inspection only.',
+    );
+  }
   // Callers may provide a relative or absolute output path.
   const outDir = resolve(rootDir, out);
 
@@ -193,26 +204,14 @@ async function main(): Promise<void> {
   console.log(`[export-public-repo] copied ${toCopy.length}/${tracked.length} tracked files into ${outDir}`);
   console.log('[export-public-repo] leak check passed (no internal-glob match, no denylisted path present).');
 
-  // Copying remains available for inspection; --verify requires a closed provenance audit.
-  const status = auditStatus(rootDir);
   if (status.open) {
     console.warn(
-      `[export-public-repo] WARNING: asset-provenance audit is OPEN (${status.noneYetCount} row(s) still ` +
-        `"permission basis: none-yet"). This export may include ` +
-        `assets not yet cleared for public release.`
+      '[export-public-repo] WARNING: asset-provenance review is not verifiably closed '
+      + `(${status.noneYetCount} unresolved permission row(s)). This export is for inspection only.`,
     );
   }
 
-  if (verify) {
-    if (shouldRefuseVerify(status, allowOpenAudit)) {
-      throw new Error(
-        `[export-public-repo] REFUSED: --verify while the asset-provenance audit is OPEN ` +
-          `(${status.noneYetCount} row(s) still "none-yet"). Pass --allow-open-audit to run anyway, or ` +
-          `close the private audit first.`
-      );
-    }
-    runVerify(outDir);
-  }
+  if (verify) runVerify(outDir);
 }
 
 main().catch((err) => {

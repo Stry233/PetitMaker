@@ -89,13 +89,13 @@ describe('every text field is ringed as its own rounded box', () => {
 
   it('the key field', () => {
     reset();
-    mount(<SetupScreen probe={pending} listModels={pending} />);
+    mount(<SetupScreen listModels={pending} />);
     ringedAsItsBox('setup-key-input');
   });
 
   it('the connection screen\'s address field', () => {
     reset();
-    mount(<SetupScreen probe={pending} listModels={pending} entry="endpoint" />);
+    mount(<SetupScreen listModels={pending} entry="endpoint" />);
     ringedAsItsBox('setup-endpoint-input');
   });
 

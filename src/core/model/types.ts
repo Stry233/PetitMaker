@@ -423,6 +423,7 @@ export type EditorEvents = {
    *  effect — which runs after the store has already told its subscribers. Anything that asks a
    *  TOOL a question waits for this, or it asks the tool the user has just left. */
   'tool-synced': { tool: ToolType };
+  'catalog-reveal': { catalogId: string };
   'history-changed': { canUndo: boolean; canRedo: boolean };
   /** Fired by undo()/redo() with the cells they touched, so the renderer can
    *  flash the reverted/reapplied region without flashing normal edits.

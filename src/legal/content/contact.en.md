@@ -11,6 +11,8 @@ Please use the channels below for questions, suggestions or matters that need th
 
 ## Questions and Suggestions
 
+For questions and feedback, join the PetitMaker feedback group (谷地工坊用户反馈群) on QQ: **{qqFeedbackGroup}**. Conversations in this group are in Chinese.
+
 GitHub reports are public; use email for matters you prefer to discuss privately. For a bug, describe the steps, expected result and actual result, and include the app version, browser and device. A screenshot or minimal example often helps identify the cause.
 
 For Agent or illustration issues, include the provider, model and error message, keeping only the information needed for diagnosis. Remove keys, personal information and unrelated material before sending. Importable images and saves may contain the whole map and hidden annotations, so review their contents first.
