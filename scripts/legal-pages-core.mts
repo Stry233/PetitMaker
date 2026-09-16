@@ -4,7 +4,13 @@
  */
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+// The async `cp` rather than `cpSync`: on Windows the SYNCHRONOUS recursive copy aborts the process
+// (0xC0000409) when the SOURCE path contains any non-ASCII character, so `npm run build` could not
+// complete from a checkout under e.g. `E:\项目\…` — it exited non-zero with an empty `dist/licenses`.
+// The async implementation is unaffected. See the note in docs/ARCHITECTURE.md.
+// @ts-ignore - node:fs/promises is untyped here (no @types/node)
+import { cp } from 'node:fs/promises';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
@@ -311,8 +317,10 @@ function writeTextFile(distDir: string, relPath: string, contents: string): void
 /**
  * Writes all static legal artifacts to `distDir`.
  * Release mode rejects configuration problems; unresolved content tokens always fail; injected `now` makes security.txt deterministic.
+ *
+ * ASYNC because the license copy uses the asynchronous recursive copy — see the import note above.
  */
-export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'dev', now: Date = new Date()): void {
+export async function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'dev', now: Date = new Date()): Promise<void> {
   const problems = validateLegalConfig(cfg, mode);
   if (problems.length > 0) {
     if (mode === 'release') {
@@ -342,7 +350,7 @@ export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'd
   const licensesDest = join(distDir, 'licenses');
   if (existsSync(licensesSrc)) {
     mkdirSync(licensesDest, { recursive: true });
-    cpSync(licensesSrc, licensesDest, { recursive: true });
+    await cp(licensesSrc, licensesDest, { recursive: true });
   } else {
     console.warn(`[legal-pages] licenses/ not found at ${licensesSrc} — run "npm run legal:licenses" first.`);
   }

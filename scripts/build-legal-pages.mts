@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     );
   }
 
-  writeAll(distDir, LEGAL, mode);
+  await writeAll(distDir, LEGAL, mode);
 
   // Cloudflare reads `_redirects`; the Chinese edge serves slashed page paths and receives none.
   if (LEGAL.canonicalOrigin === DEPLOY_TARGETS.global.canonicalOrigin) {

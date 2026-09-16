@@ -23,12 +23,31 @@ it.each([CompressionMethod.Deflate, CompressionMethod.Gzip])('rejects a corrupt 
   expect(() => decompress(packed, method, limits.maxBytes)).toThrow();
 });
 
-it('rejects concatenated gzip members like native streams and preserves output limits', async () => {
+it('bounds concatenated gzip members and preserves output limits', async () => {
   const packed = compress(bytes, CompressionMethod.Gzip);
   const pair = new Uint8Array(packed.length * 2);
   pair.set(packed); pair.set(packed, packed.length);
+
+  // Our own decoder refuses multi-member input outright.
   expect(() => decompress(pair, CompressionMethod.Gzip, limits.maxBytes)).toThrow();
-  await expect(inflate(pair, CompressionMethod.Gzip, limits)).rejects.toThrow();
+
+  // The PLATFORM stream's multi-member behaviour is runtime-specific: browsers reject the trailing
+  // member, while Node's zlib-backed stream accepts it — which RFC 1952 permits, since a gzip file
+  // is a sequence of members. The invariant that must hold on every runtime is the OUTPUT CAP: a
+  // payload whose expansion passes the caller's limit is refused rather than buffered, whether the
+  // stream errored or the cap caught it.
+  const tight = { maxBytes: bytes.length * 2 - 1, maxRatio: 10000 };
+  await expect(inflate(pair, CompressionMethod.Gzip, tight)).rejects.toThrow();
+
+  // Under a cap the payload fits into, a runtime that accepts concatenation returns exactly the two
+  // members and one that refuses resolves nothing — never a partial or unbounded buffer.
+  const settled = await inflate(pair, CompressionMethod.Gzip, limits).then(
+    (value) => value.length,
+    () => -1,
+  );
+  expect([-1, bytes.length * 2]).toContain(settled);
+
+  // The single-member path is unaffected, and the absolute limit still trips.
   expect(() => decompress(packed, CompressionMethod.Gzip, 100)).toThrow('safety limit');
 });
 

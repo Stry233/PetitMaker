@@ -185,8 +185,15 @@ export default defineConfig(({ mode }) => {
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict
       // `script-src 'self'` (no 'unsafe-inline'). Modern browsers support modulepreload natively.
       modulePreload: { polyfill: false },
-      // Console and debugger statements leave the production bundle here; the Oxc transform has no drop option.
-      rolldownOptions: { output: { minify: mode === 'production' ? { compress: { dropConsole: true, dropDebugger: true } } : undefined } },
+      // `dropDebugger` only. Oxc's `compress.dropConsole` is all-or-nothing, and it cannot tell a
+      // library's `console.log` from the editor's own failure diagnostics — so enabling it also
+      // deleted the reports a visitor needs when the 3D view comes up blank or an export fails, and
+      // the console banner `console-banner.ts` prints on purpose. Measured on a production build, a
+      // session of boot → draw → generate → 3D → open export emits two messages and both are ours
+      // (the banner and the greeting); the 279 `console.*` call sites still present in the bundle
+      // are library deprecation warnings and flag-guarded diagnostics that do not fire in use. A
+      // call that ships costs nothing until it runs, so the trade is diagnostics for no noise.
+      rolldownOptions: { output: { minify: mode === 'production' ? { compress: { dropDebugger: true } } : undefined } },
     },
   };
 });

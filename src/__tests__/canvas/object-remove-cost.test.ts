@@ -36,6 +36,12 @@ function instrumentLodMap(layer: ObjectLayer): { map: Map<string, unknown>; walk
   return { map, walks: () => walks };
 }
 
+/** Building thousands of sprites through Pixi inside jsdom dominates these tests; the assertions
+ *  themselves only count full-collection walks. The default 5s testTimeout sits below what that
+ *  setup costs on a slower machine, and a timed-out SYNC test keeps running — so the duration it
+ *  reports is the machine's, not the assertion's. Allow the scene construction explicitly. */
+const SETUP_TIMEOUT_MS = 180_000;
+
 describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
   it('drops exactly the removed ids from the LOD-tracked set', () => {
     const layer = new ObjectLayer();
@@ -48,7 +54,7 @@ describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
     expect(map.size).toBe(N - 3);
     expect(map.has('d10')).toBe(false);
     expect(map.has('d11')).toBe(true); // untouched neighbours survive
-  });
+  }, SETUP_TIMEOUT_MS);
 
   it('never walks the whole collection while removing a handful, at any map size', () => {
     const N = 4000;
@@ -61,7 +67,7 @@ describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
     for (let i = 0; i < 200; i++) layer.removeObjects([`e${i}`]);
 
     expect(walks()).toBe(0); // O(removed): no full pass over the other ~3800 survivors
-  });
+  }, SETUP_TIMEOUT_MS);
 
   it('re-adding a removed id (idempotent replace) still costs O(1) per id, not O(map)', () => {
     const N = 2000;
@@ -72,5 +78,5 @@ describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
     layer.addObjects([place('f5', 5)]); // addObjects removes-then-re-adds an existing id
     expect(walks()).toBe(0);
     expect(map.size).toBe(N); // replaced, not duplicated or leaked
-  });
+  }, SETUP_TIMEOUT_MS);
 });

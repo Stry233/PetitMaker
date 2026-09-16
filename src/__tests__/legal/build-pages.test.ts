@@ -222,6 +222,11 @@ describe('securityTxt', () => {
 describe('writeAll', () => {
   let dir: string;
 
+  // These tests genuinely copy `licenses/` (185 files) through `writeAll` — which they never used to
+  // reach, because the synchronous recursive copy aborted the worker first. That is real I/O now, and
+  // the default 5s is not enough for it while the rest of the suite runs in parallel.
+  const COPY_TIMEOUT_MS = 60_000;
+
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'legal-pages-test-'));
   });
@@ -230,9 +235,11 @@ describe('writeAll', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('produces the expected file tree', () => {
+  // `writeAll` is async because the license copy uses the asynchronous recursive copy (the
+  // synchronous one aborts the process on Windows when the source path has non-ASCII characters).
+  it('produces the expected file tree', async () => {
     const cfg = fixtureCfg();
-    writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
+    await writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
 
     expect(existsSync(join(dir, 'privacy', 'index.html'))).toBe(true);
     expect(existsSync(join(dir, 'zh', 'privacy', 'index.html'))).toBe(true);
@@ -247,45 +254,45 @@ describe('writeAll', () => {
 
     const robots = readFileSync(join(dir, 'robots.txt'), 'utf8');
     expect(robots).toContain('Sitemap: https://example.org/sitemap.xml');
-  });
+  }, COPY_TIMEOUT_MS);
 
-  it('every emitted page file is present for every DocId per pagePlan', () => {
+  it('every emitted page file is present for every DocId per pagePlan', async () => {
     const cfg = fixtureCfg();
-    writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
+    await writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
     for (const page of pagePlan()) {
       const file = join(dir, ...page.path.split('/').filter(Boolean), 'index.html');
       expect(existsSync(file), `${page.path}/index.html missing`).toBe(true);
     }
-  });
+  }, COPY_TIMEOUT_MS);
 
-  it('copies licenses/ through', () => {
+  it('copies licenses/ through', async () => {
     const cfg = fixtureCfg();
-    writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
+    await writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
     expect(existsSync(join(dir, 'licenses'))).toBe(true);
     const copied = readdirSync(join(dir, 'licenses'));
     expect(copied.length).toBeGreaterThan(0);
-  });
+  }, COPY_TIMEOUT_MS);
 
-  it('release mode throws when cfg is invalid (validateLegalConfig problems)', () => {
+  it('release mode throws when cfg is invalid (validateLegalConfig problems)', async () => {
     const invalid = fixtureCfg({ canonicalOrigin: '' });
-    expect(() => writeAll(dir, invalid, 'release')).toThrow();
-  });
+    await expect(writeAll(dir, invalid, 'release')).rejects.toThrow();
+  }, COPY_TIMEOUT_MS);
 
-  it('release mode builds the real LEGAL config cleanly', () => {
-    expect(() => writeAll(dir, LEGAL, 'release', new Date('2026-07-15T00:00:00.000Z'))).not.toThrow();
-  });
+  it('release mode builds the real LEGAL config cleanly', async () => {
+    await expect(writeAll(dir, LEGAL, 'release', new Date('2026-07-15T00:00:00.000Z'))).resolves.toBeUndefined();
+  }, COPY_TIMEOUT_MS);
 
-  it('dev mode does NOT throw against the real LEGAL config (warnings only)', () => {
-    expect(() => writeAll(dir, LEGAL, 'dev', new Date('2026-07-15T00:00:00.000Z'))).not.toThrow();
-  });
+  it('dev mode does NOT throw against the real LEGAL config (warnings only)', async () => {
+    await expect(writeAll(dir, LEGAL, 'dev', new Date('2026-07-15T00:00:00.000Z'))).resolves.toBeUndefined();
+  }, COPY_TIMEOUT_MS);
 
-  it('release mode builds a release-valid fixture cleanly, no token deferred', () => {
+  it('release mode builds a release-valid fixture cleanly, no token deferred', async () => {
     // No token is deferred: the deployment facts are authored directly into
     // privacy.*.md. A release-valid fixture therefore resolves every token,
     // so writeAll must NOT throw in release mode.
     const cfg = fixtureCfg();
-    expect(() => writeAll(dir, cfg, 'release')).not.toThrow();
-  });
+    await expect(writeAll(dir, cfg, 'release')).resolves.toBeUndefined();
+  }, COPY_TIMEOUT_MS);
 
   it('the retired {deployment-facts} token appears on no privacy page', () => {
     const cfg = fixtureCfg();

@@ -68,6 +68,10 @@ describe('the menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     const menu = await screen.findByRole('menu');
     expect(menu).toBeTruthy();
+    // The container can be read for a frame before its rows are all in place, so wait for the set
+    // the assertion is about rather than sampling the DOM once. The wait is sized for a worker
+    // running the whole suite in parallel — the same budget this file's own `vi.setConfig` uses.
+    await waitFor(() => expect(screen.getAllByRole('menuitem')).toHaveLength(SHEET.length), { timeout: 20_000 });
     const items = screen.getAllByRole('menuitem');
     expect(items.map((el) => el.textContent)).toEqual(SHEET);
   });
@@ -79,8 +83,8 @@ describe('the menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     await screen.findByRole('menu');
 
+    await waitFor(() => expect(screen.getAllByRole('menuitem')).toHaveLength(ROWS.length), { timeout: 20_000 });
     expect(screen.queryByRole('menuitem', { name: 'Clear generated' })).toBeNull();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(ROWS.length);
   });
 
   it.each(ROWS)('the %s row opens its window', async (label, modal) => {
@@ -88,7 +92,7 @@ describe('the menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     await screen.findByRole('menu');
 
-    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: label }));
     expect(useEditorStore.getState().modals[modal]).toBe(true);
     // The sheet is a menu, not a window: choosing from it puts it away.
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
@@ -142,8 +146,10 @@ describe('the shell puts every window on screen', () => {
     // demanding it in the same commit.
     // The Help chunk also builds its welcome figures on arrival, which under a loaded suite can
     // outlast the default query window; the wait is generous rather than the assertion loose.
+    // Measured: on a machine running the whole suite in parallel this chunk has taken longer than
+    // 5s to produce its dialog, so the wait is sized for a loaded worker rather than an idle one.
     for (const [label] of ROWS) {
-      expect((await screen.findAllByRole('dialog', { name: label }, { timeout: 5000 })).length).toBeGreaterThan(0);
+      expect((await screen.findAllByRole('dialog', { name: label }, { timeout: 20_000 })).length).toBeGreaterThan(0);
     }
     act(() => { for (const [, id] of ROWS) useEditorStore.getState().setModal(id, false); });
   });

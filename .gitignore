@@ -25,6 +25,9 @@ tsconfig.tsbuildinfo
 npm-debug.log*
 coverage/
 
+# Build-report side product written into the repo root by security/bundle-report-plugin
+.bundle-packages.json
+
 # OS files
 .DS_Store
 Thumbs.db
