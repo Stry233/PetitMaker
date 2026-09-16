@@ -8,6 +8,7 @@ import App from './App';
 import { printConsoleBanner } from './console-banner';
 import { publishCursorPreference } from './ui/design/cursors/cursor-vars';
 import { useEditorStore } from './state/store';
+import { ensureLocaleStrings } from './i18n/locales';
 import { preloadScene3D } from './canvas/map3d/preload';
 
 // Before the first render: the global `html { cursor: var(…) }` rule falls back to the OS keyword
@@ -27,8 +28,14 @@ printConsoleBanner();
 
 document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 
-createRoot(document.getElementById('root')!).render(
+// Render once the interface table for the saved language is in hand. Six of the seven tables are
+// their own chunk now (see i18n/locales/index.ts), so a non-English session has one small fetch to
+// wait for — and waiting is the point: a frame in the wrong language is a flash, the same reason
+// the cursor properties are written above. English resolves without a request, and a table that
+// fails to arrive renders anyway rather than leaving the page blank.
+const mount = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+void ensureLocaleStrings(useEditorStore.getState().locale).catch(() => {}).then(mount);

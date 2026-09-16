@@ -14,6 +14,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
 import { announceArrival } from '../../../core/runtime/arrival-bus';
+import { ensureLocaleStrings } from '../../../i18n/locales';
+import type { Locale } from '../../../core/model/types';
 import { currentKit } from '../../../kit/context';
 import type { TransferCounts } from '../../../kit/operations';
 import { newMap, transferMap } from '../../../kit/operations';
@@ -115,6 +117,18 @@ export function Windows() {
 
   const locale = useEditorStore((s) => s.locale);
   const setLocale = useEditorStore((s) => s.setLocale);
+  // A language whose table is a separate chunk (see i18n/locales/index.ts): fetch it first, then
+  // commit the preference, so the interface never switches to a language it cannot speak yet. If
+  // the fetch fails the previous language stays selected — the picker and the interface agree,
+  // which is worth more here than storing a preference nothing can render.
+  const changeLocale = useCallback(async (next: Locale) => {
+    try {
+      await ensureLocaleStrings(next);
+    } catch {
+      return;
+    }
+    setLocale(next);
+  }, [setLocale]);
   const showGrid = useEditorStore((s) => s.showGrid);
   const setShowGrid = useEditorStore((s) => s.setShowGrid);
   const showChunkBounds = useEditorStore((s) => s.showChunkBounds);
@@ -164,7 +178,7 @@ export function Windows() {
         motionPref={motionPref}
         systemCursors={systemCursors}
         quality3d={quality3d}
-        onLocaleChange={setLocale}
+        onLocaleChange={changeLocale}
         onShowGridChange={setShowGrid}
         onShowChunksChange={setShowChunkBounds}
         onMotionPrefChange={setMotionPref}
