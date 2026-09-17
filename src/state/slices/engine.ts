@@ -21,6 +21,9 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import type { RuleRegistry } from '../../rules/registry';
 import { roadLookup } from '../object-index';
+import type { MapNotes } from '../../core/model/types';
+import { limitNotes } from '../../core/model/notes';
+import { attributedNotes } from '../../core/provenance/image-attribution';
 import { catalogLoadValue } from '../catalog';
 import { sameRef } from '../selection';
 import type { EditSlice } from './edit';
@@ -35,6 +38,10 @@ export interface EngineSlice {
    *  Everything after that point exists only here, which is what "New map" has to warn about. */
   exportedAt: number | null;
   markExported: () => void;
+  /** Bumped whenever `gridState.notes` changes or the map is swapped, since notes live on the grid state. */
+  notesEpoch: number;
+  /** Writes the title and description onto the live map as typed, within the limits; blank fields clear the record. */
+  setMapNotes: (notes: MapNotes) => void;
   initMap: (template: MapTemplate, registry: RuleRegistry) => void;
   loadMap: (state: GridState, registry: RuleRegistry) => void;
   /**
@@ -57,6 +64,14 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
   commandExecutor: null,
   exportedAt: null,
   markExported: () => set({ exportedAt: get().commandExecutor?.getUndoStackSize() ?? 0 }),
+  notesEpoch: 0,
+  setMapNotes: (notes) => {
+    const gridState = get().gridState;
+    if (!gridState) return;
+    const next = limitNotes(attributedNotes(gridState, notes) ?? {});
+    if (next) gridState.notes = next; else delete gridState.notes;
+    set((s) => ({ notesEpoch: s.notesEpoch + 1 }));
+  },
 
   initMap: (template, registry) => {
     const cells = createGrid(template);
@@ -86,6 +101,7 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       // annotation views the data under them was swapped, not edited.
       ...ANNOTATION_SESSION_RESET,
       annotationsEpoch: s.annotationsEpoch + 1,
+      notesEpoch: s.notesEpoch + 1,
     }));
   },
 
@@ -105,6 +121,7 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       layerLocked: {},
       ...ANNOTATION_SESSION_RESET,
       annotationsEpoch: s.annotationsEpoch + 1,
+      notesEpoch: s.notesEpoch + 1,
     }));
   },
 

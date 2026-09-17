@@ -15,7 +15,7 @@ export async function reviewMap(views: MapRaster[], signal: AbortSignal): Promis
     };
     const abort = () => finish();
     // A slow or unsupported device is an incomplete check, never evidence against a map.
-    const timeout = setTimeout(() => finish({ status: 'unavailable' }), 20_000);
+    const timeout = setTimeout(() => finish({ status: 'unavailable' }), 5_000);
     signal.addEventListener('abort', abort, { once: true });
     worker.onmessage = ({ data }: MessageEvent<MapReview>) => finish(data);
     worker.onerror = () => finish({ status: 'unavailable' });

@@ -1,6 +1,7 @@
 /**
- * Window-level file import with idle, hover, confirm, and importing phases. Nested drag targets are
- * tracked with a depth counter. The synchronous phase ref prevents stale window-listener closures
+ * Window-level file import: a dropped file is decoded first, then the shared confirmation card asks
+ * before the map is replaced, then the decoded map is installed. Nested drag targets are tracked
+ * with a depth counter. The synchronous phase ref prevents stale window-listener closures
  * and duplicate imports. Blur or a hidden tab clears only a hover overlay; pending confirmation and
  * active imports remain intact. `dragover` always prevents browser file navigation.
  */
@@ -8,23 +9,25 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CSSProperties } from 'react';
 import { useEditorStore } from '../../../../state/store';
-import { useT } from '../../../../i18n/context';
 import { autosaveWorthy } from '../../../../io/autosave';
-import { importFile } from '../../../../io/import-file';
+import { inspectImportFile, type ImportInspection } from '../../../../io/import-file';
 import { getImportFileDeps } from './import-deps';
 import { toastImportOutcome } from './import-toast';
 import { ImportDropZone, IMPORT_CARD_WIDTH, IMPORT_CARD_PADDING } from './ImportDropZone';
+import { ImportConfirm } from './ImportConfirm';
 import { ModalShell } from '../../../primitives/ModalShell';
-import {
-  colors, springs, exitTransition, radii, buttonMotion, footerGhost, footerPrimary,
-} from '../../../design/styles';
-import { windowCard, windowTitle } from '../../../design/window-skin';
+import { springs, exitTransition } from '../../../design/styles';
+import { windowCard } from '../../../design/window-skin';
 
+type ReadyInspection = Extract<ImportInspection, { status: 'ready' }>;
+
+/** A drop decodes first (`importing`), then waits for the user's word (`confirm`), then installs (`committing`). */
 type DropPhase =
   | { kind: 'idle' }
   | { kind: 'hover' }
-  | { kind: 'confirm'; file: File; name: string }
-  | { kind: 'importing' };
+  | { kind: 'importing' }
+  | { kind: 'confirm'; inspection: ReadyInspection; name: string }
+  | { kind: 'committing' };
 
 // Padding lives on the CARD, matching ImportModal's `cardStyle`: a NUMBER `width` plus a
 // same-element padding is content-box additive (no `box-sizing:border-box` here), so padding a
@@ -35,21 +38,9 @@ const cardStyle: CSSProperties = { ...windowCard, padding: IMPORT_CARD_PADDING, 
 // Visible for the one frame before the layout effect below measures the real height.
 const ESTIMATE_HEIGHT = 200;
 
-const confirmPanel: CSSProperties = {
-  background: colors.dangerBg,
-  borderRadius: radii.lg,
-  padding: '18px 20px',
-};
-
-const dangerReplaceButton: CSSProperties = {
-  ...footerPrimary,
-  background: colors.statusError,
-  color: colors.white,
-};
-
 export function DropImportOverlay() {
-  const t = useT();
   const importModalOpen = useEditorStore((s) => s.modals.import);
+  const gridState = useEditorStore((s) => s.gridState);
   const [phase, setPhase] = useState<DropPhase>({ kind: 'idle' });
   const depthRef = useRef(0); // net dragenter - dragleave over the window, incl. all children
   const phaseRef = useRef<DropPhase>(phase); // synchronous mirror of `phase` — see PHASE REF above
@@ -92,10 +83,20 @@ export function DropImportOverlay() {
   }, [open]);
 
   const runImport = useCallback(async (file: File, name: string) => {
-    if (phaseRef.current.kind === 'importing') return; // one import at a time — see REENTRANCY above
+    if (phaseRef.current.kind === 'importing') return; // one decode at a time — see REENTRANCY above
     setPhaseBoth({ kind: 'importing' });
-    const outcome = await importFile(file, name, getImportFileDeps());
-    toastImportOutcome(outcome);
+    const inspection = await inspectImportFile(file, name);
+    if (inspection.status === 'ready') { setPhaseBoth({ kind: 'confirm', inspection, name }); return; }
+    toastImportOutcome(inspection);
+    setPhaseBoth({ kind: 'idle' });
+  }, [setPhaseBoth]);
+
+  /** The user's word: installs the decoded map exactly once, however fast the button is pressed. */
+  const commitPending = useCallback(() => {
+    const current = phaseRef.current;
+    if (current.kind !== 'confirm') return;
+    setPhaseBoth({ kind: 'committing' });
+    toastImportOutcome(current.inspection.commit(getImportFileDeps()));
     setPhaseBoth({ kind: 'idle' });
   }, [setPhaseBoth]);
 
@@ -124,15 +125,10 @@ export function DropImportOverlay() {
       depthRef.current = 0;
       if (importModalOpen) return; // avoid importing twice — see file header
       // A decision is already pending or an import is already running — see REENTRANCY above.
-      if (phaseRef.current.kind === 'confirm' || phaseRef.current.kind === 'importing') return;
+      if (phaseRef.current.kind !== 'idle' && phaseRef.current.kind !== 'hover') return;
       const file = e.dataTransfer?.files?.[0];
       if (!file) { setPhaseBoth({ kind: 'idle' }); return; }
-      const gridState = useEditorStore.getState().gridState;
-      if (gridState && autosaveWorthy(gridState)) {
-        setPhaseBoth({ kind: 'confirm', file, name: file.name });
-      } else {
-        void runImport(file, file.name); // empty map: import on release
-      }
+      void runImport(file, file.name); // decode on release; the card asks before anything is replaced
     };
 
     window.addEventListener('dragenter', onDragEnter);
@@ -203,22 +199,14 @@ export function DropImportOverlay() {
               exit={exiting ? undefined : { opacity: 0, pointerEvents: 'none', transition: exitTransition }}
               transition={springs.stiff}
             >
-              <div style={confirmPanel}>
-                <div style={windowTitle}>{t('import.drop_replace_title', { name: phase.name })}</div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-                  <motion.button type="button" style={footerGhost} onClick={dismissConfirm} {...buttonMotion}>
-                    {t('import.drop_cancel')}
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    style={dangerReplaceButton}
-                    onClick={() => void runImport(phase.file, phase.name)}
-                    {...buttonMotion}
-                  >
-                    {t('import.drop_replace')}
-                  </motion.button>
-                </div>
-              </div>
+              <ImportConfirm
+                preview={phase.inspection.preview}
+                name={phase.name}
+                replacing={!!gridState && autosaveWorthy(gridState)}
+                busy={false}
+                onConfirm={commitPending}
+                onCancel={dismissConfirm}
+              />
             </motion.div>
           ) : (
             <motion.div

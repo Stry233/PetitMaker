@@ -89,6 +89,28 @@ describe('payload frame', () => {
     expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes(canonicalize(state)));
   });
 
+  it('carries the map title and description in frame 5, reads them back, and stays at frame 4 without them', async () => {
+    const state = createBlankGridState('hexia');
+    const bare = await encodeMapPayload(state, null, META);
+    expect(bare[2]).toBe(4);
+    state.notes = { title: 'River garden 河畔花园', description: 'A quiet bend with three homes.' };
+    const bytes = await encodeMapPayload(state, null, META);
+    expect(bytes[2]).toBe(5);
+    const decoded = await decodeMapPayload(bytes);
+    expect(decoded.notes).toEqual(state.notes);
+    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes(canonicalize(state)));
+  });
+
+  it('a tampered notes record fails the content hash', async () => {
+    const state = createBlankGridState('hexia');
+    state.notes = { title: 'River garden' };
+    const bytes = await encodeMapPayload(state, null, META);
+    const at = bytes.indexOf(new TextEncoder().encode('River')[0]!, 40);
+    const tampered = Uint8Array.from(bytes);
+    tampered[at] = tampered[at]! ^ 0x01;
+    await expect(decodeMapPayload(tampered)).rejects.toMatchObject({ code: 'corrupt' });
+  });
+
   it('empty map round-trips tiny (< 150 B) and hash-exact', async () => {
     const state = createBlankGridState('hexia');
     const bytes = await encodeMapPayload(state, null, META);

@@ -190,7 +190,7 @@
   "deepseek/deepseek-v4-flash-0731":{"name":"DeepSeek V4 Flash 0731","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1310720,"maxOutput":943718},
   "deepseek/deepseek-v4-flash-vision-exp":{"name":"DeepSeek V4 Flash Vision Exp","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},
   "deepseek/deepseek-v4-pro":{"name":"DeepSeek V4 Pro","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["high","xhigh"],"context":1048576,"maxOutput":393216},
-  "deepseek/deepseek-v4-pro-0813":{"name":"DeepSeek V4 Pro 0813","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":384000},
+  "deepseek/deepseek-v4-pro-0813":{"name":"DeepSeek V4 Pro 0813","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":393216},
   "deepseek/deepseek-v4.1-flash":{"name":"DeepSeek V4.1 Flash","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":384000},
   "dots-studio/dots-3-note-preview:free":{"name":"Dots3-Note Preview (free)","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"context":512000,"maxOutput":460800},
   "google/gemini-2.5-flash":{"name":"Gemini 2.5 Flash","tools":true,"input":["text","image","audio","video","pdf"],"output":["text"],"reasoning":true,"context":1048576,"maxOutput":65535},
@@ -492,8 +492,8 @@
   "~anthropic/claude-haiku-latest":{"name":"Claude Haiku Latest","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"context":200000,"maxOutput":64000},
   "~anthropic/claude-opus-latest":{"name":"Claude Opus Latest","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
   "~anthropic/claude-sonnet-latest":{"name":"Claude Sonnet Latest","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
-  "~deepseek/deepseek-flash-latest":{"name":"DeepSeek Flash Latest","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},
-  "~deepseek/deepseek-pro-latest":{"name":"DeepSeek Pro Latest","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":384000},
+  "~deepseek/deepseek-flash-latest":{"name":"DeepSeek Flash Latest","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":393216},
+  "~deepseek/deepseek-pro-latest":{"name":"DeepSeek Pro Latest","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":393216},
   "~deepseek/deepseek-v4-flash-latest":{"name":"DeepSeek V4 Flash Latest","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1310720,"maxOutput":393216},
   "~google/gemini-flash-latest":{"name":"Gemini Flash Latest","tools":true,"input":["text","image","video","pdf","audio"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":1048576,"maxOutput":65536},
   "~google/gemini-pro-latest":{"name":"Gemini Pro Latest","tools":true,"input":["audio","pdf","image","text","video"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":1048576,"maxOutput":65536},
@@ -505,7 +505,7 @@
   "~openai/gpt-terra-latest":{"name":"GPT Terra Latest","tools":true,"input":["pdf","image","text"],"output":["text"],"reasoning":true,"efforts":["none","low","medium","high","xhigh","max"],"context":1050000,"maxOutput":128000},
   "~x-ai/grok-latest":{"name":"Grok Latest","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh"],"context":500000,"maxOutput":450000},
   "~z-ai/glm-flash-latest":{"name":"GLM Flash Latest","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1310720,"maxOutput":131072},
-  "~z-ai/glm-latest":{"name":"GLM Latest","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1310720,"maxOutput":943718}
+  "~z-ai/glm-latest":{"name":"GLM Latest","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1310720,"maxOutput":235929}
  },
  "perplexity":{
   "sonar":{"name":"Sonar","tools":false,"input":["text"],"output":["text"],"reasoning":false,"context":128000,"maxOutput":4096},

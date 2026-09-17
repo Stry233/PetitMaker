@@ -4,6 +4,21 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.46] - 2026-09-17
+
+### Added
+
+- Share images gain protection for original work by keeping the creator's title and description when someone imports a handmade map, makes only small changes and exports it again. You can freely edit those fields in your own exported images recognized by this browser, and in procedurally or AI-generated maps.
+
+### Changed
+
+- The map's title and description are one record shared by the image export, the JSON file and the share code. Type them once in either export window and they travel with the map; The title holds up to 48 characters and the description up to 200. The JSON file no longer carries an author field.
+- Every import asks first. Whether a map arrives through the Import window, a paste, or a drop anywhere on the page, a card shows its picture, title and description before anything changes, and warns when the map you are working on would be replaced.
+
+### Fixed
+
+- Images larger than the browser can hold, such as an Original export, import at a reduced size instead of being refused.
+
 ## [1.2.45] - 2026-09-16
 
 ### Added

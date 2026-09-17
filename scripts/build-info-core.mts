@@ -164,23 +164,7 @@ export function resolveVersion(opts: {
   return `${major}.${minor}.${patch}-dev`;
 }
 
-/**
- * The version the NEXT publish should carry. Each component answers one question, and only the
- * first is a human decision:
- *
- *   MAJOR  what you declare in package.json. Nothing else is read from that file.
- *   MINOR  how many syncs have happened in this MAJOR. The first line started at 1; a newly
- *          declared MAJOR opens at 0.
- *   PATCH  commits since the previous sync. The first sync has no previous one, so it counts
- *          the whole history.
- *
- * So v0.1.1492 is "major 0, first sync, 1492 commits of history"; eight commits later the next
- * sync is v0.2.8; declaring 1.0.0 in package.json makes the sync after that v1.0.<commits
- * since>. MINOR always moving within a line is what keeps versions increasing whatever PATCH does.
- *
- * Everything needed comes from the public repository's committed stamp (the version it was
- * published as and the build it came from), so nothing is written back to the source.
- */
+/** Version and source build recorded in the public repository's committed stamp. */
 export interface SeriesState {
   /** The `release` recorded in the last published snapshot's stamp, if any. */
   lastVersion?: string;
@@ -188,11 +172,14 @@ export interface SeriesState {
   lastBuildNumber?: string;
 }
 
+/** Minor releases count builds in PATCH; explicit patches increment PATCH on the existing line. */
 export function nextReleaseVersion(
   pkgVersion: string,
   buildNumber: string,
   state: SeriesState = {},
+  kind: 'minor' | 'patch' = 'minor',
 ): string {
+  if (kind !== 'minor' && kind !== 'patch') throw new Error(`Unknown release kind: ${kind}`);
   if (!/^\d+$/.test(buildNumber)) {
     throw new Error(`cannot compute a release version without a build number (got "${buildNumber}")`);
   }
@@ -201,6 +188,9 @@ export function nextReleaseVersion(
     throw new Error(`cannot read a MAJOR from package.json's version "${pkgVersion}"`);
   }
   const previous = /^(\d+)\.(\d+)\.(\d+)$/.exec(state.lastVersion ?? '');
+  if (kind === 'patch' && (!previous || !/^\d+$/.test(state.lastBuildNumber ?? ''))) {
+    throw new Error('A patch release requires a previous published version and build number');
+  }
   if (!previous) return `${major}.1.${buildNumber}`; // first sync: no previous one to count from
 
   const lastMajor = Number(previous[1]), lastMinor = Number(previous[2]);
@@ -211,6 +201,10 @@ export function nextReleaseVersion(
       `refusing to release build ${buildNumber} after build ${lastBuild}: `
       + 'the last published snapshot is newer than this one',
     );
+  }
+  if (kind === 'patch') {
+    if (major !== lastMajor) throw new Error('A patch release must keep the published major version');
+    return `${major}.${lastMinor}.${Number(previous[3]) + 1}`;
   }
   // A newly declared MAJOR opens its line at X.0; otherwise the sync count advances.
   return major === lastMajor ? `${major}.${lastMinor + 1}.${since}` : `${major}.0.${since}`;

@@ -13,7 +13,7 @@ const opts = (over: Partial<ExportOptions>): ExportOptions => ({
 function renderControls(options: ExportOptions) {
   return render(
     <I18nProvider>
-      <ExportControls options={options} setOptions={vi.fn()} summary={null} footerSamples={{}} />
+      <ExportControls options={options} setOptions={vi.fn()} notes={{}} setNotes={vi.fn()} summary={null} footerSamples={{}} />
     </I18nProvider>,
   );
 }

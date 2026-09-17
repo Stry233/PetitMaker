@@ -1,11 +1,5 @@
-/**
- * The ONE file-import routine — routes a picked/dropped/pasted file to the JSON path or the
- * PetitGlyph raster path and installs the result. Shared by `ui/chrome/modals/import/ImportModal`'s file
- * picker/drop-zone and the window-level drag-drop overlay.
- *
- * Returns a RESULT rather than raising toasts, so the routing needs no DOM and
- * `ui/chrome/modals/import/import-toast.ts` is the single place a result becomes a message.
- */
+/** Shared JSON and PetitGlyph import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
+import { isOwnImageExport } from './image-ownership';
 import { deserializeParsed } from './json-codec';
 import { MAX_IMPORT_BYTES } from './import-limits';
 import { verifyIntegrity } from './export-json';
@@ -13,32 +7,41 @@ import { applyOptionalSections, type SectionRestoreDeps } from './import-section
 import { getMapTemplate } from '../config/maps';
 import { importFromRaster, type ShareErrorCode } from './share';
 import { readRasterImage } from './raster-image';
-import type { GridState } from '../core/model/types';
+import type { GridState, MapNotes } from '../core/model/types';
 
-/** One warning surfaced from a successful import. Carries enough shape for the toast mapper to
- *  pick the right i18n key (and, for a dropped section, its param) without re-deriving anything. */
+/** Structured warnings translated by the import UI. */
 export type ImportWarning =
   | { kind: 'dropped-section'; section: string }
   | { kind: 'template-drift' }
   | { kind: 'catalog-drift' }
   | { kind: 'modified-after-export' };
 
-/** `source` distinguishes the two successful paths because their toasts fire in a DIFFERENT order:
- *  JSON is per-section warnings, then success, then the modified caution LAST; raster is success
- *  first, then its warnings. */
+/** The source selects warning order in the import UI. */
+/** A decoded file, not yet installed: what the confirmation shows before the map is replaced. */
+export interface ImportPreview {
+  source: 'json' | 'raster';
+  state: GridState;
+  notes?: MapNotes;
+  warnings: ImportWarning[];
+}
+
+/** The result of reading a file without touching the editor; `commit` installs the decoded map. */
+export type ImportInspection =
+  | { status: 'ready'; preview: ImportPreview; commit: (deps: ImportFileDeps) => FileImportOutcome }
+  | { status: 'unsupported' }
+  | { status: 'failed'; code?: ShareErrorCode };
+
 export type FileImportOutcome =
-  | { status: 'imported'; source: 'json'; warnings: ImportWarning[] }
-  | { status: 'imported'; source: 'raster'; warnings: ImportWarning[] }
+  | { status: 'imported'; source: 'json'; warnings: ImportWarning[]; notes?: MapNotes }
+  | { status: 'imported'; source: 'raster'; warnings: ImportWarning[]; notes?: MapNotes }
   /** Neither a `.json` nor a decodable-image name/type — e.g. a dropped `.txt`. */
   | { status: 'unsupported' }
   | { status: 'failed'; code?: ShareErrorCode };
 
 export interface ImportFileDeps {
-  /** Installs the decoded map as the working grid (swaps in a fresh commandExecutor/gridState),
-   *  building its own RuleRegistry (`kit/operations/map.ts:loadMap` in production). */
+  /** Installs the map with a fresh executor and rule registry. */
   loadMap: (state: GridState) => void;
-  /** Read AFTER `loadMap` runs: the optional-sections restorer needs the executor/state loadMap
-   *  just installed, not whatever was live before this import started. */
+  /** Read after loadMap so optional sections restore into the new executor and state. */
   getSectionDeps: () => SectionRestoreDeps;
 }
 
@@ -46,33 +49,33 @@ function isJsonFile(file: File | Blob, name: string): boolean {
   return name.toLowerCase().endsWith('.json') || file.type === 'application/json';
 }
 
-/** MIME first (a drag from the OS file explorer sets it), then the extension for a source that
- *  doesn't, matching the file-picker's own `accept` list. */
+/** Some drag sources omit MIME types, so supported extensions are also accepted. */
 function isImageFile(file: File | Blob, name: string): boolean {
   if (file.type.startsWith('image/')) return true;
   return /\.(png|jpe?g|webp)$/i.test(name);
 }
 
-/**
- * Import a picked/dropped/pasted file. NEVER THROWS: an unreadable or unrecognized input comes back
- * as `unsupported`/`failed`, so a fire-and-forget drop handler needs no try/catch.
- */
-export async function importFile(file: File | Blob, name: string, deps: ImportFileDeps): Promise<FileImportOutcome> {
+/** Decodes without installing. Unreadable inputs return a failure outcome. */
+export async function inspectImportFile(file: File | Blob, name: string): Promise<ImportInspection> {
   try {
     if (file.size > MAX_IMPORT_BYTES) return { status: 'failed' };
     if (isJsonFile(file, name)) {
       const text = await file.text();
       const parsed = JSON.parse(text) as { templateId?: string };
-      // Tamper check BEFORE loading: an exported file carries an integrity code, and a mismatch
-      // means it was hand-edited after export. A caution, not a hard failure, so the import still
-      // runs. 'absent' (legacy / hand-made / autosave) is silent.
+      // Modified exports remain importable with a warning; files without a checksum stay silent.
       const integrity = verifyIntegrity(parsed);
       const state = deserializeParsed(parsed, getMapTemplate(parsed.templateId));
-      deps.loadMap(state);
-      const sections = applyOptionalSections(parsed, deps.getSectionDeps());
-      const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
-      if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
-      return { status: 'imported', source: 'json', warnings };
+      const preview: ImportPreview = { source: 'json', state, warnings: [], ...(state.notes ? { notes: state.notes } : {}) };
+      return {
+        status: 'ready', preview,
+        commit: (deps) => {
+          deps.loadMap(state);
+          const sections = applyOptionalSections(parsed, deps.getSectionDeps());
+          const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
+          if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
+          return { status: 'imported', source: 'json', warnings, ...(state.notes ? { notes: state.notes } : {}) };
+        },
+      };
     }
 
     if (!isImageFile(file, name)) return { status: 'unsupported' };
@@ -82,10 +85,23 @@ export async function importFile(file: File | Blob, name: string, deps: ImportFi
       recoverPixels: async () => (await readRasterImage(file)).pixels,
     });
     if (!result.ok) return { status: 'failed', code: result.error.code };
-    deps.loadMap(result.state);
+    if (result.state.imageAttribution && await isOwnImageExport(result.state)) delete result.state.imageAttribution;
     const warnings: ImportWarning[] = result.warnings.map((w) => (w === 'template-drift' ? { kind: 'template-drift' as const } : { kind: 'catalog-drift' as const }));
-    return { status: 'imported', source: 'raster', warnings };
+    const preview: ImportPreview = { source: 'raster', state: result.state, warnings, ...(result.state.notes ? { notes: result.state.notes } : {}) };
+    return {
+      status: 'ready', preview,
+      commit: (deps) => {
+        deps.loadMap(result.state);
+        return { status: 'imported', source: 'raster', warnings, ...(result.state.notes ? { notes: result.state.notes } : {}) };
+      },
+    };
   } catch {
     return { status: 'failed' };
   }
+}
+
+/** Inspect and install in one step, for callers that need no confirmation. */
+export async function importFile(file: File | Blob, name: string, deps: ImportFileDeps): Promise<FileImportOutcome> {
+  const inspection = await inspectImportFile(file, name);
+  return inspection.status === 'ready' ? inspection.commit(deps) : inspection;
 }

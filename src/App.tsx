@@ -114,6 +114,11 @@ export default function App() {
   useEffect(() => {
     if (annotationsEpoch > 0 && gridState) scheduleAutosave(gridState);
   }, [annotationsEpoch, gridState]);
+  // The title and description are edited in place the same way; their epoch announces them.
+  const notesEpoch = useEditorStore((s) => s.notesEpoch);
+  useEffect(() => {
+    if (notesEpoch > 0 && gridState) scheduleAutosave(gridState);
+  }, [notesEpoch, gridState]);
 
   /* ── Apply a restored camera once the new gridState has committed. Effects fire child-before-
        parent within one commit, so this (App, the parent) always runs AFTER PixiCanvas's own

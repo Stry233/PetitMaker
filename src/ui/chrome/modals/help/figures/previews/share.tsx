@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderThumbnail } from '../../../../../../canvas/thumbnail';
-import type { GridState, Locale } from '../../../../../../core/model/types';
+import type { GridState, Locale, MapNotes } from '../../../../../../core/model/types';
 import { createGrid } from '../../../../../../core/model/grid-model';
 import { WATER_COLOR } from '../../../../../../core/model/constants';
 import { DEFAULT_MAP } from '../../../../../../config/maps';
@@ -426,11 +426,12 @@ function useFooterSamples(options: ExportOptions): Record<string, string> {
 
 export function ExportControlsPreview() {
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
+  const [notes, setNotes] = useState<MapNotes>({});
   const samples = useFooterSamples(options);
   return (
     <PreviewFrame height={400} zoom={0.72} align="top">
       <div style={{ width: 340 }}>
-        <ExportControls options={options} setOptions={setOptions} summary={null} footerSamples={samples} />
+        <ExportControls options={options} setOptions={setOptions} notes={notes} setNotes={setNotes} summary={null} footerSamples={samples} />
       </div>
     </PreviewFrame>
   );
@@ -476,7 +477,7 @@ export function ExportControlsOpenPreview() {
     <PreviewFrame height={210} zoom={0.72}>
       <div style={{ height: 290, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         <div style={{ width: 340 }}>
-          <ExportControls options={options} setOptions={setOptions} summary={null} footerSamples={samples} initialOpen />
+          <ExportControls options={options} setOptions={setOptions} notes={{}} setNotes={() => {}} summary={null} footerSamples={samples} initialOpen />
         </div>
       </div>
     </PreviewFrame>

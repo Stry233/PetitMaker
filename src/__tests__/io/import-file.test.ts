@@ -1,3 +1,5 @@
+import { prepareOwnImageReceipt } from '../../io/image-ownership';
+import { captureImageAttribution } from '../../core/provenance/image-attribution';
 // Routing + outcome-shape coverage for the shared file-import routine (ImportModal's
 // picker/drop-zone AND the window-level drag-drop overlay both call this — see
 // src/io/import-file.ts). Drives the JSON path with a real serialize()/deserialize() round
@@ -5,7 +7,7 @@
 // synthetic image carries no real share code), matching the pattern in
 // __tests__/ui/chrome/import-modal.test.tsx.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { importFile, type ImportFileDeps } from '../../io/import-file';
+import { importFile, inspectImportFile, type ImportFileDeps } from '../../io/import-file';
 import { MAX_IMPORT_BYTES } from '../../io/import-limits';
 import { serialize } from '../../io/json-codec';
 import { TerrainType, type GridState } from '../../core/model/types';
@@ -52,12 +54,35 @@ function jsonFile(text: string, type = ''): File {
 describe('importFile routing', () => {
   afterEach(() => vi.clearAllMocks());
 
+  it('inspects a file without installing it, and commits it on request', async () => {
+    const state = makeState();
+    setTerrain(state, 2, 2, TerrainType.Mountain, 1);
+    state.notes = { title: 'River garden', description: 'three homes' };
+    const inspection = await inspectImportFile(jsonFile(serialize(state)), 'map.json');
+    expect(inspection.status).toBe('ready');
+    if (inspection.status !== 'ready') return;
+    expect(inspection.preview.source).toBe('json');
+    expect(inspection.preview.notes).toEqual(state.notes);
+    expect(inspection.preview.state.cells[2]![2]!.terrain?.type).toBe(TerrainType.Mountain);
+    const deps = makeDeps();
+    expect(deps.loadMap).not.toHaveBeenCalled();
+    const outcome = inspection.commit(deps);
+    expect(deps.loadMap).toHaveBeenCalledWith(inspection.preview.state);
+    expect(outcome).toEqual({ status: 'imported', source: 'json', warnings: [], notes: state.notes });
+  });
+
+  it('reports an unreadable file from the inspection alone', async () => {
+    expect(await inspectImportFile(jsonFile('{not json'), 'map.json')).toEqual({ status: 'failed' });
+    expect(await inspectImportFile(new File(['x'], 'notes.txt', { type: 'text/plain' }), 'notes.txt')).toEqual({ status: 'unsupported' });
+  });
+
   it('routes a .json-named file to the JSON path by extension', async () => {
     const state = makeState();
     setTerrain(state, 2, 2, TerrainType.Mountain, 1);
+    state.notes = { title: 'River garden' };
     const deps = makeDeps();
     const outcome = await importFile(jsonFile(serialize(state)), 'map.json', deps);
-    expect(outcome).toEqual({ status: 'imported', source: 'json', warnings: [] });
+    expect(outcome).toEqual({ status: 'imported', source: 'json', warnings: [], notes: { title: 'River garden' } });
     expect(deps.loadMap).toHaveBeenCalledTimes(1);
     // No registry: `deps.loadMap` (kit/operations/map.ts:loadMap in production) builds its own
     // default one, so importFile must not build a second, discarded RuleRegistry to hand it.
@@ -128,6 +153,28 @@ describe('importFile routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([true, false])('uses a private own-export receipt during image inspection (%s)', async (own) => {
+    localStorage.clear();
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 }));
+    const ctx = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(16) }),
+    } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
+    try {
+      const state = makeState();
+      state.notes = { title: 'Garden' };
+      if (own) (await prepareOwnImageReceipt(state))();
+      state.imageAttribution = captureImageAttribution(state);
+      vi.mocked(importFromRaster).mockResolvedValue({ ok: true, state, warnings: [], provenance: { aiUsed: false, proceduralUsed: false, appVersion: 'test', saveVersion: 1 } });
+      const inspection = await inspectImportFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png');
+      expect(inspection.status).toBe('ready');
+      if (inspection.status === 'ready') expect(!!inspection.preview.state.imageAttribution).toBe(!own);
+    } finally {
+      ctx.mockRestore();
+      vi.unstubAllGlobals();
+      localStorage.clear();
+    }
+  });
+
   it('maps an unknown-catalog-item raster warning to catalog-drift', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
@@ -149,14 +196,18 @@ describe('importFile routing', () => {
     expect(deps.loadMap).not.toHaveBeenCalled();
   });
 
-  it('rejects a bitmap past the raster pixel cap without decoding it', async () => {
+  it('reads a bitmap past the raster pixel cap at a reduced size, releasing the full bitmap', async () => {
     const close = vi.fn();
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 20000, height: 20000, close } as unknown as ImageBitmap));
+    const getImageData = vi.fn((_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
+    vi.mocked(importFromRaster).mockResolvedValue({ ok: false, error: { code: 'no-payload', message: '' } } as unknown as RasterImportResult);
     const deps = makeDeps();
     const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', deps);
-    expect(outcome).toEqual({ status: 'failed' });
+    expect(outcome).toEqual({ status: 'failed', code: 'no-payload' });
     expect(close).toHaveBeenCalled();
-    expect(importFromRaster).not.toHaveBeenCalled();
+    const [, width, height] = vi.mocked(importFromRaster).mock.calls[0]!;
+    expect(width * height).toBeLessThanOrEqual(64 * 1024 * 1024);
     expect(deps.loadMap).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

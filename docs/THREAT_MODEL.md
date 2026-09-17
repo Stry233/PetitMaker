@@ -55,7 +55,7 @@ The CSP meta fallback cannot enforce `frame-ancestors`, `X-Frame-Options` or HST
 
 ### Provider connections
 
-Named origins in `connect-src` are derived from the Agent and illustration provider registries. Custom endpoints require the broader `https:` source plus HTTP loopback sources for local gateways. `sanitizeEndpointUrl` forces HTTPS for non-loopback hosts, removes embedded URL credentials and rewrites IPv6 loopback to `localhost` so it matches CSP.
+Named origins in `connect-src` are derived from the Agent and illustration provider registries. Custom endpoints require the broader `https:` source plus HTTP loopback sources for local gateways. `data:` is present because the on-device OCR core fetches its own embedded WebAssembly from a data URL, which reaches no network. `sanitizeEndpointUrl` forces HTTPS for non-loopback hosts, removes embedded URL credentials and rewrites IPv6 loopback to `localhost` so it matches CSP.
 
 The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-origin script to the named providers. `script-src 'self'`, dependency review, input handling and key redaction therefore remain the controls against code injection and exfiltration. Custom base URLs are not secrets and are stored in local storage. A key entered on the connection screen is sent only to the built-in provider hosts whose key format it matches, or to a custom endpoint the user has chosen explicitly.
 

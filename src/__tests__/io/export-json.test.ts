@@ -24,9 +24,17 @@ describe('serializeWithSections', () => {
   });
   it('notes round-trip through serialize/deserialize', () => {
     const s = edited();
-    s.notes = { title: 'My Island', author: 'yue' };
+    s.notes = { title: 'My Island', description: 'a first draft' };
     const back = deserialize(serialize(s), s.template);
-    expect(back.notes).toEqual({ title: 'My Island', author: 'yue' });
+    expect(back.notes).toEqual({ title: 'My Island', description: 'a first draft' });
+  });
+  it('drops the retired author field and clamps the title and description on load', () => {
+    const s = makeState(8, 8);
+    s.notes = { title: 'T'.repeat(60), description: 'D'.repeat(260) };
+    const parsed = JSON.parse(serialize(s)) as { notes: Record<string, unknown> };
+    parsed.notes.author = 'someone';
+    const back = deserialize(JSON.stringify(parsed), s.template);
+    expect(back.notes).toEqual({ title: 'T'.repeat(48), description: 'D'.repeat(200) });
   });
   it('can omit annotations independently of notes without changing the working map', () => {
     const state = edited();
@@ -35,7 +43,7 @@ describe('serializeWithSections', () => {
       visible: false,
       locked: true,
     };
-    state.notes = { title: 'Garden plan', author: 'Creator' };
+    state.notes = { title: 'Garden plan', description: 'Creator notes' };
     const original = JSON.parse(serialize(state));
     for (const pretty of [false, true]) {
       const kept = JSON.parse(serializeWithSections(state, { ...BASE, pretty, notes: null }));

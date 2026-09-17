@@ -12,6 +12,7 @@
 
 import type { ModelSpec } from './model-spec';
 import type { ProvenanceState } from '../provenance/types';
+import type { ImageAttribution } from '../provenance/image-attribution';
 import type { AnnotationsState } from './annotations';
 
 // --- Localization ---
@@ -203,9 +204,9 @@ export interface MapTemplate {
 }
 
 // --- Grid State ---
-/** Free-text map metadata (export-json "Notes" section). Lengths are clamped on
- *  decode (title/author 80 chars, description 400) — see json-codec.deserialize. */
-export interface MapNotes { title?: string; description?: string; author?: string }
+/** The map's title and description, shared by saves, the share code and every export.
+ *  `core/model/notes.ts` owns the limits and clamps untrusted input. */
+export interface MapNotes { title?: string; description?: string }
 
 /** The objects added/removed by one `objects` mutation. `version` is the
  *  `objectsVersion` it produced, so a consumer can tell "this delta describes the
@@ -244,14 +245,13 @@ export interface GridState {
   objectsDelta?: ObjectsDelta;
   lockedLayers: Set<number>;
   provenance?: ProvenanceState;   // provenance ledger + taint (optional; absent on legacy)
-  /** The full GenerateConfig that produced this map by a single FULL generation (region null), if
-   *  any. Volatile/session-level (NOT part of the canonical map) — lets the share exporter try the
-   *  procedural-v1 codec (replay seed+config, verify exact, store ~tiny seed/residual record). Set
-   *  on Generate and on procedural-v1 import; absent for hand-edited or region-restricted maps. */
+  /** Recipe metadata for a full-map generation. Share decoding never depends on replaying it. */
   generation?: GenerateConfig;
-  /** Free-text notes (title/description/author). Round-trips through serialize/deserialize
-   *  (json-codec) when present; all other export-json sections are session-only. */
+  /** Title and description. Round-trip through serialize/deserialize (json-codec) and the
+   *  PetitGlyph payload when present; all other export-json sections are session-only. */
   notes?: MapNotes;
+  /** Original image attribution survives JSON saves and autosave independently of provenance. */
+  imageAttribution?: ImageAttribution;
   /** The plan-notes annotation layer (zones, texts, route arrows) plus its own eye/lock state.
    *  Saves and PetitGlyph payloads carry it separately from the canonical terrain/object map. */
   annotations?: AnnotationsState;

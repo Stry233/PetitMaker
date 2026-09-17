@@ -1,12 +1,6 @@
-/**
- * Save-format versioning contracts.
- *
- * The on-disk save evolves over time; `CURRENT_VERSION` names the shape this build
- * writes. Older files are lifted to the current shape by the migration chain (see
- * ./migrate + ./migrations) *before* the decoder ever sees them, so the decoder in
- * json-codec only ever knows the current grammar.
- */
+/** Versioned save contracts. Pure migrations run before decoding. */
 import type { SerializedProvenance } from '../../core/provenance/serialize';
+import type { ImageAttribution } from '../../core/provenance/image-attribution';
 import type { MapNotes } from '../../core/model/types';
 
 export type { MapNotes };
@@ -28,13 +22,7 @@ export interface SaveObject {
   patchOnly?: boolean;
 }
 
-/**
- * A view's camera pose at save time, kept PER VIEW because a 2D pan/zoom and a 3D orbit
- * are different shapes — restoring one into the other would be worse than restoring
- * neither. Mirrors (without importing, to keep io/ view-layer-free) the 2D
- * `host.camera.get2d` shape and the 3D `CameraAngle` (canvas/map3d/capture.ts); both sides
- * convert structurally.
- */
+/** Camera poses are stored separately because the 2D and 3D views use different coordinates. */
 export interface PersistedCamera {
   view2d?: { x: number; y: number; zoom: number };
   view3d?: { az: number; el: number; dist: number; tx?: number; tz?: number };
@@ -48,14 +36,10 @@ export interface SaveFile {
   objects: SaveObject[];
   metadata: { savedAt: string };
   provenance?: SerializedProvenance;
-  /** Optional export-json sections (additive, no version bump — old builds ignore unknown
-   *  keys, so old files load in new builds and new-section files load in old builds). Typed
-   *  `unknown` because json-codec must not gain a dependency on generation/history/etc types —
-   *  only io/export-json (write) and io/import-sections (read) parse them. */
+  /** Additive sections need no version bump. Their owning codecs validate unknown input. */
   notes?: MapNotes;
-  /** The plan-notes annotation layer. Additive and optional like the sections around it (no
-   *  version bump); typed `unknown` here for the same reason they are — json-codec alone parses
-   *  and clamps it. */
+  imageAttribution?: ImageAttribution;
+  /** Optional annotation data, validated and bounded by json-codec. */
   annotations?: unknown;
   generation?: unknown;
   session?: unknown;
@@ -63,17 +47,11 @@ export interface SaveFile {
   stats?: unknown;
   catalogInfo?: unknown;
   manifest?: unknown;
-  /** The autosave's camera round-trip (io/autosave + io/json-codec's readSaveCamera). Additive
-   *  and optional like the sections above, so a pre-existing save simply lacks it: no migration,
-   *  and an old build loading a new save ignores the key it doesn't know. */
+  /** Optional per-view camera state for autosave. */
   camera?: PersistedCamera;
 }
 
-/**
- * An untrusted plain-JSON save of *some* version, kept structural: migrations operate on this
- * shape and MUST NOT import domain types, so a migration written today keeps running unchanged
- * after the in-memory model evolves.
- */
+/** Untrusted JSON envelope. Migrations depend on this wire shape rather than mutable domain types. */
 export type RawSave = Record<string, unknown> & { version?: number };
 
 /** Lifts a save from version `from` to `from + 1`. Pure JSON → JSON: treat the input as

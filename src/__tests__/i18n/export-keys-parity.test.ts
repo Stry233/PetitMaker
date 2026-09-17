@@ -12,7 +12,7 @@ const KEYS = [
   'export.preset','export.preset_share','export.preset_plain',
   'export.preset_share_desc','export.preset_plain_desc',
   'export.sec_size','export.importability','export.importable','export.importable_sub','export.code_size_warn',
-  'export.code_label','export.code_dense','export.code_too_small',
+  'export.code_label','export.code_dense','export.notes_omitted','export.code_too_small',
   'export.appearance',
   'export.preview_reset_hint',
   'export.tok_date','export.tok_time','export.tok_weekday','export.tok_peak','export.tok_seed','export.tok_dims','export.tok_name','export.tok_cells','export.tok_layers','export.tok_objects','export.tok_title','export.tok_brand',
@@ -27,7 +27,7 @@ const KEYS = [
   'exportjson.history','exportjson.history_desc','exportjson.steps','exportjson.depth_all','exportjson.depth_last',
   'exportjson.session','exportjson.session_desc','exportjson.stats','exportjson.stats_desc',
   'exportjson.catalog','exportjson.catalog_desc','exportjson.pretty','exportjson.total',
-  'exportjson.btn_export','exportjson.btn_cancel','exportjson.author',
+  'exportjson.btn_export','exportjson.btn_cancel',
   'exportjson.pretty_help',
 ];
 describe('export i18n parity', () => {

@@ -3,6 +3,15 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ImportModal } from '../../../ui/chrome/modals/import/ImportModal';
 import { I18nProvider } from '../../../i18n/context';
 import { setStoreState, setStoreModal } from '../../_store';
+import { makeState, setTerrain } from '../../rules/_helpers';
+import { TerrainType } from '../../../core/model/types';
+import { useEditorStore } from '../../../state/store';
+import { inspectImportFile } from '../../../io/import-file';
+
+vi.mock('../../../io/import-file', async (orig) => {
+  const actual = await orig<typeof import('../../../io/import-file')>();
+  return { ...actual, inspectImportFile: vi.fn((...args: Parameters<typeof actual.inspectImportFile>) => actual.inspectImportFile(...args)) };
+});
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;
@@ -20,6 +29,40 @@ describe('ImportModal', () => {
     // original PNG — the copy should say so honestly.
     expect(screen.getByText(/JPEG/i)).toBeTruthy();
     expect(screen.getAllByText(/\.json/i).length).toBeGreaterThan(0); // copy still mentions JSON too
+  });
+
+  it('asks before replacing: shows the decoded title and description, installs on Import, and closes', async () => {
+    const commit = vi.fn(() => ({ status: 'imported' as const, source: 'raster' as const, warnings: [] }));
+    vi.mocked(inspectImportFile).mockResolvedValueOnce({ status: 'ready', preview: { source: 'raster', state: makeState(), warnings: [], notes: { title: 'River garden', description: 'Three homes by the bend.' } }, commit });
+    setStoreState({ gridState: makeState() });
+    setStoreModal('import');
+    render(<ImportModal />, { wrapper: Wrapper });
+    fireEvent.drop(screen.getByRole('button'), { dataTransfer: { files: [new File(['x'], 'map.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(screen.getByText('Import this map?')).toBeTruthy());
+    expect(screen.getByText('River garden')).toBeTruthy();
+    expect(screen.getByText('Three homes by the bend.')).toBeTruthy();
+    expect(screen.queryByText('It replaces the map you are working on.')).toBeNull();
+    expect(commit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(commit).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(useEditorStore.getState().modals.import).toBe(false));
+  });
+
+  it('warns that an import replaces a map with content, and Cancel returns to the drop zone', async () => {
+    const commit = vi.fn();
+    vi.mocked(inspectImportFile).mockResolvedValueOnce({ status: 'ready', preview: { source: 'json', state: makeState(), warnings: [] }, commit });
+    const withContent = makeState();
+    setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
+    setStoreState({ gridState: withContent });
+    setStoreModal('import');
+    render(<ImportModal />, { wrapper: Wrapper });
+    fireEvent.drop(screen.getByRole('button'), { dataTransfer: { files: [new File(['{}'], 'map.json', { type: 'application/json' })] } });
+    await waitFor(() => expect(screen.getByText('It replaces the map you are working on.')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Replace' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(commit).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText('Drop a map image or .json file here, or click to choose')).toBeTruthy());
+    expect(useEditorStore.getState().modals.import).toBe(true);
   });
 
   it('renders nothing when closed', () => {

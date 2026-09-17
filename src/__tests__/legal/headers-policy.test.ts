@@ -25,6 +25,10 @@ import { STYLIZE_PROVIDERS } from '../../io/stylize/providers';
 // live protections exactly, with no Google Fonts hosts allowed.
 
 describe('HEADERS_POLICY — shape', () => {
+  it('lets connect-src reach data: URLs, which the embedded OCR core fetches its own WebAssembly from', () => {
+    expect(HEADERS_POLICY.cspDirectives['connect-src']).toContain('data:');
+  });
+
   it('carries every named-provider origin in connect-src, plus self and the custom-endpoint sources', () => {
     const connect = HEADERS_POLICY.cspDirectives['connect-src'];
     expect(connect).toBeDefined();
@@ -41,9 +45,9 @@ describe('HEADERS_POLICY — shape', () => {
     // CSP's host grammar cannot express an IPv6 literal; sanitizeEndpointUrl writes such an
     // endpoint as localhost.
     expect((connect ?? []).join(' ')).not.toContain('[::1]');
-    // 'self' + the named providers + the three custom-endpoint sources, and nothing else: a new
-    // origin has to be a deliberate edit here, not an accident of the policy file.
-    expect(connect).toHaveLength(1 + PROVIDER_ORIGINS.length + 3);
+    // 'self' + data: + the named providers + the three custom-endpoint sources, and nothing else: a
+    // new origin has to be a deliberate edit here, not an accident of the policy file.
+    expect(connect).toHaveLength(2 + PROVIDER_ORIGINS.length + 3);
   });
 
   it('names every host the provider adapters actually call', () => {

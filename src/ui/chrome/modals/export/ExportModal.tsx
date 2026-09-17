@@ -1,3 +1,6 @@
+import { prepareOwnImageReceipt } from '../../../../io/image-ownership';
+import { useAttribution } from './use-attribution';
+import { protectedImageNotes } from '../../../../core/provenance/image-attribution';
 import { useMapReview } from './review/use-map-review';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
@@ -80,7 +83,14 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const gridState = useEditorStore((s) => s.gridState);
   const locale = useEditorStore((s) => s.locale);
   // The window opens the way it was left: every choice but the map's own words is remembered.
-  const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_OPTIONS, ...loadRememberedExportOptions() }));
+  const [remembered, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_OPTIONS, ...loadRememberedExportOptions() }));
+  // The title and description are the map's own notes, shared with the JSON export and the share code.
+  useEditorStore((s) => s.notesEpoch);
+  const setMapNotes = useEditorStore((s) => s.setMapNotes);
+  const attribution = useAttribution(open);
+  const notes = attribution.notes;
+  const notesKey = JSON.stringify(notes);
+  const options = useMemo<ExportOptions>(() => ({ ...remembered, title: notes.title ?? '', description: notes.description ?? '' }), [remembered, notesKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
   const [exporting, setExporting] = useState(false);
   /** How far a tiled export has come, or null while the export is not tiled. */
   const [exportProgress, setExportProgress] = useState<number | null>(null);
@@ -124,8 +134,8 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const reviewParts = exportText(options, { ...footerValues, date: formatFooterDate(), dims: '0×0' });
   const textReview = useTextReview(open, reviewParts, composing);
   const issue = reviewIssue ?? textReview.issue;
-  const textlessExportDisabled = exporting || mapReview.pending || mapReview.result?.status === 'blocked';
-  const exportDisabled = textlessExportDisabled || (issue !== null && typeof issue === 'object');
+  const textlessExportDisabled = attribution.locked || exporting || mapReview.pending || mapReview.result?.status === 'blocked';
+  const exportDisabled = exporting || mapReview.pending || mapReview.result?.status === 'blocked' || (issue !== null && typeof issue === 'object');
 
   // Unreviewed drafts never reach the preview painter, even for one frame.
   const safeOptions = textReview.allowed ? options : { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
@@ -145,7 +155,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   // never per keystroke, because a synchronous build is heavy enough to freeze the modal's
   // entrance. While it builds, the preview keeps its last picture (or its loading state when
   // there is none yet — no placeholder band).
-  const code = useShareCode(ready, gridState ?? null, summary ?? null, options.importable, options.resolution, createdAt);
+  const code = useShareCode(ready, gridState ?? null, summary ?? null, options.importable, options.resolution, createdAt, notesKey);
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
@@ -154,10 +164,6 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
     const controller = new AbortController();
     exportRun.current = controller;
     const { signal } = controller;
-    if (!await notice.request() || signal.aborted) {
-      if (exportRun.current === controller) exportRun.current = null;
-      return;
-    }
     const mapResult = await mapReview.check().catch(() => null);
     if (!mapResult || mapResult.status === 'blocked' || signal.aborted) {
       if (exportRun.current === controller) exportRun.current = null;
@@ -174,6 +180,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       const store = useEditorStore.getState();
       const executor = store.commandExecutor;
       const gridState = store.gridState;
+      if (withoutText && gridState && protectedImageNotes(gridState)) return;
       if (!executor || !gridState) {
         return;
       }
@@ -359,8 +366,12 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
         return;
       }
 
+      const rememberOwnImage = codeImg ? await prepareOwnImageReceipt(gridState) : () => {};
       if (signal.aborted) return;
+      // The final composition determines whether the image carries PetitGlyph.
+      if (!await notice.request(!!codeImg) || signal.aborted) return;
       downloadBlob(blob, `petit-planet-${now}.png`);
+      rememberOwnImage();
       useEditorStore.getState().markExported();   // this map has now left the browser
       if (codeTooSmall) showToast(translate('export.code_too_small'), 'info');
       if (codeFailed) showToast(translate(codeFailed), 'info');
@@ -419,7 +430,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
               a scroller whose subtree renders fixed-position overlays inline
               cannot wear one; the menu would be clipped along with it. */}
           <div ref={settingsRef} onCompositionStartCapture={() => setComposing(true)} onCompositionEndCapture={() => setComposing(false)} style={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, scrollbarGutter: 'stable', paddingLeft: 6, paddingRight: 8, flex: '1 1 auto' }}>
-            <ExportControls options={options} setOptions={setOptions} summary={summary ?? null} footerSamples={footerSamples} checkingFields={textReview.pending && !exporting ? reviewParts.map((part) => part.field) : []} refusedFields={issue && typeof issue === 'object' ? issue.fields : []} reviewLabel={t('export.review.checking')} />
+            <ExportControls options={options} setOptions={setOptions} notes={notes} setNotes={setMapNotes} titleLocked={attribution.titleLocked} descriptionLocked={attribution.descriptionLocked} summary={summary ?? null} footerSamples={footerSamples} checkingFields={textReview.pending && !exporting ? reviewParts.map((part) => part.field) : []} refusedFields={issue && typeof issue === 'object' ? issue.fields : []} reviewLabel={t('export.review.checking')} />
           </div>
           {!mapReview.pending && <MapReviewStatus result={mapReview.result} pending={false} onRetry={mapReview.retry} />}
           {/* Keep hover and focus inside the collapsing clip without narrowing the controls. */}
@@ -428,7 +439,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
               <div role={issue ? "alert" : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('caption'), lineHeight: 1.5 }}>
                 {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : issue ? t('export.review.content', { fields: issue.fields.map((field) => t(field === 'title' ? 'export.field_title' : field === 'description' ? 'export.field_desc' : 'export.opt_footer')).join(', ') }) : ''}
                 {(textReview.paused || issue === 'unavailable') && <button style={{ ...windowFooterGhost, marginTop: 8, width: '100%' }} onClick={() => { setReviewIssue(null); textReview.retry(); }}>{t('export.review.retry')}</button>}
-                {issue && <motion.button disabled={textlessExportDisabled} style={{ ...windowFooterGhost, marginTop: 8, width: '100%', opacity: textlessExportDisabled ? 0.6 : 1 }} onClick={() => void handleExport(true)} {...(textlessExportDisabled ? {} : buttonMotion)}>{t('export.review.without_text')}</motion.button>}
+                {issue && !attribution.locked && <motion.button disabled={textlessExportDisabled} style={{ ...windowFooterGhost, marginTop: 8, width: '100%', opacity: textlessExportDisabled ? 0.6 : 1 }} onClick={() => void handleExport(true)} {...(textlessExportDisabled ? {} : buttonMotion)}>{t('export.review.without_text')}</motion.button>}
               </div>
             </Expand>
           </div>

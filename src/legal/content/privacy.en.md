@@ -29,6 +29,7 @@ Where applicable law requires a processing basis, we rely on what is necessary t
 | Maps and recovery data | Saves the current map and necessary recovery state after edits; may include planning annotations, map notes, provenance, camera position and some undo history |
 | Interface and editing preferences | Remembers language, scale, display, hints, shortcuts and other settings when the relevant options change |
 | Export settings | Remembers the preset, size, display options and footer template, including custom text in that template. Image titles and descriptions are not stored as export preferences; JSON notes may be saved with the map |
+| Own-image recognition | Stores content digests of recent successful image exports to recognize your own work when you import it again in this browser. These records stay in local storage and are not added to shared files; no browser fingerprint or personal identifier is collected for this purpose |
 | Agent connection settings | Remembers the provider, model, endpoint, reasoning effort and supervision mode; keys are handled under Section 7 |
 | Agent conversation | Saves task instructions, replies, tool results, plans, answers and necessary record state to restore the conversation when the panel is reopened |
 | Illustration settings | Remembers the image service, model, endpoint, style direction and custom style instructions; keys are handled under Section 7 |
@@ -40,6 +41,8 @@ Generated illustration takes remain in the current session rather than being sav
 Local data normally remains until you clear it or the browser removes it. Capacity limits, private browsing and device settings can affect storage; storage cannot be guaranteed indefinitely. Different browsers, and the mainland China and international sites, each have separate site storage without automatic synchronization.
 
 ## 4. Exported Files and Content Checks
+
+Human-made maps imported from share images may retain an attribution record containing the original title, description and map-content baseline. That record travels with subsequent JSON saves and recovery data so the app can preserve the original text while the map remains substantially unchanged. Ordinary JSON files remain editable; this safeguard cannot authenticate authorship or prevent changes outside the app.
 
 ### 4.1 Text and Map Checks
 

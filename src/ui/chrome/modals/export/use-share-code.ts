@@ -13,7 +13,7 @@ export interface ShareCodeAsset {
   canvas: HTMLCanvasElement;
   /** Width and metadata fingerprint within the current map's cache entry. */
   builtKey: string;
-  notice: 'export.code_dense' | null;
+  notice: 'export.code_dense' | 'export.notes_omitted' | null;
 }
 
 /** Fingerprint of everything that changes the encoded band for a given map. */
@@ -34,7 +34,7 @@ export async function renderShareCodeAsset(
   gc.width = code.width;
   gc.height = code.height;
   gc.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(code.rgba), code.width, code.height), 0, 0);
-  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt), notice: code.shareOriginalRecommended ? 'export.code_dense' : null };
+  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt), notice: code.notesOmitted ? 'export.notes_omitted' : code.shareOriginalRecommended ? 'export.code_dense' : null };
 }
 
 /** Native exports use a High-size preview; the final capture rebuilds at the reserved native width. */
@@ -54,14 +54,14 @@ export interface ShareCodeState {
   issue: ShareCodeIssue | null;
 }
 
-export type ShareCodeIssue = 'export.code_overlap' | 'export.code_failed' | 'export.code_dense';
+export type ShareCodeIssue = 'export.code_overlap' | 'export.code_failed' | 'export.code_dense' | 'export.notes_omitted';
 
 /** Overlapping coatings are legal placements but cannot share one encoded surface cell. */
 export function shareCodeIssueKey(state: GridState | null | undefined): ShareCodeIssue {
   return state && stackedCoatingIds(state.objects.values()).size > 0 ? 'export.code_overlap' : 'export.code_failed';
 }
 
-/** Rebuild on map, metadata, or size changes; unavailable glyphs never enter the pending state. */
+/** Rebuild on map, notes, metadata, or size changes; unavailable glyphs never enter the pending state. */
 export function useShareCode(
   open: boolean,
   state: GridState | null,
@@ -69,6 +69,8 @@ export function useShareCode(
   importable: boolean,
   resolution: ExportOptions['resolution'],
   createdAt: string,
+  /** The title and description ride in the payload, so an edit to them rebuilds the code too. */
+  notesKey = '',
 ): ShareCodeState {
   const [code, setCode] = useState<ShareCodeState>({ asset: null, pending: false, issue: null });
   // The provenance summary is a fresh object every store read; it only changes while editing,
@@ -99,7 +101,7 @@ export function useShareCode(
         });
     }, BUILD_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(id); };
-  }, [open, state, importable, resolution, createdAt]);
+  }, [open, state, importable, resolution, createdAt, notesKey]);
 
   return code;
 }

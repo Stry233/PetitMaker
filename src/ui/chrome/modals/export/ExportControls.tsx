@@ -8,6 +8,8 @@ import { applyPreset, hasShareCode, type ExportOptions, type ExportPreset, type 
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { moduleBaseFor } from '../../../../io/share';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
+import type { MapNotes } from '../../../../core/model/types';
+import { NOTE_LIMITS } from '../../../../core/model/notes';
 import { HelpBubble } from './HelpBubble';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { Switch } from '../../../primitives/Switch';
@@ -23,23 +25,25 @@ const PRESETS: ExportPreset[] = ['share', 'plain'];
 const hasCurrentProv = (s: MapProvenanceSummary | null) => !!s && (s.containsAi || s.containsProcedural);
 
 /** Settings only — the modal renders the fixed footer (Cancel / Export) outside the scroll region. */
-export function ExportControls({ options, setOptions, summary, footerSamples, initialOpen = false, checkingFields = [], refusedFields = [], reviewLabel = '' }: {
+export function ExportControls({ options, setOptions, notes, setNotes, summary, footerSamples, initialOpen = false, checkingFields = [], refusedFields = [], reviewLabel = '', titleLocked = false, descriptionLocked = false }: {
   options: ExportOptions; setOptions: (o: ExportOptions) => void; summary: MapProvenanceSummary | null;
+  /** The map's own title and description, shared with the JSON export and the share code. */
+  notes: MapNotes; setNotes: (n: MapNotes) => void;
   /** Current value of each footer token (date/dims/name/…), shown in the footer editor's menu. */
   footerSamples: Record<string, string>;
-  /** Open the Appearance disclosure from the first render (a picture of the column can pose the
-   *  rows a live visitor reaches with one press). */
+  /** Initial expanded state for embedded previews. */
   initialOpen?: boolean;
   checkingFields?: TextField[];
   refusedFields?: TextField[];
   reviewLabel?: string;
+  titleLocked?: boolean;
+  descriptionLocked?: boolean;
 }) {
   const t = useT();
   const [details, setDetails] = useState(initialOpen);
   const set = <K extends keyof ExportOptions>(k: K, v: ExportOptions[K]) => setOptions({ ...options, [k]: v });
 
-  // The share code needs a minimum composition width; the Compact size is below it, so an
-  // importable export silently loses its code there. Surface that instead of dropping it silently.
+  // Compact output is narrower than the share-code minimum.
   const codeDropped = hasShareCode(options) && moduleBaseFor(RESOLUTION_WIDTHS[options.resolution]) === null;
 
   return (
@@ -52,15 +56,15 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
       </div>
 
       {/* Title + description */}
-      <Field label={t('export.field_title')}>
+      <Field label={t('export.field_title')} help={titleLocked ? t('export.attribution_locked') : undefined}>
         <div style={{ position: 'relative' }}>
-          <input value={options.title} maxLength={48} onChange={(e) => set('title', e.target.value)} style={inputStyle} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
+          <input disabled={titleLocked} value={notes.title ?? ''} maxLength={NOTE_LIMITS.title} onChange={(e) => setNotes({ ...notes, title: e.target.value })} style={{ ...inputStyle, opacity: titleLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
           {checkingFields.includes('title') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
-      <Field label={t('export.field_desc')}>
+      <Field label={t('export.field_desc')} help={descriptionLocked ? t('export.attribution_locked') : undefined}>
         <div style={{ position: 'relative' }}>
-          <textarea value={options.description} maxLength={120} onChange={(e) => set('description', e.target.value)} style={{ ...inputStyle, display: 'block', minHeight: 44 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
+          <textarea disabled={descriptionLocked} value={notes.description ?? ''} maxLength={NOTE_LIMITS.description} onChange={(e) => setNotes({ ...notes, description: e.target.value })} style={{ ...inputStyle, display: 'block', minHeight: 44, opacity: descriptionLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
           {checkingFields.includes('description') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
@@ -76,8 +80,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
       {/* Importability — labels + help bubbles, no paragraphs */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={capStyle}>{t('export.importability')}</div>
-        {/* Row + its warning are ONE flex child so the column gap never wraps the collapsible. The
-            note explains here, at the toggle it defeats, why an importable export loses its code. */}
+        {/* The warning shares its row's flex item to avoid a gap while collapsed. */}
         <div>
           <Row>
             <Label text={t('export.importable')} help={t('export.importable_sub')} />
@@ -89,8 +92,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
         </div>
       </div>
 
-      {/* Provenance badge toggle — always shown, but DISABLED (with a why) for human-made maps, so
-          its absence never looks like a bug. Enabled only for AI/procedural/mixed content. */}
+      {/* Human-only maps retain a disabled badge control with an explanation. */}
       {(() => { const can = hasCurrentProv(summary); return (
         <Row>
           <Label text={t('export.opt_badge')} help={can ? t('export.badge_help') : t('export.badge_why')} />
@@ -103,11 +105,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
         <button onClick={() => setDetails((d) => !d)} style={detailsBtn}>{details ? '▾ ' : '▸ '}{t('export.appearance')}</button>
         <Expand open={details}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 2 }}>
-            {/* Footer first: its editor is the tallest control, so it sits at the top of the
-                section with room rather than jammed against the buttons at the bottom. Row + its
-                editor are ONE flex child so the column's 10px gap never wraps the collapsible —
-                otherwise the collapsed editor still reserves a gap on each side, leaving a
-                double-height space above the layer row. The editor's own top padding spaces it. */}
+            {/* Keep the row and expandable editor in one flex item so collapsed content adds no gap. */}
             <div>
               <Row><Label text={t('export.opt_footer')} /><Switch on={options.footer} onClick={() => set('footer', !options.footer)} label={t('export.opt_footer')} /></Row>
               <Expand open={options.footer}>
@@ -122,9 +120,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
               <Expand open={options.card3d}><div style={{ paddingTop: 10 }}><Shot3dStrip open={options.card3d} /></div></Expand>
             </div>
             <Row><span style={rowLabel}>{t('export.opt_grid')}</span><Switch on={options.grid} onClick={() => set('grid', !options.grid)} label={t('export.opt_grid')} /></Row>
-            {/* The edit door rides IN the toggle row — a full row for one small verb pushed the
-                appearance section a step taller than it says. It stands whether the toggle is on
-                or off: editing the notes and including them in the image are separate decisions. */}
+            {/* Editing annotations is available independently of their inclusion in the export. */}
             <Row>
               <span style={rowLabel}>{t('annot.export_include')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
@@ -141,9 +137,7 @@ export function ExportControls({ options, setOptions, summary, footerSamples, in
 
 const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 34px 9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
-// Attention note (amber, calm — not an error): the chosen size can't carry the share code.
-/** The amber note this modal says share-code trouble with. Shared with the preview, which reports
- *  the other way a code goes missing (the encoder refused the map). */
+/** Shared warning treatment for unavailable share codes. */
 export function CodeWarn({ text }: { text: string }) {
   return (
     <div style={codeWarn}>
@@ -165,9 +159,7 @@ const codeWarn: CSSProperties = {
 };
 const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: skin.muted, padding: 0 };
 
-/** The door into annotation editing while the toggle above it is on: close whichever export
- *  surface is standing (the modal, or the share window carrying it as a section) and select the
- *  plan-notes layer, exactly what the layer panel's own row writes. */
+/** Closes export surfaces and opens the annotation tools. */
 function editAnnotations(): void {
   const s = useEditorStore.getState();
   s.setModal('share', false);
@@ -185,8 +177,8 @@ const editNotesBtn: CSSProperties = {
 };
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ ...roleFont('caption'), color: skin.ink }}>{label}</span>{children}</label>;
+function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...roleFont('caption'), color: skin.ink }}>{label}{help && <HelpBubble text={help} />}</span>{children}</div>;
 }
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>{children}</div>;

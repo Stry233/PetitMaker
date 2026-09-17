@@ -57,11 +57,11 @@ export const LEGAL: LegalConfig = {
   psbUrl: TARGET.psbUrl,
 
   effectiveDates: {
-    privacy: '2026-09-15',
+    privacy: '2026-09-17',
     terms: '2026-09-13',
   },
   policyVersions: {
-    privacy: '1.6',
+    privacy: '1.7',
     terms: '1.3',
   },
 

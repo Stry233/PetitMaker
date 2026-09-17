@@ -45,7 +45,8 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'media-src': ["'none'"],
     'form-action': ["'self'"],
     'frame-ancestors': ["'none'"],
-    'connect-src': ["'self'", ...PROVIDER_ORIGINS, ...CUSTOM_ENDPOINT_SOURCES],
+    // The OCR core carries its WebAssembly as a data: URL and fetches it; a data: URL reaches no network.
+    'connect-src': ["'self'", 'data:', ...PROVIDER_ORIGINS, ...CUSTOM_ENDPOINT_SOURCES],
   },
   headerOnlyDirectives: ['frame-ancestors', 'Strict-Transport-Security'],
   staticHeaders: {

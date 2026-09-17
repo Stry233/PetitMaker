@@ -139,7 +139,7 @@ describe('secret exclusion — codecs never touch storage', () => {
     const executor = newExecutor(state);
 
     const allSections: ExportJsonOptions = {
-      notes: { title: 'Test Map', description: 'A test map', author: 'tester' },
+      notes: { title: 'Test Map', description: 'A test map' },
       includeGeneration: true,
       includeProvenance: true,
       history: { entries: executor.getUndoEntries(), depth: 'all' },
@@ -399,7 +399,7 @@ describe('stylize secrets never enter a payload', () => {
     expect(code).not.toBeNull();
 
     const allSections: ExportJsonOptions = {
-      notes: { title: 'Test Map', description: 'A test map', author: 'tester' },
+      notes: { title: 'Test Map', description: 'A test map' },
       includeGeneration: true,
       includeProvenance: true,
       session: { v: 1, lockedLayers: [], camera: { x: 0, y: 0, zoom: 1 } },

@@ -1,3 +1,5 @@
+import { attributedNotes, readImageAttribution } from '../core/provenance/image-attribution';
+import { clampNotes } from '../core/model/notes';
 import {
   type GridState,
   type MacroCell,
@@ -157,6 +159,7 @@ function tokenToCell(token: string, zone: CellZone): MacroCell {
 /** Serializes map state with optional camera session data supplied by the caller. */
 export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveFile {
   const { template, cells, objects } = state;
+  const notes = clampNotes(attributedNotes(state));
 
   const tokens: string[] = [];
   for (let y = 0; y < template.height; y++) {
@@ -195,10 +198,8 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
     objects: objectList,
     metadata: { savedAt: new Date().toISOString() },
     ...(state.provenance ? { provenance: serializeProvenance(state.provenance) } : {}),
-    // Project notes are omitted when empty and are not part of the canonical share payload.
-    ...(state.notes && (state.notes.title || state.notes.description || state.notes.author)
-      ? { notes: state.notes }
-      : {}),
+    ...(notes ? { notes } : {}),
+    ...(state.imageAttribution ? { imageAttribution: state.imageAttribution } : {}),
     // An empty annotation layer has no persisted visibility or lock state.
     ...(state.annotations && state.annotations.items.length > 0 ? { annotations: state.annotations } : {}),
     ...(camera && (camera.view2d || camera.view3d) ? { camera } : {}),
@@ -376,13 +377,13 @@ export function deserializeParsed(raw: unknown, template: MapTemplate): GridStat
   } else {
     markLegacyUnknown(result); // legacy / pre-provenance map → existing content is Unknown
   }
-  // Notes are untrusted; coerce them to strings and enforce persisted length limits.
-  if (save.notes && typeof save.notes === 'object') {
-    result.notes = {
-      ...(save.notes.title ? { title: String(save.notes.title).slice(0, 80) } : {}),
-      ...(save.notes.description ? { description: String(save.notes.description).slice(0, 400) } : {}),
-      ...(save.notes.author ? { author: String(save.notes.author).slice(0, 80) } : {}),
-    };
+  // Notes are untrusted; the clamp also drops the author field older saves carried.
+  const notes = clampNotes(save.notes);
+  if (notes) result.notes = notes;
+  if (save.imageAttribution !== undefined) {
+    result.imageAttribution = readImageAttribution(save.imageAttribution, result, area * (1 + MAX_OBJECTS_PER_CELL));
+    if (!result.imageAttribution) throw new Error('Invalid image attribution record.');
+    result.notes = attributedNotes(result);
   }
   const annotations = decodeAnnotations(save.annotations);
   if (annotations) result.annotations = annotations;

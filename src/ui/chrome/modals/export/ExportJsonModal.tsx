@@ -1,3 +1,4 @@
+import { useAttribution } from './use-attribution';
 import { useMapReview } from './review/use-map-review';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
@@ -8,6 +9,7 @@ import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle }
 import { roleFont } from '../../../design/text-weight';
 import { useT, translate } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
+import { clampNotes, NOTE_LIMITS } from '../../../../core/model/notes';
 import type { GridState, MapNotes } from '../../../../core/model/types';
 import { serializeWithSections, sectionSizeFormats, type ExportJsonOptions, type SectionSizes, type SessionSection } from '../../../../io/export-json';
 import { downloadJSON } from '../../../../io/image-export';
@@ -27,16 +29,12 @@ import { showToast } from '../../floating/Toast';
 import { useCursorCss } from '../../../design/cursors/cursor-vars';
 
 const enc = new TextEncoder();
-/** Cheap live byte size of the (tiny) notes object — computed on keystroke without touching the
- *  potentially-huge history, so typing never triggers the heavy per-section pass. Measured in the
- *  active format so it tracks the Pretty-print toggle like every other section. */
+/** Measure notes separately so typing does not serialize the history. */
 function notesByteLen(n: MapNotes | undefined, pretty: boolean): number {
-  return n && (n.title || n.description || n.author) ? enc.encode(JSON.stringify(n, null, pretty ? 2 : undefined)).length : 0;
+  return n ? enc.encode(JSON.stringify(n, null, pretty ? 2 : undefined)).length : 0;
 }
 
 type HistoryDepthKey = 'all' | 'last100';
-
-const EMPTY_NOTES: MapNotes = { title: '', description: '', author: '' };
 
 
 /** Human-friendly byte size: B under 1 KB, KB under 1 MB, else MB (one decimal above B). */
@@ -46,19 +44,13 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Muted directional tints — a hint of colour, not a flash: soft sage when the total grows,
-// warm clay when it shrinks. Kept close to the base ink so the cue reads as a gentle glow.
+// Directional size feedback uses green for increases and amber for decreases.
 const SIZE_UP = '#5FA046';
 const SIZE_DOWN = '#CE9145';
-// easeOutExpo — a decisive start that eases into a long, soft settle. The whole point of the
-// "crafted" feel: the digits move quickly off the old value, then glide to rest.
+// easeOutExpo.
 const ROLL_EASE = [0.16, 1, 0.3, 1] as const;
 
-/** The live total-size readout with a directional count animation: the digits roll from the
- *  previous value to the new one on an easeOutExpo curve, the colour eases up to a muted tint
- *  and back (green up / clay down), and the value glides a couple of px in the direction of
- *  change. Fully static under reduced motion — the value just snaps, honoring the app's
- *  Settings → Motion toggle (not only the OS setting). */
+/** Size changes animate direction and magnitude; reduced motion updates immediately. */
 function AnimatedTotal({ bytes, label }: { bytes: number | null; label: string }) {
   const reduced = useReducedMotionConfig();
   const value = useMotionValue(bytes ?? 0);
@@ -105,15 +97,6 @@ function buildSession(state: GridState): SessionSection {
   return { v: 1, lockedLayers: [...state.lockedLayers], camera: host.camera.get2d() };
 }
 
-/** Trims blank fields out of the notes object typed in the modal; undefined when nothing typed. */
-function trimNotes(n: MapNotes): MapNotes | undefined {
-  const out: MapNotes = {};
-  if (n.title?.trim()) out.title = n.title;
-  if (n.description?.trim()) out.description = n.description;
-  if (n.author?.trim()) out.author = n.author;
-  return out.title || out.description || out.author ? out : undefined;
-}
-
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 const rowDesc: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.35 };
 const chipStyle: CSSProperties = { fontFamily: font.family, ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
@@ -144,9 +127,7 @@ function SectionRow({ name, desc, hint, checked, disabled, onToggle, bytes }: {
   );
 }
 
-/** The save-file controls on their own, so the "save and share" window can carry them as one of
- *  its three sections. `open` drives the per-open reset and the (heavy) per-section measurement, so
- *  a section that is mounted but not showing costs nothing. */
+/** Shared JSON export panel. Expensive section measurement runs only while open. */
 export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () => void }) {
   const t = useT();
   const busy = useCursorCss('busy');
@@ -157,8 +138,15 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const provenanceAvailable = !!gridState?.provenance;
 
   const [annotationsOn, setAnnotationsOn] = useState(true);
-  const [notesOn, setNotesOn] = useState(false);
-  const [notesVal, setNotesVal] = useState<MapNotes>(EMPTY_NOTES);
+  const [notesChosen, setNotesOn] = useState(false);
+  const attribution = useAttribution(open);
+  const notesOn = notesChosen || attribution.locked;
+  // The title and description are the map's own, shared with the image export and the share code.
+  useEditorStore((s) => s.notesEpoch);
+  const setMapNotes = useEditorStore((s) => s.setMapNotes);
+  const notesVal: MapNotes = attribution.notes;
+  const notesKey = JSON.stringify(notesVal);
+  const fileNotes = useMemo(() => clampNotes(notesVal), [notesKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
   const [generationOn, setGenerationOn] = useState(false);
   const [provenanceOn, setProvenanceOn] = useState(false);
   const [historyOn, setHistoryOn] = useState(false);
@@ -177,8 +165,8 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const exportTimer = useRef<ReturnType<typeof setTimeout>>();
   const exportRevision = useRef(0);
   const reviewParts = useMemo<TextPart[]>(() => notesOn
-    ? (['title', 'description', 'author'] as const).map(field => ({ field, text: notesVal[field] ?? '' })).filter(part => needsTextReview(part.text))
-    : [], [notesOn, notesVal]);
+    ? (['title', 'description'] as const).map(field => ({ field, text: notesVal[field] ?? '' })).filter(part => needsTextReview(part.text))
+    : [], [notesOn, notesKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
   const textReview = useTextReview(open, reviewParts, notesOn && composing);
   const issue = textReview.issue;
   const refusedFields = issue && typeof issue === 'object' ? issue.fields : [];
@@ -186,7 +174,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const mapReview = useMapReview(open, false, false, annotationsOn);
   const exportDisabled = exporting || mapReview.pending || !textReview.allowed || mapReview.result?.status === 'blocked';
   const noticeRevision = JSON.stringify([annotationsOn, notesOn, notesVal, composing, generationOn, provenanceOn, historyOn, historyDepthKey, sessionOn, statsOn, catalogOn, pretty]);
-  const notice = useExportNotice(open, noticeRevision, gridState);
+  const notice = useExportNotice(open, noticeRevision, gridState, 'json');
 
   useEffect(() => {
     exportRevision.current++;
@@ -197,13 +185,11 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const sectionsRef = useRef<HTMLDivElement>(null);
   const sectionsFade = useScrollFade(sectionsRef, 'y');
 
-  // Reset to defaults every time the modal opens (matches the ExportModal's per-open reset
-  // pattern) — generation/provenance default ON only when the map actually has them.
+  // Generation and provenance default on only when the map contains them.
   useEffect(() => {
     if (!open) return;
     setAnnotationsOn(true);
     setNotesOn(false);
-    setNotesVal(EMPTY_NOTES);
     setComposing(false);
     setGenerationOn(generationAvailable);
     setProvenanceOn(provenanceAvailable);
@@ -258,7 +244,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
 
   // Notes size is tiny and changes on every keystroke — compute it live, off the heavy path,
   // in the active format so it tracks Pretty-print too.
-  const notesBytes = useMemo(() => (notesOn ? notesByteLen(trimNotes(notesVal), pretty) : 0), [notesOn, notesVal, pretty]);
+  const notesBytes = useMemo(() => (notesOn ? notesByteLen(fileNotes, pretty) : 0), [notesOn, fileNotes, pretty]);
 
   // Live total = sum of the currently-included sections, using the compact OR pretty measurements
   // per the Pretty-print toggle. Pure arithmetic, so every toggle (including Pretty-print) updates
@@ -290,13 +276,12 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     const state = useEditorStore.getState().gridState;
     const executor = useEditorStore.getState().commandExecutor;
     if (!state || !executor) return;
-    // The final serialize (with a large history + integrity CRC) can block briefly. Flip the
-    // button to a spinner, yield one frame so it paints, THEN serialize — so the click never
-    // looks frozen.
+    // Let the busy state paint before serializing a potentially large history.
     setExporting(true);
-    const selectedNotes = notesOn ? trimNotes(notesVal) : undefined;
+    const selectedNotes = notesOn ? fileNotes : undefined;
     exportTimer.current = setTimeout(() => {
       try {
+        if (revision !== exportRevision.current) return;
         const depth: 'all' | number = historyDepthKey === 'all' ? 'all' : 100;
         const opts: ExportJsonOptions = {
           notes: selectedNotes ?? null,
@@ -312,8 +297,6 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
 
         const json = serializeWithSections(state, opts);
         downloadJSON(json, `petit-planet-${state.template.id}-${Date.now()}.json`);
-        // Persist only the reviewed snapshot after a successful export.
-        if (notesOn) state.notes = selectedNotes;
         useEditorStore.getState().markExported();   // this map has now left the browser
         showToast(translate('toast.exported_json'), 'info');
         setExporting(false);
@@ -325,7 +308,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     }, 0);
   }
 
-  const setNoteField = (k: keyof MapNotes) => (v: string) => setNotesVal((n) => ({ ...n, [k]: v }));
+  const setNoteField = (k: keyof MapNotes) => (v: string) => setMapNotes({ ...notesVal, [k]: v });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
@@ -354,44 +337,33 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
           bytes={shown?.annotations}
         />
 
-        {/* Row + its expand panel are ONE flex child so the container's 14px gap
-            never wraps the collapsible — a gap around it would appear/vanish in a
-            single frame on toggle (the "space jump at the last frame"). The
-            panel's own top padding gives the row→fields separation instead. */}
+        {/* Keep the expandable fields in the row's flex item so collapsed content adds no gap. */}
         <div>
         <SectionRow
           name={t('exportjson.notes')}
           desc={t('exportjson.notes_desc')}
           checked={notesOn}
+          disabled={attribution.locked}
           onToggle={() => { setNotesOn((v) => !v); setComposing(false); }}
           bytes={shown ? notesBytes : undefined}
         />
         <Expand open={notesOn}>
-          {/* The global :focus-visible ring is `outline: 3px` + `outline-offset: 2px` = ~5px
-              reach beyond each input. Pad the container by MORE than that on every side so the
-              ring stays inside this overflow:hidden expand wrapper instead of being clipped. */}
+          {/* Padding contains the five-pixel focus ring inside the expand clip. */}
           <div onCompositionStartCapture={() => setComposing(true)} onCompositionEndCapture={() => setComposing(false)} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 8px 2px' }}>
-            <label style={fieldWrap}>
-              <span style={fieldCaption}>{t('export.field_title')}</span>
+            <div style={fieldWrap}>
+              <span style={fieldCaption}>{t('export.field_title')} {attribution.titleLocked && <HelpBubble text={t('export.attribution_locked')} />}</span>
               <span style={{ display: 'block', position: 'relative' }}>
-                <input value={notesVal.title ?? ''} maxLength={80} onChange={(e) => setNoteField('title')(e.target.value)} style={inputStyle} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checking('title')} aria-invalid={refusedFields.includes('title')} />
+                <input disabled={attribution.titleLocked} value={notesVal.title ?? ''} maxLength={NOTE_LIMITS.title} onChange={(e) => setNoteField('title')(e.target.value)} style={{ ...inputStyle, opacity: attribution.titleLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checking('title')} aria-invalid={refusedFields.includes('title')} />
                 {checking('title') && <ReviewIndicator label={t('export.review.checking')} />}
               </span>
-            </label>
-            <label style={fieldWrap}>
-              <span style={fieldCaption}>{t('export.field_desc')}</span>
+            </div>
+            <div style={fieldWrap}>
+              <span style={fieldCaption}>{t('export.field_desc')} {attribution.descriptionLocked && <HelpBubble text={t('export.attribution_locked')} />}</span>
               <span style={{ display: 'block', position: 'relative' }}>
-                <textarea value={notesVal.description ?? ''} maxLength={400} onChange={(e) => setNoteField('description')(e.target.value)} style={{ ...inputStyle, minHeight: 44 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checking('description')} aria-invalid={refusedFields.includes('description')} />
+                <textarea disabled={attribution.descriptionLocked} value={notesVal.description ?? ''} maxLength={NOTE_LIMITS.description} onChange={(e) => setNoteField('description')(e.target.value)} style={{ ...inputStyle, minHeight: 44, opacity: attribution.descriptionLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checking('description')} aria-invalid={refusedFields.includes('description')} />
                 {checking('description') && <ReviewIndicator label={t('export.review.checking')} />}
               </span>
-            </label>
-            <label style={fieldWrap}>
-              <span style={fieldCaption}>{t('exportjson.author')}</span>
-              <span style={{ display: 'block', position: 'relative' }}>
-                <input value={notesVal.author ?? ''} maxLength={80} onChange={(e) => setNoteField('author')(e.target.value)} style={inputStyle} placeholder={t('export.optional')} aria-label={t('exportjson.author')} aria-busy={checking('author')} aria-invalid={refusedFields.includes('author')} />
-                {checking('author') && <ReviewIndicator label={t('export.review.checking')} />}
-              </span>
-            </label>
+            </div>
             {issue && <div role="alert" style={rowDesc}>
               {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : t('export.review.content', { fields: issue.fields.map(field => t(field === 'title' ? 'export.field_title' : field === 'description' ? 'export.field_desc' : 'exportjson.author')).join(', ') })}
               {issue === 'unavailable' && <button type="button" onClick={textReview.retry} style={{ ...windowFooterGhost, marginTop: 8 }}>{t('export.review.retry')}</button>}

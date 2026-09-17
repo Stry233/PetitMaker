@@ -11,7 +11,7 @@ import { roleFont } from '../../../../design/text-weight';
 
 const READING_MS = 7000;
 
-export function ExportNotice({ open, onDecision }: { open: boolean; onDecision: (accepted: boolean) => void }) {
+export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean }) {
   const t = useT();
   const reduced = useReducedMotionConfig();
   const [entered, setEntered] = useState(false);
@@ -42,7 +42,7 @@ export function ExportNotice({ open, onDecision }: { open: boolean; onDecision: 
     const timer = setInterval(tick, 100);
     document.addEventListener('visibilitychange', tick);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
-  }, [open, entered, t]);
+  }, [open, entered, t, format, hasPetitGlyph]);
 
   const checkEnd = useCallback(() => {
     const node = content.current;
@@ -58,7 +58,7 @@ export function ExportNotice({ open, onDecision }: { open: boolean; onDecision: 
     if (words.current) observer?.observe(words.current);
     window.addEventListener('resize', checkEnd);
     return () => { observer?.disconnect(); window.removeEventListener('resize', checkEnd); };
-  }, [open, entered, t, checkEnd]);
+  }, [open, entered, t, format, hasPetitGlyph, checkEnd]);
 
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
   const ready = open && entered && seconds === 0 && atEnd;
@@ -74,6 +74,8 @@ export function ExportNotice({ open, onDecision }: { open: boolean; onDecision: 
             <li>{t('export.notice.honesty')}</li>
             <li>{t('export.notice.respect')}</li>
             <li>{t('export.notice.responsibility')}</li>
+            {format === 'json' ? <li>{t('export.notice.json_attribution')}</li>
+              : hasPetitGlyph && <li>{t('export.notice.image_attribution')}</li>}
           </ol>
         </div>
       </div>
@@ -93,8 +95,9 @@ export function ExportNotice({ open, onDecision }: { open: boolean; onDecision: 
 }
 
 /** One acknowledgement per attempt; closing or changing its inputs retires pending consent. */
-export function useExportNotice(open: boolean, revision: unknown, map: unknown) {
+export function useExportNotice(open: boolean, revision: unknown, map: unknown, format: 'image' | 'json' = 'image') {
   const [showing, setShowing] = useState(false);
+  const [hasPetitGlyph, setHasPetitGlyph] = useState(false);
   const pending = useRef<((accepted: boolean) => void) | null>(null);
   const decide = useCallback((accepted: boolean) => {
     const resolve = pending.current;
@@ -105,10 +108,11 @@ export function useExportNotice(open: boolean, revision: unknown, map: unknown) 
   useEffect(() => {
     decide(false);
     return () => decide(false);
-  }, [open, revision, map, decide]);
-  const request = useCallback((): Promise<boolean> => {
+  }, [open, revision, map, format, decide]);
+  const request = useCallback((containsPetitGlyph = false): Promise<boolean> => {
     if (!open || pending.current) return Promise.resolve(false);
+    setHasPetitGlyph(containsPetitGlyph);
     return new Promise(resolve => { pending.current = resolve; setShowing(true); });
   }, [open]);
-  return { request, notice: <ExportNotice open={open && showing} onDecision={decide} /> };
+  return { request, notice: <ExportNotice open={open && showing} onDecision={decide} format={format} hasPetitGlyph={hasPetitGlyph} /> };
 }

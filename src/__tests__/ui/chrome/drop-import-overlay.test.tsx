@@ -11,11 +11,16 @@ import { makeState, setTerrain } from '../../rules/_helpers';
 import { TerrainType } from '../../../core/model/types';
 import { ModalShell } from '../../../ui/primitives/ModalShell';
 
-const importFileMock = vi.fn();
+const inspectMock = vi.fn();
+const commitMock = vi.fn();
 vi.mock('../../../io/import-file', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../io/import-file')>();
-  return { ...actual, importFile: (...args: unknown[]) => importFileMock(...args) };
+  return { ...actual, inspectImportFile: (...args: unknown[]) => inspectMock(...args) };
 });
+/** A decoded file waiting for the user's word, as `inspectImportFile` hands it over. */
+function ready(notes?: { title?: string; description?: string }) {
+  return { status: 'ready', preview: { source: 'json', state: makeState(), warnings: [], ...(notes ? { notes } : {}) }, commit: commitMock };
+}
 
 import { DropImportOverlay } from '../../../ui/chrome/modals/import/DropImportOverlay';
 import { setStoreState, setStoreModal } from '../../_store';
@@ -46,8 +51,9 @@ describe('DropImportOverlay', () => {
   beforeEach(() => {
     setStoreState({ locale: 'en', gridState: makeState() });
     setStoreModal('import', false);
-    importFileMock.mockReset();
-    importFileMock.mockResolvedValue({ status: 'imported', source: 'json', warnings: [] });
+    inspectMock.mockReset(); commitMock.mockReset();
+    inspectMock.mockResolvedValue(ready({ title: 'River garden', description: 'Three homes by the bend.' }));
+    commitMock.mockReturnValue({ status: 'imported', source: 'json', warnings: [] });
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -82,18 +88,24 @@ describe('DropImportOverlay', () => {
     await waitFor(() => expect(screen.queryByText(HINT)).toBeNull());
   });
 
-  it('drops on an EMPTY map import immediately, with no confirm step', async () => {
+  it('drops on an EMPTY map decode the file, then ask before importing, without a replace warning', async () => {
     setStoreState({ gridState: makeState() }); // no terrain, no non-locked objects
     render(<DropImportOverlay />, { wrapper: Wrapper });
     const file = { name: 'map.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('dragenter'));
     fireWindow(dragEvent('drop', { files: [file] }));
-    await waitFor(() => expect(importFileMock).toHaveBeenCalledTimes(1));
-    expect(importFileMock.mock.calls[0]?.[0]).toBe(file);
-    expect(screen.queryByText(/Replace the current map/)).toBeNull();
+    await waitFor(() => expect(inspectMock).toHaveBeenCalledTimes(1));
+    expect(inspectMock.mock.calls[0]?.[0]).toBe(file);
+    await waitFor(() => expect(screen.getByText('Import this map?')).toBeTruthy());
+    expect(screen.getByText('River garden')).toBeTruthy();
+    expect(screen.getByText('Three homes by the bend.')).toBeTruthy();
+    expect(screen.queryByText('It replaces the map you are working on.')).toBeNull();
+    expect(commitMock).not.toHaveBeenCalled();
+    await act(async () => { screen.getByText('Import').click(); });
+    expect(commitMock).toHaveBeenCalledTimes(1);
   });
 
-  it('drops on a map WITH content asks for confirmation instead of importing immediately', () => {
+  it('drops on a map WITH content warn that the import replaces it', async () => {
     const withContent = makeState();
     setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
     setStoreState({ gridState: withContent });
@@ -101,20 +113,21 @@ describe('DropImportOverlay', () => {
     const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('dragenter'));
     fireWindow(dragEvent('drop', { files: [file] }));
-    expect(importFileMock).not.toHaveBeenCalled();
-    expect(screen.getByText('Replace the current map with "my-map.json"?')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('It replaces the map you are working on.')).toBeTruthy());
+    expect(commitMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Replace')).toBeTruthy();
   });
 
-  it('the confirm Replace button runs the import exactly once', async () => {
+  it('the confirm Replace button installs the decoded map exactly once', async () => {
     const withContent = makeState();
     setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
     setStoreState({ gridState: withContent });
     render(<DropImportOverlay />, { wrapper: Wrapper });
     const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('drop', { files: [file] }));
-    const replaceBtn = screen.getByText('Replace');
+    const replaceBtn = await screen.findByText('Replace');
     await act(async () => { replaceBtn.click(); });
-    expect(importFileMock).toHaveBeenCalledTimes(1);
+    expect(commitMock).toHaveBeenCalledTimes(1);
   });
 
   it('cancel dismisses the confirm without importing', async () => {
@@ -124,9 +137,20 @@ describe('DropImportOverlay', () => {
     render(<DropImportOverlay />, { wrapper: Wrapper });
     const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('drop', { files: [file] }));
-    act(() => { screen.getByText('Cancel').click(); });
-    expect(importFileMock).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByText(/Replace the current map/)).toBeNull());
+    const cancel = await screen.findByText('Cancel');
+    act(() => { cancel.click(); });
+    expect(commitMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText('Import this map?')).toBeNull());
+  });
+
+  it('a file that fails to decode shows no confirmation and leaves the page alone', async () => {
+    inspectMock.mockResolvedValue({ status: 'failed', code: 'no-payload' });
+    render(<DropImportOverlay />, { wrapper: Wrapper });
+    fireWindow(dragEvent('drop', { files: [{ name: 'photo.jpg', type: 'image/jpeg' }] }));
+    await waitFor(() => expect(inspectMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('Reading map…')).toBeNull());
+    expect(screen.queryByText('Import this map?')).toBeNull();
+    expect(commitMock).not.toHaveBeenCalled();
   });
 
   it('does not show the hint or import while the ImportModal already owns the drop (avoids a double import)', () => {
@@ -136,7 +160,7 @@ describe('DropImportOverlay', () => {
     fireWindow(dragEvent('dragenter'));
     expect(screen.queryByText(HINT)).toBeNull();
     fireWindow(dragEvent('drop', { files: [file] }));
-    expect(importFileMock).not.toHaveBeenCalled();
+    expect(inspectMock).not.toHaveBeenCalled();
   });
 
   it('dragover always preventDefault()s a file-carrying drag, modal open or not (stops the browser navigating away)', () => {
@@ -153,29 +177,27 @@ describe('DropImportOverlay', () => {
   describe('reentrancy guard', () => {
     it('a second drop landing while the first is still decoding is ignored, not run concurrently', async () => {
       let resolveFirst!: (v: unknown) => void;
-      importFileMock.mockImplementation(() => new Promise((resolve) => { resolveFirst = resolve; }));
-      setStoreState({ gridState: makeState() }); // empty map: import starts immediately
+      inspectMock.mockImplementation(() => new Promise((resolve) => { resolveFirst = resolve; }));
+      setStoreState({ gridState: makeState() });
       render(<DropImportOverlay />, { wrapper: Wrapper });
 
       const fileA = { name: 'a.json', type: 'application/json', text: async () => '{}' };
       const fileB = { name: 'b.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('dragenter'));
-      fireWindow(dragEvent('drop', { files: [fileA] })); // -> importing, importFile('a') in flight
-      expect(importFileMock).toHaveBeenCalledTimes(1);
+      fireWindow(dragEvent('drop', { files: [fileA] })); // -> decoding a
+      expect(inspectMock).toHaveBeenCalledTimes(1);
 
       // A second, unrelated drag+drop arrives before the first resolves.
       fireWindow(dragEvent('dragenter'));
       fireWindow(dragEvent('drop', { files: [fileB] }));
-      expect(importFileMock).toHaveBeenCalledTimes(1); // still just the first — the race never starts
-      expect(importFileMock.mock.calls[0]?.[0]).toBe(fileA);
+      expect(inspectMock).toHaveBeenCalledTimes(1); // still just the first — the race never starts
+      expect(inspectMock.mock.calls[0]?.[0]).toBe(fileA);
 
-      await act(async () => { resolveFirst({ status: 'imported', source: 'json', warnings: [] }); });
-      await waitFor(() => expect(screen.queryByText('Reading map…')).toBeNull());
+      await act(async () => { resolveFirst(ready()); });
+      await waitFor(() => expect(screen.getByText('Import this map?')).toBeTruthy());
     });
 
-    it('a fast double-click on Replace runs the import exactly once', async () => {
-      let resolveImport!: (v: unknown) => void;
-      importFileMock.mockImplementation(() => new Promise((resolve) => { resolveImport = resolve; }));
+    it('a fast double-click on Replace installs the map exactly once', async () => {
       const withContent = makeState();
       setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
       setStoreState({ gridState: withContent });
@@ -183,13 +205,11 @@ describe('DropImportOverlay', () => {
 
       const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('drop', { files: [file] }));
-      const replaceBtn = screen.getByText('Replace');
+      const replaceBtn = await screen.findByText('Replace');
       // Both clicks dispatch synchronously in the same task, before React has a chance to
       // re-render the confirm buttons away — exactly the race a fast double-click produces.
       act(() => { replaceBtn.click(); replaceBtn.click(); });
-      expect(importFileMock).toHaveBeenCalledTimes(1);
-
-      await act(async () => { resolveImport({ status: 'imported', source: 'json', warnings: [] }); });
+      expect(commitMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -222,22 +242,22 @@ describe('DropImportOverlay', () => {
       Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     });
 
-    it('does not dismiss a pending confirm on window blur', () => {
+    it('does not dismiss a pending confirm on window blur', async () => {
       const withContent = makeState();
       setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
       setStoreState({ gridState: withContent });
       render(<DropImportOverlay />, { wrapper: Wrapper });
       const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('drop', { files: [file] }));
-      expect(screen.getByText('Replace the current map with "my-map.json"?')).toBeTruthy();
+      await screen.findByText('Import this map?');
 
       act(() => { window.dispatchEvent(new Event('blur')); });
-      expect(screen.getByText('Replace the current map with "my-map.json"?')).toBeTruthy();
+      expect(screen.getByText('Import this map?')).toBeTruthy();
     });
 
-    it('does not interrupt an import in flight on window blur', async () => {
-      let resolveImport!: (v: unknown) => void;
-      importFileMock.mockImplementation(() => new Promise((resolve) => { resolveImport = resolve; }));
+    it('does not interrupt a decode in flight on window blur', async () => {
+      let resolveInspect!: (v: unknown) => void;
+      inspectMock.mockImplementation(() => new Promise((resolve) => { resolveInspect = resolve; }));
       setStoreState({ gridState: makeState() });
       render(<DropImportOverlay />, { wrapper: Wrapper });
       const file = { name: 'map.json', type: 'application/json', text: async () => '{}' };
@@ -246,15 +266,16 @@ describe('DropImportOverlay', () => {
 
       act(() => { window.dispatchEvent(new Event('blur')); });
       expect(screen.getByText('Reading map…')).toBeTruthy();
-      expect(importFileMock).toHaveBeenCalledTimes(1);
+      expect(inspectMock).toHaveBeenCalledTimes(1);
 
-      await act(async () => { resolveImport({ status: 'imported', source: 'json', warnings: [] }); });
+      await act(async () => { resolveInspect(ready()); });
     });
   });
 
   // A second drop landing while a decision is already pending must not swap the pending
   // file out from under the user; the question stays about the file that was already asked about.
-  it('ignores a second drop while a confirm is already pending, keeping the original file', () => {
+  it('ignores a second drop while a confirm is already pending, keeping the original file', async () => {
+    inspectMock.mockResolvedValue(ready()); // no title: the card names the file
     const withContent = makeState();
     setTerrain(withContent, 2, 2, TerrainType.Mountain, 1);
     setStoreState({ gridState: withContent });
@@ -262,13 +283,14 @@ describe('DropImportOverlay', () => {
     const fileA = { name: 'a.json', type: 'application/json', text: async () => '{}' };
     const fileB = { name: 'b.json', type: 'application/json', text: async () => '{}' };
     fireWindow(dragEvent('drop', { files: [fileA] }));
-    expect(screen.getByText('Replace the current map with "a.json"?')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('a.json')).toBeTruthy());
 
     fireWindow(dragEvent('dragenter'));
     fireWindow(dragEvent('drop', { files: [fileB] }));
-    expect(screen.getByText('Replace the current map with "a.json"?')).toBeTruthy();
-    expect(screen.queryByText('Replace the current map with "b.json"?')).toBeNull();
-    expect(importFileMock).not.toHaveBeenCalled();
+    expect(screen.getByText('a.json')).toBeTruthy();
+    expect(screen.queryByText('b.json')).toBeNull();
+    expect(inspectMock).toHaveBeenCalledTimes(1);
+    expect(commitMock).not.toHaveBeenCalled();
   });
 
   // Passive hover and importing phases stay outside shellStack so an existing modal retains Escape.
@@ -298,11 +320,11 @@ describe('DropImportOverlay', () => {
       render(<DropImportOverlay />, { wrapper: Wrapper });
       const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('drop', { files: [file] }));
-      expect(screen.getByText('Replace the current map with "my-map.json"?')).toBeTruthy();
+      await screen.findByText('Import this map?');
 
       fireEvent.keyDown(window, { key: 'Escape' });
       // exit-unmount lands a tick after the state flip, so a synchronous assertion would race it.
-      await waitFor(() => expect(screen.queryByText(/Replace the current map/)).toBeNull());
+      await waitFor(() => expect(screen.queryByText('Import this map?')).toBeNull());
     });
 
     it('does not restore focus after a passive hover phase closes', async () => {

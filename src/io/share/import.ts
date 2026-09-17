@@ -1,3 +1,5 @@
+import { captureImageAttribution } from '../../core/provenance/image-attribution';
+import { clampNotes } from '../../core/model/notes';
 // Raster-first import decodes the visible code band, verifies it, and uses the save-file loader.
 import type { GridState } from '../../core/model/types';
 import { migrateToCurrent, type RawSave } from '../save-format';
@@ -24,6 +26,10 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
     migrateToCurrent(JSON.parse(saveJson) as RawSave);
     const state = deserialize(saveJson, getMapTemplate(dec.canonical.templateId));
     if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
+    state.notes = dec.notes ?? clampNotes({ title: dec.provenance.title });
+    if (!dec.provenance.aiUsed && !dec.provenance.proceduralUsed) {
+      state.imageAttribution = captureImageAttribution(state);
+    }
     // The compact frame-level provenance flags seed disclosure after import; per-cell provenance
     // is not part of the PetitGlyph payload.
     if (state.provenance) {

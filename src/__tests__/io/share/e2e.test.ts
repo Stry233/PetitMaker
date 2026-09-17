@@ -47,6 +47,18 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
     expect(result.state.annotations).toEqual(state.annotations);
   }, TIMEOUT);
 
+  it('restores the title and description from the visible code band', async () => {
+    const { state } = (await corpusCases()).find((c) => c.name === 'hand-edit-small')!;
+    state.notes = { title: 'River garden 河畔花园', description: 'Three homes by the bend, a mill downstream.' };
+    const code = await buildShareCode(state, null, META, 1600);
+    expect(code).not.toBeNull();
+    expect(code!.notesOmitted).toBe(false);
+    const result = await importFromRaster(code!.rgba, code!.width, code!.height);
+    expect(result.ok, result.ok ? '' : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.notes).toEqual(state.notes);
+  }, TIMEOUT);
+
   it('every corpus map survives the full composed-PNG round trip exactly', async () => {
     for (const { name, state } of await corpusCases()) {
       const code = await buildShareCode(state, null, META, 1600);

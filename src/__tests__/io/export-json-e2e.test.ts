@@ -40,7 +40,7 @@ describe('export-json e2e: build → export all sections → import → undo', (
     // one atomic undo step) — the 5 paints collapse to a single history entry.
     expect(exec.getUndoStackSize()).toBe(1);
 
-    state.notes = { title: 'E2E Island', description: 'built by the e2e test', author: 'yue' };
+    state.notes = { title: 'E2E Island', description: 'built by the e2e test' };
     state.generation = {
       algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 123, region: null,
     } as GenerateConfig;

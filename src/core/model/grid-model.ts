@@ -167,16 +167,7 @@ export function cloneCell(cell: MacroCell): MacroCell {
   return cloned;
 }
 
-/**
- * A detached copy of a map: the same template, deep-copied cells and objects, and none of the
- * live bookkeeping.
- *
- * The provenance ledger is dropped rather than copied. An executor writes THROUGH that object
- * (`ProvenanceRecorder` adopts it and then owns it), so a copy that carried the reference would
- * record a throwaway map's edits in the real map's ledger. The version counters go for the same
- * reason: the memoized object index and map stats key off them, and a copy that started at the
- * original's numbers would be answered from the original's caches.
- */
+/** Detached editing copy with independent cells, objects and attribution. Mutable provenance and cache versions belong to the original executor and are omitted. */
 export function cloneGridState(state: GridState): GridState {
   const objects = new Map<string, PlacedObject>();
   for (const [id, obj] of state.objects) {
@@ -191,20 +182,11 @@ export function cloneGridState(state: GridState): GridState {
     cells: state.cells.map((row) => row.map(cloneCell)),
     objects,
     lockedLayers: new Set(state.lockedLayers),
+    ...(state.imageAttribution ? { imageAttribution: { ...state.imageAttribution, notes: { ...state.imageAttribution.notes }, units: [...state.imageAttribution.units] } } : {}),
   };
 }
 
-/**
- * A grid whose cells at `cells` are private copies, sharing every other row and cell with `state` —
- * the map to ask a HYPOTHETICAL question of when the answer depends on the whole grid but the
- * hypothesis touches a handful of cells (the auto-trim ghost, the layer a refused water stroke
- * could stand at).
- *
- * The objects map and the version counters are the live ones: a caller here writes terrain through
- * `applyCommand` and reads rules, so nothing it does reaches them. Writing OUTSIDE `cells` would
- * edit the real map behind the executor's back, with no history and no redraw — clip a hypothesis
- * to the cells the scratch owns.
- */
+/** Copies only the requested cells for hypothetical validation. Objects and untouched cells remain shared and must not be mutated. */
 export function scratchGrid(state: GridState, cells: readonly MacroCoord[]): GridState {
   const rows = new Map<number, MacroCell[]>();
   const scratch: GridState = { ...state, cells: state.cells.slice() };

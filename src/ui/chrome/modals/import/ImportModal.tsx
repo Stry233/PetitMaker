@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { windowCard, windowTitle } from '../../../design/window-skin';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { importFile } from '../../../../io/import-file';
+import { autosaveWorthy } from '../../../../io/autosave';
+import { inspectImportFile, type ImportInspection } from '../../../../io/import-file';
+import { ImportConfirm } from './ImportConfirm';
 import { getImportFileDeps } from './import-deps';
 import { toastImportOutcome } from './import-toast';
 import { ModalShell } from '../../../primitives/ModalShell';
@@ -24,21 +26,38 @@ export function ImportModal() {
   const t = useT();
   const open = useEditorStore((s) => s.modals.import);
   const setModal = useEditorStore((s) => s.setModal);
+  const gridState = useEditorStore((s) => s.gridState);
   const close = (open: boolean) => setModal('import', open);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  /** A decoded file waiting for the user's word; the drop zone gives way to its card. */
+  const [pending, setPending] = useState<{ inspection: Extract<ImportInspection, { status: 'ready' }>; name: string } | null>(null);
+  useEffect(() => { if (!open) setPending(null); }, [open]);
 
+  // Decoding never installs anything: the card that follows is where the map is replaced.
   const handleFile = useCallback(async (file: File | Blob, name = '') => {
-    if (busy) return;
+    if (busy || pending) return;
     setBusy(true);
     try {
-      const outcome = await importFile(file, name, getImportFileDeps());
-      toastImportOutcome(outcome);
-      if (outcome.status === 'imported') close(false);
+      const inspection = await inspectImportFile(file, name);
+      if (inspection.status === 'ready') setPending({ inspection, name });
+      else toastImportOutcome(inspection);
     } finally {
       setBusy(false);
     }
-  }, [busy, close]);
+  }, [busy, pending]);
+
+  const confirm = () => {
+    if (!pending || busy) return;
+    setBusy(true);
+    try {
+      toastImportOutcome(pending.inspection.commit(getImportFileDeps()));
+    } finally {
+      setBusy(false);
+      setPending(null);
+      close(false);
+    }
+  };
 
   // Accept a pasted image while the modal is open.
   useEffect(() => {
@@ -62,7 +81,16 @@ export function ImportModal() {
 
   return (
     <ModalShell open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING }} ariaLabel={t('import.title')}>
-      <ImportCardBody
+      {pending ? (
+        <ImportConfirm
+          preview={pending.inspection.preview}
+          name={pending.name}
+          replacing={!!gridState && autosaveWorthy(gridState)}
+          busy={busy}
+          onConfirm={confirm}
+          onCancel={() => setPending(null)}
+        />
+      ) : <ImportCardBody
         dragOver={dragOver}
         busy={busy}
         onClick={pickFile}
@@ -71,7 +99,7 @@ export function ImportModal() {
         // stopPropagation: this is the modal's OWN import surface. `DropImportOverlay`'s window
         // listener also no-ops while the modal is open, so a drop here imports exactly once.
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f) void handleFile(f, f.name); }}
-      />
+      />}
     </ModalShell>
   );
 }

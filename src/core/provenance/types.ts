@@ -1,5 +1,5 @@
 
-/** The taxonomy of who/what authored an edit. Order is significant: higher = "more AI" for dominance ties. */
+/** Persisted edit-source identifiers; retain their numeric values. */
 export enum ProvSource {
   Human = 0, Procedural = 1, AiWrite = 2, AiAccepted = 3,
   AiAnalysis = 4, AutoRepair = 5, AutoTrim = 6, Imported = 7, Unknown = 8,

@@ -91,6 +91,8 @@ export const PREFS = {
   agentVault:    pref<string>({ key: 'petit-agent-vault',        parse: raw, fallback: none }),
   // Illustration settings and an optional vault-sealed key.
   stylize:       pref<string>({ key: 'petit-planet-stylize-v1',  parse: raw, fallback: none }),
+  // Content digests of this browser's own image exports, never included in shared files.
+  ownImageExports: pref<string>({ key: 'petit-planet-own-image-exports', parse: raw, fallback: none }),
   // Export preset, parts, footer template, and size; title and description are not persisted.
   exportOptions: pref<string>({ key: 'petit-planet-export-options', parse: raw, fallback: none }),
 } as const;

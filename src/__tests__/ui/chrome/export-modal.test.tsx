@@ -1,3 +1,4 @@
+import { captureImageAttribution } from '../../../core/provenance/image-attribution';
 vi.mock('../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMapReview: () => ({ result: { status: 'clear' }, pending: false, previewReady: true, revision: '0', check: async () => ({ status: 'clear' }), retry: vi.fn(), cancel: vi.fn() }) }));
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -13,8 +14,9 @@ import { roadLookup } from '../../../state/object-index';
 import * as PreviewBridge from '../../../ui/chrome/modals/export/render-preview-bridge';
 import { reviewText } from '../../../io/moderation/text/reviewer';
 
+const requestNotice = vi.hoisted(() => vi.fn(async (_hasPetitGlyph?: boolean) => true));
 vi.mock('../../../ui/chrome/modals/export/review/ExportNotice', () => ({
-  useExportNotice: () => ({ request: async () => true, notice: null }),
+  useExportNotice: () => ({ request: requestNotice, notice: null }),
 }));
 
 vi.mock('../../../io/moderation/text/reviewer', async (original) => ({
@@ -81,9 +83,21 @@ function makeFakeCtx(): CanvasRenderingContext2D {
 }
 
 describe('ExportModal', () => {
+  it('disables an original title and permits filling an empty description', () => {
+    mountStateWith();
+    const state = useEditorStore.getState().gridState!;
+    state.notes = { title: 'Garden' };
+    state.imageAttribution = captureImageAttribution(state);
+    render(<ExportModal />, { wrapper: Wrapper });
+    expect((screen.getByLabelText('Title') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A riverside walk' } });
+    expect(state.notes).toEqual({ title: 'Garden', description: 'A riverside walk' });
+  });
   // The window remembers its choices between openings; each test opens it fresh.
   beforeEach(() => {
     localStorage.clear(); setStoreState({ locale: 'en' });
+    requestNotice.mockClear();
     vi.mocked(reviewText).mockReset().mockResolvedValue({ allowed: true });
   });
 
@@ -169,7 +183,7 @@ describe('ExportModal', () => {
     it('keeps a dense code exportable and recommends sharing its original file', async () => {
       const { encodeGlyph } = await import('../../../io/share/glyph/encode');
       vi.mocked(buildShareCode).mockResolvedValueOnce({
-        ...encodeGlyph(new Uint8Array(7200), 12)!, payloadLen: 7200, shareOriginalRecommended: true,
+        ...encodeGlyph(new Uint8Array(7200), 12)!, payloadLen: 7200, shareOriginalRecommended: true, notesOmitted: false,
       });
       const toast = vi.spyOn(Toast, 'showToast');
       mountStateWith();
@@ -191,6 +205,31 @@ describe('ExportModal', () => {
 
       await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
       expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
+      expect(requestNotice).toHaveBeenCalledWith(false);
+    });
+
+    it.each(['compact', 'failed', 'unavailable'] as const)('omits image protection when the glyph is %s', async reason => {
+      if (reason === 'failed') vi.mocked(buildShareCode).mockRejectedValueOnce(new Error('Cannot encode'));
+      if (reason === 'unavailable') vi.mocked(buildShareCode).mockResolvedValueOnce(null);
+      mountStateWith();
+      render(<ExportModal />, { wrapper: Wrapper });
+      if (reason === 'compact') fireEvent.click(screen.getByText('Compact'));
+      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
+      await waitFor(() => expect(downloadBlob).toHaveBeenCalledOnce());
+      expect(requestNotice).toHaveBeenCalledWith(false);
+    });
+
+    it('waits for confirmation of the finished image before downloading', async () => {
+      let confirm!: (accepted: boolean) => void;
+      requestNotice.mockImplementationOnce(() => new Promise(resolve => { confirm = resolve; }));
+      mountStateWith();
+      render(<ExportModal />, { wrapper: Wrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
+      await waitFor(() => expect(requestNotice).toHaveBeenCalledWith(true));
+      expect(downloadBlob).not.toHaveBeenCalled();
+      await act(async () => confirm(false));
+      expect(downloadBlob).not.toHaveBeenCalled();
+      expect(useEditorStore.getState().modals.export).toBe(true);
     });
 
     it('fits the Native glyph to the reserved band width without clipping either finder', async () => {
@@ -225,7 +264,7 @@ describe('ExportModal', () => {
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
     });
 
-    it('typing in the title repaints the image without rebuilding the glyph', async () => {
+    it('typing in the title repaints the image and rebuilds the glyph once the typing settles, since the title rides in the code', async () => {
       const paints = vi.spyOn(PreviewBridge, 'paintPreview');
       mountStateWith();
       const { container } = render(<ExportModal />, { wrapper: Wrapper });
@@ -244,8 +283,9 @@ describe('ExportModal', () => {
       expect(container.querySelector('[data-export-preview]')).toBeTruthy();
 
       await waitFor(() => expect(paints.mock.calls.some(([args]) => args.options.title === '山下的家')).toBe(true), { timeout: 3000 });
-      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(buildShareCode).mock.calls[0]![2]).not.toHaveProperty('title');
+      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(2), { timeout: 3000 });
+      expect(vi.mocked(buildShareCode).mock.calls[1]![0].notes).toEqual({ title: '山下的家' });
+      expect(vi.mocked(buildShareCode).mock.calls[1]![2]).not.toHaveProperty('title');
       await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy());
     });
 

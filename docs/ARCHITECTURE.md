@@ -1169,6 +1169,7 @@ export interface SaveFile {
     };
     provenance?: SerializedProvenance;
     notes?: MapNotes;
+    imageAttribution?: ImageAttribution;
     annotations?: unknown;
     generation?: unknown;
     session?: unknown;

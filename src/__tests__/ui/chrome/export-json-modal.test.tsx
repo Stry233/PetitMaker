@@ -1,3 +1,4 @@
+import { captureImageAttribution } from '../../../core/provenance/image-attribution';
 vi.mock('../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMapReview: () => ({ result: { status: 'clear' }, pending: false, previewReady: true, revision: '0', check: async () => ({ status: 'clear' }), retry: vi.fn(), cancel: vi.fn() }) }));
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -7,6 +8,11 @@ import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
 import { I18nProvider } from '../../../i18n/context';
+
+vi.mock('../../../io/moderation/text/reviewer', async (original) => ({
+  ...await original<typeof import('../../../io/moderation/text/reviewer')>(),
+  reviewText: vi.fn(async () => ({ allowed: true })),
+}));
 
 vi.mock('../../../ui/chrome/modals/export/review/ExportNotice', () => ({
   useExportNotice: () => ({ request: async () => true, notice: null }),
@@ -27,6 +33,19 @@ function mount() {
 const W = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 
 describe('ExportJsonModal', () => {
+  it('preserves original image notes and explains each locked field', async () => {
+    const state = mount();
+    state.notes = { title: 'Garden', description: 'A riverside walk' };
+    state.imageAttribution = captureImageAttribution(state);
+    render(<ExportJsonModal />, { wrapper: W });
+    expect((screen.getByLabelText('Title') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).disabled).toBe(true);
+    const toggle = screen.getByRole('switch', { name: 'Notes' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(toggle.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Help' })[0]!);
+    expect(screen.getByText(/still too similar/)).toBeTruthy();
+  });
   it('renders all section rows with size chips; generation disabled without a recipe', async () => {
     mount();
     render(<ExportJsonModal />, { wrapper: W });
@@ -53,6 +72,27 @@ describe('ExportJsonModal', () => {
     unmount();
     vi.mocked(downloadJSON).mockClear();
   });
+  it('edits the map\'s own title and description, offers no author field, and writes them only while Notes is on', async () => {
+    const s = mount();
+    s.notes = { title: 'River garden' };
+    render(<ExportJsonModal />, { wrapper: W });
+    fireEvent.click(screen.getByRole('switch', { name: /notes/i }));
+    expect(screen.queryByLabelText(/author/i)).toBeNull();
+    const title = screen.getByLabelText('Title') as HTMLInputElement;
+    expect(title.value).toBe('River garden');
+    expect(title.maxLength).toBe(48);
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).maxLength).toBe(200);
+    fireEvent.change(title, { target: { value: 'River garden, revised' } });
+    expect(s.notes).toEqual({ title: 'River garden, revised' });
+    const button = screen.getByRole('button', { name: /export/i });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false), { timeout: 3000 });
+    fireEvent.click(button);
+    await waitFor(() => expect(vi.mocked(downloadJSON)).toHaveBeenCalled());
+    const calls = vi.mocked(downloadJSON).mock.calls;
+    const json = JSON.parse(calls[calls.length - 1]![0]!);
+    expect(json.notes).toEqual({ title: 'River garden, revised' });
+  });
+
   it('exports only the chosen sections', async () => {
     mount();
     render(<ExportJsonModal />, { wrapper: W });

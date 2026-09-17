@@ -1,15 +1,6 @@
-/**
- * Section assembly for the "keep everything" JSON export.
- *
- * `serializeWithSections` wraps the plain json-codec `serialize` output with the
- * user-chosen OPTIONAL top-level sections (notes / generation / history / session /
- * stats / catalogInfo) plus an always-on `manifest`. All sections are additive —
- * today's loader ignores unknown keys, so the output stays loadable by every build.
- *
- * Pure module: it must NOT import the store — history entries are passed in by the
- * caller (CommandExecutor.getUndoEntries()), session/camera come pre-built.
- */
+/** Assembles additive JSON sections from explicit map, history and session inputs. Older readers ignore unknown sections. */
 
+import { attributedNotes } from '../core/provenance/image-attribution';
 import type { GridState, MapNotes } from '../core/model/types';
 import type { HistoryEntry } from '../core/commands/command-apply';
 import { ELEVATION_MAX } from '../core/model/constants';
@@ -49,9 +40,7 @@ export interface ManifestSection {
   templateHash: number;
   catalogHash: number;
   exportedAt: string;
-  /** Tamper-check code over the whole file minus this field (see integrityOf). Written last by
-   *  serializeWithSections; absent on hand-made / legacy files. Not a security seal — a CRC that
-   *  flags accidental or manual edits so import can warn. */
+  /** CRC of the file excluding this field. Detects edits but cannot authenticate or recover content. */
   integrity?: string;
 }
 
@@ -87,8 +76,7 @@ export interface SectionSizes {
 
 /* ── Section builders ────────────────────────────────────── */
 
-/** TerrainType (None/Mountain/Water) → the stats vocabulary. `None` reads as 'ground'. Single
- *  source for both the tally keys and the per-cell name lookup below. */
+/** Terrain type names shared by the statistics tally and lookup. */
 const TYPE_NAMES: Record<number, string> = { 0: 'ground', 1: 'mountain', 2: 'water' };
 
 /** Derived map statistics (never imported). Cells with no terrain count as 'ground'
@@ -157,7 +145,7 @@ export function buildManifest(state: GridState): ManifestSection {
 /* ── Assembly ────────────────────────────────────────────── */
 
 function hasNotes(n: MapNotes | undefined | null): n is MapNotes {
-  return !!n && !!(n.title || n.description || n.author);
+  return !!n && !!(n.title || n.description);
 }
 
 /** Builds the sectioned save object (shared by serializeWithSections + sectionSizes). */
@@ -173,6 +161,8 @@ function assemble(state: GridState, opts: ExportJsonOptions): SaveFile {
     if (hasNotes(opts.notes)) out.notes = opts.notes;
     else delete out.notes;
   }
+
+  out.notes = attributedNotes(state, out.notes ?? null);
 
   if (opts.includeGeneration && state.generation) out.generation = state.generation;
   if (opts.history) {
@@ -198,17 +188,14 @@ function crcHex(v: unknown): string {
   return (crc32(enc.encode(JSON.stringify(v))) >>> 0).toString(16).padStart(8, '0');
 }
 
-/** The integrity code stamped into manifest.integrity: a CRC over the assembled object BEFORE the
- *  code itself is added (so import can recompute it by removing the field). */
+/** Hash input excludes the integrity field itself. */
 function integrityOf(objWithoutIntegrity: SaveFile): string {
   return crcHex(objWithoutIntegrity);
 }
 
 export function serializeWithSections(state: GridState, opts: ExportJsonOptions): string {
   const obj = assemble(state, opts);
-  // Stamp the integrity code LAST, over the content minus the code, so a manual edit anywhere
-  // (a cell, an object, a section, even the manifest) makes import's recomputed code mismatch.
-  // assemble always sets manifest; it is typed loosely on SaveFile, so narrow it here.
+  // The checksum covers every field except itself.
   const manifest = obj.manifest as ManifestSection | undefined;
   if (manifest) manifest.integrity = integrityOf(obj);
   return JSON.stringify(obj, null, opts.pretty ? 2 : undefined);
@@ -233,18 +220,7 @@ function byteLen(v: unknown, pretty = false): number {
   return v === undefined ? 0 : enc.encode(JSON.stringify(v, null, pretty ? 2 : undefined)).length;
 }
 
-/**
- * Bytes of each section's JSON, for the export modal's size chips. Each optional
- * section is measured alone (its marginal cost); `core` is the plain serialize
- * output with provenance measured separately (so the provenance row owns its own
- * chip). `total` is the byte length of the REAL serializeWithSections output — not
- * the sum — so pretty-format overhead is reported honestly.
- *
- * `sizeOpts.withTotal === false` SKIPS the full-file re-serialization behind `total`
- * (returning total: 0). The modal uses this: for a large history the full serialize is
- * the expensive step, so the modal computes per-section sizes ONCE and derives the live
- * total by summing the toggled sections — no re-serialize per toggle.
- */
+/** Measures sections independently. The UI sums these estimates to avoid serializing large histories on each toggle. */
 function sectionValues(state: GridState, opts: ExportJsonOptions): Record<Exclude<keyof SectionSizes, 'total'>, unknown> {
   const plain = buildSaveFile(state);
   const provenance = plain.provenance;
@@ -253,8 +229,8 @@ function sectionValues(state: GridState, opts: ExportJsonOptions): Record<Exclud
   delete plain.notes;
   const annotations = plain.annotations;
   delete plain.annotations;
-  const notes = opts.notes === null ? undefined : opts.notes !== undefined
-    ? (hasNotes(opts.notes) ? opts.notes : undefined) : coreNotes;
+  const notes = attributedNotes(state, opts.notes === null ? null : opts.notes !== undefined
+    ? (hasNotes(opts.notes) ? opts.notes : null) : coreNotes ?? null);
   return {
     core: plain,
     annotations: opts.includeAnnotations === false ? undefined : annotations,
