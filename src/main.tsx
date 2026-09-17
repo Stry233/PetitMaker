@@ -28,14 +28,16 @@ printConsoleBanner();
 
 document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 
-// Render once the interface table for the saved language is in hand. Six of the seven tables are
-// their own chunk now (see i18n/locales/index.ts), so a non-English session has one small fetch to
-// wait for — and waiting is the point: a frame in the wrong language is a flash, the same reason
-// the cursor properties are written above. English resolves without a request, and a table that
-// fails to arrive renders anyway rather than leaving the page blank.
+const FIRST_FRAME_WAIT_MS = 150;
 const mount = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
-void ensureLocaleStrings(useEditorStore.getState().locale).catch(() => {}).then(mount);
+// A non-English session has one small fetch here for its interface table. Waiting for it keeps the
+// first frame from being a flash of English, but only up to a deadline: a fetch that never settles
+// still paints, and the table re-renders the interface when it lands (see i18n/context.tsx).
+void Promise.race([
+  ensureLocaleStrings(useEditorStore.getState().locale).catch(() => {}),
+  new Promise<void>((resolve) => { setTimeout(resolve, FIRST_FRAME_WAIT_MS); }),
+]).then(mount);

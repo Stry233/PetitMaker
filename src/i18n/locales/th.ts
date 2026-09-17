@@ -145,6 +145,7 @@ export const th: Record<string, string> = {
   'planet.start_over_hint': 'ทุกสิ่งที่คุณสร้างไว้บนเกาะนี้จะถูกลบ และย้อนกลับไม่ได้',
   'modal.settings_title': 'ตั้งค่า',
   'modal.settings_language': 'ภาษา',
+  'modal.settings_language_failed': 'โหลดภาษานั้นไม่สำเร็จ — เลือกอีกครั้งเพื่อลองใหม่',
   'modal.settings_ui_scale': 'ขนาดอินเทอร์เฟซ',
   'modal.settings_grid': 'เส้นตาราง',
   'modal.settings_chunks': 'ขอบเขตส่วนแผนที่',

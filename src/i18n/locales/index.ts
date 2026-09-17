@@ -1,16 +1,13 @@
 /*
- * The interface tables, one chunk per locale, registered as an i18n OVERLAY when they arrive — the
- * same mechanism the Help Center uses for its prose (`locales/help/index.ts`).
- *
- * English stays on the eager bundle: `translateFor` falls back to it for every key a locale is
- * missing, so it has to be readable before the first render. The other six are only ever read by
- * someone reading that language, and merged into one chunk they were the single largest item on the
- * start-up payload (535 KB raw / 155 KB gzip, seven tables, all of it modulepreloaded), so each now
- * arrives with the language that needs it. `i18n/translations.ts` still holds the merged record for
- * tests, scripts and the legal-page generator; nothing on the runtime path imports it.
+ * The interface tables, one chunk per locale, registered when they arrive. English stays on the
+ * eager bundle: `translateFor` falls back to it for every key a locale is missing, so it has to be
+ * readable before the first render. The other six are read only by someone reading that language,
+ * and merged into a single chunk they were the largest item on the start-up payload — 535 KB raw /
+ * 155 KB gzip, all of it modulepreloaded. `i18n/translations.ts` keeps the merged record for tests,
+ * scripts and the legal-page generator; nothing on the runtime path imports it.
  */
 import type { Locale } from '../../core/model/types';
-import { registerExtraStrings } from '../context';
+import { registerBaseStrings } from '../context';
 
 /** Every locale a saved preference may name, in the order the settings list them. */
 export const LOCALES: readonly Locale[] = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'];
@@ -31,24 +28,23 @@ const LOADERS: Record<Exclude<Locale, 'en'>, () => Promise<Record<string, Record
   fr: () => import('./fr').then((m) => ({ fr: m.fr })),
 };
 
-/** In-flight or finished loads, so concurrent callers (boot, and a switch before it lands) share
- *  one import instead of racing two. */
+/** In-flight or finished loads, so concurrent callers (boot, and a switch before it lands) share one
+ *  import instead of racing two. */
 const pending = new Map<Locale, Promise<void>>();
 
 /**
- * Put `locale`'s table where `translateFor` can see it.
+ * Register `locale`'s interface table.
  *
- * Resolves without a request for English, which is already on the bundle. Safe to call repeatedly:
- * the second call returns the same promise. A failed fetch is dropped from the memo rather than
- * remembered, so a later attempt retries — but the caller still sees the rejection, because a
- * locale that did not arrive is a fact the caller may need (boot renders anyway; the switcher
- * decides whether to keep the old language).
+ * Resolves without a request for English. Safe to call repeatedly: the second call returns the same
+ * promise. A failed fetch is dropped from the memo rather than remembered, so a later attempt
+ * retries — the caller still sees the rejection, because a language that did not arrive is a fact
+ * the caller decides on (boot renders anyway; the switcher keeps the old language and offers a retry).
  */
 export function ensureLocaleStrings(locale: Locale): Promise<void> {
   if (locale === 'en') return Promise.resolve();
   const running = pending.get(locale);
   if (running) return running;
-  const load = LOADERS[locale]().then(registerExtraStrings, (err: unknown) => {
+  const load = LOADERS[locale]().then(registerBaseStrings, (err: unknown) => {
     pending.delete(locale);
     throw err;
   });

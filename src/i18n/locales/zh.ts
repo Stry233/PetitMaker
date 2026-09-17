@@ -145,6 +145,7 @@ export const zh: Record<string, string> = {
   'planet.start_over_hint': '当前建设将被清空，无法撤销。',
   'modal.settings_title': '设置',
   'modal.settings_language': '语言',
+  'modal.settings_language_failed': '无法加载该语言 —— 再次选择即可重试。',
   'modal.settings_ui_scale': '界面缩放',
   'modal.settings_grid': '网格线',
   'modal.settings_chunks': '区块边界',
