@@ -5,7 +5,7 @@
  * window is re-opened by whatever moved the scene. Ambient water motion re-opened it on every
  * frame, so a map that was merely OPEN kept re-rendering itself forever — the whole scene, through
  * a 4x multisampled target, plus a walk of every waterfall vertex and a re-upload of its colour
- * buffer. On the reference expert island (14k terrain cells, 780 waterfall faces) that walk alone
+ * buffer. On the reference expert map (14k terrain cells, 780 waterfall faces) that walk alone
  * measured ~8.8 ms and 1.8 MB of upload per call, and the scene never once stopped drawing.
  *
  * The waterfall's cascade is painted into the colour buffer as the mesh is built, so the falls keep

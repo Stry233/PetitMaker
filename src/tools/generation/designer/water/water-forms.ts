@@ -1,7 +1,7 @@
 /**
  * Draws a few large water bodies from basin, cove, ring, medallion, trough, and comb grammars. Forms
  * are seeded, repetition-limited, and resized rather than clipped. Every body occupies one terrace;
- * its dry islands and outer rim stay at the water tier or above, so it exposes no uncapped face.
+ * its dry islets and outer rim stay at the water tier or above, so it exposes no uncapped face.
  * Pure planning only: terrain and masks in, cells out.
  */
 import { flatIndex } from '../../../../core/model/grid-model';
@@ -16,14 +16,14 @@ import { boundsOfCells, cellsFit, floodCells, freeAt, surfaceOf } from './water-
 export type WaterForm = 'basin' | 'cove' | 'ring' | 'medallion' | 'trough' | 'comb';
 
 /** The order the forms are offered in. A map takes them in a seeded rotation of this list, so which
- *  figure an island leads with varies while the vocabulary itself does not. */
+ *  figure a planet leads with varies while the vocabulary itself does not. */
 const FORMS: readonly WaterForm[] = ['basin', 'cove', 'ring', 'medallion', 'trough', 'comb'];
 
 /**
  * The shortest a figure's LONG axis may be, and the widest it is drawn.
  *
  * The floor is above the widest a FOUNTAIN COURT can be, and that is the reason for the number rather
- * than the size: the eval reads any mirrored body holding an island and spanning 17 cells or less on
+ * than the size: the eval reads any mirrored body holding an islet and spanning 17 cells or less on
  * BOTH axes as a formal court, and the supplement allows one main court per region, so a figure drawn
  * smaller than this would be counted as a second fountain in whatever region it landed in.
  */
@@ -31,19 +31,19 @@ const SPAN = { min: 19, max: 40 } as const;
 /**
  * The floor each form is drawn to, where it is lower than `SPAN.min`.
  *
- * The ground is what limits this pass: measured on real designed islands, rooms 19 cells long are
+ * The ground is what limits this pass: measured on real designed maps, rooms 19 cells long are
  * scarce and rooms 13 long are everywhere, so a vocabulary that only drew at 19 left half the map's
  * clear ground unused. What may go below the court span is exactly the forms the eval can never read as
- * a formal court: the trough and the comb hold no island at all, and a COVE's outline is lobed off-axis
+ * a formal court: the trough and the comb hold no islet at all, and a COVE's outline is lobed off-axis
  * with its islets where the seed put them, so it does not mirror about its own axes. The basin, the ring
- * and the medallion do mirror and do hold islands, so they stay above the court span.
+ * and the medallion do mirror and do hold islets, so they stay above the court span.
  */
 const LONG_MIN: Readonly<Record<WaterForm, number>> = {
   basin: SPAN.min, cove: 13, ring: SPAN.min, medallion: SPAN.min, trough: 13, comb: 13,
 };
 /** The narrowest the SHORT axis may be, by form: what each one needs to be itself. A basin has to hold
  *  its islets with water all round them, a ring its platform, a medallion its three bands and its
- *  island, and a trough is three cells across whatever its length. */
+ *  islet, and a trough is three cells across whatever its length. */
 const ACROSS_MIN: Readonly<Record<WaterForm, number>> = {
   basin: 7, cove: 7, ring: 9, medallion: 15, trough: 3, comb: 5,
 };
@@ -58,14 +58,14 @@ const TROUGH_W = 3;
 const COMB = { bar: 2, tooth: { min: 1, max: 2 }, pitch: { min: 3, max: 5 } } as const;
 const RING_W = { min: 2, max: 3 } as const;
 /** The medallion's bands, outside in: moat, platform, basin. What is left in the middle is its
- *  island, so the figure encloses two dry components and reads as the target's own nesting. */
+ *  islet, so the figure encloses two dry components and reads as the target's own nesting. */
 const MEDALLION = { moat: 2, platform: 2, basin: 3 } as const;
 /**
- * How many enclosed islands each form must actually come out with.
+ * How many enclosed islets each form must actually come out with.
  *
  * This is the pass's own guarantee to the water ledger, checked on the DRAWN cells rather than assumed
  * from the box: a lobed outline can pull in past an islet the box put near its edge, and a figure that
- * lost its islands that way would reach the finished map as water belonging to no story. The trough
+ * lost its islets that way would reach the finished map as water belonging to no story. The trough
  * asks for none because it accounts for itself by being thin.
  */
 const ISLANDS_MIN: Readonly<Record<WaterForm, number>> = {
@@ -74,7 +74,7 @@ const ISLANDS_MIN: Readonly<Record<WaterForm, number>> = {
 /** How many islets a basin stands, and how far off its centre they sit as a share of its own span. */
 const ISLETS = { min: 2, max: 3 } as const;
 const ISLET_R = 1;
-/** How many figures one island carries, at richness 0 and 1, and how many of them may share a form. */
+/** How many figures one planet carries, at richness 0 and 1, and how many of them may share a form. */
 const FORM_COUNT = { min: 1, max: 10 } as const;
 /** How many figures may share one form. Three, the cap on congruent shapes — and these are never
  *  congruent anyway, since a form is only drawn again at a box the map has not used for it. */
@@ -114,7 +114,7 @@ export interface ComposedBody {
   rect: Rect;
   tier: number;
   cells: MacroCoord[];
-  /** The place this figure was composed for, or '' where the island's own profile placed it. */
+  /** The place this figure was composed for, or '' where the planet's own profile placed it. */
   regionId: string;
   /** Whether the walk was what asked for it: the leg that threads a composed feature. */
   onWalk: boolean;
@@ -142,7 +142,7 @@ export interface FormsInput {
  *
  * Every form is symmetric about both axes of its box, which is what makes a body read as drawn rather
  * than as dropped, and every one leaves dry ground the ledger can see: the islets of a basin, the
- * platform of a ring, the platform and the island of a medallion. The trough is the one exception and
+ * platform of a ring, the platform and the islet of a medallion. The trough is the one exception and
  * it accounts for itself by being long and thin.
  */
 export function formCells(form: WaterForm, rect: Rect, seed: number): MacroCoord[] {
@@ -225,7 +225,7 @@ function basinCells(rect: Rect, seed: number): MacroCoord[] {
   return [...cells].map(unkey);
 }
 
-/** Whether an island may be cut at a cell: the water closes all round it, so the dry ground it leaves
+/** Whether an islet may be cut at a cell: the water closes all round it, so the dry ground it leaves
  *  is enclosed rather than a bite out of the figure's own outline. */
 function islandFits(cells: ReadonlySet<number>, at: MacroCoord): boolean {
   for (let dy = -ISLET_R - 1; dy <= ISLET_R + 1; dy++) {
@@ -237,7 +237,7 @@ function islandFits(cells: ReadonlySet<number>, at: MacroCoord): boolean {
   return true;
 }
 
-/** Take an island out of the body at a cell. */
+/** Take an islet out of the body at a cell. */
 function cutIsland(cells: Set<number>, at: MacroCoord): void {
   for (let dy = -ISLET_R; dy <= ISLET_R; dy++) {
     for (let dx = -ISLET_R; dx <= ISLET_R; dx++) {
@@ -248,7 +248,7 @@ function cutIsland(cells: Set<number>, at: MacroCoord): void {
 }
 
 /**
- * A cove: an organic pool with islands, NOT symmetric.
+ * A cove: an organic pool with islets, NOT symmetric.
  *
  * The outline is a disc with an ODD lobe count and a seeded phase, which is exactly the pair of
  * choices `disc` documents as breaking the mirror; the islets are then placed off both axes. So a cove
@@ -261,7 +261,7 @@ function coveCells(rect: Rect, seed: number): MacroCoord[] {
   const want = ISLETS.min + (h >> 5) % (ISLETS.max - ISLETS.min + 1);
   // The islets are drawn from the cells the OUTLINE actually kept, in a seeded order, and only where
   // the water closes round them: a cove's outline is lobed, so a position picked off the box alone can
-  // land outside the body and leave the figure with no enclosed island at all.
+  // land outside the body and leave the figure with no enclosed islet at all.
   const taken: MacroCoord[] = [];
   const room = [...cells].map(unkey)
     .sort((a, b) => hash01(seed ^ 0x2f19, key(a.x, a.y)) - hash01(seed ^ 0x2f19, key(b.x, b.y)));
@@ -283,7 +283,7 @@ function ringCells(rect: Rect, width: number): MacroCoord[] {
   return [...outer].map(unkey);
 }
 
-/** A medallion: moat, platform, basin, island — the reference's one three-layer nesting. */
+/** A medallion: moat, platform, basin, islet — the reference's one three-layer nesting. */
 function medallionCells(rect: Rect): MacroCoord[] {
   const { moat, platform, basin } = MEDALLION;
   const cells = disc(rect);
@@ -351,7 +351,7 @@ export function formBox(at: MacroCoord, long: number, across: number, alongX = t
  *
  * The figure is sized to the ground rather than to a tunable, which is the whole difference between a
  * pass that lands figures and one that does not: measured on real designed maps, the largest square of
- * unreserved one-tier ground anywhere on an island is about thirteen cells, while long rooms of 20 to
+ * unreserved one-tier ground anywhere on a planet is about thirteen cells, while long rooms of 20 to
  * 39 cells are common. So the vocabulary is drawn into ELONGATED boxes, and the aspect comes out of
  * the terrace the figure stands on.
  */
@@ -372,7 +372,7 @@ export function fitForm(form: WaterForm, room: Rect): Rect | null {
 // --- cutting them -------------------------------------------------------------------------------
 
 /**
- * The island's composed figures, cut into the sculpt.
+ * The planet's composed figures, cut into the sculpt.
  *
  * The walk's own water wants come first, so at least one leg of the route passes a large figure — the
  * compression and release a map of uniformly open streets never gives a visitor. What is left is placed
@@ -434,7 +434,7 @@ export function cutComposedBodies(input: FormsInput): ComposedBody[] {
     if (out.length >= count || budget <= 0) break;
     // THE FIRST FIGURE IS THE MAP'S PRIMARY ONE — the top rung of the size ladder, the one thing that
     // happens once — so it is drawn by whichever form uses the biggest room best rather than by the seed's
-    // rotation — the rotation would answer the island's largest terrace with a 3-cell-wide trough as
+    // rotation — the rotation would answer the planet's largest terrace with a 3-cell-wide trough as
     // readily as with a basin, and the map would have no dominant water figure at all.
     const body = cutOne(input, site, room, forms(), drawn, placed, budget, out.length === 0);
     if (!body) continue;
@@ -521,7 +521,7 @@ const STEP_BEYOND = 2;
  *
  * The room is INSET a cell before a form is fitted into it, because `cellsFit` reads the ring around a
  * body and the ring around a maximal free room is the terrace edge that ended it. A repeat of a form
- * already drawn is only kept where its box differs from the first, so no two figures on one island are
+ * already drawn is only kept where its box differs from the first, so no two figures on one planet are
  * congruent.
  */
 function cutOne(
@@ -541,7 +541,7 @@ function cutOne(
     if (placed.some((r) => touches(r, rect, FORM_GAP))) continue;
     // ONE 4-CONNECTED BODY, which is the unit every reading downstream is taken in. A lobed outline can
     // leave a corner cell attached only diagonally, and that cell then reads as a body of its own — and
-    // worse, its absence from the figure can open an island onto the outline, which is how a figure the
+    // worse, its absence from the figure can open an islet onto the outline, which is how a figure the
     // draw checked came back one hole short on the finished map.
     const cells = mainComponent(
       formCells(form, rect, seed ^ hashInt(flatIndex(site.at.x, site.at.y, t.width))),
@@ -574,7 +574,7 @@ function growRoom(input: FormsInput, at: MacroCoord, tier: number): Rect | null 
   const free = (x: number, y: number): boolean => freeAt(t, grass, flat, x, y, tier);
   /** Only the row or column a growth step ADDS is read, since the rect it grows from is already
    *  known clear: re-reading the whole rect per step makes the pass quadratic in the room's own area,
-   *  and the pass grows one room per site over a whole island. */
+   *  and the pass grows one room per site over a whole planet. */
   const edgeFree = (rect: Rect, side: number): boolean => {
     if (side === 0) {
       if (rect.x - 1 < 1) return false;

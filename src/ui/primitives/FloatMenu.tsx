@@ -13,6 +13,7 @@ import { useUiPreview } from './ui-preview';
 import { colors, cursors, font, radii, shadows, springs, UNAVAILABLE, z } from '../design/styles';
 import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
+import { visualRect, type VisualRect } from '../design/visual-rect';
 
 /** The air between the row and the card, and the margin the card keeps off every window edge. */
 const ANCHOR_GAP = 6;
@@ -76,7 +77,7 @@ export function FloatMenu({
   // paint would show one frame of the card at the top-left corner of the window.
   useLayoutEffect(() => {
     if (!open || pictured) { setPlace(null); return undefined; }
-    const measure = () => { if (rowRef.current) setPlace(placeCard(rowRef.current.getBoundingClientRect(), zoom)); };
+    const measure = () => { if (rowRef.current) setPlace(placeCard(visualRect(rowRef.current), zoom)); };
     measure();
     // The anchor moves with the page, and a card left behind is a card pointing at nothing.
     window.addEventListener('resize', measure);
@@ -178,7 +179,7 @@ interface Placement { box: CSSProperties; above: boolean }
  * clamped in VISUAL px — what actually occupies screen is the css length times the zoom — and then
  * divided back into the zoomed layer's coordinates.
  */
-function placeCard(anchor: DOMRect, zoom: number): Placement {
+function placeCard(anchor: VisualRect, zoom: number): Placement {
   // THE AIR IS A DESIGNED LENGTH, so it is spent in the CARD's own px and converted like every
   // other one. Added to a visual rect and divided with it, it came out at ANCHOR_GAP SCREEN px
   // whatever the interface scale — 8 frame px of air at uiZoom 0.6 and 2.7 at 1.8, the card three

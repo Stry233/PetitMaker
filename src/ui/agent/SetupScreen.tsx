@@ -9,7 +9,7 @@ import { providerName } from '../../i18n/providers';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useUiPreview } from '../primitives/ui-preview';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { zoneEnter } from './atoms';
+import { HelpLink, zoneEnter } from './atoms';
 import { useT } from '../../i18n/context';
 import { QUIRKS, type ProviderId } from '../../agent/providers/defaults';
 import { classify } from '../../agent/core/errors';
@@ -420,7 +420,7 @@ export function SetupScreen({
     <motion.div {...zoneEnter(reduced)} data-testid="setup-screen" data-phase={phase} style={WRAP_STYLE}>
       {(phase === 'key' || phase === 'checking' || phase === 'manage') && (
         <>
-          {!typing && <p style={SAY_STYLE}>{t('agent3.setup_say_key')}</p>}
+          {!typing && <p style={SAY_STYLE}>{t('agent3.setup_say_key')} <HelpLink page="agent-setup" anchor="agsetup-keys" /></p>}
           <motion.div {...slides} style={GROUP_STYLE}>{keyField}</motion.div>
           <motion.div {...slides} style={GROUP_STYLE}>{providerRow}</motion.div>
           {note && (

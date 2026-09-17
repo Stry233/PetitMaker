@@ -7,8 +7,16 @@ import './ui/design/cursors/cursors.css';
 import App from './App';
 import { printConsoleBanner } from './console-banner';
 import { publishCursorPreference } from './ui/design/cursors/cursor-vars';
+import { showToast } from './core/runtime/toast-bus';
+import { translate } from './i18n/context';
 import { useEditorStore } from './state/store';
 import { preloadScene3D } from './canvas/map3d/preload';
+
+// A chunk whose preload fails never reaches the boundary around its lazy site, because nothing
+// rendered it: the module loader raises this instead. Same message, from the one place that hears it.
+window.addEventListener('vite:preloadError', () => {
+  showToast(translate('boot.chunk_failed'), 'error');
+});
 
 // Before the first render: the global `html { cursor: var(…) }` rule falls back to the OS keyword
 // until these properties exist, so writing them here is what stops a start-up flash of the system

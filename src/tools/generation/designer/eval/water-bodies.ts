@@ -28,7 +28,7 @@ export interface WaterBody {
   x0: number; y0: number; x1: number; y1: number;
   tiers: Set<number>;
   /** Enclosed dry ground inside the bounding box that cannot reach its border through non-body
-   *  cells: an island, a platform, a glyph stroke. */
+   *  cells: an islet, a platform, a glyph stroke. */
   holes: number;
   faced: boolean;
   fill: number;
@@ -199,11 +199,11 @@ export function bodiesTouch(g: EvalGrid, a: WaterBody, b: WaterBody): boolean {
 
 /**
  * How well a body mirrors about the BETTER axis of its own box, 0 to 1: the reading that separates a
- * composed court from a blob that happens to hold an island.
+ * composed court from a blob that happens to hold an islet.
  *
  * ONE AXIS, not both. Requiring both fails a figure drawn as a single symmetric shape: a heart standing
  * in a flooded panel mirrors left to right and not top to bottom, so the banner carrying it reads as
- * unexplained water on the map's highest terrace. Only bodies that already hold an enclosed island are
+ * unexplained water on the map's highest terrace. Only bodies that already hold an enclosed islet are
  * asked this question, so a plain rectangle — which mirrors perfectly on both axes — is not accounted
  * by it.
  */
@@ -242,7 +242,7 @@ export function mountainFrame(g: EvalGrid, body: WaterBody): number {
 /** The longest side of a body's bounding box: how far it reaches, which is what a course is. */
 export const extentOf = (b: WaterBody): number => Math.max(b.x1 - b.x0, b.y1 - b.y0) + 1;
 
-/** Whether the body reaches ground that is not the buildable island: the sea. */
+/** Whether the body reaches ground that is not the buildable planet: the sea. */
 export function touchesOffLand(g: EvalGrid, body: WaterBody): boolean {
   const { W, H } = g;
   for (const i of body.cells) {

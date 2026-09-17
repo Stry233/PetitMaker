@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FIT_FLOOR, FIT_REF, fittedUiScale, frameFit } from '../../../ui/design/scale';
+import { FIT_FLOOR, FIT_FLOOR_TOUCH, FIT_REF, MIN_UI_ROOM, UI_ZOOM_MAX, fitFloorFor, fittedUiScale, frameFit, reachableUiZoom } from '../../../ui/design/scale';
 import { ZOOM } from '../../../ui/shell/units';
 
 /**
@@ -75,5 +75,45 @@ describe('chrome and frame agree at every window shape', () => {
 
   it('carries the user UI zoom straight through', () => {
     expect(chromeZoom(1920, 1080, 1.2)).toBeCloseTo(1.2, 6);
+  });
+});
+
+describe('the touch floor', () => {
+  it('is lower than the pointer floor and chosen by the primary pointer', () => {
+    expect(FIT_FLOOR_TOUCH).toBeLessThan(FIT_FLOOR);
+    expect(fitFloorFor(true)).toBe(FIT_FLOOR_TOUCH);
+    expect(fitFloorFor(false)).toBe(FIT_FLOOR);
+  });
+
+  it('lets a landscape phone fit smaller than the pointer floor', () => {
+    expect(frameFit(844, 390, 0, FIT_FLOOR_TOUCH)).toBe(FIT_FLOOR_TOUCH);
+    expect(fittedUiScale(780, 300, 1, 0, FIT_FLOOR_TOUCH)).toBe(FIT_FLOOR_TOUCH);
+  });
+
+  it('gives the UI scale preference room to act on a phone', () => {
+    expect(fittedUiScale(844, 390, 1.2, 0, FIT_FLOOR_TOUCH)).toBeCloseTo(0.6, 6);
+  });
+
+  it('changes nothing where the window fits above the pointer floor', () => {
+    expect(frameFit(1024, 768, 0, FIT_FLOOR_TOUCH)).toBe(frameFit(1024, 768));
+    expect(fittedUiScale(1280, 800, 1, 0, FIT_FLOOR_TOUCH)).toBe(1);
+  });
+});
+
+describe('reachableUiZoom', () => {
+  it('is the whole range where the workspace minimum never caps the scale', () => {
+    expect(reachableUiZoom(1920, 1080)).toBe(UI_ZOOM_MAX);
+    expect(reachableUiZoom(2560, 1440)).toBe(UI_ZOOM_MAX);
+  });
+
+  it('stops where the workspace minimum caps a short window', () => {
+    const reach = reachableUiZoom(844, 390);
+    expect(reach).toBeCloseTo((390 / MIN_UI_ROOM.h) / FIT_FLOOR, 3);
+    expect(fittedUiScale(844, 390, reach + 0.1)).toBeCloseTo(fittedUiScale(844, 390, reach), 6);
+    expect(fittedUiScale(844, 390, reach - 0.1)).toBeLessThan(fittedUiScale(844, 390, reach));
+  });
+
+  it('reads the touch floor', () => {
+    expect(reachableUiZoom(844, 390, 0, FIT_FLOOR_TOUCH)).toBeCloseTo((390 / MIN_UI_ROOM.h) / FIT_FLOOR_TOUCH, 3);
   });
 });

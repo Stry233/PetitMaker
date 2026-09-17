@@ -19,6 +19,7 @@ import { useT } from '../../../i18n/context';
 import { usePx } from '../../design/scale';
 import { cursors } from '../../design/styles';
 import { SCROLL } from './object-shelf';
+import { visualRect } from '../../design/visual-rect';
 
 interface Props {
   /** Where the row is scrolled to, and how much of it there is — all in design px. */
@@ -54,7 +55,7 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
   };
 
   const pointerToTrack = (clientX: number): number | null => {
-    const rect = ref.current?.getBoundingClientRect();
+    const rect = ref.current ? visualRect(ref.current) : null;
     if (!rect || rect.width === 0) return null;
     return (clientX - rect.left) / (rect.width / trackW);
   };

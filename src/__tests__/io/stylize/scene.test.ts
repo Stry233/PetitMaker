@@ -1,6 +1,6 @@
 /**
  * The scene compiler folds a GridState into the facts a prompt can name (water bodies, bridges,
- * road coverage, clusters, terracing, island shape), then verbalizes them into English clauses.
+ * road coverage, clusters, terracing, islet shape), then verbalizes them into English clauses.
  */
 import { describe, it, expect } from 'vitest';
 import { CellZone, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
@@ -131,7 +131,7 @@ describe('buildManifest', () => {
     expect(m.peakAt).toBe('southeast');
   });
 
-  it('reads a mostly-void border as an island', () => {
+  it('reads a mostly-void border as an islet', () => {
     const state = makeState(20, 20);
     for (let x = 0; x < 20; x++) {
       const top = state.cells[0]?.[x]; if (top) top.zone = CellZone.Void;
@@ -198,7 +198,7 @@ describe('verbalizeScene', () => {
     expect(clauses).toContain('the ground steps through 4 terraces, highest at the southeast');
   });
 
-  it('names an island shape', () => {
+  it('names an islet shape', () => {
     const state = makeState(20, 20);
     for (let x = 0; x < 20; x++) {
       const top = state.cells[0]?.[x]; if (top) top.zone = CellZone.Void;
@@ -209,6 +209,6 @@ describe('verbalizeScene', () => {
       const right = state.cells[y]?.[19]; if (right) right.zone = CellZone.Void;
     }
     const m = buildManifest(state);
-    expect(verbalizeScene(m)).toContain('the map reads as an island with open water at its edges');
+    expect(verbalizeScene(m)).toContain('the land reads as an islet with open water at its edges');
   });
 });

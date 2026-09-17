@@ -1,5 +1,6 @@
 import type { GridState } from '../../core/model/types';
 import { clamp as clampN, lerp } from '../../core/model/math';
+import { hasWebGL2 } from '../../core/runtime/device-quality';
 
 /**
  * Best-effort offscreen 3D still for the export composition. Creates a throwaway
@@ -15,8 +16,8 @@ import { clamp as clampN, lerp } from '../../core/model/math';
  * CAVEATS:
  * - Callers must NOT invoke this while a live Preview3D scene is open, because
  *   dispose() evicts the shared archetype and model caches. Sequential use only.
- * - jsdom has no WebGL: the WebGL probe returns null and the function returns null
- *   immediately (never throws, never imports three.js).
+ * - jsdom has no WebGL2: the shared probe answers false and the function returns immediately
+ *   (never throws, never imports three.js).
  */
 export interface CameraAngle { az: number; el: number; dist: number; tx?: number; tz?: number }
 
@@ -169,9 +170,8 @@ export async function captureMapStills(
   opts: { maxPx?: number; aspect?: number } = {},
 ): Promise<string[]> {
   try {
-    if (typeof document === 'undefined') return [];
-    const probe = document.createElement('canvas');
-    if (!(probe.getContext('webgl2') ?? probe.getContext('webgl'))) return [];
+    // three needs WebGL2, and the shared probe both answers once and releases its own context.
+    if (!hasWebGL2()) return [];
     const useAngles = angles ?? buildSmartAngles(state);
     const { ThreeScene } = await import('./scene/scene');
     const maxPx = opts.maxPx ?? 420;
@@ -182,13 +182,16 @@ export async function captureMapStills(
     const container = document.createElement('div');
     container.style.cssText = `position:fixed; left:-99999px; top:0; width:${capW}px; height:${capH}px;`;
     container.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(container);
-    const scene = new ThreeScene(container, state);
     const urls: string[] = [];
+    // The host enters the document inside the guard: a scene that throws on construction would
+    // otherwise leave a fixed div in the page for the rest of the session.
+    let scene: InstanceType<typeof ThreeScene> | null = null;
     try {
+      document.body.appendChild(container);
+      scene = new ThreeScene(container, state);
       scene.skipIntroAndRender(); // settle to the resting frame first
       for (const a of useAngles) { try { urls.push(scene.captureFromAngle(a.az, a.el, a.dist, a.tx ?? 0, a.tz ?? 0) ?? ''); } catch { urls.push(''); } }
-    } finally { scene.dispose(); if (container.parentNode) container.remove(); }
+    } finally { scene?.dispose(); container.remove(); }
     return urls;
   } catch { return []; }
 }

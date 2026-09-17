@@ -77,7 +77,7 @@ export interface RoadNetworkInput {
    *
    * SCOPED THE SAME WAY THE RUN IS. With `region` painted, only the recorded objects standing inside
    * it come back: a press confined to one corner must not strip the streets on the far side of the
-   * island, which is what an unscoped take-back would do the moment a region was painted after a
+   * map, which is what an unscoped take-back would do the moment a region was painted after a
    * whole-map press.
    */
   replace?: readonly string[];
@@ -124,7 +124,7 @@ export interface RoadNetworkResult {
  *  already finished, which is a re-press claiming it found no way across the very ramp it built.
  *
  *  Two questions read it: whether every hamlet is already served, and which houses this run actually
- *  connected (so a gate terminal is asserted for those and not for a house on an island the run never
+ *  connected (so a gate terminal is asserted for those and not for a house on ground the run never
  *  reached, whose doorstep tile would be pavement leading nowhere). */
 function walkableReach(
   analysis: PlacementAnalysis, place: PlaceCtx, decks: ReadonlySet<number>, hub: Node,
@@ -166,7 +166,7 @@ function gatedBuildings(state: GridState, W: number, H: number): { obj: PlacedOb
  * that margin. So `doorSpurs`' first and preferred candidate — the gate approach, the cell the
  * navigation regulation exists to connect at — was never `passable`, every spur fell through to the
  * ring search, and each one stopped at whichever side of the house it first touched. Not one of six
- * hand-placed houses on a real island had pavement in its gate strip after a press. GENERATION never
+ * hand-placed houses on a real map had pavement in its gate strip after a press. GENERATION never
  * saw this: it analyses the terrain BEFORE it places any building, so the doorstep is open there.
  *
  * A doorstep is where a road belongs, so it is put back into the mask for this run: the approach cell
@@ -224,7 +224,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   // A RUN THAT KEEPS NOTHING CHANGES NOTHING, take-back included. Every zero-lay report below goes
   // through here, so the map a refusal leaves behind is the map the press started from: without it
   // a press that stripped its own network and then found no route would report the refusal over a
-  // bare island.
+  // bare map.
   const restoreOwn = (): string[] => {
     executor.rollbackTo(watermark);
     return (input.replace ?? []).filter((id) => state.objects.has(id));
@@ -233,7 +233,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   // A surface the CALLER named wins, then the map's own, then the pool's first entry — the same
   // order `road-link` picks a material by, so the two road macros never disagree about what "the
   // map's surface" means. The shell names one only when a hand picked it off the bar
-  // (`tileMaterialPicked`), so an untouched bar leaves this run matching what the island is already
+  // (`tileMaterialPicked`), so an untouched bar leaves this run matching what the planet is already
   // paved with. Validated against the pool HERE, once, so `buildNetwork` (via `setupNet`'s own
   // identical fallback) and `widenRoads` below always agree on the same id.
   const roadPool = getPlaceableByCategory(ItemCategory.Road);
@@ -277,7 +277,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   const reach = hub ? walkableReach(analysis, place, networkCells(state, W, H).decks, hub) : new Uint8Array(W * H);
   // A HOUSE IS REACHED WHEN THE WALK GETS TO ITS RING, not when it gets to its doorstep. The gate
   // approach sits in the house's own dual-grid margin, so `analysis.open` closes every cell around it
-  // and `openDoorsteps` reopens the approach ALONE — an island of one open cell the flood cannot
+  // and `openDoorsteps` reopens the approach ALONE — a pocket of one open cell the flood cannot
   // enter. Reading reach there answered "no" for every house whose door faces a terrace step, so the
   // run skipped the very doorsteps the rules would have taken a tile on.
   const connected = gated

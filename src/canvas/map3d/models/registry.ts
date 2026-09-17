@@ -10,7 +10,7 @@
  * model file; build-model.ts would consume it, the spec staying the default.)
  */
 import type { ModelSpec } from '../../../core/model/model-spec';
-import { getCatalogItem, getAllItems } from '../../../state/catalog';
+import { getCatalogItem, getKnownItems } from '../../../state/catalog';
 
 export function hasModel(catalogId: string): boolean {
   return getCatalogItem(catalogId)?.model3d !== undefined;
@@ -22,5 +22,5 @@ export function getSpec(catalogId: string): ModelSpec | undefined {
 
 /** All catalogIds that have a bespoke 3D model (for tests / diagnostics). */
 export function modeledIds(): string[] {
-  return getAllItems().filter((item) => item.model3d !== undefined).map((item) => item.id);
+  return getKnownItems().filter((item) => item.model3d !== undefined).map((item) => item.id);
 }

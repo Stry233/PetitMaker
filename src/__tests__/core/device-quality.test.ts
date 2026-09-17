@@ -6,8 +6,8 @@
  * The same answer carries the 2D render-scale tier: on a software rasterizer every pixel is CPU
  * work, so the cap drops to 1 and a dpr-2 screen stops paying four times the fill for it.
  */
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { glQuality, glRendererName, maxRenderScale, setGlQualityOverride } from '../../core/runtime/device-quality';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { glQuality, glRendererName, hasWebGL2, maxRenderScale, setGlQualityOverride, __resetWebGL2Probe } from '../../core/runtime/device-quality';
 import { writePref } from '../../core/runtime/prefs';
 
 /** jsdom reports no `devicePixelRatio` of its own; the cap is only visible above 1. */
@@ -84,5 +84,37 @@ describe('maxRenderScale', () => {
     setDpr(2);
     setGlQualityOverride('full');
     expect(maxRenderScale()).toBe(1.5);
+  });
+});
+
+/**
+ * three r169 needs WebGL2, so the views and offers that lead to the 3D scene ask this first rather
+ * than letting the scene build and fail.
+ */
+describe('hasWebGL2', () => {
+  beforeEach(() => { __resetWebGL2Probe(); });
+  afterEach(() => { __resetWebGL2Probe(); vi.restoreAllMocks(); });
+
+  it('is false where no GL context exists (jsdom)', () => {
+    expect(hasWebGL2()).toBe(false);
+  });
+
+  it('accepts a webgl2 context, releases it, and answers once', () => {
+    const lose = vi.fn();
+    const getContext = vi.fn((kind: string) => (kind === 'webgl2'
+      ? { getExtension: (name: string) => (name === 'WEBGL_lose_context' ? { loseContext: lose } : null) }
+      : null));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(getContext as never);
+    expect(hasWebGL2()).toBe(true);
+    expect(lose).toHaveBeenCalledTimes(1);
+    expect(hasWebGL2()).toBe(true);
+    expect(getContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a device that offers webgl1 only', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) => (kind === 'webgl'
+      ? { getExtension: () => null }
+      : null)) as never);
+    expect(hasWebGL2()).toBe(false);
   });
 });

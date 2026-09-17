@@ -6,7 +6,7 @@
  * different GridState identity disposes the obsolete scene immediately; the
  * replacement is built on the next activation.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { tagLabel } from '../../i18n/annotation-tags';
 import { useEditorStore } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
@@ -42,6 +42,10 @@ export function Editor3DCanvas() {
   // whenever it owns the screen.
   usePointerInteraction(hostRef);
   useCursor(hostRef, active);
+
+  // A context the engine takes and never restores leaves the scene blank; a new generation
+  // rebuilds it on a fresh one.
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -84,6 +88,7 @@ export function Editor3DCanvas() {
         fail(e);
         return;
       }
+      sceneRef.current.onUnrecoverableLoss = () => { builtFor.current = null; setGeneration((g) => g + 1); };
       sceneRef.current.setLayerVisibility(hiddenSetFrom(useEditorStore.getState().layerVisibility));
       const st = useEditorStore.getState();
       sceneRef.current.setPassiveOverlays({ grid: st.showGrid, numbers: st.showLayerNumbers, chunks: st.showChunkBounds });
@@ -105,7 +110,7 @@ export function Editor3DCanvas() {
       if (useEditorStore.getState().viewMode === '3d') setActiveView(sceneRef.current.asEditorView());
     }, fail);
     return () => { cancelled = true; };
-  }, [active, gridState, quality3d]);
+  }, [active, gridState, quality3d, generation]);
 
   // Layer visibility follows the panel in both views; the scene peels terrain,
   // zero-scales hidden-layer objects, and filters the trimmed-road mesh.
@@ -175,6 +180,10 @@ export function Editor3DCanvas() {
         // taken out of it (`ui/shell/Shell.tsx`'s map plane).
         position: 'absolute',
         inset: 0,
+        // Touch belongs to the scene, not the page. The renderer's canvas receives this from
+        // OrbitControls' own side effect; declaring it on the host covers the host itself and does
+        // not depend on that internal.
+        touchAction: 'none',
         // Crossfades with the 2D canvas; visibility flips after the fade so the
         // hidden view neither paints nor takes pointer events, while client
         // rects stay meaningful for anything measuring the host (the scene reads

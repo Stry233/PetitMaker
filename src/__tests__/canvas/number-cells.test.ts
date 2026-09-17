@@ -1,6 +1,6 @@
 /**
  * The per-chunk label plan for the layer-number overlay: object footprints and
- * ground-island cells mask their numbers, hidden layers drop theirs, and the
+ * ground-islet cells mask their numbers, hidden layers drop theirs, and the
  * plan never leaves its chunk.
  */
 import { describe, it, expect } from 'vitest';
@@ -49,13 +49,13 @@ describe('chunkNumberCells', () => {
     expect(find(cells, 6, 4)?.label).toBe('0'); // one past the footprint labels again
   });
 
-  it('drops hidden layers and ground-island cells', () => {
+  it('drops hidden layers and ground-islet cells', () => {
     const state = makeState(20, 20);
     setTerrain(state, 2, 2, TerrainType.Mountain, 3);
     state.cells[6]![6]!.terrain = { type: TerrainType.None, elevation: 0, corners: ['fan', 'square', 'square', 'square'] };
     const cells = chunkNumberCells(state, 0, 0, new Set([3]));
     expect(find(cells, 2, 2)).toBeUndefined(); // its layer is hidden
-    expect(find(cells, 6, 6)).toBeUndefined(); // island-cut cell carries no number
+    expect(find(cells, 6, 6)).toBeUndefined(); // islet-cut cell carries no number
   });
 
   it('masks the covered cells under a half-anchored footprint (halfStep), not a fractional key', () => {

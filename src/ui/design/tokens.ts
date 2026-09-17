@@ -26,7 +26,7 @@ export const ACTIVE = colors.tileYellow;
 
 /**
  * The keyboard-focus ring, and it is TWO TONES by necessity: it stands on cream plates, on `ACTIVE`
- * yellow, and on bare island running to a layer-8 mountain at `#1b7511`. No single colour clears
+ * yellow, and on bare ground running to a layer-8 mountain at `#1b7511`. No single colour clears
  * both ends. The rust carries the pale surfaces (4.8 on plate, 3.7 on yellow, 3.4 on sea) and
  * `FOCUS_HALO` the dark ones (5.6 on a layer-8 mountain); where a background defeats both, rust on
  * cream is still 4.8 against the halo itself.
@@ -49,7 +49,7 @@ export const FOCUS_SHAPE_RADIUS = 14;
 /**
  * The screen's vignette, on ONE EDGE: the map darkens toward the bottom of the window and nowhere
  * else, because the bottom is where a full-width shelf meets the map and the only edge with a seam
- * to soften. Tuned against both a pale empty sea and a dark generated island.
+ * to soften. Tuned against both a pale empty sea and a dark generated map.
  *
  * A gradient rather than a shadow: a shadow cannot be given to one edge (an inset one casts from the
  * whole box, and four per-edge ones are four values to keep in step).
@@ -88,7 +88,7 @@ export const DARK_GROOVE = '#363432';
 export const LOAD_FILL = '#80FA00';
 
 /** Text standing on the map: a warm off-white sampled off the game itself. Not `#FFFFFF`, which
- *  reads as a system overlay dropped on the island rather than part of it. */
+ *  reads as a system overlay dropped on the map rather than part of it. */
 export const MAP_TEXT = '#FFFEE3';
 
 /**

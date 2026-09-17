@@ -33,7 +33,7 @@ const TOFU_FRAME = 3;
  * the two with room, so a map that spends a seventh of its water on nothing fails and the references do
  * not.
  *
- * A TERRACED ISLAND FRAMES A POOL MORE OFTEN, which pushes the reading up: an accent cut on a terrace
+ * A TERRACED PLANET FRAMES A POOL MORE OFTEN, which pushes the reading up: an accent cut on a terrace
  * has a step on two or three of its sides, and the test that decides whether a body belongs to the
  * map's water story asks exactly that. Composing the water pushes it back down, since most of a map's
  * water then stands in a few large figures that account for themselves and the accents are a smaller
@@ -61,7 +61,7 @@ const COURT_MAIN_SPAN = 9;
 const COURT_MAIN_MIN = 12;
 
 /** The widest a formal court can be and still be a court: past this it is a pond that happens to
- *  hold an island. The reference's own is 14 across. */
+ *  hold an islet. The reference's own is 14 across. */
 const COURT_SPAN_MAX = 17;
 
 /** How closely a body has to mirror itself about both axes of its box to read as composed. */
@@ -105,7 +105,7 @@ const STREAM_BENDS_PER_10 = 0.6;
  *
  *  A body is ACCOUNTED FOR when it is part of a course (it spans more than one surface level), a
  *  cascade (it presents a capped waterfall face), a formal court or islet pond (it holds an enclosed
- *  island and mirrors about both of its own axes), a crossing the walk steps over (a bridge or a ramp
+ *  islet and mirrors about both of its own axes), a crossing the walk steps over (a bridge or a ramp
  *  stands at it), or a stream (a long thin shape rather than a compact one) — or when it touches a
  *  body that is. Everything else of more than `WATER_ACCENT_MAX` cells is water the map cannot
  *  explain, and a solid mountain-framed rectangle among them is the tofu lake by name. */
@@ -154,7 +154,7 @@ export function waterStoryLedger(state: GridState, g = readGrid(state)): WaterSt
 /** Whether a body explains itself, without help from its neighbours. */
 function selfAccounts(g: EvalGrid, body: WaterBody): boolean {
   if (body.tiers.size > 1 || body.faced) return true;
-  // TWO OR MORE enclosed islands is a FIGURE: the panel a landmark writes its phrase into, whose ink
+  // TWO OR MORE enclosed islets is a FIGURE: the panel a landmark writes its phrase into, whose ink
   // is retained ground inside the flooded field. The style target's own banner reads exactly this
   // way, and a shape test cannot recover the semantics any other way.
   if (body.holes >= 2) return true;
@@ -209,7 +209,7 @@ export function courtBoxes(state: GridState, g = readGrid(state)): Rect[] {
  *
  * `waterBodies` is a 4-connected decomposition, and a nesting is not connected: a moat, its basin and
  * whatever stands between them are separate annuli standing inside one another, and each of them
- * reads as a court on its own — same box, same mirror, its own island. Counted as bodies, ONE
+ * reads as a court on its own — same box, same mirror, its own islet. Counted as bodies, ONE
  * fountain of nesting depth 3 answers "how many main fountains stand in this region" with 2, which is
  * the supplement's own rule failing on the composition it asks for. `figure.ts` makes the same move
  * for the set piece and for the same reason.
@@ -232,7 +232,7 @@ function nestedAsOne(courts: readonly WaterBody[]): WaterBody[] {
 }
 
 /** A formal court: a regular nested composition, small enough to read as one and mirrored about the
- *  better of its own axes, holding an island (its platform or its centre figure). */
+ *  better of its own axes, holding an islet (its platform or its centre figure). */
 function isCourt(g: EvalGrid, body: WaterBody): boolean {
   if (body.cells.length <= WATER_ACCENT_MAX || body.holes === 0) return false;
   if (body.x1 - body.x0 + 1 > COURT_SPAN_MAX || body.y1 - body.y0 + 1 > COURT_SPAN_MAX) return false;
@@ -363,7 +363,7 @@ export interface WaterComposition {
   bodies: number;
   cells: number;
   share: number;
-  /** Bodies holding an enclosed dry island: the pool-with-island class. */
+  /** Bodies holding an enclosed dry islet: the pool-with-islet class. */
   withIsland: number;
   /** Bodies whose bounding box alternates wet and dry bands four times or more on one axis: a comb,
    *  which is the shape a water garden's bars and beds make. */
@@ -393,7 +393,7 @@ export interface WaterComposition {
    * The reference's water is CUT INTO its terraces rather than laid on them — majority-water terraces,
    * moats round a platform — and this is that claim as one number. Reported, never gated: a coastal
    * lagoon and a pond on a plain are
-   * both legitimate water, and what the number says is whether the island's water was COMPOSED with
+   * both legitimate water, and what the number says is whether the planet's water was COMPOSED with
    * its landform or dropped onto it.
    */
   inTerrain: number;
@@ -426,8 +426,8 @@ export function waterComposition(state: GridState): WaterComposition {
   for (const body of bodies) {
     for (const l of body.tiers) tiers.add(l);
     if (body.tiers.size > 1) multiTier++;
-    // An ISLAND is dry ground inside the box that cannot reach the box's border without crossing the
-    // body: the hole test the reference's own island class is read by.
+    // An ISLET is dry ground inside the box that cannot reach the box's border without crossing the
+    // body: the hole test the reference's own islet class is read by.
     if (body.holes > 0) withIsland++;
     // BAND FLIPS: rows (then columns) of the box counted as wet at half or more, the number of times
     // the reading changes. Four or more is a comb.

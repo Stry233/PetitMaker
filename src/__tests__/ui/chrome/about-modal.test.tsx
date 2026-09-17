@@ -19,6 +19,7 @@ import { teamInReadingOrder } from '../../../legal/registry';
 import { en } from '../../../i18n/locales/en';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../version';
 import { setStoreState } from '../../_store';
+import { useEditorStore } from '../../../state/store';
 
 function renderModal(onClose: () => void = () => {}) {
   return render(
@@ -61,7 +62,7 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
   return (navigator as unknown as { clipboard: { writeText: ReturnType<typeof vi.fn> } }).clipboard.writeText;
 }
 
-const EXPECTED_BUILD_LINE = `${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`;
+const EXPECTED_BUILD_LINE = `${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})\n${navigator.userAgent}`;
 
 describe('AboutModal — view A (About)', () => {
   it('on a desktop viewport lays out a brand band over a people pane and a documents pane', () => {
@@ -270,6 +271,30 @@ describe('AboutModal — drill-in to the doc view', () => {
   });
 });
 
+describe('AboutModal — feedback links', () => {
+  it('the QQ channel row is a link to the channel page on pd.qq.com, opened in a new tab', () => {
+    renderModal();
+    const row = within(screen.getByTestId('feedback-links')).getByTestId('qq-feedback-channel');
+    expect(row.tagName).toBe('A');
+    expect(row.getAttribute('href')).toBe(`https://pd.qq.com/g/${LEGAL.qqFeedbackChannel}`);
+    expect(row.getAttribute('target')).toBe('_blank');
+    expect(row.getAttribute('rel')).toContain('noopener');
+    expect(row.textContent).toContain(LEGAL.qqFeedbackChannel);
+  });
+
+  it('GitHub issues and the contact address share one two-column row below the channel', () => {
+    renderModal();
+    const feedback = screen.getByTestId('feedback-links');
+    const channel = within(feedback).getByTestId('qq-feedback-channel');
+    const reports = within(feedback).getByTestId('report-links');
+    expect(channel.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reports.style.gridTemplateColumns).toBe('1fr 1fr');
+    const links = Array.from(reports.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(links).toEqual([`${LEGAL.repoUrl}/issues`, `mailto:${LEGAL.privacyContactEmail}`]);
+    expect(reports.querySelectorAll('a')[1]!.textContent).toContain(en['about.email_feedback']);
+  });
+});
+
 describe('AboutModal — build info and repository link', () => {
   it('copies the complete version row and links to GitHub separately', async () => {
     const writeText = stubClipboard(() => Promise.resolve());
@@ -364,5 +389,15 @@ describe('AboutModal — build info and repository link', () => {
     const bubble = await screen.findByRole('status');
     expect(bubble.getAttribute('aria-live')).toBe('polite');
     expect(bubble.textContent).toContain('Copied');
+  });
+});
+
+describe('opening on a named document', () => {
+  it('drills straight into the document a caller asked for, then forgets the ask', async () => {
+    setStoreState({ aboutTarget: 'changelog' });
+    renderModal();
+    const doc = await screen.findByTestId('legal-doc-body');
+    expect(doc.closest('[data-testid="about-doc-view"], div')).toBeTruthy();
+    expect(useEditorStore.getState().aboutTarget).toBeNull();
   });
 });

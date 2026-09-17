@@ -3,7 +3,7 @@
 // Two kinds of claim. The GEOMETRY claims are read off the pure shape functions: a pond shape is
 // symmetric about its own box, which is what makes it read as composed rather than as a blob.
 //
-// The COURSE claims are read off a synthetic terraced island — a staircase of tiers with nothing
+// The COURSE claims are read off a synthetic terraced map — a staircase of tiers with nothing
 // standing on it — because that is the one place the story's own arguments can be checked without a
 // whole designed map in the way: the course has a source and an arrival, it bends, its width varies,
 // it never runs straight for longer than the bound it declares, and the terrain it leaves behind
@@ -36,7 +36,7 @@ function emptyPlan(template: MapTemplate): DesignPlan {
 }
 
 /**
- * A staircase island: the buildable land terraced in bands from tier 3 down to 0 along y, which is
+ * A staircase map: the buildable land terraced in bands from tier 3 down to 0 along y, which is
  * the shape the composition's own plates make and the one a course has to descend.
  *
  * Three tiers rather than eight because V-MTN-03 auto-passes at and below layer 3: a synthetic
@@ -98,7 +98,7 @@ describe('the pond shapes', () => {
     }
   });
 
-  it('leaves an island standing inside the islet pond and inside the U-moat', () => {
+  it('leaves dry ground standing inside the islet pond and inside the U-moat', () => {
     for (const shape of ['islet', 'u-moat'] as const) {
       const rect = { x: 0, y: 0, w: 11, h: 9 };
       const cells = new Set(pondCells(shape, rect).map((c) => `${c.x},${c.y}`));
@@ -115,7 +115,7 @@ describe('the pond shapes', () => {
   });
 });
 
-describe('the course, on a staircase island', () => {
+describe('the course, on a staircase map', () => {
   it('runs from a source to an arrival on every seed', () => {
     for (const seed of SEEDS) {
       const { story } = carve(seed);
@@ -205,7 +205,7 @@ describe('the course, on a staircase island', () => {
 
   it('never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
-    // A reserved band across half the island, the shape a trunk street leaves: the course has to
+    // A reserved band across half the map, the shape a trunk street leaves: the course has to
     // route around it rather than through it.
     for (let y = Math.floor(HEXIA.height / 2); y < Math.floor(HEXIA.height / 2) + 3; y++) {
       for (let x = 0; x < Math.floor(HEXIA.width / 2); x++) flat[flatIndex(x, y, HEXIA.width)] = 1;

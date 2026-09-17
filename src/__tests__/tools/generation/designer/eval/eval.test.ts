@@ -293,7 +293,7 @@ describe('street straightness', () => {
 });
 
 describe('district legibility', () => {
-  it('reads the pieces a street grid cuts an island into', () => {
+  it('reads the pieces a street grid cuts a map into', () => {
     const state = makeState(60, 60);
     for (const at of [20, 40]) {
       for (let t = 0; t < 60; t++) for (let w = 0; w < 3; w++) {

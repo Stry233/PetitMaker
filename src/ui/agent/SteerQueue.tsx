@@ -43,7 +43,6 @@ const CHIPS_STYLE: CSSProperties = {
   flexDirection: 'column',
   gap: GAP,
   overflowY: 'auto',
-  scrollbarWidth: 'thin',
 };
 
 const CHIP_STYLE: CSSProperties = {

@@ -31,7 +31,7 @@ function plant(state: GridState, id: string, x: number, y: number): void {
 
 describe('the terrace shape reading', () => {
   it('reads a rectangular terrace as a box and a chamfered one as landform', () => {
-    // THREE raised terraces on one island, so the median is taken over terraces rather than over one
+    // THREE raised terraces on one map, so the median is taken over terraces rather than over one
     // terrace and the ground it stands on.
     const boxes = [{ x: 4, y: 4 }, { x: 4, y: 20 }, { x: 22, y: 12 }];
     const box = grass();
@@ -39,7 +39,7 @@ describe('the terrace shape reading', () => {
       for (let y = at.y; y < at.y + 10; y++) for (let x = at.x; x < at.x + 14; x++) paint(box, x, y, 2);
     }
     const boxRead = terraceShape(box);
-    // All three terraces ARE their bounding boxes; the ground they stand on is the island minus three
+    // All three terraces ARE their bounding boxes; the ground they stand on is the map minus three
     // rects out of it and is not.
     expect(boxRead.components).toBe(4);
     expect(boxRead.boxy).toBe(3);

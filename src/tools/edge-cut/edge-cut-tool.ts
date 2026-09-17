@@ -39,7 +39,7 @@ function digitShape(d: number, cornerIdx: number): CornerTrim {
 }
 
 /** A cut SITE gathered at a clicked intersection: a GAMMA fillet (carrying the wrapping mountain's
- *  type/elevation) or, with no `gamma`, a plain OUTER / ground-island convex corner. Every site at one click
+ *  type/elevation) or, with no `gamma`, a plain OUTER / ground-islet convex corner. Every site at one click
  *  shares ONE base-3 odometer (0=off, 1=fan, 2=tri) so N sites traverse all 3^N combinations independently. */
 interface CutSite {
   slot: TerrainSlot;
@@ -102,7 +102,7 @@ export class EdgeCutTool implements Tool {
     const roads = roadLookup(ctx.gridState);
     const strokeStart = ctx.getUndoStackSize();
     let acted = false;
-    const sites: CutSite[] = []; // every cut site meeting this click — gamma fillets AND outer/island corners
+    const sites: CutSite[] = []; // every cut site meeting this click — gamma fillets AND outer/islet corners
 
     for (const slot of getTerrainSlots(coord.x, coord.y)) {
       const cell = getCell(ctx.gridState.cells, slot.cellX, slot.cellY);
@@ -113,8 +113,8 @@ export class EdgeCutTool implements Tool {
       // the wrapping structure's type. Two guards:
       //   - never overwrite a DIFFERENT real surface — a water cell tucked beside a taller mountain keeps
       //     its water and rounds its OWN outer corner via branch B; and
-      //   - only a MOUNTAIN fills a notch this way. A WATER notch (a ground island, or lower land, tucked
-      //     into water) must NOT be flooded — the island rounds out via the water's concave cut (branch B,
+      //   - only a MOUNTAIN fills a notch this way. A WATER notch (a ground islet, or lower land, tucked
+      //     into water) must NOT be flooded — the islet rounds out via the water's concave cut (branch B,
       //     a free notch corner), the water staying its inner fill.
       const cellIsDifferentReal = !!cellTerr && !cellTerr.patchOnly && !!hi && cellTerr.type !== hi.type;
 
@@ -142,8 +142,8 @@ export class EdgeCutTool implements Tool {
       // (B) An OUTER corner is cuttable — collect it; a single click may govern several (a diagonal pinch),
       //     so they're cycled JOINTLY after the loop to reach every combination. Two kinds:
       //   - a real mountain/water cell's convex corner (unless a same-tier neighbour pins it); or
-      //   - a GROUND island corner poking into water (the cut lives on the ground cell — see option A:
-      //     the inverse of a water pond; rounds the island's own corner, revealing the water).
+      //   - a GROUND islet corner poking into water (the cut lives on the ground cell — see option A:
+      //     the inverse of a water pond; rounds the islet's own corner, revealing the water).
       // A real block OR a gamma patch that has a REAL base (patchBase >= 1) can bevel an UNWRAPPED corner —
       // its outer cut is independent of any gamma fillet on the same cell. (Branch A already intercepted the
       // wrapped corner via `continue`, so anything reaching here is a plain outer corner.) A from-empty
@@ -221,7 +221,7 @@ export class EdgeCutTool implements Tool {
   }
 
   /** Apply a base-3 digit to an OUTER convex corner (0=square, 1=fan, 2=outer-tri). `terr` is null for a
-   *  plain-ground island corner; the executor materialises a `type: None` cell to carry the corners (and
+   *  plain-ground islet corner; the executor materialises a `type: None` cell to carry the corners (and
    *  drops it back to ground when they cycle to all-square). */
   private applyOuter(ctx: ToolContext, slot: TerrainSlot, digit: number): boolean {
     const want = digitShape(digit, slot.cornerIdx);
@@ -292,7 +292,7 @@ export class EdgeCutTool implements Tool {
         hasAny = true; break;
       }
       if (groundConvexCornerInWater(ctx.gridState, slot.cellX, slot.cellY, slot.cornerIdx)) {
-        hasAny = true; break; // a ground island corner poking into water is cuttable
+        hasAny = true; break; // a ground islet corner poking into water is cuttable
       }
     }
     if (!hasAny) {

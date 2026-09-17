@@ -3,7 +3,7 @@
  *
  * Covers the paths a brush stroke and its history actually pay for: a plain paint stroke laid one
  * command per cell (what a drag issues), the auto-stack ladder a mountain climb takes one rung at a
- * time, undo and redo of an already-committed stroke, a stroke landing on the dense generated island
+ * time, undo and redo of an already-committed stroke, a stroke landing on the dense generated map
  * (object-blocked cells and the mid-stroke road/edge-cut reconcile in the mix), collapseHistory
  * folding many undo entries into one, and the placement probe a ghost or the agent runs before every
  * candidate cell. See `_harness.ts` for the gate and methodology.
@@ -91,7 +91,7 @@ describe.runIf(PERF)('perf: core commands', () => {
     });
   });
 
-  it('stroke landing on the dense generated island', async () => {
+  it('stroke landing on the dense generated map', async () => {
     const island = denseIsland();
     // Eligible cells (plain grass, no object, no locked layer over it) are a structural fact of the
     // fixture itself — probed once against a scratch clone via validatePre (non-mutating), then
@@ -135,7 +135,7 @@ describe.runIf(PERF)('perf: core commands', () => {
     });
   });
 
-  it('validate: 100 placement probes over the dense island', async () => {
+  it('validate: 100 placement probes over the dense map', async () => {
     const { state, executor } = denseIsland();
     const item = getPlaceableByCategory(ItemCategory.Flora)[0]!;
     const positions: MacroCoord[] = [];

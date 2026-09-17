@@ -232,7 +232,7 @@ describe('the dressed map', () => {
     // SYMMETRY IS READ OVER THE BATCH, the other two per map. A mirror is only offered to a run
     // compact enough to carry one, so how many of a map's regions get one depends on how the
     // terrain happened to cut that map's open ground — the style target itself scores 0.67, and a
-    // per-seed floor at the batch's own mean would be asking every island to be the average one.
+    // per-seed floor at the batch's own mean would be asking every planet to be the average one.
     // The floor each seed still holds is the one that says the operator ran at all.
     const shares: number[] = [];
     for (const template of [HEXIA, TAFA]) {
@@ -267,7 +267,7 @@ describe('the dressed map', () => {
         expect(scores.unityShare, where).toBeGreaterThanOrEqual(0.50);
         // THE FLOOR IS THE REFERENCE'S OWN, less the ground the water took. Both references sit at
         // 0.073 and 0.092 plants per land cell, and the band's floor is the lower of the two; at
-        // full richness a quarter of our island is water and every water cell also costs the dry
+        // full richness a quarter of our planet is water and every water cell also costs the dry
         // cells whose flat sweep reaches it, so a watery seed lands a few thousandths under. The
         // arrangement is what this file is about, and the volume is measured rather than forced.
         expect(metrics.objects.decorDensity, where).toBeGreaterThanOrEqual(0.065);

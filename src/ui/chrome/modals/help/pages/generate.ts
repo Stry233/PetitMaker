@@ -1,6 +1,6 @@
 /*
  * pages/generate.ts — the 生成 group, one page per kind the shelf itself offers: the overview of
- * the shared machinery, then Island, Maze, Letter and Picture, then the two deep dives every kind
+ * the shared machinery, then Planet, Maze, Letter and Picture, then the two deep dives every kind
  * leans on (recipes and the region).
  *
  * Descriptor data only: copy uses full i18n key literals, key tables name command ids and figures

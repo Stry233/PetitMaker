@@ -409,7 +409,7 @@ describe('runJob failure modes', () => {
       return messages[messages.length - 1];
     };
     // The first request carries only the order itself: no nudge yet on an empty streak of 0.
-    expect(lastMessageOf(0)).toMatchObject({ role: 'user', text: '<map_context>""</map_context>\ngo' });
+    expect(lastMessageOf(0)).toMatchObject({ role: 'user', text: '<map_context>""</map_context>\ngo\n(language) Think and reply in the language of this message.' });
     expect(lastMessageOf(1)).toMatchObject({ role: 'user' });
     expect((lastMessageOf(1) as { text: string }).text).toMatch(/\(system\).*no text and no tool calls/);
     expect(lastMessageOf(2)).toMatchObject({ role: 'user' });
@@ -490,7 +490,7 @@ describe('runJob failure modes', () => {
       const messages = snapshots[i]?.messages ?? [];
       return messages[messages.length - 1];
     };
-    expect(trailing(0)).toMatchObject({ role: 'user', text: '<map_context>""</map_context>\ngo' });
+    expect(trailing(0)).toMatchObject({ role: 'user', text: '<map_context>""</map_context>\ngo\n(language) Think and reply in the language of this message.' });
     expect(trailing(1)).toMatchObject({ role: 'user' });
     expect((trailing(1) as { text: string }).text).toMatch(/\(system\).*cut off/);
   });

@@ -1166,3 +1166,13 @@ describe('setup copy, in every locale', () => {
     }
   });
 });
+
+describe('the key screen points at Help', () => {
+  it('opens the setup page at its key steps from Learn more', () => {
+    useEditorStore.getState().setHelpTarget(null);
+    renderWithI18n(<SetupScreen />);
+    fireEvent.click(screen.getByRole('button', { name: translations.en['agent3.learn_more'] }));
+    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'agent-setup', anchor: 'agsetup-keys' });
+    expect(useEditorStore.getState().modals.help).toBe(true);
+  });
+});

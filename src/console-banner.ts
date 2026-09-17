@@ -1,5 +1,5 @@
 /*
- * The console easter egg: the island in shade characters, for whoever opens devtools.
+ * The console easter egg: the planet in shade characters, for whoever opens devtools.
  *
  * The PRODUCTION build drops every direct `console.*` call (vite.config.ts, esbuild.drop), and the
  * console is exactly where this banner must appear — so it reaches it through an aliased reference

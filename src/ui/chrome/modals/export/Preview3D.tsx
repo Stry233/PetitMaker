@@ -4,7 +4,7 @@
  * ease-out exit), and tears the scene down on unmount. Dismiss with Esc or the
  * close button. Respects prefers-reduced-motion.
  */
-import { useChromeScale } from '../../../design/scale';
+import { useChromeScale, useViewportSize } from '../../../design/scale';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useCameraOnly } from '../../../../canvas/interaction/use-camera-only';
 import { useHeldPan } from '../../../../canvas/interaction/use-view-shortcuts';
@@ -32,6 +32,7 @@ function floatBtn(top: number): CSSProperties {
 
 export function Preview3D({ onClose }: { onClose: () => void }) {
   const chrome = useChromeScale();
+  const { w: windowW, h: windowH } = useViewportSize();
   const t = useT();
   const reduced = useReducedMotionConfig();
   const [visible, setVisible] = useState(true);
@@ -125,7 +126,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
         >
           {/* WebGL host fills the surface; the scene appends its canvas here. The scene
               renders the WHOLE view so there's context around the frame. */}
-          <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
+          <div ref={hostRef} style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
 
           {/* Edit mode viewfinder — now TRUTHFUL. The export re-renders the shot at
               CARD_3D_CELL_ASPECT with the SAME vertical FOV as this full-screen view,
@@ -139,7 +140,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
                   (a CONTAIN rect): width = the smaller of the full width or the
                   aspect-scaled full height, so it never balloons to full screen on
                   a window narrower than the cell aspect. */}
-              <div style={{ width: `min(100vw, ${CARD_3D_CELL_ASPECT} * 100vh)`, aspectRatio: String(CARD_3D_CELL_ASPECT), boxSizing: 'border-box', borderRadius: 12, border: '2px solid rgba(255,255,255,0.92)', boxShadow: '0 0 0 4000px rgba(22,20,18,0.42)' }} />
+              <div style={{ width: Math.min(windowW, CARD_3D_CELL_ASPECT * windowH), aspectRatio: String(CARD_3D_CELL_ASPECT), boxSizing: 'border-box', borderRadius: 12, border: '2px solid rgba(255,255,255,0.92)', boxShadow: '0 0 0 4000px rgba(22,20,18,0.42)' }} />
             </div>
           )}
 

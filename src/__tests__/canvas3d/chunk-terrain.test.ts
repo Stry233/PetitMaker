@@ -21,7 +21,7 @@ function gridFrom(rows: MacroCell[][]): GridState {
 
 /** A 40×24 state exercising every mesher branch across chunk borders: sea,
  *  shoreline skirts, mountains (stacked + trimmed), water tiers, a waterfall
- *  face, a ground island cut, a Γ patch. */
+ *  face, a ground islet cut, a Γ patch. */
 function mixedState(): GridState {
   const W = 40, H = 24;
   const rows: MacroCell[][] = Array.from({ length: H }, (_, y) =>
@@ -41,7 +41,7 @@ function mixedState(): GridState {
   for (let y = 14; y <= 15; y++) for (let x = 5; x <= 30; x++) {
     rows[y]![x]!.terrain = { type: TerrainType.Water, elevation: 0 };
   }
-  // ground island cut in the river
+  // ground islet cut in the river
   rows[14]![12]!.terrain = { type: TerrainType.None, elevation: 0, corners: trims('fan', 'square', 'square', 'fan') };
   // Γ patch (fillet over a lower base)
   rows[6]![15]!.terrain = { type: TerrainType.Mountain, elevation: 3, corners: trims('square', 'fan', 'square', 'square'), patchOnly: true };

@@ -1,9 +1,9 @@
 /**
- * A GROUND-ISLAND cut (the inner concave corner of an L-shaped water pool, and
+ * A GROUND-ISLET cut (the inner concave corner of an L-shaped water pool, and
  * any grass corner poking into water) must render on the SAME micro grid as the
  * water it sits in — mirroring 2D, where the None+corners cut draws at the
  * −HALF_TILE terrain offset over the full macro zone floor. Drawn a half-cell off
- * (macro grid) as a skirted island, it floats detached from the pool instead.
+ * (macro grid) as a skirted islet, it floats detached from the pool instead.
  * Here we pin: the macro grass slab stays (no tiling gap) and the
  * revealed water lands on the micro grid, not the macro grid.
  */
@@ -14,7 +14,7 @@ import { TerrainType } from '../../core/model/types';
 import type { GridState } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 
-/** An L of water at (1,1),(2,1),(1,2) with (2,2) a grass island whose TL corner
+/** An L of water at (1,1),(2,1),(1,2) with (2,2) a grass islet whose TL corner
  *  is cut (fan) to reveal the pool at the concave bend — the minimal repro of the
  *  L-pool inner corner. */
 function lPoolState(): GridState {
@@ -33,10 +33,10 @@ const has = (positions: readonly number[], x: number, z: number) => {
   return false;
 };
 
-describe('ground-island cut (L-pool inner corner) alignment', () => {
+describe('ground-islet cut (L-pool inner corner) alignment', () => {
   it('draws no coast-skirt false-cliff around a cut cell connected to grass', () => {
     const s = lPoolState();
-    const c = cellCornerWorld(2, 2, 4, 4); // macro corner of the island cell
+    const c = cellCornerWorld(2, 2, 4, 4); // macro corner of the islet cell
     const m = buildChunkTerrain(s, 0, 0);
     // The macro grass floor covers the cut cell at slab height (no gap).
     const topAtCorner: number[] = [];
@@ -44,7 +44,7 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
       if (Math.abs(m.ground.positions[i]! - (c.x + 1)) < 1e-4 && Math.abs(m.ground.positions[i + 2]! - (c.z + 1)) < 1e-4) topAtCorner.push(m.ground.positions[i + 1]!);
     }
     expect(topAtCorner.some((y) => Math.abs(y - GROUND_SLAB_Y) < 1e-4), 'grass floor at the cut cell BR corner').toBe(true);
-    // A skirted island drives grass walls to GROUND_BOTTOM even on edges shared with
+    // A skirted islet drives grass walls to GROUND_BOTTOM even on edges shared with
     // solid grass — a false detached cliff. A connected cut cell (no void/sea
     // neighbour) must produce none.
     let deep = 0;
@@ -61,7 +61,7 @@ describe('ground-island cut (L-pool inner corner) alignment', () => {
     const m = buildChunkTerrain(s, 0, 0);
     // A macro-aligned backing puts a reveal quadrant at [c.x, c.x+0.5]×[c.z, c.z+0.5],
     // leaving a water vertex at the macro mid-cell corner. The micro-aligned reveal
-    // (offset −0.5) never does, and no pool cell reaches the island cell's +x/+z half,
+    // (offset −0.5) never does, and no pool cell reaches the islet cell's +x/+z half,
     // so that vertex can only come from a macro placement.
     expect(has(m.water.positions, c.x + 0.5, c.z + 0.5), 'no water reveal on the macro grid').toBe(false);
     // The reveal lands at the micro TL corner of the cut cell (aligned with the pool).
@@ -151,8 +151,8 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
     expect(solidAt(x0, z0), 'bank fills the cut-away corner').toBe(true);
   });
 
-  it('a mountain ISLAND in an elevated pool reveals water only in the cut-away, not a full block over it', () => {
-    // The concave inner corner of an elevated L-pool is a mountain@2 island whose corner rounds into the
+  it('a mountain ISLET in an elevated pool reveals water only in the cut-away, not a full block over it', () => {
+    // The concave inner corner of an elevated L-pool is a mountain@2 islet whose corner rounds into the
     // water@2. The revealed water must fill only the rounded cap; a full quadrant hides the terrain.
     const s = makeState(5, 5) as GridState;
     setTerrain(s, 1, 2, TerrainType.Water, 2);
@@ -171,7 +171,7 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
       return false;
     })();
     // The water reveal must NOT reach the cell centre — that belongs to the kept mountain fan.
-    expect(waterAtCentre, 'no full-block water over the mountain island').toBe(false);
+    expect(waterAtCentre, 'no full-block water over the mountain islet').toBe(false);
     // The mountain fan owns the cell centre.
     const solidAtCentre = (() => {
       for (let i = 0; i < m.solid.positions.length; i += 3) {

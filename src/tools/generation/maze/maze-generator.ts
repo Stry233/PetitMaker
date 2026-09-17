@@ -242,7 +242,7 @@ export function generateMaze(
     /*
      * A corridor is a cell the lattice left open AND a person could stand on.
      *
-     * The lattice knows nothing about the island: its rectangle is the bounding box of the free
+     * The lattice knows nothing about the planet: its rectangle is the bounding box of the free
      * grass, and on a real map that box also covers sea, sand and the square. Those cells take no
      * wall either, so a lattice-only reading calls them corridor — and the default put a way IN on
      * a ring cell in the middle of the ocean, with no route from it to anywhere. Asking the map the
@@ -280,7 +280,7 @@ export function generateMaze(
 
   /*
    * Asked-for ends snap INTO THE MAINLAND, never merely to the nearest cell: the rectangle also
-   * covers sea and sand on a real island, so the walkable cells can be several disconnected
+   * covers sea and sand on a real map, so the walkable cells can be several disconnected
    * patches, and a pair snapped blindly could land where no corridor joins them. One component,
    * one spanning tree — the walk between the pair exists by construction. The defaults need no
    * such guard: they are chosen by their walks, so an unreachable pairing is never picked.
@@ -350,7 +350,7 @@ export function generateMaze(
    * The walk between the ends, over THIS CARVE — computed here because only the generator knows
    * it: `field` is the carved corridors and nothing else, where the finished map cannot tell a
    * carved connector from a wall the coast refused to take, so a route recomputed later over all
-   * open ground can slip through such gaps and skirt the maze along its rim. Where the island
+   * open ground can slip through such gaps and skirt the maze along its rim. Where the planet
    * severs the carved tree itself (a connector over sea), the open ground stands in so an answer
    * still exists.
    */

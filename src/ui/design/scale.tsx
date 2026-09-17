@@ -5,6 +5,7 @@
  */
 import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
 import { useEditorStore } from '../../state/store';
+import { readMatch } from '../../core/runtime/portrait-signals';
 import { useUiPreviewPose } from '../primitives/ui-preview';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, weightVars } from './text-weight';
@@ -29,6 +30,13 @@ export const CANVAS = { w: 3754, h: 1918 } as const;
  */
 export const FIT_REF = { w: 1280, h: 800 } as const;
 export const FIT_FLOOR = 0.6;
+/** The floor on a touch-primary device: a short landscape screen gives up some fingertip room for workspace. */
+export const FIT_FLOOR_TOUCH = 0.5;
+
+/** The fit floor for the primary pointer. */
+export function fitFloorFor(touchPrimary: boolean): number {
+  return touchPrimary ? FIT_FLOOR_TOUCH : FIT_FLOOR;
+}
 
 /**
  * 1 at or above `FIT_REF`, the tighter axis's share below it, never under `FIT_FLOOR`.
@@ -42,20 +50,38 @@ export const FIT_FLOOR = 0.6;
  * caller is the assistant's DOCKED panel (`shell/panel-frame.ts:PINNED_DOCK_REF_W`), handed in
  * rather than named here: the dock's width is the frame's own arithmetic, and this file is below it.
  */
-export function frameFit(vw: number, vh: number, refWiden = 0): number {
-  return Math.max(FIT_FLOOR, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
+export function frameFit(vw: number, vh: number, refWiden = 0, floor = FIT_FLOOR): number {
+  return Math.max(floor, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
 }
 
 /** Minimum workspace in chrome pixels, after the shell folds its controls and scrolls its rows. */
 export const MIN_UI_ROOM = { w: 700, h: 525 } as const;
 
+/** The UI scale preference's range; `core/runtime/prefs.ts` clamps the persisted value to the same bounds. */
+export const UI_ZOOM_MIN = 0.6;
+export const UI_ZOOM_MAX = 1.8;
+
 /** Fit the requested size without changing the saved preference, including the dock's own width. */
-export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0): number {
+export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0, floor = FIT_FLOOR): number {
   return Math.min(
-    frameFit(vw, vh, refWiden * uiZoom) * uiZoom,
+    frameFit(vw, vh, refWiden * uiZoom, floor) * uiZoom,
     vw / (MIN_UI_ROOM.w + refWiden),
     vh / MIN_UI_ROOM.h,
   );
+}
+
+/** The largest UI zoom that still enlarges the fitted scale in this window; past it the workspace minimum caps the scale. */
+export function reachableUiZoom(vw: number, vh: number, refWiden = 0, floor = FIT_FLOOR): number {
+  const cap = Math.min(vw / (MIN_UI_ROOM.w + refWiden), vh / MIN_UI_ROOM.h);
+  const unbounded = (zoom: number) => frameFit(vw, vh, refWiden * zoom, floor) * zoom;
+  if (unbounded(UI_ZOOM_MAX) <= cap) return UI_ZOOM_MAX;
+  let lo = UI_ZOOM_MIN;
+  let hi = UI_ZOOM_MAX;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (unbounded(mid) < cap) lo = mid; else hi = mid;
+  }
+  return hi;
 }
 
 /**
@@ -94,12 +120,34 @@ export function useViewportSize(): { w: number; h: number } {
   return posed ?? { w, h };
 }
 
+const COARSE_POINTER = '(pointer: coarse)';
+
+/** Whether the primary pointer is a fingertip, live as a mouse is attached or removed. */
+export function useTouchPrimary(): boolean {
+  const [touch, setTouch] = useState(() => readMatch(COARSE_POINTER));
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(COARSE_POINTER);
+    const update = () => setTouch(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return touch;
+}
+
+/** The live fit floor for this device. */
+export function useFitFloor(): number {
+  return fitFloorFor(useTouchPrimary());
+}
+
 /** The shared live fit, normalized so callers can multiply by the animated UI preference. */
 export function useViewportFit(): number {
   const { w, h } = useViewportSize();
   const widen = useDockRef();
   const zoom = useAnimatedUiZoom();
-  return fittedUiScale(w, h, zoom, widen) / zoom;
+  const floor = useFitFloor();
+  return fittedUiScale(w, h, zoom, widen, floor) / zoom;
 }
 
 /**
@@ -110,6 +158,15 @@ export function useViewportFit(): number {
  */
 export function useChromeScale(): number {
   return useViewportFit() * useAnimatedUiZoom();
+}
+
+/** The exact-ratio query to watch. A `resolution` query that does not match the ratio it was built
+ *  for is one the engine did not understand (Safari before 16 has no such media feature), so the
+ *  prefixed pair states the same exact value instead. */
+function dprQuery(ratio: number): MediaQueryList {
+  const exact = window.matchMedia(`(resolution: ${ratio}dppx)`);
+  if (exact.matches) return exact;
+  return window.matchMedia(`(-webkit-min-device-pixel-ratio: ${ratio}) and (-webkit-max-device-pixel-ratio: ${ratio})`);
 }
 
 /** The display's own pixel multiplier, re-read on the media change that moves it (browser page zoom
@@ -126,7 +183,7 @@ export function useDevicePixelRatio(): number {
       // The query matches only at exactly this ratio, so it CHANGES the moment the ratio does —
       // which is the one event the platform gives for a dpr move. Re-armed at the new ratio each
       // time, since a single query can only ever report leaving the value it was built for.
-      const mq = window.matchMedia(`(resolution: ${ratio}dppx)`);
+      const mq = dprQuery(ratio);
       const onChange = () => { cancel(); watch(); };
       mq.addEventListener('change', onChange);
       cancel = () => mq.removeEventListener('change', onChange);

@@ -42,7 +42,7 @@ vi.mock('../../../io/image-export', async (importOriginal) => {
 });
 // No 2D renderer is registered in jsdom — stand in for the view host's capture verb.
 vi.mock('../../../kit/host', () => ({
-  host: { capture2d: vi.fn(() => null) },
+  host: { capture2d: vi.fn(() => null), capture2dRegionCanvas: vi.fn(() => null), capture2dTextureCap: () => 16384 },
 }));
 
 import { buildShareCode } from '../../../io/share';

@@ -82,7 +82,7 @@ const POND_REGION_MIN = 120;
 const POND_COVER_MAX = 0.04;
 /**
  * The pond's own extent, as a share of the region's box, with a floor and a CEILING. The ceiling is
- * what keeps it a pond: a share of the whole island's box is a lake covering a third of the map, and
+ * what keeps it a pond: a share of the whole planet's box is a lake covering a third of the map, and
  * the caption offers to dig one, not to flood the place.
  */
 const POND_SHARE = 0.22;
@@ -117,7 +117,7 @@ const DIR_KEY = {
 } as const;
 
 /** Inside this share of the map's own half-width, a feature is not in any quarter: it is in the
- *  middle, and saying "the north meadow" about the middle of the island is a small lie. */
+ *  middle, and saying "the north meadow" about the middle of the map is a small lie. */
 const MIDDLE_SHARE = 0.22;
 
 /** Which quarter of the map a point sits in, as the key for the word. */
@@ -257,7 +257,7 @@ function proposeLane(g: EvalGrid, regions: readonly Region[], taken: Set<number>
     orderKey: 'agent3.sketch_lane_order',
     dirKey: directionKey(g, to),
     // The reading the caption quotes is how FAR the ground is from the pavement, which is what the
-    // proposal is about. The region's own cell count is a five-figure number on an unpaved island:
+    // proposal is about. The region's own cell count is a five-figure number on an unpaved map:
     // true, and no help to anybody reading a two-line caption.
     params: { n: Math.round(Math.hypot(to.x - from.x, to.y - from.y)) },
     art: { shape: 'lane', from, via, to, width: LANE_WIDTH },
@@ -272,7 +272,7 @@ function proposePond(g: EvalGrid, regions: readonly Region[], taken: Set<number>
     return covered / region.cells.length <= POND_COVER_MAX;
   };
   // A place of its own where the map has one. Where it does not, the pond and the lane share the
-  // island's one open expanse and stay different proposals about it: the lane runs to its FAR end
+  // map's one open expanse and stay different proposals about it: the lane runs to its FAR end
   // and the pond sits at its deepest point, so the two figures are never drawn over each other.
   const at = regions.findIndex((region, k) => !taken.has(k) && fits(region));
   const on = at >= 0 ? at : regions.findIndex(fits);

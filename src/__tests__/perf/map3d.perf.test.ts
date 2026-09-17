@@ -24,7 +24,7 @@ import type { MacroCoord } from '../../core/model/types';
 const s = perfSuite('map3d');
 
 describe.runIf(PERF)('perf: map3d', () => {
-  it('terrain: full chunked build over the dense island (first 3D open)', async () => {
+  it('terrain: full chunked build over the dense map (first 3D open)', async () => {
     const { state } = denseIsland();
     const chunksX = Math.ceil(state.template.width / CHUNK_SIZE);
     const chunksY = Math.ceil(state.template.height / CHUNK_SIZE);

@@ -186,7 +186,7 @@ export function AgentSteerPreview() {
   );
 }
 
-/* ── region: the real composer with its docked chip over the live island ── */
+/* ── region: the real composer with its docked chip over the live map ───── */
 
 const FIXTURE_BOUNDS: RegionBounds = { x1: 6, y1: 6, x2: 18, y2: 14, count: 117 };
 const REGION_FIG_HEIGHT = 340;

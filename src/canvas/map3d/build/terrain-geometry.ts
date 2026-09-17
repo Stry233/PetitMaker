@@ -191,7 +191,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
       const gx0 = c0.x, gz0 = c0.z, gx1 = gx0 + 1, gz1 = gz0 + 1;
       const x0 = gx0 + TERRAIN_OFFSET, z0 = gz0 + TERRAIN_OFFSET, x1 = x0 + 1, z1 = z0 + 1;
 
-      // A GROUND-ISLAND cut (type None + corners): a grass corner poking into water (an island tip, or
+      // A GROUND-ISLET cut (type None + corners): a grass corner poking into water (an islet tip, or
       // the concave inner corner of an L-shaped pool). Like 2D, the full macro zone floor stays and the
       // cut only reveals water at the trimmed corner — drawn on the MICRO terrain grid so it aligns with
       // the pool, not a half-cell off.
@@ -231,7 +231,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
       if (!t) continue;
       const neighborAt = (dx: number, dy: number) => getCell(state.cells, x + dx, y + dy)?.terrain;
 
-      // ── GROUND ISLAND cut (type None + corners): the macro grass floor above already fills the cell;
+      // ── GROUND ISLET cut (type None + corners): the macro grass floor above already fills the cell;
       //    the cut only OPENS its trimmed corner onto the water it sits in. The reveal is drawn in the
       //    CUT-AWAY shape (`cornerComplement`), on the MICRO terrain grid (x0/z0) the pool uses — so the
       //    grass/water seam is the rounded fan arc that meets the pool, exactly as 2D drawCell paints the

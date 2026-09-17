@@ -53,7 +53,7 @@ const SEEDS = Array.from({ length: 24 }, (_, i) => 1 + i * 7919);
  * The landmark one seed's plan carries, read off the pure sculpt: no map is touched.
  *
  * THE STAGES ARE THREADED EXACTLY AS `pipeline.ts` THREADS THEM — the movement line into the streets,
- * the districts and the sculptor, the map's own ceiling, the mixed island's water scale. A plan built
+ * the districts and the sculptor, the map's own ceiling, the mixed planet's water scale. A plan built
  * any other way is a plan the app never makes: the walk changes which blocks exist, and the block a
  * landmark theme draws is the biggest one left, so a helper that omits one stage moves the set piece
  * from one seed to another and leaves this file selecting seeds by one plan and asserting against
@@ -170,7 +170,7 @@ describe('landmark: the gate', () => {
     // ONE MAP IN FORTY MAY COME BACK WITHOUT ONE. The figure pass needs a clear panel of
     // `SET_PIECE_FLOOR` cells at ONE tier, and the anti-grid's staggered crossings cut a terrace into
     // more pieces than a straight street does: on `tafa/15839` at full richness no tier offers a panel
-    // that size. The island's top terrace is left unstaggered for exactly this reason
+    // that size. The planet's top terrace is left unstaggered for exactly this reason
     // (`streets.ts:crownMask`, which is what keeps the other thirty-nine), and this seed's panel was on
     // a lower one. THE DEBT IS THE PASS'S REACH, not the claim: a figure should be composable on a
     // terrace a street runs across.
@@ -186,7 +186,7 @@ describe('landmark: the gate', () => {
   });
 
   it('floods ONE panel and not two', () => {
-    // One per island is a construction claim, not a map reading: a finished map cannot tell a second set
+    // One per planet is a construction claim, not a map reading: a finished map cannot tell a second set
     // piece from a large cascade, and the reference itself reads five water clusters over the figure
     // floor. What CAN be pinned is the water the pass itself lays: it is asked on open ground, where
     // every form of the bank would land, and the flood it leaves must be exactly one panel less its own
@@ -350,7 +350,7 @@ describe('the one big thing (I5.3)', () => {
         .filter((l): l is LandmarkPlan => l !== null);
       expect(rows.length, `${template.id}: seeds carrying a figure`).toBeGreaterThanOrEqual(6);
       const areas = rows.map((l) => l.panel.w * l.panel.h).sort((a, b) => b - a);
-      // At least one island in this batch answers at the reference's own class, and none of them is
+      // At least one planet in this batch answers at the reference's own class, and none of them is
       // handed a panel under the size ladder's own floor.
       expect(areas[0]!, `${template.id}: largest panel ${areas.join(', ')}`)
         .toBeGreaterThanOrEqual(SET_PIECE_BIG);
@@ -385,7 +385,7 @@ describe('the one big thing (I5.3)', () => {
 
 describe('the court pattern bank', () => {
   // `bars` and `rings` both resolve to parallel stripes on a long panel, which makes a bank of five
-  // patterns read as a bank of two — and the long panels a real island most often offers (46x8, 52x7,
+  // patterns read as a bank of two — and the long panels a real planet most often offers (46x8, 52x7,
   // 60x6) are exactly where they collapse onto each other.
   const ASPECTS = [[46, 8], [52, 7], [60, 6], [21, 15], [18, 18]] as const;
 

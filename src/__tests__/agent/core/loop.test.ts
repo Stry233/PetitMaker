@@ -314,7 +314,7 @@ describe('runJob core flows', () => {
     const secondAssistant = eventsOf(log).filter((e) => e.kind === 'assistant')[1];
     expect(delivered!.seq).toBeLessThan(secondAssistant!.seq);
     const secondMessages = adapter.requests[1]?.messages ?? [];
-    expect(secondMessages.some((m) => m.role === 'user' && m.text === 'go wider')).toBe(true);
+    expect(secondMessages.some((m) => m.role === 'user' && m.text.startsWith('go wider\n(language) '))).toBe(true);
   });
 
   it('the first write in the job appends a checkpoint with the injected undoStackSize value', async () => {

@@ -230,11 +230,11 @@ describe('applyAutoEdgeCut — terrain', () => {
     expect(getCell(state.cells, 4, 4)!.terrain!.corners?.[3], 'mountain peninsula corner rounds into the water').toBe('fan');
   });
 
-  it('RIVER stroke: a water-wrapped ground notch rounds as a GROUND ISLAND (manual-reachable), never a water Γ patch', () => {
+  it('RIVER stroke: a water-wrapped ground notch rounds as a GROUND ISLET (manual-reachable), never a water Γ patch', () => {
     // The manual EdgeCutTool NEVER fills a water notch (its gamma branch is Mountain-only: "a WATER notch
-    // must NOT be flooded — the island rounds out via the water's concave cut"). The correct state at a
-    // river bend's inner corner is a ground-island cut (a `type: None` cell whose corner rounds OUT,
-    // revealing the water — ISLAND-ROUNDS-REVEALING-WATER). A patchOnly WATER fillet
+    // must NOT be flooded — the islet rounds out via the water's concave cut"). The correct state at a
+    // river bend's inner corner is a ground-islet cut (a `type: None` cell whose corner rounds OUT,
+    // revealing the water — ISLET-ROUNDS-REVEALING-WATER). A patchOnly WATER fillet
     // there would be a state the manual tool can neither produce nor cycle (no cut site matches), and it
     // cascades: the patch reads as solid water@0, wrapping the NEXT ground cell down the bank.
     const state = makeState(12, 12);
@@ -246,12 +246,12 @@ describe('applyAutoEdgeCut — terrain', () => {
       const t = getCell(state.cells, x, y)?.terrain;
       expect(t && t.type === TerrainType.Water && t.patchOnly, `water patch at (${x},${y})`).toBeFalsy();
     }
-    // the notch is a ground-island cut, exactly what the manual tool produces at this corner
+    // the notch is a ground-islet cut, exactly what the manual tool produces at this corner
     const notch = getCell(state.cells, 4, 4)!.terrain!;
-    expect(notch.type, 'ground island (None) cell').toBe(TerrainType.None);
+    expect(notch.type, 'ground islet (None) cell').toBe(TerrainType.None);
     expect(notch.patchOnly).toBeFalsy();
     expect(notch.corners![0], 'TL rounds out into the water').toBe('fan');
-    // no cascade: (4,5) has water on only ONE edge — not an island corner; stays plain ground
+    // no cascade: (4,5) has water on only ONE edge — not an islet corner; stays plain ground
     expect(getCell(state.cells, 4, 5)!.terrain, 'no cascaded fill down the bank').toBeNull();
   });
 

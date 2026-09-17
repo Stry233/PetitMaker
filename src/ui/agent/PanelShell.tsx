@@ -266,7 +266,6 @@ const JOB_ZONE_STYLE: CSSProperties = {
   gap: 10,
   padding: '1px 6px',
   margin: '0 -5px',
-  scrollbarWidth: 'thin',
   // Stable gutters create permanent asymmetric padding on classic scrollbars. Native scroll
   // anchoring also conflicts with useFollowNewest's explicit ownership of the scroll position.
   overflowAnchor: 'none',
@@ -1239,6 +1238,7 @@ export function PanelShell({
           onDraftChange={setDrafting}
           {...(fill ? { fill } : {})}
           focusRef={focusComposer}
+          {...(view.phase === 'idle' ? { caveat: t('agent3.caveat') } : {})}
         />
         )}
       </motion.section>

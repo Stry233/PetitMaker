@@ -193,7 +193,7 @@ export async function buildRoadNetworkHandler(
   const exec = deps.getExecutor();
   const kit: KitContext = { state, executor: exec, registry: exec.getRegistry() };
   // The router plans over the whole analysis, so a region has to reach it as an input: a network
-  // designed island-wide and then refused for straying would never lay a road at all.
+  // designed planet-wide and then refused for straying would never lay a road at all.
   const region = deps.getRegion();
 
   const { reverted, violations, result: routed, outOfRegion, detail } = await runStrokeBody(deps, () =>

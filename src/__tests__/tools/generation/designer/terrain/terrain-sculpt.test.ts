@@ -111,7 +111,7 @@ describe('the ground is the composition, realized', () => {
             for (let x = landing.rect.x; x < landing.rect.x + landing.rect.w; x++) {
               const i = flatIndex(x, y, HEXIA.width);
               if (s.terrain.tier[i] === 0 && landing.tier > 0
-                && HEXIA.zones[y]?.[x] !== 2) continue;   // off the buildable island
+                && HEXIA.zones[y]?.[x] !== 2) continue;   // off the buildable land
               expect(s.terrain.tier[i], `seed ${seed}: landing at ${x},${y}`).toBe(landing.tier);
             }
           }
@@ -219,7 +219,7 @@ describe('water is a material', () => {
         for (const row of state.cells) {
           for (const cell of row) if (cell.terrain?.type === TerrainType.Water) water++;
         }
-        // The island's water is spent on a COURSE, its fountain courts, the cascades and a few
+        // The planet's water is spent on a COURSE, its fountain courts, the cascades and a few
         // accents rather than on beds cut into every terrace, so the count is a small share of the
         // ground. What is pinned is that a full-richness map is WET: measured 567-936 cells on hexia
         // and 707-1080 on tafa over these seeds.
@@ -243,7 +243,7 @@ describe('water is a material', () => {
     // The course and its arrival, the courts, the cascades off the terrace steps, and the accents
     // beside them: that is the whole inventory of a map's water.
     expect([...kinds].sort()).toEqual(expect.arrayContaining(['accent', 'fall', 'fountain', 'pond', 'story']));
-    // The story is the island's water. A map whose ground carries none is left dry rather than
+    // The story is the planet's water. A map whose ground carries none is left dry rather than
     // sprinkled, so this is a majority claim and not an every-seed one.
     expect(stories, `${stories} of ${SEEDS.length} seeds carry a story`).toBeGreaterThan(SEEDS.length / 2);
   });

@@ -1,4 +1,4 @@
-COMPOSITION — arrange any scene the way the expert maps are arranged: rules measured from hand-built reference islands.
+COMPOSITION — arrange any scene the way the expert maps are arranged: rules measured from hand-built reference planets.
 
 WHEN TO USE: before any multi-element scene, and whenever view_map shows something "off" that no rule names.
 

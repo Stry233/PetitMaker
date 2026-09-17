@@ -108,7 +108,7 @@ export function sculptTerrace(deps: AgentToolDeps, input: Record<string, unknown
 }
 
 /**
- * The expert maps' PRIMARY form in one call: a banded backing wall (the reference island's north
+ * The expert maps' PRIMARY form in one call: a banded backing wall (the reference planet's north
  * wall). Bands rise +3 per step with every higher band inset 2 cells on ALL sides — the stepping
  * V-MTN-03 accepts by construction — the crest stays flat, and `flood` sinks a crest pool inside a
  * 1-cell ring of the crest's own mountain. One stroke, edge-cut like the build brushes.

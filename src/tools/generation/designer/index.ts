@@ -1,11 +1,11 @@
 /**
- * THE ISLAND GENERATOR'S DOOR, and the map of what is behind it.
+ * THE PLANET GENERATOR'S DOOR, and the map of what is behind it.
  *
  * A run is one call to `generateDesigned` (`pipeline.ts`, the conductor). Everything else here is a
  * STAGE, and each stage is a directory, in the order the pipeline calls them:
  *
  *   composition/  where the mass sits, and the walk a visitor takes through it
- *   streets/      the straight streets that partition the island, their flights and gaps
+ *   streets/      the straight streets that partition the planet, their flights and gaps
  *   places/       which regions the map holds, where they sit, and how their buildings stand
  *   terrain/      the ground realized from the plan, and the set piece written into it
  *   water/        the courses, cascades, composed figures and fountain courts cut into that ground

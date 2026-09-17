@@ -1,7 +1,7 @@
 // Resolves a style's committed sample/swatch art through a Vite glob barrel over
 // src/assets/stylize/*.webp — the same pattern src/assets/icon-urls.ts resolves catalog icons by
 // basename. Model directions' samples come from the dev-time tuning rig; the drawn-here packs'
-// samples are baked from the showcase island by the preview page's emit mode (the rig named in
+// samples are baked from the showcase map by the preview page's emit mode (the rig named in
 // the project's internal tooling notes), so no thumbnail is ever rendered at run time. Both
 // resolvers return null until the asset exists; every consumer falls back to a palette-painted
 // thumbnail.

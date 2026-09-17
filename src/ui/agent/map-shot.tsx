@@ -17,8 +17,8 @@
  * A RECEIPT'S POSTCARD ANSWERS THE OTHER WAY (`whole`), and the difference is what each picture is
  * FOR. A gate's thumbnail is a promise about the cells the click is about, so with no cells there is
  * no promise to make. A receipt's postcard is the built thing itself, and a job whose edits name no
- * one rectangle (a whole-island generate, a scatter of placements) still built something — the
- * island entire is the honest frame for it, which is also what `focusFrame` returns for a box
+ * one rectangle (a whole-map generate, a scatter of placements) still built something — the
+ * map entire is the honest frame for it, which is also what `focusFrame` returns for a box
  * covering most of the template.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
@@ -107,7 +107,7 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
   /**
    * WHAT THE CALLER KNOWS ABOUT THE MAP MOVING. The live grid is mutated in place, so its identity
    * never changes under an edit and one picture would stand for the map's whole life. A card whose
-   * subject IS the island passes the reading it already has (the version pair off `GridState`), and
+   * subject IS the map passes the reading it already has (the version pair off `GridState`), and
    * gets a fresh capture per value. Absent, the shot is taken once — which is right for a picture of
    * a moment (a gate's footprint, a settled receipt's postcard).
    */
@@ -117,7 +117,7 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
   /**
    * What stands while the picture is still being taken, for a card whose whole subject IS the
    * photograph. A gate thumbnail leaves the slot empty (it is one of several facts on the card); a
-   * card that is nothing but the island needs to say it is waiting, and drawing a stand-in island
+   * card that is nothing but the planet needs to say it is waiting, and drawing a stand-in planet
    * would be a picture of a map nobody has.
    */
   placeholder?: ReactNode;
@@ -131,7 +131,7 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
     setPng(null);
     if (!grid || (!box && !whole)) return () => { live = false; };
     const aspect = width / height;
-    // `focusFrame` answers null for "the island entire", which is also what a missing box means
+    // `focusFrame` answers null for "the map entire", which is also what a missing box means
     // here, so the two paths need no branch of their own.
     const frame: CellFrame | null = box ? focusFrame(box, grid.template, aspect) : null;
     void renderThumbnail(grid, Math.max(width, height), aspect, frame, version).then((shot) => {
@@ -157,7 +157,7 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
   );
 }
 
-/* ── the marked shot: one island, one rect on it ─────────────────────────── */
+/* ── the marked shot: one map, one rect on it ────────────────────────────── */
 
 /** How the marked box is drawn over the ground: the house ACTIVE yellow, washed inside and solid at
  *  the edge, which is the same yellow the map's own scope overlay is painted in. */
@@ -167,14 +167,14 @@ const MARK_LINE = ACTIVE;
 const MARK_HALO = withAlpha(INK, 0.5);
 
 /**
- * THE WHOLE ISLAND WITH A RECT MARKED ON IT — the picture this file's header describes and the one
+ * THE WHOLE MAP WITH A RECT MARKED ON IT — the picture this file's header describes and the one
  * every card that is ABOUT a place on the map draws.
  *
  * A CROP SAYS NOTHING ABOUT WHERE. That is the reading the region vignette was written to, and the
  * gate family had the other half of it: `MapShot box=…` frames ON the rect, so the cells fill the
  * frame edge to edge and the picture is a flat patch of whatever ground happens to be there. Three
  * option cards came out as three near-identical crops of the same green field — a picture that
- * exists to distinguish three choices and distinguished none of them. Marked on the island entire,
+ * exists to distinguish three choices and distinguished none of them. Marked on the map entire,
  * each option's own geometry is what its thumb shows.
  *
  * The rect is placed by the SAME sea-framing math the capture is composed with

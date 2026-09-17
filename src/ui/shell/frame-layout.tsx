@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useDockRef, useViewportSize } from '../design/scale';
+import { useDockRef, useFitFloor, useViewportSize } from '../design/scale';
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
 import { useUiPreviewPose } from '../primitives/ui-preview';
 import { planFrame, railClearanceFor, type FrameLayout, type LayerMode } from './frame';
@@ -34,12 +34,13 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
   const dock = useDockRef();
   const { aside } = useDockStage();
   const uiZoom = useAnimatedUiZoom();
+  const floor = useFitFloor();
   let width = viewport.w / zoom - dock / ZOOM;
   let height = viewport.h / zoom;
   // Reserve the tighter endpoint during a slide without subscribing React to its individual frames.
   if (aside > 0 && aside < 1) {
-    const free = frameZoomAt(0, viewport.w, viewport.h, uiZoom);
-    const pinned = frameZoomAt(1, viewport.w, viewport.h, uiZoom);
+    const free = frameZoomAt(0, viewport.w, viewport.h, uiZoom, floor);
+    const pinned = frameZoomAt(1, viewport.w, viewport.h, uiZoom, floor);
     width = Math.min(viewport.w / free, viewport.w / pinned - PINNED_COLUMN_W);
     height = Math.min(viewport.h / free, viewport.h / pinned);
   }

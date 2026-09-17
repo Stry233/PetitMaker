@@ -29,6 +29,8 @@ import { PANEL_COLUMN_W, PANEL_LEFT } from '../../../ui/shell/panel-frame';
 import { MODES, MODE_PLATE, MODE_PLATE_ID } from '../../../ui/shell/frame';
 import { EDGE_LEFT, MODE } from '../../../ui/shell/units';
 import { Shell } from '../../../ui/shell/Shell';
+import { UiPreviewProvider } from '../../../ui/primitives/ui-preview';
+import { deskSeat } from '../../../ui/agent/character/seat';
 
 const backing = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -159,5 +161,22 @@ describe("the character's entrance", () => {
     expect(screen.getByTestId('character-layer').style.visibility).toBe('visible');
     act(() => { fireEvent.click(screen.getByLabelText(translate('a11y.hide_ui'))); });
     expect(screen.getByTestId('character-layer').style.visibility).toBe('hidden');
+  });
+});
+
+describe('a pictured shell', () => {
+  it('mounts no assistant panel while the live one stands open, so the character keeps her live seat', async () => {
+    useEditorStore.setState({ assistantOpen: true });
+    render(
+      <I18nProvider>
+        <UiPreviewProvider pose={{ viewport: { w: 1280, h: 720 } }}>
+          <Shell onRestoreSession={() => {}}>{null}</Shell>
+        </UiPreviewProvider>
+      </I18nProvider>,
+    );
+    // The lazy chunk is warm, so a panel the picture mounted would stand within a few frames.
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)); });
+    expect(screen.queryByTestId('shell-assistant-panel')).toBeNull();
+    expect(deskSeat()).toBeNull();
   });
 });

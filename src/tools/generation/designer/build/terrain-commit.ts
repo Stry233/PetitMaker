@@ -37,7 +37,7 @@ export function commitTerrain(
   sculpt.terrain.tier.set(repaired.tier);
   sculpt.terrain.water.set(repaired.water);
   let commands = 0, refused = 0;
-  // The plan is the WHOLE island's and the region crops the commands, which is where a scoped run
+  // The plan is the WHOLE planet's and the region crops the commands, which is where a scoped run
   // can legitimately be refused: a terrace whose supporting neighbours fell outside the crop has no
   // base to stand on. An unscoped run still expects zero, and the probes hold it to that.
   for (const cmd of planToCommands(repaired, region)) {

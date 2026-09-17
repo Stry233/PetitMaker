@@ -1,7 +1,7 @@
 /**
  * The build checklist is read by someone rebuilding a map by hand, so being SHORT is the failure
  * mode: an item it omits is an item that never gets built. These probes therefore check the list
- * against the map itself, on a real generated island, rather than against a fixture of what the
+ * against the map itself, on a real generated planet, rather than against a fixture of what the
  * list is expected to say.
  */
 import { describe, it, expect } from 'vitest';
@@ -31,8 +31,8 @@ function realState(file: string): GridState {
   return { template, cells, objects, lockedLayers: new Set() };
 }
 
-/** A generated island on a shipped map: real terrain at several layers, real water, and the whole
- *  island generator's output (buildings, trees, flora, facilities, crossings, roads). */
+/** A generated planet on a shipped map: real terrain at several layers, real water, and the whole
+ *  planet generator's output (buildings, trees, flora, facilities, crossings, roads). */
 function generated(): { state: GridState; exec: CommandExecutor } {
   const state = realState('hexia.json');
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
@@ -53,11 +53,11 @@ describe('build checklist against a real generated map', () => {
   const list = buildChecklist(state);
   const counts = getObjectIndex(state).countByCatalog;
 
-  it('the map under test is worth checking: terrain at several layers, and a populated island', () => {
+  it('the map under test is worth checking: terrain at several layers, and a populated planet', () => {
     expect(state.objects.size, 'objects placed').toBeGreaterThan(50);
     expect(list.layers.length, 'more than one terrain layer').toBeGreaterThan(1);
-    expect(list.layers.some((l) => l.water > 0), 'the island has water').toBe(true);
-    expect(list.roadTotal, 'the island has roads').toBeGreaterThan(0);
+    expect(list.layers.some((l) => l.water > 0), 'the planet has water').toBe(true);
+    expect(list.roadTotal, 'the planet has roads').toBeGreaterThan(0);
     const withItems = list.groups.filter((g) => g.items.length > 0).map((g) => g.category);
     expect(withItems, 'buildings placed').toContain(ItemCategory.Building);
     expect(withItems, 'trees placed').toContain(ItemCategory.Tree);
@@ -156,7 +156,7 @@ describe('road surfaces', () => {
   it('every material is listed, by material, when every one is laid', () => {
     const { state } = generated();
     const before = buildChecklist(state);
-    // Somewhere off the island: the assertion is about the checklist reading the index, so the
+    // Somewhere off the map: the assertion is about the checklist reading the index, so the
     // objects go in directly rather than through a placement the terrain would refuse.
     let n = 0;
     for (const material of getRoadMaterials()) {

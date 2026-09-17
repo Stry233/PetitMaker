@@ -59,7 +59,7 @@ export function KeyboardPreview() {
 
 export function PlanetPreview() {
   // With a subject that holds a build, the carry row the page describes is in the picture even
-  // for a visitor whose own island is still empty. The OTHER planet stands picked, so the figure
+  // for a visitor whose own planet is still empty. The OTHER planet stands picked, so the figure
   // shows what the page promises: the confirm button naming its destination, live.
   const subject = useShownMap();
   const destination = MAP_LIST.find((m) => m.id !== (subject?.template.id ?? DEFAULT_MAP.id))?.id;

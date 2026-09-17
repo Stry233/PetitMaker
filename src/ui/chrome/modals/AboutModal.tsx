@@ -13,12 +13,13 @@ import { font, colors, radii, springs, shadows, exitTransition, modalRow, button
 import { skin, windowCard } from '../../design/window-skin';
 import { roleFont } from '../../design/text-weight';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../version';
+import { ChunkBoundary } from '../../primitives/ChunkBoundary';
 import { ModalShell } from '../../primitives/ModalShell';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { BrandLockup } from '../BrandLockup';
 import { useChromeScale, useViewportSize } from '../../design/scale';
 import { LoadingDots } from '../../primitives/LoadingDots';
-import { DOCS, docIdForPath, teamInReadingOrder, type DocId } from '../../../legal/registry';
+import { DOCS, docIdForPath, qqChannelPageUrl, teamInReadingOrder, type DocId } from '../../../legal/registry';
 import { DocIcon } from '../../../legal/doc-icons';
 import { LEGAL } from '../../../legal/config';
 import { teamAvatarUrl } from '../../../legal/team-avatars';
@@ -566,13 +567,13 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   const refocusId = useRef<DocId | null>(null);
 
   // Repeated copies restart the confirmation timer.
-  const [copied, setCopied] = useState<'build' | 'qq' | null>(null);
+  const [copied, setCopied] = useState<'build' | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
   }, []);
 
-  const copyText = async (text: string, target: 'build' | 'qq') => {
+  const copyText = async (text: string, target: 'build') => {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -608,7 +609,10 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   // Fresh start each time the modal opens: the component stays mounted between
   // opens, so the drill-in view resets here rather than on unmount.
   useEffect(() => {
-    if (open) setView({ kind: 'about' });
+    if (!open) return;
+    const target = useEditorStore.getState().aboutTarget;
+    setView(target ? { kind: 'doc', id: target } : { kind: 'about' });
+    if (target) useEditorStore.getState().setAboutTarget(null);
   }, [open]);
 
   const hasIcp = !!(LEGAL.icpNumber && LEGAL.icpUrl);
@@ -630,7 +634,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   useLayoutEffect(() => { aboutViewRef.current = document.querySelector<HTMLElement>('[data-about-view]'); });
   const aboutFade = useScrollFade(aboutViewRef, 'y');
 
-  const copyConfirmation = (target: 'build' | 'qq') => (
+  const copyConfirmation = (target: 'build') => (
     <AnimatePresence>
       {copied === target && (
         <motion.div
@@ -656,7 +660,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
         <motion.button
           type="button"
           style={{ ...versionButton, ...(wide ? { textAlign: 'right' } : {}) }}
-          onClick={() => copyText(`${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})`, 'build')}
+          onClick={() => copyText(`${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})\n${navigator.userAgent}`, 'build')}
           aria-label={t('about.copy_build')}
           whileHover={{ opacity: 1 }}
           whileTap={{ opacity: 0.7 }}
@@ -752,28 +756,29 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     <div data-testid="feedback-links">
       <div style={sectionLabel}>{t('about.feedback_title')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-        <motion.a href={`${LEGAL.repoUrl}/issues`} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
-          <span style={gridLabel}>{t('about.github_issues')}</span>
+        <motion.a
+          href={qqChannelPageUrl(LEGAL.qqFeedbackChannel)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={gridRow}
+          data-testid="qq-feedback-channel"
+          {...buttonMotion}
+        >
+          <span style={{ ...gridLabel, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span>{t('about.qq_channel_name')}</span>
+            <span style={{ ...teamNote, margin: 0 }}>{t('about.qq_channel_number', { number: LEGAL.qqFeedbackChannel })}</span>
+          </span>
           <span style={chevron} aria-hidden>↗</span>
         </motion.a>
-        <div style={{ position: 'relative' }} data-testid="qq-feedback-group">
-          <motion.button
-            type="button"
-            style={gridRow}
-            onClick={() => copyText(LEGAL.qqFeedbackGroup, 'qq')}
-            aria-label={t('about.copy_qq_group', { number: LEGAL.qqFeedbackGroup })}
-            {...buttonMotion}
-          >
-            <span style={{ ...gridLabel, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span>{t('about.qq_group_name')}</span>
-              <span style={{ ...teamNote, margin: 0 }}>{t('about.qq_group_number', { number: LEGAL.qqFeedbackGroup })}</span>
-            </span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: skin.muted }} aria-hidden="true" focusable="false">
-              <rect x="8" y="8" width="12" height="12" rx="2" />
-              <path d="M16 8V4H4v12h4" />
-            </svg>
-          </motion.button>
-          {copyConfirmation('qq')}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }} data-testid="report-links">
+          <motion.a href={`${LEGAL.repoUrl}/issues`} target="_blank" rel="noopener noreferrer" style={gridRow} {...buttonMotion}>
+            <span style={gridLabel}>{t('about.github_issues')}</span>
+            <span style={chevron} aria-hidden>↗</span>
+          </motion.a>
+          <motion.a href={`mailto:${LEGAL.privacyContactEmail}`} style={gridRow} {...buttonMotion}>
+            <span style={gridLabel}>{t('about.email_feedback')}</span>
+            <span style={chevron} aria-hidden>↗</span>
+          </motion.a>
         </div>
       </div>
     </div>
@@ -865,21 +870,23 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
             exit={exiting ? undefined : { opacity: 0, pointerEvents: 'none', transition: exitTransition }}
             transition={MORPH_SPRING}
           >
-            <Suspense
-              fallback={
-                <div style={suspenseFallback}>
-                  <LoadingDots color={skin.muted} />
-                </div>
-              }
-            >
-              <LegalDocView
-                id={view.id}
-                lang={docLang}
-                onLang={setDocLang}
-                onBack={back}
-                onInternalLink={openDocByPath}
-              />
-            </Suspense>
+            <ChunkBoundary resetKey={view.id}>
+              <Suspense
+                fallback={
+                  <div style={suspenseFallback}>
+                    <LoadingDots color={skin.muted} />
+                  </div>
+                }
+              >
+                <LegalDocView
+                  id={view.id}
+                  lang={docLang}
+                  onLang={setDocLang}
+                  onBack={back}
+                  onInternalLink={openDocByPath}
+                />
+              </Suspense>
+            </ChunkBoundary>
           </motion.div>
         ) : (
           <motion.div

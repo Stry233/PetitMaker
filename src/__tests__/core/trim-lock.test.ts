@@ -80,7 +80,7 @@ describe('computeLockedCorners — terrain', () => {
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([false, true, false, true]);
   });
 
-  it('a mountain ISLAND (water on all sides) IS fully cuttable — every corner has water on BOTH edges', () => {
+  it('a mountain ISLET (water on all sides) IS fully cuttable — every corner has water on BOTH edges', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1); // a rock in a lake
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
@@ -146,15 +146,15 @@ describe('computeLockedCorners — terrain', () => {
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([true, true, true, true]);
   });
 
-  it('water around a ground island stays interior — the island cut lives on the GROUND cell, not the water (Bug 1)', () => {
+  it('water around a ground islet stays interior — the islet cut lives on the GROUND cell, not the water (Bug 1)', () => {
     const state = makeState(12, 12);
-    // ground island at (5,5) (null terrain) ringed by water@0 on all 8 neighbours
+    // ground islet at (5,5) (null terrain) ringed by water@0 on all 8 neighbours
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
-    // the SE water cell (6,6): its island-facing TL corner is pinned (interior water) — we round the ground
-    // island cell itself (option A), never the surrounding water.
-    expect(computeLockedCorners(state, roadLookup(state), 6, 6, 'terrain')[0], 'water toward the island stays square').toBe(true);
+    // the SE water cell (6,6): its islet-facing TL corner is pinned (interior water) — we round the ground
+    // islet cell itself (option A), never the surrounding water.
+    expect(computeLockedCorners(state, roadLookup(state), 6, 6, 'terrain')[0], 'water toward the islet stays square').toBe(true);
   });
 
   it('same-type LOWER neighbor (a step) is NOT pinned — the bevel down to it is intended', () => {

@@ -591,6 +591,57 @@ export class MapRenderer {
         region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
       }
       if (region.width <= 0 || region.height <= 0) return null;
+      // Clamp the request to the GPU limits so a native-resolution ("Original") request never
+      // exceeds them (which would upload black); the achieved size is region*resolution.
+      const cap = Math.min(maxPx, this.textureCap());
+      return this.bake(region, Math.min(1, cap / Math.max(region.width, region.height)), includeGrid);
+    } catch {
+      return null;
+    } finally {
+      this.annotationLayer.container.visible = prevAnnotations;
+      recull();
+    }
+  }
+
+  /** One tile of the map at `resolution`, `region` given in the frame's own pixels (origin at the
+   *  frame's top-left, the half-tile bleed included), for an export painted in parts. */
+  captureRegionCanvas(region: { x: number; y: number; w: number; h: number }, resolution: number, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
+    if (!this.currentState) return null;
+    const recull = this.uncullForCapture();
+    const prevAnnotations = this.annotationLayer.container.visible;
+    if (annotations !== undefined) this.annotationLayer.container.visible = annotations && (this.currentState.annotations?.items.length ?? 0) > 0;
+    try {
+      this.terrainLayer.flushDirty(this.currentState);
+      this.flushNumbers();
+      const half = TILE_SIZE / 2;
+      const world = new PIXI.Rectangle(region.x - half, region.y - half, region.w, region.h);
+      if (world.width <= 0 || world.height <= 0) return null;
+      return this.bake(world, resolution, includeGrid);
+    } catch {
+      return null;
+    } finally {
+      this.annotationLayer.container.visible = prevAnnotations;
+      recull();
+    }
+  }
+
+  /** Longest side a render target may have here: the texture and the multisample renderbuffer
+   *  ceilings both bound it, and the smaller one is what fails first on huge maps. */
+  textureCap(): number {
+    const glr = this.app.renderer as unknown as { gl?: WebGLRenderingContext };
+    const gl = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
+    const maxTex = gl ? (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) : 0;
+    const maxRb = gl ? (gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number) : 0;
+    const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
+    return Number.isFinite(hardMax) ? hardMax : Infinity;
+  }
+
+  /** Renders `region` of the world at `resolution` into a canvas, with the editor's transform
+   *  reset, its chrome hidden, and the grid forced on when the export bakes it. */
+  private bake(region: PIXI.Rectangle, resolution: number, includeGrid: boolean): HTMLCanvasElement | null {
+    if (!this.currentState) return null;
+    const { width, height } = this.currentState.template;
+    {
       // With grid ON, bake the SAME grid the editor draws (sub + cell + chunk lines) into the
       // capture so the export reuses the real 2D rendering. Chunk LABELS stay hidden — the export
       // composition draws its own legend outside the map. Restored to the editor state afterwards.
@@ -614,22 +665,7 @@ export class MapRenderer {
       this.worldContainer.updateTransform(); // ensure the identity matrix is current before generateTexture bakes it
       let captured: HTMLCanvasElement | null = null;
       try {
-        // Clamp the request to the GPU limits so a native-resolution ("Original") request never
-        // exceeds them (which would upload black). Two separate limits matter: MAX_TEXTURE_SIZE
-        // bounds the output texture, but the render target also allocates a MULTISAMPLE
-        // renderbuffer whose ceiling is MAX_RENDERBUFFER_SIZE (often smaller) — that
-        // allocation is what failed on huge maps ("glRenderbufferStorageMultisample: Texture
-        // total allocation size is too large", leaving a zero-size framebuffer = blank map). Cap
-        // to the smaller of the two, AND disable multisample for the capture (MSAA is invisible on
-        // a downscaled export and only shrinks the safe size), so the offscreen target is a plain
-        // texture. The achieved size is region*resolution — callers read it back from the image.
-        const glr = this.app.renderer as unknown as { gl?: WebGLRenderingContext };
-        const getP = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
-        const maxTex = getP ? (getP.getParameter(getP.MAX_TEXTURE_SIZE) as number) : 0;
-        const maxRb = getP ? (getP.getParameter(getP.MAX_RENDERBUFFER_SIZE) as number) : 0;
-        const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
-        const cap = Number.isFinite(hardMax) ? Math.min(maxPx, hardMax) : maxPx;
-        const resolution = Math.min(1, cap / Math.max(region.width, region.height));
+        // No multisample: MSAA is invisible on an export and its renderbuffer has the smaller ceiling.
         const rt = this.app.renderer.generateTexture(this.worldContainer, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
         try { captured = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement; }
         finally { rt.destroy(true); }
@@ -646,11 +682,6 @@ export class MapRenderer {
         this.requestRender();
       }
       return captured;
-    } catch {
-      return null;
-    } finally {
-      this.annotationLayer.container.visible = prevAnnotations;
-      recull();
     }
   }
 
@@ -752,7 +783,7 @@ export class MapRenderer {
    *
    * The generate shelf shows what a recipe builds before anything is built, and that picture has to
    * be the map the click produces — a second drawing of one `GridState` grows its own framing and
-   * its own idea of what an object looks like, and the card stops resembling the island it promises.
+   * its own idea of what an object looks like, and the card stops resembling the planet it promises.
    *
    * So the candidate is drawn by the real layers, off the stage. Three fresh layers over `state`
    * build into a detached container, this renderer's GPU context rasterizes it and the container is

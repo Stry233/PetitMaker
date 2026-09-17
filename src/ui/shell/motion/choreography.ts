@@ -75,7 +75,7 @@ export const SCORES = {
    * The saved session being offered, which is the first thing a returning visitor sees.
    *
    * THE PICTURE IS THE ANCHOR, because the picture is the offer: what is being said is "here is the
-   * island you left", and the words and the two answers are about it. Read in that order they are
+   * planet you left", and the words and the two answers are about it. Read in that order they are
    * a photograph put down, a sentence about it, and what may be done with it; arriving together
    * they are a panel appearing.
    *

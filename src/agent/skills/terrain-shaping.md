@@ -1,9 +1,9 @@
-TERRAIN SHAPING — the land is the design; objects only dress it. The expert reference island is 60% mountain and 26% water, terraced almost everywhere, and still reads calm — because the terracing follows a plan.
+TERRAIN SHAPING — the land is the design; objects only dress it. The expert reference planet is 60% mountain and 26% water, terraced almost everywhere, and still reads calm — because the terracing follows a plan.
 
 WHEN TO USE: whenever terrain is the objective, before decorating; also when evaluate_map terrainInterest or silhouette is weak.
 
 THE PLAN OF THE LAND
-- ONE gradient axis: pick a back side and grade the whole map near-low-far-high. The expert island's mean elevation runs 7 / 3.5 / 1.5 / 1.4 across its four quarters — a backing wall 30-40 rows deep along the far edge, working platforms at 1-3 in the middle, open ground in front. High mass scattered among low places blocks views from behind and beside at once; massed on one side it orients the whole map.
+- ONE gradient axis: pick a back side and grade the whole map near-low-far-high. The expert planet's mean elevation runs 7 / 3.5 / 1.5 / 1.4 across its four quarters — a backing wall 30-40 rows deep along the far edge, working platforms at 1-3 in the middle, open ground in front. High mass scattered among low places blocks views from behind and beside at once; massed on one side it orients the whole map.
 - TERRACES ARE FLOORS, not scenery: leave every bench flat enough to pave and decorate later (benches of 6+ cells deep are floors; 2-3 cell ledges are just cliff texture). Elevation the walk cannot reach is wasted.
 - Big forms, few of them: one coherent massif beats the same area broken into ten blobs. Keep foothills attached to the main mass.
 

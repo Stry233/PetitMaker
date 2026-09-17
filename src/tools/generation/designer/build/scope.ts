@@ -1,7 +1,7 @@
 /**
  * WHAT A RUN IS ALLOWED TO TOUCH: the painted region, as a predicate the whole build stage asks.
  *
- * The island is always designed whole and the region crops what lands (`pipeline.ts`'s
+ * The planet is always designed whole and the region crops what lands (`pipeline.ts`'s
  * `DesignedContext.region`), so every place that puts something on the map asks the same two
  * questions here and nothing earlier in the pipeline knows a region exists at all.
  */

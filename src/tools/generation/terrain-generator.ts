@@ -2,7 +2,7 @@
  * THE GENERATION FACADE, and the only file at this module's root: a recipe in, a built map out.
  *
  * It dispatches `config.algorithm` to one of the three generators beside it, each behind its own
- * door — `designer/` (the island: the methodology pipeline, and the only island generator),
+ * door — `designer/` (the planet: the methodology pipeline, and the only planet generator),
  * `maze/` (a labyrinth carved into the buildable region), `stencil/` (a picture read as terrain) —
  * and all three stand on `core/`, the floor: what a terrain plan is, how it is repaired into a
  * legal one, and how it becomes commands. Putting objects on ground that already exists is
@@ -121,8 +121,8 @@ export function generateTerrain(
  *
  * TWO COMMANDS, BECAUSE TWO KINDS OF CELL. An erase is refused outside the buildable zone
  * (V-ZONE-01) — nothing may be built on the boundary ring, so nothing there needs erasing — but an
- * auto edge-cut writes COSMETIC Γ patches wherever the island's silhouette turns a corner, and a
- * corner of the island can sit on a boundary cell. Those patches are terrain a plain erase cannot take,
+ * auto edge-cut writes COSMETIC Γ patches wherever the planet's silhouette turns a corner, and a
+ * corner of the planet can sit on a boundary cell. Those patches are terrain a plain erase cannot take,
  * and left behind they survive every clear: a blank map plus a scatter of quarter blocks along the rim,
  * so the next generation starts from ground that still remembers the last one. A patch is cycled off
  * through the door it came in by, a corner edit, which the zone rule does not gate because it adds no

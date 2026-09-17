@@ -61,7 +61,7 @@ describe('TourDoneModal', () => {
     useEditorStore.getState().setModal('tourDone', true);
     const { container } = render(<TourDoneModal />, { wrapper });
     const card = screen.getByRole('dialog');
-    expect(card.textContent).toContain('Your island is ready');
+    expect(card.textContent).toContain('Your planet is ready');
     expect(container.querySelector('.pw-wavy')?.textContent).toBe('ready');
     expect(card.textContent).toContain('Build whatever you like.');
   });
@@ -152,7 +152,7 @@ describe('TourDoneModal', () => {
     // this is the one that has to hold, and it is the failure that would ship silently.
     expect(container.querySelector('[data-testid="tour-confetti"]')).toBeNull();
     expect(animate).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog').textContent).toContain('Your island is ready');
+    expect(screen.getByRole('dialog').textContent).toContain('Your planet is ready');
     fireEvent.click(screen.getByRole('button', { name: 'Have fun' }));
     expect(useEditorStore.getState().modals.tourDone).toBe(false);
     // The shell's exit lands a commit after the click; let it settle inside the test.

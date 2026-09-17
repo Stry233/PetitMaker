@@ -20,6 +20,7 @@
   "loadValue": 2000,
   "maxCount": 1,
   "ruleTBD": true,
+  "disabled": true,
   "rotatable": true,
   "placementMode": "point",
   "traits": [

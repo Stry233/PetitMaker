@@ -73,7 +73,7 @@ export function rampDiscipline(state: GridState, g = readGrid(state)): RampDisci
 
 /**
  * The share of pavement standing at a turn or a crossing on the two decoded references: 13.7% on the
- * terraced island, 20.8% on the garden town.
+ * terraced planet, 20.8% on the garden town.
  *
  * RETIRED AS A TARGET. Their figure is inflated by paved SQUARES, where every cell of a plaza reads
  * as a turn, while a grid of literally straight lines reads 0 to 5% — so the band never separated a
@@ -175,7 +175,7 @@ const ARRIVAL_DECOR = 4;
  * often as an expert does, and no oftener.
  *
  * A SHARE ALONE IS THE WRONG BAR ON A SMALL MAP, which is why the count stands beside it: a quiet
- * island with thirteen street ends fails at two of them and a busy one passes at seven, for the same
+ * planet with thirteen street ends fails at two of them and a busy one passes at seven, for the same
  * two streets.
  *
  * The bar is twice the worse of the two references and the floor is the style target's own count.
@@ -255,7 +255,7 @@ function arrivesAt(g: EvalGrid, face: readonly number[], dx: number, dy: number)
     for (let k = 1; k <= ARRIVAL_REACH; k++) {
       for (let across = -ARRIVAL_REACH; across <= ARRIVAL_REACH; across++) {
         const x = fx + dx * k + dy * across, y = fy + dy * k + dx * across;
-        // Off the map or off the island: the street ran out at the coast, which is a place to stop.
+        // Off the map or off the planet: the street ran out at the coast, which is a place to stop.
         if (!inside(x, y, W, H)) return true;
         const j = y * W + x;
         if (!g.land[j] || g.water[j]) return true;
@@ -315,7 +315,7 @@ export interface BridgeAlignment {
  * The reading is taken on the pavement rather than on the plan, so it holds whoever laid the deck.
  *
  * `crossways` IS THE DEFECT AND `aligned` IS ONLY A READING, and the references say why: the garden
- * town reads 7 of its 9 decks aligned but the terraced island reads 0 of 5, because its bridges cross
+ * town reads 7 of its 9 decks aligned but the terraced planet reads 0 of 5, because its bridges cross
  * open water between banks whose streets run ALONG them — a deck there lands on a bare bank and the
  * walk turns onto the street rather than continuing down it. Neither reference has a single crossways
  * deck. So a gate belongs on `crossways` alone; `aligned` is reported beside it as the direction of

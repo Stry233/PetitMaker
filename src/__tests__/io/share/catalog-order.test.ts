@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { SHARE_CATALOG_ORDER, SHARE_CATALOG_LIMIT } from '../../../io/share/codec/catalog-order';
 import { RETIRED_CATALOG_IDS, currentCatalogId } from '../../../io/legacy-catalog';
-import { getAllItems, getCatalogItem } from '../../../state/catalog';
+import { getKnownItems, getCatalogItem } from '../../../state/catalog';
 
 const WIRE_PREFIX = [
   'bridge-iron', 'bridge-light-wood', 'bridge-park-arch', 'bridge-plank', 'bridge-retro-arch',
@@ -27,7 +27,7 @@ describe('share catalog wire order', () => {
   });
 
   it('names every catalog item, and nothing else a reader cannot resolve', () => {
-    const live = getAllItems().map((i) => i.id);
+    const live = getKnownItems().map((i) => i.id);
     const resolvable = SHARE_CATALOG_ORDER.map(currentCatalogId);
     expect([...new Set(resolvable)].sort()).toEqual([...live].sort());
   });

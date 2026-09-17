@@ -14,8 +14,8 @@ const idx = (x: number, y: number): number => y * W + x;
 
 describe('largestComponent', () => {
   it('keeps the largest component, not the first one found', () => {
-    // A 1-cell island BEFORE a 3-cell run in input order: a search that returned the first
-    // component it completed would answer with the island.
+    // A 1-cell pocket BEFORE a 3-cell run in input order: a search that returned the first
+    // component it completed would answer with the pocket.
     const island = [idx(1, 1)];
     const run = [idx(5, 5), idx(6, 5), idx(7, 5)];
     expect(largestComponent([...island, ...run], W).sort((a, b) => a - b)).toEqual(run);

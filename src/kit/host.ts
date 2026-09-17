@@ -136,6 +136,14 @@ export const host = {
   },
   /** The grid lines alone, transparent everywhere else: the layer a stylized export keeps its grid
    *  from, since the redrawn picture carries none of its own. */
+  /** One tile of the 2D map at `resolution`, for an export painted in parts. */
+  capture2dRegionCanvas(region: { x: number; y: number; w: number; h: number }, resolution: number, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
+    return getMapRenderer()?.captureRegionCanvas(region, resolution, includeGrid, annotations) ?? null;
+  },
+  /** Longest side one 2D capture may have on this GPU. */
+  capture2dTextureCap(): number {
+    return getMapRenderer()?.textureCap() ?? 4096;
+  },
   capture2dGrid(maxPx = 1024): string | null {
     return getMapRenderer()?.captureGridImage(maxPx) ?? null;
   },

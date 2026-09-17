@@ -21,7 +21,7 @@ describe('SECURITY.md — reporting policy', () => {
   });
 
   it('reports to the security contact with the [SECURITY] subject prefix', () => {
-    expect(SEC).toContain('selka.craft@outlook.com');
+    expect(SEC).toContain('petit.maker@outlook.com');
     expect(SEC).toContain('[SECURITY]');
   });
 
@@ -106,7 +106,7 @@ describe('SECURITY.zh-CN.md — authored equivalent + parity', () => {
   });
 
   it('carries the same contact + acknowledgement window (localized)', () => {
-    expect(ZH).toContain('selka.craft@outlook.com');
+    expect(ZH).toContain('petit.maker@outlook.com');
     expect(ZH).toContain('72 小时');
     expect(ZH).toContain('[SECURITY]');
   });
@@ -153,7 +153,7 @@ describe('ASSET_LICENSES.md — four-way scope split', () => {
     expect(A).toContain('miHoYo');
     expect(A).toMatch(/HoYoverse/);
     expect(A).toContain('[IP]');
-    expect(A).toContain('selka.craft@outlook.com');
+    expect(A).toContain('petit.maker@outlook.com');
   });
 });
 
@@ -202,7 +202,7 @@ describe('ASSET_LICENSES.zh-CN.md — authored equivalent + parity', () => {
     expect(ZH).toContain('米哈游');
     expect(ZH).toMatch(/HoYoverse/);
     expect(ZH).toContain('[IP]');
-    expect(ZH).toContain('selka.craft@outlook.com');
+    expect(ZH).toContain('petit.maker@outlook.com');
   });
 });
 
@@ -334,7 +334,7 @@ describe('README.md — public front page', () => {
   });
 
   it('carries the contact email', () => {
-    expect(R).toContain('selka.craft@outlook.com');
+    expect(R).toContain('petit.maker@outlook.com');
   });
 
   it('gives a verified quick-start matching package.json scripts', () => {
@@ -376,7 +376,7 @@ describe('README.zh-CN.md — authored equivalent + parity', () => {
   });
 
   it('carries the same contact + affiliation disclaimer (米哈游/HoYoverse)', () => {
-    expect(ZH).toContain('selka.craft@outlook.com');
+    expect(ZH).toContain('petit.maker@outlook.com');
     expect(ZH).toContain('米哈游');
     expect(ZH).toMatch(/HoYoverse/);
   });

@@ -26,22 +26,25 @@ export interface DeployTarget {
   privacyEdgeDelivery: { en: string; zh: string };
   /** Search-engine ownership proofs emitted as static `<meta name content>` pairs. */
   verificationMetas: readonly { name: string; content: string }[];
+  /** Browser download pages reachable from this deployment's region. */
+  browserDownloads: { chrome: string; firefox: string };
 }
 
 const EN_DESCRIPTION =
-  'PetitMaker is a free online map editor and island planner for Petit Planet. '
-  + 'Design terrain, waterways, roads and buildings, then preview, save and share your island in 2D or 3D.';
+  'PetitMaker is a free online map editor and planet planner for Petit Planet. '
+  + 'Design terrain, waterways, roads and buildings, then preview, save and share your planet in 2D or 3D.';
 const ZH_DESCRIPTION =
-  '谷地工坊是一款免费的星布谷地地图编辑器与岛建规划工具。在线绘制地形、水系、道路和建筑，并使用 2D、3D 视图预览、保存和分享你的星球地图。';
+  '谷地工坊是一款免费的星布谷地地图编辑器与星球规划工具。在线绘制地形、水系、道路和建筑，并使用 2D、3D 视图预览、保存和分享你的星球地图。';
 
 export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
   global: {
     id: 'global',
     htmlLang: 'en',
-    title: 'PetitMaker — Petit Planet Map Editor & Island Planner',
+    title: 'PetitMaker — Petit Planet Map Editor & Planet Planner',
     bootBanner: 'banner.svg',
     description: EN_DESCRIPTION,
     canonicalOrigin: 'https://petitmaker.cc',
+    browserDownloads: { chrome: 'https://www.google.com/chrome/', firefox: 'https://www.mozilla.org/firefox/new/' },
     legacyOrigins: ['https://petit-maker.com'],
     icpNumber: null,
     icpUrl: null,
@@ -60,10 +63,11 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
   cn: {
     id: 'cn',
     htmlLang: 'zh-CN',
-    title: '谷地工坊 - 星布谷地地图编辑器｜岛建规划与 2D/3D 预览',
+    title: '谷地工坊 - 星布谷地地图编辑器｜星球规划与 2D/3D 预览',
     bootBanner: 'banner-zh.svg',
     description: ZH_DESCRIPTION,
     canonicalOrigin: 'https://petitmaker.com.cn',
+    browserDownloads: { chrome: 'https://www.google.cn/chrome/', firefox: 'https://www.firefox.com.cn/' },
     legacyOrigins: [],
     icpNumber: '浙ICP备2026062928号-1',
     icpUrl: 'https://beian.miit.gov.cn/',

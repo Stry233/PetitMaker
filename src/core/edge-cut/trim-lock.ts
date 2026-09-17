@@ -48,7 +48,7 @@ export function computeLockedCorners(
     //      the falling lip stays square. (A same-level rim is not a drop, so a rimmed pool still rounds.)
     //   BANK — a MOUNTAIN that meets water on EXACTLY ONE edge of a corner is the water's BANK there:
     //      cutting that corner would peel the mountain off the water, leaving the pond/river unbanked on the
-    //      rendered map. So it is not a free corner. (A corner with water on BOTH edges is an island/
+    //      rendered map. So it is not a free corner. (A corner with water on BOTH edges is an islet/
     //      peninsula tip sitting IN the water — that still rounds out and reveals the water it sits in.)
     //   WATERFALL-FRAME — the cap mountains flanking a waterfall face keep their FLOW-side corners
     //      square (handled below via waterfallFacesAt).
@@ -63,7 +63,7 @@ export function computeLockedCorners(
         if (terrainSolidAt(n, type, elevation) || isDrop) locked[i] = true;
       }
       // BANK: a mountain that meets water at a corner holds the water's bank → that corner is locked, UNLESS
-      // it is a true island/peninsula TIP: water on BOTH edges AND the mountain does NOT continue on the
+      // it is a true islet/peninsula TIP: water on BOTH edges AND the mountain does NOT continue on the
       // diagonal. If the same-type mass continues diagonally (a block reaching this layer), the two water
       // edges are a DIAGONAL water PINCH around continuous terrain — a bank, not a tip → locked, mirroring the
       // mountain Γ pinch (whose lower/continuing diagonal also doesn't enclose). A ground or water diagonal =

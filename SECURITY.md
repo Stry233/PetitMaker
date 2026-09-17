@@ -1,6 +1,6 @@
 # Security Policy
 
-If you find a security issue in PetitMaker, please report it privately to [selka.craft@outlook.com](mailto:selka.craft@outlook.com), with `[SECURITY]` in the subject. We aim to acknowledge complete reports within 72 hours and keep you informed about investigation and remediation.
+If you find a security issue in PetitMaker, please report it privately to [petit.maker@outlook.com](mailto:petit.maker@outlook.com), with `[SECURITY]` in the subject. We aim to acknowledge complete reports within 72 hours and keep you informed about investigation and remediation.
 
 This policy defines the good-faith security research the project can authorize, the reporting process and coordinated disclosure arrangements.
 
@@ -10,7 +10,7 @@ We maintain the latest deployment on the official sites. Please identify the sit
 
 ## Reporting a vulnerability
 
-Send reports to [selka.craft@outlook.com](mailto:selka.craft@outlook.com), with `[SECURITY]` in the subject. Private reporting gives us time to assess the issue and coordinate a fix before public technical details make it easier to exploit.
+Send reports to [petit.maker@outlook.com](mailto:petit.maker@outlook.com), with `[SECURITY]` in the subject. Private reporting gives us time to assess the issue and coordinate a fix before public technical details make it easier to exploit.
 
 ## What to include
 

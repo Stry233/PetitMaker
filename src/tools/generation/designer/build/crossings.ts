@@ -78,7 +78,7 @@ function anchorsOf(ramp: RampSpec): MacroCoord[] {
 
 /** How far apart two scanned bridges stand, so a channel is not decked twice at the same crossing. */
 const BRIDGE_GAP = 10;
-/** How many bridges one map carries at richness 0 and 1. The target island has five. */
+/** How many bridges one map carries at richness 0 and 1. The target planet has five. */
 export const BRIDGE_COUNT = { min: 1, max: 5 } as const;
 
 /**

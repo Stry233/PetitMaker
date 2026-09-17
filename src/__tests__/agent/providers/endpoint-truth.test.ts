@@ -13,7 +13,7 @@
  * The floor is asserted THROUGH the runner too, which is the caller that would otherwise reach a
  * client on a stale settings record: the job settles as a config incident and no request is made.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../core/model/types';
@@ -96,6 +96,8 @@ describe('the custom endpoint has no default host', () => {
 
     runner.send('build a house');
     await flush();
+    // The order check runs on this thread where no worker exists, and the job settles after it.
+    await vi.waitFor(() => expect(runner.active()).toBe(false), { timeout: 10_000 });
 
     const events = eventsOf(useAgentSession.getState().log);
     const incident = events.find((e) => e.kind === 'incident');

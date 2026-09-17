@@ -20,7 +20,7 @@ const OUTLINE_AMOUNT = 0.28;
 
 /** How wide a step is, in cells of inset per tier. Two kinds: a landing deep enough for the ramp
  *  rule's 4-deep approach, and a scenic spire's narrower one. Named here rather than shared with the
- *  generator, because these are the MACRO's steps and a change to how an island is composed must not
+ *  generator, because these are the MACRO's steps and a change to how a planet is composed must not
  *  silently re-shape a user's press. */
 export const WIDE_INSET = 4;
 export const STEEP_INSET = 2;

@@ -166,12 +166,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   const probeKey = visionKey(armed.providerId, armed.customBaseUrl, model);
   const [, setVerdictEpoch] = useState(0);
   const keyed = armed.apiKey !== '';
-  useEffect(() => {
-    if (!keyed) return;
-    void ensureModelCatalog();
-    const timer = setInterval(() => { void ensureModelCatalog(); }, 5 * 60_000);
-    return () => clearInterval(timer);
-  }, [keyed, armed.providerId, model]);
+  useEffect(() => { if (keyed) void ensureModelCatalog(); }, [keyed, armed.providerId, model]);
   useEffect(() => {
     ensureVisionVerdict({ ...armed, model }, () => setVerdictEpoch((n) => n + 1));
     // Key presence retriggers a skipped probe; the secret itself is not a dependency.
@@ -346,7 +341,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
     return inputs;
   }, [epoch]);
 
-  /** Gate thumbnails show the whole island with the affected footprint marked in place. */
+  /** Gate thumbnails show the whole map with the affected footprint marked in place. */
   const gateThumb = useCallback((ask: AskRecord) => {
     const box = ask.callId === undefined ? undefined : callFootprint(callInputs.get(ask.callId));
     return box

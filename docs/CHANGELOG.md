@@ -4,6 +4,46 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.45] - 2026-09-16
+
+### Added
+
+- Immersive mode lets you edit the map in full screen on supported browsers, including Safari on iPad. Open it from Settings next to Replay the tour. On mobile devices, the tour's opening card and a menu tip offer a shortcut.
+- A menu tip points to Help after you finish the tour.
+- The assistant shows a reminder that it can make mistakes while waiting for instructions. Its key setup screen now links to the guide for getting an API key.
+- A What's new window shows returning visitors the updates since their last visit. It opens once per version and links to the full changelog in About.
+- PetitMaker can now be installed as an app on phones and tablets through supported browsers. Launch it from your home screen to edit in its own landscape window.
+
+### Changed
+
+- The assistant's visible reasoning now follows the language of your messages, as its replies do.
+- Phones and tablets in landscape use a smaller default interface size to leave more room for the map. The UI scale slider adjusts its upper limit to fit the current window.
+- The browser compatibility notice now covers outdated browsers as well as in-app browsers, with download links for the latest Chrome and Firefox.
+- Version information copied from About now includes browser details to help with troubleshooting.
+- The station has been removed from the facilities shelf, search results and the assistant's placement options. Existing maps keep any stations already placed.
+- The interface, Help and documentation now use consistent terms for planets and editing features.
+- QQ feedback has moved to the PetitMaker channel, linked from About and the Contact page. About also offers email alongside GitHub Issues.
+- The contact email for privacy, security and other requests is now [petit.maker@outlook.com](mailto:petit.maker@outlook.com).
+
+### Fixed
+
+- The assistant's Thinking effort control appears for supported models even when model information is slow to load or unavailable.
+- Mobile windows, the assistant panel and the loading screen fit the visible area when browser toolbars are shown. Tall windows scroll internally to keep their contents accessible.
+- The keyboard shortcuts window fits small screens, keeps the keyboard visible where space allows, and has a close button.
+- Tour cards fit screens with limited height. Cards, the assistant character and sliders are also positioned correctly in older Android browsers.
+- The assistant character stays in place when you open and close Help pages containing editor illustrations.
+- Browsers that cannot run the app show a compatibility notice with browser download links. If part of the app fails to load, a message offers a reload.
+- The map view recovers from graphics interruptions, including blank maps or dark 3D views when returning to a background tab.
+- Original exports preserve the same image dimensions across devices and show progress when exporting large images on devices with lower image-size limits.
+- Exports from older browsers correctly include the title, description and notes.
+- Devices that do not support 3D show it as unavailable, and the tour skips the related steps.
+- Touch gestures in the 3D view and on curve handles control the map without triggering page scrolling or refresh.
+- Autosave saves pending edits when you switch away from the tab or put the browser in the background.
+- Saving assistant settings works in private browsing without disrupting the panel.
+- Map generation reports processing failures so you can retry. Built-in illustration tasks that take too long stop with an error message, and the style list shows the options your device supports.
+- Older Safari versions correctly handle annotation dragging and assistant tasks, and display the background color of the assistant's paused-task card.
+- Android controls use the app's tap feedback, and scrollbars retain their rounded appearance across browsers.
+
 ## [1.1.15] - 2026-09-15
 
 ### Added

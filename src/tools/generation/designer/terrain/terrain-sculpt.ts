@@ -33,8 +33,8 @@ import { type DesignPlan, type Direction } from '../types';
 
 // --- tunables, all measured off the two reference maps ------------------------------------------
 
-/** How much of the island's land is water at richness 0 and 1. The flat reference reads 15.3% and the
- *  terraced one 25.9%, and the island kind scales this further. */
+/** How much of the planet's land is water at richness 0 and 1. The flat reference reads 15.3% and the
+ *  terraced one 25.9%, and the planet kind scales this further. */
 const WATER_SHARE = { min: 0.05, max: 0.26 } as const;
 /** Below this richness no water is cut at all: a quiet map is a dry one. */
 const WATER_FROM = 0.1;
@@ -49,7 +49,7 @@ const ACCENT_SIZES: readonly { w: number; h: number }[] = [
   { w: 2, h: 2 }, { w: 3, h: 2 }, { w: 2, h: 3 }, { w: 2, h: 1 }, { w: 1, h: 2 }, { w: 3, h: 1 },
 ];
 /** How far apart two accents stand, and how much open ground a GROUND-level one leaves beside
- *  itself so the island stays walkable. */
+ *  itself so the planet stays walkable. */
 const ACCENT_GAP = 7;
 /** How far ahead of a street's end its own pool is cut. Two cells: a road validates its own cell
  *  plus one right and one below, so the cell immediately in front of a face is reserved ground. */
@@ -63,7 +63,7 @@ const END_POOL_SIZES: readonly { w: number; h: number }[] = [
 const ACCENT_KEEP = 3;
 /** How far a pool stays away from the walk's own last stop.
  *
- * The route ends on the island's high ground and a pool cut where it arrives lowers the cell the
+ * The route ends on the planet's high ground and a pool cut where it arrives lowers the cell the
  * terminus names — measured on `tafa/12345`, where the end-pool pass took the very cell the walk
  * finishes on. The look-out is what the whole climb is for, so the water gives it room.
  */
@@ -90,7 +90,7 @@ const FALL_GAP = 4;
  * How many ambient bands of ONE size a map may carry: the cap on congruent shapes, applied to the pass
  * most able to break it.
  *
- * Every minimal terrace step offers exactly one band length, so without this an island of short steps
+ * Every minimal terrace step offers exactly one band length, so without this a planet of short steps
  * came back with twenty-five congruent 5x3 bodies — wallpaper rather than water.
  * The cap is about the LOOK rather than about the reading: a band is a dozen cells and the congruence
  * reading counts features of twenty or more, so nothing here would fail a check either way.
@@ -135,7 +135,7 @@ export interface CascadeBand {
   tier: number;
 }
 
-/** What a body of water IS, which is a short list: the island carries one or two cascade STAIRS down
+/** What a body of water IS, which is a short list: the planet carries one or two cascade STAIRS down
  *  the flanks of its mass, one water STORY carrying on from a stair's foot (its reaches, its falls and
  *  the POND it arrives in), a few large composed FIGURES, the FOUNTAIN courts, the ambient cascades
  *  off the terrace steps, the ACCENT pools beside them, and the CROSSING the walk steps over. Nothing
@@ -146,7 +146,7 @@ export type WaterKind =
 /** One body of water the sculpt cut, with the place it belongs to where it has one. */
 export interface WaterFeature {
   kind: WaterKind;
-  /** The place this body composes, or '' for the island-wide passes. */
+  /** The place this body composes, or '' for the planet-wide passes. */
   regionId: string;
   rect: Rect;
   tier: number;
@@ -163,7 +163,7 @@ export interface TerrainSculpt {
   /** The fall bands, which are also in `water`: kept apart because a caller counting the map's
    *  waterfalls should not have to filter. */
   falls: CascadeBand[];
-  /** The island's water story, or null where the ground carried none: the one course a reader
+  /** The planet's water story, or null where the ground carried none: the one course a reader
    *  follows from its spring to its arrival, and what a contact sheet draws the spine of. */
   story: WaterStory | null;
   /** The cascade stairs down the mass's flanks: the map's stacked water figures. */
@@ -201,11 +201,11 @@ export interface SculptInput {
   maxElevation?: number;
   /** What each place's kit wants of its ground. Absent leaves the sculpt as terrain and water. */
   ground?: readonly KitGround[];
-  /** The walk, so its water is cut before the island's own passes spend the budget elsewhere. */
+  /** The walk, so its water is cut before the planet's own passes spend the budget elsewhere. */
   line?: MovementLine;
   /**
-   * How much of the water the richness knob asks for this island actually takes: 0 for dry land, 1
-   * for the mixed island, more for a map that is mostly sea. The shelf's three island kinds are
+   * How much of the water the richness knob asks for this planet actually takes: 0 for dry land, 1
+   * for the mixed planet, more for a map that is mostly sea. The shelf's three planet kinds are
    * named after exactly this difference.
    */
   waterScale?: number;
@@ -248,14 +248,14 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
   const wall = wallOf(composition);
   const water: WaterFeature[] = [];
   const falls: CascadeBand[] = [];
-  // THE WALK'S OWN WATER IS CUT WHATEVER THE ISLAND KIND, because a channel the primary trunk was
+  // THE WALK'S OWN WATER IS CUT WHATEVER THE PLANET KIND, because a channel the primary trunk was
   // planned to step over is a hole in the walk if it is not there: `streets.ts` already took the gap
   // out of the pavement, and a dry gap is a break rather than a crossing.
   water.push(...openLineCrossings(terrain, grass, flat, streets, waterScale > 0));
   // THE LANDMARK GOES BEFORE EVERY PASS THAT SPENDS OPEN GROUND — the ornamental terraces as much as
-  // the water. It is the map's PRIMARY set piece — a phrase or a pattern written at island scale, which
+  // the water. It is the map's PRIMARY set piece — a phrase or a pattern written at planet scale, which
   // is the one thing on a map that happens once — and what it needs is the largest panel of ONE tier the
-  // island has. Cut after the water and it finds nowhere to stand at all; cut after the place terraces
+  // planet has. Cut after the water and it finds nowhere to stand at all; cut after the place terraces
   // and it finds the tier field broken into lots, since each of those lifts is a patch of its own tier in
   // the middle of a block: over ten full-richness seeds, cutting it in front of them holds the panel at
   // 312-544 cells rather than the terrace-floor class. Its own cells are locked into the reservation as
@@ -264,16 +264,16 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
     x: Math.round(plan.plazaHub.x + plan.plazaHub.w / 2),
     y: Math.round(plan.plazaHub.y + plan.plazaHub.h / 2),
   };
-  // THE REGION IS NOT THE GATE. From `FIGURE_FROM` up every island carries a figure, and the region only
+  // THE REGION IS NOT THE GATE. From `FIGURE_FROM` up every planet carries a figure, and the region only
   // says where a ground field would rather stand. Gating on it makes the map's one set piece depend on a
   // theme draw: three maps in five draw the region, a roll takes two thirds of those, and the finished
   // figure lands on about one seed in twelve.
   const region = landmarkRegion(plan);
-  // AN ISLAND ASKED FOR NO WATER CANNOT CARRY THE FIGURE. Both of the landmark's forms write with
+  // A PLANET ASKED FOR NO WATER CANNOT CARRY THE FIGURE. Both of the landmark's forms write with
   // water — the wall banner floods a panel and leaves the glyph standing in it, the ground field
   // floods the glyph's background — so there is no dry version of it to draw. `waterScale` 0 is the
   // `earth` kind saying it holds none, and the figure is skipped rather than made the one pass that
-  // ignores the answer: cut before this gate, it puts a hundred-odd water cells on an earth island.
+  // ignores the answer: cut before this gate, it puts a hundred-odd water cells on an earth planet.
   const landmark = waterScale > 0 ? carveLandmark({
     terrain, grass, flat, clearance: openGround(flat, plan, W, H, terrain),
     wall, hub, seed: input.seed, richness, ...(region ? { region } : {}),
@@ -324,7 +324,7 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
     water.push(...endPoolsCut);
     // THEN THE STAIRS, before anything else takes the flanks. A stair needs a run of terrace steps
     // free of everything, which is the scarcest ground on the map and the one thing the accents and
-    // the ambient falls will happily spend a cell of; and it is the island's own biggest water figure,
+    // the ambient falls will happily spend a cell of; and it is the planet's own biggest water figure,
     // so it is worth the whole flank it stands on.
     stairs = carveCascadeStairs({
       t: terrain, grass, flat, richness, ...(input.line ? { line: input.line } : {}),
@@ -334,7 +334,7 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
       for (const band of stair.bands) falls.push({ rect: band.rect, tier: band.tier });
     }
     // THEN THE STORY, which carries on from the LOWEST stair's own foot where there is one: the two
-    // are the same system told on a slope and then across the island, and a course that started a
+    // are the same system told on a slope and then across the planet, and a course that started a
     // spring of its own somewhere else would leave the map with two. The lowest, because water runs
     // down: a course leaving the higher of two feet would have to climb past the other one.
     const lowest = stairs.reduce<CascadeStair | null>(
@@ -483,7 +483,7 @@ function flatReservation(
       if (x >= 0 && y >= 0 && x < W && y < H) out[flatIndex(x, y, W)] = 1;
     }
   }
-  // Nothing off the buildable island is touched either, so a later pass can read one mask.
+  // Nothing off the buildable planet is touched either, so a later pass can read one mask.
   for (let i = 0; i < out.length; i++) if (!grass[i]) out[i] = 1;
   return out;
 }
@@ -549,7 +549,7 @@ function raiseBackings(
  * A backing strip raised a tier, SPLIT where the ground under it is not all one surface.
  *
  * `largestClear` trims a strip from its ends, which answers a strip with something standing in one end
- * and nothing at all for a strip that straddles a terrace step — and on a terraced island that is most
+ * and nothing at all for a strip that straddles a terrace step — and on a terraced planet that is most
  * of them, since a lot's deep end is where the block's own step falls. So a strip that cannot be raised
  * whole is halved and each half offered the same test, twice down. The backing behind a door is the
  * half the door faces as much as the whole width of the lot.
@@ -624,7 +624,7 @@ function erodeSeams(
         if (here <= 0) continue;
         if (noise(x / SEAM_NOISE_SPAN, y / SEAM_NOISE_SPAN) < SEAM_BITE_FROM + pass * SEAM_BITE_STEP) continue;
         // The highest tier below this one among the cells it shares an edge with: a seam is eroded by
-        // one rung of the staircase, never down to the floor of the island.
+        // one rung of the staircase, never down to the floor of the planet.
         let target = -1;
         for (const [dx, dy] of NEIGHBORS4) {
           const nx = x + dx, ny = y + dy;
@@ -726,7 +726,7 @@ function largestClear(
 }
 
 /**
- * Whether a rect is untouched island ground at ONE tier that no other pass has claimed, AND whether
+ * Whether a rect is untouched planet ground at ONE tier that no other pass has claimed, AND whether
  * a tier may be added to it.
  *
  * The second half is V-MTN-03 read forward: a cell standing at N needs its whole 3x3 at N-3 or above,
@@ -843,7 +843,7 @@ function sinkCourts(
  * The gap the movement line steps over, opened in the stretch `streets.ts` left unpaved.
  *
  * A stretch at elevation 0 is FLOODED: nothing is lower than 0, so ground water shows no face and
- * needs no caps. A raised stretch is cut DOWN into a gorge instead, which is what a terraced island
+ * needs no caps. A raised stretch is cut DOWN into a gorge instead, which is what a terraced planet
  * can actually offer a bridge — a deck spans any below-deck gap between two flat ends of equal
  * height, and on a map whose ground is nowhere at sea level a channel is not one of the options.
  *
@@ -865,7 +865,7 @@ function openLineCrossings(
         if (x < 1 || y < 1 || x >= t.width - 1 || y >= t.height - 1) continue;
         const i = flatIndex(x, y, t.width);
         if (!grass[i] || flat[i] || t.water[i]! >= 0) continue;
-        // AN EARTH ISLAND FLOODS NOTHING, its crossings included. The `earth` kind's whole meaning
+        // AN EARTH PLANET FLOODS NOTHING, its crossings included. The `earth` kind's whole meaning
         // is that the map holds no water (`waterScale` 0), and a flooded channel is water however it
         // was planned: seed 7 came back with twelve wet cells on a map whose kind promises none.
         // What it gets instead is the gorge every terraced crossing gets, which a deck spans just
@@ -950,7 +950,7 @@ function cutFalls(
           const room = length - 2;
           const rows = 1 + Math.floor(hash01(seed ^ 0x5b09, a * 311 + d) * depth);
           // The drawn length, then the next one whose SIZE CLASS this map has not used up: a run only
-          // `FALL_RUN.min` long can be cut one way, so on an island of short steps the draw alone still
+          // `FALL_RUN.min` long can be cut one way, so on a planet of short steps the draw alone still
           // answers the same size every time.
           const draw = FALL_RUN.min
             + Math.floor(hash01(seed ^ 0x2c1f, a * 131 + d) * (room - FALL_RUN.min + 1));
@@ -1057,7 +1057,7 @@ interface EndPoolInput {
   arrival?: MacroCoord;
   /** Water cells this pass may spend. It runs before the figures and the accents, so what it takes
    *  they do not get, and a map with forty street ends would otherwise pour its whole budget into the
-   *  doorsteps before the island's own figures were drawn. */
+   *  doorsteps before the planet's own figures were drawn. */
   budget: number;
   seed: number;
 }

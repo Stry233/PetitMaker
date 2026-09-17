@@ -26,6 +26,7 @@ import { Field, GhostVerb, PrimaryVerb, SampleTile, StatusSlot, WindowFoot, ente
 import { amplitude, framerMotion, staggerDelay } from './motion';
 
 import type { StylizeConnection } from './use-stylize-connection';
+import { visualRect } from '../../../../design/visual-rect';
 
 /** The lean's declared spring (`stylize.deck.follow`, curve `stiff`), in the option shape
  *  `useSpring` takes: the same physics the transform's own transition would carry. */
@@ -65,7 +66,7 @@ function Deck() {
 
   const onMove = (e: ReactMouseEvent) => {
     if (reduced) return;
-    const r = boxRef.current?.getBoundingClientRect();
+    const r = boxRef.current ? visualRect(boxRef.current) : null;
     if (!r) return;
     pxRaw.set(((e.clientX - r.x) / r.width - 0.5) * 2 * follow);
     pyRaw.set(((e.clientY - r.y) / r.height - 0.5) * 2 * follow);

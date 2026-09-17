@@ -27,3 +27,4 @@ export {
 } from './dialects';
 
 export { retainNeuralRuntime } from './neural/lifecycle';
+export { neuralPacksUsable, neuralPacksUsableNow } from './neural/capability';

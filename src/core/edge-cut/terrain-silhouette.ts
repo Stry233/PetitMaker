@@ -120,7 +120,7 @@ export function cornerEdgeCoverTier(
  *
  * A cell that holds a real block (a pit one level down, a pond) is NOT this — its own surface
  * renders, and rounding the rim above it is exactly what a fillet is for. Neither is a cell ringed
- * by ground-level water: an island in a pond stands at the same height as the ground inside it, and
+ * by ground-level water: an islet in a pond stands at the same height as the ground inside it, and
  * rounds through its own path (`groundConvexCornerInWater`).
  */
 export function enclosedGap(state: GridState, x: number, y: number): boolean {
@@ -138,15 +138,15 @@ export function solidTopOf(t: TerrainCell | null | undefined, type: TerrainType)
 }
 
 /**
- * Is corner `i` of (x,y) a GROUND cell's CONVEX corner poking into water — the corner of a ground island
+ * Is corner `i` of (x,y) a GROUND cell's CONVEX corner poking into water — the corner of a ground islet
  * (or peninsula) that should round OUT, revealing the water it sits in? True when the cell holds NO real
- * terrain (plain ground = no TerrainCell, OR a `None` island-cut cell carrying corners) AND both EDGE
+ * terrain (plain ground = no TerrainCell, OR a `None` islet-cut cell carrying corners) AND both EDGE
  * neighbours at the corner are water.
  *
  * This is the symmetric inverse of a water pond's convex corner: a pond is a WATER cell whose corner rounds
- * to reveal ground; an island is a GROUND cell whose corner rounds to reveal water. The cut lives ON the
- * ground cell (materialised as a `type: None` cell with corners) so it renders at the island's own corner —
- * not on a diagonal water cell. Requiring BOTH edges to be water excludes the seam between two island cells
+ * to reveal ground; an islet is a GROUND cell whose corner rounds to reveal water. The cut lives ON the
+ * ground cell (materialised as a `type: None` cell with corners) so it renders at the islet's own corner —
+ * not on a diagonal water cell. Requiring BOTH edges to be water excludes the seam between two islet cells
  * (only one edge is water there) and straight coastlines (the corner isn't convex into water).
  */
 export function groundConvexCornerInWater(state: GridState, x: number, y: number, i: number): boolean {
@@ -156,8 +156,8 @@ export function groundConvexCornerInWater(state: GridState, x: number, y: number
   if (!adj) return false;
   // The corner must be FULLY wrapped by GROUND-LEVEL water — all three meeting cells water at elevation 0.
   //  - all three (edges AND diagonal): the two-edges-only test also fires on the empty GAP between two
-  //    diagonal water cells, wrongly turning that gap into an "island"; the gap's diagonal is ground.
-  //  - elevation 0 specifically: a ground island is always elevation 0, and elevated water around a lower
+  //    diagonal water cells, wrongly turning that gap into an "islet"; the gap's diagonal is ground.
+  //  - elevation 0 specifically: a ground islet is always elevation 0, and elevated water around a lower
   //    ground cell is illegal terrain (V-WTR-02 uncapped / V-WTR-03 waterfall-onto-a-pit). Accepting the
   //    cut there only to have post-stroke silently revert it is misleading — so we don't offer it at all.
   return adj.every(([dx, dy]) => {

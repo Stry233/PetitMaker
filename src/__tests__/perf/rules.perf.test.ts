@@ -5,7 +5,7 @@
  * they are the expensive half by construction; pre-command rules gate one command at a time, but a
  * generation run or an agent tool call issues thousands of them, and the spatial-index-backed ones
  * (placement traits, overlap, terrain-blocks) are the paths that scale with the map's own object
- * count. This suite times both against the dense island: `commitStroke`'s own post-stroke call
+ * count. This suite times both against the dense map: `commitStroke`'s own post-stroke call
  * (`core/commands/command-executor.ts`) and `execute`'s own pre-command call, read verbatim rather
  * than re-implemented. See `_harness.ts` for the gate and methodology.
  */
@@ -40,7 +40,7 @@ function findLegalPaintCell(world: World): MacroCoord {
       if (executor.validatePre(cmd).length === 0) return { x, y };
     }
   }
-  throw new Error('perf fixture: no legal paint cell found on the dense island');
+  throw new Error('perf fixture: no legal paint cell found on the dense map');
 }
 
 /** Every water cell on the map, raster order, evenly sampled down to `limit` — the bridge trait's
@@ -69,7 +69,7 @@ function placeCmd(catalogId: string, position: MacroCoord): PlaceObjectCommand {
 }
 
 describe.runIf(PERF)('perf: rules', () => {
-  it('post-stroke: full validation pass over the dense island', async () => {
+  it('post-stroke: full validation pass over the dense map', async () => {
     const world = denseIsland();
     await s.bench('post-stroke/validate-dense', () => {
       world.executor.getRegistry().validatePostStroke(world.state);

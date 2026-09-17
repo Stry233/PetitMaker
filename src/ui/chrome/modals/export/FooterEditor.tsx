@@ -14,6 +14,7 @@ import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
 import { useScrollFade } from '../../../primitives/scroll-fade';
 import { FOOTER_TOKENS, FOOTER_FILL, parseFooter } from '../../../../io/export/footer-template';
 import { ReviewIndicator } from './review/ReviewIndicator';
+import { visualRect } from '../../../design/visual-rect';
 
 const MENU_W = 250;
 const ZW = '\u200B'; // zero-width space: an invisible, editable caret slot placed around chips
@@ -89,10 +90,10 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
   const caretAnchor = (): { left: number; top: number; bottom: number } => {
     const sel = window.getSelection();
     if (sel && sel.rangeCount) {
-      const r = sel.getRangeAt(0).getBoundingClientRect();
+      const r = visualRect(sel.getRangeAt(0));
       if (r.left || r.top) return { left: r.left, top: r.top, bottom: r.bottom };
     }
-    const b = ref.current!.getBoundingClientRect();
+    const b = visualRect(ref.current!);
     return { left: b.left, top: b.top, bottom: b.bottom };
   };
 
@@ -215,7 +216,7 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
         />
         {checking && <ReviewIndicator label={reviewLabel} />}
         </div>
-        <button type="button" onClick={() => { const b = ref.current!.getBoundingClientRect(); openMenu({ left: clampLeft(b.left, MENU_W, chrome), top: b.top, bottom: b.bottom, fromSlash: false }); }} style={addBtn}>+ {t('export.footer_insert')}</button>
+        <button type="button" onClick={() => { const b = visualRect(ref.current!); openMenu({ left: clampLeft(b.left, MENU_W, chrome), top: b.top, bottom: b.bottom, fromSlash: false }); }} style={addBtn}>+ {t('export.footer_insert')}</button>
       </div>
       <div style={hintStyle}>{t('export.footer_slash_hint')}</div>
 

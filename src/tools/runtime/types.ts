@@ -71,7 +71,7 @@ export interface ToolContext {
   /** The road catalog id the tile brush lays. */
   tileMaterial: string;
   /** Whether a hand PICKED `tileMaterial` (`state/slices/edit.ts`). The road macros read the map's
-   *  own surface when nobody has, so the bar's default never overrides what the island is paved
+   *  own surface when nobody has, so the bar's default never overrides what the planet is paved
    *  with; a real pick always wins. */
   tileMaterialPicked: boolean;
   /** The armed catalog item, or null with nothing armed. */

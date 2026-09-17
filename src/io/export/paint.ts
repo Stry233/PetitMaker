@@ -3,6 +3,8 @@
 // system from compose.ts and scale with the final output width.
 
 import type { Badge, ExportComposition, Rect } from './types';
+import { TiledMap } from './tiled-map';
+import type { BandWindow } from './banded';
 import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import type { GridState } from '../../core/model/types';
 import { CHUNK_SIZE } from '../../core/model/constants';
@@ -23,8 +25,10 @@ const CARD_3D_AREA_H = CARD_3D_H - CARD_3D_TITLE_H - CARD_3D_BOTTOM_PAD;
 export const CARD_3D_CELL_ASPECT = (CARD_3D_INNER_W - CARD_3D_GAP * (CARD_3D_CELLS - 1)) / CARD_3D_CELLS / CARD_3D_AREA_H;
 
 export interface CompositionAssets {
-  /** Captured 2D map (full-map PNG data URL loaded into an Image). */
-  baseMap: CanvasImageSource | null;
+  /** Captured 2D map (full-map PNG data URL loaded into an Image), or one captured tile by tile. */
+  baseMap: CanvasImageSource | TiledMap | null;
+  /** The part of the composition being painted, when it is painted in tiles; the map draws only that. */
+  window?: BandWindow;
   /** The 3D card's shot thumbnails (empty/omitted skips the card body; caller should unset
    *  comp.card3d when 3D is unavailable). */
   card3dAngles?: CanvasImageSource[];
@@ -237,7 +241,9 @@ function drawMap(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionA
   // Bare: the band IS the canvas, so square corners — a rounded clip would notch the picture.
   rrPath(ctx, x, y, w, h, bare ? 0 : 14 * S);
   ctx.clip();
-  if (assets.baseMap) {
+  if (assets.baseMap instanceof TiledMap) {
+    assets.baseMap.draw(ctx, fitMap(band, assets.baseMap), assets.window);
+  } else if (assets.baseMap) {
     ctx.drawImage(assets.baseMap, ...fitTuple(fitMap(band, assets.baseMap)));
   } else {
     ctx.fillStyle = '#bfeafe';
@@ -405,7 +411,7 @@ function drawFooter(ctx: CanvasRenderingContext2D, rect: Rect, comp: ExportCompo
 // ── helpers ─────────────────────────────────────────────────────────────────────
 
 /** Letterbox an image's intrinsic aspect into `rect` (centered, never stretched). */
-function fitMap(rect: Rect, img: CanvasImageSource): Rect {
+function fitMap(rect: Rect, img: CanvasImageSource | TiledMap): Rect {
   const iw = (img as { width?: number }).width ?? rect.w;
   const ih = (img as { height?: number }).height ?? rect.h;
   return fitAspect(rect, ih > 0 ? iw / ih : rect.w / rect.h);

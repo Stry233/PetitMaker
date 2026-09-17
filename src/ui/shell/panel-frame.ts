@@ -84,10 +84,11 @@ export function footReserve(mode: BuildMode): number {
   return (mode === null ? 200 : 330) * SCALE;
 }
 
-/** The window's own height in the frame's px, which every other length here is already in: `100vh`
- *  inside the frame's zoomed subtree resolves against the REAL viewport and is then multiplied by
- *  the zoom, so the zoom is divided back out (`units.ts`'s own note on `--shell-zoom`). */
-const WINDOW_H = '100vh / var(--shell-zoom, 1)';
+/** The window's own height in the frame's px, which every other length here is already in. The
+ *  frame publishes the measured height as `--viewport-h` beside `--shell-zoom`, because `100vh` on a
+ *  mobile browser is the viewport with the bars hidden; the zoom is divided back out (`units.ts`'s
+ *  own note on `--shell-zoom`). */
+const WINDOW_H = 'var(--viewport-h, 100vh) / var(--shell-zoom, 1)';
 
 /**
  * Where the column's top edge sits, given the LEAST height the panel can work in — its own pinned
@@ -251,8 +252,8 @@ export function hasPinRoom(vw: number, uiZoom = 1): boolean {
  * the live fraction — the slide moves this every frame, and the per-frame writes go straight to the
  * DOM rather than through a render (`use-dock.ts`), so the arithmetic has to be callable outside one.
  */
-export function frameZoomAt(aside: number, vw: number, vh: number, uiZoom: number): number {
-  return ZOOM * fittedUiScale(vw, vh, uiZoom, aside * PINNED_DOCK_REF_W);
+export function frameZoomAt(aside: number, vw: number, vh: number, uiZoom: number, floor = FIT_FLOOR): number {
+  return ZOOM * fittedUiScale(vw, vh, uiZoom, aside * PINNED_DOCK_REF_W, floor);
 }
 
 /**

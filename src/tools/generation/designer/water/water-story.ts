@@ -16,7 +16,7 @@ import {
 // --- tunables -----------------------------------------------------------------------------------
 
 /** How many steps the course runs at richness 0 and 1. The style target's own water spine, a banded
- *  ladder, runs 24 rows and its cascade stair 21; a course that crosses the island is the two of them
+ *  ladder, runs 24 rows and its cascade stair 21; a course that crosses the planet is the two of them
  *  joined. */
 const COURSE_LENGTH = { min: 26, max: 120 } as const;
 /** The stream's width, and the width a BAY widens to where it passes a park. The target's troughs read
@@ -47,13 +47,13 @@ const POND_BACKTRACK = 24;
 const SPRING_SIDE = 3;
 /** The fewest cells a course must lay before it is a story rather than a puddle. */
 const COURSE_MIN = 12;
-/** How many springs are tried before the island is left dry. */
+/** How many springs are tried before the planet is left dry. */
 const SPRING_TRIES = 8;
 /** How far a spring looks for the step it is going to fall down, and how much of its distance from
  *  the coast counts in its favour. */
 const FALL_LOOKAHEAD = 14;
 const SPRING_INLAND = 16;
-/** How far the head looks for lower ground when it asks which way the island falls away. */
+/** How far the head looks for lower ground when it asks which way the planet falls away. */
 const DOWNHILL_LOOK = 40;
 /** The tributary: a 1-wide branch that must rejoin the course within this many cells. */
 const TRIBUTARY_LENGTH = 16;
@@ -138,7 +138,7 @@ const perp = left;
 // --- the course ---------------------------------------------------------------------------------
 
 /**
- * Cut the island's water story, or leave it dry.
+ * Cut the planet's water story, or leave it dry.
  *
  * Springs are tried in order of how high they stand and how near the walk passes; the first whose
  * course arrives somewhere is the map's. Everything a refused attempt cut is put back, so trying
@@ -204,7 +204,7 @@ function regionShape(plan: DesignPlan, W: number, H: number): Int8Array {
   return out;
 }
 
-/** The springs worth trying: a `SPRING_SIDE` pool of untouched terrace high on the island with
+/** The springs worth trying: a `SPRING_SIDE` pool of untouched terrace high on the planet with
  *  somewhere to flow, ordered by height first and by how near the walk passes second. */
 function springs(input: StoryInput, walk: Int16Array | null): { at: MacroCoord; tier: number }[] {
   const { t, grass, flat } = input;
@@ -237,7 +237,7 @@ function springs(input: StoryInput, walk: Int16Array | null): { at: MacroCoord; 
   return out;
 }
 
-/** Chebyshev distance from every cell to the nearest one off the buildable island: how far inland it
+/** Chebyshev distance from every cell to the nearest one off the buildable planet: how far inland it
  *  stands. */
 function inlandField(t: TerrainPlan, grass: Uint8Array): Int16Array {
   const seeds: number[] = [];
@@ -245,9 +245,9 @@ function inlandField(t: TerrainPlan, grass: Uint8Array): Int16Array {
   return distanceField(seeds, t.width, t.height, true);
 }
 
-/** Whether ISLAND ground within a short reach of (x, y) stands below `tier`: the step the course is
+/** Whether PLANET ground within a short reach of (x, y) stands below `tier`: the step the course is
  *  going to look for. The sea is not one — a spring on the coastal rim would find the drop off the
- *  island's edge and have nowhere to run. */
+ *  map edge and have nowhere to run. */
 function hasFallAway(t: TerrainPlan, grass: Uint8Array, x: number, y: number, tier: number): boolean {
   for (const d of DIRS) {
     for (let k = 2; k <= FALL_LOOKAHEAD; k++) {
@@ -283,7 +283,7 @@ function runCourse(
   const bays: Rect[] = [];
 
   // A COURSE HAS A DIRECTION, and a meander is a departure from it rather than a random walk. `flow`
-  // is the way the island falls away, re-read at every step down; `dir` is what the head is doing
+  // is the way the planet falls away, re-read at every step down; `dir` is what the head is doing
   // now, and it returns to the flow when a bend has run its length. Without the distinction a
   // sequence of sharp bends turns the stream back uphill and the story never finds its step.
   let flow = downhill(t, grass, spring.at, spring.tier);
@@ -354,7 +354,7 @@ function runCourse(
       // doorsteps, so a course crossing a town meets something it may not take every few cells; a
       // head that stopped at the first of them ran a third of its length and arrived nowhere. One
       // cell wide and free to turn back, bounded so a blocked course still ends rather than
-      // wandering the island.
+      // wandering the planet.
       ?? (detours < DETOUR_MAX ? detour(t, grass, flat, at, flow, tier) : null);
     if (!moved) break;
     if (moved.width === 1 && moved.dir[0] * flow[0] + moved.dir[1] * flow[1] < 0) detours++;
@@ -400,14 +400,14 @@ function runCourse(
 }
 
 /**
- * The direction the ISLAND falls away in: the cardinal toward the NEAREST island ground standing
+ * The direction the PLANET falls away in: the cardinal toward the NEAREST planet ground standing
  * below `tier`.
  *
  * Read as a nearest-lower search rather than as a slope. A terrace is FLAT, so every ray off it
  * scores the same for as far as the terrace is wide, and a slope reading on one answers with
  * whichever axis the tie-break happens to name — measured, a course sent that way ran the width of
  * its own plate and finished where it started. The sea is not lower ground: a cell off the buildable
- * island carries no terrain and so reads as ground, and a course sent at it has no terrace left to
+ * planet carries no terrain and so reads as ground, and a course sent at it has no terrace left to
  * descend.
  */
 function downhill(t: TerrainPlan, grass: Uint8Array, at: MacroCoord, tier: number, prefer?: Vec): Vec {
@@ -442,7 +442,7 @@ interface AdvanceInput {
   flat: Uint8Array;
   at: MacroCoord;
   dir: Vec;
-  /** The way the island falls away. A heading that points back up it is never offered. */
+  /** The way the planet falls away. A heading that points back up it is never offered. */
   flow: Vec;
   /** A step the course has already taken too many of in a row, and may not take again here. */
   banned?: Vec;
@@ -759,7 +759,7 @@ export function pondCells(shape: PondShape, rect: Rect): MacroCoord[] {
           take = nx + ny <= 1.15 && nx + ny >= 0.45;
           break;
         default:
-          // The U-moat: water down two sides and across one end, holding a dry island.
+          // The U-moat: water down two sides and across one end, holding a dry islet.
           take = x === 0 || x === rect.w - 1 || y === rect.h - 1;
           break;
       }

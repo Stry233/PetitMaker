@@ -167,7 +167,7 @@ describe('submitComposer: paused route', () => {
     expect(outcome).toBe('done');
     expect(adapter.requests).toHaveLength(1);
     const messages = adapter.requests[0]!.messages;
-    expect(messages.some((m) => m.role === 'user' && m.text === 'watch out for the cliff')).toBe(true);
+    expect(messages.some((m) => m.role === 'user' && m.text.startsWith('watch out for the cliff\n(language) '))).toBe(true);
   });
 });
 

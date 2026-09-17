@@ -31,7 +31,7 @@ function runGeneration(world: World, config: GenerateConfig): Command[] {
 }
 
 describe.runIf(PERF)('perf: generation', () => {
-  it('designed island: full run', async () => {
+  it('designed map: full run', async () => {
     let world = templateWorld();
     await s.bench('designed/full-run', () => {
       runGeneration(world, islandConfig());
@@ -42,7 +42,7 @@ describe.runIf(PERF)('perf: generation', () => {
     });
   });
 
-  it('designed island: command replay (cached candidate apply)', async () => {
+  it('designed map: command replay (cached candidate apply)', async () => {
     const commands = runGeneration(templateWorld(), islandConfig());
     let world = templateWorld();
     await s.bench('designed/replay-apply', () => {
@@ -56,14 +56,14 @@ describe.runIf(PERF)('perf: generation', () => {
     });
   });
 
-  it('map fingerprint over the dense island', async () => {
+  it('map fingerprint over the dense map', async () => {
     const { state } = denseIsland();
     await s.bench('cache/map-fingerprint', () => { mapFingerprint(state); }, {
       meta: { objects: state.objects.size },
     });
   });
 
-  it('grid wire: encode and decode the dense island', async () => {
+  it('grid wire: encode and decode the dense map', async () => {
     const { state } = denseIsland();
     const { width, height } = state.template;
     await s.bench('wire/encode', () => { encodeCells(state.cells, width, height); });
@@ -71,7 +71,7 @@ describe.runIf(PERF)('perf: generation', () => {
     await s.bench('wire/decode', () => { decodeCells(wire); });
   });
 
-  it('region-confined run over a built island (seam repair path)', async () => {
+  it('region-confined run over a built map (seam repair path)', async () => {
     const island = denseIsland();
     const region: MacroCoord[] = [];
     for (let y = 20; y < 44; y++) for (let x = 20; x < 44; x++) region.push({ x, y });
@@ -94,12 +94,12 @@ describe.runIf(PERF)('perf: generation', () => {
     });
   });
 
-  it('eval scorecard over the dense island', async () => {
+  it('eval scorecard over the dense map', async () => {
     const { state } = denseIsland();
     await s.bench('eval/evaluate-map', () => { evaluateMap(state); });
   });
 
-  it('landing a cached candidate on a built island: the clear, then the replay', async () => {
+  it('landing a cached candidate on a built map: the clear, then the replay', async () => {
     const island = denseIsland();
     const replay = runGeneration(templateWorld(), islandConfig(777));
     let world = cloneWorld(island);

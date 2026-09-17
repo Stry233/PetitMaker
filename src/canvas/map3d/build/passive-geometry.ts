@@ -1,7 +1,7 @@
 /**
  * Pure geometry for the 3D layer-number overlay: one quad per labeled cell
  * (the same pure label plan the 2D raster uses — chunkNumberCells masks object
- * footprints, hidden layers, ground islands), each at its cell's surface,
+ * footprints, hidden layers, ground islets), each at its cell's surface,
  * UV-mapped into the chunk's shared label canvas so a whole chunk renders as
  * ONE textured draw. (The reference grid itself is a flat ground-level line
  * set built by the scene — its fixed world-space position stays stable across

@@ -178,7 +178,7 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pic
     if (nearElevatedWater(ctx.gridState, x, y)) continue;
 
     // Gamma fill is MOUNTAIN-only in EVERY path (stroke AND generation), as in the manual tool: a
-    // water-wrapped ground notch is a GROUND ISLAND, rounded by cutGroundIslands rather than
+    // water-wrapped ground notch is a GROUND ISLET, rounded by cutGroundIslands rather than
     // flooded. A patchOnly WATER fillet here is a state the manual tool can neither produce nor
     // cycle (its cut-site scan matches no branch), and it cascades — the patch reads as solid
     // water@0, wrapping the next bank cell.
@@ -256,9 +256,9 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pic
 }
 
 /**
- * Round GROUND-ISLAND corners the stroke just exposed (STROKE path only): a plain-ground cell whose corner
- * pokes into water — a river bend's inner corner, an island/peninsula tip — rounds OUT, revealing the
- * water it sits in (ISLAND-ROUNDS-REVEALING-WATER). This is exactly the manual tool's ground-island cut
+ * Round GROUND-ISLET corners the stroke just exposed (STROKE path only): a plain-ground cell whose corner
+ * pokes into water — a river bend's inner corner, an islet/peninsula tip — rounds OUT, revealing the
+ * water it sits in (ISLET-ROUNDS-REVEALING-WATER). This is exactly the manual tool's ground-islet cut
  * (`groundConvexCornerInWater` → a `type: None` cell carrying the OUTER shape), so every cut written here
  * is manual-reachable and manual-cyclable. It is the water counterpart of the mountain Γ fill: water never
  * fills a notch (see cutTerrainInner), the ground rounds instead.
@@ -266,7 +266,7 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pic
 function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pick: CornerChooser, painted: ReadonlySet<string>): void {
   for (const { x, y } of candidates) {
     const t = getCell(ctx.gridState.cells, x, y)?.terrain;
-    if (t && t.type !== TerrainType.None) continue; // only plain ground / an existing island cut
+    if (t && t.type !== TerrainType.None) continue; // only plain ground / an existing islet cut
     const before: Corners = t?.corners ? [...t.corners] : ['square', 'square', 'square', 'square'];
     const after: Corners = [...before];
     let changed = false;

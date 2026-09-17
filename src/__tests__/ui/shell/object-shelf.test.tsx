@@ -349,7 +349,7 @@ describe('the row of names travels sideways', () => {
       seen.push(this);
     };
     try {
-      mount('facility-station');
+      mount('facility-pavilion');
       const facilities = screen.getByRole('tab', { name: 'Facilities' });
       expect(facilities.getAttribute('aria-selected')).toBe('true');
       expect(seen).toContain(facilities);

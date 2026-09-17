@@ -31,7 +31,8 @@ if (typeof Blob.prototype.text !== 'function') {
   });
 }
 
-import { KeyboardModal } from '../../../ui/chrome/modals/keyboard/KeyboardModal';
+import { KeyboardModal, boardZoomFor } from '../../../ui/chrome/modals/keyboard/KeyboardModal';
+import { fittedUiScale } from '../../../ui/design/scale';
 import { I18nProvider } from '../../../i18n/context';
 import { useKeybinds, effectiveCombo } from '../../../core/runtime/keybindings';
 import { setStoreState } from '../../_store';
@@ -168,5 +169,32 @@ describe('the keyboard region fades on the axes it can still travel', () => {
     fireEvent.scroll(region);
     pumpUntil(() => region.style.maskImage === '');
     expect(region.style.maskImage).toBe('');
+  });
+});
+
+describe('the keyboard window on a small screen', () => {
+  it('offers a close button of its own, since a phone has no Escape and little backdrop', () => {
+    const onClose = vi.fn();
+    render(<I18nProvider><KeyboardModal onClose={onClose} /></I18nProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a rim of backdrop on every side', () => {
+    renderWindow();
+    const card = screen.getByRole('dialog');
+    const chrome = fittedUiScale(window.innerWidth, window.innerHeight, 1);
+    const px = (css: string): number => parseFloat(css.replace(/[^0-9.]/g, ''));
+    expect(px(card.style.maxHeight)).toBeCloseTo((86 / 100 * window.innerHeight) / chrome, 3);
+    expect(px(card.style.width)).toBeCloseTo(Math.min(1574, (88 / 100 * window.innerWidth) / chrome), 3);
+  });
+
+  it('scales the board down to the region before letting it scroll', () => {
+    expect(boardZoomFor(2000, 1494)).toBe(1);
+    expect(boardZoomFor(1414, 1494)).toBeCloseTo(1414 / 1494, 6);
+    expect(boardZoomFor(600, 1494)).toBe(0.75);
+    expect(boardZoomFor(0, 1494)).toBe(1);
+    expect(boardZoomFor(2000, 1494, 285, 334)).toBeCloseTo(285 / 334, 6);
+    expect(boardZoomFor(1414, 1494, 400, 334)).toBeCloseTo(1414 / 1494, 6);
   });
 });

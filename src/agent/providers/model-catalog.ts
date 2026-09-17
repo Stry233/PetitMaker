@@ -1,8 +1,16 @@
 /** Live capability data supplements the models a connected account can actually use. */
 import { baseUrlFor, PROVIDER_IDS, type ProviderId } from './defaults';
+import snapshot from './model-catalog.snapshot.json';
 
 export const MODEL_CATALOG_URL = 'https://models.dev/api.json';
-const REFRESH_MS = 5 * 60_000;
+/** A failed download is retried after this long, up to the attempt cap; one success serves the session. */
+const RETRY_MS = 30_000;
+const ATTEMPTS_MAX = 3;
+/** The catalog is several megabytes; slow cross-border links need well over the probe deadline to deliver it. */
+const CATALOG_DEADLINE_MS = 20_000;
+declare const __PETIT_TARGET__: string | undefined;
+/** The Chinese deployment cannot reach the live catalog reliably, so its extract is refreshed at release instead. */
+const liveCatalogAllowed = (): boolean => typeof __PETIT_TARGET__ !== 'string' || __PETIT_TARGET__ !== 'cn';
 const SOURCES: Partial<Record<ProviderId, string[]>> = {
   claude: ['anthropic'], openai: ['openai'], deepseek: ['deepseek'], gemini: ['google'],
   openrouter: ['openrouter'], zhipu: ['zai', 'zhipuai'], qwen: ['alibaba', 'alibaba-cn'],
@@ -20,9 +28,13 @@ export interface ModelCapabilities {
   maxOutput?: number;
 }
 type Catalog = Partial<Record<ProviderId, Record<string, ModelCapabilities>>>;
-let catalog: Catalog = {};
+/** Capability extract bundled with the build, so effort and vision controls do not depend on reaching the live catalog. */
+export const MODEL_CATALOG_SNAPSHOT = snapshot as unknown as { takenAt: string; providers: Catalog };
+let catalog: Catalog = { ...MODEL_CATALOG_SNAPSHOT.providers };
 const native = new Map<string, Record<string, ModelCapabilities>>();
-let refreshed = 0;
+let loaded = false;
+let attempts = 0;
+let lastAttempt = 0;
 let pending: Promise<void> | undefined;
 let version = 0;
 const listeners = new Set<() => void>();
@@ -67,22 +79,26 @@ export function parseModelCatalog(value: unknown): Catalog {
   return result;
 }
 
-/** One bounded, credential-free refresh per freshness window, retaining the last good snapshot. */
+/** One bounded, credential-free download per session, retaining live data over the bundled extract. */
 export function ensureModelCatalog(force = false): Promise<void> {
   if (pending) return pending;
-  if (!force && Date.now() - refreshed < REFRESH_MS) return Promise.resolve();
+  if (!liveCatalogAllowed()) return Promise.resolve();
+  if (!force && (loaded || attempts >= ATTEMPTS_MAX || Date.now() - lastAttempt < RETRY_MS)) return Promise.resolve();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
+  const timer = setTimeout(() => controller.abort(), CATALOG_DEADLINE_MS);
+  attempts++;
+  lastAttempt = Date.now();
   pending = (async () => {
     try {
       const response = await fetch(MODEL_CATALOG_URL, { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
       if (!response.ok) return;
       const next = parseModelCatalog(await response.json());
       if (!Object.keys(next).length) return;
-      catalog = next;
+      catalog = { ...MODEL_CATALOG_SNAPSHOT.providers, ...next };
+      loaded = true;
       changed();
     } catch { /* Capability discovery must not prevent a connection or generation. */ }
-    finally { clearTimeout(timer); refreshed = Date.now(); pending = undefined; }
+    finally { clearTimeout(timer); pending = undefined; }
   })();
   return pending;
 }
@@ -137,5 +153,5 @@ export function suggestedModels(provider: ProviderId, endpoint?: string): string
 }
 
 export function resetModelCatalog(): void {
-  catalog = {}; native.clear(); refreshed = 0; changed();
+  catalog = { ...MODEL_CATALOG_SNAPSHOT.providers }; native.clear(); loaded = false; attempts = 0; lastAttempt = 0; changed();
 }

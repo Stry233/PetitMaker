@@ -192,7 +192,8 @@ async function upgradeToSealed(): Promise<void> {
   hydratedSignature = keyringSignature(plain as Partial<Record<ProviderId, string>>);
 }
 
-export function saveAgentSettings(s: AgentSettings): void {
+/** Writes the record and reports whether it landed; private-mode storage throws from `setItem`. */
+export function saveAgentSettings(s: AgentSettings): boolean {
   const keys: Record<string, string> = {};
   for (const [k, v] of Object.entries(s.keys)) if (v) keys[k] = enc(v);
   // The sealed blob still holds exactly these keys, so the obfuscated copy is left out.
@@ -209,15 +210,21 @@ export function saveAgentSettings(s: AgentSettings): void {
     }
   }
   // Write synchronously before the asynchronous vault upgrade.
-  localStorage.setItem(
-    PREFS.agentSettings.key,
-    JSON.stringify({
-      provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
-      askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
-      oversight: s.oversight,
-      customBaseUrl: s.customBaseUrl,
-      regionBaseUrl: s.regionBaseUrl,
-    }),
-  );
+  let written = true;
+  try {
+    localStorage.setItem(
+      PREFS.agentSettings.key,
+      JSON.stringify({
+        provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
+        askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
+        oversight: s.oversight,
+        customBaseUrl: s.customBaseUrl,
+        regionBaseUrl: s.regionBaseUrl,
+      }),
+    );
+  } catch {
+    written = false; // Storage disabled, or quota exceeded: the settings stay session-only.
+  }
   void upgradeToSealed().catch(() => {});
+  return written;
 }

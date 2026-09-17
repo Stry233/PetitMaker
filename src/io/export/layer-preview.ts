@@ -56,7 +56,7 @@ function objectColor(catalogId: string): string {
 
 /** Draw ONE layer's CROSS-SECTION at height `level` into `rect` (cumulative, like the 2D layer
  *  panel: a cell at elevation 3 occupies layers 1, 2 AND 3). Browser-only (Canvas-2D).
- *  - The island silhouette (zones) is the base: FULL on the ground layer (it IS the land),
+ *  - The planet silhouette (zones) is the base: FULL on the ground layer (it IS the land),
  *    FAINT on higher layers (context behind that layer's tiles).
  *  - Level 0 (Ground): the land plus ground-level water (elevation 0) and ground objects.
  *  - Level N >= 1: every cell whose column reaches height N — a mountain with elevation >= N shows
@@ -98,7 +98,7 @@ export function paintLayer(
       const px = fit.x + col * cellW;
       const py = fit.y + row * cellH;
 
-      // Base island: full on the ground layer, faint as context on higher layers.
+      // Base silhouette: full on the ground layer, faint as context on higher layers.
       ctx.globalAlpha = ground ? 1 : 0.3;
       ctx.fillStyle = ZONE_COLORS[cell.zone] ?? ZONE_COLORS[2]!;
       ctx.fillRect(px, py, pw, ph);

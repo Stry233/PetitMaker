@@ -390,6 +390,18 @@ describe('where the restore offer stands', () => {
 
   const card = () => screen.queryByTestId('restore-card');
 
+  it('steps aside for the What\'s new window and comes back, where any other window dismisses it', async () => {
+    mountShell();
+    await screen.findByTestId('restore-card');
+    act(() => { useEditorStore.getState().setModal('whatsNew', true); });
+    await waitFor(() => expect(card()).toBeNull());
+    act(() => { useEditorStore.getState().setModal('whatsNew', false); });
+    await screen.findByTestId('restore-card');
+    act(() => { useEditorStore.getState().setModal('settings', true); });
+    act(() => { useEditorStore.getState().setModal('settings', false); });
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
   it('stands in the shelf band a fresh session leaves empty', async () => {
     mountShell();
     const el = await screen.findByTestId('restore-card');

@@ -58,7 +58,7 @@ describe('cutBackingByCorner', () => {
     expect(cutBackingByCorner(cell(TerrainType.Mountain, 3, FAN_TL), 3, at({}))[0]).toBeNull();
   });
 
-  it('a cut MOUNTAIN island corner reveals the WATER it sits in (no lower mountain step)', () => {
+  it('a cut MOUNTAIN islet corner reveals the WATER it sits in (no lower mountain step)', () => {
     // a mountain@1 rock with water@0 on the cut corner's edges → the cut shows the lake, not a ground notch
     const backs = cutBackingByCorner(cell(TerrainType.Mountain, 1, FAN_TL), 1, at({
       '-1,0': cell(TerrainType.Water, 0), '0,-1': cell(TerrainType.Water, 0),

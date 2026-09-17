@@ -2,7 +2,7 @@
  * Stage C of the methodology pipeline (districts and places, the two scales): DISTRICTS TAKE A
  * TREATMENT, and each one subdivides into the composed PLACES the kits fill.
  *
- * Stage A tiles the island with terrace plates and stage B cuts it into districts with straight
+ * Stage A tiles the planet with terrace plates and stage B cuts it into districts with straight
  * streets. This stage is what makes a district a PLACE rather than a leftover: it hands every block
  * a treatment — an anchor region with its buildings, one theme, or the quiet ground a block gets
  * where nothing else claims it — and then cuts the block into composed places (`PLACE_SIDE`, whose
@@ -13,7 +13,7 @@
  * NO NO-MAN'S LAND. A block no street reaches, and a block no theme wanted, both get the quiet
  * treatment rather than nothing: sparse planting with an edged border, the bordered blocks the
  * garden town draws its plots with. The style target does the same thing at map scale — its wall
- * band is a third of the island at under 1% object cover — so quiet ground is a composition here,
+ * band is a third of the planet at under 1% object cover — so quiet ground is a composition here,
  * not a gap.
  *
  * The output is a `DesignPlan`, so everything downstream of a plan (anchor placement, the kits, the
@@ -174,7 +174,7 @@ export function planDistricts(
   const unplaced: string[] = [];
   const taken = new Set<number>();
 
-  // THE ANCHORS FIRST, spread over the island. The target's twelve buildings stand 13 to 70 cells
+  // THE ANCHORS FIRST, spread over the planet. The target's twelve buildings stand 13 to 70 cells
   // from the plaza, near and far, so the choice is farthest-point over the blocks that can hold the
   // lot rather than the nearest ones that fit.
   //
@@ -583,7 +583,7 @@ function freeArea(block: Block, taken: ReadonlySet<number>, W: number): FreeArea
 }
 
 /** Where a road tile could be laid on the composition's own ground: the cells whose whole dual-grid
- *  window stands on the island at one tier. The same window `streets.ts` lays its pavement by and
+ *  window stands on the planet at one tier. The same window `streets.ts` lays its pavement by and
  *  the `flat` trait validates a coating over. */
 function pavableGround(template: MapTemplate, tiers: Int8Array): Uint8Array {
   const W = template.width, H = template.height;
@@ -793,7 +793,7 @@ export function lookOut(
 
 /** The bounding rect of the composition's own high ground: the plates standing within one tier of its
  *  peak. The landmark asks a plan for one, and the composition is what decides where the mass sits, so
- *  this REPORTS the mass rather than dictating it. An island with no relief reports an empty rect. */
+ *  this REPORTS the mass rather than dictating it. A planet with no relief reports an empty rect. */
 export function highGround(composition: CompositionPlan): Rect {
   const peak = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
   if (peak <= 0) return { x: 0, y: 0, w: 0, h: 0 };

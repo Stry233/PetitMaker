@@ -108,4 +108,4 @@ The marked reference sections in [ARCHITECTURE.md](docs/ARCHITECTURE.md) are gen
 
 ## Questions
 
-For contribution questions, or to arrange an asset-permission or credit record, email **selka.craft@outlook.com**. Security issues follow a separate process. See `SECURITY.md`.
+For contribution questions, or to arrange an asset-permission or credit record, email **petit.maker@outlook.com**. Security issues follow a separate process. See `SECURITY.md`.

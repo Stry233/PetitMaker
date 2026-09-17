@@ -30,7 +30,6 @@ const BOX_STYLE: CSSProperties = {
   fontFamily: font.family,
   color: colors.brownText,
   lineHeight: 1.5,
-  scrollbarWidth: 'thin',
 };
 
 /** Spacing between rendered Markdown blocks. */

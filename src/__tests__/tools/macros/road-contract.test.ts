@@ -154,14 +154,14 @@ describe('road contract: a press never deletes what a hand placed', () => {
 });
 
 describe('road contract: an unrouted whole-map press names its own reason', () => {
-  it('roads: a house on an island too far to bridge reports "unrouted", not "place some buildings"', () => {
+  it('roads: a house on an islet too far to bridge reports "unrouted", not "place some buildings"', () => {
     const kit = makeKit();
-    // A moat wide enough that no catalog bridge/ramp can span it, isolating an island (with its
+    // A moat wide enough that no catalog bridge/ramp can span it, isolating an islet (with its
     // own house) from the open strip at x<15 — where the hub sits (it is the larger region).
     // Doorsteps exist; nothing walks or bridges between them.
     for (let y = 3; y <= 41; y++) {
       for (let x = 15; x <= 41; x++) {
-        if (x >= 28 && x <= 41 && y >= 10 && y <= 30) continue; // the island itself, sized for the house below
+        if (x >= 28 && x <= 41 && y >= 10 && y <= 30) continue; // the islet itself, sized for the house below
         kit.state.cells[y]![x]!.zone = CellZone.Void;
       }
     }

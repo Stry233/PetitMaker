@@ -1,7 +1,7 @@
 /*
  * picture-bands.tsx — real crops of the real composed share picture, one per band the export
  * lays out. The picture is painted ONCE by the export's own pipeline (`paintPreviewLayout` over a
- * posed built island), and each figure slices it by the composition's own rects, so a crop can
+ * posed built map), and each figure slices it by the composition's own rects, so a crop can
  * never drift from where the band truly sits or how it truly looks. The pose: a titled, badged,
  * importable Standard export with the layer column, the 3D card and the footer on.
  */
@@ -22,7 +22,7 @@ import {
 import { PreviewFrame } from './PreviewFrame';
 import { fullIslandState } from './share';
 
-/** The subject island is procedurally generated (the session's designed build), and the posed
+/** The subject map is procedurally generated (the session's designed build), and the posed
  *  summary says exactly that, so the header wears the real Procedural badge. */
 const POSED_SUMMARY: MapProvenanceSummary = {
   containsAi: false, containsProcedural: true,
@@ -36,7 +36,7 @@ const POSED_SUMMARY: MapProvenanceSummary = {
 /** One creation stamp for the whole pose, so every figure's code band is the same band. */
 const POSED_CREATED_AT = new Date(0).toISOString();
 
-/** The 3D card's stills, captured once per island: every band figure shares the one set. */
+/** The 3D card's stills, captured once per map: every band figure shares the one set. */
 let anglesCache: { island: GridState; promise: Promise<HTMLImageElement[]> } | null = null;
 function cardAngles(island: GridState): Promise<HTMLImageElement[]> {
   if (anglesCache?.island !== island) {

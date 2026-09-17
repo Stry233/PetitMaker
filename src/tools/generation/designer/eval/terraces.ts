@@ -23,7 +23,7 @@ import { NB4, readGrid } from './grid';
 export const TERRACE_MIN_CELLS = 30;
 
 /** The box fill at which a component IS its bounding box. Read on the two references this counts 9 of
- *  the terraced island's 38 components and all 5 of the garden town's. */
+ *  the terraced planet's 38 components and all 5 of the garden town's. */
 export const BOXY_FILL = 0.9;
 
 /**
@@ -38,7 +38,7 @@ export const TERRACE_FILL_MAX = 0.94;
 export interface TerraceShape {
   /** Components of `TERRACE_MIN_CELLS` or more. */
   components: number;
-  /** Cells of the largest, as a share of the island's land. */
+  /** Cells of the largest, as a share of the planet's land. */
   largestShare: number;
   /** Median box fill over those components: the tofu reading. */
   medianFill: number;

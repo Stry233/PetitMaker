@@ -579,7 +579,7 @@ describe('the three bands', () => {
     const before = screen.getByTestId('shell-gen-body');
     const names = screen.getByRole('tab', { name: 'Maze' }).parentElement;
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await settle();
 
     const after = screen.getByTestId('shell-gen-body');
@@ -667,7 +667,7 @@ describe('the row of names', () => {
     mount();
     await settle();
     expect(screen.getAllByRole('tab').map((el) => el.textContent))
-      .toEqual(['Maze', 'Letter', 'Picture', 'Island']);
+      .toEqual(['Maze', 'Letter', 'Picture', 'Planet']);
     expect(TABS.map((tab) => tab.id)).toEqual(['maze', 'text', 'image', 'island']);
     // Nothing stands beside them: no recipe field, and no actions.
     expect(screen.queryByLabelText('Seed')).toBeNull();
@@ -701,7 +701,7 @@ describe('the scope chip', () => {
     useEditorStore.setState({ region: [] });
     mount();
     await settle();
-    expect(within(screen.getByTestId('shell-gen-scope')).getByText('Whole island')).toBeTruthy();
+    expect(within(screen.getByTestId('shell-gen-scope')).getByText('Whole planet')).toBeTruthy();
   }, 60_000);
 
   it('opens a screen of its own, taking the cards with it', async () => {
@@ -1053,7 +1053,7 @@ describe('the island kind', () => {
     mount();
     await settle();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await settle();
     expect(Number(screen.getByRole('slider', { name: 'Tallest layer' }).getAttribute('aria-valuemax')))
       .toBe(maxElevationFor('island'));
@@ -1071,7 +1071,7 @@ describe('the sliders', () => {
     installKit();
     mount();
     // Named rather than assumed: the row's first tab is the default, and it is not this one.
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await settle();
 
     const slider = screen.getByRole('slider', { name: 'Tallest layer' });
@@ -1093,7 +1093,7 @@ describe('the sliders', () => {
   it('swaps richness for corridor width, since one of the two is meaningless per kind', async () => {
     installKit();
     mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await settle();
     expect(screen.queryByRole('slider', { name: 'Scenery richness' })).not.toBeNull();
 
@@ -1114,7 +1114,7 @@ describe('the sliders', () => {
   it('keeps the same slider length across generator kinds', async () => {
     installKit();
     mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await settle();
     const drawn = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
 
@@ -1210,7 +1210,7 @@ describe('clicking a card', () => {
     mount();
     await settle();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
     expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBeNull();
   }, 30_000);
@@ -1327,7 +1327,7 @@ describe('returning to a kind already photographed', () => {
 
     // The shelf opens on the maze; the island is the second kind photographed, and the RETURN to
     // the maze is the moment under test.
-    fireEvent.click(screen.getByRole('tab', { name: 'Island' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
 
     const built = vi.mocked(barrelCandidate).mock.calls.length;

@@ -9,7 +9,7 @@ import {
 
 const W = 100, H = 100;
 
-/** An all-land island, so a span is measured against the whole 100x100 board. */
+/** All land, so a span is measured against the whole 100x100 board. */
 function island(): Uint8Array {
   return new Uint8Array(W * H).fill(1);
 }
@@ -88,7 +88,7 @@ describe('the junction grammar, read off a pavement mask', () => {
     expect(networkShape(long, island(), W, H).fullSpanShare).toBe(1);
   });
 
-  it('measures the span against the ISLAND, not the board', () => {
+  it('measures the span against the LAND, not the board', () => {
     const land = new Uint8Array(W * H);
     for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) land[y * W + x] = 1;
     const paved = new Uint8Array(W * H);

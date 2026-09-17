@@ -10,6 +10,7 @@ import {
 } from '../../../ui/shell/splash/preload';
 import { splashAssetUrls } from '../../../ui/shell/splash/asset-list';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
+import { bannerTravel, splashFit } from '../../../ui/shell/splash/Splash';
 import { I18nProvider } from '../../../i18n/context';
 
 beforeEach(() => { localStorage.clear(); resetPreloadForTest(); });
@@ -116,5 +117,18 @@ describe('the component', () => {
 
   it('the hand-off waits out the declared motion, so the overlay cannot vanish mid-slide', () => {
     expect(MOTIONS['splash.handoff'].duration).toBeGreaterThan(0);
+  });
+});
+
+describe('the column fits the visible window', () => {
+  it('stands at full size where the window has room and zooms down below it', () => {
+    expect(splashFit(768)).toBe(1);
+    expect(splashFit(420)).toBe(1);
+    expect(splashFit(300)).toBeCloseTo(300 / 420, 6);
+  });
+
+  it('opens the banner where the boot loader drew it, whatever the column zoom', () => {
+    expect(bannerTravel(1)).toBe(121);
+    expect(bannerTravel(0.5)).toBeCloseTo((184 * 0.5 - 63) / 0.5, 6);
   });
 });

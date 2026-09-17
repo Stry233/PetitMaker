@@ -73,6 +73,8 @@ export const PREFS = {
   // Existing hint keys remain stable so dismissed hints stay dismissed.
   navGestureHint:  pref<boolean>({ key: 'petit.navGestureHintSeen',       parse: asBool, fallback: () => false, write: fromBool }),
   inAppBrowserSeen:pref<boolean>({ key: 'petit.inAppBrowserNoticeSeen',   parse: asBool, fallback: () => false, write: fromBool }),
+  // The app version this browser last opened; empty until a first visit records one.
+  lastSeenVersion: pref<string>({  key: 'petit-planet-last-seen-version', parse: raw, fallback: none }),
 
   // Structured blobs are parsed by their owning modules. `tourSeen` is accessed directly because
   // missing storage means unseen, while unavailable storage suppresses the tour.

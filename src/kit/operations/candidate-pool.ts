@@ -1,5 +1,5 @@
 /**
- * The worker pool candidate generation runs in, so a batch of islands is built OFF the main
+ * The worker pool candidate generation runs in, so a batch of planet builds runs OFF the main
  * thread: the page stays smooth while six generations run, and two or three run at once instead
  * of one after another. The macro tool's ghost preview shares it — the same closure at a smaller
  * size — and jumps the queue, since a preview answers a pointer that is waiting right now while a
@@ -122,6 +122,14 @@ function ensureSlots(demand = 1): Slot[] {
       dispatch();
     };
     worker.onerror = () => breakPool(new Error('generation worker broke'));
+    // An answer this thread cannot deserialize carries no job id, so the slot's own job is the one
+    // to settle. The worker itself is intact, so it keeps its place and takes the next job.
+    worker.onmessageerror = () => {
+      const job = slot.job;
+      slot.job = null;
+      job?.reject(new Error('generation worker answer could not be read'));
+      dispatch();
+    };
     slots.push(slot);
   }
   return slots;

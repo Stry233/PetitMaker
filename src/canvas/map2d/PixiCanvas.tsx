@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
 import { annotationInkScale } from '../../core/model/annotations';
@@ -17,8 +17,16 @@ import { usePointerInteraction, paintSelection } from '../interaction/usePointer
 import { useCursor } from '../interaction/use-cursor';
 import { registerToolManager, setActiveView } from '../active-view';
 import { setMapRenderer } from './renderer-registry';
+import { watchContextLoss } from '../context-loss';
 
+/** The 2D view. A WebGL context the engine takes and never restores leaves the canvas blank, so the
+ *  view is rebuilt on a fresh one; the map itself lives in the store and is untouched. */
 export function PixiCanvas() {
+  const [generation, setGeneration] = useState(0);
+  return <Canvas2D key={generation} onUnrecoverableLoss={() => setGeneration((g) => g + 1)} />;
+}
+
+function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const toolManagerRef = useRef<ToolManager | null>(null);
@@ -74,6 +82,11 @@ export function PixiCanvas() {
     // runs after the mode effect already looked for a renderer that was not there yet.
     renderer.setPresenting(useEditorStore.getState().viewMode !== '3d');
     setMapRenderer(renderer);
+    // The Canvas2D renderer has no context to lose.
+    const gl = (renderer.app.renderer as { gl?: WebGLRenderingContext }).gl;
+    const unwatch = gl
+      ? watchContextLoss(renderer.app.view as HTMLCanvasElement, { isLost: () => gl.isContextLost(), onUnrecovered: onUnrecoverableLoss })
+      : () => {};
 
     // Always open a fresh map. If an autosave exists, the shell offers to restore it from its own
     // card (which holds the saved map in memory, so opening fresh here can't lose it) — the editor
@@ -87,6 +100,7 @@ export function PixiCanvas() {
     // Keyboard shortcuts live in ONE place: ui/shell/use-editor-shortcuts.
 
     return () => {
+      unwatch();
       renderer.destroy();
       setMapRenderer(null);
       rendererRef.current = null;

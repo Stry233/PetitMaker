@@ -440,6 +440,33 @@ describe('the select state', () => {
     expect((items().find((n) => n.id === 'c1') as ChipNote).x).toBe(5.5);
   });
 
+  it('moves a selected note on an engine with no structuredClone', () => {
+    // Safari before 15.4 has none. The drag snapshot is plain planning data either way.
+    vi.stubGlobal('structuredClone', undefined);
+    try {
+      s().addAnnotation({ kind: 'chip', id: 'c2', x: 5.5, y: 15.5, tag: 'plaza', size: 'm', color: '#FFB347' });
+      tool.onPointerDown(at(5, 15), at(0, 0), press(5.5, 15.5));
+      tool.onPointerUp(at(5, 15), at(0, 0), press(5.5, 15.5));
+      tool.onPointerDown(at(5, 15), at(0, 0), press(5.5, 15.5));
+      tool.onPointerMove(at(9, 15), at(0, 0), press(9.5, 15.5));
+      tool.onPointerUp(at(9, 15), at(0, 0), press(9.5, 15.5));
+      expect((items().find((n) => n.id === 'c2') as ChipNote).x).toBe(9.5);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('drags a zone from its own snapshot, so the offset is measured from where the press began', () => {
+    // The snapshot must be independent of the live items: reading them back mid-drag would add
+    // each frame's move to the last.
+    s().setAnnotationSelection(['z1']);
+    tool.onPointerDown(at(4, 8), at(0, 0), press(4, 8));
+    tool.onPointerMove(at(6, 8), at(0, 0), press(6, 8));
+    tool.onPointerMove(at(8, 8), at(0, 0), press(8, 8));
+    tool.onPointerUp(at(8, 8), at(0, 0), press(8, 8));
+    expect((items().find((n) => n.id === 'z1') as ZoneNote).cells.map((c) => c.x)).toEqual([8, 9]);
+  });
+
   it('grabAt requires an already-selected note and an editable layer', () => {
     expect(tool.grabAt(at(4, 8), press(4, 8))).toBe(false);
     s().setAnnotationSelection(['z1']);

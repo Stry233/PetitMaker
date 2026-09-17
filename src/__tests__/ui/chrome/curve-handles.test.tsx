@@ -207,6 +207,14 @@ describe('dragging', () => {
     expect(line.getAttribute('points')!.split(' ')).toHaveLength(3);
   });
 
+  it('keeps the browser out of a touch drag on a handle', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    const grab = screen.getByLabelText('Curve point 1') as HTMLElement;
+    expect(grab.style.touchAction).toBe('none');
+    expect((screen.getByLabelText('Outgoing direction at curve point 1') as HTMLElement).style.touchAction).toBe('none');
+  });
+
   it('does not let the press through to the canvas, which would dismiss the handles', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);

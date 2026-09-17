@@ -20,7 +20,7 @@ import {
 } from '../../core/model/types';
 import { getCell, rectsOverlap } from '../../core/model/grid-model';
 import { ELEVATION_MAX } from '../../core/model/constants';
-import { getCatalogByCategory, getCatalogItem, getRoadMaterials } from '../../state/catalog';
+import { getCatalogByCategory, getCatalogItem, getRoadMaterials, getOfferedItem } from '../../state/catalog';
 import { localizedName } from '../../i18n/context';
 import { edgeCutGeneratedTerrain, edgeCutGeneratedRoads } from '../../tools/edge-cut';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
@@ -379,7 +379,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         cy: { type: 'integer' },
         size: { type: 'integer', minimum: 8, maximum: 48, description: 'Width in cells.' },
         ringId: { type: 'string', description: 'Catalog id planted in a ring around the figure (one species; omit for bare water).' },
-        islandFor: { type: 'string', description: 'A building id to stand on a dry island at the figure\'s heart (the house-in-a-pond set piece); the island is sized for its footprint and margin, and a bridge reaches it via find_bridge_sites.' },
+        islandFor: { type: 'string', description: 'A building id to stand on a dry islet at the figure\'s heart (the house-in-a-pond set piece); the islet is sized for its footprint and margin, and a bridge reaches it via find_bridge_sites.' },
       },
       required: ['shape', 'cx', 'cy', 'size'],
     },
@@ -739,7 +739,7 @@ async function scatterObjects(deps: AgentToolDeps, input: Record<string, unknown
     return argError('catalogIds must be a non-empty array of item ids from the CATALOG section.', `catalogIds: ["${treeId}"], count: 20`);
   }
   for (const id of ids) {
-    if (!getCatalogItem(id)) return argError(`unknown catalogId "${id}", use ids from the CATALOG section or get_catalog_item.`);
+    if (!getOfferedItem(id)) return argError(`unknown catalogId "${id}", use ids from the CATALOG section or get_catalog_item.`);
   }
   const state = deps.getState();
   const rect = rectInput(input);
@@ -882,7 +882,7 @@ function figureCells(shape: 'heart' | 'ring' | 'crescent', cx: number, cy: numbe
 /**
  * draw_figure: the reference maps' iconic marks (a heart lake, a ring pond, a crescent) painted as
  * ground water with true symmetry, plus an optional single-species ring of trees or flowers around
- * the outline — the peach ring around the expert island's heart pond, as one deterministic call.
+ * the outline — the peach ring around the expert planet's heart pond, as one deterministic call.
  */
 async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): Promise<ToolResultBody> {
   const shape = input.shape === 'ring' || input.shape === 'crescent' ? input.shape : input.shape === 'heart' ? 'heart' : null;
@@ -905,10 +905,9 @@ async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): 
   if (zoned.length < cells.length) { cells.length = 0; cells.push(...zoned); }
 
   const ringId = typeof input.ringId === 'string' ? input.ringId : undefined;
-  if (ringId && !getCatalogItem(ringId)) return argError(`unknown ringId "${ringId}", use a tree or flora id from the CATALOG section.`);
-  // islandFor: keep a DRY island at the figure's heart sized for the item plus the flat trait's
-  // margin, and stand the item on it in the same stroke — the reference's house-in-a-pond set
-  // piece, which hand composition kept missing because the dry margin is invisible arithmetic.
+  if (ringId && !getOfferedItem(ringId)) return argError(`unknown ringId "${ringId}", use a tree or flora id from the CATALOG section.`);
+  // islandFor: keep a DRY islet at the figure's heart, sized for the item plus the flat trait's
+  // margin, and stand the item on it in the same stroke (the house-in-a-pond set piece).
   const islandFor = typeof input.islandFor === 'string' ? input.islandFor : undefined;
   const islandItem = islandFor ? getCatalogItem(islandFor) : undefined;
   if (islandFor && !islandItem) return argError(`unknown islandFor "${islandFor}", use a building id from the CATALOG section.`);
@@ -917,7 +916,7 @@ async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): 
   if (islandItem) {
     const iw = islandItem.width + 2, ih = islandItem.height + 2;
     if (size < Math.max(iw, ih) + 8) {
-      return argError(`a ${islandItem.width}x${islandItem.height} island home needs the figure at least ${Math.max(iw, ih) + 8} across (island + margin + a real water ring); raise size.`);
+      return argError(`a ${islandItem.width}x${islandItem.height} islet home needs the figure at least ${Math.max(iw, ih) + 8} across (islet + margin + a real water ring); raise size.`);
     }
     let mx = 0, my = 0;
     for (const c of cells) { mx += c.x; my += c.y; }
@@ -989,7 +988,7 @@ async function drawFigure(deps: AgentToolDeps, input: Record<string, unknown>): 
     deps,
     commands,
     (ok) => `Drew a ${shape} of ${waterCells.length} water cells at (${Math.round(cx)},${Math.round(cy)})`
-      + `${islandPlace ? `; ${islandFor} stands on a dry island at (${islandPlace.x},${islandPlace.y}) — find_bridge_sites near it for the way across` : ''}`
+      + `${islandPlace ? `; ${islandFor} stands on a dry islet at (${islandPlace.x},${islandPlace.y}) — find_bridge_sites near it for the way across` : ''}`
       + `${ringId ? `; ring: ${ringWanted} ${ringId} positions around it (${Math.max(0, ok - 1 - (islandPlace ? 1 : 0))} landed)` : ''}. The shape is symmetric by construction.`,
     waterCells,
   );
@@ -1003,7 +1002,7 @@ function buildPlaceCmd(
   rotation: 0 | 90 | 180 | 270,
   id?: string,
 ): Extract<Command, { type: CommandType.PlaceObject }> | string {
-  const item = getCatalogItem(catalogId);
+  const item = getOfferedItem(catalogId);
   if (!item) return `Arguments: unknown catalogId "${catalogId}", use ids from the CATALOG section or get_catalog_item.`;
   const obj: PlacedObject = {
     id: id ?? `agent-${Date.now().toString(36)}-${agentObjCounter++}`,
@@ -1166,7 +1165,7 @@ function trimCorner(deps: AgentToolDeps, input: Record<string, unknown>): ToolRe
 }
 
 function getCatalogItemTool(input: Record<string, unknown>): ToolResultBody {
-  const item = getCatalogItem(String(input.id));
+  const item = getOfferedItem(String(input.id));
   if (!item) return argError(`unknown item id "${String(input.id)}", use ids from the CATALOG section.`);
   return {
     isError: false,

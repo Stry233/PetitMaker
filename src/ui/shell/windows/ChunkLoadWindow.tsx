@@ -3,11 +3,11 @@
  *
  * The corner disc reads ONE region, the one under the pointer, which is the right thing to watch
  * while building and the wrong thing for "where is there room". So the press opens this: the whole
- * island as a grid of its regions, each named the way the map itself names it (row letter down the
+ * planet as a grid of its regions, each named the way the map itself names it (row letter down the
  * left, column number along the bottom, so "B4" here is "B4" there).
  *
  * A GRID, NOT A TABLE. The question is spatial, and a list sorted by name is a list of names: the
- * regions are laid out where they are, so a crowded corner of the island looks like a crowded
+ * regions are laid out where they are, so a crowded corner of the map looks like a crowded
  * corner. Empty regions are drawn too, for the same reason: a table of only the regions holding
  * something would have no map in it.
  *

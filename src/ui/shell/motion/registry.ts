@@ -70,7 +70,7 @@ export interface AmbientMotion extends Base {
 export type Motion = InformMotion | AmbientMotion;
 
 export const MOTIONS = {
-  /** One island tile arrives per asset-preload slice. */
+  /** One map tile arrives per asset-preload slice. */
   'splash.tile.plop': {
     tier: 'ambient', curve: 'bouncy', amplitude: 26, amplitudeUnit: 'px',
   },
@@ -78,7 +78,7 @@ export const MOTIONS = {
   'splash.logo.travel': {
     tier: 'ambient', curve: 'punchy', duration: 0.5, amplitude: 160, amplitudeUnit: 'px',
   },
-  /** The island and the pill fading up once the logo has landed. */
+  /** The map and the pill fading up once the logo has landed. */
   'splash.content.fade': {
     tier: 'ambient', curve: 'punchy', duration: 0.35, amplitude: 1, amplitudeUnit: 'opacity',
   },
@@ -272,7 +272,7 @@ export const MOTIONS = {
   'tour.gesture.orbit': {
     tier: 'inform', curve: 'swing', duration: TOUR_REP_S * TOUR_BUTTONS, loop: true,
     amplitude: 14, amplitudeUnit: 'px',
-    says: 'in 3D a left drag slides the island and a right or middle drag turns it',
+    says: 'in 3D a left drag slides the map and a right or middle drag turns it',
   },
   /** Tips the flat-map diagram into its 3D view; angular travel has no registry amplitude unit. */
   'tour.gesture.tilt': {

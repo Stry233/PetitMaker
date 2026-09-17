@@ -265,7 +265,7 @@ export const CORRIDOR = { min: 1, max: 3 } as const;
 
 /**
  * A maze wall is at most `CORRIDOR.max` cells wide, and V-MTN-03 wants a 3x3 base under anything
- * above layer 3, so a taller maze would have most of its walls refused. The island has no such
+ * above layer 3, so a taller maze would have most of its walls refused. The planet kind has no such
  * limit and reaches the grid's own ceiling.
  */
 export const MAZE_MAX_ELEVATION = 3;

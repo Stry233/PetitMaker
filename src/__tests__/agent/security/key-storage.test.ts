@@ -155,3 +155,20 @@ describe('a freshly sealed keyring', () => {
     expect(rec.keysSealed).toBeDefined();
   });
 });
+
+describe('storage that refuses to write', () => {
+  it('reports the failure instead of throwing out of the save', async () => {
+    // Safari private mode throws from `setItem`; the save runs inside a React handler.
+    vi.resetModules();
+    const { loadAgentSettings, saveAgentSettings } = await import('../../../agent/security/key-storage');
+    backing.clear();
+    const s = loadAgentSettings();
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('quota'); });
+    try {
+      expect(saveAgentSettings({ ...s, provider: 'openai' })).toBe(false);
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(saveAgentSettings({ ...s, provider: 'openai' })).toBe(true);
+  });
+});

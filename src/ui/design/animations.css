@@ -11,14 +11,17 @@ button, input, select, textarea {
    button — including transparent icon buttons — and global transforms would
    fight Framer's. */
 
-/* Editor chrome is a tool, not a document: kill text selection (the blue
-   highlight when dragging), native image drag, and the long-press callout.
-   Inputs stay selectable. */
+/* Editor chrome is a tool, not a document: no text selection, native image drag, long-press
+   callout, or platform tap halo. Inputs stay selectable. */
 html, body {
+  /* The editor is not a scrollable document: without this, Android pull-to-refresh reloads the app
+     from any chrome surface that reaches the top of its scroll. */
+  overscroll-behavior: contain;
   -webkit-user-select: none;
   -moz-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 input, textarea, [contenteditable="true"] {
   -webkit-user-select: text;
@@ -30,15 +33,11 @@ img {
   user-select: none;
 }
 
-/* Cozy rounded scrollbars — the native scrollbar is too square/chunky for the
-   rounded UI. A thin pill thumb on a transparent track, with breathing room
-   (transparent border + padding-box clip). Warm brown by default; any scroll
-   container can override the colour via --sb-thumb / --sb-thumb-hover (the dark
-   smoky Layer panel sets a light thumb). */
-* {
-  scrollbar-width: thin;                                              /* Firefox */
-  scrollbar-color: var(--sb-thumb, rgba(130, 96, 66, 0.40)) transparent;
-}
+/* Cozy rounded scrollbars: a thin pill thumb on a transparent track, warm brown by default,
+   recolourable per container through --sb-thumb / --sb-thumb-hover. Drawn from the pseudo-elements
+   on every device: Chromium ignores them once `scrollbar-width` or `scrollbar-color` is set on the
+   element, and Android's own overlay bar is a square, so the standard properties stand only where
+   the pseudo-elements do not exist. */
 *::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -57,6 +56,22 @@ img {
 }
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+/* A touch bar is always visible, so it takes less of the edge. */
+@media (pointer: coarse) {
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    border-width: 2px;
+  }
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb, rgba(130, 96, 66, 0.40)) transparent;
+  }
 }
 
 /* Shared circular spinner (ui/primitives/Spinner.tsx — the tight-space loader; roomy

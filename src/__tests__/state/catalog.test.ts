@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCatalogItem, getCatalogByCategory, getAllCategories, getAllItems } from '../../state/catalog';
+import { getCatalogItem, getCatalogByCategory, getAllCategories, getAllItems, getKnownItems, searchCatalog } from '../../state/catalog';
 import { ItemCategory } from '../../core/model/types';
 
 describe('Catalog', () => {
@@ -41,5 +41,20 @@ describe('Catalog', () => {
       expect(['point', 'brush']).toContain(item.placementMode);
       expect(Array.isArray(item.traits)).toBe(true);
     }
+  });
+});
+
+describe('a disabled catalog item', () => {
+  const id = 'facility-station';
+
+  it('stays known, so saves holding one still load and render', () => {
+    expect(getCatalogItem(id)).toBeDefined();
+    expect(getKnownItems().some((i) => i.id === id)).toBe(true);
+  });
+
+  it('is offered by no list, tab or search', () => {
+    expect(getAllItems().some((i) => i.id === id)).toBe(false);
+    expect(getCatalogByCategory(ItemCategory.Facility).some((i) => i.id === id)).toBe(false);
+    expect(searchCatalog('station', 'en').some((i) => i.id === id)).toBe(false);
   });
 });

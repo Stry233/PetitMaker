@@ -2,7 +2,7 @@
  * The blocks a kit builds a place out of, and the engine that lays them.
  *
  * TWO PLANTING GRAMMARS, both read off the decoded expert maps: a flower goes down as a STEP-1 SOLID
- * block of ONE species (the target island's beds are eleven blocks of exactly 30 at 5x6), a tree as a
+ * block of ONE species (the target planet's beds are eleven blocks of exactly 30 at 5x6), a tree as a
  * STEP-2 LATTICE (twenty of its twenty-two tree blocks). Everything below is one of those two, a pair
  * of straight runs of one species along a block's edges, or bare ground.
  *

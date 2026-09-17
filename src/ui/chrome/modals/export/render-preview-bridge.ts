@@ -7,6 +7,8 @@
 // preview stays in its loading state — there is no placeholder band.
 import { host } from '../../../../kit/host';
 import { computeComposition } from '../../../../io/export/compose';
+import { deviceCanvasLimits } from '../../../../io/export/canvas-limits';
+import { CANVAS_LIMITS } from '../../../../io/export/sizing';
 import { layersFor, maxTerrainElevation } from '../../../../io/export/layer-preview';
 import { paintComposition, CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
 import { brandInfo } from './brand';
@@ -120,7 +122,8 @@ function paintCanvasLayout(args: PaintPreviewArgs): { canvas: HTMLCanvasElement;
   // The code band's geometry is exact pixel math (moduleBaseFor of the composition width), so the
   // preview gets the TRUE band rect for free, and codeImg is the REAL encoded band (identical to
   // the export for the standard/high presets — same session createdAt).
-  const comp = computeComposition(options, mapAspect, badges, { layerCount: layersFor(state).length, mapPx: { w: baseMap.width, h: baseMap.height } });
+  const limits = deviceCanvasLimits();
+  const comp = computeComposition(options, mapAspect, badges, { layerCount: layersFor(state).length, mapPx: { w: baseMap.width, h: baseMap.height }, limits });
   if (options.card3d && card3dAngles.length === 0) comp.card3d = undefined;
 
   // Footer dimensions must report the FINAL export size. Presets fix their width, so the preview
@@ -129,7 +132,9 @@ function paintCanvasLayout(args: PaintPreviewArgs): { canvas: HTMLCanvasElement;
   let footerDims: { w: number; h: number } | undefined;
   if (options.resolution === 'original') {
     const nativePx = mapNativePx(state.template);
-    const nativeComp = computeComposition(options, mapAspect, badges, { layerCount: layersFor(state).length, mapPx: nativePx });
+    // The export composes the Original in tiles where one canvas cannot hold it, so its size does
+    // not depend on this device's ceiling.
+    const nativeComp = computeComposition(options, mapAspect, badges, { layerCount: layersFor(state).length, mapPx: nativePx, limits: CANVAS_LIMITS });
     footerDims = { w: nativeComp.width, h: nativeComp.height };
   }
 

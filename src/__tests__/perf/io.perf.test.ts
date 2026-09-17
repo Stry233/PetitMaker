@@ -22,7 +22,7 @@ const enc = new TextEncoder();
 const byteLen = (str: string) => enc.encode(str).length;
 
 describe.runIf(PERF)('perf: io', () => {
-  it('json codec: serialize and deserialize the dense island', async () => {
+  it('json codec: serialize and deserialize the dense map', async () => {
     const { state } = denseIsland();
     let json = '';
     await s.bench('json/serialize', () => { json = serialize(state); }, {
@@ -34,7 +34,7 @@ describe.runIf(PERF)('perf: io', () => {
     });
   });
 
-  it('share codec: encode and decode the dense island as a PetitGlyph payload', async () => {
+  it('share codec: encode and decode the dense map as a PetitGlyph payload', async () => {
     const { state } = denseIsland();
     const meta: ShareCodeMeta = { appVersion: 'perf', saveVersion: 1 };
     let payload: Uint8Array = new Uint8Array(0);
@@ -63,7 +63,7 @@ describe.runIf(PERF)('perf: io', () => {
     await s.bench('history/decode', () => { decodeHistory(section, bounds); });
   });
 
-  it('sectioned JSON export: pure assembly over the dense island', async () => {
+  it('sectioned JSON export: pure assembly over the dense map', async () => {
     const { state } = denseIsland();
     const opts = {
       includeGeneration: true,

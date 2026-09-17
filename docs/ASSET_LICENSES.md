@@ -82,7 +82,7 @@ A per-file provenance review is in progress, and some permission bases remain un
 
 If you would like to use our original art or brand, or to raise an intellectual-property concern (including a takedown request about game-referential material), contact us by email:
 
-- **Email:** [selka.craft@outlook.com](mailto:selka.craft@outlook.com)
+- **Email:** [petit.maker@outlook.com](mailto:petit.maker@outlook.com)
 - **Subject prefix:** `[IP]`
 
 Please include, so that we can act on your request:

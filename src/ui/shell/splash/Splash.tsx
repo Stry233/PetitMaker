@@ -1,5 +1,5 @@
 /*
- * Splash.tsx — the boot splash: a small island builds itself tile by tile while the art assets
+ * Splash.tsx — the boot splash: a small map builds itself tile by tile while the art assets
  * download, then the splash slides away and the app slides into place beneath it.
  *
  * Shown only on a build whose assets have not been fetched once already (`shouldShowSplash`), so
@@ -25,6 +25,7 @@ import { MOTIONS } from '../motion/registry';
 import { cssMotion, useMotion, useMotionAllowed } from '../motion/use-motion';
 import { activeTarget } from '../../../legal/deploy-targets';
 import { markSplashDone, preloadAssets } from './preload';
+import { useViewportSize } from '../../design/scale';
 
 // The SAME URL the boot loader uses (public/, unhashed): the loader has already downloaded its
 // target's masthead by the time this mounts, so the slide-up starts with the art on screen — a
@@ -34,7 +35,7 @@ import { markSplashDone, preloadAssets } from './preload';
 // locale would swap wordmarks mid-boot on every visitor whose language crosses the domain's.
 const BANNER = `${import.meta.env.BASE_URL}${activeTarget().bootBanner}`;
 
-/** The island, in the editor's own palette: s = sand shore, g = grass, m/M = the first two
+/** The map, in the editor's own palette: s = sand shore, g = grass, m/M = the first two
  *  mountain greens, p = pond. '.' is open ground (no tile). */
 const ISLAND = [
   '..ssss.',
@@ -50,7 +51,7 @@ const HUES: Record<string, string> = {
 
 interface Tile { x: number; y: number; hue: string; order: number }
 
-/** The tiles in build order: shore first, then inland — the island rises at its rim. */
+/** The tiles in build order: shore first, then inland — the map rises at its rim. */
 function islandTiles(): Tile[] {
   const tiles: { x: number; y: number; hue: string }[] = [];
   ISLAND.forEach((row, y) => [...row].forEach((ch, x) => {
@@ -67,11 +68,21 @@ const TILE_PX = 32;
 const TILE_GAP = 3;
 /** The floor on the splash's visible time: below it the build reads as a flicker, not a build. */
 const MIN_SHOW_MS = 1200;
-/** The pause between the island completing and the hand-off. */
+/** The pause between the map completing and the hand-off. */
 const DONE_BEAT_MS = 550;
-/** How far below its resting place the banner opens: the boot loader's centred banner top
- *  (50vh - 63) minus the splash column's (50vh - 184). See the arrival comment below. */
-const BANNER_TRAVEL_Y = 121;
+/** The column's height with breathing room; shorter windows zoom the column down to fit. */
+const SPLASH_ROOM = 420;
+
+/** The column's zoom for a window of `viewportH` px, 1 wherever the column fits. */
+export function splashFit(viewportH: number): number {
+  return Math.min(1, viewportH / SPLASH_ROOM);
+}
+
+/** How far below its resting place the banner opens, in the column's own px: the boot loader's
+ *  centred banner top (50vh - 63) minus the zoomed column's (50vh - 184 * fit). */
+export function bannerTravel(fit: number): number {
+  return (184 * fit - 63) / fit;
+}
 
 export interface SplashProps {
   /** Fired when the hand-off STARTS — App slides its content plane on the same clock. */
@@ -88,14 +99,15 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
   const [progress, setProgress] = useState(0); // 0..1, fetch-true
   const [leaving, setLeaving] = useState(false);
   // The ARRIVAL: index.html's static boot loader shows this same masthead centred, so the
-  // splash's own banner opens at those pixels and slides up to its resting place; the island and
+  // splash's own banner opens at those pixels and slides up to its resting place; the map and
   // the pill fade up once it lands. The offset is arithmetic, not measurement — both layouts are
   // 50vh-centred columns of known heights (boot: banner 86 + gap 28 + dot 12 → banner top at
-  // 50vh - 63; splash: banner 86 + gap 34 + island 172 + gap 34 + pill 42 → banner top at
+  // 50vh - 63; splash: banner 86 + gap 34 + map 172 + gap 34 + pill 42 → banner top at
   // 50vh - 184) — so the first painted frame already stands at the start.
   const [phase, setPhase] = useState<'arriving' | 'ready'>('arriving');
   const arriveAllowed = useMotionAllowed('splash.logo.travel');
   const travelTransition = useMotion('splash.logo.travel');
+  const fit = splashFit(useViewportSize().h);
 
   useEffect(() => {
     if (!arriveAllowed) { setPhase('ready'); return; }
@@ -103,7 +115,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
     return () => clearTimeout(id);
   }, [arriveAllowed]);
 
-  /** The fade the island, the pill and the banner share once the logo has landed. */
+  /** The fade the map, the pill and the banner share once the logo has landed. */
   const contentStyle = {
     opacity: phase === 'ready' ? 1 : 0,
     transition: cssMotion('splash.content.fade', 'opacity'),
@@ -154,7 +166,6 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 34,
         // The app's cream ground with the editor's own macro grid, barely there. Not a scene.
         background: [
           `repeating-linear-gradient(0deg, transparent 0 33px, rgba(67,65,62,0.05) 33px 34px)`,
@@ -163,10 +174,11 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
         ].join(', '),
       }}
     >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34, zoom: fit }}>
       <motion.img
         src={BANNER}
         alt={t('app.name')}
-        initial={arriveAllowed ? { y: BANNER_TRAVEL_Y } : false}
+        initial={arriveAllowed ? { y: bannerTravel(fit) } : false}
         animate={{ y: 0 }}
         transition={travelTransition}
         // The box is reserved BEFORE the file arrives (the masthead is 796x228): without it the
@@ -249,6 +261,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
             {pct}%
           </span>
         </div>
+      </div>
       </div>
     </motion.div>
   );

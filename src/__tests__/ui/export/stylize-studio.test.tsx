@@ -333,6 +333,21 @@ describe('the procedural path', () => {
     expect(renderProc).not.toHaveBeenCalled();
   });
 
+  it('a run the device gave up on stands the verb down again', async () => {
+    // The on-device runtime can stall on its first fetch; the studio must not be left with
+    // Generate disabled for the rest of the session.
+    useEditorStore.setState({ gridState: makeState() });
+    renderStudioProc(() => { throw new StylizeError('device'); });
+    fireEvent.click(screen.getByRole('button', { name: /Watercolor/ }));
+    await act(async () => {
+      fireEvent.click(generateButton());
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    expect(versionStore.getState().versions).toHaveLength(0);
+    expect(versionStore.getState().running).toBe(false);
+    expect(generateButton().disabled).toBe(false);
+  });
+
   it('a refused draw states itself in the slot rather than minting', async () => {
     useEditorStore.setState({ gridState: makeState() });
     renderStudioProc(() => null);

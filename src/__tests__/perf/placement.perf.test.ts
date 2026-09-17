@@ -4,7 +4,7 @@
  * Placement is the shared verb behind the designer's build stage, every smart-build press, and the
  * agent's director tools (`decorate_zone`, `plant_forest`, `build_road_network`), so its cost lands
  * in all three. Covers the one-shot map read (`analyzeTerrain`), the road router over a built
- * island, the ecology populator over bare terrain, one themed room decorator, and one smart-build
+ * map, the ecology populator over bare terrain, one themed room decorator, and one smart-build
  * press through the real (worker-free) `applyMacro` path. See `_harness.ts` for the gate and
  * methodology.
  */
@@ -43,7 +43,7 @@ function networkFixture(island: World): { world: World; ctx: PlaceCtx; a: Placem
   return { world, ctx, a, nodes, regionAdj };
 }
 
-/** A bare-terrain island: the dense map's ground with every non-locked object stripped BEFORE the
+/** Bare terrain: the dense map's ground with every non-locked object stripped BEFORE the
  *  executor exists, so its road lookup is built on the cleared state rather than one that still
  *  remembers pavement nothing stands on any more. */
 function bareTerrainWorld(island: World): World {
@@ -94,14 +94,14 @@ function macroFixture(island: World): { world: World; kit: MacroContext } {
 }
 
 describe.runIf(PERF)('perf: placement', () => {
-  it('analyzeTerrain over the dense island', async () => {
+  it('analyzeTerrain over the dense map', async () => {
     const { state } = denseIsland();
     await s.bench('analysis/analyze-terrain', () => { analyzeTerrain(state, null); }, {
       meta: { width: state.template.width, height: state.template.height, objects: state.objects.size },
     });
   });
 
-  it('buildNetwork over a cloned dense island', async () => {
+  it('buildNetwork over a cloned dense map', async () => {
     const island = denseIsland();
     let f = networkFixture(island);
     await s.bench('network/build', () => {

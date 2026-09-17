@@ -82,7 +82,7 @@
 
 如果您希望使用我们的原创美术或品牌，或需要提出知识产权方面的投诉（包括针对游戏相关材料的下架请求），请通过邮件联系我们：
 
-- **邮箱：**[selka.craft@outlook.com](mailto:selka.craft@outlook.com)
+- **邮箱：**[petit.maker@outlook.com](mailto:petit.maker@outlook.com)
 - **主题前缀：**`[IP]`
 
 为便于我们处理您的请求，请在信中说明：

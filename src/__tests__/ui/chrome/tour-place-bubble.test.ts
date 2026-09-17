@@ -75,14 +75,17 @@ describe('placeBubble', () => {
     }
   });
 
-  it('takes the roomiest side when the bubble fits nowhere', () => {
-    // A viewport smaller than the bubble: something has to overflow, and it should overflow into
-    // the emptiest part of the screen rather than into whichever side was declared first.
-    const tiny = { width: 300, height: 260 };
+  it('takes the roomiest side and stays inside the viewport when the bubble fits nowhere', () => {
+    // A viewport shorter than the bubble: the side with the most room is chosen, and the card is
+    // then held inside the screen even where that covers the target, so its footer stays reachable.
+    const tiny = { width: 400, height: 260 };
     const spot: Box = { left: 200, top: 20, width: 60, height: 60 };
     const placed = placeBubble(spot, SIZE, 'right', GAP, tiny);
     expect(placed.side).toBe('below');
-    expect(intersects(asBox(placed), spot)).toBe(false);
+    expect(placed.top).toBeGreaterThanOrEqual(0);
+    expect(placed.top + SIZE.height).toBeLessThanOrEqual(tiny.height);
+    expect(placed.left).toBeGreaterThanOrEqual(0);
+    expect(placed.left + SIZE.width).toBeLessThanOrEqual(tiny.width);
   });
 
   it('keeps the cross axis inside the viewport', () => {

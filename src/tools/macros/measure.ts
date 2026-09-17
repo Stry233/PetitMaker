@@ -3,7 +3,7 @@
  *
  * Counted by object id rather than by map size: laying a road network sweeps decorations out of a
  * crossing's clearance, so a size delta nets those removals against the roads and can report zero
- * for a run that paved half the island.
+ * for a run that paved half the planet.
  */
 import { getCell } from '../../core/model/grid-model';
 import type { GridState, MacroCell } from '../../core/model/types';

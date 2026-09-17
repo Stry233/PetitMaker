@@ -20,7 +20,7 @@ import type { TerrainPlan } from '../../core/types';
  * The surface a cell presents: its water level where it holds water, else its tier. -1 off the GRID,
  * which is the one reading V-WTR-02 makes lower than any water.
  *
- * A cell off the buildable island is NOT off the grid: it carries no terrain, so its surface is 0,
+ * A cell off the buildable planet is NOT off the grid: it carries no terrain, so its surface is 0,
  * and water at ground level may run right up to the coast without showing a face. Only the grid's
  * own edge is a drop.
  */
@@ -30,7 +30,7 @@ export function surfaceOf(t: TerrainPlan, x: number, y: number): number {
   return t.water[i]! >= 0 ? t.water[i]! : t.tier[i]!;
 }
 
-/** Whether a cell is untouched island terrace standing at `tier`: what a cut may take. */
+/** Whether a cell is untouched planet terrace standing at `tier`: what a cut may take. */
 export function freeAt(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, x: number, y: number, tier: number,
 ): boolean {
@@ -39,7 +39,7 @@ export function freeAt(
   return grass[i] === 1 && !flat[i] && t.water[i]! < 0 && t.tier[i] === tier;
 }
 
-/** Whether every cell of a rect is untouched island terrace standing at `tier`. */
+/** Whether every cell of a rect is untouched planet terrace standing at `tier`. */
 export function atTier(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, rect: Rect, tier: number,
 ): boolean {
@@ -100,7 +100,7 @@ export function poolFits(
   return true;
 }
 
-/** Whether every cell of a rect stands at ONE surface level and is on the island: the reading
+/** Whether every cell of a rect stands at ONE surface level and is on the planet: the reading
  *  V-WTR-03 makes of the row a fall pours onto. */
 export function uniform(t: TerrainPlan, grass: Uint8Array, rect: Rect): boolean {
   let level: number | null = null;

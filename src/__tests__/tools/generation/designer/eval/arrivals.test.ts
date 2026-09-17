@@ -12,7 +12,7 @@ import {
 import { bridgeAlignment, placeArrivals } from '../../../../../tools/generation/designer/eval';
 
 /** An all-buildable board with a plaza at one end: every claim below is about the pavement and the
- *  water drawn on it, so the island underneath is deliberately featureless. */
+ *  water drawn on it, so the ground underneath is deliberately featureless. */
 const W = 90, H = 40;
 const BOARD: MapTemplate = {
   id: 'arrivals-board', name: { en: 'board' }, width: W, height: H,
@@ -42,7 +42,7 @@ function pave(state: GridState, x0: number, y0: number, w: number, h: number): v
   }
 }
 
-/** A square of water with a dry island in it: the shape `isCourt` reads as a formal court. */
+/** A square of water with a dry islet in it: the shape `isCourt` reads as a formal court. */
 function court(state: GridState, cx: number, cy: number, radius: number): void {
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {

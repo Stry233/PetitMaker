@@ -62,7 +62,7 @@ export function useGeneratePreviews({
     // Nothing is worth photographing while the region is being painted: the next stroke would make
     // every picture a promise the click cannot keep, and the cards are not on screen anyway.
     // A picture kind with no region to work in has nothing to photograph — and the cards must go
-    // BLANK rather than keep the last kind's pictures, which leaves another generator's islands
+    // BLANK rather than keep the last kind's pictures, which leaves another generator's land
     // standing under the letters.
     if (stencil && !fits) {
       setShots(Array(CANDIDATES).fill(null));

@@ -83,7 +83,7 @@ const ROW: CSSProperties = {
 };
 
 /** Which Help Center page a kind's own tab opens: the maze is its own tool, the two picture kinds
- *  share the stencil page, and the island kind is the shelf's own default page. */
+ *  share the stencil page, and the planet kind is the shelf's own default page. */
 function helpForKind(kind: GenerateKind): HelpPageId {
   if (kind === 'maze') return 'maze';
   if (kind === 'text') return 'gen-letter';
@@ -119,7 +119,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const agentSelecting = useEditorStore((s) => s.regionSelectionOwner === 'agent');
   const setSelectingRegion = useEditorStore((s) => s.setSelectingRegion);
-  /** `[]` is "no region painted", which means the whole island: the run takes null for it. */
+  /** `[]` is "no region painted", which means the whole planet: the run takes null for it. */
   const scope = region.length > 0 ? region : null;
 
   // The first tab, read from the row rather than named again here: the two drifted apart the
@@ -141,7 +141,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
    * (`MAZE_MAX_ELEVATION`), the shelf opens on the maze, and a clamp that follows a kind change can
    * only raise the floor, never restore the ceiling the last kind took away — so a picture's ramp
    * arrives three entries long without anybody touching the knob, and a picture coloured in three
-   * greens is a flat, sparse island. A ceiling belongs to the kind that has it, exactly as the
+   * greens is a flat, sparse map. A ceiling belongs to the kind that has it, exactly as the
    * material choice does (`fillByKind`).
    */
   const [maxByKind, setMaxByKind] = useState<Record<GenerateKind, number>>(
@@ -203,7 +203,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
    * that overwrote something typed would lose the one thing on this shelf they authored — so it is
    * built by an effect of its own, on the settings without the batch's base.
    */
-  /** Per kind, like the batch's base: a recipe number typed for the island stays the island's,
+  /** Per kind, like the batch's base: a recipe number typed for the planet stays the planet's,
    *  and the maze's own card keeps whatever was typed there. */
   const [customByKind, setCustomByKind] = useState<Record<GenerateKind, number | null>>(
     { maze: null, text: null, image: null, island: null },
@@ -318,14 +318,14 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
    * stencil is exactly as many cells as the area it fills, so what was painted decides how legible
    * the result can be. `fits` is the floor under that — below it a letter stops being the letter.
    */
-  /** The space a picture fills: what was painted, or the island itself when nothing was. */
+  /** The space a picture fills: what was painted, or the map itself when nothing was. */
   const box = useMemo(
     () => regionBox(region) ?? (gridState ? islandBox(gridState, isBuildableZone) : null),
     [region, gridState],
   );
   const fits = regionFitsStencil(kind, box);
   const stencil = isStencilKind(kind);
-  /** The hand this batch was dealt from the kind's pool, by the same base seed the island kinds
+  /** The hand this batch was dealt from the kind's pool, by the same base seed the terrain kinds
    *  draw their recipe numbers from — so New batch means one thing on every kind. */
   const hand = useMemo(
     () => (stencil ? drawSamples(poolFor(kind), CANDIDATES, base) : []),
@@ -425,7 +425,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
    */
   const applyCandidate = useCallback(async (index: number, over?: Partial<ShelfSettings>) => {
     const kit = currentKit();
-    // A picture kind's card carries its recipe as a PLAN; the seed rides along unused. The island
+    // A picture kind's card carries its recipe as a PLAN; the seed rides along unused. The terrain
     // kinds' recipe is the number, and without one there is nothing to land.
     const plan = stencil ? planAt(index) : null;
     const seed = stencil ? base + index : seedAt(index);
@@ -637,7 +637,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
     setOwnImage((prev) => { if (prev) { forgetStencilImage(prev.src); URL.revokeObjectURL(prev.src); } return null; });
   }, []);
 
-  /** The upper track carries the knob the kind actually has: richness shapes an island and means
+  /** The upper track carries the knob the kind actually has: richness shapes a planet and means
    *  nothing to a maze, which is turned by its corridor width instead. */
   interface UpperKnob {
     label: string;
@@ -746,7 +746,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
               display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: rowGap,
             }}
           >
-            {/* The shelf's heading, and the whole of it: the four kinds of island at the shelf's own
+            {/* The shelf's heading, and the whole of it: the four kinds of map at the shelf's own
                 left edge, on the MAP above the backing band. Nothing else stands in this row —
                 anything more makes it hard to read. */}
             <div style={{ ...TAB_ROW, position: 'relative', marginRight: layout ? clearance : 0, transition: cssMotion('frame.layout.adapt', 'margin-right') }}>

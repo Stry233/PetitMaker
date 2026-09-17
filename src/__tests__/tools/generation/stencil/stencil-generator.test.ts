@@ -256,7 +256,7 @@ describe('the region, not its bounding box', () => {
     }
   });
 
-  it('with no scope it builds anywhere buildable, as the whole-island kinds do', () => {
+  it('with no scope it builds anywhere buildable, as the whole-planet kinds do', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     layStencilTerrain(

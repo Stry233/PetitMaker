@@ -216,7 +216,7 @@ describe('a re-press replaces its own last answer', () => {
     const kit = loadMap();
     // Far from every house, so it joins nothing and the router has no reason to pave over it: what
     // is measured is whether the take-back can reach an object it never created. Found at runtime
-    // rather than written down, since a spot on this island is the fixture's to choose.
+    // rather than written down, since a spot on this planet is the fixture's to choose.
     const far = houses(kit.state).map((h) => h.position);
     let hand: PlacedObject | null = null;
     for (let y = 2; y < kit.state.template.height - 2 && !hand; y += 1) {
@@ -228,7 +228,7 @@ describe('a re-press replaces its own last answer', () => {
         if (kit.executor.execute(objectPlacementCommand(obj)).success) hand = obj;
       }
     }
-    expect(hand, 'nowhere on the island took a hand-painted road tile').not.toBeNull();
+    expect(hand, 'nowhere on the planet took a hand-painted road tile').not.toBeNull();
 
     let ownedIds: readonly string[] | undefined;
     for (const seed of [1, 2, 3]) {
@@ -257,7 +257,7 @@ describe('a re-press replaces its own last answer', () => {
     expect(first.changes).toBeGreaterThan(0);
     const before = networkCells(kit.state);
 
-    // A small region in one corner of the island. Whatever the run makes of it, the streets on the
+    // A small region in one corner of the planet. Whatever the run makes of it, the streets on the
     // far side of the map are not this press's to strip.
     const region = [];
     for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) region.push({ x, y });

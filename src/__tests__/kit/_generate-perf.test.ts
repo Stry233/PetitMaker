@@ -121,7 +121,7 @@ describe.runIf(PERF)('GENERATE perf', () => {
     await timed('b1. build candidate (cold, main thread)', async () => { cand = await generateCandidate(kit, { config: config(202), region: null }); });
     await timed('b2. LAND it (warm cache, replay)', () => generateMap(kit, { config: config(202), region: null, candidate: cand }));
 
-    // (c) STALE candidate: built on the empty map, landed over an island.
+    // (c) STALE candidate: built on the empty map, landed over a planet.
     __resetCandidateCache();
     kit = hexiaKit();
     const stale = await generateCandidate(kit, { config: config(303), region: null });

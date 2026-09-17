@@ -33,7 +33,7 @@ export type RoadRank = 'apron' | 'trunk' | 'branch';
 /** One paved macro cell: where it is, which rank claimed it, and what it is paved with. */
 export interface RoadCell { x: number; y: number; rank: RoadRank; material: string }
 
-/** One straight street: a line at one coordinate, laid over a contiguous stretch of the island. */
+/** One straight street: a line at one coordinate, laid over a contiguous stretch of the planet. */
 export interface StreetRun {
   rank: 'trunk' | 'branch';
   /** The axis the street RUNS along: 'y' is a vertical street (its line is an x coordinate). */
@@ -178,7 +178,7 @@ const RING_KEEP = 12;
  * The richness below which the anti-grid does not run at all.
  *
  * The quiet end of the axis is the FLAT GARDEN TOWN reference: a thin grid on a plain, with no terraces
- * cutting the island and nothing else partitioning it. Every street there carries a block's whole
+ * cutting the planet and nothing else partitioning it. Every street there carries a block's whole
  * frontage, so a stagger costs one — at richness 0, one seed comes back with seven of its thirty street
  * ends stopping in open grass, ground the erosion cannot take back because each stub is the only pavement
  * its block has. The lattice reading is taken at full richness (`scorecard.ts:noLattice`).
@@ -273,7 +273,7 @@ const CROSSING_APART = 20;
 // --- entry point -------------------------------------------------------------------------------
 
 /** The street layer of one map: the lines, the pavement they lay, the flights that carry them over
- *  the composition's tier steps, and the districts the two of them cut the island into. */
+ *  the composition's tier steps, and the districts the two of them cut the planet into. */
 export function planStreets(
   seed: number, template: MapTemplate, composition: CompositionPlan,
   richness = composition.seedInfo.richness, line?: MovementLine,
@@ -342,17 +342,17 @@ export function planStreets(
 
 interface Board {
   W: number; H: number;
-  /** Buildable island: the Grass zone. */
+  /** Buildable planet: the Grass zone. */
   land: Uint8Array;
-  /** Plate tier per cell, -1 off the island. */
+  /** Plate tier per cell, -1 off the planet. */
   tier: Int8Array;
   /** Cells a road tile may be laid on: the `flat` trait's own window (the cell plus one column right
-   *  and one row below) all on the island at one tier, and clear of the plaza. So the mask already
+   *  and one row below) all on the planet at one tier, and clear of the plaza. So the mask already
    *  leaves the one-cell gap before every tier step that a flight exists to cross. */
   pavable: Uint8Array;
   plaza: Rect;
   hub: { x: number; y: number };
-  /** The island's own bounding extent, which a street's run is long or short a share OF. */
+  /** The planet's own bounding extent, which a street's run is long or short a share OF. */
   extent: { w: number; h: number };
   paved: Uint8Array;
   /** Which street first paved a cell, -1 where none did. */
@@ -466,7 +466,7 @@ interface Piece { spec: LineSpec; from: number; to: number }
  * The whole street layer, laid hierarchy first.
  *
  * The four TRUNKS are the plaza's own cross: two vertical lines tangent to the plaza's west and east
- * faces and two horizontal ones tangent to its north and south, each spanning the island. They meet
+ * faces and two horizontal ones tangent to its north and south, each spanning the planet. They meet
  * at four corners, so the ring the game's guidance asks for around the hub and the four outward spines
  * its 中心 → 四周 asks for are the same four lines; they are laid in a turning order, so each one
  * crosses the one before it.
@@ -475,7 +475,7 @@ interface Piece { spec: LineSpec; from: number; to: number }
  * settled afterwards, by the flights and by `dropStranded`, because it cannot be settled here: a
  * piece on the plate above the plaza touches nothing until the flight that climbs to it exists, and
  * refusing to lay it would leave the flight no street to carry. Laying first and pruning after is
- * what lets a terraced island be paved at all.
+ * what lets a terraced planet be paved at all.
  */
 function layStreets(
   board: Board, composition: CompositionPlan, richness: number, seed: number, line?: MovementLine,
@@ -493,9 +493,9 @@ function layStreets(
 }
 
 /**
- * The island's TOP TERRACE, which the anti-grid leaves whole.
+ * The planet's TOP TERRACE, which the anti-grid leaves whole.
  *
- * The highest plate is where the island's one set piece stands (`terrain/landmark.ts`) and where the
+ * The highest plate is where the planet's one set piece stands (`terrain/landmark.ts`) and where the
  * water story's own upper bodies are cut, and both of those need a panel of clear ground at ONE
  * tier: a staggered street cuts the terrace into pieces none of which is wide enough, and the figure
  * pass comes back with nothing while a pond trimmed to what is left comes back a rectangle the water
@@ -520,7 +520,7 @@ function layLine(
   // widest pavement on the map, which is what makes it legible as the map's own line; where the
   // terrace it crosses is too narrow for that stamp it steps down to a trunk and then to a branch,
   // exactly as a trunk does against the plaza's ring. Asking the whole leg at ONE width left the
-  // narrow stretches bare — on a terraced island the walk came back less than half paved, which is a
+  // narrow stretches bare — on a terraced planet the walk came back less than half paved, which is a
   // walk with holes in it rather than a walk that narrows.
   //
   // AND IT NEVER STAGGERS: the walk is the one line a visitor is meant to follow from the plaza to
@@ -538,7 +538,7 @@ function layStraight(board: Board, spec: LineSpec, out: StreetRun[]): void {
     // A TRUNK THAT CANNOT STAND AT THREE STANDS AT TWO. The four trunks are the plaza's own ring,
     // and the ring is as wide as the composition left it: where the hub's plate keeps only a
     // two-cell verge, a 3-wide stamp fits nowhere along it and the map comes back with no street
-    // against the plaza at all — which prunes every other street on the island for being
+    // against the plaza at all — which prunes every other street on the planet for being
     // unreachable (measured on one seed of sixty). A 2-wide apron is still a street, and the
     // hierarchy is a preference, not a hard rule; what IS hard is that no road is 1 wide.
     if (spec.rank === 'trunk' && pieces.length === 0) {
@@ -546,7 +546,7 @@ function layStraight(board: Board, spec: LineSpec, out: StreetRun[]): void {
     }
     for (const piece of pieces) {
       // A SHORT PIECE OF A TRUNK IS NOT A TRUNK. The plaza's cross is cut into as many pieces as its
-      // ground allows, and on a rim or a terraced island that can be a dozen fragments; a six-cell
+      // ground allows, and on a rim or a terraced planet that can be a dozen fragments; a six-cell
       // fragment three cells wide is a stub, not a spine, and a map made of them reads as one rank
       // however many lines were planned. The rank is what the piece can carry, so a fragment is laid
       // at branch width and the hierarchy stays a hierarchy.
@@ -562,7 +562,7 @@ function layStraight(board: Board, spec: LineSpec, out: StreetRun[]): void {
  *
  * The line is walked from one end; every stretch where it lies over a street of the other axis is a
  * CROSSING it could stagger at. It staggers once it has run `STAGGER_EVERY` cells since its last step
- * across, and it must once it has run more than `LONG_RUN_SHARE` of the island. Each leg is returned
+ * across, and it must once it has run more than `LONG_RUN_SHARE` of the planet. Each leg is returned
  * bounded to its own stretch and carrying its own coordinate; consecutive legs OVERLAP the crossing
  * street they meet at, so each of them ends against it and the pair reads as two T-junctions rather
  * than one four-way.
@@ -585,7 +585,7 @@ function staggered(
   const last = Math.min(along - 1, spec.to ?? along - 1);
   // ROUNDED, because it is added to a coordinate. A fractional bend point indexes the board between
   // cells, every lookup there reads undefined, and the bend is refused every time it is offered — it
-  // was a silent no-op on every line whose island extent was not a multiple of the share.
+  // was a silent no-op on every line whose planet extent was not a multiple of the share.
   const longRun = Math.round(LONG_RUN_SHARE * (spec.axis === 'y' ? board.extent.h : board.extent.w));
   const every = lerp(STAGGER_EVERY.low, STAGGER_EVERY.high, richness);
   const legs: LineSpec[] = [];
@@ -598,7 +598,7 @@ function staggered(
     if (cross && cross.a <= bendAt) {
       at = cross.b + 1;
       // Past the long-run bound the stagger is no longer a preference: a street that has crossed
-      // more than `LONG_RUN_SHARE` of the island in one line is the lattice, whatever the interval says.
+      // more than `LONG_RUN_SHARE` of the planet in one line is the lattice, whatever the interval says.
       const due = cross.a - from >= every || cross.b - from > longRun;
       if (!due || nearHub(board, spec.axis, line, cross.a) || onCrown(board, crown, spec.axis, line, cross.a)) continue;
       const jog = jogFor(board, { ...spec, line }, laid, seed, cross.a, last);
@@ -622,7 +622,7 @@ function staggered(
     //
     // A REFUSED BEND IS POSTPONED, NOT ABANDONED. Giving up on the line the first time its ground,
     // its hub ring or its crown said no let the rest of it run straight to the coast, which is the
-    // island-spanning street this whole operator exists to remove: measured, one seed of ten came
+    // planet-spanning street this whole operator exists to remove: measured, one seed of ten came
     // back with 9.1% of its pavement in such a line. The point of the turn walks on instead, and a
     // crossing that appears before the new one is taken in its place.
     if (bendAt >= last) break;
@@ -655,7 +655,7 @@ function staggered(
   return legs;
 }
 
-/** Whether a point on a line stands on the island's top terrace. */
+/** Whether a point on a line stands on the planet's top terrace. */
 function onCrown(board: Board, crown: Uint8Array, axis: 'x' | 'y', line: number, at: number): boolean {
   const x = axis === 'y' ? line : at;
   const y = axis === 'y' ? at : line;
@@ -752,7 +752,7 @@ function jogFor(
   // THE SIZE IS NEGOTIABLE, THE STEP IS NOT. The draw picks how far across the line would like to
   // step; where that lands on ground the street cannot run on, a shorter step is still a step, and
   // the alternative is the line running on to the coast — measured, one seed of ten kept 9.5% of its
-  // pavement in an island-spanning street because one branch was offered a single width.
+  // pavement in a planet-spanning street because one branch was offered a single width.
   const tries: { size: number; sign: number }[] = [];
   for (let size = drawn; size >= JOG_MIN; size--) for (const sign of signs) tries.push({ size, sign });
   for (const { size, sign } of tries) {
@@ -875,11 +875,11 @@ function lineSpecs(
  * A street ALONG every block the grid left unserved, raised or flat.
  *
  * IT IS NOT A TERRACE FEATURE, though a terrace is what makes it necessary. The grid is a set of
- * full-island lines, and half of them meet a TERRACE across its short side: the piece they can lay there
+ * full-planet lines, and half of them meet a TERRACE across its short side: the piece they can lay there
  * is shorter than a street, so it is dropped and the terrace comes back bare — a mass carrying a quarter
- * of the island's land and a twentieth of its pavement, which is a single-storey walk with a viewpoint
+ * of the planet's land and a twentieth of its pavement, which is a single-storey walk with a viewpoint
  * bolted on the end. But an unserved block is not the mass's alone: a coast eating a line, a plaza ring,
- * a piece the settling pruned all leave one on a flat island too, and this pass answers those the same
+ * a piece the settling pruned all leave one on a flat planet too, and this pass answers those the same
  * way. There is no tier test — a block with no street is the defect, whatever height it stands at — and
  * the measured consequence is that the quiet end of the richness axis lays MORE of this than the
  * terraced end, which is where the paved-share and district-count ceilings both come from.
@@ -895,7 +895,7 @@ function unservedBlockLines(board: Board, composition: CompositionPlan): LineSpe
     if (block.served || block.cells.length < ENTRY_MIN_CELLS) continue;
     const r = block.rect;
     if (Math.min(r.w, r.h) < BLOCK_LINE_INSET + BRANCH_W || Math.max(r.w, r.h) < PIECE_MIN) continue;
-    // ALONG THE FOOT OF THE BLOCK, not down its middle: that is where the reference island's own
+    // ALONG THE FOOT OF THE BLOCK, not down its middle: that is where the reference planet's own
     // roads run, it leaves the block one straight frontage rather than two half-blocks, and where the
     // block is a terrace it is the side a flight can climb to — the low ground the ramps run down is
     // on the outside of it. On flat ground either side is a foot and the reading picks one.
@@ -918,7 +918,7 @@ function unservedBlockLines(board: Board, composition: CompositionPlan): LineSpe
  * -1 for the low one.
  *
  * That side is the terrace's FOOT — the side a flight can climb to, since the low ground the ramps
- * run down lies outside it, and the side the reference island's own roads run along.
+ * run down lies outside it, and the side the reference planet's own roads run along.
  */
 function lowerSide(board: Board, block: District, axis: 'x' | 'y'): 1 | -1 {
   const r = block.rect;
@@ -950,7 +950,7 @@ function lowerSide(board: Board, block: District, axis: 'x' | 'y'): 1 | -1 {
 function bestOffset(board: Board, spec: LineSpec, composition: CompositionPlan, seed: number): number {
   const span = spec.axis === 'y' ? board.W : board.H;
   let best = spec.line, bestScore = -1;
-  // A seeded order over the offsets, so two maps with the same island do not nudge identically where
+  // A seeded order over the offsets, so two maps with the same planet do not nudge identically where
   // the ground scores the same.
   const offsets = Array.from({ length: 2 * OFFSET_SEARCH + 1 }, (_, k) => k - OFFSET_SEARCH)
     .sort((a, b) => Math.abs(a) - Math.abs(b) || (hash01(seed ^ spec.line, a) < hash01(seed ^ spec.line, b) ? -1 : 1));
@@ -1070,7 +1070,7 @@ interface RampStyle { id: string; width: number }
  * INLINE: a street's own pavement stops at a tier step with more of the same street beyond it, and
  * the flight carries the street over. ENTRY: a street runs ALONG the foot of a terrace nobody can
  * step up onto, and the flight climbs off it at right angles, cutting the street where it crosses
- * it. The references use both — the terraced island's roads run along its terrace feet and its
+ * it. The references use both — the terraced planet's roads run along its terrace feet and its
  * fifty-one ramps are how a walker leaves them.
  */
 interface FlightCandidate {
@@ -1354,7 +1354,7 @@ function acrossOf(run: StreetRun): number {
 
 /** The tier a would-be crossing stands at, or -1 where the ground will not take one: the run's own
  *  pavement, all of it and its surrounding ring at ONE tier so both banks come out level, and a cell
- *  of island either side of the gap for the deck's ends to rest on. */
+ *  of land either side of the gap for the deck's ends to rest on. */
 function crossingGround(board: Board, gap: Rect): number {
   let tier = -1;
   for (let y = gap.y - 1; y <= gap.y + gap.h; y++) {
@@ -1678,7 +1678,7 @@ function rampSpec(
 /**
  * Whether the ground the flight needs is there to take.
  *
- * The tiers under it are the sculptor's to carve, so what is read here is the island, the plaza and
+ * The tiers under it are the sculptor's to carve, so what is read here is the planet, the plaza and
  * what other flights already claimed — plus one thing the geometry cannot fix afterwards: pavement
  * belonging to a street on ANOTHER line. A flight crossing one of those would put a ramp on a road,
  * and erasing the road instead would leave a hole in the middle of a street. Such a candidate is
@@ -1766,7 +1766,7 @@ function reserveMargin(board: Board, flight: RampFlight): void {
   }
 }
 
-/** Connected components of the pavement: the islands of street the flights join up. */
+/** Connected components of the pavement: the detached pieces of street the flights join up. */
 function componentsOf(board: Board): {
   comp: Int32Array;
   at(board: Board, c: FlightCandidate, along: number): number;
@@ -1838,7 +1838,7 @@ function reachable(board: Board, flights: readonly RampFlight[]): Uint8Array {
   }
   // A HUB WITH NO ROOM FOR A STREET AGAINST IT still gets a network. Where the plaza's plate is
   // shaped so that no trunk can be laid along its ring, seeding from the ring alone prunes every
-  // street on the island — measured: one seed of sixty came back with no pavement at all. The
+  // street on the planet — measured: one seed of sixty came back with no pavement at all. The
   // largest piece stands in for the hub then, and the pipeline paves the short course from the
   // plaza's own ring out to it, so the finished map is still one network the plaza reaches.
   if (stack.length === 0) {
@@ -2113,7 +2113,7 @@ function flightEndCells(flights: readonly RampFlight[]): Set<string> {
  *  against a flight, or at the PLAZA — the hub is a destination like any other, and a trunk laid
  *  along its ring is the shortest street on the map that is certainly going somewhere. Without this
  *  a hub whose four trunks are cut into pieces that never meet reads as four tails, they are all
- *  trimmed, and then every street on the island is pruned for being unreachable from a plaza no
+ *  trimmed, and then every street on the planet is pruned for being unreachable from a plaza no
  *  pavement touches (measured on one seed of sixty: 20 runs laid, 0 kept). */
 function tipStops(
   board: Board, run: StreetRun, tip: number, end: 1 | -1, flightEnds: ReadonlySet<string>,

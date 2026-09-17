@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { quotePromptData } from '../../../core/runtime/prompt-data';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveMessages, rawIsAllFrom, type ProviderMessage } from '../../../agent/core/project-messages';
+import { languageCue } from '../../../agent/core/language-cue';
+
+/** The cue every Latin-script user message ends with. */
+const CUE = '\n(language) Think and reply in the language of this message.';
 
 /** Mirrors the template `deriveMessages` builds for an `order`, so budget-math tests can predict
  *  exact message text without hardcoding the wire format twice. */
 function orderText(mapContext: string, text: string): string {
-  return `<map_context>${quotePromptData(mapContext)}</map_context>\n${text}`;
+  const cue = languageCue(text);
+  return `<map_context>${quotePromptData(mapContext)}</map_context>\n${text}${cue ? `\n${cue}` : ''}`;
 }
 
 describe('deriveMessages', () => {
@@ -30,11 +35,29 @@ describe('deriveMessages', () => {
     ]);
   });
 
-  it('projects an order as a user message with its map context prepended', () => {
+  it('projects an order as a user message with its map context prepended and a language cue appended', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'build a village', mapContext: 'elevation: flat' });
     const out = deriveMessages(log, { budgetTokens: 10_000 });
-    expect(out).toEqual([{ role: 'user', text: '<map_context>"elevation: flat"</map_context>\nbuild a village' }]);
+    expect(out).toEqual([{ role: 'user', text: '<map_context>"elevation: flat"</map_context>\nbuild a village\n(language) Think and reply in the language of this message.' }]);
+  });
+
+  it('cues the thinking language in the language of the order itself, and cues steering text the same way', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: '在河边建一个小村子', mapContext: '' }); // seq 1
+    append(log, { kind: 'steer', text: '再加几棵树' }); // seq 2
+    append(log, { kind: 'steerDelivered', steerSeq: 2 });
+    const out = deriveMessages(log, { budgetTokens: 10_000 });
+    const opener = out[0]!;
+    expect(opener.role === 'user' && opener.text.endsWith(`\n${languageCue('在河边建一个小村子')}`)).toBe(true);
+    expect(opener.role === 'user' ? opener.text : '').toContain('中文');
+    expect(out[1]).toEqual({ role: 'user', text: `再加几棵树\n${languageCue('再加几棵树')}` });
+  });
+
+  it('leaves a bare-coordinate order without a cue, so the display language stays the fallback', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: '(3, 4)', mapContext: '' });
+    expect(deriveMessages(log, { budgetTokens: 10_000 })).toEqual([{ role: 'user', text: '<map_context>""</map_context>\n(3, 4)' }]);
   });
 
   it('projects an assistant\'s parsed tool calls and joins their results into one ordered tool message', () => {
@@ -114,7 +137,7 @@ describe('deriveMessages', () => {
 
     expect(out).toEqual([
       { role: 'user', text: orderText('', 'start') },
-      { role: 'user', text: 'go wider' },
+      { role: 'user', text: `go wider${CUE}` },
     ]);
   });
 
@@ -260,7 +283,7 @@ describe('deriveMessages', () => {
       // The steer that opened the retained group still speaks: its own `steer` event necessarily
       // sits BEFORE the cut (a steer is logged when typed, delivered later), so reading the text
       // from the retained window alone would drop the user's words at exactly this boundary.
-      expect(out[2]).toEqual({ role: 'user', text: 'make it smaller' });
+      expect(out[2]).toEqual({ role: 'user', text: `make it smaller${CUE}` });
       expect(JSON.stringify(out).split('ring it with houses')).toHaveLength(2);
     });
 
@@ -687,7 +710,7 @@ describe('deriveMessages: system notes', () => {
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
     expect(out).toEqual([
-      { role: 'user', text: '<map_context>""</map_context>\nbridge the river' },
+      { role: 'user', text: `<map_context>""</map_context>\nbridge the river${CUE}` },
       { role: 'assistant', text: 'All done.', toolCalls: [] },
       { role: 'user', text: '(system) Nothing has landed on the map yet.' },
     ]);

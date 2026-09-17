@@ -1,6 +1,6 @@
 /**
  * DO THE BLOCKS READ AS BLOCKS: the size, the shape and the frontage of the pieces the streets and
- * the terraces cut the island into. The failure these readings exist to catch is a map whose regions
+ * the terraces cut the planet into. The failure these readings exist to catch is a map whose regions
  * do not read as regions at all.
  *
  * Both readings are taken over `segmentRegions`, so "a district" means here exactly what it means
@@ -11,7 +11,7 @@ import { NB4, readGrid, segmentRegions, type EvalGrid } from './grid';
 import { bandScore } from './reference';
 
 /** The two references' own segmentation, read by `segmentRegions`: 69 districts of median 48 cells
- *  on the terraced island (cut by its terraces), 23 of median 260 on the garden town (cut by its
+ *  on the terraced planet (cut by its terraces), 23 of median 260 on the garden town (cut by its
  *  streets). Read with the plaza handled differently the same two maps give 69/48 and 19/240, so the
  *  numbers are definition-sensitive. The band spans BOTH, because either partition is a legible map. */
 export const DISTRICT_COUNT_BAND = [23, 69] as const;
@@ -25,7 +25,7 @@ export interface DistrictLegibility {
   p25: number;
   p75: number;
   /** Cell-weighted mean of a district's own area over its bounding box: 1 is a rectangle, and the
-   *  references read 0.44 (terraced island) and 0.53 (garden town). */
+   *  references read 0.44 (terraced planet) and 0.53 (garden town). */
   rectangularity: number;
   score: number;
 }
@@ -80,7 +80,7 @@ const FRONTAGE_RUN_MIN = 6;
 const FRONTAGE_COVER = 0.9;
 
 /**
- * What the reading separates: the terraced island reads 0.50 and the garden town 0.67, while a network
+ * What the reading separates: the terraced planet reads 0.50 and the garden town 0.67, while a network
  * routed per lot reads 0.08 at richness 0.2 and 0.20 to 0.26 at richness 1. The threshold sits between
  * the two populations rather than at either's edge.
  *

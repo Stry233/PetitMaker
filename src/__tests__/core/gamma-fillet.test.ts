@@ -52,7 +52,7 @@ describe('enclosedGap', () => {
     expect(enclosedGap(state, 10, 10)).toBe(true);
   });
 
-  it('but not for an island ringed by ground-level water, which stands at the ground\'s own height', () => {
+  it('but not for an islet ringed by ground-level water, which stands at the ground\'s own height', () => {
     const state = makeState(24, 24);
     for (const [x, y] of [[9, 10], [11, 10], [10, 9], [10, 11]] as [number, number][]) {
       setTerrain(state, x, y, TerrainType.Water, 0);

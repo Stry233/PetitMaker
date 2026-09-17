@@ -1,6 +1,6 @@
 /**
  * The generation worker's entry: one message in, one message out. Two kinds of job share it — a
- * CANDIDATE (a whole island built for a card) and a macro PREVIEW (the cells a smart-build press
+ * CANDIDATE (a whole planet built for a card) and a macro PREVIEW (the cells a smart-build press
  * would change) — because they are the same closure at two sizes, and a second worker chunk would
  * carry the same code twice. The closure is browser-API-free by construction (it is the same code
  * the main-thread fallback runs), so the only thing this file knows about the worker environment

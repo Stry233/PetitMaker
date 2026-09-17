@@ -1,6 +1,6 @@
 /**
  * The devtools banner: importing the module prints nothing (main.tsx decides when), the call
- * prints the island and the invitation, and the invitation carries the ONE repository URL.
+ * prints the planet and the invitation, and the invitation carries the ONE repository URL.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { printConsoleBanner } from '../console-banner';

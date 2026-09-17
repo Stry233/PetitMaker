@@ -1,4 +1,4 @@
-// Design-quality probes — the island generator's promises to the player, pinned as tests.
+// Design-quality probes — the planet generator's promises to the player, pinned as tests.
 //
 // The promises come from the expert methodology and the two decoded reference maps: the hard rules
 // are failures, the soft preferences are scored floors, and the map's distance to the style target
@@ -60,8 +60,8 @@ const SCORE_SEEDS = [12345, 777, 7, 1024];
  * THE PER-SEED FLOORS, and the measured spread each one leaves slack against.
  *
  * A floor here says the operator RAN on this map, not that the map is the average one: how many of
- * an island's regions can carry a mirror, hold one colour family or stand a door against high ground
- * is decided by how that island's own terrain cut its open ground. The batch means below are where
+ * a planet's regions can carry a mirror, hold one colour family or stand a door against high ground
+ * is decided by how that planet's own terrain cut its open ground. The batch means below are where
  * the reference shares are claimed. Every number is set under the WORST of a ten-seed sweep across
  * the axis (hexia, richness 0.2 / 0.6 / 1), and the sweep's own figures are quoted so a later drift
  * reads as drift rather than as a fresh measurement.
@@ -91,7 +91,7 @@ const FLOOR = {
    * Sweep minimum 0.43 at full richness, means 0.76 / 0.67 / 0.56; 0.29 to 0.71 at full richness over
    * this batch.
    *
-   * A TERRACED ISLAND READS ITS OWN MIRRORS LOW, because a mirrored composition is read over a run of
+   * A TERRACED PLANET READS ITS OWN MIRRORS LOW, because a mirrored composition is read over a run of
    * open ground at ONE level: a place cut by a terrace step is two runs, and the mirror the kit laid
    * is accounted in neither. What the floor still catches is the operator not running at all.
    */
@@ -103,8 +103,8 @@ const FLOOR = {
 /**
  * How far outside the reference's own decor-density band a single seed may read: ZERO. Every seed over
  * these richness levels reads inside the band, so there is no slack to grant. The pressure on it is
- * the water share (7% to 12% of the island, the figure alone flooding a panel of a few hundred cells):
- * an island that spends less of its ground on water has that much more of it to plant, and a seed
+ * the water share (7% to 12% of the planet, the figure alone flooding a panel of a few hundred cells):
+ * a planet that spends less of its ground on water has that much more of it to plant, and a seed
  * planting into the top of the band is the one this would fail.
  */
 const DENSITY_EDGE = 0;
@@ -132,7 +132,7 @@ describe('the designed generator', () => {
 
   it('SOFT PREFERENCES: the methodology scores hold their floors across the richness range', () => {
     // ONE READING PER RICHNESS, never pooled across the axis. The two composition scores fall as the
-    // knob rises — a terraced, watery island cuts its open ground into smaller and more ragged runs
+    // knob rises — a terraced, watery planet cuts its open ground into smaller and more ragged runs
     // than a garden town does — so a floor averaged over the whole axis would let the rich end
     // collapse behind the quiet end's headroom, which is exactly the end the style target is at.
     for (const richness of [0.2, 0.6, 1]) {
@@ -144,7 +144,7 @@ describe('the designed generator', () => {
         const where = `hexia/${seed}/r${richness}`;
         const { scores, metrics } = evaluateMap(state);
         // BOTH HEIGHT CLAIMS ARE CLAIMS ABOUT A MAP WITH HEIGHT, so both are read against what the
-        // richness knob asked for. A quiet island is the garden-town reference, which measures
+        // richness knob asked for. A quiet planet is the garden-town reference, which measures
         // 0 of 12 buildings backed and no north-south profile at all; what it still owes is the
         // strip behind each lot's own door, which is where its floor comes from.
         expect(scores.backingCoverage, where).toBeGreaterThanOrEqual(FLOOR.backing);
@@ -153,7 +153,7 @@ describe('the designed generator', () => {
         // which is what the quiet end of the axis is FOR, and what the axis probe pins from the
         // other side.
         // NEAR-LOW-FAR-HIGH IS A CLAIM ABOUT A WALL, and the archetype is drawn per seed: a raised
-        // rim, a set of scattered massifs or a low-relief island is not monotone along any one axis,
+        // rim, a set of scattered massifs or a low-relief planet is not monotone along any one axis,
         // and lowering the floor until they pass would only make the score stop measuring. So the
         // floor holds only where the composition claims a direction.
         const archetype = planComposition(seed, HEXIA, richness).archetype;
@@ -180,9 +180,9 @@ describe('the designed generator', () => {
       const hierarchyMean = mean(hierarchy);
       expect(hierarchyMean, `r${richness} batch road mix ${hierarchyMean.toFixed(2)}`)
         .toBeGreaterThanOrEqual(FLOOR.hierarchyBatch);
-      // SYMMETRY AND UNITY BOTH READ LOWER THE RICHER THE ISLAND, and for one reason: each is read
+      // SYMMETRY AND UNITY BOTH READ LOWER THE RICHER THE PLANET, and for one reason: each is read
       // over a RUN of open ground at one level, and the rich end cuts a place into more runs. The
-      // island is terraced to its summit, so a mirror laid across a step is accounted in neither run,
+      // planet is terraced to its summit, so a mirror laid across a step is accounted in neither run,
       // and a staggered street cuts a place into runs that share a boundary, so a run's dominant
       // colour family carries less of it. Symmetry also pays for marks the composition did not draw:
       // the fountain court stands at a place's street corner where the ground allows and at its middle
@@ -197,7 +197,7 @@ describe('the designed generator', () => {
   }, 180_000);
 
   /**
-   * THE WALK CLIMBS, AND THE ISLAND IS VISIBLE FROM IT (P1 and P2 of the design analysis).
+   * THE WALK CLIMBS, AND THE PLANET IS VISIBLE FROM IT (P1 and P2 of the design analysis).
    *
    * Both are facts about where a VISITOR stands. The reference reads 2.65 bits of level entropy over
    * six levels, 47% of its pavement above level 4, 2.85 level changes per 100 pavement cells and 70.8%
@@ -246,14 +246,14 @@ describe('the designed generator', () => {
    * THE MAP'S ONE SET PIECE, AND THE TWO GRAINS OF ITS PLANTING (P7 and P4 of the design analysis).
    *
    * P7: "a composition has a PRIMARY set piece, two or three secondary ones, and ordinary ground for the
-   * rest; when every place is equally elaborate, none of them is the point." So every island from the
+   * rest; when every place is equally elaborate, none of them is the point." So every planet from the
    * set-piece richness up carries exactly ONE figure, drawn as the largest panel its ground offers, with
    * a calm band reserved around it and paved where the network reaches.
    *
    * The FLOORS here are the gate's own, and both are measured rather than chosen: `gen-eval` runs the
    * batch the numbers come from.
    */
-  it('THE SET PIECE: one composed figure per island, framed, and the walk reaches it (P7)', () => {
+  it('THE SET PIECE: one composed figure per planet, framed, and the walk reaches it (P7)', () => {
     for (const template of [HEXIA, TAFA]) {
       const rows = DESIGNED_SEEDS.map((seed) => {
         const { state } = designed(seed, template, 1);
@@ -273,7 +273,7 @@ describe('the designed generator', () => {
       }
       // THE WALK RELATES TO IT. Pavement stands within a dozen cells of the figure, and a dozen is the
       // price of drawing the figure at the scale of a TERRACE FLOOR (252 to 1012 cells): the largest
-      // clear one-tier panel an island has is the ground the streets never climbed. Measured over these
+      // clear one-tier panel a planet has is the ground the streets never climbed. Measured over these
       // seeds, 4, 9 and 12 cells on hexia and 3, 4 and 5 on tafa. So this is a BATCH claim at what it
       // measures, with the reach named rather than assumed.
       const reached = rows.filter((r) => r.figure.toPavement >= 0 && r.figure.toPavement <= 12);
@@ -285,12 +285,12 @@ describe('the designed generator', () => {
   /**
    * WHERE THE STREETS STOP (P5's second half), and the fountain court that gives them somewhere.
    *
-   * Both claims are about a FULL-RICHNESS island and neither belongs in the hard ledger's own verdict:
+   * Both claims are about a FULL-RICHNESS planet and neither belongs in the hard ledger's own verdict:
    * the quiet end of the richness axis is a flat garden town with no composed figure to end at and no
    * room for a large court, which is what it was asked for. They are held here and by `gen-eval`, the
    * same arrangement `noLattice` has.
    */
-  it('ARRIVALS: a walk finishes at one of the island\'s set pieces, and a court is one of them (P5)', () => {
+  it('ARRIVALS: a walk finishes at one of the planet\'s set pieces, and a court is one of them (P5)', () => {
     for (const template of [HEXIA, TAFA]) {
       const rows = DESIGNED_SEEDS.map((seed) => {
         const { state } = designed(seed, template, 1);
@@ -299,9 +299,9 @@ describe('the designed generator', () => {
       });
       for (const { seed, place, courts } of rows) {
         const where = `${template.id}/${seed}`;
-        expect(place.places, `${where}: the island carries a set piece at all`).toBeGreaterThan(0);
+        expect(place.places, `${where}: the planet carries a set piece at all`).toBeGreaterThan(0);
         // A COURT IS ON THE MAP AND THE READING CAN SEE IT. The two halves are separate claims: the
-        // grammar carves one on nearly every island, and a moat drawn one level deep would shatter
+        // grammar carves one on nearly every planet, and a moat drawn one level deep would shatter
         // under the 4-connected decomposition every reading takes, leaving the court invisible on a
         // map that carries it.
         expect(courts.courts, `${where}: formal courts read on the map`).toBeGreaterThan(0);
@@ -339,7 +339,7 @@ describe('the designed generator', () => {
    * over the gate batch, 16.2% of planting stands in masses of 40 cells or more and 78.0% in the middle
    * band.
    *
-   * THE REMAINING GAP IS THE RUN SIZE, and it is measured: a rich island's open ground comes in about a
+   * THE REMAINING GAP IS THE RUN SIZE, and it is measured: a rich planet's open ground comes in about a
    * hundred pieces of a few dozen cells each (the districts reading's own median run is 28 to 42), so a
    * 30-cell bed lands clipped and the flora CLUSTER COUNT tracks the number of runs rather than the
    * element grammar. Closing it means composing fewer, larger places, which is a stage-C change.
@@ -406,14 +406,14 @@ describe('the designed generator', () => {
     }
   }, 180_000);
 
-  it('RICHNESS IS THE STYLE AXIS: quiet maps are flat garden towns, full ones are terraced islands', () => {
+  it('RICHNESS IS THE STYLE AXIS: quiet maps are flat garden towns, full ones are terraced planets', () => {
     const quiet = DESIGNED_SEEDS.map((seed) => evaluateMap(designed(seed, HEXIA, 0.2).state).metrics);
     const full = DESIGNED_SEEDS.map((seed) => evaluateMap(designed(seed, HEXIA, 1).state).metrics);
     const mean = (rows: typeof quiet, pick: (m: typeof quiet[number]) => number): number =>
       rows.reduce((a, m) => a + pick(m), 0) / rows.length;
 
     // The two references sit at the ends of this axis: the garden town is 99% ground level with 15%
-    // water and one tree per 6.6 flowers, the target island terraces almost everything, carries water
+    // water and one tree per 6.6 flowers, the target planet terraces almost everything, carries water
     // on every layer and runs 1 : 1.12.
     // The quiet bound is 0.35 rather than 0.30 because no water bed is cut into a terrace, so ground
     // that could read as water reads as the mountain it stands on: measured 0.32 over this batch. The
@@ -429,7 +429,7 @@ describe('the designed generator', () => {
     expect(mean(full, (m) => m.objects.treeToFlora)).toBeLessThan(2);
   }, 120_000);
 
-  it('REFERENCE DISTANCE: a full-richness island stands in the style target\'s neighbourhood', () => {
+  it('REFERENCE DISTANCE: a full-richness planet stands in the style target\'s neighbourhood', () => {
     const totals: number[] = [];
     for (const seed of DESIGNED_SEEDS) {
       const { state } = designed(seed, HEXIA, 1);
@@ -440,7 +440,7 @@ describe('the designed generator', () => {
     //
     // A per-seed distance as tight as 0.12 is reachable only by making every map the same composition —
     // a wall across the north, which is the shape the reference's own profile term measures — so a
-    // west-wall or corner-highland island scores that term against a north-heavy reference and is right
+    // west-wall or corner-highland planet scores that term against a north-heavy reference and is right
     // to differ. What the distance still catches is a map that has stopped being kin to the target at
     // all: no relief, no water, a road mix out of band.
     const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
@@ -489,7 +489,7 @@ function rectRegion(x0: number, y0: number, x1: number, y1: number): MacroCoord[
 }
 
 describe('a designed run inside a painted region', () => {
-  // Three rectangles over three different parts of the island's own design: the backing band it
+  // Three rectangles over three different parts of the planet's own design: the backing band it
   // raises in the north, the town it builds around the plaza, and the southern ground. What each one
   // comes back holding is the design's business; that it comes back holding NOTHING ELSEWHERE is
   // this suite's.
@@ -530,7 +530,7 @@ describe('a designed run inside a painted region', () => {
     }
   }, 180_000);
 
-  it('lands what the island design put there: a region over the town comes back built', () => {
+  it('lands what the planet design put there: a region over the town comes back built', () => {
     const [, town] = REGIONS[1]!;
     const { state } = designedIn(12345, HEXIA, 1, town);
     let paved = 0, plants = 0, written = 0;
@@ -542,19 +542,19 @@ describe('a designed run inside a painted region', () => {
     }
     for (const row of state.cells) for (const cell of row) if (cell.terrain) written++;
     // HOW MUCH is the design's business, not the region's: what these numbers pin is that a scope
-    // over the built part of the island comes back with all three KINDS of thing on it, which is the
+    // over the built part of the planet comes back with all three KINDS of thing on it, which is the
     // failure mode a confinement gate that simply built nothing would otherwise pass.
     expect(paved, 'streets inside the region').toBeGreaterThan(25);
     expect(plants, 'planting inside the region').toBeGreaterThan(25);
     expect(written, 'terrain inside the region').toBeGreaterThan(25);
   }, 60_000);
 
-  it('is the SAME island either way: a scoped run matches the whole one, cropped', () => {
+  it('is the SAME planet either way: a scoped run matches the whole one, cropped', () => {
     const [, town] = REGIONS[1]!;
     const inside = new Set(town.map((c) => `${c.x},${c.y}`));
     const whole = designed(777, HEXIA, 1).state;
     const scoped = designedIn(777, HEXIA, 1, town).state;
-    // THE PLAN IS THE ISLAND'S, and the region only crops what lands: the ground inside a scoped
+    // THE PLAN IS THE PLANET'S, and the region only crops what lands: the ground inside a scoped
     // run is the ground the unscoped run put there. Terrain only — an object is placed against the
     // map as it stands, so a scoped run's neighbours differ and its own placements legitimately do.
     let compared = 0, same = 0;
@@ -568,7 +568,7 @@ describe('a designed run inside a painted region', () => {
     }
     // Not every cell: the crop cuts a terrace off the support standing outside it, so the rules
     // legitimately refuse a handful at the boundary. The claim is that the two runs designed the
-    // same island, not that a crop is free.
+    // same planet, not that a crop is free.
     expect(same / compared, `terrain agreement ${same}/${compared}`).toBeGreaterThan(0.9);
   }, 90_000);
 });

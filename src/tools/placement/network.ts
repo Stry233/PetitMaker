@@ -46,10 +46,10 @@ export interface NetworkOptions {
    * Whether the run spends its scenic-crossing budget: bridges and ramps beyond the ones the
    * spanning tree needed, at fords and plateaus where nothing stands (`scenicFreeCrossings`).
    *
-   * Generation does, and they are half of why a generated island reads as explorable. A LIVE-MAP
+   * Generation does, and they are half of why a generated planet reads as explorable. A LIVE-MAP
    * press does not, for two reasons that are the same reason. A press promises to connect what is
    * standing, and a crossing nothing needs stands in bare grass with no pavement at either end
-   * (26 of 33 after four presses on one island) — `crossingConnections` can only tie in a crossing
+   * (26 of 33 after four presses on one map) — `crossingConnections` can only tie in a crossing
    * whose banks the network can already reach. And the budget is spent per RUN, so pressing again
    * spends it again at a fresh anchor for the same region pair: the run always changed something,
    * and the honest "every building here already meets the network" report could never fire.

@@ -36,7 +36,7 @@ export const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
 export interface EvalGrid {
   W: number; H: number;
-  /** Grass-zone cells: the buildable island, the denominator of every share. */
+  /** Grass-zone cells: the buildable planet, the denominator of every share. */
   land: Uint8Array;
   elev: Int8Array;
   mountain: Uint8Array;
@@ -166,7 +166,7 @@ const regionsMemo = new WeakMap<EvalGrid, Map<number, Region[]>>();
 
 /** 4-connected components of open land (not paved, not water, not under the
  *  plaza), cut wherever the surface elevation changes. Terraces are what separate one composed
- *  place from the next; a segmentation that ignores them returns one island-sized blob. */
+ *  place from the next; a segmentation that ignores them returns one planet-sized blob. */
 export function segmentRegions(g: EvalGrid, minCells = REGION_MIN_CELLS): Region[] {
   let byMin = regionsMemo.get(g);
   if (!byMin) regionsMemo.set(g, byMin = new Map());

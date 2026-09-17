@@ -4,7 +4,7 @@ import type { AnnotationsState } from '../../core/model/annotations';
 import { serialize } from '../json-codec';
 import type { SaveFile, SaveObject } from '../save-format';
 import { fnv1a, hashJSON } from '../../core/model/hash';
-import { getAllItems } from '../../state/catalog';
+import { getKnownItems } from '../../state/catalog';
 
 // The canonical map is template + cells + objects only. Provenance and annotations use separate
 // payload fields, leaving one deterministic byte representation for map integrity checks.
@@ -77,7 +77,7 @@ export function templateHash(t: MapTemplate): number {
 }
 
 export function catalogHash(): number {
-  const sig = getAllItems()
+  const sig = getKnownItems()
     .map((it) => `${it.id}:${it.width}x${it.height}:${it.category}`)
     .sort()
     .join(',');

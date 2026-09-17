@@ -21,7 +21,7 @@
  * unit conversion real too.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, within } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { DreamOffice, DREAMS, boardHeight } from '../../../ui/agent/DreamOffice';
@@ -243,5 +243,15 @@ describe('the dreaming board reserves one height', () => {
       expect(translations[locale][forest.subKey]!.length, `${locale} forest sub`).toBeLessThanOrEqual(subCap[locale]);
       expect(translations[locale][road.titleKey]!.length, `${locale} road title`).toBeLessThanOrEqual(titleCap[locale]);
     }
+  });
+});
+
+describe('the keyless office points at Help', () => {
+  it('opens the setup page at its key steps from Learn more', () => {
+    useEditorStore.getState().setHelpTarget(null);
+    const { container } = mount();
+    fireEvent.click(within(container).getByRole('button', { name: translations.en['agent3.learn_more'] }));
+    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'agent-setup', anchor: 'agsetup-keys' });
+    expect(useEditorStore.getState().modals.help).toBe(true);
   });
 });

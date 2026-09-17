@@ -21,7 +21,7 @@ export interface ChangePlanetModalProps {
    *  so tests can mount the modal directly; the shell passes `open={modals.newProject}`
    *  and keeps the component mounted so the card exit animates as one unit. */
   open?: boolean;
-  /** The verb: open `templateId`, carrying this island's build along or leaving it behind. */
+  /** The verb: open `templateId`, carrying this planet's build along or leaving it behind. */
   onSwitch: (templateId: string, carry: boolean) => void;
   onClose: () => void;
   /** The Help Center's preview map; when absent, carry availability reads the open map. */
@@ -169,7 +169,7 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
     running.current = true;
     setBusy(true);
     const target = chosen;
-    // Nothing to carry is nothing to transfer: an island with no build takes the plain new-map road
+    // Nothing to carry is nothing to transfer: a planet with no build takes the plain new-map road
     // rather than a replay that would spend its time moving an empty grid. The carry row is not on
     // screen in that state either, so the default it still holds is not an answer anyone gave.
     const bring = !startingOver && hasBuild && carry === 'carry';
@@ -275,8 +275,8 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          {/* Starting over destroys the island outright, and that is worth saying where the verb is
-              rather than in the row that is not on screen for it. An island with nothing on it has
+          {/* Starting over destroys the planet outright, and that is worth saying where the verb is
+              rather than in the row that is not on screen for it. A planet with nothing on it has
               nothing to lose, so it is told nothing. */}
           {startingOver && hasBuild && (
             <span style={{ ...hintStyle, textAlign: 'center', maxWidth: 340 }} data-testid="planet-start-over-hint">

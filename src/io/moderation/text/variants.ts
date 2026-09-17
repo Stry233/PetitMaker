@@ -22,9 +22,11 @@ function foldScripts(text: string): string {
   });
 }
 
-/** Single letters spelled out with separators: s.e.x, p|o|r|n and s e x rejoin; ordinary words never lose their spacing. */
-function joinSpelledLetters(text: string): string {
-  return text.replace(/(?<!\p{L})(?:\p{L}[\p{P}\p{S}\s]{1,2}){2,}\p{L}(?!\p{L})/gu, run => run.replace(/[\p{P}\p{S}\s]+/gu, ''));
+/** Single letters spelled out with separators: s.e.x, p|o|r|n and s e x rejoin; ordinary words never lose their spacing.
+ *  The run must follow a non-letter, consumed and put back rather than asserted with lookbehind, which
+ *  Safari gained only in 16.4. */
+export function joinSpelledLetters(text: string): string {
+  return text.replace(/(^|[^\p{L}])((?:\p{L}[\p{P}\p{S}\s]{1,2}){2,}\p{L})(?!\p{L})/gu, (_, lead: string, run: string) => lead + run.replace(/[\p{P}\p{S}\s]+/gu, ''));
 }
 
 /** Digits and symbols standing in for letters, only inside tokens that also contain letters: s3x and n1gger, never 3080 or 3D. */

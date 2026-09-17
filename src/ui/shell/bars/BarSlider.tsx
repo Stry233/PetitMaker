@@ -10,7 +10,7 @@
  * the plate's edge.
  *
  * A SLIDER THAT CANNOT BE MOVED SAYS SO. Some contexts leave one meaningless — a rectangle takes no
- * brush width, a water island has one layer to reach — and an inert control that still looks live is
+ * brush width, water has one layer to reach — and an inert control that still looks live is
  * a lie: it gets dragged, nothing happens, and the app reads as broken. So it dims and takes the
  * blocked cursor, the same pair the layer panel's spent arrows wear, and it STAYS: removing it would
  * reflow the row every time the context changed, and a knob you can see not applying is information.
@@ -27,6 +27,7 @@ import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { MOTIONS } from '../motion/registry';
 import { useMotion } from '../motion/use-motion';
+import { visualRect } from '../../design/visual-rect';
 
 /** How far the bubble rises into place, in css px: the registry's own amplitude, since a distance
  *  typed at an element is the same unfindable decision a duration typed there is. */
@@ -110,7 +111,7 @@ export function BarSlider({
   // frame's own, and the two differ by exactly that zoom.
   const pick = (clientX: number): void => {
     if (off) return;
-    const rect = ref.current?.getBoundingClientRect();
+    const rect = ref.current ? visualRect(ref.current) : null;
     if (!rect || rect.width === 0) return;
     const atDesign = ((clientX - rect.left) / rect.width) * shape.track.w;
     onChange(clamp(min + Math.round(((atDesign - from) / span) * steps)));
@@ -217,13 +218,16 @@ function SliderReading({ anchor, centre, width, text }: {
     if (pictured) return;
     let raf = 0;
     const place = () => {
-      const rect = anchor.current?.getBoundingClientRect();
-      if (rect && layer.current) {
-        const zoom = rect.width / width;
-        if (zoom > 0) {
+      const rect = anchor.current ? visualRect(anchor.current) : null;
+      if (layer.current) {
+        const zoom = rect ? rect.width / width : 0;
+        const style = layer.current.style;
+        // An anchor that measures nothing leaves the layer hidden rather than standing at the page origin.
+        const visibility = zoom > 0 ? 'visible' : 'hidden';
+        if (style.visibility !== visibility) style.visibility = visibility;
+        if (rect && zoom > 0) {
           const half = (bubble.current?.offsetWidth ?? 0) * zoom / 2;
           const x = Math.max(half + 6, Math.min(window.innerWidth - half - 6, rect.left + centre * zoom));
-          const style = layer.current.style;
           const left = `${x / zoom}px`, top = `${rect.top / zoom}px`;
           if (style.zoom !== String(zoom)) style.zoom = String(zoom);
           if (style.left !== left) style.left = left;
@@ -256,7 +260,7 @@ function SliderReading({ anchor, centre, width, text }: {
     </motion.span>
   );
   return pictured ? reading : createPortal(
-    <div ref={layer} style={{ position: 'fixed', zIndex: z.popover, pointerEvents: 'none', fontFamily: font.family }}>{reading}</div>,
+    <div ref={layer} style={{ position: 'fixed', visibility: 'hidden', zIndex: z.popover, pointerEvents: 'none', fontFamily: font.family }}>{reading}</div>,
     document.body,
   );
 }

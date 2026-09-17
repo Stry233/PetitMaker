@@ -6,11 +6,12 @@
  */
 import { useFrameReadableWeight } from './use-frame-zoom';
 import {
-  Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState,
+  Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode, type RefObject,
 } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import type { BuildMode } from '../../core/model/edit-mode';
+import { hasWebGL2 } from '../../core/runtime/device-quality';
 import { useAgentSession } from '../../agent/session/store';
 import { hasAutosave, readRestorableAutosave, type RestoredAutosave } from '../../io/autosave';
 import { offerRestoreDismiss } from '../../core/runtime/restore-offer';
@@ -22,10 +23,11 @@ import { tourTargetAttr, type TourStep, type TourTargetId } from '../chrome/tour
 import { helpTargetAttr } from '../chrome/modals/help/targets';
 import type { HelpPageId } from '../chrome/modals/help/page-schema';
 import { useFirstLaunchTour } from '../chrome/tour/use-tour';
+import { ChunkBoundary } from '../primitives/ChunkBoundary';
 import { useUiPreview, useUiPreviewPose } from '../primitives/ui-preview';
 import { useEditorShortcuts } from './use-editor-shortcuts';
 import { useRegionBrush } from './use-region-brush';
-import { ScaleProvider, useDenseScript, useDevicePixelRatio, useViewportSize } from '../design/scale';
+import { ScaleProvider, useDenseScript, useDevicePixelRatio, useViewportSize, useFitFloor } from '../design/scale';
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
 import { weightVars } from '../design/text-weight';
 import { useFocusSource } from '../design/focus-source';
@@ -56,7 +58,7 @@ import { ShapeEdge } from '../design/shape-edge';
 import {
   captionShift, EDGE_RIGHT, MODE, MODE_SCALE, SCALE, TEXT, TOP_RIGHT_GAP, ZOOM,
 } from './units';
-import { SHELL_TOUR_STEPS } from './tour-steps';
+import { shellTourSteps } from './tour-steps';
 import { tourDiagram } from './tour-diagrams';
 import { useShellCommands } from './use-shell-commands';
 import { Windows } from './windows/Windows';
@@ -404,9 +406,10 @@ const PanelColumn = lazy(() => import('../agent/PanelColumn'));
  *  makes when React renders it, made without the render — the slide's frames go through here
  *  (`use-dock.ts:dockAside`), and whichever party wrote last wrote the same function of the same
  *  live fraction. */
-function writeFrameZoom(el: HTMLElement, zoom: number, dpr: number, dense: boolean): void {
+function writeFrameZoom(el: HTMLElement, zoom: number, dpr: number, dense: boolean, windowH: number): void {
   el.style.zoom = String(zoom);
   el.style.setProperty('--shell-zoom', String(zoom));
+  el.style.setProperty('--viewport-h', `${windowH}px`);
   for (const [k, v] of Object.entries(weightVars(zoom, dpr, dense))) {
     el.style.setProperty(k, String(v));
   }
@@ -421,7 +424,8 @@ function Assistant({ hidden }: { hidden: boolean }) {
   const { aside } = useDockStage();
   const { w: vw, h: vh } = useViewportSize();
   const uiZoom = useAnimatedUiZoom();
-  const zoom = frameZoomAt(aside, vw, vh, uiZoom);
+  const floor = useFitFloor();
+  const zoom = frameZoomAt(aside, vw, vh, uiZoom, floor);
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -430,22 +434,24 @@ function Assistant({ hidden }: { hidden: boolean }) {
   useEffect(() => dockAside.on('change', (v) => {
     const el = wrapRef.current;
     if (!el) return;
-    writeFrameZoom(el, frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoom), dpr, dense);
-  }), [uiZoom, dpr, dense]);
+    writeFrameZoom(el, frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoom, floor), dpr, dense, window.innerHeight);
+  }), [uiZoom, floor, dpr, dense]);
   useEffect(() => { if (open) setEverOpened(true); }, [open]);
   if (!everOpened) return null;
   return (
     <div
       ref={wrapRef}
       style={{
-        zoom, '--shell-zoom': String(zoom), fontSize: TEXT.label, fontFamily: font.family,
+        zoom, '--shell-zoom': String(zoom), '--viewport-h': `${vh}px`, fontSize: TEXT.label, fontFamily: font.family,
         ...weightVars(zoom, dpr, dense),
       } as CSSProperties}
     >
       <ScaleProvider value={SCALE}>
-        <Suspense fallback={null}>
-          <PanelColumn open={open} hosted veiled={hidden} />
-        </Suspense>
+        <ChunkBoundary resetKey={open}>
+          <Suspense fallback={null}>
+            <PanelColumn open={open} hosted veiled={hidden} />
+          </Suspense>
+        </ChunkBoundary>
       </ScaleProvider>
     </div>
   );
@@ -615,7 +621,10 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   // And so is opening any window at all. Most are reached through the menu, which already answers,
   // but the save-and-share window has its own button on the bar, and a visitor who is exporting
   // this map has stopped considering the last one just as surely.
-  const anyWindowOpen = useEditorStore((s) => Object.values(s.modals).some(Boolean));
+  // The What's new window speaks first and hands the screen back, so it is the one window that
+  // leaves the offer standing.
+  const anyWindowOpen = useEditorStore((s) => Object.entries(s.modals).some(([id, on]) => on && id !== 'whatsNew'));
+  const whatsNewOpen = useEditorStore((s) => s.modals.whatsNew);
   useEffect(() => { if (anyWindowOpen && candidate) dismissRestore(); }, [anyWindowOpen, candidate, dismissRestore]);
   // And the same dismissal, offered to the one surface that stands over the map beside this card:
   // the arrival notice's OK is a hand saying where it is, which answers this offer too
@@ -735,7 +744,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
           assistant is a decision about what to do next, same as opening the menu or a mode, so the
           card must not reappear once the panel is put away. */}
       <AnimatePresence>
-        {candidate && !assistantOpen && !preview && (
+        {candidate && !assistantOpen && !preview && !whatsNewOpen && (
           <RestoreShelf
             key="restore"
             state={candidate.state}
@@ -812,7 +821,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   const { aside, side: dockSide } = useDockStage();
 
   // What `animations.css` draws a keyboard focus ring in: its colour, the pale halo outside it that
-  // carries it over a dark island, and the ring a TEXT FIELD wears, which here is none — a caret
+  // carries it over a dark map, and the ring a TEXT FIELD wears, which here is none — a caret
   // says where the keyboard is and nothing needs to say it twice. A stylesheet cannot read a token
   // module, so the three custom properties are the bridge, and this is the one place they are named.
   // On the DOCUMENT rather than on the frame below, because the windows this shell opens stand
@@ -857,7 +866,8 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   // context updates only when the fraction crosses an end, so the two readings agree exactly there.
   const { w: vw, h: vh } = useViewportSize();
   const uiZoomAnim = useAnimatedUiZoom();
-  const zoom = frameZoomAt(aside, vw, vh, uiZoomAnim);
+  const floor = useFitFloor();
+  const zoom = frameZoomAt(aside, vw, vh, uiZoomAnim, floor);
   const chrome = zoom / ZOOM;
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
@@ -876,7 +886,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
    * The map is drawn centred in its own box, so a box that loses the dock's width from ONE edge moves
    * its centre by HALF that width — and the centre is what a viewer is watching. A plane that
    * travelled the sheet's whole distance therefore arrived with the world half a dock too far along,
-   * and the settle's resize put it right in a single frame: the island visibly leapt 208px at 1440
+   * and the settle's resize put it right in a single frame: the map visibly leapt 208px at 1440
    * css px, on both sides and at both ends of a change of side.
    *
    * So the plane travels this, and its VISIBLE EDGE is carried the rest of the way by a clip — which
@@ -919,14 +929,14 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
     const map = mapPlaneRef.current;
     const vig = vignetteRef.current;
     if (!frame || !map || !vig) return;
-    const zoomNow = frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoomAnim);
+    const zoomNow = frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoomAnim, floor);
     const refW = v * PINNED_DOCK_REF_W;
     const px = refW * (zoomNow / ZOOM);
     const atLeft = dockSide === 'left';
     const inset = `${v * PINNED_COLUMN_W}px`;
     frame.style.left = atLeft ? inset : '0px';
     frame.style.right = atLeft ? '0px' : inset;
-    writeFrameZoom(frame, zoomNow, dpr, dense);
+    writeFrameZoom(frame, zoomNow, dpr, dense, window.innerHeight);
     const travel = px / 2;
     const between = v > 0 && v < 1;
     map.style.left = !between && atLeft ? `${px}px` : '0px';
@@ -941,7 +951,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
     root.setProperty('--pin-dock-right', `${atLeft ? 0 : refW}px`);
     root.setProperty('--pin-dock-left-px', `${atLeft ? px : 0}px`);
     root.setProperty('--pin-dock-right-px', `${atLeft ? 0 : px}px`);
-  }), [dockSide, uiZoomAnim, dpr, dense]);
+  }), [dockSide, uiZoomAnim, dpr, dense, floor]);
 
   // The mode is part of the choreography: the bar a step describes belongs to a mode, and the run
   // ends by clearing it. Applied with a direct, synchronous state set — `onStepEnter` fires from the
@@ -964,6 +974,9 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
     if (opened && useEditorStore.getState().viewMode !== opened) setViewMode(opened);
   }, [tourRunning, setViewMode]);
 
+  // The run this device can be shown: without WebGL2 the three 3D steps are dropped.
+  const tourSteps = useMemo(() => shellTourSteps(hasWebGL2()), []);
+
   const handleTourStep = useCallback((step: TourStep) => {
     if (step.mode !== undefined) setEditMode({ mode: step.mode });
     if (step.view !== undefined) setViewMode(step.view);
@@ -979,7 +992,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
    * plane itself is pointer-transparent and each interactive cluster opts back in.
    */
   const frameStyle = {
-    zoom, '--shell-zoom': String(zoom), fontSize: TEXT.label, fontFamily: font.family,
+    zoom, '--shell-zoom': String(zoom), '--viewport-h': `${vh}px`, fontSize: TEXT.label, fontFamily: font.family,
     // The frame's own weight answers, resolved at ITS zoom — `ZOOM` times the fit the chrome rides,
     // so the same authored size lands 1.25x larger here and the frame keeps a weight a modal drops.
     ...weightVars(zoom, dpr, dense),
@@ -992,8 +1005,9 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   } as CSSProperties;
   return (
     <>
-      {/* The docked panel stays outside the sliding frame plane. */}
-      <Assistant hidden={hidden} />
+      {/* The docked panel stays outside the sliding frame plane. A pictured shell mounts none: the live
+          panel's open state is not the picture's, and a second hosted panel would seat the character. */}
+      {!preview && <Assistant hidden={hidden} />}
       {/* The map plane transforms and clips during docking, then settles to an inset. This avoids
           resizing renderer buffers on every animation frame. Pointer input stays disabled in transit
           because view projections update when the containing box settles. */}
@@ -1054,7 +1068,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
         transition={shade}
       />
       <ShapeEdgeFilter />
-      {/* THE FRAME ARRIVES. It comes up over the same 800 ms the 3D scene flies the island
+      {/* THE FRAME ARRIVES. It comes up over the same 800 ms the 3D scene flies the map
           in over, so the map arrives and the interface arrives around it.
 
           Presence only, and that is forced rather than chosen: every cluster inside is a FIXED
@@ -1100,7 +1114,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
       {/* The acting surfaces stay with the LIVE shell: a pictured one has no windows to open, no
           tour to run, and no second copy of either belongs in the document. */}
       {!preview && <Windows />}
-      {!preview && <TourOverlay steps={SHELL_TOUR_STEPS} onStepEnter={handleTourStep} diagram={tourDiagram} />}
+      {!preview && <TourOverlay steps={tourSteps} onStepEnter={handleTourStep} diagram={tourDiagram} />}
       {!preview && <TourDoneModal />}
     </>
   );

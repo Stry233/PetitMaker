@@ -108,7 +108,7 @@ describe('preview3d/terrain-geometry', () => {
     }
   });
 
-  it('a ground-island cut (type None + corners) keeps the full grass floor and reveals water at the cut', () => {
+  it('a ground-islet cut (type None + corners) keeps the full grass floor and reveals water at the cut', () => {
     const w0 = (): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 0 } });
     const island = (corners: ['square' | 'fan', 'square', 'square', 'square']): MacroCell =>
       ({ zone: CellZone.Grass, terrain: { type: TerrainType.None, elevation: 0, corners } });

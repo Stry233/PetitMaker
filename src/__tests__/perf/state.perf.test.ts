@@ -115,7 +115,7 @@ describe.runIf(PERF)('perf: state', () => {
     });
   });
 
-  it('layer panel: getActiveLayers over the dense island', async () => {
+  it('layer panel: getActiveLayers over the dense map', async () => {
     const { state } = denseIsland();
     await s.bench('layers/get-active', () => { getActiveLayers(state, 1); });
   });

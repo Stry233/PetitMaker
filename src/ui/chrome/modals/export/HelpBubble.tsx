@@ -9,6 +9,7 @@ import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
 import { useChromeScale } from '../../../design/scale';
 import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
+import { visualRect } from '../../../design/visual-rect';
 
 const WIDTH = 230;
 
@@ -21,7 +22,7 @@ export function HelpBubble({ text }: { text: string }) {
 
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return;
-    const r = btnRef.current.getBoundingClientRect();
+    const r = visualRect(btnRef.current);
     // Clamp in VISUAL px (the bubble renders at WIDTH x the modal's css zoom), then divide
     // the zoom back out of the stored css coordinates (they live inside the zoomed subtree).
     const left = clampLeft(r.left, WIDTH, chrome);

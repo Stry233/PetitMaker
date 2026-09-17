@@ -25,7 +25,7 @@ interface Outcome { placedLayers: number; terrainRejects: number; postViol: numb
 function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Outcome {
   const state = makeState(size, size);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  // No richness override — exercise the shelf's own default. 48² is small for a designed island
+  // No richness override — exercise the shelf's own default. 48² is small for a designed planet
   // (its places are 9 to 21 cells across), which is the point: the terrain must commit even where
   // the composition is cramped.
   const config: GenerateConfig = { algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 6, seed, region: null };
@@ -44,7 +44,7 @@ function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Out
     if (!t) ground++;
     else if (t.type === TerrainType.Mountain) mtn++;
     else if (t.type === TerrainType.Water) water++;
-    // A ground-island edge-cut (None + corners) is a rounded SHORELINE: it exists only where ground
+    // A ground-islet edge-cut (None + corners) is a rounded SHORELINE: it exists only where ground
     // pokes into water. It counts as water here, so a body reads at its whole extent whichever way
     // its notches were cut.
     else if (t.type === TerrainType.None && t.corners?.some((k) => k !== 'square')) water++;
@@ -55,7 +55,7 @@ function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Out
 const SEEDS = [66, 1, 2, 7, 13, 42, 99, 100];
 
 describe('generation through the real CommandExecutor', () => {
-  it('commits cleanly for every island kind × seed — no refused terrain, no post-stroke violations', () => {
+  it('commits cleanly for every planet kind × seed — no refused terrain, no post-stroke violations', () => {
     for (const mode of ['earth', 'water', 'mixed'] as const) {
       for (const seed of SEEDS) {
         const o = commit(mode, seed);
@@ -74,12 +74,12 @@ describe('generation through the real CommandExecutor', () => {
    * than as a batch mean, and as `<=` on the wet end because the budget saturates: on a grid this
    * small there is often no more room for water, so water and mixed come out equal.
    *
-   * EARTH IS DRY, and this is the surface that can still ask for it: the shelf offers ONE island kind
+   * EARTH IS DRY, and this is the surface that can still ask for it: the shelf offers ONE planet kind
    * and `generate-shelf.ts:modeFor` answers `mixed` for every one, so a kind other than mixed reaches
    * the engine only from a recipe saved before the kinds collapsed. It is dry BY GATE and not by luck — every
    * water pass, the landmark figure included, sits behind `waterScale > 0` in `terrain-sculpt.ts`.
    */
-  it('the island kinds order by how much water they hold, and earth holds none', () => {
+  it('the planet kinds order by how much water they hold, and earth holds none', () => {
     for (const seed of SEEDS) {
       const earth = commit('earth', seed).water;
       const mixed = commit('mixed', seed).water;

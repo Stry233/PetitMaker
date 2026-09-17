@@ -1143,3 +1143,15 @@ describe('argument errors teach the schema shape', () => {
     expect(r.content).toContain('theme: "garden"');
   });
 });
+
+describe('disabled catalog items', () => {
+  it('are refused by place_object and unknown to get_catalog_item', async () => {
+    const { deps, state } = setup(10, 10);
+    const r = await executeToolCall(call('place_object', { catalogId: 'facility-station', x: 3, y: 3 }), deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/facility-station/);
+    expect(state.objects.size).toBe(0);
+    const info = await executeToolCall(call('get_catalog_item', { id: 'facility-station' }), deps);
+    expect(info.isError).toBe(true);
+  });
+});

@@ -69,46 +69,86 @@ function writeSnapshot(storage: Storage, record: string): boolean {
   }
 }
 
+/**
+ * Serialize and store the map. `immediate` gives up the compression worker and encodes on this
+ * thread, because a page being hidden or unloaded may never run another task.
+ */
+function writeAutosave(state: GridState, current: number, immediate: boolean): void {
+  let storage: Storage;
+  try { storage = localStorage; } catch { return; }
+  if (!storage || !autosaveWorthy(state)) return;
+  const save: AutosaveFile = { ...buildSaveFile(state, currentCamera()), autosave: 1, history: currentHistory(state) };
+  let json = JSON.stringify(save);
+  if (!fitsAutosaveRestoreLimit(json)) {
+    const { history: _history, ...map } = save;
+    json = JSON.stringify(map);
+    if (!fitsAutosaveRestoreLimit(json)) return;
+  }
+  const write = (record: string) => {
+    if (current !== revision) return;
+    if (writeSnapshot(storage, record)) return;
+    // Preserve the map if storage cannot hold history, then try without provenance as a last resort.
+    const { history: _history, ...map } = JSON.parse(json) as AutosaveFile;
+    if (writeSnapshot(storage, encodeAutosave(JSON.stringify(map)))) return;
+    const { provenance: _provenance, ...minimal } = map;
+    writeSnapshot(storage, encodeAutosave(JSON.stringify(minimal)));
+  };
+  if (immediate || json.length < COMPRESS_AUTOSAVE_AT || typeof Worker === 'undefined') {
+    write(encodeAutosave(json));
+    return;
+  }
+  const controller = new AbortController();
+  compression = controller;
+  void encodeAutosaveInWorker(json, controller.signal).then(write, () => {
+    if (!controller.signal.aborted && current === revision) write(encodeAutosave(json));
+  }).finally(() => { if (compression === controller) compression = null; });
+}
+
+/** The debounced write waiting to happen, kept so backgrounding the tab can still make it. */
+let pending: { state: GridState; revision: number } | null = null;
+
+/**
+ * Write the debounced save now. A phone browser discards a hidden tab without another timer tick,
+ * so `visibilitychange` and `pagehide` are the last chance the pending edits get.
+ */
+function flushAutosave(): void {
+  const owed = pending;
+  if (!owed) return;
+  pending = null;
+  if (timer !== null) clearTimeout(timer);
+  timer = null;
+  writeAutosave(owed.state, owed.revision, true);
+}
+
+let lifecycleBound = false;
+
+/** Bound on the first scheduled save, since before that there is nothing owed. */
+function bindLifecycle(): void {
+  if (lifecycleBound || typeof document === 'undefined') return;
+  lifecycleBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushAutosave();
+  });
+  // Safari does not reliably report a hidden state when the page is being replaced or frozen.
+  window.addEventListener('pagehide', flushAutosave);
+}
+
 export function scheduleAutosave(state: GridState): void {
   const current = ++revision;
   compression?.abort();
   compression = null;
   if (timer !== null) clearTimeout(timer);
+  bindLifecycle();
+  pending = { state, revision: current };
   timer = setTimeout(() => {
     timer = null;
-    let storage: Storage;
-    try { storage = localStorage; } catch { return; }
-    if (!storage || !autosaveWorthy(state)) return;
-    const save: AutosaveFile = { ...buildSaveFile(state, currentCamera()), autosave: 1, history: currentHistory(state) };
-    let json = JSON.stringify(save);
-    if (!fitsAutosaveRestoreLimit(json)) {
-      const { history: _history, ...map } = save;
-      json = JSON.stringify(map);
-      if (!fitsAutosaveRestoreLimit(json)) return;
-    }
-    const write = (record: string) => {
-      if (current !== revision) return;
-      if (writeSnapshot(storage, record)) return;
-      // Preserve the map if storage cannot hold history, then try without provenance as a last resort.
-      const { history: _history, ...map } = JSON.parse(json) as AutosaveFile;
-      if (writeSnapshot(storage, encodeAutosave(JSON.stringify(map)))) return;
-      const { provenance: _provenance, ...minimal } = map;
-      writeSnapshot(storage, encodeAutosave(JSON.stringify(minimal)));
-    };
-    if (json.length < COMPRESS_AUTOSAVE_AT || typeof Worker === 'undefined') {
-      write(encodeAutosave(json));
-      return;
-    }
-    const controller = new AbortController();
-    compression = controller;
-    void encodeAutosaveInWorker(json, controller.signal).then(write, () => {
-      if (!controller.signal.aborted && current === revision) write(encodeAutosave(json));
-    }).finally(() => { if (compression === controller) compression = null; });
+    pending = null;
+    writeAutosave(state, current, false);
   }, AUTOSAVE_DEBOUNCE_MS);
 }
 
 /** A map worth persisting: any terrain, any object beyond the built-in plaza, or any plan-notes
- *  ink — an island still being ANNOTATED is a session too. A fresh empty map must never clobber a
+ *  ink — a planet still being ANNOTATED is a session too. A fresh empty map must never clobber a
  *  real save. Exported as the ONE definition of empty, shared with the startup restore offer and
  *  the drag-drop import confirm. */
 export function autosaveWorthy(state: GridState): boolean {
@@ -187,6 +227,7 @@ export function clearAutosave(): void {
   compression = null;
   if (timer !== null) clearTimeout(timer);
   timer = null;
+  pending = null;
   try {
     localStorage.removeItem(PREFS.autosave.key);
     localStorage.removeItem(PREFS.autosaveHistory.key);

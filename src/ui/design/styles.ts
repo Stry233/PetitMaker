@@ -63,6 +63,16 @@ export function withAlpha(color: string, alpha: number): string {
   return `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 }
 
+/** Two 6-digit hex colours blended in sRGB, `share` of the first over the rest of the second. This
+ *  is what `color-mix(in srgb, a share, b)` computes, as a plain colour every engine can paint. */
+export function mixHex(a: string, b: string, share: number): string {
+  const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ar, ag, ab] = channels(a);
+  const [br, bg, bb] = channels(b);
+  const blend = (x: number, y: number) => Math.round(x * share + y * (1 - share)).toString(16).padStart(2, '0');
+  return `#${blend(ar!, br!)}${blend(ag!, bg!)}${blend(ab!, bb!)}`;
+}
+
 /* ── Cursors ─────────────────────────────────────────────────
  * The four cursors the DOM shows, as the custom properties `ui/design/cursors/cursor-vars` writes onto
  * <html>. Every component styles a cursor through one of these, not a bare CSS keyword;

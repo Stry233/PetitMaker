@@ -67,7 +67,7 @@ export function stencilChooser(origin: MacroCoord, stencil: Stencil): CornerChoo
       if (onDiagonal(sx, sy)) return 'tri';
       return q < INNER_TRI_AT ? 'fan' : 'tri';
     }
-    // A convex corner of the shape (or of the ground an island cut reveals). On a diagonal every
+    // A convex corner of the shape (or of the ground an islet cut reveals). On a diagonal every
     // offered corner is a staircase step and takes the chamfer; elsewhere cut only where the
     // source clips the corner, by nearest area.
     if (onDiagonal(sx, sy)) return 'tri';

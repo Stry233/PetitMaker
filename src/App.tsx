@@ -6,6 +6,7 @@ import { useEditorStore } from './state/store';
 import { PixiCanvas } from './canvas/map2d/PixiCanvas';
 import { Editor3DCanvas } from './canvas/map3d/Editor3DCanvas';
 import { preloadScene3D } from './canvas/map3d/preload';
+import { hasWebGL2 } from './core/runtime/device-quality';
 import { installSelectionViewSync } from './canvas/interaction/selection-view-sync';
 import { installRegionViewSync } from './canvas/interaction/region-view-sync';
 import { useCursorVars } from './ui/design/cursors/cursor-vars';
@@ -22,7 +23,9 @@ import { cssMotion } from './ui/shell/motion/use-motion';
 import { ToastContainer } from './ui/chrome/floating/Toast';
 import { ArrivalToast } from './ui/chrome/floating/ArrivalToast';
 import { CurveHandles } from './ui/chrome/floating/CurveHandles';
-import { InAppBrowserNotice } from './ui/chrome/guards/InAppBrowserNotice';
+import { UnsupportedBrowserNotice } from './ui/chrome/guards/UnsupportedBrowserNotice';
+import { MenuBubbles } from './ui/chrome/floating/MenuBubbles';
+import { WhatsNewGate } from './ui/chrome/modals/whats-new/WhatsNewGate';
 import { DevBuildNotice } from './ui/chrome/guards/DevBuildNotice';
 import { PortraitGuard } from './ui/chrome/guards/PortraitGuard';
 import { LegalBar } from './legal/LegalBar';
@@ -180,7 +183,8 @@ export default function App() {
   }, []);
 
   // Preload the 3D scene at idle; sessions that open in 3D load it eagerly at the entry point.
-  useEffect(() => { preloadScene3D({ idle: true }); }, []);
+  // three is WebGL2-only, so a device without it never fetches the chunk.
+  useEffect(() => { if (hasWebGL2()) preloadScene3D({ idle: true }); }, []);
   // Decode the catalog icons at idle, so the object shelf's first open paints already-decoded
   // art instead of paying ~80 PNG decodes in one burst.
   useEffect(() => { warmIconDecodes(); }, []);
@@ -282,7 +286,9 @@ export default function App() {
       <ToastContainer />
       <CurveHandles />
       <DevBuildNotice />
-      <InAppBrowserNotice />
+      <UnsupportedBrowserNotice />
+      <MenuBubbles splashActive={splashActive} />
+      <WhatsNewGate splashActive={splashActive} />
       <LegalBar />
       <PortraitGuard />
       <SelectionHandles />

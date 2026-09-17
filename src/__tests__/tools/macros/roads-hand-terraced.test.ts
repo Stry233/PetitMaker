@@ -1,9 +1,9 @@
 /**
  * THE ROADS PRESS ON A HAND-BUILT TERRACED MAP, the one shape none of its other fixtures had.
- * Every earlier road pin builds its island
- * with the GENERATOR, and a generated island has a handful of broad rooms with the plaza sitting in
- * the middle of the largest of them. A person terraces instead: many small rectangular plateaus with
- * sharp edges, houses standing on raised ground, and a plaza in a court of its own.
+ * Every earlier road pin builds its planet with the GENERATOR, and a generated planet has a
+ * handful of broad rooms with the plaza sitting in the middle of the largest of them. A person
+ * terraces instead: many small rectangular plateaus with sharp edges, houses standing on raised
+ * ground, and a plaza in a court of its own.
  *
  * `hand-terraced-hexia.json` is a real such map, in the app's own save format (its provenance ledger
  * stripped, its object ids renamed), loaded through the ordinary `deserialize`. It decomposes into
@@ -110,7 +110,7 @@ function componentsAround(comp: Map<number, number>, rect: { x: number; y: numbe
   return out;
 }
 
-describe('the fixture, a hand-terraced island', () => {
+describe('the fixture, a hand-terraced map', () => {
   it('is many small plateaus, houses on raised ground, and a plaza its own court', () => {
     const kit = loadMap();
     const a = analyzeTerrain(kit.state, null);
@@ -126,7 +126,7 @@ describe('the fixture, a hand-terraced island', () => {
   });
 });
 
-describe('one whole-map roads press on a hand-terraced island', () => {
+describe('one whole-map roads press on a hand-terraced map', () => {
   it('joins every house to one network that reaches the plaza, over the ramps it needs', () => {
     const kit = loadMap();
     const standing = new Set(kit.state.objects.keys());
@@ -177,7 +177,7 @@ describe('one whole-map roads press on a hand-terraced island', () => {
 
 describe('a house the network cannot reach is named, not skipped', () => {
   /** Flat buildable ground with a sea border, and a moat too wide for any catalog bridge cutting
-   *  an island out of it: two houses on the mainland for the press to join, one marooned. */
+   *  an islet out of it: two houses on the mainland for the press to join, one marooned. */
   function marooned(): Kit {
     const SIZE = 60, SHORE = 3, MOAT_X0 = 30, MOAT_X1 = 43;
     const state = makeState(SIZE, SIZE);

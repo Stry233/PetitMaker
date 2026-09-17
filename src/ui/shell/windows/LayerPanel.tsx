@@ -49,7 +49,7 @@ const LOCK_RED = '#ff6b6b';
  * the same row of controls at either width and the air around the stack is the plate's own margin.
  * What differs between the two sizes is the tile, and that lives in `TILE` a size at a time.
  *
- * JUDGED AT SIZE against a generated island, which is the only state that shows the problem: on an
+ * JUDGED AT SIZE against a generated map, which is the only state that shows the problem: on an
  * empty map every count is a single 0 and nothing is tight. A real ground floor carries five
  * figures, and it was those five that ran into the eye and the lock.
  */
@@ -96,7 +96,7 @@ interface TileMetrics {
   toggleGap: number;
   /** The band's colour, as a chip at the head of the tile. */
   swatch: number;
-  /** Room for five figures, which is what a real island's ground floor carries, so the toggles hold
+  /** Room for five figures, which is what a real map's ground floor carries, so the toggles hold
    *  their column across the whole stack and from one map to the next. */
   count: number;
   icon: number;
@@ -122,7 +122,7 @@ interface TileMetrics {
  * and the paddings come down with them, which is 40 css px a floor against the square's 80.5.
  *
  * The bar keeps its own line at BOTH sizes. It is the one thing on a tile that is a PICTURE of a
- * quantity rather than a statement of one, it is read down the stack as the island's profile, and a
+ * quantity rather than a statement of one, it is read down the stack as the map's profile, and a
  * bar squeezed into what a row of words leaves over is a bar too short to compare with the floor
  * above it.
  *
@@ -233,7 +233,7 @@ interface Row {
   elevation: number;
   name: string;
   count: number;
-  /** How much of the island this floor covers, 0..1. See `capacityOf`. */
+  /** How much of the map this floor covers, 0..1. See `capacityOf`. */
   share: number;
 }
 
@@ -762,7 +762,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
       // CLAMPED, because the count is not purely a count of cells: it is the cells this floor
       // reaches plus the objects standing ON it, and an object is one whichever way its footprint
       // covers the ground under it. A floor built out to the coast and then decorated can therefore
-      // total more than the island has cells, and a bar longer than its own track is a worse reading
+      // total more than the map has cells, and a bar longer than its own track is a worse reading
       // than a relative one. Full is where the bar stops.
       share: Math.min(1, l.cellCount / capacity),
     }));
@@ -873,7 +873,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
               // its box is its own.
               pointerEvents: 'auto',
               background: PLATE,
-              // A HAIRLINE INSTEAD OF A SHADOW. The plate stands on the island and needs one dark
+              // A HAIRLINE INSTEAD OF A SHADOW. The plate stands on the map and needs one dark
               // pixel between its cream and whatever is under it; a shadow would be a second
               // treatment for that job, and this frame has none.
               border: PANEL_EDGE,
@@ -932,7 +932,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
                 height: 2 * PANEL.headPadY + TEXT.head, boxSizing: 'content-box',
               }}
             >
-              {/* WHAT THE MAP SHOWS, at the head's left: the layer numbers over the island are a
+              {/* WHAT THE MAP SHOWS, at the head's left: the layer numbers over the map are a
                   fact about the map rather than about this panel, so they take the end the panel's
                   own controls are not at. Drawn in the arrows' box exactly, since two controls at
                   the two ends of one row are read as a pair whatever they do, and one of them a

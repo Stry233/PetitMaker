@@ -29,6 +29,7 @@ import {
   KEY_ROWS, NUMPAD, NUMPAD_COLS, NUMPAD_ROWS_N, NAV, NAV_COLS, NAV_ROWS_N,
   CATEGORY_COLOR, CATEGORY_ORDER, comboFor, comboFromEvent, type KeyDef, type Layer,
 } from './layout';
+import { visualRect } from '../../../design/visual-rect';
 
 export interface KeyboardModalProps { open?: boolean; onClose: () => void }
 
@@ -43,7 +44,8 @@ const BASE_LAYER: Layer = { ctrl: false, alt: false, shift: false };
 
 /* ── small styled atoms ──────────────────────────────────────────────────── */
 
-const cardStyle: CSSProperties = { ...windowCard, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 24 };
+// Border-box, so the shell's viewport caps bound the whole card and a phone keeps its backdrop rim.
+const cardStyle: CSSProperties = { ...windowCard, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 24, boxSizing: 'border-box' };
 // ONLY the keyboard region scrolls (header + footer stay pinned). ONE container scrolls BOTH axes, so
 // each bar anchors to the visible scrollport — the h-bar stays at the region's bottom edge and the
 // v-bar at its right, both reachable regardless of scroll position. Do NOT nest a second scroller
@@ -67,6 +69,16 @@ const kbdRegion: CSSProperties = {
  * here only because the region's two-axis fade mask would wash a bar INSIDE the scroller along its
  * whole length.
  */
+/** The board shrinks to the region down to this before it scrolls sideways. */
+const BOARD_ZOOM_FLOOR = 0.75;
+
+/** The zoom that fits the board into the room it has on both axes, never above 1 and never under the floor. */
+export function boardZoomFor(regionWidth: number, boardWidth: number, regionHeight = Infinity, boardHeight = 1): number {
+  if (regionWidth <= 0 || boardWidth <= 0) return 1;
+  const fit = Math.min(regionWidth / boardWidth, regionHeight / boardHeight);
+  return Math.min(1, Math.max(BOARD_ZOOM_FLOOR, fit));
+}
+
 const HBAR_H = 12;
 // The visible pill: the cozy bar's 12px lane minus its 3px transparent inset each side.
 const HBAR_THUMB = 6;
@@ -87,7 +99,7 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
   const posFrac = room > 0 ? left / room : 0;
 
   const scrollFor = (clientX: number): number | null => {
-    const rect = ref.current?.getBoundingClientRect();
+    const rect = ref.current ? visualRect(ref.current) : null;
     if (!rect || rect.width === 0) return null;
     const thumbW = rect.width * thumbFrac;
     const travel = rect.width - thumbW;
@@ -96,7 +108,7 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
     return Math.min(room, Math.max(0, (thumbLeft / travel) * room));
   };
   const down = (e: ReactPointerEvent<HTMLElement>, onThumb: boolean): void => {
-    const rect = ref.current?.getBoundingClientRect();
+    const rect = ref.current ? visualRect(ref.current) : null;
     if (!rect || rect.width === 0) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const thumbW = rect.width * thumbFrac;
@@ -142,6 +154,19 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
   );
 }
 const titleStyle: CSSProperties = { ...windowTitle, marginBottom: 16, flexShrink: 0 };
+
+/** The window's own close: a phone has no Escape and little backdrop to tap. */
+const closeStyle: CSSProperties = {
+  flex: '0 0 auto', width: 28, height: 28, padding: 0, border: 'none', borderRadius: '50%',
+  background: skin.inset, color: skin.ink, display: 'grid', placeItems: 'center', cursor: cursors.clickable,
+};
+
+/** The board's width and height in CSS px at zoom 1. A flex row renders to units*UNIT + (units-1)*GAP
+ *  whatever the key count, so widths are summed, and the widest main row sets the board. */
+const clusterW = (units: number): number => units * UNIT + (units - 1) * GAP;
+const BOARD_UNITS = Math.max(...KEY_ROWS.map((r) => r.reduce((s, k) => s + (k.w ?? 1), 0)));
+export const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
+const KEYBOARD_H = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
 
 // The window pill, at this page's own size (its rows are denser than Settings'). `primary` is the
 // design's active yellow: on this page it marks the action that is about to take the next keypress.
@@ -222,11 +247,19 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   // notches drive it; with vertical room the hook stands aside and the wheel scrolls as usual.
   useWheelToHorizontal(kbdRef);
 
-  // The board region's live scroll geometry, feeding the drawn horizontal bar below it.
+  // The board region's live scroll geometry, feeding the drawn horizontal bar below it and the
+  // board's own zoom.
   const [hbar, setHbar] = useState({ left: 0, vw: 0, cw: 0 });
+  const [boardZoom, setBoardZoom] = useState(1);
   const measureHbar = useCallback(() => {
     const el = kbdRef.current;
     if (!el) return;
+    // Room for the region at the card's height cap: the cap less every other row, which the card's
+    // scroll height carries whether or not the cap is binding yet.
+    const card = el.parentElement;
+    const cap = card ? parseFloat(getComputedStyle(card).maxHeight) : NaN;
+    const roomH = card && Number.isFinite(cap) ? cap - (card.scrollHeight - el.offsetHeight) - 20 : Infinity;
+    setBoardZoom(boardZoomFor(el.clientWidth, KEYBOARD_W + 12, roomH, KEYBOARD_H));
     setHbar((p) => (p.left === el.scrollLeft && p.vw === el.clientWidth && p.cw === el.scrollWidth)
       ? p
       : { left: el.scrollLeft, vw: el.clientWidth, cw: el.scrollWidth });
@@ -446,20 +479,22 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   // EXACT keyboard width, so the card padding stays symmetric. A flex row renders to
   // units*UNIT + (units-1)*GAP regardless of how many keys make up those units, so summing WIDTHS
   // (not counting keys) is what matches the DOM; the widest main row sets the board.
-  const clusterW = (units: number): number => units * UNIT + (units - 1) * GAP;
-  const boardUnits = Math.max(...KEY_ROWS.map((r) => r.reduce((s, k) => s + (k.w ?? 1), 0)));
-  const keyboardW = clusterW(boardUnits) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
   // Card must fit the board + card padding (48) + the vertical region's both-edges gutter (24, always
   // reserved) + the board row's ring padding (12) + a small buffer, else the horizontal bar shows even
-  // when the board fits. 96vw still caps it, so a narrow viewport / high zoom scrolls instead.
-  const width = keyboardW + 48 + 24 + 12 + 8;
-  // Height of the tallest cluster (all three are KEY_ROWS.length rows tall) — the x-scroll box is
-  // fixed to this + a strip for the horizontal bar, so the bar never shifts the legend below it.
-  const keyboardH = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
+  // when the board fits. The viewport caps leave a rim of backdrop on every side; inside them the board
+  // zooms down to its floor before it scrolls.
+  const width = KEYBOARD_W + 48 + 24 + 12 + 8;
 
   return (
-    <ModalShell open={open} onClose={onClose} width={width} maxVwPct={96} maxVh={92} cardStyle={cardStyle} ariaLabel={t('modal.keyboard_title')}>
-      <div style={titleStyle}>{t('modal.keyboard_title')}</div>
+    <ModalShell open={open} onClose={onClose} width={width} maxVwPct={88} maxVh={86} cardStyle={cardStyle} ariaLabel={t('modal.keyboard_title')}>
+      <div style={{ ...titleStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ flex: '1 1 auto' }}>{t('modal.keyboard_title')}</span>
+        <motion.button type="button" {...buttonMotion} aria-label={t('hint.close')} onClick={onClose} style={closeStyle}>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+            <path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </motion.button>
+      </div>
 
       {/* search (left) + reset-all (right), the same two ends the modifier row below hangs its own
           controls from. The field is a READING width rather than the board's: a search box a metre
@@ -560,7 +595,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           the horizontal bar has room without spuriously triggering the vertical one. It shrinks under
           height pressure (high UI zoom) and scrolls; the fade says "more", and the drawn bar below
           the region is the grabbable handle for the horizontal axis. */}
-      <div ref={kbdRef} id="kbd-region" data-testid="kbd-region" className="pw-noscroll" onScroll={measureHbar} style={{ ...kbdRegion, height: keyboardH + 20, ...kbdFade }}>
+      <div ref={kbdRef} id="kbd-region" data-testid="kbd-region" className="pw-noscroll" onScroll={measureHbar} style={{ ...kbdRegion, height: KEYBOARD_H * boardZoom + 20, ...kbdFade }}>
         {/* Must NOT be keyed by the active layer: keying it remounts every keycap on each
             Ctrl/Shift/Alt press, which replays the entrance instead of switching layer. The container
             stays stable and each key cross-fades its own label + eases its own tint. `initial/animate`
@@ -569,7 +604,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           variants={BOARD_IN}
           initial="hidden"
           animate="show"
-          style={{ display: 'flex', gap: BOARD_GAP, alignItems: 'flex-start', width: 'max-content', flex: '0 0 auto', padding: '6px 6px 0' }}
+          style={{ display: 'flex', gap: BOARD_GAP, alignItems: 'flex-start', width: 'max-content', flex: '0 0 auto', padding: '6px 6px 0', zoom: boardZoom }}
         >
           {board(KEY_ROWS)}
           {gridBoard(NAV, NAV_COLS, NAV_ROWS_N, 98)}

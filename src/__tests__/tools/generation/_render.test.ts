@@ -48,13 +48,13 @@ const DUMP = Boolean((globalThis as { process?: { env?: Record<string, string> }
 describe.runIf(DUMP)('RENDER dump', () => {
   it('dumps populated maps', () => {
     const maps = [
-      // Row 0 — the richness axis on one seed: does a richer island get more relief, water and decor?
+      // Row 0 — the richness axis on one seed: does a richer planet get more relief, water and decor?
       gen('mixed', 7, 0.0, 'mixed s7 r0', 0, 0),
       gen('mixed', 7, 0.25, 'mixed s7 r.25', 0, 1),
       gen('mixed', 7, 0.5, 'mixed s7 r.5', 0, 2),
       gen('mixed', 7, 0.75, 'mixed s7 r.75', 0, 3),
       gen('mixed', 7, 1.0, 'mixed s7 r1', 0, 4),
-      // Row 1 — the three island kinds at mid richness (water should carry the most water)
+      // Row 1 — the three planet kinds at mid richness (water should carry the most water)
       gen('earth', 7, 0.5, 'earth s7', 1, 0),
       gen('water', 7, 0.5, 'water s7', 1, 1),
       gen('mixed', 7, 0.5, 'mixed s7', 1, 2),

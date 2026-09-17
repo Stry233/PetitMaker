@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { zoneEnter } from './atoms';
+import { HelpLink, zoneEnter } from './atoms';
 
 import { useT } from '../../i18n/context';
 import { colors, cursors, font } from '../design/styles';
@@ -53,7 +53,6 @@ const WRAP_STYLE: CSSProperties = {
 const SCROLL_STYLE: CSSProperties = {
   flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
   display: 'flex', flexDirection: 'column', gap: 14,
-  scrollbarWidth: 'thin',
 };
 /** Clips transient row animation while preventing the visible row stack from shrinking. */
 const ROWS_STYLE: CSSProperties = {
@@ -288,7 +287,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
           ))}
         </div>
         <p style={{ ...roleFont('note'), fontFamily: font.family, color: colors.brownText, lineHeight: 1.45, margin: 0, padding: '0 3px' }}>
-          {t('agent3.dream_note')}
+          {t('agent3.dream_note')} <HelpLink page="agent-setup" anchor="agsetup-keys" />
         </p>
       </div>
       <div style={{ flex: '0 0 auto', display: 'flex' }}>

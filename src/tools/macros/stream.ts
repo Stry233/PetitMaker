@@ -192,7 +192,7 @@ function setLanding(ctx: MacroContext, c: MacroCoord, landTier: number): boolean
 }
 
 /** The course's foot ties into whatever the map already calls water: a ground-level body, or the
- *  coast. Unbounded reach, unlike a terrace channel: the sea is wherever the island ends, and a
+ *  coast. Unbounded reach, unlike a terrace channel: the sea is wherever the planet ends, and a
  *  course that has come all the way down has earned the walk to it. */
 function reachOpenWater(ctx: MacroContext, foot: MacroCoord): boolean {
   return carveChannel(ctx, foot, (c) => atMouth(ctx.state, c), 0, Infinity, []);

@@ -15,7 +15,7 @@
  * INLAND — the door faces an upland step three cells off. The approach row is perfectly legal, and
  * the press can still leave it bare: `analysis.open` closes the whole ring of dual-grid margin around
  * a standing house, `openDoorsteps` reopens the approach ALONE, and the walkability flood cannot enter
- * a one-cell island. Reading reach AT the doorstep therefore answers "not connected" for a house the
+ * a one-cell pocket. Reading reach AT the doorstep therefore answers "not connected" for a house the
  * street is four cells from, so the terminal pass skips it and the street stops in bare grass.
  */
 import { describe, expect, it } from 'vitest';

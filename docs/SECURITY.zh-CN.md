@@ -1,6 +1,6 @@
 # 安全政策
 
-如果您发现谷地工坊存在安全问题，欢迎通过邮件私下报告至 [selka.craft@outlook.com](mailto:selka.craft@outlook.com)，主题注明 `[SECURITY]`。我们以 72 小时内确认收到完整报告为目标，并会与您沟通核查和修复进展。
+如果您发现谷地工坊存在安全问题，欢迎通过邮件私下报告至 [petit.maker@outlook.com](mailto:petit.maker@outlook.com)，主题注明 `[SECURITY]`。我们以 72 小时内确认收到完整报告为目标，并会与您沟通核查和修复进展。
 
 本政策说明项目可以授权的善意安全研究范围、漏洞报告方式及协同披露安排。
 
@@ -10,7 +10,7 @@
 
 ## 报告漏洞
 
-请发送邮件至 [selka.craft@outlook.com](mailto:selka.craft@outlook.com)，主题注明 `[SECURITY]`。私下报告可以为核查和修复留出时间，减少技术细节公开后问题被利用的机会。
+请发送邮件至 [petit.maker@outlook.com](mailto:petit.maker@outlook.com)，主题注明 `[SECURITY]`。私下报告可以为核查和修复留出时间，减少技术细节公开后问题被利用的机会。
 
 ## 报告应包含的内容
 

@@ -3,7 +3,7 @@
  *
  * THE READING FOLLOWS THE POINTER. The game calls this 区域负荷, a REGIONAL load, and the limit it
  * reports is per chunk: what decides whether the next placement is refused is what the chunk you
- * are about to build in holds, not a total for the island. So the disc reads the region under the
+ * are about to build in holds, not a total for the planet. So the disc reads the region under the
  * cursor and changes as the cursor crosses into the next one. It HOLDS the last region once the
  * pointer leaves the map, because the pointer leaves the map to go and pick an item off the shelf,
  * which is exactly when the reading matters; before the pointer has been over the map at all it
@@ -55,7 +55,7 @@ export const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
  *
  * The game's is translucent, not a flat fill: sampled over its blue sea the track comes out at
  * (47, 97, 111), which is this interface's own ink at a touch under a half over that sea, and a
- * flat colour that read correctly on water would go wrong on an island. So the map shows through,
+ * flat colour that read correctly on water would go wrong on land. So the map shows through,
  * which is also why the hole is a hole.
  */
 export const TRACK_ALPHA = 0.44;

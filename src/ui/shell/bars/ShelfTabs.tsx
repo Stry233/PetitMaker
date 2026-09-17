@@ -41,7 +41,7 @@ const BITE = 26;
  *
  * The fade is the whole of what says the row continues, and it can only say it over something that
  * is drawn: the names stand on the map, so a fade that stops in the gutter between two of them
- * covers bare island and shows nothing at all. That is not a rare case — at 1440 in English the row
+ * covers bare ground and shows nothing at all. That is not a rare case — at 1440 in English the row
  * ends a couple of pixels past "Ramps" with "Facilities" wholly hidden and no sign of it — and a
  * fixed width cannot cover it, since the gutter between two names is wider than any fade that would
  * not also wash out a short one.

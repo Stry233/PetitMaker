@@ -14,7 +14,7 @@ import { NumberOverlay } from './number-overlay';
 import { cellRenderSpec, cellsAffectedByLayerToggle, hiddenSetFrom } from './layer-visibility';
 
 /** A cell needs a terrain graphic if it holds real terrain (mountain/water), OR it's a GROUND (None) cell
- *  carrying an island-cut — corners that aren't all square (the inverse of a water pond: grass rounds, the
+ *  carrying an islet cut — corners that aren't all square (the inverse of a water pond: grass rounds, the
  *  water it sits in shows behind). Plain ground (no corners / all square) is left to the BaseLayer. */
 function hasTerrainGraphic(t: TerrainCell | null | undefined): boolean {
   if (!t) return false;

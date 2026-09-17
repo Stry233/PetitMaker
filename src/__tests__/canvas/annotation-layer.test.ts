@@ -46,7 +46,7 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
-  it('draws and rebuilds a brush draft whose islands meet diagonally', () => {
+  it('draws and rebuilds a brush draft whose patches meet diagonally', () => {
     const layer = new AnnotationLayer();
     const draft: ZoneNote = {
       kind: 'zone', id: 'draft', num: 0, color: '#2FBF9B', tag: 'farm',

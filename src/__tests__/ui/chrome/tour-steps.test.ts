@@ -2,7 +2,7 @@
 // How a run behaves over the live interface is `ui/shell/tour.test.tsx`.
 import { describe, it, expect } from 'vitest';
 import { tourTargetAttr } from '../../../ui/chrome/tour/steps';
-import { SHELL_TOUR_STEPS as TOUR_STEPS } from '../../../ui/shell/tour-steps';
+import { SHELL_TOUR_STEPS as TOUR_STEPS, shellTourSteps } from '../../../ui/shell/tour-steps';
 import { translations } from '../../../i18n/translations';
 
 describe('tour steps', () => {
@@ -74,5 +74,14 @@ describe('tour steps', () => {
 
   it('spreads as a data attribute', () => {
     expect(tourTargetAttr('bar')).toEqual({ 'data-tour-target': 'bar' });
+  });
+
+  it('drops the 3D block on a device that cannot draw the scene', () => {
+    // three needs WebGL2: a step that flips a view which cannot build would spend three cards on a
+    // toast and a return to 2D.
+    expect(shellTourSteps(false).map((s) => s.id)).toEqual([
+      'welcome', 'camera', 'modes', 'bar', 'assistant', 'share', 'menu',
+    ]);
+    expect(shellTourSteps(true)).toBe(TOUR_STEPS);
   });
 });

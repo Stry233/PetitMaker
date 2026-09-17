@@ -9,7 +9,7 @@
  * costs measurably less to land than to build and land.
  *
  * The three cases this pins are the ones daily use walks through: pressing the same card twice,
- * pressing a second card while the first island stands, and pressing a card after Clear. All three
+ * pressing a second card while the first planet stands, and pressing a card after Clear. All three
  * clear to the same ground, which is what makes one run the answer to all of them.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -75,7 +75,7 @@ describe('what a generation costs', () => {
     expect(landing).toBeLessThan(cold.counts.pre * LANDING_SHARE);
   }, 120_000);
 
-  it('lands a second card over the first island without building it again', async () => {
+  it('lands a second card over the first planet without building it again', async () => {
     const kit = hexiaKit();
     const first = await generateCandidate(kit, { config: config(11), region: null });
     const second = await generateCandidate(kit, { config: config(12), region: null });
@@ -98,11 +98,11 @@ describe('what a generation costs', () => {
 
   /**
    * CLEAR LEAVES NO CRUMBS. An erase is refused outside the buildable zone, so the cosmetic Γ
-   * patches an auto edge-cut writes along the island's rim are the ones at risk of surviving every
-   * clear and every regeneration — leaving a blank map that still remembers the island before it,
+   * patches an auto edge-cut writes along the planet's rim are the ones at risk of surviving every
+   * clear and every regeneration — leaving a blank map that still remembers the planet before it,
    * and a card built for plain ground that can never be landed as itself again.
    */
-  it('clears a generated island back to the map it opened on', async () => {
+  it('clears a generated planet back to the map it opened on', async () => {
     const kit = hexiaKit();
     const opened = mapFingerprint(kit.state);
     await generateMap(kit, { config: config(31), region: null });

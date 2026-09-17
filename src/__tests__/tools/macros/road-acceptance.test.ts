@@ -42,7 +42,7 @@ function makeKit(size = SIZE): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** A generated island, terrain only. Cached per seed and handed out as a clone: generation is the
+/** A generated planet, terrain only. Cached per seed and handed out as a clone: generation is the
  *  expensive half of the one case that needs one. */
 const islands = new Map<number, GridState>();
 function generatedIsland(seed: number): Kit {
@@ -56,7 +56,7 @@ function generatedIsland(seed: number): Kit {
     const state = base;
     exec.runSilently(() => {
       generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // TERRAIN ONLY: the planet generator furnishes what it builds, and this fixture is
       // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects(state, (c: Command) => exec.execute(c));
     });
@@ -227,10 +227,10 @@ async function dragRoad(
 }
 
 /** Every object id the map gained while `body` ran, as cells. */
-/** Two taps on the generated island whose route has to take a crossing, searched for on the fixture
+/** Two taps on the generated planet whose route has to take a crossing, searched for on the fixture
  *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
  *  across a tier step, and the first pair a link actually joins over a bridge or a ramp wins. It
- *  throws rather than skipping if the island offers none — a fixture with no step in it cannot ask
+ *  throws rather than skipping if the planet offers none — a fixture with no step in it cannot ask
  *  this question, and passing quietly would hide that. */
 function pairOverACrossing(): { from: MacroCoord; to: MacroCoord } {
   const probe = generatedIsland(11);
@@ -533,7 +533,7 @@ describe('acceptance: the route joins the endpoints, or lays nothing', () => {
     expectJoined(kit.state, from, to);
   });
 
-  it('on a GENERATED island, where a crossing snaps away from its plan, the road is still one piece', async () => {
+  it('on a GENERATED planet, where a crossing snaps away from its plan, the road is still one piece', async () => {
     // A hand-built ford or terrace joins whether or not the run stitches its pavement: the deck
     // lands where the plan put it. What breaks the route is a `waterSpan`/`heightDrop` trait moving
     // a realized deck several cells along its own axis, so the plan's approach cells fall under it

@@ -1,7 +1,7 @@
 /**
  * A RUN CONFINED TO A REGION, AND THE GROUND AROUND IT.
  *
- * The reported symptom: build a picture over the whole island, paint a region across part of it,
+ * The reported symptom: build a picture over the whole planet, paint a region across part of it,
  * generate into the region — and nothing happens, however many times it is pressed.
  *
  * The cause is at the SEAM. The terrain outside the region leans on the cells inside it: a mountain
@@ -104,7 +104,7 @@ const centreRegion = (state: GridState, half: number): MacroCoord[] =>
   square(state, Math.floor(state.template.width / 2), Math.floor(state.template.height / 2), half);
 
 describe('a region run over ground the outside leans on', () => {
-  it('lands its island instead of reverting, and leaves the map around it alone', async () => {
+  it('lands its planet instead of reverting, and leaves the map around it alone', async () => {
     __resetCandidateCache();
     forgetGenerationScope();
     const state = realState();
@@ -130,11 +130,11 @@ describe('a region run over ground the outside leans on', () => {
     expect(terrainOf(state, (x, y) => inside.has(`${x},${y}`))).not.toBe(before.in);
     expect(terrainOf(state, (x, y) => !inside.has(`${x},${y}`))).toBe(before.out);
     expect(ctx.registry.validatePostStroke(state)).toEqual([]);
-    // A run that built its island has nothing to explain.
+    // A run that built its planet has nothing to explain.
     expect(outcome.scopeEmpty).toBeUndefined();
   }, 240000);
 
-  it('holds for an island of the generator\'s own, water and all', async () => {
+  it('holds for a planet of the generator\'s own, water and all', async () => {
     __resetCandidateCache();
     forgetGenerationScope();
     const state = realState();
@@ -273,7 +273,7 @@ describe('what a region run reports when it built nothing', () => {
     expect(built.scopeEmpty).toBeUndefined();
   }, 60000);
 
-  it('ties the notice to what stands, on a real island run inside a massif', async () => {
+  it('ties the notice to what stands, on a real planet run inside a massif', async () => {
     // The massif is not the test: what a designed run manages on ground like this is the generator's
     // business and may change (today it terraces the top down and puts a pond on it, which IS
     // something built). What must hold either way is that the notice follows the map — silent while

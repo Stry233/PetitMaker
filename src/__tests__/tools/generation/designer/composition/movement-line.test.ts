@@ -49,7 +49,7 @@ describe('the movement line', () => {
    *
    * A walk grown greedily with a seen-set and no way back strands in a pocket of the plate graph and
    * leaves the summit unvisited: read that way over twenty seeds, three ended on tier 1, 2 and 6 of an
-   * island planned to 8, all three of them called a look-out. The route BACKTRACKS, and its destination
+   * planet planned to 8, all three of them called a look-out. The route BACKTRACKS, and its destination
    * is the highest ground the plaza can reach AND stand on, so every seed of twenty on both templates
    * ends on the composition's own peak.
    *
@@ -111,7 +111,7 @@ describe('the movement line', () => {
     }
   });
 
-  it('asks for its water on the island, at the tier the stop stands on', () => {
+  it('asks for its water on the map, at the tier the stop stands on', () => {
     for (const seed of SEEDS) {
       const line = lineFor(seed);
       for (const want of line.waterWants) {
@@ -144,7 +144,7 @@ describe('the movement line', () => {
           const share = line.trace.length ? on / line.trace.length : 0;
           shares.push(share);
         }
-        // THE BATCH IS THE CLAIM AND THE COUNT STANDS BESIDE IT. The island is terraced all the way to
+        // THE BATCH IS THE CLAIM AND THE COUNT STANDS BESIDE IT. The planet is terraced all the way to
         // its summit, so the walk CLIMBS: every step it crosses costs it the cell no
         // coating may be laid on before a step and the corridor the flight stands in, and a leg the
         // flights cannot carry at all is pruned rather than left unreachable. Measured over both

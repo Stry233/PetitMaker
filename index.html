@@ -11,16 +11,20 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Working name (see APP_NAME in src/version.ts). "Petit Planet" here is the GAME this tool edits maps
          for. A build rewrites this for its deployment (see src/legal/deploy-targets); the English one stands
          here because an unrecognized target resolves to the global site. -->
-    <title>PetitMaker — Petit Planet Map Editor &amp; Island Planner</title>
+    <title>PetitMaker — Petit Planet Map Editor &amp; Planet Planner</title>
+    <!-- Classic and public, so it runs in an engine that cannot load the module below and stays
+         a file the page's own script-src allows. It reports a browser that cannot start the app. -->
+    <script src="/boot-guard.js"></script>
   </head>
   <body>
     <!-- The pre-React ground: the page is this cream, not white, while the bundle itself
          downloads (a phase no in-app splash can cover, since the splash ships inside the
          bundle). React's first render into #root replaces it. -->
-    <div id="root"><style>@keyframes petit-boot-pulse{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.45);opacity:1}}@media (prefers-reduced-motion: reduce){#petit-boot i{animation:none}}</style><div id="petit-boot" style="position:fixed;inset:0;background:#FFFBE1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px"><img src="/banner.svg" alt="" width="300" height="86" style="display:block;max-width:70vw"><i style="display:block;width:12px;height:12px;border-radius:50%;background:#FFDA7E;animation:petit-boot-pulse 1.1s ease-in-out infinite"></i></div></div>
+    <div id="root"><style>@keyframes petit-boot-pulse{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.45);opacity:1}}@media (prefers-reduced-motion: reduce){#petit-boot i{animation:none}}</style><div id="petit-boot" style="position:fixed;inset:0;background:#FFFBE1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px"><img src="/banner.svg" alt="" width="300" height="86" style="display:block;max-width:70vw"><i style="display:block;width:12px;height:12px;border-radius:50%;background:#FFDA7E;animation:petit-boot-pulse 1.1s ease-in-out infinite"></i><noscript><div style="max-width:420px;padding:0 24px;color:#574935;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,Helvetica,Arial,sans-serif;text-align:center">PetitMaker needs a newer browser with JavaScript enabled, such as the latest Chrome or Firefox.<br>谷地工坊需要已启用 JavaScript 的新版浏览器，例如最新版 Chrome 或 Firefox。</div></noscript></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

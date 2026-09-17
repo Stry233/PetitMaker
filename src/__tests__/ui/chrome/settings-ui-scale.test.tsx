@@ -10,6 +10,8 @@ import { SettingsModal, type SettingsModalProps } from '../../../ui/chrome/modal
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { setStoreState } from '../../_store';
+import { poseLegacyZoom } from '../_legacy-zoom';
+import { reachableUiZoom } from '../../../ui/design/scale';
 
 function noop() {}
 
@@ -144,6 +146,51 @@ describe('SettingsModal — UI-scale slider', () => {
     expect(useEditorStore.getState().uiZoom).toBe(1);
     ptr(slider, 'pointercancel', {});
     expect(useEditorStore.getState().uiZoom).toBe(0.9);
+  });
+
+  it('maps the pointer against the screen rect of the track on an engine that measures zoomed subtrees in their own pixels', () => {
+    renderModal();
+    const slider = screen.getByRole('slider', { name: 'UI scale' });
+    // Inside a zoom 0.5 card the track's own-pixel reading is twice its screen size: screen 50..250.
+    slider.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 500, bottom: 24, width: 400, height: 24, x: 100, y: 0, toJSON() {} }) as DOMRect;
+    const card = slider.parentElement!;
+    const restore = poseLegacyZoom((node) => (node === card ? 0.5 : 1));
+    try {
+      ptr(slider, 'pointerdown', { clientX: 250 });
+      ptr(slider, 'pointerup', { clientX: 250 });
+      expect(useEditorStore.getState().uiZoom).toBe(1.8);
+    } finally {
+      restore();
+    }
+  });
+
+  it('ends its range where this window stops responding to a larger scale', () => {
+    const tall = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 500 });
+    try {
+      renderModal();
+      const slider = screen.getByRole('slider', { name: 'UI scale' });
+      const reach = reachableUiZoom(window.innerWidth, 500);
+      const max = Math.floor(reach * 10 + 1e-6) / 10;
+      expect(max).toBeLessThan(1.8);
+      expect(slider.getAttribute('aria-valuemax')).toBe(String(Math.round(max * 100)));
+      fireEvent.keyDown(slider, { key: 'End' });
+      expect(useEditorStore.getState().uiZoom).toBeCloseTo(max, 6);
+      // A press at the track's far end lands on that maximum, not on 180%.
+      mockRect(slider);
+      ptr(slider, 'pointerdown', { clientX: 200 });
+      ptr(slider, 'pointerup', { clientX: 200 });
+      expect(useEditorStore.getState().uiZoom).toBeCloseTo(max, 6);
+    } finally {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: tall });
+    }
+  });
+
+  it('keeps the whole range where every scale is reachable', () => {
+    renderModal();
+    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuemax')).toBe('180');
+    expect(screen.queryByTestId('ui-scale-unreachable')).toBeNull();
   });
 
   it('double-clicking the track resets uiZoom to 1.0', () => {

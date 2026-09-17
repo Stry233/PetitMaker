@@ -363,7 +363,7 @@ const REGION_REACH = 2;
  * flat indices (`y * width + x`) of every cell whose road tile was added, removed or edited since;
  * regions standing beyond `REGION_REACH` of every dirty cell are handed back as-is — rings,
  * signature and all — and only the remaining tiles are re-derived. Paving one road on a map that
- * already carries thousands re-derives one surface instead of every surface on the island.
+ * already carries thousands re-derives one surface instead of every surface on the map.
  *
  * A caller that cannot name what changed passes null for either and gets the full build. The
  * equivalence with the full build is pinned by `road-region-update.test.ts`.

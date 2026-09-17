@@ -13,7 +13,7 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
     operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
     privacyContactEmail: 'legal@petitmaker.app',
     securityContactEmail: 'security@petitmaker.app',
-    qqFeedbackGroup: '123456789',
+    qqFeedbackChannel: 'pd123456789',
     icpNumber: null,
     icpUrl: null,
     psbNumber: null,

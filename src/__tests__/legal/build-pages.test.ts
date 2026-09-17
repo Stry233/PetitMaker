@@ -41,7 +41,7 @@ function fixtureCfg(overrides: Partial<LegalConfig> = {}): LegalConfig {
     operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
     privacyContactEmail: 'legal@example.org',
     securityContactEmail: 'security@example.org',
-    qqFeedbackGroup: '123456789',
+    qqFeedbackChannel: 'pd123456789',
     icpNumber: null,
     icpUrl: null,
     psbNumber: null,

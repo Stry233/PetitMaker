@@ -31,11 +31,14 @@ import { buildMapContext, type AgentToolDeps } from '../../../agent/tools/tools'
 import { useAgentSession } from '../../../agent/session/store';
 import { createRunner, type RunnerConfig } from '../../../agent/exec/runner';
 
-const screening = vi.hoisted(() => ({ refuse: new Set<string>() }));
+const screening = vi.hoisted(() => ({ refuse: new Set<string>(), signals: [] as AbortSignal[] }));
 // The runner asks the export text check before a provider sees an order; here the check is a lookup.
 vi.mock('../../../io/moderation/text/reviewer', () => ({
   ReviewWorkerLease: class { dispose() {} },
-  reviewText: async (parts: { text: string }[]) => screening.refuse.has(parts[0]!.text) ? { allowed: false, reason: 'political', fields: ['description'] } : { allowed: true },
+  reviewText: async (parts: { text: string }[], signal: AbortSignal) => {
+    screening.signals.push(signal);
+    return screening.refuse.has(parts[0]!.text) ? { allowed: false, reason: 'political', fields: ['description'] } : { allowed: true };
+  },
 }));
 
 /** Drains the microtask queue: every scripted turn here resolves through promise chains alone (no
@@ -138,6 +141,26 @@ describe('exec/runner', () => {
     expect(runner.active()).toBe(false);
     expect(turns.length).toBe(1);
     expect(deriveView(useAgentSession.getState().log).phase).not.toBe('running');
+  });
+
+  it('screens an order on an engine with no AbortSignal.timeout, under a signal that can still abort', async () => {
+    // Safari before 16 has no `AbortSignal.timeout`; the check is still bounded.
+    const had = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Reflect.deleteProperty(AbortSignal, 'timeout');
+    screening.signals.length = 0;
+    try {
+      const adapter = createScriptedAdapter([textTurn('hello')]);
+      const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+      runner.send('lay a plaza');
+      await flush();
+      expect(screening.signals).toHaveLength(1);
+      expect(screening.signals[0]).toBeInstanceOf(AbortSignal);
+      expect(screening.signals[0]!.aborted).toBe(false);
+      expect(eventsOf(useAgentSession.getState().log).map((e) => e.kind)).toContain('assistant');
+      expect(runner.active()).toBe(false);
+    } finally {
+      if (had) Object.defineProperty(AbortSignal, 'timeout', had);
+    }
   });
 
   it('send while idle appends an order and drives a scripted text-only turn to done', async () => {

@@ -111,7 +111,7 @@ export function hasCarriableContent(state: GridState): boolean {
 }
 
 /**
- * Change planet, carrying this island's build to the new one.
+ * Change planet, carrying the current build to the new one.
  *
  * History resets exactly as it does for any other template switch: the destination arrives under a
  * fresh executor, so a transfer is not undoable (the modal that offers it carries that warning).
@@ -230,7 +230,7 @@ function paintableMask(dest: GridState, registry: RuleRegistry): (x: number, y: 
 }
 
 /** The mass a source cell carries: a real block's full height, a Γ patch's real base (the fillet is
- *  cosmetic and is replayed as a corner), nothing for a `None` island cut. −1 = no mass. */
+ *  cosmetic and is replayed as a corner), nothing for a `None` islet cut. −1 = no mass. */
 function carriedMass(t: TerrainCell): number {
   if (t.type === TerrainType.None) return -1;
   const top = structuralTop(t);
@@ -307,7 +307,7 @@ function replayTerrain(
  * anything standing there — and a source map is free to have an object on a filleted cell.
  *
  * THE FROM-EMPTY CUTS TAKE THE PAINT MASK. A cut standing on carried mass is on ground the mask
- * already passed, but a from-empty fillet and a ground-island cut put terrain on a cell that holds
+ * already passed, but a from-empty fillet and a ground-islet cut put terrain on a cell that holds
  * none — and V-ZONE-01 does not read a TrimCorners, so nothing else would stop one landing on a
  * coast the destination refuses everything else on.
  */
@@ -344,7 +344,7 @@ function replayCorners(
           ...cut, patchOnly: true, terrainType: t.type, elevation: t.elevation, patchBase: base,
         });
       } else if (t.type === TerrainType.None) {
-        // The island cut carries no mass: anything standing here is not what it rounds.
+        // The islet cut carries no mass: anything standing here is not what it rounds.
         if (now || !paintable(dx, dy)) continue;
         executor.execute(cut);
       } else {

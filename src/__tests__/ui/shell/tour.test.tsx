@@ -20,6 +20,13 @@ import { Shell } from '../../../ui/shell/Shell';
 import { SHELL_TOUR_STEPS } from '../../../ui/shell/tour-steps';
 import { setStoreState } from '../../_store';
 
+// The 3D block is offered only where three can build its scene, and jsdom has no WebGL2: the run
+// under test is the one a device that can draw the map in 3D is shown.
+vi.mock('../../../core/runtime/device-quality', async (orig) => ({
+  ...(await orig<object>()),
+  hasWebGL2: () => true,
+}));
+
 const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 
 /** The LIVE card. A step change replaces it and the outgoing one is on screen for its exit, so both

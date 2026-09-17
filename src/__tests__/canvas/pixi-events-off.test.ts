@@ -7,7 +7,7 @@
  * small one: with `features.move` on it walks the whole display list per pointermove
  * (`hitTestMoveRecursive` + `_interactivePrune`/`isInteractive` per node), which on a decorated map
  * is thousands of nodes, on the drag's critical path, growing with every object a stroke lays.
- * Measured in a real browser on a generated island (2900 objects), that walk was ~1.2 ms per
+ * Measured in a real browser on a generated map (2900 objects), that walk was ~1.2 ms per
  * pointer move and about a fifth of a road stroke's whole scripting cost.
  *
  * This asserts the LIVE renderer's features rather than the constructor's options text, so it also

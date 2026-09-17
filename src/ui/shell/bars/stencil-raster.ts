@@ -38,12 +38,12 @@ export async function ensureGlyphFonts(text = '', weight?: number): Promise<void
 }
 
 /**
- * The space a stencil fills: the painted region's bounding box, or the whole buildable island when
+ * The space a stencil fills: the painted region's bounding box, or the whole buildable map when
  * nothing is painted.
  *
- * NO REGION MEANS THE WHOLE ISLAND, the way it does for every other kind. It is the BUILDABLE extent
+ * NO REGION MEANS THE WHOLE MAP, the way it does for every other kind. It is the BUILDABLE extent
  * rather than the template's, so a letter is fitted to the land instead of to the sea around it --
- * fitted to the full grid, a glyph on a map whose island fills half of it comes out at half size with
+ * fitted to the full grid, a glyph on a map whose land fills half of it comes out at half size with
  * its ends in the water.
  */
 export function islandBox(state: { template: { width: number; height: number }; cells: { zone: number }[][] }, buildableZone: (z: number) => boolean): StencilBox | null {

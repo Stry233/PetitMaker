@@ -2,7 +2,7 @@
  * A PREVIEW SHOWS WHAT A PRESS WOULD DO, AND DOES NOTHING.
  *
  * The two halves are equally load-bearing. If it showed the wrong shape, aiming would be worse than
- * not aiming; if it wrote to the live map, a pointer moving across the island would leave a trail
+ * not aiming; if it wrote to the live map, a pointer moving across the planet would leave a trail
  * of half-built mounds nobody asked for.
  */
 import { describe, expect, it } from 'vitest';

@@ -4,21 +4,21 @@
  * The two-tap gesture exists to put a road between two points, and A ROAD IN THREE PIECES CAN REPORT
  * SUCCESS: `route.ts` plans against crossing SITES, the `waterSpan`/`heightDrop` traits SNAP the deck
  * somewhere else during validation, and the plan's approach cells then land under the deck or one cell
- * short of its entrance. One hole at an entrance and the deck plus its aprons are an island of pavement
- * neither leg reaches. Measured over three generated islands, that left the taps in different
+ * short of its entrance. One hole at an entrance and the deck plus its aprons are a pocket of pavement
+ * neither leg reaches. Measured over three generated planets, that left the taps in different
  * components on 21% of laid routes, every one of them reported as a success.
  *
  * Both outcomes are pinned: a route that CAN be joined comes out as one walkable piece, and one that
  * cannot lays nothing and says so. The middle case — pavement on the map plus a success report — is
  * what this file exists to keep unreachable.
  *
- * TWO CASES RUN ON A GENERATED ISLAND, because the failure is real terrain's: it takes a route over
+ * TWO CASES RUN ON A GENERATED PLANET, because the failure is real terrain's: it takes a route over
  * more than one region, with a crossing the traits snap several cells along its own axis, and every
  * hand-built fixture of that shape happened to join by luck. Both pairs are ones the sweep measured.
  */
 import { describe, expect, it, vi } from 'vitest';
 
-// Synchronous route search on the real island; over ten seconds for the ramp case.
+// Synchronous route search on the real planet; over ten seconds for the ramp case.
 vi.setConfig({ testTimeout: 60_000 });
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
@@ -60,8 +60,8 @@ function makeKit(size = SIZE): Kit {
   return kitOf(state);
 }
 
-/** A generated island, terrain only. Cached per seed and handed out as a clone: generation is the
- *  expensive half of these cases and neither of them needs a private island. */
+/** A generated planet, terrain only. Cached per seed and handed out as a clone: generation is the
+ *  expensive half of these cases and neither of them needs a private planet. */
 const islands = new Map<number, GridState>();
 function islandKit(seed: number): Kit {
   let base = islands.get(seed);
@@ -74,7 +74,7 @@ function islandKit(seed: number): Kit {
     const state = base;
     exec.runSilently(() => {
       generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // TERRAIN ONLY: the planet generator furnishes what it builds, and this fixture is
       // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects(state, (c: Command) => exec.execute(c));
     });
@@ -84,10 +84,10 @@ function islandKit(seed: number): Kit {
   return kitOf(cloneGridState(base));
 }
 
-/** Two taps on the generated island whose route has to take a crossing, searched for on the fixture
+/** Two taps on the generated planet whose route has to take a crossing, searched for on the fixture
  *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
  *  across a tier step, and the first pair a link joins over a bridge or a ramp wins. A written-down
- *  pair goes stale the next time the terrain moves. It throws rather than skipping if the island offers
+ *  pair goes stale the next time the terrain moves. It throws rather than skipping if the planet offers
  *  none — a fixture with
  *  no step in it cannot ask this question. */
 function pairOverACrossing(seed: number): { from: MacroCoord; to: MacroCoord } {
@@ -95,7 +95,7 @@ function pairOverACrossing(seed: number): { from: MacroCoord; to: MacroCoord } {
 }
 
 /** The lattice both searches walk: standable cells paired east-west at link range, each pair tried on
- *  its own copy of the island until `want` is satisfied. It throws rather than skipping when nothing
+ *  its own copy of the planet until `want` is satisfied. It throws rather than skipping when nothing
  *  qualifies — a fixture that cannot pose the question must say so, not pass quietly. */
 function pairWhere(
   seed: number,
@@ -122,7 +122,7 @@ function pairWhere(
   throw new Error('the fixture no longer offers a pair this case can be asked about');
 }
 
-/** Two taps on the generated island whose link comes back `unjoined`: the router found a line and
+/** Two taps on the generated planet whose link comes back `unjoined`: the router found a line and
  *  laying it came apart, which is the clause under test. Searched on the same lattice and for the
  *  same reason as `pairOverACrossing`. */
 function pairThatCannotJoin(seed: number): { from: MacroCoord; to: MacroCoord } {

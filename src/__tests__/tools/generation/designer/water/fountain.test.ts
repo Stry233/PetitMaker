@@ -45,7 +45,7 @@ function plan(template: MapTemplate, regions: RegionPlan[]): DesignPlan {
   };
 }
 
-/** Flat island, one street running down the middle of it: the ground a court is composed on. */
+/** Flat map, one street running down the middle of it: the ground a court is composed on. */
 function flatGround(template: MapTemplate): {
   t: TerrainPlan; grass: Uint8Array; flat: Uint8Array; paved: Uint8Array;
 } {
@@ -279,9 +279,9 @@ describe('the courts on the ground', () => {
     }
   });
 
-  it('offers the large court to a place where the plaza cannot stand it, and not to every island', () => {
-    // TWO CLAIMS. With the plaza's own ground taken the court moves to a PLACE rather than the island
-    // losing it — and an island is OFFERED a large court only on a seeded roll, because a form met on
+  it('offers the large court to a place where the plaza cannot stand it, and not to every planet', () => {
+    // TWO CLAIMS. With the plaza's own ground taken the court moves to a PLACE rather than the planet
+    // losing it — and a planet is OFFERED a large court only on a seeded roll, because a form met on
     // every map reads as predefined however well it is composed. So the claim is that the offer lands
     // wherever it is made, not that it is made every time.
     let offered = 0;

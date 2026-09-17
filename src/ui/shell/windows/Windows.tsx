@@ -18,7 +18,9 @@ import { currentKit } from '../../../kit/context';
 import type { TransferCounts } from '../../../kit/operations';
 import { newMap, transferMap } from '../../../kit/operations';
 import { useEditorStore } from '../../../state/store';
+import { ChunkBoundary } from '../../primitives/ChunkBoundary';
 import { AboutModal } from '../../chrome/modals/AboutModal';
+import { WhatsNewModal } from '../../chrome/modals/whats-new/WhatsNewModal';
 import { ChunkLoadWindow } from './ChunkLoadWindow';
 import { ShareWindow } from './ShareWindow';
 import { ImportModal } from '../../chrome/modals/import/ImportModal';
@@ -75,7 +77,7 @@ const NOTHING_ARRIVED: readonly ArrivalLine[] = [
  * Which arrival a finished transfer is.
  *
  * "YOUR BUILD CAME ALONG" IS ABOUT WHAT TRAVELLED, NOT ABOUT WHICH BUTTON WAS PRESSED, and nothing
- * travelling has two very different causes. An island with nothing on it is an ordinary arrival on
+ * travelling has two very different causes. A map with nothing on it is an ordinary arrival on
  * a new planet and says so. A build that went and did not land is the moment the report exists for,
  * and it gets a line that says what happened rather than the greeting for a journey nothing made.
  */
@@ -91,7 +93,8 @@ export function transferArrival(outcome: { moved: TransferCounts; dropped: Trans
  *  map is what makes the first press of Help open a window instead of a download. */
 function useWarmHelpChunk(): void {
   useEffect(() => {
-    const warm = () => { void import('../../chrome/modals/help/HelpModal'); };
+    // A warm-up that fails is not the visitor's problem; opening Help reports its own failure.
+    const warm = () => { void import('../../chrome/modals/help/HelpModal').catch(() => {}); };
     if (typeof requestIdleCallback === 'function') {
       const id = requestIdleCallback(warm, { timeout: 6000 });
       return () => cancelIdleCallback(id);
@@ -177,28 +180,36 @@ export function Windows() {
       <KeyboardModal open={modals.keyboard} onClose={() => setModal('keyboard', false)} />
 
       {helpMounted && (
-        <Suspense fallback={null}>
-          <HelpModal open={modals.help} onClose={() => setModal('help', false)} />
-          <WhatsThisLayer />
-        </Suspense>
+        <ChunkBoundary resetKey={modals.help}>
+          <Suspense fallback={null}>
+            <HelpModal open={modals.help} onClose={() => setModal('help', false)} />
+            <WhatsThisLayer />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       <AboutModal open={modals.about} onClose={() => setModal('about', false)} />
+
+      <WhatsNewModal />
 
       <ShareWindow />
 
       <ChunkLoadWindow />
 
       {modals.preview3d && (
-        <Suspense fallback={null}>
-          <Preview3D onClose={() => setModal('preview3d', false)} />
-        </Suspense>
+        <ChunkBoundary resetKey={modals.preview3d}>
+          <Suspense fallback={null}>
+            <Preview3D onClose={() => setModal('preview3d', false)} />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {modals.stylize && (
-        <Suspense fallback={null}>
-          <StylizeWindow onClose={() => setModal('stylize', false)} />
-        </Suspense>
+        <ChunkBoundary resetKey={modals.stylize}>
+          <Suspense fallback={null}>
+            <StylizeWindow onClose={() => setModal('stylize', false)} />
+          </Suspense>
+        </ChunkBoundary>
       )}
     </>
   );

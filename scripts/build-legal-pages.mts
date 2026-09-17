@@ -7,9 +7,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { LEGAL } from '../src/legal/config';
-import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
+import { DEPLOY_TARGETS, targetById } from '../src/legal/deploy-targets';
 import { pagePlan, writeAll, resolveMode } from './legal-pages-core.mts';
 import { redirectsFile } from './redirects-core.mts';
+import { webManifest } from './site-html.mts';
 
 declare const process: {
   cwd(): string;
@@ -36,6 +37,9 @@ async function main(): Promise<void> {
   }
 
   writeAll(distDir, LEGAL, mode);
+
+  // The static manifest in `public/` is the global one; each deployment installs under its own name.
+  writeFileSync(join(distDir, 'manifest.webmanifest'), webManifest(targetById(process.env.PETIT_TARGET)), 'utf8');
 
   // Cloudflare reads `_redirects`; the Chinese edge serves slashed page paths and receives none.
   if (LEGAL.canonicalOrigin === DEPLOY_TARGETS.global.canonicalOrigin) {

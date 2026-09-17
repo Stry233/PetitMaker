@@ -1,7 +1,7 @@
 /**
  * Manifest facts folded into plain relational English, most salient first: water and its bridges,
- * road coverage, clusters, terracing, island shape. At most 3 water bodies, 1 road clause, 2
- * clusters, 1 terrace clause and 1 island clause — 8 by construction, matching the interface cap.
+ * road coverage, clusters, terracing, islet shape. At most 3 water bodies, 1 road clause, 2
+ * clusters, 1 terrace clause and 1 islet clause — 8 by construction, matching the interface cap.
  */
 import type { Cluster, SceneManifest, WaterBody } from './manifest';
 
@@ -44,7 +44,7 @@ export function verbalizeScene(m: SceneManifest): string[] {
       : `the ground steps through ${m.terraces} terraces`);
   }
 
-  if (m.islandShaped) clauses.push('the map reads as an island with open water at its edges');
+  if (m.islandShaped) clauses.push('the land reads as an islet with open water at its edges');
 
   return clauses.slice(0, 8);
 }

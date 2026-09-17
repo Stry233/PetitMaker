@@ -9,6 +9,7 @@
  * handle, so this slice takes no cross-slice dependency and imports nothing from `engine`/`edit`.
  */
 import type { StateCreator } from 'zustand';
+import type { DocId } from '../../legal/registry';
 import type { BlockRef } from '../../core/model/types';
 import type { CameraAngle } from '../../canvas/map3d/capture';
 import { detectPortraitBlocked } from '../../core/runtime/portrait-signals';
@@ -23,7 +24,9 @@ export type ModalId =
    *  export tool, the new-map warning) can name the section it wants rather than the window. */
   | 'share'
   /** The dedicated stylize window, reached from the export controls' own entry group. */
-  | 'stylize';
+  | 'stylize'
+  /** The release notes a returning browser has not read yet. */
+  | 'whatsNew';
 
 export interface ShellSlice {
   /** Which overlays are open. One home for every modal, so opening one from a place that has no
@@ -31,6 +34,9 @@ export interface ShellSlice {
    *  Several can be open at once: About opens over Settings and closing it returns there. */
   modals: Record<ModalId, boolean>;
   setModal: (id: ModalId, open: boolean) => void;
+  /** The document About drills into on its next open, consumed as it opens. */
+  aboutTarget: DocId | null;
+  setAboutTarget: (id: DocId | null) => void;
   /** Where the Help Center opens next: a page (and optionally a section anchor). Written by every
    *  deep link (`openHelp`), consumed and cleared by the modal itself, so a plain menu open (null
    *  target) lands on the page the reader last had. */
@@ -84,8 +90,10 @@ export interface ShellSlice {
 }
 
 export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (set) => ({
-  modals: { help: false, keyboard: false, settings: false, about: false, newProject: false, preview3d: false, export: false, exportJson: false, import: false, tourDone: false, share: false, regionLoad: false, stylize: false },
+  modals: { help: false, keyboard: false, settings: false, about: false, newProject: false, preview3d: false, export: false, exportJson: false, import: false, tourDone: false, share: false, regionLoad: false, stylize: false, whatsNew: false },
   setModal: (id, open) => set((st) => (st.modals[id] === open ? st : { modals: { ...st.modals, [id]: open } })),
+  aboutTarget: null,
+  setAboutTarget: (id) => set({ aboutTarget: id }),
   helpTarget: null,
   setHelpTarget: (target) => set({ helpTarget: target }),
   whatsThis: false,

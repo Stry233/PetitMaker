@@ -107,14 +107,14 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
           cell.terrain = { type: cmd.terrainType, elevation: cmd.elevation, patchOnly: true, corners: cmd.afterCorners, ...(cmd.patchBase !== undefined ? { patchBase: cmd.patchBase } : {}) };
         } else if (cell?.terrain) {
           if (isAllSquare && cell.terrain.type === TerrainType.None) {
-            cell.terrain = null; // a GROUND island-cut cycled back to square → plain ground again
+            cell.terrain = null; // a GROUND islet cut cycled back to square → plain ground again
           } else {
             cell.terrain.corners = normalized;
             if (cmd.patchOnly !== undefined) cell.terrain.patchOnly = cmd.patchOnly;
             if (cmd.patchBase !== undefined) cell.terrain.patchBase = cmd.patchBase;
           }
         } else if (cell && !isAllSquare && !isAllEmpty) {
-          // a GROUND cell gains an island-cut → materialise a `type: None` cell to carry the corners; it
+          // a GROUND cell gains an islet cut → materialise a `type: None` cell to carry the corners; it
           // reads as ground (realSurface null) but renders grass rounded + the water it sits in behind.
           cell.terrain = { type: TerrainType.None, elevation: 0, corners: cmd.afterCorners };
         }

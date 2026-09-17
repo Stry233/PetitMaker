@@ -58,6 +58,27 @@ export function websiteData(target: DeployTarget) {
   };
 }
 
+/** The installable app's manifest for one deployment; relative URLs keep it valid under a path prefix. */
+export function webManifest(target: DeployTarget): string {
+  const lang = target.id === 'cn' ? 'zh' : 'en';
+  return `${JSON.stringify({
+    name: brandName(lang),
+    short_name: brandName(lang),
+    description: target.description,
+    lang: target.htmlLang,
+    start_url: './',
+    scope: './',
+    display: 'standalone',
+    orientation: 'landscape',
+    background_color: '#FFFBE1',
+    theme_color: '#FFFBE1',
+    icons: [
+      { src: 'logo-256.png', sizes: '256x256', type: 'image/png' },
+      { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  }, null, 2)}\n`;
+}
+
 export function transformHomepage(html: string, target: DeployTarget, basePath: string): string {
   const lang = target.id === 'cn' ? 'zh' : 'en';
   const data = JSON.stringify(websiteData(target)).replace(/</g, '\\u003c');

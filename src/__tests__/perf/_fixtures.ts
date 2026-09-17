@@ -3,7 +3,7 @@
  *
  * A perf number is only comparable to itself on the same input, so every fixture here is
  * deterministic: real planet templates, the real generator at a fixed (seed, config), the plaza
- * standing as it does in the app. Fixtures are cached per key — building the dense island costs
+ * standing as it does in the app. Fixtures are cached per key — building the dense map costs
  * seconds, and a suite asks for it many times.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -55,7 +55,7 @@ export function islandConfig(seed = ISLAND_SEED): GenerateConfig {
 const cache = new Map<string, World>();
 
 /**
- * The dense generated island: full-richness terrain, water, streets and dressing on the real
+ * The dense generated map: full-richness terrain, water, streets and dressing on the real
  * template — the object- and terrain-heavy map the renderers and indexes are sized for.
  */
 export function denseIsland(seed = ISLAND_SEED, templateId = 'hexia'): World {

@@ -3,11 +3,11 @@
 // The SHAPE claims are what the water ledger's reading rests on, so they are asserted directly off
 // the draw: every form mirrors about both axes of its own box, none of them fills it the way a
 // dropped rectangle does, and each one carries the dry ground its own accounting class is defined by
-// — two or more enclosed islands for a basin and a medallion, one platform for a ring, a 3:1-or-thinner
+// — two or more enclosed islets for a basin and a medallion, one platform for a ring, a 3:1-or-thinner
 // profile for a trough. A figure that lost those would pass through the ledger as water belonging to
 // no story.
 //
-// The CUT claims are read on a synthetic flat island: the figures land, they are few and large, no two
+// The CUT claims are read on a synthetic flat map: the figures land, they are few and large, no two
 // of them are congruent, and the ground commits through the live rules with no violation.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
@@ -82,7 +82,7 @@ const boxOf = (cells: readonly MacroCoord[]): Rect => {
  *  bands, which is the widest ask in the vocabulary. */
 const ROOM = { x: 50, y: 50, w: 27, h: 21 };
 
-/** A flat island at one tier: the ground a still figure is cut into. Tier 1 rather than 0, so the
+/** A flat map at one tier: the ground a still figure is cut into. Tier 1 rather than 0, so the
  *  figure is a body on a terrace and the cut has to hold its own rim up. */
 function flatIsland(template: MapTemplate, tier = 1): {
   t: TerrainPlan; grass: Uint8Array; flat: Uint8Array;
@@ -131,7 +131,7 @@ describe('the shape vocabulary', () => {
     }
   });
 
-  it('accounts for itself: islands for the round forms, a thin profile for the trough', () => {
+  it('accounts for itself: islets for the round forms, a thin profile for the trough', () => {
     for (const seed of [1, 2, 3, 4]) {
       for (const form of FORMS) {
         const cells = formCells(form, fitForm(form, ROOM)!, seed);
@@ -242,7 +242,7 @@ describe('the figures set into the terrace', () => {
   it('lays a figure against the riser its room ends at, and never against a drop', () => {
     const { t, grass, flat } = flatIsland(HEXIA);
     const W = HEXIA.width;
-    // A hill down the middle of the island: everything east of it stands a tier higher.
+    // A hill down the middle of the map: everything east of it stands a tier higher.
     for (let y = 0; y < HEXIA.height; y++) {
       for (let x = Math.round(W / 2); x < W; x++) if (grass[flatIndex(x, y, W)]) t.tier[flatIndex(x, y, W)] = 2;
     }

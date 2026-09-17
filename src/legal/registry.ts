@@ -158,6 +158,9 @@ function minimalSchema(en: string[], zh: string[] = []): DocSchema {
   return { requiresEffectiveDate: false, requiresPolicyVersion: false, requiredTokens: { en, zh } };
 }
 
+/** QQ serves a channel's public page, with its join prompt, at pd.qq.com/g/<channel number>. */
+export const qqChannelPageUrl = (channel: string): string => `https://pd.qq.com/g/${channel}`;
+
 export const DOCS: Record<DocId, DocMeta> = {
   privacy: {
     id: 'privacy',
@@ -292,7 +295,8 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
     operator: operatorDisplay(lang, cfg),
   };
   if (id === 'contact') {
-    tokens.qqFeedbackGroup = cfg.qqFeedbackGroup;
+    tokens.qqFeedbackChannel = cfg.qqFeedbackChannel;
+    tokens.qqFeedbackChannelUrl = qqChannelPageUrl(cfg.qqFeedbackChannel);
     tokens.team = teamContactList(lang, cfg.team);
   }
   if (id === 'privacy') {

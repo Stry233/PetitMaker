@@ -13,7 +13,7 @@ export function explicitImage(scores: ImageScores): string | null {
 }
 
 export function normalizedReading(text: string): string {
-  return simplifiedChinese(text.normalize('NFKC')).toLowerCase().replace(/\s+/g, ' ').replace(/(?<=\p{Script=Han})\s+(?=\p{Script=Han})/gu, '').trim();
+  return simplifiedChinese(text.normalize('NFKC')).toLowerCase().replace(/\s+/g, ' ').replace(/(\p{Script=Han})\s+(?=\p{Script=Han})/gu, '$1').trim();
 }
 
 /** OCR errors need stricter corroboration than text entered directly into a field. */

@@ -15,7 +15,24 @@ import { MOTIONS } from '../shell/motion/registry';
 import { Spinner } from '../primitives/Spinner';
 import { amplitude, cssMotion, framerMotion } from './motion';
 import { useT } from '../../i18n/context';
+import { openHelp } from '../chrome/modals/help/targets';
+import type { HelpPageId } from '../chrome/modals/help/page-schema';
 import type { OpRow } from '../../agent/core/project-view';
+
+const HELP_LINK: CSSProperties = {
+  border: 'none', background: 'none', padding: 0, font: 'inherit', color: 'inherit',
+  textDecoration: 'underline', textUnderlineOffset: 2, cursor: cursors.clickable,
+};
+
+/** An inline "Learn more" that opens the Help Center on the page a line is about. */
+export function HelpLink({ page, anchor }: { page: HelpPageId; anchor?: string }) {
+  const t = useT();
+  return (
+    <button type="button" style={HELP_LINK} onClick={() => openHelp(page, anchor)}>
+      {t('agent3.learn_more')}
+    </button>
+  );
+}
 
 /** A SCREEN ARRIVING IN THE JOB ZONE for a press (`panel.zone.swap`): the gear's manage card, the
  *  connection form, the keyless office. Entrance only — the zone's ternary replaces screens

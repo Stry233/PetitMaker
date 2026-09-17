@@ -1,5 +1,5 @@
 import { hasShareCode, type Badge, type ExportComposition, type ExportOptions, type Rect, type ResolutionKey } from './types';
-import { canvasFitScale, type PixelSize } from './sizing';
+import { canvasFitScale, CANVAS_LIMITS, type CanvasLimits, type PixelSize } from './sizing';
 import { moduleBaseFor, currentBandSize } from '../share/glyph/geometry';
 export type { ExportComposition, ExportOptions, Rect, ResolutionKey };
 export type { PixelSize } from './sizing';
@@ -51,6 +51,24 @@ const CONTENT_MIN_RATIO = 0.42;   // of inner width
 const CONTENT_MAX_RATIO = 0.64;
 const CONTENT_MAX_RATIO_ALONE = 1.25;
 
+/** The output canvas's own pixels. A composition held under a device ceiling floors them, so the
+ *  rounding cannot put a canvas a fraction of a pixel back over the limit it was just fitted
+ *  under — an area past the ceiling is refused whole, not cropped. */
+function outPx(v: number, clamped: boolean): number {
+  return clamped ? Math.floor(v) : Math.round(v);
+}
+
+/** The code band at a given output width: its own pixel geometry plus the gap above it. Null where
+ *  the composition is too narrow to host a legible code. The band's modules must land on whole
+ *  device pixels (`glyph/geometry.ts`), so this is measured from the output width rather than
+ *  scaled out of the BASE-800 layout — which is also why the fit has to reserve it in advance. */
+function codeBandFootprint(widthPx: number, S: number): { gapPx: number; bandW: number; bandBlockH: number } | null {
+  const mb = moduleBaseFor(widthPx - 2 * Math.round(PAD * S));
+  if (mb === null) return null;
+  const { width: bandW, height: mosaicH } = currentBandSize(mb);
+  return { gapPx: Math.round(GAP * S), bandW, bandBlockH: Math.round(CODE_LABEL_H * S) + mosaicH };
+}
+
 function scaleRect(r: Rect, S: number): Rect {
   return { x: Math.round(r.x * S), y: Math.round(r.y * S), w: Math.round(r.w * S), h: Math.round(r.h * S) };
 }
@@ -68,9 +86,12 @@ export function computeComposition(
   opts: ExportOptions,
   mapAspect: number,
   badges: Badge[],
-  ctx: { layerCount: number; mapPx?: PixelSize },
+  ctx: { layerCount: number; mapPx?: PixelSize; limits?: CanvasLimits },
 ): ExportComposition {
   const innerW = BASE_WIDTH - PAD * 2;
+  // The device's own ceiling where the caller measured it (`canvas-limits.ts`); desktop's constants
+  // otherwise. A composition past it is not a large image, it is a blank one.
+  const limits = ctx.limits ?? CANVAS_LIMITS;
   const aspect = mapAspect > 0 ? mapAspect : 1.2;
 
   const showBadge = opts.showBadge && badges.length > 0;
@@ -92,10 +113,10 @@ export function computeComposition(
       ? Math.max(RESOLUTION_WIDTHS.high, ctx.mapPx.w)
       : RESOLUTION_WIDTHS[opts.resolution];
     let S = width / BASE_WIDTH;
-    const f = canvasFitScale(width, (bareH + BRAND_H) * S);
+    const f = canvasFitScale(width, (bareH + BRAND_H) * S, limits);
     width *= f; S *= f;
     return {
-      width: Math.round(width), height: Math.round((bareH + BRAND_H) * S), scale: S,
+      width: outPx(width, f < 1), height: outPx((bareH + BRAND_H) * S, f < 1), scale: S,
       map: scaleRect({ x: 0, y: 0, w: BASE_WIDTH, h: bareH }, S),
       brand: scaleRect({ x: 0, y: bareH, w: BASE_WIDTH, h: BRAND_H }, S),
       badges: [], bare: true,
@@ -135,12 +156,23 @@ export function computeComposition(
   let width = opts.resolution === 'original' && ctx.mapPx
     ? Math.max(RESOLUTION_WIDTHS.high, ctx.mapPx.w)
     : RESOLUTION_WIDTHS[opts.resolution];
-  let S = width / BASE_WIDTH;
-  const f = canvasFitScale(width, baseH * S); // uniformly shrink if it would exceed canvas limits
-  width *= f; S *= f;
+  // Uniformly shrink a composition that would exceed the canvas ceiling. The code band is the one
+  // row whose height is not in `baseH`: it is quantized from the final width, so it does not shrink
+  // with everything else and the fit is repeated against the band each candidate width carries. A
+  // composition that already fits leaves its width untouched on the first pass.
+  let clamped = false;
+  for (let pass = 0; pass < 8; pass++) {
+    const s = width / BASE_WIDTH;
+    const band = hasShareCode(opts) ? codeBandFootprint(width, s) : null;
+    const f = canvasFitScale(width, baseH * s + (band ? band.gapPx + band.bandBlockH : 0), limits);
+    if (f >= 1) break;
+    width = Math.max(1, Math.floor(width * f));
+    clamped = true;
+  }
+  const S = width / BASE_WIDTH;
 
   const out: ExportComposition = {
-    width: Math.round(width), height: Math.round(baseH * S), scale: S,
+    width: outPx(width, clamped), height: outPx(baseH * S, clamped), scale: S,
     map: scaleRect(baseRects.map!, S), brand: scaleRect(baseRects.brand!, S),
     badges: showBadge ? badges : [],
   };
@@ -148,23 +180,17 @@ export function computeComposition(
     if (baseRects[k]) out[k] = scaleRect(baseRects[k]!, S);
   }
 
-  // Code band: EXACT pixel geometry driven by the FINAL (post-f) width, never scaled through
-  // scaleRect — a share code's modules must land on whole device pixels (see glyph/geometry.ts),
-  // so its size comes from moduleBaseFor(out.width) rather than the BASE-800 layout. The band
-  // sits at the same PAD as everything else and takes its module base from that inset width.
+  // Code band: EXACT pixel geometry driven by the FINAL fitted width. The band sits at the same
+  // PAD as everything else and takes its module base from that inset width.
   if (hasShareCode(opts)) {
-    const padPx = Math.round(PAD * S);
-    const mb = moduleBaseFor(out.width - 2 * padPx);
-    if (mb === null) {
+    const band = codeBandFootprint(out.width, S);
+    if (!band) {
       out.codeBandUnavailable = true; // composition too small to host a legible code
     } else {
-      const { width: bandW, height: mosaicH } = currentBandSize(mb);
-      const gapPx = Math.round(GAP * S);
-      const bandBlockH = Math.round(CODE_LABEL_H * S) + mosaicH;
       const prevBottom = out.card3d ? out.card3d.y + out.card3d.h : out.map.y + out.map.h;
-      const bandY = prevBottom + gapPx;
-      out.codeBand = { x: Math.round((out.width - bandW) / 2), y: bandY, w: bandW, h: bandBlockH };
-      const footprint = gapPx + bandBlockH;
+      const bandY = prevBottom + band.gapPx;
+      out.codeBand = { x: Math.round((out.width - band.bandW) / 2), y: bandY, w: band.bandW, h: band.bandBlockH };
+      const footprint = band.gapPx + band.bandBlockH;
       if (out.footer) out.footer.y += footprint;
       out.brand.y += footprint;
       out.height += footprint;

@@ -54,7 +54,7 @@ describe('introStartOffset', () => {
  * is two facts about where those axes land on the screen, and they are asserted as such rather than
  * as a position, since a position says nothing about which way a person sees it.
  *
- * A 45° corner frame arrives at neither: it turns the island a quarter of the way round as the views
+ * A 45° corner frame arrives at neither: it turns the map a quarter of the way round as the views
  * swap, and a person has to find their place again.
  *
  * The framing distance and the tilt are pinned here too, since the fly-in starts at a multiple of

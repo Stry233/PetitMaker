@@ -2076,3 +2076,14 @@ describe('PanelShell: the phase-derived ticket facts', () => {
     expect(executing.queryByTestId('says')).toBeNull();
   });
 });
+
+describe('the caveat under the composer', () => {
+  it('stands while the assistant waits for an order and leaves with the composer', () => {
+    const props = { view: makeView(), connected: true, now: 0, ...VERBS };
+    const ui = renderWithI18n(<PanelShell {...props} />);
+    expect(ui.getByTestId('agent-caveat').textContent).toBe(translations.en['agent3.caveat']);
+    ui.rerender(<PanelShell {...props} connected={false} />);
+    expect(ui.queryByTestId('composer')).toBeNull();
+    expect(ui.queryByTestId('agent-caveat')).toBeNull();
+  });
+});

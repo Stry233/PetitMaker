@@ -12,6 +12,8 @@ import { useAgentPanelSettings } from '../../../ui/agent/settings';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import type { JobView, PanelView } from '../../../agent/core/project-view';
 import { ACTIVE, INK, PLATE, TRACK } from '../../../ui/design/tokens';
+import { mixHex } from '../../../ui/design/styles';
+import { statePaper } from '../../../ui/agent/tokens';
 
 const backing = new Map<string, string>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -208,6 +210,14 @@ describe('every card on the plate draws its outline', () => {
 /* ── the resume card ──────────────────────────────────────── */
 
 describe('ResumeCard: a held job offered back', () => {
+  it('stands on a plain wait-tinted paper every engine can paint', () => {
+    // `color-mix()` arrived in Chrome 111; an engine without it drops the declaration and the card
+    // loses its tint entirely, so the mix is computed here.
+    const { getByTestId } = renderWithI18n(<ResumeCard order="Terrace the hill" onResume={() => {}} />);
+    const rgbOf = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
+    expect(getByTestId('resume-card').style.background).toBe(rgbOf(mixHex(statePaper.wait, PLATE, 0.42)));
+  });
+
   it('names the order, where it stopped and what is already on the map', () => {
     const { getByTestId } = renderWithI18n(
       <ResumeCard

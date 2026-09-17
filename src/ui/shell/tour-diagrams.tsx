@@ -429,7 +429,7 @@ function Grid({ w, h, x0 = 0, y0 = 0 }: { w: number; h: number; x0?: number; y0?
   return <g>{lines}</g>;
 }
 
-/** The island every diagram acts on: the same shape in each, so it reads as one map being panned,
+/** The land every diagram acts on: the same shape in each, so it reads as one map being panned,
  *  turned and built on. */
 function Island({ x, y }: { x: number; y: number }) {
   return (
@@ -489,7 +489,7 @@ function Card({ w, h, stand, children }: { w: number; h: number; stand?: 'tip' |
 }
 
 /** Where the pointer's tip stands on a card: a little right of centre and below the trail's line,
- *  so the arrow points into the map rather than over the island. */
+ *  so the arrow points into the map rather than over the land. */
 const TIP_X = CARD_W / 2 - 7;
 
 /* ── The diagrams ──────────────────────────────────────────── */

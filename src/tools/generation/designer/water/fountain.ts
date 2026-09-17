@@ -34,7 +34,7 @@ const PLATFORM_MIN = 1;
 /** How far a court looks for the pavement it is composed against. The supplement wants a fountain
  *  RELATED to the space around it, and an unreachable one is only an ornament. */
 const ARRIVAL_REACH = 6;
-/** How many courts one island carries at richness 0 and 1, the large one included. Three is the style
+/** How many courts one planet carries at richness 0 and 1, the large one included. Three is the style
  *  target's own count, and it is also what the eval can tell apart: a fourth court is one more chance
  *  for two of them to land in one region as the finished map segments it. */
 const COUNT = { min: 1, max: 3 } as const;
@@ -46,7 +46,7 @@ const PLAZA_REACH = 34;
  * in one place however the plan divided the ground.
  *
  * The number is the MEASUREMENT rather than a guess at what a region is. The eval segments the finished
- * map and a terraced island segments coarsely, so two courts the plan put in two places can land in one
+ * map and a terraced planet segments coarsely, so two courts the plan put in two places can land in one
  * region: at 30 cells four of twenty runs read two main courts in one region, at 42 two still do, and at
  * 55 none of the twenty do. Courts per map fall to 1 to 3 for it, which is the style target's own count.
  *
@@ -232,22 +232,22 @@ function bandAt(spec: FountainSpec, d: number): FountainBand {
 // --- placing them -------------------------------------------------------------------------------
 
 /**
- * The island's fountain courts, cut into the sculpt.
+ * The planet's fountain courts, cut into the sculpt.
  *
  * ONE LARGE COURT AT MOST, standing near the plaza where it has a whole court to itself, and one
  * small one per remaining place that asked for water. The court's own ground is locked into the
  * reservation as it lands, so no later pass floods it and no bed is cut through it.
  */
 /**
- * How often an island is OFFERED a large court, at richness 0 and 1 — and it is RARER AT THE RICH END,
+ * How often a planet is OFFERED a large court, at richness 0 and 1 — and it is RARER AT THE RICH END,
  * which is the opposite of how the other knobs on this axis run.
  *
- * The reason is what else the island has. A full-richness map carries a figure, a cascade and several
+ * The reason is what else the planet has. A full-richness map carries a figure, a cascade and several
  * composed bodies, so a court can be absent and the walk still arrives somewhere — and absence is what
- * keeps a form the user meets on every island from reading as a template. A quiet map is a flat garden
+ * keeps a form the user meets on every planet from reading as a template. A quiet map is a flat garden
  * town whose court is the ONLY thing on it built to be arrived at: rolled at the rich end's rate down
  * there, `tafa/1024` at richness 0.2 came back with 4 of its 14 street ends arriving at nothing, which
- * is a hard-ledger failure. The ground still has the last word — an offer the island cannot hold comes
+ * is a hard-ledger failure. The ground still has the last word — an offer the planet cannot hold comes
  * to nothing.
  */
 const LARGE_COURT_CHANCE = { low: 0.9, high: 0.6 } as const;
@@ -267,10 +267,10 @@ export function carveFountains(input: FountainInput): FountainCourt[] {
     .sort((a, b) => Number(b.water === true) - Number(a.water === true)
       || distanceTo(hub, a) - distanceTo(hub, b) || (a.id < b.id ? -1 : 1));
 
-  // A LARGE COURT IS AN OCCASION, NOT FURNITURE. Asked for on every island — the plaza's ground first and
+  // A LARGE COURT IS AN OCCASION, NOT FURNITURE. Asked for on every planet — the plaza's ground first and
   // then every place in turn, biggest lot down — it lands on nineteen of twenty maps, and a form a visitor
   // meets on every map reads as a template whatever it is composed of. The seeded roll is what keeps a
-  // couple of islands in five to their garden fountains alone: absence is part of the variety.
+  // couple of planets in five to their garden fountains alone: absence is part of the variety.
   const large = hash01(input.seed ^ 0x1a5e, 0) < lerp(LARGE_COURT_CHANCE.low, LARGE_COURT_CHANCE.high, richness)
     ? plazaCourt(input, hub, out.length)
       ?? [...candidates].sort((a, b) => lotArea(b) - lotArea(a) || (a.id < b.id ? -1 : 1))
@@ -281,7 +281,7 @@ export function carveFountains(input: FountainInput): FountainCourt[] {
   // One MAIN fountain per region, never several: the places that asked for water take a small court
   // each, nearest the hub first, so the ones a visitor meets are the ones that get built. Where none
   // of them could carry one — and where the plaza could not either — every other place is offered
-  // it, because an island with no fountain at all is the one outcome the supplement rules out.
+  // it, because a planet with no fountain at all is the one outcome the supplement rules out.
   for (const region of candidates) {
     if (out.length >= budget) break;
     const court = regionCourt(input, region, out.length);
@@ -304,7 +304,7 @@ const lotArea = (region: RegionPlan): number => {
   return lot.w * lot.h;
 };
 
-/** The large court drawn at a place's own middle, for the island whose hub could not carry one. */
+/** The large court drawn at a place's own middle, for the planet whose hub could not carry one. */
 function largeInRegion(input: FountainInput, region: RegionPlan, k: number): FountainCourt | null {
   const lot = region.lot[0]!;
   const at = { x: Math.round(lot.x + lot.w / 2), y: Math.round(lot.y + lot.h / 2) };
@@ -323,7 +323,7 @@ function plazaCourt(input: FountainInput, hub: MacroCoord, k: number): FountainC
  *
  * The span is drawn from the seed and walked DOWN, so a site that cannot hold the court the seed
  * asked for is offered the same composition at every smaller span before it is given up on, one step
- * BELOW the grammar's own floor at the last. That last step is not a rare fallback: a full island at
+ * BELOW the grammar's own floor at the last. That last step is not a rare fallback: a full planet at
  * full richness reserves nearly all of its flat ground for streets, lots and terraces, and over eighteen
  * measured maps carrying a large court, NINE stand it at the sub-floor span.
  * The floor is what the ground affords rather than what the grammar prefers, and the sub-floor span

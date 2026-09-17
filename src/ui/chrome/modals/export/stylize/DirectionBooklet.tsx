@@ -1,14 +1,14 @@
 /* Style directions grouped into local and provider-backed rows. Each row shows its sample, name,
  * AI status and relative render cost; the list scrolls independently of `DirectionPane`. */
 import type { CSSProperties } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { buttonMotion, cursors, radii } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import {
-  CUSTOM_DIRECTION_ID, PROC_PACK_META, STYLE_PACKS,
+  CUSTOM_DIRECTION_ID, PROC_PACK_META, STYLE_PACKS, neuralPacksUsable, neuralPacksUsableNow,
   type DirectionId, type ProcPackMeta, type StylePack, type StylizeDirection,
 } from '../../../../../io/stylize';
 import { packSampleUrl } from './sample-assets';
@@ -77,6 +77,20 @@ export function directionRow(id: StylizeDirection): DirectionRow {
   return DIRECTIONS.find((d) => d.id === id) ?? DIRECTIONS[0]!;
 }
 
+/**
+ * Whether the model-drawn local packs belong in the list. The answer is assumed yes until the
+ * engine probe says otherwise, so an engine that can run them never sees the list change.
+ */
+function useNeuralOffered(): boolean {
+  const [offered, setOffered] = useState(() => neuralPacksUsableNow() ?? true);
+  useEffect(() => {
+    let live = true;
+    void neuralPacksUsable().then((ok) => { if (live) setOffered(ok); });
+    return () => { live = false; };
+  }, []);
+  return offered;
+}
+
 export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
   value: StylizeDirection;
   onPick: (id: StylizeDirection) => void;
@@ -86,6 +100,10 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
   const reduced = useReducedMotionConfig() === true;
   const scrollRef = useRef<HTMLDivElement>(null);
   const fade = useScrollFade(scrollRef, 'y');
+  const neuralOffered = useNeuralOffered();
+  const rows = neuralOffered ? DIRECTIONS : DIRECTIONS.filter((d) => !d.proc?.neural);
+  const local = rows.filter((d) => d.kind === 'proc');
+  const online = rows.filter((d) => d.kind === 'model');
 
   // Bring the persisted initial selection into view when the booklet opens.
   useEffect(() => {
@@ -104,12 +122,12 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
       data-testid="stylize-direction-scroll"
       style={{ ...scrollStyle, ...fade }}
     >
-      <GroupLabel textKey="stylize.group_local" count={DIRECTIONS.filter((d) => d.kind === 'proc').length} />
-      {DIRECTIONS.filter((d) => d.kind === 'proc').map((row) => (
+      <GroupLabel textKey="stylize.group_local" count={local.length} />
+      {local.map((row) => (
         <DirectionRowButton key={row.id} row={row} picked={row.id === value} onPick={onPick} />
       ))}
-      <GroupLabel textKey="stylize.group_model" count={DIRECTIONS.filter((d) => d.kind === 'model').length} />
-      {DIRECTIONS.filter((d) => d.kind === 'model').map((row) => (
+      <GroupLabel textKey="stylize.group_model" count={online.length} />
+      {online.map((row) => (
         <DirectionRowButton key={row.id} row={row} picked={row.id === value} onPick={onPick} />
       ))}
     </motion.div>

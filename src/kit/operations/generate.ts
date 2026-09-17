@@ -164,7 +164,7 @@ async function runGeneration(
       };
     }
 
-    // A SCOPED RUN SETTLES ITS SEAM BEFORE THE COMMIT. The island is planned whole and cropped to the
+    // A SCOPED RUN SETTLES ITS SEAM BEFORE THE COMMIT. The planet is planned whole and cropped to the
     // region, and neither the plan nor the crop knows what the terrain OUTSIDE the region needs from
     // the cells inside it — a 3x3 base, a pond's cap. Left to the commit, one such cell reverts the
     // whole run, the clearing included, and the visitor sees nothing happen at all. Recorded through
@@ -384,10 +384,10 @@ function fingerprintOf(state: GridState): string {
  * cells, objects, undo stack and Clear scope are not reachable from here at all. Generating into the
  * real map and undoing afterwards also restores it, right up until something interrupts the sequence
  * (a crash, a reload, a post-stroke revert that stops early, a user reaching for Ctrl+Z mid-run),
- * and what is left then is the user's map replaced by a generated island.
+ * and what is left then is the user's map replaced by a generated planet.
  *
  * The copy starts as the live map rather than as a blank template, so a region-scoped candidate
- * shows the map the click would leave, not a patch of island floating on empty ground.
+ * shows the map the click would leave, not a patch of new terrain floating on empty ground.
  *
  * THE RUN LEAVES THE MAIN THREAD where it can: with workers available the grid is structured-cloned
  * into the pool and built there, so a batch of six neither blocks the page nor runs one at a time.

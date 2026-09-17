@@ -16,13 +16,13 @@ _A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/e
 [![Support on Patreon](https://img.shields.io/badge/Patreon-Support-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
 &nbsp;[![Support on Afdian](https://img.shields.io/badge/Afdian-Support-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
 
-<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished island, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
+<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished planet, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
 
 <sub>The header shows 鱼松的爱心桃花岛, created by project contributor 鱼松. An importable share image is available below.</sub>
 
 </div>
 
-**PetitMaker** is a map editor for *Petit Planet* that runs in your browser. Plan an island here, then build it in the game. Edits are checked against the implemented rules for terrain, water, placement, edge cuts, bridges, ramps and roads. Game updates and actual building conditions may differ; check your plan in the game before building.
+**PetitMaker** is a map editor for *Petit Planet* that runs in your browser. Plan your planet here, then build it in the game. Edits are checked against the implemented rules for terrain, water, placement, edge cuts, bridges, ramps and roads. Game updates and actual building conditions may differ; check your plan in the game before building.
 
 PetitMaker is an independent, **unofficial** fan project. It is **not affiliated** with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.). *Petit Planet* and related names, characters, and material are the property of their respective owners. See [Affiliation & licensing](#affiliation--licensing) below.
 
@@ -75,10 +75,10 @@ The layer readout opens a panel with three display sizes, including a grid of al
 ## Import a map from its share image
 
 <div align="center">
-<img src="./docs/media/share-map.png" alt="A PetitMaker share image: a title and one line of description, the island on a lettered and numbered grid, a column of per-layer thumbnails beside it, a row of four 3D views under it, the PetitGlyph share-code band below that, and a footer carrying the export date and pixel size" width="480">
+<img src="./docs/media/share-map.png" alt="A PetitMaker share image: a title and one line of description, the planet on a lettered and numbered grid, a column of per-layer thumbnails beside it, a row of four 3D views under it, the PetitGlyph share-code band below that, and a footer carrying the export date and pixel size" width="480">
 </div>
 
-This share image contains the complete map data. **[Download the original image](./docs/media/share-map.png)** (save the file rather than taking a screenshot), then drop it into the Import window at **[petitmaker.cc](https://petitmaker.cc/)**. The editor will restore 鱼松's island from the header, including its terrain, water, and objects.
+This share image contains the complete map data. **[Download the original image](./docs/media/share-map.png)** (save the file rather than taking a screenshot), then drop it into the Import window at **[petitmaker.cc](https://petitmaker.cc/)**. The editor will restore 鱼松's planet from the header, including its terrain, water, and objects.
 
 The band at the bottom is a **PetitGlyph** code, which stores the map and its planning annotations in the image. Error correction tolerates some resizing and JPEG or WebP compression. Preserve the original file for reliable sharing; platform processing may make a code unreadable. Import verifies the data before restoring the map. Processing takes place in the browser, and the image is not uploaded.
 
@@ -97,23 +97,23 @@ Before exporting a 2D image, the map can be redrawn as an illustration. Built-in
 ## Generate a map
 
 <div align="center">
-<img src="./docs/media/island-growth.gif" alt="Animated stages of generation, each captioned in the lower left and wiping left to right into the next: the empty map, terraced hills, lakes and rivers with waterfalls, streets across the island, bridges and ramps and homes, then trees and flowers" width="300">
+<img src="./docs/media/planet-growth.gif" alt="Animated stages of generation, each captioned in the lower left and wiping left to right into the next: the empty map, terraced hills, lakes and rivers with waterfalls, streets across the planet, bridges and ramps and homes, then trees and flowers" width="300">
 
 <sub>The generator creates terrain, water, roads, bridges and ramps, buildings, and vegetation in six stages.</sub>
 </div>
 
-The generator provides four modes: **Island**, **Maze**, **Letter**, and **Picture**. Island and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter and Picture offer built-in designs. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
+The generator provides four modes: **Planet**, **Maze**, **Letter**, and **Picture**. Planet and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter and Picture offer built-in designs. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
 
 <div align="center">
-<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Island and Maze: on the left a settled island of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
+<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Planet and Maze: on the left a settled planet of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
 
-<sub>The same recipe number produces different results in different modes: <b>Island</b> creates a complete layout, while <b>Maze</b> creates connected corridors.</sub>
+<sub>The same recipe number produces different results in different modes: <b>Planet</b> creates a complete layout, while <b>Maze</b> creates connected corridors.</sub>
 </div>
 
-**Island** calculates a complete layout before applying it to the map. It creates terraces, major roads that divide the island into districts, themed areas along those roads, water features, buildings, and connections to each entrance. The **Scenery richness** setting controls terrain variation, water, and vegetation density.
+**Planet** calculates a complete layout before applying it to the map. It creates terraces, major roads that divide the planet into districts, themed areas along those roads, water features, buildings, and connections to each entrance. The **Scenery richness** setting controls terrain variation, water, and vegetation density.
 
 <div align="center">
-<img src="./docs/media/richness-strip.png" alt="The same recipe generated three ways: a flat garden town at scenery richness 0, terraces and ponds appearing at 50, and a fully terraced island with deep greens and stepped water at 100" width="620">
+<img src="./docs/media/richness-strip.png" alt="The same recipe generated three ways: a flat garden town at scenery richness 0, terraces and ponds appearing at 50, and a fully terraced planet with deep greens and stepped water at 100" width="620">
 
 <sub>The same recipe at <b>Scenery richness</b> 0, 50, and 100. Higher values add more elevation changes, water, and vegetation.</sub>
 </div>
@@ -256,7 +256,7 @@ You can support PetitMaker’s ongoing development on [Patreon](https://www.patr
 
 ## Contact
 
-For general questions, IP requests, or contribution/credit arrangements, email **selka.craft@outlook.com**. Security issues follow a separate process. See [SECURITY.md](./SECURITY.md).
+For general questions, IP requests, or contribution/credit arrangements, email **petit.maker@outlook.com**. Security issues follow a separate process. See [SECURITY.md](./SECURITY.md).
 
 <div align="center">
 <br>

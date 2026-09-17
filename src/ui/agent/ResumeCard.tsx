@@ -8,13 +8,13 @@ import { RESUME_PRIMARY } from './atoms';
 import { Icon } from './icons';
 import { CARD_PAD, edge, statePaper } from './tokens';
 import { INK, PLATE } from '../design/tokens';
-import { colors, font } from '../design/styles';
+import { colors, font, mixHex } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
 import { useT } from '../../i18n/context';
 
 /** A subdued wait-state tint that keeps the card distinct from warnings. */
-const RESUME_PAPER = `color-mix(in srgb, ${statePaper.wait} 42%, ${PLATE})`;
+const RESUME_PAPER = mixHex(statePaper.wait, PLATE, 0.42);
 
 const CARD_STYLE: CSSProperties = {
   background: RESUME_PAPER,

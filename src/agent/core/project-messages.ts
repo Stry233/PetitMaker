@@ -1,4 +1,5 @@
 import { quotePromptData } from '../../core/runtime/prompt-data';
+import { languageCue } from './language-cue';
 import type { SessionLog } from './log';
 import { eventsOf } from './log';
 import { DROPPED_STOPS } from './types';
@@ -23,6 +24,12 @@ const SKIP_RESULT_MESSAGE = 'The user chose not to run this call. Continue witho
 
 type ToolCall = { callId: string; name: string; args: Record<string, unknown> };
 type ToolResultEntry = { callId: string; name: string; content: string; isError: boolean; image?: string };
+
+/** The user's words end with a cue naming their language, the last thing the model reads before it thinks. */
+function withLanguageCue(message: string, userWords: string): string {
+  const cue = languageCue(userWords);
+  return cue === '' ? message : `${message}\n${cue}`;
+}
 
 /** Provider message plus whether it starts an exchange group kept atomically during trimming. */
 interface Tagged { message: ProviderMessage; opensGroup: boolean }
@@ -98,13 +105,13 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
 
   for (const e of kept) {
     if (e.kind === 'order') {
-      const text = `<map_context>${quotePromptData(e.mapContext)}</map_context>\n${e.text}`;
+      const text = withLanguageCue(`<map_context>${quotePromptData(e.mapContext)}</map_context>\n${e.text}`, e.text);
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'steerDelivered') {
       if (recalledSteerSeqs.has(e.steerSeq)) continue;
       const text = steerTextBySeq.get(e.steerSeq);
       if (text === undefined) continue;
-      tagged.push({ message: { role: 'user', text }, opensGroup: true });
+      tagged.push({ message: { role: 'user', text: withLanguageCue(text, text) }, opensGroup: true });
     } else if (e.kind === 'systemNote') {
       // Loop-authored notes replay in their original event position.
       tagged.push({ message: { role: 'user', text: e.text }, opensGroup: true });

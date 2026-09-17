@@ -278,6 +278,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   const tourRunning = useEditorStore((s) => s.tourRunning);
   const blocked = useEditorStore((s) => s.portraitBlocked);
   const tourDoneOpen = useEditorStore((s) => s.modals.tourDone);
+  const whatsNewOpen = useEditorStore((s) => s.modals.whatsNew);
   const gridState = useEditorStore((s) => s.gridState);
   const chrome = useChromeScale();
   const weights = useWeightVars();
@@ -319,6 +320,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
         blocked: st.portraitBlocked,
         tourRunning: st.tourRunning,
         tourDoneOpen: st.modals.tourDone,
+        whatsNewOpen: st.modals.whatsNew,
         tourSettled: hasSeenTour(),
       });
       const template = st.gridState?.template;
@@ -328,7 +330,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
       setPending(null);
     }, 0);
     return () => clearTimeout(timer);
-  }, [pending, splashActive, tourRunning, blocked, tourDoneOpen, gridState]);
+  }, [pending, splashActive, tourRunning, blocked, tourDoneOpen, whatsNewOpen, gridState]);
 
   // The cycle: the phrase holds one cadence, then each line takes the row in turn and the last one
   // stays. One timer per line rather than a chain, so a step cannot drift by the length of a render.

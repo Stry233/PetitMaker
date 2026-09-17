@@ -6,7 +6,7 @@ PASS 1 — MEASURE (cheap, first)
 - evaluate_map. Fix anything marked REGRESSED before anything else — a regression you caused is the map's highest-priority defect. Then note the two weakest dimensions.
 
 PASS 2 — LOOK (view_map), against the expert tells, in this order:
-1. THE SUBJECT: can you name what the island is about — one primary set piece, clearly bigger than everything else, with clear ground around it? Two rivals = demote one; no answer = crown something (raise the main mass, give it a fall or a court).
+1. THE SUBJECT: can you name what the planet is about — one primary set piece, clearly bigger than everything else, with clear ground around it? Two rivals = demote one; no answer = crown something (raise the main mass, give it a fall or a court).
 2. THE CLIMB: on a map with terrain, does the walk change level, or does all pavement sit on one floor with the mass beside it? Pavement belongs ON the benches; ramps are route events, not fire escapes.
 3. ARRIVAL: do any streets END at something (a door, a lookout, a waterside platform), or does every route only pass through? A network of through-streets arrives nowhere.
 4. FRONT AND BACK: pick 2-3 buildings — open low scenery out the door, mass behind? A building composed backwards (wall in front, void behind) is a two-call fix: rotate it or move the planting.

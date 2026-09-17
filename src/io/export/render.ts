@@ -2,7 +2,7 @@
 import { computeComposition } from './compose';
 import { layersFor } from './layer-preview';
 import type { Badge, ExportComposition, ExportOptions } from './types';
-import type { PixelSize } from './sizing';
+import type { CanvasLimits, PixelSize } from './sizing';
 import type { GridState } from '../../core/model/types';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 
@@ -13,6 +13,8 @@ export interface RenderArgs {
   options: ExportOptions; mapAspect: number;
   /** Actual captured map pixel size (loaded base image dims). Drives Original 1:1 layout. */
   mapPx?: PixelSize;
+  /** What this device's canvas can allocate (`canvas-limits.ts`). Desktop's constants when absent. */
+  limits?: CanvasLimits;
   /** Paint the composition into an offscreen canvas and return it (or null). */
   capture: (comp: ExportComposition) => Promise<HTMLCanvasElement | null>;
   /** Encode the painted canvas to an image Blob (browser: canvas.toBlob → PNG). Plain encoding —
@@ -29,7 +31,7 @@ export interface RenderResult { blob: Blob | null; composition: ExportCompositio
 export async function renderExport(args: RenderArgs): Promise<RenderResult> {
   const badges = badgesFor(args.summary);
   const layerCount = args.gridState ? layersFor(args.gridState).length : 1;
-  const composition = computeComposition(args.options, args.mapAspect, badges, { layerCount, mapPx: args.mapPx });
+  const composition = computeComposition(args.options, args.mapAspect, badges, { layerCount, mapPx: args.mapPx, limits: args.limits });
   const canvas = await args.capture(composition);
   const blob = canvas ? await args.encode(canvas) : null;
   return { blob, composition };

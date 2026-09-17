@@ -65,16 +65,16 @@ export interface MovementLine {
 // --- tunables ------------------------------------------------------------------------------------
 
 /** How many stops a walk holds, at richness 0 and 1. Under three there is no sequence to read; past
- *  six the line crosses the island more than once and stops reading as one walk. */
+ *  six the line crosses the planet more than once and stops reading as one walk. */
 const STOP_COUNT = { low: 3, high: 6 } as const;
 /** The tallest step the walk prefers to take between two stops, in tiers. A flight is `RAMP_RUN`
  *  cells of run per tier, so a taller step is one the ground below it usually has no room for, and a
  *  leg the flights cannot carry is a leg the settling prunes. */
 const CLIMB_STEP_MAX = 2;
 /** Stops the walk may spend BEYOND its count to reach the mass. A walk that has not arrived by then
- *  is on an island whose high ground is most of the map away from the plaza, and going on turns one
+ *  is on a planet whose high ground is most of the map away from the plaza, and going on turns one
  *  walk into a tour. Four rather than two since the mass is cut into TERRACES: the summit of a
- *  terraced island stands several steps up, and each step is a plate the walk has to cross. */
+ *  terraced planet stands several steps up, and each step is a plate the walk has to cross. */
 const STOP_SLACK = 4;
 /** How wide the line's own street is. The style target's approaches read 4 to 6 cells against a 3-wide
  *  trunk, so the primary walk is the widest pavement on the map. */
@@ -145,7 +145,7 @@ const STOP_ROLES: ReadonlyArray<{
 // --- entry point ---------------------------------------------------------------------------------
 
 /** The walk one map is built around: where it goes, what is met along it, and what water it asks
- *  for. An island with no plate to walk to comes back with an empty line, and every stage that reads
+ *  for. A planet with no plate to walk to comes back with an empty line, and every stage that reads
  *  one carries on exactly as it did before there was one. */
 export function planMovementLine(
   seed: number, template: MapTemplate, composition: CompositionPlan,
@@ -204,12 +204,12 @@ export function planMovementLine(
  * at, and calling the plate it stranded on a look-out is the fiat this whole step exists to avoid.
  *
  * The route to it is grown one plate at a time rather than taken as a shortest path, because a
- * shortest path is the same walk on every map with the same island: at each step the neighbour that
+ * shortest path is the same walk on every map with the same planet: at each step the neighbour that
  * makes progress is preferred, a seeded tilt breaks the ties, and where the walk is still short of
  * its stop count a lateral neighbour is taken instead, which is the wander that gives two seeds two
- * different stories on one island. THE WANDER BACKTRACKS. A greedy walk with a seen-set strands in a
+ * different stories on one planet. THE WANDER BACKTRACKS. A greedy walk with a seen-set strands in a
  * pocket of the plate graph and the loop then breaks with the summit unvisited: measured, 3 of 20
- * seeds ended on tier 1, 2 and 6 of an island built to 8, all three labelled a look-out.
+ * seeds ended on tier 1, 2 and 6 of a planet built to 8, all three labelled a look-out.
  */
 function walkPlates(
   composition: CompositionPlan, rng: Rng, richness: number, W: number, H: number,
@@ -220,10 +220,10 @@ function walkPlates(
   const neighbours = neighbourMap(composition, W, H);
   const start = plazaPlateId >= 0 && plazaPlateId < plates.length ? plazaPlateId : 0;
   const fromStart = graphDistance(neighbours, plates.length, start);
-  // A MASSIF IS WORTH CROSSING THE ISLAND FOR AND A MOUND IS NOT, and that is the only thing the two
+  // A MASSIF IS WORTH CROSSING THE PLANET FOR AND A MOUND IS NOT, and that is the only thing the two
   // cases differ in. It is the composition's OWN test — below `MASSIF_PEAK_FROM` there is no skirt and
   // no crown, and what is raised is a corner of scenery — so a map without one spends no more than its
-  // stop count getting anywhere: forcing a tour across a flat island cost richness 0 a quarter of its
+  // stop count getting anywhere: forcing a tour across a flat planet cost richness 0 a quarter of its
   // street ends, measured. What does NOT differ is that the walk still ends on the highest ground it
   // can stand on, because a mound the walk could have finished on and wandered past is the same fiat
   // at a smaller scale (measured, three low-relief runs of six ended on the bottom terrace of a map
@@ -246,7 +246,7 @@ function walkPlates(
   }
   // NOTHING TO ARRIVE AT: a map with no raised plate in range, which is the flat garden town at the
   // quiet end of the axis. The walk is the greedy wander it always was there, leaning away from the
-  // plaza toward the plate the archetype read highest — ties to the lowest id, since on a flat island
+  // plaza toward the plate the archetype read highest — ties to the lowest id, since on a flat planet
   // many plates read alike.
   if (goal < 0) {
     if (massif) return [];
@@ -265,7 +265,7 @@ function walkPlates(
   return route.length ? route : shortestRoute(neighbours, toGoal, start, goal);
 }
 
-/** The walk on an island with nothing raised inside its own budget: the greedy wander, bounded by its
+/** The walk on a planet with nothing raised inside its own budget: the greedy wander, bounded by its
  *  stop count, which is what every walk was before there was a summit to arrive at. */
 function wander(
   plates: readonly Plate[], neighbours: ReadonlyMap<number, number[]>, toGoal: readonly number[],
@@ -289,7 +289,7 @@ function wander(
 
 /** How much work a route search may spend before the shortest path is taken instead. A plate graph
  *  holds at most `PLATE_TOTAL_MAX` nodes and the depth bound prunes hard, so this is reached only on
- *  a graph shaped to defeat the bound rather than on any island measured here. */
+ *  a graph shaped to defeat the bound rather than on any planet measured here. */
 const ROUTE_BUDGET = 4000;
 
 /**
@@ -364,7 +364,7 @@ function shortestRoute(
  * 8 in four steps). So a gentle step is preferred, then a rising one.
  *
  * `first` is the group the walk chooses inside — seeded, which is what gives two seeds two stories on
- * one island — and `rest` is what the route search falls back through when nothing beyond `first`
+ * one planet — and `rest` is what the route search falls back through when nothing beyond `first`
  * arrives. The two are kept apart rather than returned as one order because the choice and the
  * fallback are different acts: a wander with nothing to backtrack into draws once from `first`.
  */
@@ -438,7 +438,7 @@ function graphDistance(neighbours: ReadonlyMap<number, number[]>, count: number,
 }
 
 /** Where the walk meets each plate: the cell nearest the plate's own middle that a street could stand
- *  on (its dual-grid window level and on the island). A plate offering none is absent from the map,
+ *  on (its dual-grid window level and on the planet). A plate offering none is absent from the map,
  *  which is what keeps it out of both the destination and the stop list. */
 function plateAnchors(
   composition: CompositionPlan, tiers: Int8Array, land: Uint8Array, W: number, H: number,
@@ -459,7 +459,7 @@ function plateAnchors(
 }
 
 /** Whether a street's own window — the cell plus one column right and one row below — stands on the
- *  island at one tier. The same reading `streets.ts` builds its pavable mask from. */
+ *  planet at one tier. The same reading `streets.ts` builds its pavable mask from. */
 function levelWindow(tiers: Int8Array, land: Uint8Array, x: number, y: number, W: number, H: number): boolean {
   if (x < 0 || y < 0 || x + 1 >= W || y + 1 >= H) return false;
   const t = tiers[flatIndex(x, y, W)]!;
@@ -489,7 +489,7 @@ function plazaGate(plaza: Rect, toward: MacroCoord): MacroCoord {
  *
  * An L rather than a diagonal because a street here is a line at one coordinate — that is what makes
  * a block's frontage straight — and a walk that turns at its stops reads as a route through places
- * rather than as a ruled line across the island.
+ * rather than as a ruled line across the planet.
  */
 function legs(
   waypoints: readonly MacroCoord[], tiers: Int8Array, land: Uint8Array, W: number, H: number, seed: number,
@@ -662,7 +662,7 @@ function besideLine(
     : { x: lo, y: start, w: long, h: deep };
 }
 
-/** Whether a wanted body stands wholly on island ground at one tier. A want that does not is dropped
+/** Whether a wanted body stands wholly on planet ground at one tier. A want that does not is dropped
  *  here rather than handed to the sculptor to refuse. */
 function fitsOnLand(
   rect: Rect, tiers: Int8Array, land: Uint8Array, tier: number, W: number, H: number,
@@ -678,7 +678,7 @@ function fitsOnLand(
   return true;
 }
 
-// --- the island ----------------------------------------------------------------------------------
+// --- the planet ----------------------------------------------------------------------------------
 
 function landMask(template: MapTemplate): Uint8Array {
   const W = template.width, H = template.height;

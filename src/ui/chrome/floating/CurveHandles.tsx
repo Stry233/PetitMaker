@@ -86,6 +86,8 @@ const hitBox = (face: number): CSSProperties => {
     pointerEvents: 'auto',
     padding: 0,
     WebkitTapHighlightColor: 'transparent',
+    // The handle owns the drag; without this a touch drag scrolls the page instead.
+    touchAction: 'none',
   };
 };
 

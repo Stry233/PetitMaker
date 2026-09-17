@@ -98,7 +98,7 @@ export function gateSites(field: MazeField): { gate: MacroCoord; inside: MacroCo
  * array over the field's rectangle: -1 for a cell no walk reaches.
  *
  * FLAT RATHER THAN A MAP OF STRING KEYS, because the default runs one of these per way IN and a
- * whole-island maze offers a few hundred of them over ten thousand cells. Keyed by string that is
+ * whole-planet maze offers a few hundred of them over ten thousand cells. Keyed by string that is
  * seconds; indexed by row it is milliseconds, and it is what lets the default be the true longest
  * walk rather than a heuristic that lands a cell short.
  */
@@ -214,7 +214,7 @@ function nearestWalkable(field: MazeField, to: MacroCoord, within?: (cell: Macro
 /**
  * The maze's MAINLAND: the largest connected patch of walkable cells, as a membership test.
  *
- * A maze's rectangle is the bounding box of the free grass, and on a real island that box also
+ * A maze's rectangle is the bounding box of the free grass, and on a real map that box also
  * covers sea, sand and the square — so the walkable cells are not one graph but several, and two
  * ends snapped blindly to their nearest cells could land in pockets no corridor joins. Snapping
  * BOTH ends into the mainland is what makes the walk between them exist by construction: the carve

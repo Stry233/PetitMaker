@@ -17,7 +17,7 @@ export interface CutBacking {
  *    (A tier-1 fillet has no base — it sits straight on the ground.)
  *  - A cut on a REAL cell goes through its whole pillar, so what shows is NEIGHBOUR mass. A cut MOUNTAIN
  *    corner reveals the highest EDGE-adjacent same-type mass below its top (a plateau step → that step's
- *    tier; a lone pillar → nothing → ground, unless it is an island, which shows the water it sits in).
+ *    tier; a lone pillar → nothing → ground, unless it is an islet, which shows the water it sits in).
  *    A cut WATER corner is FILLED by the mountain at the corner (the render half of the reveal rule: a cut
  *    corner shows the surface actually behind it) — the bank AT the waterline, or, where mountain flanks
  *    BOTH edges of the corner (`cornerEdgeCoverTier`), the corner that mountain turns over this cell.
@@ -47,9 +47,9 @@ export function cutBackingByCorner(
     return out;
   }
 
-  // A GROUND-island cut (a cell of type None carrying corners — ground is a cuttable surface, the inverse
+  // A GROUND-islet cut (a cell of type None carrying corners — ground is a cuttable surface, the inverse
   // of a water pond). The kept shape draws grass; behind the rounded-away part shows the WATER
-  // the island sits in — the EDGE-adjacent water at that corner.
+  // the islet sits in — the EDGE-adjacent water at that corner.
   if (terrain.type === TerrainType.None) {
     for (let i = 0; i < 4; i++) {
       const c = corners[i];
@@ -80,10 +80,10 @@ export function cutBackingByCorner(
       const flank = cornerEdgeCoverTier(neighborAt, i, TerrainType.Mountain);
       if (flank > renderElevation) out[i] = { type: TerrainType.Mountain, elevation: flank };
     } else {
-      // A cut MOUNTAIN corner with no lower mountain step behind it — a mountain ISLAND poking into water —
-      // reveals the water it sits in (the same generic rule as a cut ground island, and symmetric to cut
+      // A cut MOUNTAIN corner with no lower mountain step behind it — a mountain ISLET poking into water —
+      // reveals the water it sits in (the same generic rule as a cut ground islet, and symmetric to cut
       // water revealing its mountain rim above). EDGE-adjacent only. (A mountain that merely BANKS water on
-      // one edge is not cuttable here — trim-lock locks that corner — so this only fires for island tips.)
+      // one edge is not cuttable here — trim-lock locks that corner — so this only fires for islet tips.)
       for (const [dx, dy] of EDGE_NEIGHBORS[i] ?? []) {
         const n = neighborAt(dx, dy);
         if (n && n.type === TerrainType.Water) { out[i] = { type: TerrainType.Water, elevation: n.elevation }; break; }

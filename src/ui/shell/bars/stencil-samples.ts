@@ -2,7 +2,7 @@
  * stencil-samples.ts — the pools the two picture kinds draw their batch from.
  *
  * A PICTURE KIND IS DETERMINISTIC: the input IS the recipe, and the same letter builds the same
- * island every time. So there is no seed to reroll — but the row still wants a batch and a way to
+ * map every time. So there is no seed to reroll — but the row still wants a batch and a way to
  * ask for another one, or these two kinds would be the odd ones out, with a control that refuses
  * where every other kind's works.
  *
@@ -110,7 +110,7 @@ export function poolFor(kind: string): readonly StencilSample[] {
 
 /**
  * `count` samples from `pool`, drawn without replacement and decided entirely by `seed` — the same
- * batch seed the island kinds deal their recipe numbers from, so one control means one thing on
+ * batch seed the terrain kinds deal their recipe numbers from, so one control means one thing on
  * every kind and a batch is reproducible.
  *
  * A pool shorter than the hand simply deals all of it, in its own order: the alternative is

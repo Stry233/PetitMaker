@@ -4,7 +4,7 @@
  * A REGION IS A RUN OF OPEN GROUND, not a rectangle. The lots the layout drew are where a region was
  * PLANNED; what it actually gets is whatever open ground survives the terrain, the roads and the
  * buildings, and that is what the reference maps are measured over too: a connected run of open land
- * cut by pavement, water and terrace step, median 48 cells on the target island. So the dressing pass
+ * cut by pavement, water and terrace step, median 48 cells on the target planet. So the dressing pass
  * segments the finished map into those runs, gives each one to the region whose lot holds most of it,
  * and composes it with that region's kit. A run no lot reaches is left bare — which is what makes
  * decoration read as composed PLACES rather than as ground cover.
@@ -51,7 +51,7 @@ import type { KitCanvas, KitGround, KitStyle, PlantMark } from './types';
  *  that band rather than on its floor: what a run can actually plant is bounded by the ground the
  *  terrain left it, so a map that cannot reach its aim lands UNDER it, and an aim on the floor puts the
  *  seeds that fall short outside the band. The ceiling is 0.088 rather than 0.090 because the eroded
- *  terrace edges cut the island into more runs, and at 0.090 the densest seed lands at 0.0955, just over
+ *  terrace edges cut the planet into more runs, and at 0.090 the densest seed lands at 0.0955, just over
  *  the band's own ceiling. */
 const DENSITY = { min: 0.072, max: 0.088 } as const;
 /** What share of a composed mark the rules actually accept. The pass reads the ground before it
@@ -99,7 +99,7 @@ const TILE_YIELD = 0.7;
 /** How much of its own bounding box a run must fill to be worth mirroring at all. */
 const FORMAL_FILL = 0.5;
 /** A run smaller than this is not a place; it is a gap between two of them. Eight rather than a
- *  dozen because a terraced island's open ground comes in smaller pieces than a plain's: the runs
+ *  dozen because a terraced planet's open ground comes in smaller pieces than a plain's: the runs
  *  between a step, a street and a pool are what most of a rich map is made of, and dropping them
  *  leaves it thinner than the density band both references share. */
 const RUN_MIN_CELLS = 8;
@@ -108,7 +108,7 @@ const RUN_MIN_CELLS = 8;
  *
  * The flat garden town measures 1 : 6.6 and the terraced target 1 : 1.12, which makes the ratio a style
  * axis rather than a number to average. Richness is that axis: a quiet map is a garden town, a full one
- * is the island. It runs BACKWARDS if the trees share the cover ladder, since one step of a shared
+ * is the planet. It runs BACKWARDS if the trees share the cover ladder, since one step of a shared
  * ladder trades three quarters of a block's trees for four times its blooms.
  */
 const TREE_RATIO = { min: 6.6, max: 1.4 } as const;
@@ -267,7 +267,7 @@ export function dressRegions(input: DressInput): DressOutcome {
       cover: clamp(k * style.appetite, COVER.min, coverCap(treeWeight(style))),
       // A KIT'S OWN MIX SETS WHERE THE TREES START. A tree avenue asks for lattices and a flower
       // field asks for beds, so each region opens at the share of its own mix that is tree blocks
-      // and the map-level correction below scales every region from there — which moves the ISLAND'S
+      // and the map-level correction below scales every region from there — which moves the PLANET'S
       // ratio to the axis without flattening one theme into another.
       treeShare: treeWeight(style),
       orientation: region.orientation,
@@ -489,7 +489,7 @@ function bankMarks(canvas: KitCanvas, water: Uint8Array, W: number, H: number): 
     // A share of the rows is TREES at step 2, which is how the target plants its own waterside (101
     // same-species runs at step 1 and 32 at step 2, and the comb's dry ridges each holding one peach).
     // It is also what keeps the bank from planting flowers only: the rows are a large share of a watery
-    // map's decoration, and a flower-only bank drags the whole island's trees-to-flowers ratio off the
+    // map's decoration, and a flower-only bank drags the whole planet's trees-to-flowers ratio off the
     // axis whatever the kits do.
     const treeRow = canvas.rng.float() < canvas.treeShare && grove !== null;
     const id = treeRow ? grove : (canvas.rng.int(3) === 0 ? edge : species) ?? species ?? edge;
@@ -637,7 +637,7 @@ const within = (rect: Rect, x: number, y: number): boolean =>
  *
  * A run NO lot comes within an apron of goes to the nearest region rather than going bare. Leaving it
  * bare is the more principled answer on a plain — decoration should read as composed places rather
- * than as ground cover — but two fifths of a terraced island's plantable cells are terraces the layout
+ * than as ground cover — but two fifths of a terraced planet's plantable cells are terraces the layout
  * never planned a lot onto, and leaving all of those bare puts the map's decoration density at half the
  * band both references share. A far terrace composed in the nearest region's palette still reads as
  * that place's outskirt; the same terrace bare reads as unfinished.

@@ -1,5 +1,5 @@
 /**
- * Plans the island's coarse terrace mass before streets and places are assigned. Every buildable
+ * Plans the planet's coarse terrace mass before streets and places are assigned. Every buildable
  * cell belongs to one 4-connected, single-tier plate. The seeded archetype chooses an axis relative
  * to the low plaza plate; adjacent tiers and coast-facing heights are capped to satisfy the terrain
  * support rules. Pure and deterministic for `(seed, template, richness)` so it can run in a worker.
@@ -39,7 +39,7 @@ export interface Plate {
   relief: number;
 }
 
-/** The coarse structure of one map: the archetype, its axis, and the plates that tile the island. */
+/** The coarse structure of one map: the archetype, its axis, and the plates that tile the planet. */
 export interface CompositionPlan {
   seedInfo: SeedInfo;
   archetype: CompositionArchetype;
@@ -54,7 +54,7 @@ export interface CompositionPlan {
   plazaPlateId: number;
   /** Tier-weighted centroid of the plan's mass, in macro cells. The plaza hub where nothing rises. */
   massCentroid: { x: number; y: number };
-  /** Plate id per cell, -1 off the buildable island. */
+  /** Plate id per cell, -1 off the buildable planet. */
   plateOf: Int16Array;
 }
 
@@ -64,7 +64,7 @@ export interface CompositionPlan {
  * How much weight each archetype carries at richness 0 and at richness 1.
  *
  * The two decoded references are the two ends of this table: a flat garden town (0.3% mountain) and
- * a terraced island whose mass piles against one side. So a quiet map is mostly low-relief and a
+ * a terraced planet whose mass piles against one side. So a quiet map is mostly low-relief and a
  * rich one is mostly dramatic, and every archetype keeps a nonzero weight at both ends — a weight of
  * zero is a composition no seed can ever draw.
  */
@@ -102,8 +102,8 @@ const PLATE_MIN_SIDE = 12;
 /**
  * The same two numbers for a plate ON THE MASS, where a plate is a TERRACE rather than a block.
  *
- * The mass is a staircase: the terraces of the reference island run a few cells deep, and cutting
- * them at a town block's scale is what spread the wedding cake over a whole island. Seven cells is
+ * The mass is a staircase: the terraces of the reference planet run a few cells deep, and cutting
+ * them at a town block's scale is what spread the wedding cake over a whole planet. Seven cells is
  * what a terrace has to hold to be walked on at all — a two-wide street with the dual-grid margin
  * either side of it, or the run of one ramp.
  */
@@ -138,7 +138,7 @@ const SPLIT_JITTER = 0.3;
 const PEAK_TIER = { low: 2, high: ELEVATION_MAX } as const;
 /** How the height is spread down the composition's own slope, at richness 0 and 1: an exponent on
  *  each plate's share of the top reading. Above 1 the rise is kept to the very top of the mass (the
- *  garden town is 99% ground level); at 1 the whole slope terraces, which is the target island. */
+ *  garden town is 99% ground level); at 1 the whole slope terraces, which is the target planet. */
 const RELIEF_GAMMA = { low: 3, high: 1 } as const;
 /** Low-relief remains a broad rise: one tier at minimum richness and four at maximum richness. */
 const LOW_RELIEF_PEAK = { low: 1, high: 4 } as const;
@@ -161,7 +161,7 @@ export const PLATE_TOTAL_MAX = PLATE_COUNT_BAND.max + CROWN_STEPS_MAX;
 /**
  * The potential every buildable cell carries whatever the archetype says, at richness 0 and 1.
  *
- * The terraced reference's far quarters read mean elevation 1.5 and 1.4, and only 17% of that island
+ * The terraced reference's far quarters read mean elevation 1.5 and 1.4, and only 17% of that planet
  * stands at ground level: the side AWAY from the mass is not sea level, it is the bottom terrace. At
  * richness 1 this floor is worth several tiers against the peak; below that it rounds away, which is the
  * flat garden-town reading.
@@ -173,14 +173,14 @@ export const PLATE_TOTAL_MAX = PLATE_COUNT_BAND.max + CROWN_STEPS_MAX;
  *
  * IT IS ALSO BOUNDED BY WHAT A STREET CAN STAND ON. Every tier the floor adds is another step, and a
  * coating needs its whole 2x2 window at ONE tier: pushed to three tiers, two seeds of twenty came
- * back with 2% of the island paved — a map with no network at all. The value here is the highest one
+ * back with 2% of the planet paved — a map with no network at all. The value here is the highest one
  * at which every seed of both templates still lays a street grid.
  */
 const RELIEF_FLOOR = { low: 0, high: 0.22 } as const;
 /**
  * How far inland the floor takes to reach its full value, in cells.
  *
- * The shore keeps the ground it starts at, so an island is not a plateau with a cliff all the way
+ * The shore keeps the ground it starts at, so a planet is not a plateau with a cliff all the way
  * round its coast — and the RAMP is what spreads the pavement over several levels rather than
  * standing all of it on one bottom terrace: at eight cells the walk climbed to one high floor and
  * read 1.18 bits of elevation entropy, at twenty-four it grades over three or four levels and reads
@@ -191,7 +191,7 @@ const FLOOR_FOOT = 24;
  *  support height. */
 const RIM_FOOT = 5;
 /** Massifs one `distributed-massifs` map carries, and each massif's radius as a share of the
- *  island's own radius. */
+ *  planet's own radius. */
 const MASSIF_COUNT = { min: 2, max: 4 } as const;
 const MASSIF_RADIUS = { min: 0.22, max: 0.42 } as const;
 /** How far the mass centroid must stand from the plaza before it names a direction, in cells. Under
@@ -224,9 +224,9 @@ export function planComposition(
     : clampInt(Math.round(lerp(PEAK_TIER.low, PEAK_TIER.high, r)), 1, ceiling);
   const field = potentialField({ archetype: choice.archetype, axis: choice.axis, crossAxis: choice.crossAxis, land, W, H, hub, coast, rng });
   // THE SIDE AWAY FROM THE MASS IS THE BOTTOM TERRACE, not sea level: the terraced reference's far
-  // quarters read mean elevation 1.5 and only 17% of that island stands at ground level.
+  // quarters read mean elevation 1.5 and only 17% of that planet stands at ground level.
   // Per CELL and off the coast distance, so the shore keeps the ground it starts at and
-  // an island is not a plateau with a cliff all the way round it.
+  // a planet is not a plateau with a cliff all the way round it.
   const floor = lerp(RELIEF_FLOOR.low, RELIEF_FLOOR.high, r);
   for (let i = 0; i < field.length; i++) {
     if (!land[i]) continue;
@@ -354,7 +354,7 @@ export function chooseArchetype(rng: Rng, richness: number): ArchetypeChoice {
 /** The direction the finished mass actually sits in, which is what a later stage measures against.
  *  A wall or a corner keeps the side it was drawn with; a radial or flat composition takes the
  *  direction of its own mass centroid, and its seeded side only where that centroid says nothing.
- *  Measured against the island's centre of area, not the plaza: neither template's plaza stands at
+ *  Measured against the planet's centre of area, not the plaza: neither template's plaza stands at
  *  the middle of its land, so a plaza-relative reading would lean every map the same way. */
 function resolveAxis(choice: ArchetypeChoice, mass: { x: number; y: number }, centre: { x: number; y: number }): Direction {
   if (choice.archetype !== 'rim' && choice.archetype !== 'distributed-massifs' && choice.archetype !== 'low-relief') {
@@ -373,7 +373,7 @@ function plateTarget(rng: Rng, richness: number): number {
 interface Slab { rect: Rect; land: number }
 
 /**
- * Cuts the buildable island into plates: a rectilinear subdivision of the land's bounding box, each
+ * Cuts the buildable planet into plates: a rectilinear subdivision of the land's bounding box, each
  * slab's land taken as a plate.
  *
  * The cut is RECTILINEAR because the tier step drawn along it is what a district's boundary looks
@@ -395,7 +395,7 @@ function cutPlates(
   // A slab's WANT is its land weighted by how high the composition wants it. The town is cut into
   // blocks and the mass into TERRACES, and a terrace is the narrower thing: the massif of a map
   // asked for eight tiers is a staircase of surfaces, so cutting it at a town block's scale spreads
-  // the wedding cake over the whole island (measured: 85% of it came back as mountain) and leaves
+  // the wedding cake over the whole planet (measured: 85% of it came back as mountain) and leaves
   // the walk one step per quarter of the map.
   const pull = massifPlates > 0 ? MASSIF_PULL : 0;
   const want = (slab: Slab): number =>
@@ -456,7 +456,7 @@ function meanIn(sum: Float64Array, W: number, r: Rect): number {
   return total / area;
 }
 
-/** Integral image of the potential over the island, zero off it. */
+/** Integral image of the potential over the planet, zero off it. */
 function potentialSum(field: Float32Array, land: Uint8Array, W: number, H: number): Float64Array {
   const stride = W + 1;
   const sum = new Float64Array(stride * (H + 1));
@@ -603,7 +603,7 @@ function potentialField(input: FieldInput): Float32Array {
       return field;
     }
     default: {
-      // A wall, a corner or a low-relief island: one axis, or two multiplied into a quadrant.
+      // A wall, a corner or a low-relief planet: one axis, or two multiplied into a quadrant.
       const along = axisPotential(land, W, H, hub, axis);
       if (!crossAxis) return along;
       const across = axisPotential(land, W, H, hub, crossAxis);
@@ -652,7 +652,7 @@ function massifCentres(
       const x = i % W, y = (i / W) | 0;
       let near = Infinity;
       for (const t of taken) near = Math.min(near, Math.hypot(x - t.x, y - t.y));
-      // A seeded tilt on the farthest-point pick, so two maps with the same island do not put their
+      // A seeded tilt on the farthest-point pick, so two maps with the same planet do not put their
       // massifs in the same places.
       const score = near * (0.75 + 0.5 * hash01(k, i));
       if (score > bestScore) { bestScore = score; best = i; }
@@ -737,7 +737,7 @@ function assignTiers(
  * stand on it, or as much as its own ground can support, whichever is less.
  *
  * The plaza's plate keeps its zero and the relaxation still binds everything to it, so this can
- * raise the whole island without ever raising the hub.
+ * raise the whole planet without ever raising the hub.
  */
 function raiseSkirt(
   plates: Plate[], edges: readonly [number, number][], headrooms: ReadonlyMap<number, number>,
@@ -774,7 +774,7 @@ function raiseSkirt(
  *
  * Two things are true at once and this pass is what reconciles them. A plate is one surface and
  * touching plates step at most `PLATE_STEP_MAX`, so the partition alone runs out of height before
- * the caller's cap is reached. And the reference island is not a slab: its mass is a TERRACED
+ * the caller's cap is reached. And the reference planet is not a slab: its mass is a TERRACED
  * massif, one surface stepping up over the ring of the one below.
  *
  * So the highest GROUND — every plate standing at the top tier, which after the skirt pass is a
@@ -805,7 +805,7 @@ function raiseCrown(
     // ONE TIER AT A TIME WHERE THE GROUND ALLOWS IT. A crown lifting three tiers has to stand thirteen
     // cells in (the flight that climbs it is four cells of run per tier), so it comes out a small cap
     // on a big hill; three crowns of one tier each stand five cells in and come out BROAD, which is
-    // what the reference island's high ground is — a plateau a visitor walks on, not a peak they look
+    // what the reference planet's high ground is — a plateau a visitor walks on, not a peak they look
     // at. The taller lifts are what is left for a mass with no room for a third terrace.
     //
     // THE COAST'S HEADROOM IS READ PER CELL, not over the candidate as a whole. Read as the MINIMUM
@@ -1071,7 +1071,7 @@ function massCentroidOf(plates: readonly Plate[], W: number, hub: { x: number; y
   return weight > 0 ? { x: sx / weight, y: sy / weight } : { x: hub.x, y: hub.y };
 }
 
-// --- the island ----------------------------------------------------------------------------------
+// --- the planet ----------------------------------------------------------------------------------
 
 const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 /** The 3x3 neighbourhood minus the cell: the window V-MTN-03 reads a cell's support over. */
@@ -1079,7 +1079,7 @@ const NB8 = [
   [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
 ] as const;
 
-/** The buildable island: the Grass zone, the same mask the layout packs lots on. */
+/** The buildable planet: the Grass zone, the same mask the layout packs lots on. */
 function landMask(template: MapTemplate): Uint8Array {
   const W = template.width, H = template.height;
   const land = new Uint8Array(W * H);
@@ -1099,7 +1099,7 @@ function coastDistance(land: Uint8Array, W: number, H: number): Int16Array {
   return distanceField(seeds, W, H, true);
 }
 
-/** The island's centre of area: the origin a mass direction is fairly measured from. */
+/** The planet's centre of area: the origin a mass direction is fairly measured from. */
 function landCentroid(land: Uint8Array, W: number): { x: number; y: number } {
   let n = 0, sx = 0, sy = 0;
   for (let i = 0; i < land.length; i++) {

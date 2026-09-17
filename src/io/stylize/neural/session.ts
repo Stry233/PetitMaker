@@ -61,14 +61,31 @@ function ensureWorker(): Worker {
   return worker;
 }
 
+/** How long one run may take. A first run fetches the runtime, several megabytes, before it can
+ *  answer anything, so the bound is generous; past it the run is lost either way. */
+export const NEURAL_INFER_TIMEOUT_MS = 120_000;
+
 function infer(modelUrl: string, data: Float32Array, width: number, height: number): Promise<Reply> {
   const w = ensureWorker();
   const id = nextId++;
   return new Promise<Reply>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    const deadline = setTimeout(() => {
+      pending.delete(id);
+      // A worker stalled on its runtime fetch cannot be asked again, so it is discarded and the
+      // next attempt loads a fresh one.
+      worker?.terminate();
+      worker = null;
+      updateIdleTimer();
+      reject(new StylizeError('device', 'inference timed out'));
+    }, NEURAL_INFER_TIMEOUT_MS);
+    pending.set(id, {
+      resolve: (reply) => { clearTimeout(deadline); resolve(reply); },
+      reject: (error) => { clearTimeout(deadline); reject(error); },
+    });
     updateIdleTimer();
     try { w.postMessage({ id, modelUrl, width, height, data }, [data.buffer]); }
     catch (error) {
+      clearTimeout(deadline);
       pending.delete(id);
       reject(error);
       updateIdleTimer();

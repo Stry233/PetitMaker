@@ -145,7 +145,7 @@ function garden(ctx: PlaceCtx, a: PlacementAnalysis, zone: Zone, nature: number,
 
 /** A small home cluster with a garden ring — the residential room. The anchor is ONE landmark cabin
  *  the map doesn't have yet; homes fall back to repeatable stalls once the cabins are spoken for.
- *  Consumed uniques are never re-tried, so later rooms still get buildings and the island's homes
+ *  Consumed uniques are never re-tried, so later rooms still get buildings and the planet's homes
  *  spread coast to coast instead of clumping on one hillside. */
 function hamlet(ctx: PlaceCtx, a: PlacementAnalysis, zone: Zone, settlement: number, settled: Set<string>, rng: Rng): void {
   const all = getPlaceableByCategory(ItemCategory.Building);

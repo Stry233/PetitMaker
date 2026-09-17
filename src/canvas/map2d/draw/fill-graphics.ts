@@ -4,7 +4,7 @@
  * The Canvas2D renderer retains no geometry: every rendered frame walks a Graphics' `graphicsData`
  * and re-issues each fill. Pixi's CanvasGraphicsRenderer converts the fill colour through
  * @pixi/color and writes `context.fillStyle` — a CSS colour parse — once PER ITEM, whatever the
- * item before it held. The dense island's terrain is ~42k items a frame carrying FIVE distinct
+ * item before it held. The dense planet's terrain is ~42k items a frame carrying FIVE distinct
  * colours and 959 colour changes, and that conversion plus the style writes measured ~22% of a pan.
  *
  * This class issues the same canvas calls with the same arguments in the same order, computing the

@@ -76,13 +76,13 @@ export function varietyModeLimit(n: number): number {
 }
 
 /**
- * Where this map's mass sits: the elevation-weighted centroid of its land against the ISLAND'S OWN
+ * Where this map's mass sits: the elevation-weighted centroid of its land against the PLANET'S OWN
  * CENTRE OF AREA.
  *
  * Not against the plaza, though every other reading here is plaza-relative. The plaza does not stand
- * at the middle of either template's land (hexia's sits six rows south of it), so an island raised
+ * at the middle of either template's land (hexia's sits six rows south of it), so a planet raised
  * evenly would read as leaning north from the plaza and every map in a batch would name the same
- * direction whatever its composition. The neutral origin is the one the island itself defines.
+ * direction whatever its composition. The neutral origin is the one the planet itself defines.
  */
 export function sampleComposition(state: GridState): MassReading {
   const g = readGrid(state);

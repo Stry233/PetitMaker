@@ -1,7 +1,7 @@
 // Single home for every tunable knob this module reads. Readers read TUNING.*; they never hardcode
 // numbers. Its readers are the files beside it — the road router, the layered ecology, the themed
 // room decorators — plus `macros/road-paving.ts`, which grows a lane out of the streets those built.
-// (The island generator's own numbers live with the stage that means them: its plates, streets and
+// (The planet generator's own numbers live with the stage that means them: its plates, streets and
 // dressing are calibrated against the reference maps rather than dialled here.)
 export const TUNING = {
   // --- the road router (network.ts / route.ts / portals.ts) ---------------------------------------

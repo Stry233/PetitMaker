@@ -23,7 +23,7 @@ const s = perfSuite('agent-core');
 function populateJob(log: SessionLog, k: number): void {
   append(log, {
     kind: 'order', text: `build district ${k} with a plaza and two roads`,
-    mapContext: 'a 169x140 island, richness 0.7, max elevation 8',
+    mapContext: 'a 169x140 planet, richness 0.7, max elevation 8',
   });
   const parts: Part[] = [];
   if (k % 3 === 0) {

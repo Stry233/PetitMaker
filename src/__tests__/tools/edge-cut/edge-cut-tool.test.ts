@@ -270,25 +270,25 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     expect(t.corners?.[0], "the water rounds its OWN outer corner (the water's out-cut is prioritized)").toBe('fan');
   });
 
-  it('Bug 1 (option A): clicking a ground island rounds the ISLAND\'s own corner, not the diagonal water', () => {
+  it('Bug 1 (option A): clicking a ground islet rounds the ISLET\'s own corner, not the diagonal water', () => {
     const state = makeState(12, 12);
-    // ground island at (5,5) (null terrain) ringed by water@0 on all 8 neighbours
+    // ground islet at (5,5) (null terrain) ringed by water@0 on all 8 neighbours
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    // clicking macro (5,5) takes the island cell (5,5) at its BR corner (the corner poking SE into water)
+    // clicking macro (5,5) takes the islet cell (5,5) at its BR corner (the corner poking SE into water)
     new EdgeCutTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec));
 
     const isle = getCell(state.cells, 5, 5)!.terrain!;
-    expect(isle.type, 'a GROUND island-cut cell (reads as ground; renders grass rounded + water behind)').toBe(TerrainType.None);
+    expect(isle.type, 'a GROUND islet-cut cell (reads as ground; renders grass rounded + water behind)').toBe(TerrainType.None);
     expect(isle.elevation, 'still ground level').toBe(0);
-    expect(isle.corners?.[3], 'the island rounds its OWN BR corner').toBe('fan');
-    // the surrounding water is untouched — the cut is on the island, not offset onto a diagonal water cell
+    expect(isle.corners?.[3], 'the islet rounds its OWN BR corner').toBe('fan');
+    // the surrounding water is untouched — the cut is on the islet, not offset onto a diagonal water cell
     expect(getCell(state.cells, 6, 6)!.terrain!.corners ?? null, 'diagonal water stays square').toBeNull();
   });
 
-  it('Bug 1: cycling the island corner back to square restores plain ground (no stray None cell)', () => {
+  it('Bug 1: cycling the islet corner back to square restores plain ground (no stray None cell)', () => {
     const state = makeState(12, 12);
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
@@ -298,7 +298,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec)); // BR: square→fan
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec)); // fan→tri
     tool.onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctxFor(state, exec)); // tri→square → cell back to null ground
-    expect(getCell(state.cells, 5, 5)!.terrain, 'the island is plain ground again').toBeNull();
+    expect(getCell(state.cells, 5, 5)!.terrain, 'the islet is plain ground again').toBeNull();
   });
 
   it('Issue 1: a diagonal pinch traverses all 3x3 corner combos, not lockstep', () => {
@@ -332,7 +332,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     }
   });
 
-  it('a mountain island in water is cuttable — rounds the rock (generic island rule, no MOUNTAIN-BANK lock)', () => {
+  it('a mountain islet in water is cuttable — rounds the rock (generic islet rule, no MOUNTAIN-BANK lock)', () => {
     const state = makeState(12, 12);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1); // a rock
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {

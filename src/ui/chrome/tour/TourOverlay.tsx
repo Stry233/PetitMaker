@@ -13,14 +13,16 @@ import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
-import { useChromeScale } from '../../design/scale';
+import { useChromeScale, useTouchPrimary, useViewportSize } from '../../design/scale';
+import { useFullscreen } from '../../hooks/useFullscreen';
 import { Wavy } from '../../primitives/Wavy';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
 import { BrandLockup } from '../BrandLockup';
-import { placeBubble, type Box } from './place-bubble';
+import { placeBubble, VIEWPORT_MARGIN, type Box } from './place-bubble';
 import { measureTarget } from './measure';
 import { useTour } from './use-tour';
 import { type TourStep } from './steps';
+import type { VisualRect } from '../../design/visual-rect';
 
 // CSS pixels inside the chrome-zoomed subtree; reused by the Help Center preview.
 export const BUBBLE_W = 340;
@@ -42,7 +44,7 @@ export const tourCard: CSSProperties = {
 export const LIT_INSET = 8;
 
 /** Measured target expanded to the visible spotlight boundary. */
-function litBox(rect: DOMRect): Box {
+function litBox(rect: VisualRect): Box {
   return {
     left: rect.left - LIT_INSET,
     top: rect.top - LIT_INSET,
@@ -58,7 +60,7 @@ export const TRACK_MAX_FRAMES = 30;
 
 /** Rects are compared by value: getBoundingClientRect allocates a new object per call, so identity
  *  says nothing. Both null (an absent target) counts as agreement. */
-function sameRect(a: DOMRect | null, b: DOMRect | null): boolean {
+function sameRect(a: VisualRect | null, b: VisualRect | null): boolean {
   if (!a || !b) return a === b;
   return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 }
@@ -211,6 +213,8 @@ export interface TourBubbleProps {
   cardId?: number;
   /** The content node, so the caller can measure it for `contentH` above. */
   contentRef?: (el: HTMLDivElement | null) => void;
+  /** Enters immersive mode; offered on the opening card of a touch device whose browser has fullscreen. */
+  immersive?: () => void;
 }
 
 /**
@@ -220,7 +224,7 @@ export interface TourBubbleProps {
  */
 export function TourBubble({
   step, index, total, isLast, onSkip, onNext, drawn, centred = false, reduced = false,
-  contentH, cardId = 0, contentRef,
+  contentH, cardId = 0, contentRef, immersive,
 }: TourBubbleProps) {
   const t = useT();
   const align = centred ? 'center' : 'left';
@@ -272,6 +276,16 @@ export function TourBubble({
               {/* brownText, not textSecondary: this text is normal-size, and textSecondary sits
                   below the 4.5:1 AA floor on white (see legal/a11y.test.tsx). */}
               <div style={{ ...font.body, color: colors.brownText }}>{t(step.bodyKey)}</div>
+              {immersive && (
+                <div style={{ display: 'flex', justifyContent: centred ? 'center' : 'flex-start', marginTop: 12 }}>
+                  <motion.button
+                    type="button"
+                    onClick={immersive}
+                    {...pressable}
+                    style={{ border: 'none', background: colors.surfaceSecondary, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
+                  >{t('tour.immersive')}</motion.button>
+                </div>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
@@ -319,7 +333,7 @@ export interface TourOverlayProps {
 /** A measurement result, tied to the step it was taken for. */
 interface Measurement {
   step: TourStep;
-  rect: DOMRect | null;
+  rect: VisualRect | null;
 }
 
 export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
@@ -327,6 +341,9 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   const { running, step, total, indexOf, next, advanceFrom, skip } = useTour(steps);
   const reduced = useReducedMotionConfig();
   const chrome = useChromeScale();
+  const { h: viewportH } = useViewportSize();
+  const fullscreen = useFullscreen();
+  const touch = useTouchPrimary();
   const eventBus = useEditorStore((s) => s.eventBus);
   /** The most recent measurement, stamped with the step it belongs to. A measurement whose `step`
    *  no longer matches the current step is stale and read as "not yet measured" rather than as the
@@ -408,7 +425,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
     // frames waiting for one before it can be shown.
     const target = step?.target;
     if (!step || !target) { frame.current = null; return; }
-    let prev: DOMRect | null | undefined; // undefined = no frame read yet, distinct from a null read
+    let prev: VisualRect | null | undefined; // undefined = no frame read yet, distinct from a null read
     let frames = 0;
     const read = () => {
       const now = measureTarget(target);
@@ -574,7 +591,8 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
           // no pointer (a resize, Ctrl +/-).
           aria-label={t(shown.step.titleKey)}
           tabIndex={-1}
-          style={{ ...bubble, ...position, zoom: chrome, outline: 'none' }}
+          // Capped at the viewport so the footer stays reachable on a short screen.
+          style={{ ...bubble, ...position, zoom: chrome, outline: 'none', maxHeight: (viewportH - 2 * VIEWPORT_MARGIN) / chrome, overflowY: 'auto' }}
           // The centring translate rides in the template rather than in `x`/`y`: framer owns the
           // transform for the entrance scale, and a percentage translate composes with it.
           // ALWAYS a template, even when there is nothing to prepend. Without one, framer collapses
@@ -598,6 +616,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
             isLast={shownIsLast}
             onSkip={skip}
             onNext={() => advanceFrom(shown.step)}
+            immersive={shown.step.brand && touch && fullscreen.available && !fullscreen.active ? fullscreen.toggle : undefined}
             drawn={drawn}
             centred={centred}
             reduced={!!reduced}

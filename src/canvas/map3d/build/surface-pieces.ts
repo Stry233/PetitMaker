@@ -90,8 +90,8 @@ export function cellSurfacePieces(state: GridState, x: number, y: number, x0: nu
   const trimmed = !!corners && corners.some((c) => c !== 'square');
   const neighborAt = (dx: number, dy: number) => getCell(state.cells, x + dx, y + dy)?.terrain;
 
-  // A GROUND-ISLAND cut: the macro grass floor stands, and the trimmed corner opens onto the water
-  // the island sits in.
+  // A GROUND-ISLET cut: the macro grass floor stands, and the trimmed corner opens onto the water
+  // the islet sits in.
   if (t.type === TerrainType.None) {
     if (!trimmed) return whole(ground);
     const backs = cutBackingByCorner(t, 0, neighborAt);

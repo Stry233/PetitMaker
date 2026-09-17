@@ -185,7 +185,7 @@ const SCALES = [2, 1] as const;
  * A field's ink is ground left standing rather than a wall stroke, so a fat letter reads as a platform
  * in a pool and not as a thick line — and the scale is what lets a TEXT form answer the big rung at
  * all: at scale 2 a lone figure fills 18x18 and the reference-scale rung asks for 600 cells, so the
- * court answered every island that could carry one. Measured, scale 3 puts a field at 25x25 to 74x24.
+ * court answered every planet that could carry one. Measured, scale 3 puts a field at 25x25 to 74x24.
  */
 const FIELD_SCALES = [3, 2, 1] as const;
 /** The lowest wall tier worth writing a banner on. Below this the plateau is a rise, not a wall, and
@@ -198,13 +198,13 @@ const FIELD_KEEP = 2;
 /**
  * How often a map builds a landmark BELOW `SET_PIECE_FROM`, at richness 0 and that threshold.
  *
- * A quiet island is a garden town and a set piece written across it is not what the axis is for, so
+ * A quiet planet is a garden town and a set piece written across it is not what the axis is for, so
  * down there 文字/图案景观 stays OCCASIONAL. At and above the threshold the roll is gone: the map is
  * required to carry one figure, per the size ladder below.
  */
 const OCCURRENCE = { min: 0.4, max: 0.6 } as const;
 /**
- * THE RICHNESS FROM WHICH AN ISLAND MUST CARRY ITS ONE FIGURE, and how large that figure is.
+ * THE RICHNESS FROM WHICH A PLANET MUST CARRY ITS ONE FIGURE, and how large that figure is.
  *
  * THE RULE IS THAT A COMPOSITION HAS A PRIMARY SET PIECE and ordinary ground for the rest. Without one a
  * map is an even field of interchangeable blocks — one building per block, one pond per block, at one
@@ -213,7 +213,7 @@ const OCCURRENCE = { min: 0.4, max: 0.6 } as const;
  *
  * TWO SIZES, because the ground and the ambition do not always agree. `SET_PIECE_WANT` is the floor for a
  * composed figure (300 cells; the reference's own two are 772 and 330) and it is what a figure is drawn at
- * wherever the island offers the room. `SET_PIECE_MIN` is the smallest panel the pass will still call a
+ * wherever the planet offers the room. `SET_PIECE_MIN` is the smallest panel the pass will still call a
  * figure, and it is MEASURED rather than chosen: on the tightest seeds the largest clear one-tier panel
  * with a legal ring is 120 to 240 cells, because the streets, the lots and their doorsteps are reserved
  * before this runs. So a figure is asked for at the wanted size on every tier first, and only then at
@@ -223,7 +223,7 @@ const SET_PIECE_FROM = 0.5;
 export const SET_PIECE_WANT = 300;
 export const SET_PIECE_MIN = 120;
 /**
- * THE ONE BIG THING: the panel a full-richness island is asked for FIRST, and the shape of the ask.
+ * THE ONE BIG THING: the panel a full-richness planet is asked for FIRST, and the shape of the ask.
  *
  * WHAT THE NUMBER ANSWERS is hierarchy: the reference maps carry a one-off centerpiece clearly
  * larger and more elaborate than anything else, where modest scattered ponds of similar size read
@@ -235,7 +235,7 @@ export const SET_PIECE_MIN = 120;
  * So the ask is the TERRACE FLOOR rather than a size from a list: `floorPanel` reads the largest
  * rectangle the tier's own clear ground can hold and offers THAT, which is how a figure comes out at
  * the scale of the ground it stands on instead of at a scale chosen in advance. Measured over six
- * seeds, the largest such rectangle runs 495 to 817 cells, so the rung is set where most islands can
+ * seeds, the largest such rectangle runs 495 to 817 cells, so the rung is set where most planets can
  * answer it and the ladder falls back to the smaller rungs where one cannot.
  *
  * The aspect cap is what keeps a 4-cell-wide sliver 200 cells long from winning on area alone, and the
@@ -252,7 +252,7 @@ const COURT_AREA_MAX = 1100;
  * lake. Ours is reserved as calm ground the moment the panel lands and paved by the pipeline where it can
  * join the network.
  *
- * The court sizes are the room a real island offers: the largest SQUARE of unreserved one-tier ground
+ * The court sizes are the room a real planet offers: the largest SQUARE of unreserved one-tier ground
  * measures about thirteen cells, with long rooms of 20 to 39 common, so a court is drawn as
  * a long panel rather than as a square one. They are tried largest AREA first, so a tier answers with
  * the biggest panel it can carry rather than with the first aspect that happens to fit.
@@ -282,7 +282,7 @@ export function landmarkRegion(plan: DesignPlan): RegionPlan | null {
  * of it plus its surrounding ring already stands as the construction needs, so a landmark that would
  * ship mangled is simply not built.
  *
- * ONE PER ISLAND, NEVER TWO: the pass returns at the first form that lands, and the size floor is
+ * ONE PER PLANET, NEVER TWO: the pass returns at the first form that lands, and the size floor is
  * what keeps the one it returns the map's biggest composed thing rather than another ornament.
  */
 export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
@@ -291,7 +291,7 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
   if (r < SET_PIECE_FROM
     && rng.float() >= OCCURRENCE.min + (OCCURRENCE.max - OCCURRENCE.min) * r) return null;
   // The floor binds where a figure is REQUIRED. Below that a landmark is an occasional ornament and
-  // the ground a quiet island offers is smaller, so a small one is better than none.
+  // the ground a quiet planet offers is smaller, so a small one is better than none.
   const floor = r >= SET_PIECE_FROM ? SET_PIECE_MIN : 0;
 
   // The drawn phrase leads and the rest of the bank follows it, so a map that cannot carry HOME
@@ -301,7 +301,7 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
   // The WALL is the target's own placement and the ground field is the cheap version of it (the
   // garden town's), so the banner is asked first on two maps in three. The COURT is asked last and is
   // the form that does not depend on a phrase fitting: a flooded terrace with a pattern standing in
-  // it, which is what an island with room for the figure but not for the words gets.
+  // it, which is what a planet with room for the figure but not for the words gets.
   const pattern = COURT_PATTERNS[rng.int(COURT_PATTERNS.length)]!;
   const courts = courtSearches(input);
   const banners = bannerSearches(input);
@@ -341,7 +341,7 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
  * The wall banner is the style target's own set piece and the ground field is the garden town's, so the
  * two TEXT forms carry most of the weight between them; the court is the form that depends on no phrase
  * fitting, which makes it both the most reliable and — left to win by reliability alone — the one that
- * turns up on every island.
+ * turns up on every planet.
  */
 const KIND_WEIGHTS: ReadonlyArray<{ kind: LandmarkKind; low: number; high: number }> = [
   { kind: 'wall-banner', low: 0.5, high: 3 },
@@ -354,9 +354,9 @@ const KIND_WEIGHTS: ReadonlyArray<{ kind: LandmarkKind; low: number; high: numbe
  *
  * THE QUIET END LEANS ON THE COURT, and that is the arrival rule rather than taste: a flat garden town
  * carries no cascade and few composed bodies, so its court is the one thing on it built to be arrived
- * at, and the two text forms both want a large clear panel a low-relief island rarely has. Drawn evenly
+ * at, and the two text forms both want a large clear panel a low-relief planet rarely has. Drawn evenly
  * down there, `tafa/1024` at richness 0.2 comes back with 4 of its 14 street ends arriving at nothing.
- * At full richness the three are even, so no one form is the island's answer twice over.
+ * At full richness the three are even, so no one form is the planet's answer twice over.
  */
 function drawKind(rng: Rng, richness: number): LandmarkKind {
   const weights = KIND_WEIGHTS.map((w) => w.low + (w.high - w.low) * richness);
@@ -493,12 +493,12 @@ function fieldSearches(input: LandmarkInput): TierSearches {
     ? { x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 }
     : { x: input.hub.x, y: input.hub.y };
   // A FIELD IS A BANNER WRITTEN OFF THE WALL, so it is asked of every tier and not of elevation 0
-  // alone. At full richness the relief floor leaves an island with almost no ground AT 0: asked of
+  // alone. At full richness the relief floor leaves a planet with almost no ground AT 0: asked of
   // elevation 0 alone the form lands on none of twenty maps and the court answers every one of them,
-  // which is one form on every island again. The legality argument is the
+  // which is one form on every planet again. The legality argument is the
   // banner's, unchanged: water at the panel's tier with its ring at that tier or above shows no face,
   // and a letter left standing at the same tier keeps the 3x3 window it had before the flood.
-  // A RAISED FIELD IS A TERRACED-ISLAND FORM. Below the set-piece richness the map is a garden town and
+  // A RAISED FIELD IS A TERRACED-PLANET FORM. Below the set-piece richness the map is a garden town and
   // the ground field is its own ground-level version, exactly as the reference garden town draws it;
   // offering the raised variant down there put a panel on ground `tafa/1024` at richness 0.2 needed for
   // its street ends, which the arrival rule reads as four ends arriving at nothing.
@@ -697,7 +697,7 @@ function courtSearches(input: LandmarkInput): CourtSearches {
  * The patterns a court's dry mass can be drawn as, and the whole of the court's vocabulary.
  *
  * ONE FORM REPEATED IS THE TELL: a map whose water is 85% to 95% one stamped rectangle reads as
- * wallpaper, and a figure pass answering every island with the same medallion would put that fault back
+ * wallpaper, and a figure pass answering every planet with the same medallion would put that fault back
  * at set-piece scale. So a court draws its pattern from this bank by seed, and every entry is
  * symmetric in both axes — nothing about the drawing depends on which way round the panel was found.
  */
@@ -728,7 +728,7 @@ export function courtInk(width: number, height: number, pattern: CourtPattern): 
       const dx = Math.abs(x - cx) * (h / w), dy = Math.abs(y - cy);
       const corner = (x < block || x >= w - block) && (y < block || y >= h - block);
       // THE RINGS ARE NORMALIZED TO THE PANEL, not counted in from its edge. `min(x, w-1-x, y, h-1-y)`
-      // is the distance to the nearest side, so on the long panels a real island most often offers
+      // is the distance to the nearest side, so on the long panels a real planet most often offers
       // (46x8, 52x7, 60x6) it never passes 3 and the pattern came out as one or two lines running the
       // whole width — a stripe. Scaled to each axis's own half-span it draws `RING_BANDS` nested
       // rectangles at any aspect, which is the figure the name promises.

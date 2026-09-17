@@ -15,7 +15,7 @@
  * (seed, catalog order, richness) and free of any browser API, so it runs inside the worker pool.
  *
  * SIZING. A lot size here is a coarse PLAN-level footprint, larger than the ~48-cell regions the
- * target island measures: those are the terrace-and-road fabric a lot gets CUT INTO by the terracing
+ * target planet measures: those are the terrace-and-road fabric a lot gets CUT INTO by the terracing
  * and the kits, not the lot itself. A map plans 12 to 24 lots (6 anchors plus 6 to 18 themes); the
  * measured region count arrives later, when the fabric subdivides them.
  */
@@ -42,7 +42,7 @@ export const ANCHOR_ROLES: ReadonlyArray<{ id: string; role: AnchorKind; note: s
   { id: 'building-sunset-cabin', role: 'residential', note: 'animal home' },
   { id: 'building-wave-cabin', role: 'residential', note: 'animal home' },
   // The consignment stall is 1x1 street furniture, not a dwelling, but it is a Building the hard
-  // rule demands on the map; it joins a residential cluster as its shopfront (the target island
+  // rule demands on the map; it joins a residential cluster as its shopfront (the target planet
   // stands it in a paved street corner with 37 paved cells within 3).
   { id: 'building-stall', role: 'residential', note: 'street stall, joins a residential cluster' },
   // The player's own house: its own region (自家住宅).
@@ -52,10 +52,6 @@ export const ANCHOR_ROLES: ReadonlyArray<{ id: string; role: AnchorKind; note: s
   { id: 'facility-pavilion', role: 'museum', note: 'museum stand-in (no 万象馆 in the catalog)' },
   // The shop, literally.
   { id: 'facility-shop', role: 'shop', note: 'the shop' },
-  // The station is `ruleTBD`, so `getPlaceableByCategory` never offers it and no plan can demand
-  // it. The row exists so that the day its rule lands it joins the shop's civic region rather than
-  // falling through to the by-category default.
-  { id: 'facility-station', role: 'shop', note: 'ruleTBD today; civic when its rule lands' },
 ];
 
 const ROLE_BY_ID = new Map(ANCHOR_ROLES.map((r) => [r.id, r.role] as const));
@@ -126,7 +122,7 @@ export const THEME_LIBRARY: readonly ThemeSpec[] = [
 // --- counts ------------------------------------------------------------------------------------
 
 /** Theme-region count at richness 0 and 1. With ~6 anchor regions the plan holds 12 to 24 lots, the
- *  coarse band the target island's 69 measured regions subdivide from. */
+ *  coarse band the target planet's 69 measured regions subdivide from. */
 export const THEME_COUNT = { min: 6, max: 18 } as const;
 
 /** How many pure theme regions a map of this richness holds. Monotone in richness by construction
@@ -204,7 +200,7 @@ function anchorRegions(rng: Rng, catalog: readonly CatalogItem[]): RegionSpec[] 
   // EVERY HOME IS ITS OWN REGION. The style target stands its twelve buildings 13 to 70 cells from
   // the plaza, each with its own composition around it and a different neighbourhood at every one, so
   // a region per home is what gives each its own garden and lets the layout spread them across the
-  // island. Gathering them into clusters of two to four is a fair reading of 住宅区, and it puts most
+  // planet. Gathering them into clusters of two to four is a fair reading of 住宅区, and it puts most
   // of a map's houses in one block.
   const homes = shuffled(rng, byRole.get('residential') ?? []);
   byRole.delete('residential');

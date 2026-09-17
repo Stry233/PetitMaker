@@ -21,6 +21,8 @@ export interface ArrivalFacts {
   /** The tour's send-off card is still up. It belongs to the run that just ended, so the greeting
    *  waits for it the same way it waited for the tour. */
   tourDoneOpen: boolean;
+  /** The What's new window is up. It speaks first; the greeting follows it. */
+  whatsNewOpen: boolean;
 }
 
 /*
@@ -36,7 +38,8 @@ export function arrivalOpens(f: ArrivalFacts): boolean {
     && !f.blocked
     && !f.tourRunning
     && f.tourSettled
-    && !f.tourDoneOpen;
+    && !f.tourDoneOpen
+    && !f.whatsNewOpen;
 }
 
 /** The phrase the notice opens with, above the planet's name. A lead-in, so each locale writes

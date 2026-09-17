@@ -174,7 +174,7 @@ export function pavePlazaApron(
  *
  * The course is the same one a bridge's bank takes, for the same reason — it is laid in 2x2 stamps,
  * so it cannot pinch to one cell and cannot end in a tip. Where no course exists the approach is
- * left alone rather than paved into an island: `unroadedGates` then reports the door, which is a
+ * left alone rather than paved into a pocket: `unroadedGates` then reports the door, which is a
  * finding a caller can fail on.
  */
 export function paveApproach(
@@ -195,10 +195,10 @@ export function paveApproach(
   }
   const W = place.state.template.width;
   // THE DOORSTEP IS ONLY PAVED WHERE IT JOINS SOMETHING. A cell laid on its own where no course
-  // reached the network is a paved island: the connectivity ledger counts it as pavement the plaza
+  // reached the network is a paved pocket: the connectivity ledger counts it as pavement the plaza
   // cannot walk to and as a tip cell at once, and it does the door no good either, since a walker
   // cannot get to it. Where the approach already stands against pavement it is the last cell of a
-  // street rather than an island, and it is laid.
+  // street rather than a pocket, and it is laid.
   if (!joined && !touches(place.roads, approach, W, place.state.template.height)) return laid;
   if (scope.cell(approach.x, approach.y) && !place.roads.has(flatIndex(approach.x, approach.y, W))
     && tryPlace(place, material, approach.x, approach.y)) laid++;
@@ -212,7 +212,7 @@ export function paveApproach(
  * reserved around something composed, which reads as a FRAME when it is paved and as an empty field
  * when it is not: `framed` counts a band paved OR bare, and a bare one frames nothing.
  *
- * IT IS PAVED ONLY WHERE IT CAN JOIN THE NETWORK. A ring nothing reaches is a paved island, which the
+ * IT IS PAVED ONLY WHERE IT CAN JOIN THE NETWORK. A ring nothing reaches is a paved pocket, which the
  * hard ledger reads as unreachable pavement and a visitor reads as scenery. ONE CONNECTED PIECE OF IT
  * at a time, never the whole band: a cell the terrain or a lot took cuts the band into arcs, and an
  * arc no course reaches is pavement the plaza cannot walk to — tip cells at both its ends. So the

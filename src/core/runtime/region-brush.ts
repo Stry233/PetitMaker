@@ -4,7 +4,7 @@
  * Whatever is collecting a painted region registers here, and everything that edits that region as
  * a WHOLE goes through the same handle: the pointer machine reports the cells a stroke covers, and
  * the screen that arms it asks for the one edit a stroke cannot make — emptying it. An empty
- * region already means the whole island, so there is no take-everything edit beside it. With
+ * region already means the whole planet, so there is no take-everything edit beside it. With
  * nothing registered the calls are no-ops.
  *
  * They belong together because the collector owns the buffer AND its own undo stack: a UI that

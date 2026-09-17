@@ -578,7 +578,7 @@ export function layStencilColor(
     if (coated > 0) res.coated = coated;
   }
   // BATCHED, then retried singly on refusal — `raise`'s own pattern. A picture is a cell per cell of
-  // the figure, and one command each came to thousands of commands on an island-scale run.
+  // the figure, and one command each came to thousands of commands on a planet-scale run.
   if (blue.length > 0) {
     const all: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: blue, terrainType: TerrainType.Water, elevation: 0 };
     if (executeCommand(all).success) res.placed += blue.length;

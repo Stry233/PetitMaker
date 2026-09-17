@@ -13,15 +13,20 @@ import { ramp } from '../config/catalog/ramp';
 // depends on catalog iteration order, so this order must never change casually.
 const catalogData = [...facility, ...building, ...tree, ...flora, ...road, ...bridge, ...ramp];
 
+// byId knows every item a save or renderer may meet; byCategory offers only what may still be placed.
 const byId = new Map<string, CatalogItem>();
 const byCategory = new Map<string, CatalogItem[]>();
+const known: CatalogItem[] = [];
 
-for (const item of catalogData as CatalogItem[]) {
+function index(item: CatalogItem): void {
   byId.set(item.id, item);
+  if (!known.includes(item)) known.push(item);
+  if (item.disabled) return;
   const list = byCategory.get(item.category) ?? [];
-  list.push(item);
-  byCategory.set(item.category, list);
+  if (!list.includes(item)) { list.push(item); byCategory.set(item.category, list); }
 }
+
+for (const item of catalogData as CatalogItem[]) index(item);
 
 // The central plaza is an immutable, off-catalog object. It needs a catalog entry
 // only for its TRAITS (terrainBase) — its size is per-map, carried on the
@@ -37,6 +42,12 @@ byId.set(PLAZA_ITEM.id, PLAZA_ITEM);
 
 export function getCatalogItem(id: string): CatalogItem | undefined {
   return byId.get(id);
+}
+
+/** The item only if it may still be placed: known, enabled and not the plaza. */
+export function getOfferedItem(id: string): CatalogItem | undefined {
+  const item = byId.get(id);
+  return item && byCategory.get(item.category)?.includes(item) ? item : undefined;
 }
 
 /** The `LoadValueLookup` the CommandExecutor takes: an item's chunk-load cost, 0 off-catalog. */
@@ -64,9 +75,7 @@ export function isDecoration(obj: { catalogId: string }): boolean {
  * shipped catalog. Not used in production code.
  */
 export function registerCatalogItem(item: CatalogItem): void {
-  byId.set(item.id, item);
-  const list = byCategory.get(item.category) ?? [];
-  if (!list.includes(item)) { list.push(item); byCategory.set(item.category, list); }
+  index(item);
   searchIndex = null;
   epoch++;
 }
@@ -95,8 +104,7 @@ export function getRoadMaterials(): CatalogItem[] {
 }
 
 /** Placeable items in a category: the catalog category MINUS items whose placement rule is TBD
- *  (e.g. the station). Generation and the agent pick only from these, so a TBD item is never
- *  auto-placed.
+ *  Generation and the agent pick only from these, so a TBD item is never auto-placed.
  *
  *  EXTENSIBILITY CONTRACT — how future content/rules join generation automatically:
  *  - New catalog ITEMS: anything added to catalog.json enters its category pool here (buildings split
@@ -115,13 +123,15 @@ export function getAllCategories(): ItemCategory[] {
   return [...byCategory.keys()] as ItemCategory[];
 }
 
-/** Every catalog item, in authored order. Derived from byCategory rather than a second stored
- *  list: each barrel folder holds exactly one category (asserted by catalog-order.test.ts's
- *  id-set check), so categories never interleave and byCategory's own insertion order already
- *  IS the authored order — there is no separate list for a flatten to diverge from, and a
- *  registerCatalogItem fixture is visible here because it's the same map. */
+/** Every item still offered, in authored order: each barrel folder holds one category, so the
+ *  flattened byCategory keeps the authored sequence. */
 export function getAllItems(): CatalogItem[] {
   return [...byCategory.values()].flat();
+}
+
+/** Every item a save may name, disabled ones included, in authored order. */
+export function getKnownItems(): CatalogItem[] {
+  return known;
 }
 
 /** Test-support oracle: header icon (a basename `iconUrl` resolves) + i18n title key per placeable

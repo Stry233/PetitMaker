@@ -77,9 +77,9 @@ export interface RouteJoin {
  * where its site is: the `waterSpan`/`heightDrop` traits snap the deck during validation, so the
  * realized deck can sit several cells along its own axis from the anchor the plan picked. The plan's
  * approach cells then fall under the deck, or one cell short of its entrance — and one unpaved cell
- * at an entrance severs the route. The deck and its aprons become an island of pavement that neither
- * leg reaches while the run reports success for having laid a hundred tiles: 21% of routes over real
- * generated islands came out exactly that way, in three pieces, every time.
+ * at an entrance severs the route. The deck and its aprons become a detached piece of pavement that
+ * neither leg reaches while the run reports success for having laid a hundred tiles: 21% of routes over
+ * real generated maps came out exactly that way, in three pieces, every time.
  *
  * So the REALIZED geometry gets the last word rather than the plan. Every deck's own entrances are
  * paved, and then the pavement is stitched — an A* between the pieces, paving as it goes, banning
@@ -360,7 +360,7 @@ export function ensureGateTerminals(
  * A HUB'S REGION IS THE ONE ITS FOOTPRINT TOUCHES, and it is read off the map rather than guessed.
  * The plaza's own cells are occupied, so they belong to no region and the centre cell answers -1;
  * falling back to the map's LARGEST region is only right where the plaza stands in the middle of it,
- * which is how a generated island comes out and is not how a hand-terraced one does. On a map whose
+ * which is how a generated planet comes out and is not how a hand-terraced one does. On a map whose
  * plaza sits in its own walled court, that fallback told `buildNetwork` the network was seeded in a
  * region 7000 cells away: the spanning tree planned every portal chain out of a region the plaza
  * cannot reach, so each realized ramp's approaches A*-ed toward a network on the far side of a cliff,

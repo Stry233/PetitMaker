@@ -1,5 +1,5 @@
 /**
- * THE WALK MUST CLIMB, AND THE ISLAND MUST BE VISIBLE FROM IT.
+ * THE WALK MUST CLIMB, AND THE PLANET MUST BE VISIBLE FROM IT.
  *
  * The first two design principles read as numbers, and both are facts about where a VISITOR stands
  * rather than about what the map contains. Every reading below is taken over the pavement, because
@@ -58,7 +58,7 @@ export const ABOVE_MID_LEVEL = 4;
 export const FORM_MASS_LEVEL = 5;
 
 /** How far a view is cast, in macro cells. Casting to the map edge is the coarser convention; this
- *  stops at a distance a player's camera actually shows, about a quarter of the island. */
+ *  stops at a distance a player's camera actually shows, about a quarter of the planet. */
 export const FORM_SIGHT_REACH = 40;
 
 /**

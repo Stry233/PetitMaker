@@ -16,18 +16,23 @@ import { ExportPreview } from './ExportPreview';
 import { footerTokenValues } from './render-preview-bridge';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { host } from '../../../../kit/host';
-import { paintComposition, CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
+import { paintComposition, CARD_3D_CELL_ASPECT, type CompositionAssets } from '../../../../io/export/paint';
 import { brandInfo, loadBrandLockup } from './brand';
 import { DEFAULT_FOOTER, formatFooterDate } from '../../../../io/export/footer-template';
 import { loadRememberedExportOptions, rememberExportOptions } from '../../../../io/export/options-store';
 import { captureMapStills } from '../../../../canvas/map3d/capture';
 import { seedShots } from '../../../../canvas/map3d/shot-list';
 import { loadImage } from '../../../../io/export/canvas-helpers';
-import { renderExport } from '../../../../io/export/render';
-import { originalCaptureRequestPx } from '../../../../io/share';
+import { badgesFor, renderExport } from '../../../../io/export/render';
+import { layersFor } from '../../../../io/export/layer-preview';
+import { needsBanding, renderBanded } from '../../../../io/export/banded';
+import { TiledMap } from '../../../../io/export/tiled-map';
+import { CANVAS_LIMITS, mapNativePx } from '../../../../io/export/sizing';
+import { clampedCaptureRequestPx } from '../../../../io/share';
+import { deviceCanvasLimits } from '../../../../io/export/canvas-limits';
 import { useShareCode, renderShareCodeAsset, shareCodeKey, shareCodeIssueKey, type ShareCodeIssue } from './use-share-code';
 import type { ExportComposition } from '../../../../io/export/types';
-import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
+import { computeComposition, RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { downloadBlob } from '../../../../io/image-export';
 import { showToast } from '../../floating/Toast';
 import { selectedVersion } from './stylize/use-stylize-versions';
@@ -77,6 +82,8 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   // The window opens the way it was left: every choice but the map's own words is remembered.
   const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_OPTIONS, ...loadRememberedExportOptions() }));
   const [exporting, setExporting] = useState(false);
+  /** How far a tiled export has come, or null while the export is not tiled. */
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [reviewProgress, setReviewProgress] = useState<ReviewProgress | null>(null);
   const [reviewIssue, setReviewIssue] = useState<Exclude<ReviewResult, { allowed: true }> | 'unavailable' | 'too-long' | null>(null);
   const notice = useExportNotice(open, options, gridState);
@@ -172,6 +179,9 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       }
 
       const now = Date.now();
+      // What this device's canvas can actually allocate: a composition past it is a blank image,
+      // not a large one. Desktop's own ceiling is what the probe confirms there.
+      const limits = deviceCanvasLimits();
       const sum = executor.getProvenanceSummary();
       const footerValues = footerTokenValues(gridState, selectedOptions, store.locale, sum);
       const parts = exportText(selectedOptions, { ...footerValues, date: formatFooterDate(), dims: '0×0' });
@@ -189,11 +199,22 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       }
       if (signal.aborted) return;
 
+      const stylizeSelected = selectedVersion();
+      // The Original composition every device produces, sized against desktop's constants rather
+      // than this device's ceiling. Where this device cannot hold it in one canvas, the export is
+      // painted in tiles from a map captured region by region.
+      const nativePx = mapNativePx(gridState.template);
+      const wide = selectedOptions.resolution === 'original' && !stylizeSelected
+        ? computeComposition(selectedOptions, nativePx.w / nativePx.h, badgesFor(sum), { layerCount: layersFor(gridState).length, mapPx: nativePx, limits: CANVAS_LIMITS })
+        : null;
+      // Tiled where one canvas cannot hold the composition, and also where one capture cannot hold
+      // the map: a GPU texture cap below the native size would otherwise shrink the Original.
+      const tiled = wide !== null && (needsBanding(wide, limits) || Math.max(nativePx.w, nativePx.h) > host.capture2dTextureCap());
+
       // A selected stylize version REPLACES the map bitmap: the map itself is never captured, and
       // the user's own ink (if any) is composed back over the generated picture at its own rect.
       // 原图 (no selection) keeps today's plain capture path byte for byte.
-      const stylizeSelected = selectedVersion();
-      let baseImg: BaseMapSource;
+      let baseImg: BaseMapSource | TiledMap;
       let mapAspect: number;
       let mapPx: { w: number; h: number };
       if (stylizeSelected) {
@@ -204,11 +225,17 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
         baseImg = composeStylizedBaseMap(stylizeSelected.image, inkImg, stylizeSelected.kind === 'model' ? translate('export.ai_tag') : '', gridImg);
         mapAspect = (baseImg.width / baseImg.height) || 1.2;
         mapPx = { w: baseImg.width, h: baseImg.height };
+      } else if (tiled) {
+        const tile = Math.min(4096, host.capture2dTextureCap());
+        baseImg = new TiledMap(nativePx.w, nativePx.h, (region) => host.capture2dRegionCanvas(region, 1, selectedOptions.grid, selectedOptions.annotations), tile);
+        mapAspect = nativePx.w / nativePx.h;
+        mapPx = nativePx;
       } else {
-        // Capture the 2D map. Native mode asks for the map's native resolution (so the composed map
-        // band is full-resolution); presets use a bounded capture. The renderer clamps to GPU
-        // MAX_TEXTURE_SIZE, so the achieved size is read back from the loaded image.
-        const capturePx = selectedOptions.resolution === 'original' ? originalCaptureRequestPx(gridState.template) : 2400;
+        // Capture the 2D map. Native mode asks for the map's native resolution the device can hold
+        // (so the composed map band is full-resolution); presets use a bounded capture. The renderer
+        // also clamps to GPU MAX_TEXTURE_SIZE, so the achieved size is read back from the loaded
+        // image either way.
+        const capturePx = selectedOptions.resolution === 'original' ? clampedCaptureRequestPx(gridState.template, limits) : 2400;
         const baseUrl = host.capture2d(capturePx, selectedOptions.grid, selectedOptions.annotations);
         if (!baseUrl) {
             showToast(translate('toast.export_image_failed'), 'error');
@@ -226,9 +253,9 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       let codeFailed: ShareCodeIssue | null = null;
       let codeNotice: ShareCodeIssue | null = null;
 
-      // Capture function: paints the full composition into an offscreen canvas and returns it.
-      // The computed ExportComposition is passed in so we can render the full layout including the 3D card.
-      const capture = async (comp: ExportComposition): Promise<HTMLCanvasElement | null> => {
+      // Everything the painter needs besides the map: the code band at the width the composition
+      // reserved, the 3D card's shots, the brand lockup.
+      const prepareAssets = async (comp: ExportComposition): Promise<CompositionAssets> => {
         // The reserved band can be narrower than the canvas; encoding at canvas width clips it.
         if (comp.codeBandUnavailable) {
           codeTooSmall = true; // chosen Size can't host a legible code (Compact)
@@ -265,14 +292,8 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           if (card3dAngles.length === 0) comp.card3d = undefined;
         }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = comp.width;
-        canvas.height = comp.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-
         const brandLockup = await loadBrandLockup(store.locale);
-        paintComposition(ctx, comp, {
+        return {
           baseMap: baseImg,
           card3dAngles,
           codeImg,
@@ -285,8 +306,18 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
           title: selectedOptions.title,
           description: selectedOptions.description,
           translate,
-        });
+        };
+      };
 
+      // Paints the full composition into one offscreen canvas.
+      const capture = async (comp: ExportComposition): Promise<HTMLCanvasElement | null> => {
+        const assets = await prepareAssets(comp);
+        const canvas = document.createElement('canvas');
+        canvas.width = comp.width;
+        canvas.height = comp.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        paintComposition(ctx, comp, assets);
         return canvas;
       };
 
@@ -301,15 +332,27 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       };
 
       await nextFrame(); // keep the overlay visible across the compose/encode block
-      const { blob } = await renderExport({
-        summary: sum,
-        gridState,
-        options: selectedOptions,
-        mapAspect,
-        mapPx,
-        capture,
-        encode,
-      });
+      let blob: Blob | null;
+      if (tiled && wide) {
+        setExportProgress(0);
+        const assets = await prepareAssets(wide);
+        blob = await renderBanded({
+          width: wide.width, height: wide.height, limits, signal,
+          paint: (ctx, window) => paintComposition(ctx, wide, { ...assets, window }),
+          onProgress: setExportProgress,
+        });
+      } else {
+        ({ blob } = await renderExport({
+          summary: sum,
+          gridState,
+          options: selectedOptions,
+          mapAspect,
+          mapPx,
+          limits,
+          capture,
+          encode,
+        }));
+      }
 
       if (!blob) {
         showToast(translate('toast.export_image_failed'), 'error');
@@ -330,7 +373,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
     } finally {
       signal.removeEventListener('abort', textReview.cancel);
       if (exportRun.current === controller) {
-        exportRun.current = null; setExporting(false); setReviewProgress(null);
+        exportRun.current = null; setExporting(false); setReviewProgress(null); setExportProgress(null);
       }
     }
   }
@@ -354,7 +397,7 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
             style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(253,251,224,0.82)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radii.lg }}
           >
             <Spinner size={38} thickness={4} />
-            <div role="status" style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{t(activeProgress ? 'export.review.checking' : 'export.exporting')}</div>
+            <div role="status" style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{activeProgress ? t('export.review.checking') : exportProgress !== null ? t('export.progress', { percent: Math.round(exportProgress * 100) }) : t('export.exporting')}</div>
             {activeProgress && <div style={{ ...roleFont('caption'), color: skin.muted, maxWidth: 320, textAlign: 'center' }}>{t('export.review.private')}</div>}
             <button autoFocus style={windowFooterGhost} onClick={cancelExport}>{t('export.review.cancel')}</button>
           </motion.div>

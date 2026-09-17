@@ -2,15 +2,15 @@
  * The picture on a candidate card: a map that is not the live one, drawn by the renderer that draws
  * the live one.
  *
- * THERE IS ONE DRAWING OF A MAP, so a card cannot promise an island the click does not build:
+ * THERE IS ONE DRAWING OF A MAP, so a card cannot promise a planet the click does not build:
  * `MapRenderer.captureState` builds the real base, terrain and object layers over the candidate's
  * own grid, off the stage, and rasterizes them with the live renderer's GPU context. The colours,
  * the trims, the road shapes, the waterfall arrows and the icons are the map's own by construction,
  * and the framing is the template exactly, which is the view the editor opens on.
  *
  * WHAT IS LEFT HERE is the framing. A run bounded by a painted region only writes inside it, so a
- * card framed on the whole island photographs a change a few cells across at a few pixels:
- * `focusFrame` frames those cells instead, at the card's own shape, and falls back to the island
+ * card framed on the whole planet photographs a change a few cells across at a few pixels:
+ * `focusFrame` frames those cells instead, at the card's own shape, and falls back to the planet
  * where the region is most of the map anyway.
  *
  * And the sea: a template is rarely the card's shape, so a map drawn to fit one leaves bars down two
@@ -27,12 +27,12 @@ export interface CellFrame { x: number; y: number; width: number; height: number
 
 /**
  * Air kept around a focused region, as a share of its longer side and never fewer than a couple of
- * cells: a region photographed edge to edge says nothing about where on the island it sits.
+ * cells: a region photographed edge to edge says nothing about where on the planet it sits.
  */
 const FOCUS_PAD = 0.15;
 const FOCUS_PAD_MIN = 2;
 /**
- * A frame that reaches this much of the template is the island's own frame. Zooming a hair into a
+ * A frame that reaches this much of the template is the planet's own frame. Zooming a hair into a
  * region that covers most of the map buys nothing and costs the picture its horizon, so the whole
  * map is the honest answer there.
  */

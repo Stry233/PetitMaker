@@ -68,11 +68,11 @@ export interface HardLedger {
   /** Every body of water belongs to the map's water system, and no tofu lake stands anywhere. */
   waterStory: WaterStoryLedger;
   /**
-   * No street spans the island (`networkShape.fullSpanShare`): the anti-grid rule.
+   * No street spans the planet (`networkShape.fullSpanShare`): the anti-grid rule.
    *
    * REPORTED HERE, GATED BY THE HARNESS AT FULL RICHNESS, and it is the only ledger row that works
    * that way. The rule is a fact about the finished map, but how hard it can be held depends on the
-   * knob: at the quiet end of the richness axis the island is a flat garden town whose grid is the
+   * knob: at the quiet end of the richness axis the planet is a flat garden town whose grid is the
    * only thing partitioning it, and staggering its thinner lines costs blocks their frontage and
    * their branch — measured, one seed of forty came back a district short with a twentieth of its
    * pavement 2 wide. So `pass` is not folded into the ledger's own result; the harness and the
@@ -133,7 +133,7 @@ export interface MapMetrics {
 export interface LegibilityReadings {
   ramps: RampDiscipline;
   streets: StreetStraightness;
-  /** How the network's streets meet, and how much of it spans the island. */
+  /** How the network's streets meet, and how much of it spans the planet. */
   network: NetworkShape;
   districts: DistrictLegibility;
   frontage: DistrictFrontage;

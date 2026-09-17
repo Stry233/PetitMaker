@@ -5,11 +5,12 @@
  */
 import { getCharacterHandle } from './Character';
 import { CHARACTER_SEAT } from '../../shell/panel-frame';
+import { visualRect } from '../../design/visual-rect';
 
 function layerOrigin(el: HTMLElement): { left: number; top: number } {
   const layer = el.parentElement;
   if (!layer) return { left: 0, top: 0 };
-  const r = layer.getBoundingClientRect();
+  const r = visualRect(layer);
   return { left: r.left, top: r.top };
 }
 
@@ -48,7 +49,7 @@ export interface SeatedAt { left: number; top: number; width: number }
 export function seatBox(slot: HTMLElement | null): SeatedAt | null {
   const hero = getCharacterHandle();
   if (!hero || !slot) return null;
-  const r = slot.getBoundingClientRect();
+  const r = visualRect(slot);
   const origin = layerOrigin(hero.el);
   const pad = CHARACTER_SEAT.pad * (r.width / CHARACTER_SEAT.w);
   return {

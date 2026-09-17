@@ -10,6 +10,7 @@ import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js'
 // MgOpen Helvetiker bold, vendored unmodified from three.js r169 (the package stopped shipping example fonts); matches the 2D legend's bold sans-serif weight.
 import helvetikerBold from '../../../assets/fonts/helvetiker_bold.typeface.json';
 import { ItemCategory, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
+import { watchContextLoss } from '../../context-loss';
 import { ELEVATION_MAX } from '../../../core/model/constants';
 import { glQuality, maxRenderScale } from '../../../core/runtime/device-quality';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
@@ -413,6 +414,9 @@ export class ThreeScene {
   /** Software-GL profile: no shadows, no MSAA, 1x pixels, no fly-in (see the constructor). */
   private lite = false;
   private contextLost = false;
+  /** Told when the lost context never comes back; the owner rebuilds the scene on a fresh one. */
+  onUnrecoverableLoss: (() => void) | null = null;
+  private unwatchContext: () => void = () => {};
 
   private onContextLost = (e: Event): void => {
     e.preventDefault();
@@ -494,6 +498,10 @@ export class ThreeScene {
     // re-opens the render window so the scene repaints instead of staying frozen.
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
+    this.unwatchContext = watchContextLoss(this.renderer.domElement, {
+      isLost: () => this.renderer.getContext().isContextLost(),
+      onUnrecovered: () => this.onUnrecoverableLoss?.(),
+    });
 
     const sky = gradientTexture(SKY_TOP, HORIZON);
     this.scene.background = sky;
@@ -2154,6 +2162,7 @@ export class ThreeScene {
     this.boxWatch = null;
     this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
+    this.unwatchContext();
     this.controls.removeEventListener('change', this.requestRender);
     this.controls.dispose();
     // Free per-instance buffers (instanceMatrix/instanceColor). NOT their

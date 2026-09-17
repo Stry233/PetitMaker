@@ -32,13 +32,14 @@ import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { HELP_PAGES } from './catalog';
 import type { HelpPageId } from './page-schema';
 import { HELP_ATTR, openHelp, pageForEditState } from './targets';
+import { visualRect, type VisualRect } from '../../../design/visual-rect';
 
 // The chunk's words arrive with the chunk: registering at module scope means no surface in
 // this file can render before its strings exist.
 ensureHelpStrings();
 
 interface Hover {
-  rect: DOMRect;
+  rect: VisualRect;
   page: HelpPageId;
 }
 
@@ -90,7 +91,7 @@ export function WhatsThisLayer() {
     setNearBanner(e.clientY < 84);
     const hit = targetAt(e.clientX, e.clientY, layer);
     if (!hit) { setHover(null); return; }
-    setHover({ rect: hit.el.getBoundingClientRect(), page: hit.page });
+    setHover({ rect: visualRect(hit.el), page: hit.page });
   };
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {

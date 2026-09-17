@@ -1,4 +1,5 @@
 import type { TourTargetId } from './steps';
+import { visualRect, type VisualRect } from '../../design/visual-rect';
 
 /**
  * The live screen rect of a tour target, or null when it is absent or has not laid out.
@@ -8,10 +9,10 @@ import type { TourTargetId } from './steps';
  * form that is correct on every screen. A zero-sized rect reads as absent: an element that has not
  * laid out yet would otherwise put the spotlight at the origin.
  */
-export function measureTarget(id: TourTargetId): DOMRect | null {
+export function measureTarget(id: TourTargetId): VisualRect | null {
   if (typeof document === 'undefined') return null;
   const el = document.querySelector(`[data-tour-target="${id}"]`);
   if (!el) return null;
-  const rect = el.getBoundingClientRect();
+  const rect = visualRect(el);
   return rect.width > 0 && rect.height > 0 ? rect : null;
 }

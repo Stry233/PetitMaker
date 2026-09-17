@@ -34,6 +34,7 @@ import { MODE_ROW_BASE, MODE_ROW_INK_BOTTOM } from '../../../ui/shell/frame';
 import { EDGE_LEFT, LABEL_BOX_DEPTH, MODE } from '../../../ui/shell/units';
 import { JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../../../ui/agent/PanelShell';
 import { frameZoom, resolveCss } from '../shell/_resolve-css';
+import { poseLegacyZoom } from '../_legacy-zoom';
 
 /** How far inside the seat she stands, at the box's own declared size. */
 const PAD = CHARACTER_SEAT.pad;
@@ -121,6 +122,23 @@ describe('the character stands in her seat', () => {
   /** THE PAD RIDES THE BOX. The seat is declared in the frame's own px and measured in the window's,
    *  which differ by the frame's zoom, so a pad written raw would stand her off-centre at any zoom
    *  but one. */
+  it('reads the seat in screen pixels on an engine that measures zoomed subtrees in their own pixels', () => {
+    const view = render(<div data-testid="frame"><Host room="boot" /></div>);
+    const frame = view.getByTestId('frame');
+    // Inside a zoom 0.5 frame the seat's own-pixel reading is twice its screen size.
+    stubRect(view.getByTestId('seat'), 100, 200, SEAT * 2);
+    const restore = poseLegacyZoom((node) => (node === frame ? 0.5 : 1));
+    try {
+      act(() => { view.rerender(<div data-testid="frame"><Host room="legacy" /></div>); });
+      const her = getCharacterHandle()!.el;
+      expect(her.style.left).toBe(`${50 + PAD}px`);
+      expect(her.style.top).toBe(`${100 + PAD}px`);
+      expect(her.style.width).toBe(`${SEAT - PAD * 2}px`);
+    } finally {
+      restore();
+    }
+  });
+
   it('scales the pad with the measured box', () => {
     const view = render(<Host room="boot" />);
     stubRect(view.getByTestId('seat'), 0, 0, SEAT * 2);

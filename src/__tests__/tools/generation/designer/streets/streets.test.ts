@@ -34,7 +34,7 @@ const TAFA = MAP_TEMPLATES['tafa']!;
 const TEMPLATES = [HEXIA, TAFA];
 /** Ten seeds, unrelated to each other, so a batch reading is not one arithmetic sequence. */
 const SEEDS = [7, 42, 777, 1024, 2026, 12345, 31337, 90210, 555, 8181];
-/** The two ends of the richness axis: the flat garden town and the terraced island. */
+/** The two ends of the richness axis: the flat garden town and the terraced planet. */
 const RICHNESS = [0.2, 1.0];
 
 const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -111,33 +111,33 @@ const mean = (v: readonly number[]): number => v.reduce((a, b) => a + b, 0) / Ma
 // --- the partition -------------------------------------------------------------------------------
 
 describe('the partition the streets cut', () => {
-  it('cuts the island into blocks of the references own scale, on both templates', () => {
+  it('cuts the planet into blocks of the references own scale, on both templates', () => {
     for (const { template, richness, runs } of batches()) {
       for (const run of runs) {
         const legibility = districtLegibility(run.state);
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
         // The references segment into 23 blocks of median 260 (the garden town, cut by its streets)
-        // and 69 of median 48 (the terraced island, cut by its terraces AND by the places composed
-        // on them). This stage cuts the coarse scale, and on a TERRACED island the terraces cut it
+        // and 69 of median 48 (the terraced planet, cut by its terraces AND by the places composed
+        // on them). This stage cuts the coarse scale, and on a TERRACED planet the terraces cut it
         // again: a block the grid missed takes a street along its own foot, and on the mass those
         // blocks ARE the terraces, so a rich seed's median walks from the garden town's end of that
-        // band toward the terraced island's. The floor is therefore the scale a block stops being a
+        // band toward the terraced planet's. The floor is therefore the scale a block stops being a
         // block at, not the flat map's own median.
         expect(legibility.count, `${where}: ${legibility.count} districts`).toBeGreaterThanOrEqual(14);
         // THE CEILING IS THE QUIET END'S, not the terraced end's. Every block the grid leaves unserved
-        // takes a line along its own foot (`unservedBlockLines`), and a FLAT island has more of those
+        // takes a line along its own foot (`unservedBlockLines`), and a FLAT planet has more of those
         // than a terraced one — a coast eating a line, a plaza ring, a piece the settling pruned — so
         // this reading goes DOWN as the terraces come in. Measured over both templates at both ends of
         // the axis, ten seeds: 17 to 41 at richness 0.2 and 15 to 31 at richness 1.
         expect(legibility.count, `${where}: ${legibility.count} districts`).toBeLessThanOrEqual(42);
         expect(legibility.median, `${where}: median ${legibility.median}`).toBeGreaterThanOrEqual(48);
         // The ceiling carries the ANTI-GRID: it stands the branch lines further apart at the rich
-        // end (`SPACING`), which is what brings the four-way share and the island-spanning street
+        // end (`SPACING`), which is what brings the four-way share and the planet-spanning street
         // inside the references' own readings, and the blocks between them are wider for it.
         // Measured over both templates at both ends, ten seeds: one seed of forty reads 988.
         expect(legibility.median, `${where}: median ${legibility.median}`).toBeLessThanOrEqual(1000);
         // The blocks a street grid cuts are rectangles; the references read 0.44 and 0.53 with their
-        // places and coastlines eating into them, and a TERRACED island reads at the lower end of that
+        // places and coastlines eating into them, and a TERRACED planet reads at the lower end of that
         // — a terrace is the shape the ground left, and the ring around a crowned summit is an annulus
         // however straight the streets on it are. Measured over both templates at both ends of the
         // axis, ten seeds: 0.44 to 0.85. The floor sits under the terraced reference's own reading,
@@ -150,7 +150,7 @@ describe('the partition the streets cut', () => {
     }
   });
 
-  it('leaves no block without a street, and paves the references own share of the island', () => {
+  it('leaves no block without a street, and paves the references own share of the planet', () => {
     for (const { template, richness, runs } of batches()) {
       for (const run of runs) {
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
@@ -166,22 +166,22 @@ describe('the partition the streets cut', () => {
         // block comes back `served: false` and stage C leaves it unbuilt.
         if (richness <= 0.2) {
           // A quiet map is nearly flat, so what a street cannot reach there is a coastal sliver the
-          // plate rim's slope cut off, not a composition: worst measured 1.0% of the open island.
+          // plate rim's slope cut off, not a composition: worst measured 1.0% of the open map.
           // Measured across both templates at richness 0.2, ten seeds: 0.1% to 2.1% of the open
-          // island. It is not a hard zero because the primary walk is the widest street on the map
+          // map. It is not a hard zero because the primary walk is the widest street on the map
           // and takes ground a branch would otherwise have run through, so the bound is the measured
           // ceiling with a little room, and it still catches a flat map going shut.
-          expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open island shut off`)
+          expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open map shut off`)
             .toBeLessThan(0.03);
         } else {
           // At the rich end that shut-off plate is the style target's own arrangement, whose wall
-          // band is a third of the island at under 1% object cover, so the bound is here to catch a
+          // band is a third of the map at under 1% object cover, so the bound is here to catch a
           // map going mostly shut rather than to pin the terrain a seed happens to draw (worst
           // measured 37% at richness 1).
-          expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open island shut off`)
+          expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open map shut off`)
             .toBeLessThan(0.45);
         }
-        // The references pave 12.0% of the terraced island and 15.9% of the garden town. This stage
+        // The references pave 12.0% of the terraced planet and 15.9% of the garden town. This stage
         // lays the whole network, so the band is theirs with room either side for a coastline that
         // eats a street.
         // The lower bound is what catches a map that failed to lay a network at all. A terraced seed
@@ -193,7 +193,7 @@ describe('the partition the streets cut', () => {
         // The upper bound carries the MOVEMENT LINE and the UNSERVED-BLOCK LINES, neither of which the
         // references' own share accounts for: the primary walk is the
         // widest street on the map and costs a couple of points by itself, and a block no grid line
-        // reached takes a street along its foot. It is the QUIET end's number — a flat island has more
+        // reached takes a street along its foot. It is the QUIET end's number — a flat planet has more
         // unserved blocks than a terraced one, and its grid runs coast to coast where a terraced one
         // fragments. Measured over both templates, ten seeds: 11.3% to 22.8% at richness 0.2 and 6.4%
         // to 14.5% at richness 1.
@@ -267,9 +267,9 @@ describe('width, dead ends and connectivity', () => {
         // THE HIERARCHY CLAIM IS THE BATCH'S; the per-seed reading only catches a rank disappearing
         // altogether. Two things pull a single seed's branch share under the references' mix, both by
         // construction: the movement line is a third rank and a wide one, so it shifts share out of
-        // w=2 into w>=3, and on a terraced island a terrace carries the primary walk at whatever width
+        // w=2 into w>=3, and on a terraced planet a terrace carries the primary walk at whatever width
         // fits while the grid's branches fragment on the steps, so a seed whose mass takes most of its
-        // island runs mostly trunk. Measured over both templates at both ends of the axis, ten seeds:
+        // planet runs mostly trunk. Measured over both templates at both ends of the axis, ten seeds:
         // 7.1% to 48%, the low end on a rim composition whose plaza cross fragments into short pieces.
         const mix = run.evaluation.metrics.roads.widthMix;
         expect(mix.w2, `${where}: w2 ${(mix.w2 * 100).toFixed(1)}%`).toBeGreaterThan(0.06);
@@ -428,7 +428,7 @@ describe('ramps stand at steps, never on pavement', () => {
 const ITERATION_1 = { meanRunLength: [26, 34], frontedShare: [0.08, 0.26] } as const;
 
 describe('streets read straight, where iteration 1 read random', () => {
-  /** The two decoded references, read by this same function: 38.0 on the terraced island and 35.6 on
+  /** The two decoded references, read by this same function: 38.0 on the terraced planet and 35.6 on
    *  the garden town. */
   const REFERENCE_RUN = [38.0, 35.6] as const;
 
@@ -447,7 +447,7 @@ describe('streets read straight, where iteration 1 read random', () => {
     const floor = 0.8 * Math.min(...REFERENCE_RUN);
     expect(worst, report).toBeGreaterThan(floor);
     // And no batch runs FURTHER than the references do, which is what catches a bare lattice striping
-    // the island coast to coast.
+    // the planet coast to coast.
     expect(Math.max(...after), report).toBeLessThan(3 * Math.max(...REFERENCE_RUN));
   });
 });
@@ -456,7 +456,7 @@ describe('streets read straight, where iteration 1 read random', () => {
 
 const REFERENCE_DIR = 'docs/internal/generator_iteration_guide';
 const REFERENCES = [
-  { file: `${REFERENCE_DIR}/reference-taohua-island.json`, template: HEXIA, name: 'taohua island' },
+  { file: `${REFERENCE_DIR}/reference-taohua-island.json`, template: HEXIA, name: 'taohua' },
   { file: `${REFERENCE_DIR}/reference-garden-town.json`, template: TAFA, name: 'garden town' },
 ];
 
@@ -501,7 +501,7 @@ describe('district frontage separates a block from a leftover', () => {
       // AND THE PER-SEED FLOOR SURVIVES AT THE QUIET END, where nothing explains a block with no front
       // at all: worst measured 6.5%, one block of forty cornered between two legs of a staggered
       // street with its front on the shorter of them. At the rich end one seed reads 4.3% — a map whose
-      // mass takes most of its island, where the blocks are terraces the street serves from one side —
+      // mass takes most of its land, where the blocks are terraces the street serves from one side —
       // so the claim there is the batch's alone.
       if (richness <= 0.2) {
         expect(Math.min(...shares), where).toBeGreaterThan(0.06);
@@ -540,11 +540,11 @@ describe('determinism', () => {
 });
 
 describe('the offset crossing fires', () => {
-  // `longRun` is a SHARE of the island's extent and so comes out fractional: added to a coordinate
+  // `longRun` is a SHARE of the map's extent and so comes out fractional: added to a coordinate
   // unrounded, it offers every bend between two cells and `staggered()` refuses all of them — a
   // silent no-op no other assertion would catch. This pin therefore reads the operator's OUTPUT off
   // maps whose plan the real planner built.
-  it('lays offset crossings on a full-richness island, on more than one seed', () => {
+  it('lays offset crossings on a full-richness planet, on more than one seed', () => {
     const laid = [12345, 777, 42, 2026, 7].map((seed) => {
       const composition = planComposition(seed, HEXIA, 1, ELEVATION_MAX);
       const line = planMovementLine(seed, HEXIA, composition, 1);
@@ -558,7 +558,7 @@ describe('the offset crossing fires', () => {
   });
 });
 
-/** Every cell of the template that is island: the extent a span is measured against. */
+/** Every cell of the template that is land: the extent a span is measured against. */
 function allLand(template: MapTemplate): Uint8Array {
   const out = new Uint8Array(template.width * template.height);
   for (let y = 0; y < template.height; y++) {

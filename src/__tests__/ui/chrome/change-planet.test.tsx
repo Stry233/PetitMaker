@@ -349,7 +349,11 @@ describe('the card height cap', () => {
     world();
     show();
     const dialog = screen.getByRole('dialog');
-    expect(dialog.style.maxHeight).toMatch(/vh$/);
+    // A share of the measured window in px, never a `vh` a mobile browser would size to its hidden bars.
+    const cap = parseFloat(dialog.style.maxHeight);
+    expect(dialog.style.maxHeight).toMatch(/px$/);
+    expect(cap).toBeGreaterThan(0);
+    expect(cap).toBeLessThan(window.innerHeight / 0.6);
     expect(dialog.style.overflowY).toBe('auto');
   });
 });

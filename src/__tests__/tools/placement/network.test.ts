@@ -18,7 +18,7 @@ const roadIds = idOf(ItemCategory.Road), bridgeIds = idOf(ItemCategory.Bridge), 
 
 // A left ground region + a right ground region split by a 4-wide vertical wall (a bridgeable water ford
 // in the interior, capped top & bottom by elev-1 mountain so the water has no uncapped faces and the two
-// grounds stay separate), plus a tier-1 plateau island inside the left region → three regions joined by
+// grounds stay separate), plus a tier-1 plateau inside the left region → three regions joined by
 // one bridge + one ramp.
 function build() {
   const state = makeState(W, H);

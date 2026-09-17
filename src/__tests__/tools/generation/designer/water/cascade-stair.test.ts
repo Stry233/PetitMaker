@@ -7,10 +7,10 @@
 // The rest is what makes a stair a stair rather than a pool on a lip: it descends several steps, the
 // bands stand on one strip AND join into one connected body so the whole of it reads as one figure, it
 // crosses more tiers than any single body the accent pass could cut, and its foot is a cell the
-// island's water story can carry on from.
+// map's water story can carry on from.
 //
 // THE GROUND IS THE INPUT, not a seed. The pass is a pure function of the plan — nothing in it is
-// seeded — so the fixture varies what actually varies between islands: how deep a terrace runs before
+// seeded — so the fixture varies what actually varies between maps: how deep a terrace runs before
 // it steps. A test that ran six seeds over one staircase would be running one case six times.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
@@ -31,14 +31,14 @@ const BAND_DEPTH_MIN = 2;
 const WIDTH_MIN = 5;
 
 /**
- * A staircase island: the buildable land terraced from `peak` down to 0 along y, `step` rows per
+ * A staircase map: the buildable land terraced from `peak` down to 0 along y, `step` rows per
  * tier, which is the shape the composition's plates make on a flank and the one a stair has to
  * descend.
  *
  * Three tiers rather than eight because V-MTN-03 auto-passes at and below layer 3: a synthetic
  * plateau at layer 4 running to the coast has no 3x3 support at its rim and would fail the rule on
  * ground the test drew rather than on anything the stair cut. Three tiers is also exactly `STEPS_MIN`
- * steps, so the fixture is the smallest island a stair may be cut on at all. The rows per tier are
+ * steps, so the fixture is the smallest map a stair may be cut on at all. The rows per tier are
  * the terrace DEPTH: eight is what a designed plate runs to, and a stair that only worked on a flank
  * with no floor on it would never be cut on a real map.
  */
@@ -48,7 +48,7 @@ function staircase(
   const W = template.width, H = template.height;
   const grass = paintableMask(template);
   const t: TerrainPlan = { width: W, height: H, tier: new Int8Array(W * H), water: new Int8Array(W * H).fill(-1) };
-  // The staircase starts at the island's own northern shore, not at row 0: the template's top rows
+  // The staircase starts at the map's own northern shore, not at row 0: the template's top rows
   // are sea, and a fixture that spent its high tiers there would offer a stair no land to stand on.
   let top = H;
   for (let i = 0; i < grass.length; i++) if (grass[i]) { top = Math.min(top, (i / W) | 0); }
@@ -95,14 +95,14 @@ function bodies(stair: CascadeStair, t: TerrainPlan): number {
   return count;
 }
 
-describe('the cascade stair, on a staircase island', () => {
+describe('the cascade stair, on a staircase map', () => {
   it('cuts a stair on every terrace depth, of three steps wherever three are there', () => {
     for (const step of STEPS) {
       const { stairs } = carve(step);
       expect(stairs.length, `step ${step}`).toBeGreaterThanOrEqual(1);
       for (const stair of stairs) {
         // TWO STEPS IS THE SMALLEST STAIR, and the shallowest fixture is where the pass falls back to
-        // it: on 4 rows per tier this island's top terrace is two rows of land above its own shore, so
+        // it: on 4 rows per tier this map's top terrace is two rows of land above its own shore, so
         // the top band would pour backwards off the coast and is not cut. Every deeper terrace carries
         // the three the pass asks for first.
         expect(stair.bands.length, `step ${step}`).toBeGreaterThanOrEqual(step > 4 ? 3 : 2);
@@ -196,7 +196,7 @@ describe('the cascade stair, on a staircase island', () => {
 
   it('never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
-    // A reserved band across half the island, the shape a trunk street leaves: a strip that would
+    // A reserved band across half the map, the shape a trunk street leaves: a strip that would
     // cross it is refused and another flank is tried.
     for (let y = Math.floor(HEXIA.height / 2); y < Math.floor(HEXIA.height / 2) + 3; y++) {
       for (let x = 0; x < Math.floor(HEXIA.width / 2); x++) flat[flatIndex(x, y, HEXIA.width)] = 1;
@@ -209,7 +209,7 @@ describe('the cascade stair, on a staircase island', () => {
   });
 
   it('puts back everything a refused attempt cut', () => {
-    // A one-tier island offers no stair at all, and the ground has to come back untouched: an
+    // A one-tier map offers no stair at all, and the ground has to come back untouched: an
     // attempt that floods and fails is the whole reason the pass is transactional.
     const { t, grass, flat } = staircase(HEXIA, 1);
     const before = [...t.water];

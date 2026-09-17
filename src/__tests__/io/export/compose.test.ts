@@ -151,6 +151,27 @@ describe('computeComposition', () => {
     const c = computeComposition(o, 1.2, [], { layerCount: 1, mapPx: { w: 1000, h: 800 } });
     expect(c.width).toBe(RESOLUTION_WIDTHS.high);
   });
+  it('original mode: a device ceiling below the desktop one shrinks the composition too', () => {
+    const o: ExportOptions = { ...base, resolution: 'original' };
+    const mapPx = { w: 10848, h: 9838 }; // a 169x140 map at native density
+    const webkit = { maxDim: 16384, maxArea: 4096 * 4096 };
+    expect(computeComposition(o, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx }).width).toBe(mapPx.w);
+    const c = computeComposition(o, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx, limits: webkit });
+    expect(c.width).toBeLessThan(mapPx.w);
+    expect(c.width * c.height).toBeLessThanOrEqual(webkit.maxArea);
+  });
+  it('original mode: the share code band is inside the device ceiling too', () => {
+    // The band's modules are exact device pixels measured after the fit, so its height has to be
+    // reserved before it: a composition fitted without it is over the ceiling again once it lands.
+    const o: ExportOptions = { ...base, importable: true, footer: true, layerPreview: true, resolution: 'original' };
+    const mapPx = { w: 10848, h: 9838 };
+    const webkit = { maxDim: 16384, maxArea: 4096 * 4096 };
+    for (const extra of [{}, { title: 'A map', description: 'with a header row' }]) {
+      const c = computeComposition({ ...o, ...extra }, mapPx.w / mapPx.h, [], { layerCount: 6, mapPx, limits: webkit });
+      expect(c.codeBand, JSON.stringify(extra)).toBeDefined();
+      expect(c.width * c.height, JSON.stringify(extra)).toBeLessThanOrEqual(webkit.maxArea);
+    }
+  });
   it('original mode: a map beyond canvas limits is scaled down and fits', () => {
     const o: ExportOptions = { ...base, resolution: 'original' };
     const mapPx = { w: 20000, h: 20000 };

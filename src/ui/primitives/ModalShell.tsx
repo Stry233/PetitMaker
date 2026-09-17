@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useRef, useLayoutEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, useIsPresent, type Transition } from 'framer-motion';
 import { cozyOverlay, springs, exitTransition } from '../design/styles';
 import { cozyPanel } from '../design/window-skin';
-import { useChromeScale, useWeightVars } from '../design/scale';
+import { useChromeScale, useViewportSize, useWeightVars } from '../design/scale';
 import { useOverlayLock } from '../hooks/useOverlayLock';
 
 /**
@@ -11,13 +11,15 @@ import { useOverlayLock } from '../hooks/useOverlayLock';
  * the cream card, the enter/exit choreography, and the chrome-zoom +
  * overlay-lock plumbing, so no modal hand-rolls them.
  *
- * Sizing (all vw/vh lengths divide the chrome `zoom` back out, since `zoom`
- * multiplies them):
+ * Sizing. Viewport shares are taken from the MEASURED window (`useViewportSize`), never from `vh`:
+ * mobile browsers define `vh` by the largest viewport, the one with their bars hidden, so a `vh`
+ * cap hangs past the visible bottom while the bars show. Every share divides the chrome `zoom`
+ * back out, since `zoom` multiplies it.
  *  - `width` / `height`: a NUMBER is used as-is (px; `zoom` scales it). A STRING
  *    is passed straight through.
- *  - `maxVwPct` + numeric `width` → responsive `min(<width>px, calc(<pct>vw / zoom))`.
- *  - `maxVhPct` + numeric `height` → responsive `min(<height>px, calc(<pct>vh / zoom))`.
- *  - `maxVh` → `maxHeight: <maxVh / zoom>vh` (a cap without a fixed height).
+ *  - `maxVwPct` + numeric `width` → responsive `min(<width>px, <pct of the window's width>px)`.
+ *  - `maxVhPct` + numeric `height` → responsive `min(<height>px, <pct of the window's height>px)`.
+ *  - `maxVh` → `maxHeight` at that share of the window's height (a cap without a fixed height).
  * `cardStyle` is spread LAST so a modal can layer on padding / flex / relative
  * positioning (Export's 2-col layout, Help's clipped scroll frame, …).
  */
@@ -128,12 +130,13 @@ function resolveDim(
   px: number | string | undefined,
   pct: number | undefined,
   chrome: number,
-  axis: 'vw' | 'vh',
+  windowPx: number,
+  frame: number,
 ): number | string | undefined {
   if (typeof px === 'string') return px;
   if (px == null) return undefined;
   if (pct == null) return px; // plain number — the card's `zoom` scales it
-  return `min(${px}px, calc(${pct}${axis} / ${chrome}))`;
+  return `min(${px}px, ${(pct / 100 * windowPx) / chrome - frame}px)`;
 }
 
 // Elements a Tab press can land on — used both to bound the focus trap and to
@@ -161,6 +164,23 @@ export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, 
   const passive = passiveProp || preview;
   useOverlayLock(open && lockOverlay && !preview); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
   const chrome = useChromeScale();
+  const { w: windowW, h: windowH } = useViewportSize();
+  // The caps bound the whole card. A content-box card grows by its padding and border on top of a
+  // cap, so that frame is measured once the card stands and taken off; a border-box card needs none.
+  const [frame, setFrame] = useState({ x: 0, y: 0 });
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const cs = getComputedStyle(el);
+    const sum = (...lengths: string[]) => lengths.reduce((total, v) => total + (parseFloat(v) || 0), 0);
+    const next = cs.boxSizing === 'border-box'
+      ? { x: 0, y: 0 }
+      : {
+        x: sum(cs.paddingLeft, cs.paddingRight, cs.borderLeftWidth, cs.borderRightWidth),
+        y: sum(cs.paddingTop, cs.paddingBottom, cs.borderTopWidth, cs.borderBottomWidth),
+      };
+    setFrame((f) => (f.x === next.x && f.y === next.y ? f : next));
+  }, [open, cardStyle]);
   // Published on the card, the one element that carries the surface's `zoom` — so the weights and
   // the zoom they were resolved for cannot come apart. Every token and label inside inherits them.
   const weights = useWeightVars();
@@ -233,8 +253,8 @@ export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, 
     );
   };
 
-  const resolvedWidth = resolveDim(width, maxVwPct, chrome, 'vw');
-  const resolvedHeight = resolveDim(height, maxVhPct, chrome, 'vh');
+  const resolvedWidth = resolveDim(width, maxVwPct, chrome, windowW, frame.x);
+  const resolvedHeight = resolveDim(height, maxVhPct, chrome, windowH, frame.y);
 
   // ONE-UNIT EXIT. Opacity lives on the BACKDROP, not the card: the dim, the
   // card, and ALL card content then fade together (child opacity multiplies
@@ -294,8 +314,8 @@ export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, 
     // ones so they don't fight the animated values (maxHeight still caps).
     ...(motionSize == null && resolvedWidth != null ? { width: resolvedWidth } : {}),
     ...(motionSize == null && resolvedHeight != null ? { height: resolvedHeight } : {}),
-    ...(!preview && maxVh != null ? { maxHeight: `${maxVh / chrome}vh` } : {}),
-    ...(!preview && maxVw != null ? { maxWidth: `${maxVw / chrome}vw` } : {}),
+    ...(!preview && maxVh != null ? { maxHeight: `${(maxVh / 100 * windowH) / chrome - frame.y}px` } : {}),
+    ...(!preview && maxVw != null ? { maxWidth: `${(maxVw / 100 * windowW) / chrome - frame.x}px` } : {}),
     ...cardStyle,
   };
 

@@ -5,8 +5,8 @@ WHEN TO USE: whenever you place buildings, regardless of style — hamlet, hills
 WHO LIVES HERE
 - The catalog's buildings are one-of-each (max=1): eight neighbor cabins (~5x4), building-myhouse (7x4), building-stall, plus facility-shop (7x7) and facility-pavilion (6x5). A settlement mixes DISTINCT buildings; there is no repeating a house style.
 - ONE DISTRICT PER BUILDING: give each cabin its own small yard (a composed place is roughly 7x7 to 10x10 cells) with a theme its RESIDENT could own — a crop patch, a bamboo corner, a flower dooryard, a waterside platform (paved ground meeting the bank). Never butt two cabins wall to wall; 4-8 cells of themed ground between neighbors.
-- The plaza (the locked structure near map center) is the neighbor center. Populate its WHOLE ring: on the reference island building distances from the plaza run from 13 to 69 cells — a few close, a few far, none bunched.
-- facility-shop, facility-station and facility-pavilion are daily destinations: put them ON the trunk road (the shop belongs on the stretch that reaches the station). One or two homes may instead be deliberately secluded — reached only by a bridge or a dead-end spur — and those become the most memorable places on the map.
+- The plaza (the locked structure near map center) is the neighbor center. Populate its WHOLE ring: on the reference planet building distances from the plaza run from 13 to 69 cells — a few close, a few far, none bunched.
+- facility-shop and facility-pavilion are daily destinations: put them ON the trunk road. One or two homes may instead be deliberately secluded — reached only by a bridge or a dead-end spur — and those become the most memorable places on the map.
 
 FACING AND BACKING (what makes it look inhabited)
 - The door faces the view: open low ground, water, beds, the sea. The back gets the backing: higher terrain, a fall, or a tree stand 2-8 cells behind. Rotate the building (place_object rotation 0/90/180/270) to aim the front at the scenery, and only then build the backing behind it.

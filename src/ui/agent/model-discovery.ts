@@ -3,6 +3,9 @@ import { baseUrlFor, QUIRKS, type ProviderId } from '../../agent/providers/defau
 import { assistantModels, ensureModelCatalog, suggestedModels } from '../../agent/providers/model-catalog';
 
 export const IDLE_MS = 900;
+/** Longest a model listing waits for the live capability download; the bundled extract answers past it. */
+const CATALOG_WAIT_MS = 2500;
+const catalogSoon = (): Promise<void> => Promise.race([ensureModelCatalog(), new Promise<void>((resolve) => setTimeout(resolve, CATALOG_WAIT_MS))]);
 
 /** Bounds model discovery with the provider-probe deadline and aborts a silent endpoint. */
 export function withModelsDeadline<T>(
@@ -25,9 +28,9 @@ export function defaultListModels(cfg: {
   provider: ProviderId; apiKey: string; customBaseUrl?: string; region?: 0 | 1;
 }): Promise<string[]> {
   // Ark supports chat in browsers but has no CORS-enabled model-list endpoint.
-  if (cfg.provider === 'doubao' || /^https:\/\/ark\.cn-beijing\.volces\.com\/api\/v3\/?$/.test(cfg.customBaseUrl ?? '')) return ensureModelCatalog().then(() => suggestedModels(cfg.provider, cfg.customBaseUrl));
+  if (cfg.provider === 'doubao' || /^https:\/\/ark\.cn-beijing\.volces\.com\/api\/v3\/?$/.test(cfg.customBaseUrl ?? '')) return catalogSoon().then(() => suggestedModels(cfg.provider, cfg.customBaseUrl));
   return withModelsDeadline(async (signal) => {
-    const metadata = ensureModelCatalog();
+    const metadata = catalogSoon();
     if (cfg.provider === 'claude') {
       const { createAnthropicAdapter } = await import('../../agent/providers/anthropic');
       const ids = await createAnthropicAdapter({ apiKey: cfg.apiKey }).listModels(signal);

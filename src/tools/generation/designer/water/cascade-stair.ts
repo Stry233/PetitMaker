@@ -42,7 +42,7 @@ const STAIR_RUN_MAX = 28;
  *  most it may cut: the style target's own cascade has seven. */
 const STEPS_MIN = 3;
 const STEPS_MAX = 7;
-/** How many stairs one island carries, at richness 0 and 1. Two is the most the shape vocabulary
+/** How many stairs one planet carries, at richness 0 and 1. Two is the most the shape vocabulary
  *  allows before a second stair reads as a repeat of the first. */
 const STAIR_COUNT = { min: 1, max: 2 } as const;
 /** How far apart two stairs stand, and how many lips are tried before the mass is left dry. A hundred
@@ -77,7 +77,7 @@ export interface CascadeStair {
   cells: MacroCoord[];
   /** The middle of the top band: where the composition begins. */
   head: MacroCoord;
-  /** The middle of the last landing, and the level it stands at: the mouth the island's water story
+  /** The middle of the last landing, and the level it stands at: the mouth the planet's water story
    *  carries on from, so the stair and the course read as one system. */
   foot: MacroCoord;
   footTier: number;
@@ -103,7 +103,7 @@ const perp = (d: Vec): Vec => [d[1], -d[0]];
 // --- cutting them -------------------------------------------------------------------------------
 
 /**
- * The island's cascade stairs, cut into the sculpt.
+ * The planet's cascade stairs, cut into the sculpt.
  *
  * Candidates are LIPS — a cell of high ground whose neighbour one way stands lower — taken in order of
  * how tall they are and how near the walk passes, with the cascade bands the movement line asked for
@@ -122,7 +122,7 @@ export function carveCascadeStairs(input: StairInput): CascadeStair[] {
   const out: CascadeStair[] = [];
   const found = lips(input);
   // THREE STEPS FIRST, TWO AS A FALLBACK. A stair wants a run of terrace steps clear of the streets, the
-  // buildings and their doorsteps, and on some islands no flank offers three of them: measured over
+  // buildings and their doorsteps, and on some maps no flank offers three of them: measured over
   // twenty gate runs, asking for three alone left five maps of ten on `hexia` with no cascade at all. A
   // two-step stair still stacks bands over three tiers, which is the form; it is simply the smallest one.
   for (const steps of [STEPS_MIN, STEPS_MIN - 1]) {
@@ -175,7 +175,7 @@ function tryStair(
  * down stopped 124 of 126 attempts one band in — a plate boundary wobbles, so the row below a step is
  * part lower terrace and part step.
  *
- * THE STRIP NARROWS AS IT FALLS, and that is what lets a stair be cut on a built island at all. A band
+ * THE STRIP NARROWS AS IT FALLS, and that is what lets a stair be cut on a built planet at all. A band
  * takes the widest CAPPED RUN of free ground it finds inside the band above it, so a doorstep or a street
  * reaching into the flank costs the stair the cells it covers rather than the whole descent. The bands
  * still stack about one axis and each stands inside the one above, so the whole of it reads as one figure
@@ -367,7 +367,7 @@ function cutBand(inp: BandInput): Band | null {
  * A cap is dry terrace at exactly the band's tier, which the free ground beside the run already is, so a
  * run bounded by something else — a street's reservation, a lower terrace, another body's water — gives
  * up one cell at that end and caps itself there instead. This is the whole reason a stair can be cut on
- * a built island: the band takes what the row offers rather than the width the strip started with.
+ * a built planet: the band takes what the row offers rather than the width the strip started with.
  */
 function widestCapped(
   t: TerrainPlan, grass: Uint8Array, free: (c: MacroCoord, tier: number) => boolean,
@@ -416,7 +416,7 @@ function joinRows(inp: JoinInput): MacroCoord[] | null {
   // THE CHUTE IS NARROWER THAN THE TREADS IT JOINS, and that is why a stair can cross a terrace floor
   // at all. A crossing shows no face, so it needs no caps and nothing but free ground at its own level;
   // asking for the band's whole width over as many as twelve rows asked for a clear channel where the
-  // island's streets and lots stand, and it refused 427 crossings of 5107 attempts while the bands
+  // planet's streets and lots stand, and it refused 427 crossings of 5107 attempts while the bands
   // either side of them were cuttable. It narrows monotonically, so what is left is free on every row.
   let chute: Span = cut.span;
   const rows: MacroCoord[] = [];
@@ -484,7 +484,7 @@ interface Lip { at: MacroCoord; dir: Vec; run: number; score: number }
  * lower ground along one side of it, longest and highest first.
  *
  * The run is what a stair is scored by rather than the height, and the reason is the ground: measured
- * on real designed maps, the summit's own rim is the most crowded terrace on the island — the walk
+ * on real designed maps, the summit's own rim is the most crowded terrace on the planet — the walk
  * ends there, so it carries pavement, a place and their reservations — and a search that ranked by
  * tier alone spent all forty of its tries on rim cells with no clear strip anywhere near them and cut
  * nothing at all. A long clear lip halfway down a flank is where a cascade can actually stand.
@@ -501,7 +501,7 @@ function lips(input: StairInput): Lip[] {
     for (const c of walk) best = Math.min(best, Math.abs(c.x - x) + Math.abs(c.y - y));
     return best;
   };
-  /** Whether (x, y) is a lip cell facing `dir`: untouched terrace with lower island ground ahead. */
+  /** Whether (x, y) is a lip cell facing `dir`: untouched terrace with lower planet ground ahead. */
   const isLip = (x: number, y: number, dir: Vec, tier: number): boolean => {
     if (x < 1 || y < 1 || x >= t.width - 1 || y >= t.height - 1) return false;
     const i = flatIndex(x, y, t.width);

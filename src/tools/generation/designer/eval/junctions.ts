@@ -5,9 +5,9 @@
  * The straightness reading beside this one (`streets.ts`) says how long a street runs before it
  * turns, and both references read high on it — they are grids of long straight streets. What it
  * cannot say is whether the network still reads as a GRID: a lattice of
- * full-island lines crossing each other at four-ways is straight in exactly the way an expert map is,
+ * full-planet lines crossing each other at four-ways is straight in exactly the way an expert map is,
  * and reads as graph paper anyway. So the two facts a lattice is made of are measured here directly —
- * how much of the pavement stands in a line that spans the island, and how its junctions are shaped.
+ * how much of the pavement stands in a line that spans the planet, and how its junctions are shaped.
  *
  * A JUNCTION IS COUNTED BY ITS ARMS, and the arms are read by cutting a hole. Around a paved cell,
  * the paved cells at Chebyshev distance `RING_R` fall into cyclic runs, and each run is one street
@@ -35,7 +35,7 @@ const COURT_WIDE = 6;
 /** Two arms count as one street passing through when their directions are this opposed. */
 const THROUGH_DOT = -0.5;
 
-/** The share of the island's own extent a straight run has to cover to be a LATTICE line: a street
+/** The share of the planet's own extent a straight run has to cover to be a LATTICE line: a street
  *  that crosses the whole map rather than serving a part of it. */
 export const LATTICE_SPAN = 0.8;
 
@@ -43,8 +43,8 @@ export const LATTICE_SPAN = 0.8;
  * How much of a map's pavement may stand in such a line.
  *
  * MEASURED, and the measurement is a zero: neither decoded reference carries a single straight run
- * over `LATTICE_SPAN` of its own island, so both read 0.0% — their longest are 0.70 and 0.73. The cap
- * is a hair over that rather than at it, because one street reaching the bar on a small island is a
+ * over `LATTICE_SPAN` of its own planet, so both read 0.0% — their longest are 0.70 and 0.73. The cap
+ * is a hair over that rather than at it, because one street reaching the bar on a small planet is a
  * street and not a lattice, and a share this small cannot be more than one.
  */
 export const LATTICE_SHARE_MAX = 0.02;
@@ -72,9 +72,9 @@ export interface NetworkShape {
   /** Pairs of T-junctions on one street, facing opposite ways within `OFFSET_APART` of each other:
    *  two streets that would have crossed, staggered into a Z. */
   offsetPairs: number;
-  /** Share of pavement standing in a straight run that spans `LATTICE_SPAN` of the island. */
+  /** Share of pavement standing in a straight run that spans `LATTICE_SPAN` of the planet. */
   fullSpanShare: number;
-  /** The longest straight run on the map, as a share of the island's extent along its axis. */
+  /** The longest straight run on the map, as a share of the planet's extent along its axis. */
   longestSpan: number;
 }
 
@@ -150,7 +150,7 @@ function straightRuns(paved: Uint8Array, W: number, H: number): { hr: Int32Array
   return { hr, vr };
 }
 
-/** The island's own extent: the bounding box of its land, which is what a street spans a share of. */
+/** The planet's own extent: the bounding box of its land, which is what a street spans a share of. */
 function extentOf(land: Uint8Array, W: number, H: number): { w: number; h: number } {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) {
@@ -229,7 +229,7 @@ function armReading(paved: Uint8Array, W: number, H: number, open = openingWidth
   return { paved: pavedCells, node, bend, court, armsOf };
 }
 
-/** The network's junction mix and how much of it spans the island. */
+/** The network's junction mix and how much of it spans the planet. */
 export function networkShape(paved: Uint8Array, land: Uint8Array, W: number, H: number, open?: Uint8Array): NetworkShape {
   const { paved: pavedCells, node, bend, court, armsOf } = armReading(paved, W, H, open);
 

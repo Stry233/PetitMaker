@@ -170,6 +170,8 @@ export interface CatalogItem {
   /** This item's placement rule is not yet finalized (TBD) — the generator must NOT auto-place it
    *  (manual placement still works under whatever traits it currently has). */
   ruleTBD?: boolean;
+  /** Kept for saves and rendering; no shelf, search, generator or assistant offers it. */
+  disabled?: boolean;
   rotatable: boolean;
   placementMode: 'point' | 'brush';
   traits: PlacementTrait[];
@@ -437,8 +439,8 @@ export type EditorEvents = {
 
 /* ── Terrain generation config (used by the generator + the Generate panel) ── */
 
-/** `designed` is the island generator (`tools/generation/designer/`): the methodology pipeline the
- *  shelf's island kinds run, and the default for a recipe that names no algorithm. */
+/** `designed` is the planet generator (`tools/generation/designer/`): the methodology pipeline the
+ *  shelf's planet kinds run, and the default for a recipe that names no algorithm. */
 export type GenerateAlgorithm = 'maze' | 'stencil' | 'designed';
 
 /**
@@ -564,8 +566,8 @@ export interface GenerateConfig {
   /** 'stencil' algorithm only: the picture, and how to read it. */
   stencilPlan?: StencilPlan;
   /**
-   * THE ONE 0..1 STYLE KNOB: SCENERY RICHNESS, 0 a flat garden town and 1 a terraced island with
-   * water on every layer. It scales the island generator's terrain drama, its water, its theme
+   * THE ONE 0..1 STYLE KNOB: SCENERY RICHNESS, 0 a flat garden town and 1 a terraced planet with
+   * water on every layer. It scales the planet generator's terrain drama, its water, its theme
    * count and its decoration together.
    *
    * The recipe is informational in a share code; map reconstruction uses its cells and objects.

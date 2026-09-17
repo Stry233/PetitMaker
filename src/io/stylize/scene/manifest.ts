@@ -1,6 +1,6 @@
 /**
  * A pure fold over GridState into the facts a prompt can describe: water bodies, bridges, road
- * coverage, building/planting clusters, terracing and island shape. No DOM, no store —
+ * coverage, building/planting clusters, terracing and islet shape. No DOM, no store —
  * `verbalize.ts` turns this into English clauses.
  */
 import { CellZone, ItemCategory, TerrainType, type GridState } from '../../../core/model/types';
@@ -146,8 +146,8 @@ function terracing(state: GridState): { terraces: number; peakAt: Quadrant | nul
   return { terraces: maxElevation, peakAt: quadrantOf(sumX / count, sumY / count, width, height) };
 }
 
-/** A border ring mostly outside the template's actual island shape (CellZone.Void) reads as an
- *  island sitting in open water, distinct from a rectangular map that simply has no terrain yet. */
+/** A border ring mostly outside the template's actual land shape (CellZone.Void) reads as an
+ *  islet sitting in open water, distinct from a rectangular map that simply has no terrain yet. */
 function isIslandShaped(state: GridState): boolean {
   const { width, height } = state.template;
   const isVoid = (x: number, y: number) => (state.cells[y]?.[x]?.zone ?? CellZone.Void) === CellZone.Void;

@@ -41,7 +41,7 @@ function channelKit(): Kit {
   return kitOf(state);
 }
 
-/** A generated island, terrain only — cached per seed and handed out as a clone. */
+/** A generated planet, terrain only — cached per seed and handed out as a clone. */
 const islands = new Map<number, GridState>();
 function islandKit(seed: number): Kit {
   let base = islands.get(seed);
@@ -54,7 +54,7 @@ function islandKit(seed: number): Kit {
     const state = base;
     exec.runSilently(() => {
       generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-      // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+      // TERRAIN ONLY: the planet generator furnishes what it builds, and this fixture is
       // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects(state, (c: Command) => exec.execute(c));
     });
@@ -87,7 +87,7 @@ describe('a route crosses near its own taps', () => {
       .toBeLessThanOrEqual(man(from, to) * 2);
   });
 
-  it('on a generated island, a pair the sweep measured at 8x the straight line comes back under 3x', () => {
+  it('on a generated planet, a pair the sweep measured at 8x the straight line comes back under 3x', () => {
     const kit = islandKit(23);
     const from: MacroCoord = { x: 78, y: 37 }, to: MacroCoord = { x: 64, y: 48 };
 

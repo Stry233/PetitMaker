@@ -41,7 +41,7 @@ export interface TourStep {
   /** The map view this step is about, applied by the shell's host as the step becomes current. The
    *  3D scene is built lazily, so the flip rides the step that POINTS AT the toggle rather than the
    *  steps that describe the 3D view: the visitor reads that step's card while the scene builds and
-   *  the island flies in behind it, and the steps that follow open onto a view already standing.
+   *  the planet flies in behind it, and the steps that follow open onto a view already standing.
    *  Absent means leave it alone. Whatever a run borrows, the shell puts back as the run ends. */
   view?: ViewMode;
   /** The step shows the brand lockup above its title: the tour's opening step is the app introducing

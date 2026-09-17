@@ -27,6 +27,7 @@ class FakeWorker {
   static all: FakeWorker[] = [];
   onmessage: ((e: MessageEvent) => void) | null = null;
   onerror: ((e: unknown) => void) | null = null;
+  onmessageerror: ((e: unknown) => void) | null = null;
   terminated = false;
 
   constructor(_url: URL, _opts?: unknown) {
@@ -51,6 +52,18 @@ function deliverOne(): unknown {
   if (!next) throw new Error('nothing was posted');
   try {
     next.worker.onmessage?.({ data: { id: next.id, ok: true } } as MessageEvent);
+    return null;
+  } catch (err) {
+    return err;
+  }
+}
+
+/** An answer this thread cannot deserialize, the way a browser reports one. */
+function refuseOne(): unknown {
+  const next = posted.shift();
+  if (!next) throw new Error('nothing was posted');
+  try {
+    next.worker.onmessageerror?.({ type: 'messageerror' });
     return null;
   } catch (err) {
     return err;
@@ -198,6 +211,24 @@ describe('a pool whose workers stop taking jobs', () => {
     expect(escaped, 'no failure escapes the message handler').toBeNull();
     expect(await fates(jobs)).toEqual(jobs.map(() => 'settled'));
     expect(pool.poolAvailable(), 'the pool is broken, so callers run on the main thread').toBe(false);
+  });
+
+  it('settles a job whose answer this thread could not deserialize, and keeps the slot', async () => {
+    // Without a `messageerror` handler the slot still holds that job, so it takes no further work
+    // and the caller waits forever instead of falling back to the main thread.
+    const pool = await loadPool();
+    const state = tinyState();
+    const first = pool.runCandidateInPool({ state, config, region: null });
+    void first.catch(() => {});
+    expect(refuseOne(), 'no failure escapes the handler').toBeNull();
+    expect(await fates([first])).toEqual(['settled']);
+    await expect(first).rejects.toThrow();
+
+    expect(pool.poolAvailable(), 'the worker itself is healthy').toBe(true);
+    const second = pool.runCandidateInPool({ state, config, region: null });
+    expect(posted.length, 'the freed slot took the next job').toBe(1);
+    expect(deliverOne()).toBeNull();
+    expect(await second).toBeNull();
   });
 
   it('settles them when the very first post fails', async () => {

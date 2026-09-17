@@ -23,7 +23,7 @@ import { useInView } from '../use-in-view';
 import { PreviewFrame } from './PreviewFrame';
 
 /** One built shot per (kind, sample, fill), cached for the session: each is a real run through
- *  the shelf's own plan pipeline over the WHOLE island (the same footprint a no-region run takes),
+ *  the shelf's own plan pipeline over the WHOLE map (the same footprint a no-region run takes),
  *  which is what gives a letter its size and a picture its fidelity. */
 const stencilShots = new Map<string, Promise<string | null>>();
 
@@ -266,7 +266,7 @@ export function PictureMaterialsPreview() {
   );
 }
 
-/* ── one knob, three readings: the island designer swept along a slider ───── */
+/* ── one knob, three readings: the planet designer swept along a slider ───── */
 
 /** One designed run per (richness, tallest layer), cached for the session, photographed whole. */
 const islandShots = new Map<string, Promise<string | null>>();
@@ -279,7 +279,7 @@ function islandShot(richness: number, maxElevation: number): Promise<string | nu
   let hit = islandShots.get(key);
   if (!hit) {
     hit = buildIslandShot(richness, maxElevation).catch((err) => {
-      console.error('help island shot failed', key, err);
+      console.error('help planet shot failed', key, err);
       islandShots.delete(key);
       return null;
     });

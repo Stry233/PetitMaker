@@ -149,7 +149,7 @@ const CARET: CSSProperties = {
  *
  * Landing a candidate is not instant and it is not always a replay: a card whose recipe was already
  * built arrives in about a tenth of a second, and one landing on a map that already carries another
- * island has to run for real, which is most of a second on a full map. Nothing said so, so the app
+ * build has to run for real, which is most of a second on a full map. Nothing said so, so the app
  * simply stopped. The card that was clicked is where the eye already is, so that is where the
  * waiting is drawn, over the picture it is about to become.
  *
@@ -410,7 +410,7 @@ export function ImportCard({ name, shot, selected, failed, landing, onPick, onSe
 
 interface CustomProps {
   /**
-   * What the field takes. `number` is the recipe number the island kinds are drawn from; `glyph` is
+   * What the field takes. `number` is the recipe number the terrain kinds are drawn from; `glyph` is
    * a single character — a letter, a digit, an emoji — for the kinds that build the SHAPE of what is
    * typed, where the input IS the recipe and there is nothing random left to name.
    */

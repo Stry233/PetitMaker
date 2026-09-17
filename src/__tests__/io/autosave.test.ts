@@ -323,6 +323,57 @@ describe('autosave', () => {
     expect(readAutosave()?.history).toBeUndefined();
   });
 
+  describe('backgrounding the tab', () => {
+    /** Report the page as hidden, as a phone browser does when the tab leaves the screen. */
+    function hide(): void {
+      const was = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      if (was) Object.defineProperty(document, 'visibilityState', was);
+      else delete (document as unknown as Record<string, unknown>).visibilityState;
+    }
+
+    it('writes the pending save instead of losing it to the debounce', () => {
+      // A phone can discard the tab before the 2 s debounce fires, taking the last edits with it.
+      scheduleAutosave(makeWorkingMap());
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      hide();
+      expect(hasAutosave()).toBe(true);
+      expect(readAutosave()?.state.template.id).toBe(DEFAULT_MAP.id);
+    });
+
+    it('writes the pending save when the page is being unloaded', () => {
+      scheduleAutosave(makeWorkingMap());
+      window.dispatchEvent(new Event('pagehide'));
+      expect(hasAutosave()).toBe(true);
+    });
+
+    it('leaves the debounce alone while the page is still visible', () => {
+      scheduleAutosave(makeWorkingMap());
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      vi.advanceTimersByTime(2000);
+      expect(hasAutosave()).toBe(true);
+    });
+
+    it('does not write again for a save the debounce already made', () => {
+      scheduleAutosave(makeWorkingMap());
+      vi.advanceTimersByTime(2000);
+      const written = localStorage.getItem(STORAGE_KEY);
+      const setItem = vi.spyOn(localStorage, 'setItem');
+      hide();
+      expect(setItem).not.toHaveBeenCalled();
+      expect(localStorage.getItem(STORAGE_KEY)).toBe(written);
+    });
+
+    it('drops a cleared save rather than resurrecting it', () => {
+      scheduleAutosave(makeWorkingMap());
+      clearAutosave();
+      hide();
+      expect(hasAutosave()).toBe(false);
+    });
+  });
+
   it('walks a grid with a sparse row instead of throwing', () => {
     // The first-launch tour check calls this before anything has drawn, so a hole in a row has to
     // read as "no terrain here", not take the app down on startup.

@@ -17,7 +17,7 @@
  * is the one map signal `usePointerInteraction` answers IMMEDIATELY rather than per frame — a
  * camera move must not lag the pointer by a frame — so emitting it per objects-changed turns every
  * command into a full pointer re-sample, and in 3D a re-sample is a heightfield ray-march. Measured
- * in a real browser on a generated island, one fast road stroke with auto-trim on fired 471 of them
+ * in a real browser on a generated map, one fast road stroke with auto-trim on fired 471 of them
  * for 305 commands and spent 139 ms inside `handlePointerMove` (31 ms in a single move); coalesced
  * to one per frame the same stroke fires 1 and spends 31 ms (5 ms worst move).
  */

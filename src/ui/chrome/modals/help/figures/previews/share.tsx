@@ -58,7 +58,7 @@ function useFigureGridState(): GridState {
   return live ?? fallback;
 }
 
-/** Use the reader's nonempty map, or one shared generated island after figure admission. */
+/** Use the reader's nonempty map, or one shared generated map after figure admission. */
 export function useShownMap(): GridState | null {
   const ready = useFigureReady();
   const live = useEditorStore((s) => s.gridState);
@@ -191,7 +191,7 @@ function checklistHasContent(state: GridState): boolean {
   return list.groups.some((g) => g.items.length > 0) || list.roads.length > 0 || list.layers.length > 0;
 }
 
-/** A finished island, built once per session by the real designed generator, so the full-list
+/** A finished map, built once per session by the real designed generator, so the full-list
  *  figure shows the checklist the way a real build fills it. */
 let fullIsland: GridState | null = null;
 export function fullIslandState(): GridState {
@@ -230,7 +230,7 @@ export function FullChecklistPreview() {
 const CANDIDATE_SEEDS = [4127, 90210, 5551];
 
 /** Each card's shot photographs that seed's OWN designed run, cached per session: three cards
- *  showing three different islands, which is the fact the candidates page teaches. */
+ *  showing three different maps, which is the fact the candidates page teaches. */
 const candidateShots = new Map<number, string>();
 async function candidateShot(seed: number, aspect: number): Promise<string | null> {
   const hit = candidateShots.get(seed);

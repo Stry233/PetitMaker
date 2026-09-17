@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assistantModels, ensureModelCatalog, modelCapabilities, MODEL_CATALOG_URL, parseModelCatalog, rememberNativeModels, resetModelCatalog, suggestedModels } from '../../../agent/providers/model-catalog';
+import { assistantModels, ensureModelCatalog, modelCapabilities, MODEL_CATALOG_SNAPSHOT, MODEL_CATALOG_URL, parseModelCatalog, rememberNativeModels, resetModelCatalog, suggestedModels } from '../../../agent/providers/model-catalog';
 import { reasoningBody, thinkingChoices } from '../../../agent/providers/reasoning';
 
 const data = {
@@ -37,15 +37,17 @@ describe('live model discovery', () => {
     expect(modelCapabilities('custom', 'private', 'https://two.example/v1')).toBeUndefined();
   });
 
-  it('fetches without credentials, coalesces refreshes and expires after five minutes', async () => {
+  it('fetches without credentials, coalesces refreshes and lets one success serve the whole session', async () => {
     vi.useFakeTimers();
     const fetcher = await load();
     await Promise.all([ensureModelCatalog(), ensureModelCatalog()]);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith(MODEL_CATALOG_URL, expect.objectContaining({ credentials: 'omit', referrerPolicy: 'no-referrer' }));
     expect(fetcher.mock.calls[0]![1]).not.toHaveProperty('headers');
-    vi.advanceTimersByTime(300001);
+    vi.advanceTimersByTime(60 * 60_000);
     await Promise.all([ensureModelCatalog(), ensureModelCatalog()]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await ensureModelCatalog(true);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -93,5 +95,71 @@ describe('thinking controls', () => {
     expect(reasoningBody('openrouter', { effort: 'high' })).toEqual({ reasoning: { effort: 'high' } });
     expect(reasoningBody('deepseek', { effort: 'max' })).toEqual({ reasoning_effort: 'max', thinking: { type: 'enabled' } });
     expect(reasoningBody('doubao', { effort: 'none' })).toEqual({ thinking: { type: 'disabled' } });
+  });
+});
+
+describe('bundled capability extract', () => {
+  /** A download that only ends when its signal aborts, as a stalled cross-border transfer does. */
+  function stalledFetch() {
+    let signal: AbortSignal | undefined;
+    const fetcher = vi.fn((_url: string, init: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+      signal = init.signal;
+      init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    return { fetcher, aborted: () => signal?.aborted ?? false };
+  }
+
+  it('answers DeepSeek effort levels before any refresh and again after a reset', () => {
+    expect(MODEL_CATALOG_SNAPSHOT.takenAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    for (const model of ['deepseek-flash', 'deepseek-v4-pro']) {
+      const levels = thinkingChoices(modelCapabilities('deepseek', model), 'deepseek').map((choice) => choice.effort);
+      expect(levels, model).toContain('high');
+    }
+    resetModelCatalog();
+    expect(thinkingChoices(modelCapabilities('deepseek', 'deepseek-flash'), 'deepseek').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the extract for providers a live refresh does not mention', async () => {
+    await load();
+    expect(modelCapabilities('openai', 'gpt-6-astra')?.efforts).toEqual(['low', 'high', 'max']);
+    expect(modelCapabilities('deepseek', 'deepseek-flash')?.reasoning).toBe(true);
+  });
+
+  it('retries a failed download after thirty seconds, and gives up for the session after three failures', async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
+    vi.stubGlobal('fetch', fetcher);
+    await ensureModelCatalog(true);
+    await ensureModelCatalog();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    for (const calls of [2, 3, 3, 3]) {
+      vi.advanceTimersByTime(30_001);
+      await ensureModelCatalog();
+      expect(fetcher).toHaveBeenCalledTimes(calls);
+    }
+    await ensureModelCatalog(true);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it('never downloads the live catalog on the Chinese deployment, where the extract is the source', async () => {
+    vi.stubGlobal('__PETIT_TARGET__', 'cn');
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await ensureModelCatalog(true);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(modelCapabilities('deepseek', 'deepseek-flash')?.reasoning).toBe(true);
+  });
+
+  it('gives the download twenty seconds before abandoning it', async () => {
+    vi.useFakeTimers();
+    const { aborted } = stalledFetch();
+    const refresh = ensureModelCatalog(true);
+    vi.advanceTimersByTime(19_000);
+    expect(aborted()).toBe(false);
+    vi.advanceTimersByTime(1_001);
+    expect(aborted()).toBe(true);
+    await refresh;
+    expect(modelCapabilities('deepseek', 'deepseek-flash')?.reasoning).toBe(true);
   });
 });

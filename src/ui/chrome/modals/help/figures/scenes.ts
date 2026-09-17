@@ -1375,7 +1375,7 @@ function runDesigned(world: DemoWorld, key: string, region: MacroCoord[] | null)
 }
 
 const generate: HelpScene = {
-  // The whole planet in frame: a designed island is an island-scale fact. The cards themselves
+  // The whole planet in frame: a designed run is a planet-scale fact. The cards themselves
   // are the candidates page's figure; this one shows what landing a card does to the map.
   stage: { x1: 0, y1: 0, x2: 168, y2: 139, tile: 2.6 },
   run: () => [
@@ -1543,7 +1543,7 @@ const stencil: HelpScene = {
 
 /* ───────────────────────────── plan ────────────────────────────── */
 
-/** The plan-notes stage: wide, because annotation ink scales with the island, at a cell size that
+/** The plan-notes stage: wide, because annotation ink scales with the map, at a cell size that
  *  keeps one or two notes readable without filling the frame. */
 const NOTES_STAGE: Stage = { x1: 50, y1: 92, x2: 104, y2: 118, tile: 8 };
 
@@ -1724,12 +1724,12 @@ const faq: HelpScene = {
 
 /* ─────────────── section figures: generate and plan ─────────────── */
 
-/** The scope demo's marked rectangle: open grass south of the plaza, wholly inside the island. */
+/** The scope demo's marked rectangle: open grass south of the plaza, wholly on land. */
 const SCOPE_RECT = { x1: 58, y1: 94, x2: 85, y2: 122 } as const;
 
 const scope: HelpScene = {
-  // The whole planet in frame, like the lead figure: the point is what the mark does to an
-  // island-scale run — the design is still drawn for the whole island, and only the piece that
+  // The whole planet in frame, like the lead figure: the point is what the mark does to a
+  // planet-scale run — the design is still drawn for the whole planet, and only the piece that
   // falls inside the mark is built.
   stage: { x1: 0, y1: 0, x2: 168, y2: 139, tile: 2.6 },
   run: ({ view }) => {

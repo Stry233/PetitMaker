@@ -2,15 +2,15 @@
  * Where the tour's bubble goes, given the lit box it is pointing at.
  *
  * A step names a PREFERRED side, and that side is honoured only where the bubble actually fits
- * beside the spotlight. Clamping a bubble that does not fit puts it ON TOP of the control it is
- * describing: `clampLeft` pushes a box back inside the viewport, and beside a target near an
- * edge "inside the viewport" is the target itself.
+ * beside the spotlight; a side that does not fit is passed over for one that does. The chosen
+ * placement is then held inside the viewport on both axes, so on a screen too small for any side
+ * the bubble covers part of its target rather than leaving the screen with its controls.
  *
  * Everything here is in VISUAL px (what occupies screen), the units `getBoundingClientRect` reports
  * and the units `clampLeft`/`clampTop` reason in. The caller divides the chrome zoom back out.
  *
- * Pure, so the one thing that must always hold — the bubble never overlaps the spotlight — is a
- * property a test can state directly.
+ * Pure, so the properties that must hold — the bubble never overlaps a spotlight it can fit
+ * beside, and never leaves the viewport — are properties a test can state directly.
  */
 
 export type BubbleSide = 'left' | 'right' | 'above' | 'below';
@@ -28,7 +28,8 @@ export interface Viewport {
 }
 
 /** Kept off every viewport edge, matching `clampLeft`/`clampTop`'s own default. */
-const MARGIN = 8;
+export const VIEWPORT_MARGIN = 8;
+const MARGIN = VIEWPORT_MARGIN;
 
 /** The sides in the order they are tried once the preferred one has been ruled out. Opposite first:
  *  a target that leaves no room on one side usually has the most room on the other. */
@@ -49,9 +50,8 @@ function roomOn(side: BubbleSide, spot: Box, gap: number, viewport: Viewport): n
   }
 }
 
-/** Clamp to the viewport on the axis the chosen side does NOT control: the main axis is what keeps
- *  the bubble clear of the spotlight, so clamping it would reintroduce the overlap. */
-function clampCross(value: number, extent: number, limit: number): number {
+/** Clamp one axis to the viewport, margin included. */
+function clampAxis(value: number, extent: number, limit: number): number {
   return Math.max(MARGIN, Math.min(value, limit - extent - MARGIN));
 }
 
@@ -88,14 +88,17 @@ export function placeBubble(
     // the fallback order happened to name first.
     ?? order.reduce((best, s) => (fit(s) > fit(best) ? s : best));
 
-  switch (side) {
-    case 'left':
-      return { side, left: spot.left - gap - size.width, top: clampCross(spot.top, size.height, viewport.height) };
-    case 'right':
-      return { side, left: spot.left + spot.width + gap, top: clampCross(spot.top, size.height, viewport.height) };
-    case 'above':
-      return { side, top: spot.top - gap - size.height, left: clampCross(spot.left, size.width, viewport.width) };
-    case 'below':
-      return { side, top: spot.top + spot.height + gap, left: clampCross(spot.left, size.width, viewport.width) };
-  }
+  const at = ((): { left: number; top: number } => {
+    switch (side) {
+      case 'left': return { left: spot.left - gap - size.width, top: spot.top };
+      case 'right': return { left: spot.left + spot.width + gap, top: spot.top };
+      case 'above': return { left: spot.left, top: spot.top - gap - size.height };
+      case 'below': return { left: spot.left, top: spot.top + spot.height + gap };
+    }
+  })();
+  return {
+    side,
+    left: clampAxis(at.left, size.width, viewport.width),
+    top: clampAxis(at.top, size.height, viewport.height),
+  };
 }

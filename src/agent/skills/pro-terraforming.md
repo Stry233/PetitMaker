@@ -4,7 +4,7 @@ WHEN TO USE: any serious landscaping beyond a 3-tier hill — backing walls, wat
 
 TALL FORMS (above sculpt_terrace's 3-tier cap)
 - paint_terrain mountain takes the FINAL elevation (max 8) and auto-builds the support tiers. The one legality: at elevation 4+ every cell needs a full 3x3 of neighbors at >= N-3 (V-MTN-03), so a sheer face can drop at most 3 layers. Build tall forms as stacked bands, each higher band inset 1+ cells inside the band 3 below it, each call under 4000 cells.
-- THE BACKING WALL (the expert island's primary form): a band 30-40 rows deep along ONE map edge, graded in 2-3 paint_terrain bands (e.g. elev 3 base band, elev 6 inset band, elev 8 crown) with smooth:'round'. Keep the crown FLAT and broad — the reference paves and even floods its top; a wall you cannot stand on is scenery, a wall with a court on top is a destination.
+- THE BACKING WALL (the expert planet's primary form): a band 30-40 rows deep along ONE map edge, graded in 2-3 paint_terrain bands (e.g. elev 3 base band, elev 6 inset band, elev 8 crown) with smooth:'round'. Keep the crown FLAT and broad — the reference paves and even floods its top; a wall you cannot stand on is scenery, a wall with a court on top is a destination.
 - Foothills: 1-2 sculpt_terrace calls (tiers 1-2, varied seeds) where the wall meets the plain, so the mass lands rather than stopping.
 
 ELEVATED WATER (the containment recipes)

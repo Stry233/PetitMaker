@@ -435,7 +435,7 @@ export class AnnotateTool implements Tool {
     ctx.annotationEdit.select(ids);
     const items = ctx.annotations?.items ?? [];
     const origs = ids.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
-    this.drag = wasSelected && !ctx.annotations?.locked ? { start: p, origs: structuredClone(origs), began: false } : null;
+    this.drag = wasSelected && !ctx.annotations?.locked ? { start: p, origs: origs.map(copyNote), began: false } : null;
   }
 
   private dragMove(p: MacroCoord, ctx: ToolContext): void {
@@ -557,6 +557,12 @@ function stamp(cells: readonly MacroCoord[], p: MacroCoord, brushSize: number, c
     }
   }
   return addZoneCells(cells, out);
+}
+
+/** An independent copy of a note, so a drag keeps measuring from where it began while the live
+ *  items move under it. A planning note is plain data: cells, anchors, ids, colours and numbers. */
+function copyNote(note: MapAnnotation): MapAnnotation {
+  return JSON.parse(JSON.stringify(note)) as MapAnnotation;
 }
 
 /** The note as the drag has carried it: zones move by whole cells, the free-anchored kinds by the

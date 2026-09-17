@@ -25,6 +25,7 @@ import { roleFont } from '../design/text-weight';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
 import { windowFooterGhost, windowFooterPrimary } from '../design/window-skin';
 import { cssMotion, framerMotion, NO_MOTION } from './motion';
+import { visualRect } from '../design/visual-rect';
 
 /** Placeholder key for each routing mode, kept as literals for the i18n drift check. */
 const PLACEHOLDER_KEY: Record<ComposerRoute, string> = {
@@ -141,6 +142,11 @@ const ROUND_BUTTON_BASE: CSSProperties = {
   justifyContent: 'center',
 };
 
+const CAVEAT_STYLE: CSSProperties = {
+  ...roleFont('note'), fontFamily: font.family, color: colors.brownText,
+  lineHeight: 1.4, margin: '8px 4px 0', textAlign: 'center',
+};
+
 const SEND_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: INK, color: PLATE };
 
 /** Disabled send uses the house filled-control treatment. */
@@ -173,9 +179,12 @@ export interface ComposerProps {
   fill?: { text: string; seq: number };
   /** Imperative focus handle for actions that leave the current draft unchanged. */
   focusRef?: MutableRefObject<(() => void) | null>;
+  /** Standing reminder under the well while the assistant waits for an order. */
+  caveat?: string;
 }
 
 export function Composer({
+  caveat,
   route,
   running,
   suggestion,
@@ -274,7 +283,7 @@ export function Composer({
   function unfold(): void {
     const el = wellRef.current;
     if (el) {
-      const r = el.getBoundingClientRect();
+      const r = visualRect(el);
       setSeat({
         height: el.offsetHeight,
         rect: { left: r.left, top: r.top, width: r.width, height: r.height },
@@ -447,6 +456,7 @@ export function Composer({
           </button>
         </div>
       )}
+      {caveat !== undefined && <p data-testid="agent-caveat" style={CAVEAT_STYLE}>{caveat}</p>}
       <ExpandedField
         anchor={wellRef}
         open={expanded}
@@ -527,7 +537,7 @@ function ExpandedField({
     if (!open) return undefined;
     setFrom(seat?.rect ?? null);
     const measure = (): void => {
-      const rect = anchor.current?.getBoundingClientRect();
+      const rect = anchor.current ? visualRect(anchor.current) : null;
       if (rect) setFrom({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     };
     window.addEventListener('resize', measure);

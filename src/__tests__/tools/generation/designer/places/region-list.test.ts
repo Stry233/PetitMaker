@@ -46,7 +46,7 @@ describe('the anchor set', () => {
   // ONE HOME, ONE REGION. Gathering homes into clusters of two to four is a fair reading of the PDF's
   // 住宅区 and not what either reference map does: every one of the style target's twelve buildings
   // stands in a neighbourhood of its own. A region per home is what gives each its own palette and its
-  // own composed surroundings, and what lets the layout spread them across the island.
+  // own composed surroundings, and what lets the layout spread them across the planet.
   it('gives every home its own region', () => {
     for (const seed of SEEDS) {
       const homes = planRegionList(seed).filter((x) => x.kind === 'residential');

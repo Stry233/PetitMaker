@@ -35,3 +35,11 @@ export const SHELL_TOUR_STEPS: readonly TourStep[] = [
   { id: 'share',     titleKey: 'tour.share_title',     bodyKey: 'tour.share_body',     target: 'share',         side: 'below' },
   { id: 'menu',      titleKey: 'tour.menu_title',      bodyKey: 'tour.menu_body',      target: 'menu',          side: 'below', mode: null },
 ];
+
+/** The steps this device can actually be shown. three needs WebGL2: where there is none the 3D
+ *  block would spend three cards on a view that cannot build, so the run keeps the 2D interface it
+ *  is about and the toggle says the rest itself. */
+export function shellTourSteps(webgl2: boolean): readonly TourStep[] {
+  if (webgl2) return SHELL_TOUR_STEPS;
+  return SHELL_TOUR_STEPS.filter((s) => s.id !== 'view3d' && s.id !== 'orbit' && s.id !== 'build3d');
+}

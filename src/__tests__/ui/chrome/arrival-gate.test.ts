@@ -19,6 +19,7 @@ const clear: ArrivalFacts = {
   tourRunning: false,
   tourSettled: true,
   tourDoneOpen: false,
+  whatsNewOpen: false,
 };
 
 describe('the arrival gate', () => {
@@ -39,6 +40,10 @@ describe('the arrival gate', () => {
     // The first-launch offer has not been answered yet: the tour may still be a frame away.
     expect(arrivalOpens({ ...clear, tourSettled: false })).toBe(false);
     expect(arrivalOpens({ ...clear, tourDoneOpen: true })).toBe(false);
+  });
+
+  it('waits for the What\'s new window, which speaks first', () => {
+    expect(arrivalOpens({ ...clear, whatsNewOpen: true })).toBe(false);
   });
 
   // The saved-session offer is deliberately NOT among the facts: the card asks whether to pick the

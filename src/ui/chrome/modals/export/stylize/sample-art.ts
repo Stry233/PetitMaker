@@ -5,7 +5,7 @@
  * The committed samples (`sample-assets.ts`) are generated from this project's own map, so they
  * ARE the direction. This painter is what stands in their place while an asset is absent: paper,
  * grain, three pencil strokes and the pack's own palette as a row of dabs. It says PALETTE and
- * nothing else on purpose — a fake little island painted here would be a picture of a map the
+ * nothing else on purpose — a fake little planet painted here would be a picture of a map the
  * provider never drew.
  */
 

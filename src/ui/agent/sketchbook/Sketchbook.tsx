@@ -30,11 +30,10 @@ const THUMB = { width: PANEL_WIDTH - 2 * PANEL_PAD - 2 * CARD_PAD, height: 172 }
  * The tracing-paper wash over the photograph: the sketch reads as an overlay, not as map paint.
  *
  * The ground is a full-saturation live map, so the wash must separate pencil marks while leaving the
- * island legible. At 0.16 the wash was
- * imperceptible — the dashed proposal competed with the map's own road lines and the pencil read as
- * one more thing painted on the island rather than as a plan laid over it. Heavy enough to knock the
- * ground back, light enough that the island is still legible under it, which is the whole point of
- * drawing on the map the user is standing on rather than on a stand-in.
+ * map legible. At 0.16 the wash was imperceptible — the dashed proposal competed with the map's own
+ * road lines and the pencil read as one more thing painted on it rather than as a plan laid over it.
+ * Heavy enough to knock the ground back, light enough that the map is still legible under it, which
+ * is the whole point of drawing on the map the user is standing on rather than on a stand-in.
  */
 const WASH = withAlpha(PLATE, 0.45);
 /** Below this the pencil competes with the map's own lines (see `WASH`). Exported for the token
@@ -257,7 +256,7 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
         height={THUMB.height}
         whole
         // THE PICTURE AND THE PROPOSALS ARE OF ONE MAP. The grid is mutated in place, so without a
-        // version the first capture would stand for the island's whole life and a lane read off a
+        // version the first capture would stand for the map's whole life and a lane read off a
         // map the photograph predates would be drawn on the wrong ground.
         {...(mapVersion !== undefined ? { version: mapVersion } : {})}
         placeholder={(

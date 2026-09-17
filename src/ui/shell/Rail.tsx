@@ -12,6 +12,8 @@ import { tourTargetAttr, type TourTargetId } from '../chrome/tour/steps';
 import { helpTargetAttr } from '../chrome/modals/help/targets';
 import type { HelpPageId } from '../chrome/modals/help/page-schema';
 import { ELEVATION_MAX } from '../../core/model/constants';
+import { hasWebGL2 } from '../../core/runtime/device-quality';
+import { showToast } from '../chrome/floating/Toast';
 import { useT } from '../../i18n/context';
 import { host } from '../../kit/host';
 import { useEditorStore } from '../../state/store';
@@ -36,6 +38,7 @@ import { ACTIVE, DARK_PLATE, INK, MAP_LABEL, PLATE, PLATE_INK, plateShapeEdge } 
 import { PANEL_RIGHT } from './panel-frame';
 import { useFrameZoom, useFrameReadableWeight } from './use-frame-zoom';
 import { EDGE_RIGHT, RAIL, TEXT } from './units';
+import { visualRect } from '../design/visual-rect';
 
 
 /** Apply the frame veil clock to caller-owned CSS properties. */
@@ -107,7 +110,7 @@ function useRailReflow(x: number, y: number, place: string, enabled = true) {
  * testing off the growing plate prevents hover oscillation and layout shifts. The plate and its
  * measured, localized label share one spring and open toward the map without moving the glyph.
  */
-function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat, cell, veiled, dim, tourTarget, helpTarget, children }: {
+function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat, cell, veiled, dim, unavailable, tourTarget, helpTarget, children }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -133,6 +136,8 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
   veiled?: boolean;
   /** Standing on a bare map with nothing else around it, so it holds back until it is reached for. */
   dim?: boolean;
+  /** The device cannot do what this button offers. It stays pressable so the press can say why. */
+  unavailable?: boolean;
   /** The tour points at this button. It is the plate that is marked, not the group: a spotlight
    *  covering the whole kit would light six controls to explain one. */
   tourTarget?: TourTargetId;
@@ -190,6 +195,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
       // No `title`: the pill is this button's name, and a native tooltip arriving over it a second
       // later is the same word said twice in two type faces.
       disabled={disabled}
+      {...(unavailable ? { 'aria-disabled': true } : {})}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => { setHovered(false); if (repeat !== undefined && !disabled) held.onPointerLeave(); }}
       style={{
@@ -209,7 +215,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
         // half of the veil that takes a button out of hit-testing.
         visibility: veiled ? 'hidden' : 'visible',
         transition: veilTransition(!!veiled, 'visibility'),
-        cursor: disabled ? cursors.blocked : cursors.clickable,
+        cursor: disabled || unavailable ? cursors.blocked : cursors.clickable,
         transformOrigin: anchor,
       }}
     >
@@ -225,7 +231,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
           display: 'flex', alignItems: 'center',
           // The button's whole ink, so the veil and the two dimmings are drawn here rather than on
           // the element (see its style above): a fade of the drawing is a fade of the button.
-          opacity: veiled ? 0 : disabled ? 0.4 : dim && !hovered ? 0.45 : 1,
+          opacity: veiled ? 0 : disabled || unavailable ? 0.4 : dim && !hovered ? 0.45 : 1,
           transition: veilTransition(!!veiled, 'opacity'),
           // The drawing takes no pointer events, so the square underneath it is the whole of what
           // hit-testing sees whatever this shape is doing.
@@ -329,7 +335,7 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
     const measure = () => {
       const el = countRef.current;
       if (!el) { setLane(null); return; }
-      const box = el.getBoundingClientRect();
+      const box = visualRect(el);
       setLane(readoutPressLane(
         { left: box.left / zoom, width: box.width / zoom },
         // A DOCKED panel is at the other end of the window and the two can never meet, so the lane
@@ -512,9 +518,9 @@ const STEP_REPEAT = 90;
  *
  * Named from the VISITOR'S SIDE, which is the only side they can check. `camera.orbit` takes screen
  * px of drag, so a press here is the drag it names: `dir: 1` is a drag to the right, and what a
- * drag to the right does is carry the island the way the hand went. "Clockwise" would describe the
+ * drag to the right does is carry the planet the way the hand went. "Clockwise" would describe the
  * same turn from above, correctly, and ask a visitor to hold a camera path they cannot see and then
- * decide whether it is the camera or the island going round.
+ * decide whether it is the camera or the planet going round.
  */
 const YAW_TURNS = [
   { dir: -1, flip: true, labelKey: 'a11y.rotate_left' },
@@ -556,6 +562,7 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
   const offer = useMotion('rail.yaw.offer');
   const viewMode = useEditorStore((s) => s.viewMode);
   const setViewMode = useEditorStore((s) => s.setViewMode);
+  const webgl2 = hasWebGL2();
   // What the kit is SHOWING, which is not what it is planned for: the plan reserves room for the
   // full complement so nothing moves across a view switch, but the row that ends up short is the
   // one drawn, so the fill direction is answered against the buttons actually on screen.
@@ -586,8 +593,14 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
         cell={cell(0)}
         grow="left"
         veiled={hidden}
+        unavailable={!webgl2}
         tourTarget="view3d"
-        onPress={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
+        onPress={() => {
+          // Without WebGL2 the scene build throws and the view returns to 2D; the press says that
+          // instead of making the round trip.
+          if (!webgl2) { showToast(t('view3d.unavailable'), 'error'); return; }
+          setViewMode(viewMode === '3d' ? '2d' : '3d');
+        }}
       >
         <span style={{ fontSize: RAIL.viewLabel, fontWeight: weightAt(900, RAIL.viewLabel), color: INK }}>{viewMode.toUpperCase()}</span>
       </RailButton>

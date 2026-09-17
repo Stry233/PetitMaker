@@ -59,7 +59,7 @@ function reconcileTerrainCell(state: GridState, target: CutReconcileTarget, x: n
   return true;
 }
 
-/** Revert any corner of a GROUND island-cut cell (type None + corners) that no longer pokes into water —
+/** Revert any corner of a GROUND islet-cut cell (type None + corners) that no longer pokes into water —
  *  e.g. the surrounding water was filled or moved. Squaring the last cut corner drops the cell back to plain
  *  ground (handled by the TrimCorners apply). Returns true if it changed. */
 function reconcileGroundIsland(state: GridState, target: CutReconcileTarget, x: number, y: number): boolean {

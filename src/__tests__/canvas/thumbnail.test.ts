@@ -90,7 +90,7 @@ describe('framing a picture on the region a run is bounded by', () => {
     expect(frame).not.toBeNull();
     expect(holds(frame, painted), 'the whole region is in the picture').toBe(true);
     expect(frame.width / frame.height).toBeCloseTo(CARD, 1);
-    expect(frame.width, 'and it is a fraction of the island').toBeLessThan(template.width / 2);
+    expect(frame.width, 'and it is a fraction of the map').toBeLessThan(template.width / 2);
   });
 
   it('keeps the frame inside the map, wherever the region was painted', () => {
@@ -104,7 +104,7 @@ describe('framing a picture on the region a run is bounded by', () => {
     }
   });
 
-  it('leaves a region that is most of the island framed as the island', () => {
+  it('leaves a region that is most of the map framed as the map', () => {
     expect(focusFrame(box(4, 4, 150, 120), template, CARD)).toBeNull();
   });
 

@@ -118,12 +118,16 @@ const screeningLease = new ReviewWorkerLease();
 
 /** Whether the export text check refuses an order; an unavailable check does not block because the model carries the policy. */
 async function orderRefused(text: string): Promise<boolean> {
+  // Bounded so a slow first worker load never holds an order longer than a model turn would.
+  const bound = new AbortController();
+  const timer = setTimeout(() => bound.abort(), 8_000);
   try {
-    // Bounded so a slow first worker load never holds an order longer than a model turn would.
-    const verdict = await reviewText([{ field: 'description', text }], AbortSignal.timeout(8_000), () => {}, screeningLease);
+    const verdict = await reviewText([{ field: 'description', text }], bound.signal, () => {}, screeningLease);
     return !verdict.allowed;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

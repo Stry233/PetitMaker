@@ -5,7 +5,7 @@
  * about the ground the maze is standing on. The probe below asks the only question that settles it: can
  * a walker leave by one gate, stay out of the maze, and arrive at the other?
  *
- * The answer measured on the real shipped island is YES, and it is not a sealing failure. The maze's own
+ * The answer measured on the real shipped map is YES, and it is not a sealing failure. The maze's own
  * border ring already walls it: a maze in a painted region has exactly two ways in, the two gates, and
  * nothing else on its rim is standable. The walker simply steps out of one gate onto the lawn the maze is
  * sitting on, walks round the outside of the rectangle, and steps into the other. Two holes in the outer
@@ -32,7 +32,7 @@ import { realSurface, surfaceElevation } from '../../../../core/edge-cut/terrain
 import { roadLookup } from '../../../../state/object-index';
 import { TerrainType, type Command, type EditorEvents, type GridState, type MacroCoord, type MapTemplate } from '../../../../core/model/types';
 
-/** The real shipped island: a grass disc inside beach inside sea, with the locked plaza in the middle. */
+/** The real shipped map: a grass disc inside beach inside sea, with the locked plaza in the middle. */
 function islandState(file = 'hexia.json'): GridState {
   const template = JSON.parse(readFileSync(`src/config/maps/${file}`, 'utf8')) as MapTemplate;
   const cells = createGrid(template);
@@ -101,7 +101,7 @@ function regionCells(x0 = 30, y0 = 20, x1 = 70, y1 = 60): MacroCoord[] {
   return cells;
 }
 
-/** Lay a maze on the island through the live rule registry, one stroke group, gates north and south. */
+/** Lay a maze on the map through the live rule registry, one stroke group, gates north and south. */
 function mazeOnIsland(seed: number, region: MacroCoord[] | null) {
   const state = islandState();
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
@@ -369,13 +369,13 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * THE WALK ALWAYS EXISTS. On the real island the maze's rectangle covers sea and sand, so the
+   * THE WALK ALWAYS EXISTS. On the real map the maze's rectangle covers sea and sand, so the
    * walkable cells are several disconnected patches, and an end dropped in an awkward place (a sea
    * corner, over the rim) snapped to its nearest cell can land in a pocket no corridor joins. Both
    * asked-for ends snap into the MAINLAND (the largest component), so one spanning tree holds the pair
    * and the walk between them exists by construction.
    */
-  it('lands every asked-for pair where a walk exists between them, on the real island', () => {
+  it('lands every asked-for pair where a walk exists between them, on the real map', () => {
     const askedPairs: Array<{ entrance: MacroCoord; exit: MacroCoord }> = [
       { entrance: { x: 0, y: 0 }, exit: { x: 500, y: 500 } },
       { entrance: { x: 0, y: 200 }, exit: { x: 90, y: 3 } },
@@ -400,7 +400,7 @@ describe('Maze endpoints', () => {
       expect(length, `pair ${i}: a walk joins the pair`).not.toBeNull();
 
       // THE WALK STAYS IN THE MAZE. The run's own reported walk runs through carved corridors and
-      // never skims the rim: on the island the coast refuses some walls, and a route over all open
+      // never skims the rim: on the map the coast refuses some walls, and a route over all open
       // ground could slip through such a gap and skirt the rectangle's edge — cheating, since no
       // corridor put it there. Gates are the only ring cells the walk may touch.
       expect(walk, `pair ${i}: the run reports its walk`).toBeTruthy();

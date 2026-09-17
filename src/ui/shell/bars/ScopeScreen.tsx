@@ -182,7 +182,7 @@ function ScopeScreenBody({ onDone, tools, minSide }: ScopeScreenProps) {
           ))}
 
           <span style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}>
-            {/* No select-all beside it: an empty region already means the whole island, so taking
+            {/* No select-all beside it: an empty region already means the whole planet, so taking
                 every cell and clearing are the same scope said two ways. */}
             <Action label={t('generate.clear')} onPress={clearRegionSelection} />
             {/* DONE, AND NOTHING ELSE. A button says what pressing it does; the count belongs to the

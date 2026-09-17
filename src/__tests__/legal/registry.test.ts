@@ -202,6 +202,14 @@ describe('docBody — token substitution', () => {
     expect(body).not.toContain('{securityEmail}');
   });
 
+  it('links the QQ channel number to its page on pd.qq.com in both languages', () => {
+    for (const lang of ['en', 'zh'] as const) {
+      const body = docBody('contact', lang, LEGAL);
+      expect(body).toContain(`[${LEGAL.qqFeedbackChannel}](https://pd.qq.com/g/${LEGAL.qqFeedbackChannel})`);
+      expect(body).not.toContain('{qqFeedbackChannelUrl}');
+    }
+  });
+
   // The effective-date/version stamp is emitted ONCE, programmatically — the
   // static page's `updatedLineHtml` and the in-app footer (`legal.updated`) —
   // NOT authored into the doc body (that would duplicate it). So the raw

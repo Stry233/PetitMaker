@@ -7,7 +7,7 @@
  * that a press lays those rings on a live map, climbs one rung per stage, leaves alone everything it
  * did not raise, and SAYS what the ground refused.
  *
- * The fixture is `macro-quality.test.ts`'s shape: a grass island with a sea border, so a disc near
+ * The fixture is `macro-quality.test.ts`'s shape: a grass plain with a sea border, so a disc near
  * the middle has room and the map's own edge is never the thing under test.
  */
 import { describe, expect, it } from 'vitest';

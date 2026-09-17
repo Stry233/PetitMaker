@@ -1,7 +1,7 @@
 /*
  * camera.tsx — the camera page's 3D figure: a DEMO in the 2D demos' own grammar, over a recording
  * of the real 3D renderer. One hidden scene (`canvas/map3d/capture`) photographs the visitor's
- * island along a continuous camera path walking EVERY 3D gesture the page teaches (the drag that
+ * planet along a continuous camera path walking EVERY 3D gesture the page teaches (the drag that
  * turns, the drag that tilts, the wheel's dolly, the sideways scroll that also turns, the pan) and
  * plays it back with the shipped cursor performing each gesture in lockstep: the pointer's travel
  * and the view's swing are one frame index, so hand and picture can never disagree. The gesture's
@@ -67,7 +67,7 @@ const PHASES: readonly Phase[] = [
     angle: (k) => ({ az: BASE_AZ + 55, el: BASE_EL + 26 * k, dist: BASE_DIST }),
     hand: (k) => ({ x: 0.78, y: 0.6 - 0.3 * k }),
   },
-  // Dolly: the wheel pulls the camera in and back out; the pointer stands still over the island.
+  // Dolly: the wheel pulls the camera in and back out; the pointer stands still over the map.
   {
     frames: 18, labelKey: 'help.camera.fig_dolly', tokens: wheelScroll,
     angle: (k) => ({ az: BASE_AZ + 55, el: BASE_EL + 26, dist: BASE_DIST - 0.42 * Math.sin(Math.PI * k) }),

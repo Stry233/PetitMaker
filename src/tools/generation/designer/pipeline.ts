@@ -41,19 +41,18 @@ export interface DesignedContext {
   richness: number;
   /** The map's height ceiling; the wall's plateau never passes it. */
   maxElevation?: number;
-  /** The island KIND, which is the shelf's own word for how much sea a map is: `earth` is dry land
-   *  and takes no water at all, `water` spends more of the island on it. */
+  /** The planet KIND, which is the shelf's own word for how much sea a map is: `earth` is dry land
+   *  and takes no water at all, `water` spends more of the planet on it. */
   mode?: 'earth' | 'water' | 'mixed';
   /**
-   * The painted region a run is confined to, or null for the whole island.
+   * The painted region a run is confined to, or null for the whole planet.
    *
-   * IT RESTRICTS AT COMMIT TIME AND NOWHERE ELSE, the one scope Generate and Clear share: the
-   * ISLAND is always designed whole — the
-   * regions, the wall, the network, the water story are laid out for the map — and the region then
-   * crops what actually lands. So a region receives whatever the island design put there and no
-   * more: one over the backing band legitimately comes back as mountain and nothing else, one over
-   * the town comes back as streets and beds, and one over open ground the design left open
-   * legitimately comes back empty.
+   * IT RESTRICTS AT COMMIT TIME AND NOWHERE ELSE, the one scope Generate and Clear share: the PLANET
+   * is always designed whole — the regions, the wall, the network, the water story are laid out for
+   * the map — and the region then crops what actually lands. So a region receives whatever the planet
+   * design put there and no more: one over the backing band legitimately comes back as mountain and
+   * nothing else, one over the town comes back as streets and beds, and one over open ground the
+   * design left open legitimately comes back empty.
    *
    * Designing INSIDE the region instead would make the scope a different generator rather than a
    * smaller run of the same one, and the two would disagree about the map they are on.
@@ -89,7 +88,7 @@ export interface DesignedOutcome {
    *  resolved as expected; anything else means a corridor was cleared in the wrong place. */
   rampsMisplaced: number;
   /** Court lanes whose mouth reached no pavement, so they were not laid: laying one would leave a
-   *  paved island the plaza cannot reach, which is a hard-ledger failure rather than a rough edge. */
+   *  paved pocket the plaza cannot reach, which is a hard-ledger failure rather than a rough edge. */
   lanesSkipped: string[];
   /** Anchors whose door opens onto unpaved ground once everything is down. */
   unroadedGates: { regionId: string; catalogId: string }[];
@@ -121,7 +120,7 @@ function keepClear(sculpt: TerrainSculpt, W: number, H: number): Set<number> {
   // seed a composed figure of 339 cells outweighs a 46x8 panel whose pattern stands mostly dry, and the
   // framing floor is then read round a body nothing kept clear. So the
   // biggest composed figure keeps a band of its own. ONLY the biggest: every figure ringed would take
-  // a tenth of the island's plantable ground out of the kits' hands, and the reference gathers its own
+  // a tenth of the planet's plantable ground out of the kits' hands, and the reference gathers its own
   // planting at the banks.
   const largest = sculpt.figures.reduce<typeof sculpt.figures[number] | null>(
     (big, f) => (!big || f.cells.length > big.cells.length ? f : big), null,
@@ -234,7 +233,7 @@ export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   // its mouth actually meets the frontage the road plan reached the lot with.
   const lanesSkipped: string[] = [];
   for (const lane of anchors.lanes) {
-    // A lane joins the network at its mouth or it is a paved island. Where the lot's frontage did
+    // A lane joins the network at its mouth or it is a paved pocket. Where the lot's frontage did
     // not reach the mouth, the same course a doorstep takes is run out to the streets first.
     if (!mouthPaved(place.roads, state, lane)) {
       for (const c of lane.mouth) {
@@ -258,7 +257,7 @@ export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   // difference between a signboard and a lake; and because the figure stands on a
   // high terrace, its frame is also the pavement that puts the walk above the ground floor.
   //
-  // IT IS PAVED ONLY WHERE IT CAN JOIN THE NETWORK. A ring nothing reaches is a paved island, which the
+  // IT IS PAVED ONLY WHERE IT CAN JOIN THE NETWORK. A ring nothing reaches is a paved pocket, which the
   // hard ledger reads as unreachable pavement and a visitor reads as scenery; where no course gets
   // there the frame stays the open terrace it was reserved as, which frames the figure just as well.
   // ONE CONNECTED PIECE OF IT, never the whole band: a frame cell the terrain or a lot took cuts the
@@ -329,7 +328,7 @@ export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   };
 }
 
-/** What each island kind does to the water the richness knob asked for. The kinds are named after
+/** What each planet kind does to the water the richness knob asked for. The kinds are named after
  *  this difference, so it is the whole of what they mean to the designed pipeline. */
 const WATER_SCALE: Readonly<Record<'earth' | 'water' | 'mixed', number>> = {
   earth: 0, mixed: 1, water: 1.5,
@@ -340,14 +339,14 @@ const WATER_SCALE: Readonly<Record<'earth' | 'water' | 'mixed', number>> = {
  *
  * Longer than a bridge bank's default, because a door and a street can stand a terrace apart: the
  * anti-grid stands the branch lines further out at the rich end, and a lot at the back of a block is
- * that much further from the one that serves it. The alternative is a doorstep paved as an island,
+ * that much further from the one that serves it. The alternative is a doorstep paved as an isolated patch,
  * and `paveApproach` refuses that — a lone cell no walk reaches is a tip the connectivity ledger
  * counts and a door nobody can get to.
  */
 const DOOR_REACH = 24;
 
 /** How far a course may run to reach the figure's frame. Longer than a doorstep's, because the figure
- *  stands on the emptiest ground the island has and the nearest street is a terrace away. */
+ *  stands on the emptiest ground the planet has and the nearest street is a terrace away. */
 const FRAME_REACH = 24;
 /** The shortest arc of the frame worth paving. Under two cells wide by its own depth there is no
  *  border to read, and a stub of pavement is a tip the connectivity ledger counts. */

@@ -37,7 +37,7 @@ function roadObjectsOf(world: World): PlacedObject[] {
 }
 
 /**
- * The dense island, cut: `generateDesigned` never edge-cuts its own terrain (that pass is a
+ * The dense map, cut: `generateDesigned` never edge-cuts its own terrain (that pass is a
  * stroke/stencil concern, not the designed methodology's), so the raw fixture carries zero
  * trimmed corners anywhere. A clone run through the same whole-map trim the stencil generator
  * calls (`edgeCutGeneratedTerrain`, 'round') gives the kernel a realistic, varied population of
@@ -78,9 +78,9 @@ function cutCellsOf(world: World): { x: number; y: number; terrain: TerrainCell 
 }
 
 /** The render tier `cutBackingByCorner` is asked at for a given cut cell — `patchOnly` reads its
- *  own elevation (the branch it special-cases), a ground-island cut is asked at ground (0), and a
+ *  own elevation (the branch it special-cases), a ground-islet cut is asked at ground (0), and a
  *  real mountain/water cell is asked at its structural top, exactly as `surface-pieces.ts`'s
- *  non-patch, non-island branch does. */
+ *  non-patch, non-islet branch does. */
 function renderTierFor(t: TerrainCell): number {
   if (t.patchOnly) return t.elevation;
   if (t.type === TerrainType.None) return 0;
@@ -88,7 +88,7 @@ function renderTierFor(t: TerrainCell): number {
 }
 
 describe.runIf(PERF)('perf: edge-cut', () => {
-  it('real-surface sweep over every cell of the dense island', async () => {
+  it('real-surface sweep over every cell of the dense map', async () => {
     const { state } = denseIsland();
     const { width, height } = state.template;
     await s.bench('kernel/real-surface-sweep', () => {
@@ -134,7 +134,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     });
   });
 
-  it('buildRoadRegions over every road tile of the dense island', async () => {
+  it('buildRoadRegions over every road tile of the dense map', async () => {
     const world = denseIsland();
     const roadObjs = roadObjectsOf(world);
     const roads = roadLookup(world.state);
@@ -155,7 +155,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     }, { meta: { roadTiles: roadObjs.length, regions: prev.length } });
   });
 
-  it('roadBodyPoints per road tile of the dense island', async () => {
+  it('roadBodyPoints per road tile of the dense map', async () => {
     const world = denseIsland();
     const roadObjs = roadObjectsOf(world);
     const roads = roadLookup(world.state);
@@ -164,7 +164,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     }, { meta: { roadTiles: roadObjs.length } });
   });
 
-  it('cutBackingByCorner over every cut cell of the cut dense island', async () => {
+  it('cutBackingByCorner over every cut cell of the cut dense map', async () => {
     const world = cutIsland();
     const cells = cutCellsOf(world);
     await s.bench('cut-backing/sweep', () => {

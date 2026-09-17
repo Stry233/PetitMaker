@@ -39,7 +39,7 @@ export function makeControls(camera: THREE.PerspectiveCamera, dom: HTMLElement):
  *  sweeps the horizon rather than looking down from orbit.
  *
  *  SQUARE ON, THE WAY THE 2D VIEW OPENS. The two views are one editor over one map, so switching
- *  between them must not turn the island: 2D lays out column 1 through 11 left to right and rows A
+ *  between them must not turn the planet: 2D lays out column 1 through 11 left to right and rows A
  *  through I top to bottom, and a 3D view opening on the corner between them makes a person who
  *  knew where they were find it again.
  *
@@ -56,7 +56,7 @@ export function frameBounds(camera: THREE.PerspectiveCamera, controls: OrbitCont
   controls.target.set(0, centerY, 0);
   const radius = Math.max(b.halfX, b.halfZ, 2);
   const fov = (camera.fov * Math.PI) / 180;
-  // Close framing: just enough to see the island, no big pull-back.
+  // Close framing: just enough to see the planet, no big pull-back.
   const dist = (radius / Math.tan(fov / 2)) * 1.02 + b.maxY * 0.4;
   controls.minDistance = dist * 0.10;  // close enough for detail work (readable labels)
   controls.maxDistance = dist * 1.9;

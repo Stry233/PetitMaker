@@ -57,7 +57,7 @@ describe('the candidate cache', () => {
   });
 
   /** The user's own round trip, through the shelf's OWN recipe builder: a tab left for the maze and
-   *  returned to must find the island batch standing — `shelfConfig` is pure over (kind, sliders,
+   *  returned to must find the planet batch standing — `shelfConfig` is pure over (kind, sliders,
    *  seed) and nothing else may leak into the key. */
   it('answers a tab round trip from the cache', async () => {
     const kit = kitOn();
@@ -68,16 +68,16 @@ describe('the candidate cache', () => {
     await generateCandidate(kit, { config: at('maze', 7), region: null });
     const back = await generateCandidate(kit, { config: at('island', 7), region: null });
     expect(land).not.toBeNull();
-    expect(back, 'the island batch was still in the cache').toBe(land);
+    expect(back, 'the planet batch was still in the cache').toBe(land);
   });
 
   /**
    * Landing card two after card one: candidate B was built against the EMPTY map and the live map
-   * now carries A's island — but a full run clears before it builds, and an island clears to the
+   * now carries A's planet — but a full run clears before it builds, and a planet clears to the
    * ground B was built on. So B lands as ITSELF, down to the object ids a rebuild would have minted
-   * fresh, and the island underneath costs nothing.
+   * fresh, and the planet underneath costs nothing.
    */
-  it('lands a card over another card\'s island without building it again', async () => {
+  it('lands a card over another card\'s planet without building it again', async () => {
     const kit = kitOn();
     const a = await generateCandidate(kit, { config: config(7), region: null });
     const b = await generateCandidate(kit, { config: config(8), region: null });

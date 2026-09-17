@@ -4,7 +4,7 @@ import { useT } from '../../../i18n/context';
 import { font, colors, inkTint, springs, radii, buttonMotion, cursors } from '../../design/styles';
 import { skin, windowCard, windowPill, windowTitle } from '../../design/window-skin';
 import { roleFont, TEXT_ROLES } from '../../design/text-weight';
-import { useReadableWeight } from '../../design/scale';
+import { reachableUiZoom, UI_ZOOM_MIN, useDockRef, useFitFloor, useReadableWeight, useViewportSize } from '../../design/scale';
 import { BUILD_NUMBER, brandName } from '../../../version';
 import type { Locale } from '../../../core/model/types';
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../core/model/constants';
@@ -16,13 +16,14 @@ import { Spinner } from '../../primitives/Spinner';
 import { useEditorStore } from '../../../state/store';
 import { startTour } from '../tour/use-tour';
 import { KeymapMiniature } from './keyboard/KeymapMiniature';
+import { useFullscreen } from '../../hooks/useFullscreen';
 import { helpTargetAttr } from './help/targets';
+import { visualRect } from '../../design/visual-rect';
 
 // UI-scale slider bounds — mirror the Ctrl+(+/−) shortcut exactly: the store's
 // setUiZoom clamps to [0.6, 1.8] and the shortcut bumps by 0.1, so this slider
 // shares the same clamps/step (there is only ONE persistence path — setUiZoom).
-const UI_SCALE_MIN = 0.6;
-const UI_SCALE_MAX = 1.8;
+const UI_SCALE_MIN = UI_ZOOM_MIN;
 const UI_SCALE_STEP = 0.1;
 const roundStep = (z: number) => Math.round(z / UI_SCALE_STEP) * UI_SCALE_STEP;
 
@@ -85,7 +86,7 @@ function MapOverlay({ kind, on }: { kind: 'grid' | 'chunks'; on: boolean }): Rea
   );
 }
 
-/* The quality tiles are photographs, not drawings: the SAME corner of an island captured from the
+/* The quality tiles are photographs, not drawings: the SAME corner of a map captured from the
  * app's own 3D view at each pinned profile — full carries the extra sampling and render scale,
  * lite the blocky 1x it trades them for. 'auto' shows half of each with a seam, since its meaning
  * is "whichever this device earns". */
@@ -309,17 +310,21 @@ function UiScaleSlider({ label }: { label: string }) {
   const dragging = dragZoom !== null;
   const setDrag = (v: number) => { dragRef.current = v; setDragZoom(v); };
   // What the knob/fill/bubble/specimen show — the live drag value while dragging, else the store value.
+  // The track ends at the last step this window still answers to; the saved preference may lie past it.
+  const { w: vw, h: vh } = useViewportSize();
+  const reach = reachableUiZoom(vw, vh, useDockRef(), useFitFloor());
+  const max = Math.max(UI_SCALE_MIN + UI_SCALE_STEP, roundStep(Math.floor(reach / UI_SCALE_STEP + 1e-6) * UI_SCALE_STEP));
   const shownZoom = dragZoom ?? uiZoom;
   const pct = Math.round(shownZoom * 100);
-  const ratio = (shownZoom - UI_SCALE_MIN) / (UI_SCALE_MAX - UI_SCALE_MIN);
+  const ratio = Math.min(1, (shownZoom - UI_SCALE_MIN) / (max - UI_SCALE_MIN));
   const isDefault = Math.round(uiZoom * 100) === 100;
 
   const zoomFromClientX = (clientX: number): number => {
     const el = ref.current;
     if (!el) return uiZoom;
-    const r = el.getBoundingClientRect();
+    const r = visualRect(el);
     const frac = r.width > 0 ? Math.min(1, Math.max(0, (clientX - r.left) / r.width)) : 0;
-    return roundStep(UI_SCALE_MIN + frac * (UI_SCALE_MAX - UI_SCALE_MIN));
+    return roundStep(UI_SCALE_MIN + frac * (max - UI_SCALE_MIN));
   };
   // Commit the pending drag value to the store on release (idempotent — a no-op if not dragging).
   const commitDrag = () => {
@@ -329,10 +334,10 @@ function UiScaleSlider({ label }: { label: string }) {
   };
   const onKeyDown = (e: ReactKeyboardEvent) => {
     let next: number | null = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = uiZoom + UI_SCALE_STEP;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(max, uiZoom + UI_SCALE_STEP);
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = uiZoom - UI_SCALE_STEP;
     else if (e.key === 'Home') next = UI_SCALE_MIN;
-    else if (e.key === 'End') next = UI_SCALE_MAX;
+    else if (e.key === 'End') next = max;
     if (next !== null) { e.preventDefault(); setUiZoom(roundStep(next)); }
   };
 
@@ -346,7 +351,7 @@ function UiScaleSlider({ label }: { label: string }) {
     flexShrink: 0,
   });
 
-  const tickCount = Math.round((UI_SCALE_MAX - UI_SCALE_MIN) / UI_SCALE_STEP) + 1;
+  const tickCount = Math.round((max - UI_SCALE_MIN) / UI_SCALE_STEP) + 1;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -357,7 +362,7 @@ function UiScaleSlider({ label }: { label: string }) {
         tabIndex={0}
         aria-label={label}
         aria-valuemin={Math.round(UI_SCALE_MIN * 100)}
-        aria-valuemax={Math.round(UI_SCALE_MAX * 100)}
+        aria-valuemax={Math.round(max * 100)}
         aria-valuenow={pct}
         aria-valuetext={`${pct}%`}
         onKeyDown={onKeyDown}
@@ -556,7 +561,11 @@ const keyboardFootStyle: CSSProperties = {
 };
 
 // The meta strip: what the app is (drills into About), what it can replay, what it can forget.
-const metaStyle: CSSProperties = { display: 'flex', gap: 10, alignItems: 'stretch' };
+// Wraps so the identity readout stays the longest element and the pills fall to their own row when the card is narrow.
+const metaStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'stretch' };
+
+/** The action pills as one group, so a wrap moves them together. */
+const metaPillsStyle: CSSProperties = { display: 'flex', gap: 10, alignItems: 'stretch', flex: '0 0 auto' };
 
 const readoutStyle: CSSProperties = {
   flex: 1,
@@ -619,6 +628,7 @@ export function SettingsModal({
   onClose,
 }: SettingsModalProps) {
   const t = useT();
+  const fullscreen = useFullscreen();
   const setModal = useEditorStore((s) => s.setModal);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -778,18 +788,26 @@ export function SettingsModal({
           <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
         </motion.button>
 
-        {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
-            than holding a setting. Closes Settings before starting the tour so the modal does
-            not sit on top of the overlay it just launched. */}
-        <motion.button type="button" style={metaPillStyle} onClick={() => { onClose(); startTour(); }} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
-          {t('modal.settings_tour')}
-        </motion.button>
+        <div style={metaPillsStyle}>
+          {fullscreen.available && (
+            <motion.button type="button" style={metaPillStyle} onClick={fullscreen.toggle} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+              {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
+            </motion.button>
+          )}
 
-        {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
-            answer and the card never changes shape under it. */}
-        <motion.button type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
-          {t('modal.settings_reset_btn')}
-        </motion.button>
+          {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
+              than holding a setting. Closes Settings before starting the tour so the modal does
+              not sit on top of the overlay it just launched. */}
+          <motion.button type="button" style={metaPillStyle} onClick={() => { onClose(); startTour(); }} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+            {t('modal.settings_tour')}
+          </motion.button>
+
+          {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
+              answer and the card never changes shape under it. */}
+          <motion.button type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+            {t('modal.settings_reset_btn')}
+          </motion.button>
+        </div>
       </div>
     </ModalShell>
 

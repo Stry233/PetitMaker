@@ -13,7 +13,7 @@ export type LegalConfig = {
   operatorDisplayName: string;
   privacyContactEmail: string;
   securityContactEmail: string;
-  qqFeedbackGroup: string;
+  qqFeedbackChannel: string;
 
   icpNumber: string | null;
   icpUrl: string | null;
@@ -47,9 +47,9 @@ export const LEGAL: LegalConfig = {
   productName: APP_NAME,
 
   operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
-  privacyContactEmail: 'selka.craft@outlook.com',
-  securityContactEmail: 'selka.craft@outlook.com',
-  qqFeedbackGroup: '417961435',
+  privacyContactEmail: 'petit.maker@outlook.com',
+  securityContactEmail: 'petit.maker@outlook.com',
+  qqFeedbackChannel: 'pd76247629',
 
   icpNumber: TARGET.icpNumber,
   icpUrl: TARGET.icpUrl,

@@ -1,12 +1,30 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { captureMapStills, buildSmartAngles } from '../../canvas/map3d/capture';
+import { __resetWebGL2Probe } from '../../core/runtime/device-quality';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { TerrainType, type GridState } from '../../core/model/types';
 
+vi.mock('../../canvas/map3d/scene/scene', () => ({
+  ThreeScene: class { constructor() { throw new Error('the scene cannot build here'); } },
+}));
+
 describe('captureMapStills', () => {
+  afterEach(() => { __resetWebGL2Probe(); vi.restoreAllMocks(); });
+
   it('returns [] instead of throwing when WebGL is unavailable (jsdom)', async () => {
     const urls = await captureMapStills(makeState(8, 8));
     expect(urls).toEqual([]);
+  });
+
+  /** The off-screen host the scene draws into is removed even when the scene never builds; a
+   *  failed export attempt otherwise leaves a fixed div in the document for the session. */
+  it('leaves no off-screen host behind when the scene cannot build', async () => {
+    __resetWebGL2Probe();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) => (
+      kind === 'webgl2' ? { getExtension: () => null } : null)) as never);
+    const before = document.body.childElementCount;
+    await expect(captureMapStills(makeState(8, 8))).resolves.toEqual([]);
+    expect(document.body.childElementCount).toBe(before);
   });
 });
 

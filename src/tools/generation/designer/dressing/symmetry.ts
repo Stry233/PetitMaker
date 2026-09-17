@@ -3,7 +3,7 @@
  *
  * A kit composes a place and hands the marks here; the operator reflects them about the place's own
  * axis, so what a player sees standing in one region reads as one arrangement. The axis is the
- * region's, never the map's — mirroring a 169x140 island about its middle is a symmetry nobody can
+ * region's, never the map's — mirroring a 169x140 planet about its middle is a symmetry nobody can
  * see from inside it.
  *
  * THE REFLECTION IS EXACT AND THE GROUND IS NOT. A composed rect can only be planted where the

@@ -103,3 +103,34 @@ export function maxRenderScale(): number {
   if (glQuality() === 'lite') return Math.min(dpr, 1);
   return Math.min(dpr, isLowEndDevice() ? 1.5 : 2);
 }
+
+let webgl2Probe: boolean | null = null;
+
+/**
+ * Whether this device has WebGL2 at all. three r169 is WebGL2-only, so the 3D view, its tour steps
+ * and its scene preload ask here first: without it the scene build throws and the editor lands back
+ * in 2D with a toast, which is a worse answer than never offering the view.
+ *
+ * Probed once from a throwaway context and released through WEBGL_lose_context, so the answer costs
+ * neither a live context slot nor a second probe.
+ */
+export function hasWebGL2(): boolean {
+  if (webgl2Probe !== null) return webgl2Probe;
+  let ok = false;
+  try {
+    if (typeof document !== 'undefined') {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      ok = !!gl;
+      (gl?.getExtension('WEBGL_lose_context') as { loseContext(): void } | null)?.loseContext();
+    }
+  } catch {
+    ok = false;
+  }
+  webgl2Probe = ok;
+  return ok;
+}
+
+/** Tests pin one machine per case; the probe answers once per session otherwise. */
+export function __resetWebGL2Probe(): void {
+  webgl2Probe = null;
+}

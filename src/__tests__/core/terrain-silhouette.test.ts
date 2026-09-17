@@ -140,23 +140,23 @@ describe('cornerEdgeCoverTier — the tier two flanking masses MEET at, judged b
   });
 });
 
-describe('groundConvexCornerInWater — a ground island corner poking into water (option A)', () => {
+describe('groundConvexCornerInWater — a ground islet corner poking into water (option A)', () => {
   it('true when the corner is fully WRAPPED by water (both edges AND the diagonal)', () => {
     const state = makeState(10, 10);
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) setTerrain(state, 5 + dx, 5 + dy, W, 0);
-    // (5,5) is a ground island; its BR corner (idx 3) has E + S + SE all water → a convex corner into water
+    // (5,5) is a ground islet; its BR corner (idx 3) has E + S + SE all water → a convex corner into water
     expect(groundConvexCornerInWater(state, 5, 5, 3)).toBe(true);
   });
 
-  it('false when the surrounding water is ELEVATED — a ground island only ever borders water@0', () => {
+  it('false when the surrounding water is ELEVATED — a ground islet only ever borders water@0', () => {
     const state = makeState(10, 10);
-    // water@1 ring around a ground@0 island is illegal terrain (uncapped/waterfall-onto-a-pit); don't offer
+    // water@1 ring around a ground@0 islet is illegal terrain (uncapped/waterfall-onto-a-pit); don't offer
     // the cut there (it would only be silently reverted post-stroke).
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) setTerrain(state, 5 + dx, 5 + dy, W, 1);
     expect(groundConvexCornerInWater(state, 5, 5, 3)).toBe(false);
   });
 
-  it('false for the GAP between two diagonal water cells — the diagonal is ground, not a real island', () => {
+  it('false for the GAP between two diagonal water cells — the diagonal is ground, not a real islet', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, W, 0);
     setTerrain(state, 6, 6, W, 0);
@@ -164,11 +164,11 @@ describe('groundConvexCornerInWater — a ground island corner poking into water
     expect(groundConvexCornerInWater(state, 6, 5, 2)).toBe(false);
   });
 
-  it('false at a seam between two ground island cells (one edge is ground, not water)', () => {
+  it('false at a seam between two ground islet cells (one edge is ground, not water)', () => {
     const state = makeState(10, 10);
-    // a 2-wide ground island (5,5)+(6,5), water all around
+    // a 2-wide ground islet (5,5)+(6,5), water all around
     for (const [x, y] of [[4, 5], [7, 5], [5, 4], [6, 4], [5, 6], [6, 6]] as const) setTerrain(state, x, y, W, 0);
-    // (5,5) BR(3): E(6,5)=the other island cell (ground), S(5,6)=water → not both water → not a free corner
+    // (5,5) BR(3): E(6,5)=the other islet cell (ground), S(5,6)=water → not both water → not a free corner
     expect(groundConvexCornerInWater(state, 5, 5, 3)).toBe(false);
   });
 

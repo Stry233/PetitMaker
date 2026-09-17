@@ -11,7 +11,7 @@ Please use the channels below for questions, suggestions or matters that need th
 
 ## Questions and Suggestions
 
-For questions and feedback, join the PetitMaker feedback group (谷地工坊用户反馈群) on QQ: **{qqFeedbackGroup}**. Conversations in this group are in Chinese.
+For questions and feedback, join the PetitMaker channel on QQ (谷地工坊 | 星布谷地种星人聚落): [{qqFeedbackChannel}]({qqFeedbackChannelUrl}). Conversations in this channel are in Chinese.
 
 GitHub reports are public; use email for matters you prefer to discuss privately. For a bug, describe the steps, expected result and actual result, and include the app version, browser and device. A screenshot or minimal example often helps identify the cause.
 

@@ -6,7 +6,7 @@
  * right shape for those questions and the wrong one for this: a macro that only works on the
  * fixture is a macro that works nowhere, and nothing here was measuring that.
  *
- * So this generates a real island and asks each macro at every grass cell on a grid across it, then
+ * So this generates a real planet and asks each macro at every grass cell on a grid across it, then
  * counts how often it built anything. The number is the feature's reach, and a low one is not a
  * tuning matter: aiming at ground the macro silently declines is indistinguishable, from the other
  * side of the screen, from a button that does not work.
@@ -34,7 +34,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
   const config: GenerateConfig = { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation, seed, region: null };
   exec.runSilently(() => {
     generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-    // TERRAIN ONLY: the island generator furnishes what it builds, and this fixture is
+    // TERRAIN ONLY: the planet generator furnishes what it builds, and this fixture is
     // about relief. What stands on it is the case's own subject, planted or laid below.
     clearAllObjects(state, (c: Command) => exec.execute(c));
   });
@@ -53,7 +53,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
       if (exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 }).success) stalls.push({ x, y });
     }
   }
-  expect(stalls.length, 'the island had nowhere to stand a stall').toBeGreaterThan(2);
+  expect(stalls.length, 'the planet had nowhere to stand a stall').toBeGreaterThan(2);
 
   const kit = { state, executor: exec, registry: exec.getRegistry() };
   const tried: Record<string, number> = {};
@@ -89,7 +89,7 @@ describe('a macro reaches the map a person has', () => {
    *
    * THE STREAM IS THE ONE WHOSE RATE IS THE GROUND'S, not the macro's. Its honesty rule reverts a course
    * whole where it cannot walk downhill all the way to open water, because half a stream on a hillside is
-   * worse than none: on organic relief that refuses about half of all aims, while the island generator's
+   * worse than none: on organic relief that refuses about half of all aims, while the planet generator's
    * terraced plates step down to the coast, so from nearly anywhere on them there IS a way down.
    */
   it.each(['raise', 'stream', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {

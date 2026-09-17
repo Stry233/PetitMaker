@@ -1,4 +1,4 @@
-// The composition planner: the archetype a seed draws, and the terrace plates it tiles the island
+// The composition planner: the archetype a seed draws, and the terrace plates it tiles the planet
 // with. Four promises are pinned here — every buildable cell sits on exactly one plate, a plate is
 // one connected surface, no two neighbouring plates stand more than V-MTN-03's window apart, and a
 // batch of seeds varies in archetype and in the side its mass falls on.
@@ -239,7 +239,7 @@ describe('the asked height is reached', () => {
   }
 
   it('carries mass on every full-richness seed, the flat archetype included', () => {
-    // Seed 7 can draw the low-relief archetype at full richness as a single-storey island. Low
+    // Seed 7 can draw the low-relief archetype at full richness as a single-storey planet. Low
     // relief is a SHAPE — a broad gentle rise rather than a wall — and at full richness it still
     // has to be ground worth climbing.
     for (const template of TEMPLATES) {

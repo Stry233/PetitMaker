@@ -11,7 +11,7 @@ import { useEditorStore } from '../../../state/store';
 import { colors } from '../../../ui/design/styles';
 import { useChromeScale } from '../../../ui/design/scale';
 import { __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
-import { placeBubble } from '../../../ui/chrome/tour/place-bubble';
+import { placeBubble, VIEWPORT_MARGIN } from '../../../ui/chrome/tour/place-bubble';
 import { setStoreState } from '../../_store';
 import { brandName } from '../../../version';
 
@@ -558,6 +558,48 @@ describe('TourOverlay', () => {
     const bubble = card();
     expect(bubble.style.left).toBe('50%');
     expect(bubble.style.top).toBe('50%');
+  });
+
+  it('caps the card at the viewport height so its footer stays on screen', () => {
+    let chrome = 0;
+    function ChromeProbe() { chrome = useChromeScale(); return null; }
+    startTour();
+    render(<><TourOverlay steps={TOUR_STEPS} /><ChromeProbe /></>, { wrapper });
+    const bubble = card();
+    expect(parseFloat(bubble.style.maxHeight)).toBeCloseTo((window.innerHeight - 2 * VIEWPORT_MARGIN) / chrome);
+    expect(bubble.style.overflowY).toBe('auto');
+  });
+
+  it('offers immersive mode on the welcome card for a touch device whose browser has fullscreen', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)', media: q, addEventListener() {}, removeEventListener() {} }));
+    const request = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: request });
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
+    try {
+      startTour();
+      render(<TourOverlay steps={TOUR_STEPS} />, { wrapper });
+      fireEvent.click(within(card()).getByRole('button', { name: 'Enter immersive mode' }));
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      delete (document as unknown as Record<string, unknown>).fullscreenEnabled;
+      delete (document as unknown as Record<string, unknown>).fullscreenElement;
+      delete (document.documentElement as unknown as Record<string, unknown>).requestFullscreen;
+    }
+  });
+
+  it('keeps the welcome card plain for a pointer device', () => {
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: vi.fn() });
+    try {
+      startTour();
+      render(<TourOverlay steps={TOUR_STEPS} />, { wrapper });
+      expect(within(card()).queryByRole('button', { name: 'Enter immersive mode' })).toBeNull();
+    } finally {
+      delete (document as unknown as Record<string, unknown>).fullscreenEnabled;
+      delete (document.documentElement as unknown as Record<string, unknown>).requestFullscreen;
+    }
   });
 
   it('a targetless step is showing on the first commit, without waiting on a measurement', () => {

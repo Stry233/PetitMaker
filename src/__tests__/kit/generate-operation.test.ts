@@ -18,9 +18,9 @@ const config = (seed: number): GenerateConfig => ({
   richness: 1,
 });
 
-/** A square over the TOWN — the ground around hexia's plaza, which every island design builds on,
+/** A square over the TOWN — the ground around hexia's plaza, which every planet design builds on,
  *  so a scoped run reliably drops both pavement and planting there AND leaves at least one cell free
- *  for a hand placement. A region over open outskirts legitimately comes back bare: the island is
+ *  for a hand placement. A region over open outskirts legitimately comes back bare: the planet is
  *  designed whole and the commands are cropped, so a region only receives what the design put in it. */
 function denseRegion(): MacroCoord[] {
   const region: MacroCoord[] = [];
@@ -198,15 +198,15 @@ describe('generate operation', () => {
   }, 90_000);
 
   /**
-   * A CARD LANDED OVER ANOTHER CARD'S ISLAND IS STILL ITS OWN RUN ARRIVING, because a full run
-   * clears before it builds and an island clears to the same ground a blank map does. What the
+   * A CARD LANDED OVER ANOTHER CARD'S PLANET IS STILL ITS OWN RUN ARRIVING, because a full run
+   * clears before it builds and a planet clears to the same ground a blank map does. What the
    * candidate was photographed on is not the map underneath, it is the map after that clearing.
    *
    * And each click is still its own undo step. Undoing the previous apply before landing another
    * card is the other way to make the replay run — it puts the candidate's base map back — but it
-   * costs the history: one entry and one redo however many islands have been looked at.
+   * costs the history: one entry and one redo however many planets have been looked at.
    */
-  it('lands a second card over the first island without building it again', async () => {
+  it('lands a second card over the first planet without building it again', async () => {
     const kit = currentKit()!;
     const first = await generateCandidate(kit, { config: config(2718), region: null });
     const second = await generateCandidate(kit, { config: config(2719), region: null });
@@ -215,9 +215,9 @@ describe('generate operation', () => {
     const landedFirst = mapOnly(kit.state);
     await generateMap(kit, { config: config(2719), region: null, candidate: second });
 
-    // The card's own run arrived, over an island, without being built a second time.
+    // The card's own run arrived, over a planet, without being built a second time.
     expect(withIds(kit.state)).toBe(withIds(second!.state));
-    // A second island, not the first one left standing.
+    // A second planet, not the first one left standing.
     expect(mapOnly(kit.state)).not.toBe(landedFirst);
     expect(kit.executor.getUndoStackSize()).toBe(2);
 

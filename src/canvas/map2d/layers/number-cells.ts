@@ -2,7 +2,7 @@
  * The pure plan for one chunk of the layer-number overlay: which cells inside
  * the chunk show which elevation label. The raster painter stays a thin canvas
  * loop over this; the masking rules (object footprints, hidden layers, ground
- * island cells) live here where they can be unit-tested.
+ * islet cells) live here where they can be unit-tested.
  */
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { CHUNK_SIZE } from '../../../core/model/constants';

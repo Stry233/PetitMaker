@@ -45,10 +45,10 @@ export interface ProcFields {
   elevation: Uint8Array;
   /** 1 where the cell reads as water: a water tile, or template ocean. */
   water: Uint8Array;
-  /** 1 where the cell is not water. The island, including its beach ring. */
+  /** 1 where the cell is not water. The planet, including its beach ring. */
   land: Uint8Array;
   /** 1 on the template's beach ring. Identical on every map of a template, so a pack should
-   *  usually ABSORB it as a mount or margin rather than draw it as a feature of this island. */
+   *  usually ABSORB it as a mount or margin rather than draw it as a feature of this planet. */
   beach: Uint8Array;
   /** 1 under a path, bridge or ramp footprint. */
   road: Uint8Array;
@@ -147,7 +147,7 @@ export function buildProcFields(state: GridState, seed: number, locale = 'en'): 
       const t = cell?.terrain ?? null;
       const type = t?.type ?? TerrainType.None;
       terrain[i] = type;
-      // Zone Void is the template's ocean; a Water tile is a pond or lake cut into the island.
+      // Zone Void is the template's ocean; a Water tile is a pond or lake cut into the planet.
       const isWater = type === TerrainType.Water || z === CellZone.Void;
       water[i] = isWater ? 1 : 0;
       land[i] = isWater ? 0 : 1;
@@ -211,7 +211,7 @@ export function buildProcFields(state: GridState, seed: number, locale = 'en'): 
 }
 
 /** The solid mask at one elevation tier: every cell standing at or above `tier`. Tier 0 is the
- *  island itself. On a flat map only tier 0 is non-empty, which is what makes an elevation-driven
+ *  planet itself. On a flat map only tier 0 is non-empty, which is what makes an elevation-driven
  *  pack draw nothing there. */
 export function elevationMask(f: ProcFields, tier: number): Uint8Array {
   const m = new Uint8Array(f.width * f.height);
