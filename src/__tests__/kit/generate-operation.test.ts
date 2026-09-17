@@ -13,9 +13,10 @@ import { stableSerialize } from './_stable-serialize';
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { GenerateConfig, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 
-// A full island generation is seconds of work and this file runs 21 of them, several as a pair whose
-// POINT is that both runs produce identical bytes. The default 5s budget covers one on an idle
-// machine and not two on a loaded one, so it is stated rather than inherited.
+// A full island generation is the expensive operation in this file and it runs 21 of them, several
+// as a pair whose POINT is that both runs produce identical bytes. Measured: one case here takes
+// 584ms-1246ms on an idle machine, so it is a pair on a loaded worker that passes the default 5s
+// rather than a single run. 60s is the budget the repository's other generation suites already use.
 vi.setConfig({ testTimeout: 60_000 });
 
 const config = (seed: number): GenerateConfig => ({

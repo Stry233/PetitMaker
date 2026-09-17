@@ -31,21 +31,28 @@ it('bounds concatenated gzip members and preserves output limits', async () => {
   // Our own decoder refuses multi-member input outright.
   expect(() => decompress(pair, CompressionMethod.Gzip, limits.maxBytes)).toThrow();
 
-  // The PLATFORM stream's multi-member behaviour is runtime-specific: browsers reject the trailing
-  // member, while Node's zlib-backed stream accepts it — which RFC 1952 permits, since a gzip file
-  // is a sequence of members. The invariant that must hold on every runtime is the OUTPUT CAP: a
-  // payload whose expansion passes the caller's limit is refused rather than buffered, whether the
-  // stream errored or the cap caught it.
-  const tight = { maxBytes: bytes.length * 2 - 1, maxRatio: 10000 };
-  await expect(inflate(pair, CompressionMethod.Gzip, tight)).rejects.toThrow();
+  // The PLATFORM decoder answers differently per runtime, and both answers are legal: RFC 1952 makes
+  // a gzip file a SEQUENCE of members, so Node's zlib-backed stream reads the whole sequence and
+  // returns both members (measured: Node 22.23.1 returns 2x the payload), while the browser's stream
+  // stops at the first member and errors on the trailing bytes. This suite runs under Node, so that
+  // is the expectation pinned here — and the block below drives the no-platform path, which is the
+  // one a browser without Compression Streams takes, and pins its answer too.
+  const both = await inflate(pair, CompressionMethod.Gzip, limits);
+  expect(both.length).toBe(bytes.length * 2);
+  expect(both.subarray(0, bytes.length)).toEqual(bytes);
+  expect(both.subarray(bytes.length)).toEqual(bytes);
 
-  // Under a cap the payload fits into, a runtime that accepts concatenation returns exactly the two
-  // members and one that refuses resolves nothing — never a partial or unbounded buffer.
-  const settled = await inflate(pair, CompressionMethod.Gzip, limits).then(
-    (value) => value.length,
-    () => -1,
-  );
-  expect([-1, bytes.length * 2]).toContain(settled);
+  // No platform streams: the fallback decoder answers, and it must refuse rather than hand back a
+  // partial buffer.
+  vi.stubGlobal('CompressionStream', undefined);
+  vi.stubGlobal('DecompressionStream', undefined);
+  await expect(inflate(pair, CompressionMethod.Gzip, limits)).rejects.toThrow();
+  vi.unstubAllGlobals();
+
+  // A payload whose expansion passes the caller's cap is refused instead of buffered. One member
+  // large enough to trip it, so the check holds on either path.
+  const oversized = compress(new Uint8Array(limits.maxBytes + 1), CompressionMethod.Gzip);
+  await expect(inflate(oversized, CompressionMethod.Gzip, limits)).rejects.toThrow();
 
   // The single-member path is unaffected, and the absolute limit still trips.
   expect(() => decompress(packed, CompressionMethod.Gzip, 100)).toThrow('safety limit');

@@ -639,7 +639,9 @@ describe('the exits', () => {
     await settle();
     // `settle` runs a FIXED number of turns, so on a loaded machine it can finish before this chain
     // of awaited probes has taken the zone; wait for the handover itself, which is what the
-    // assertion is about.
+    // assertion is about. Measured: this case takes ~2.3s on an idle machine, so the fixed turn
+    // count is already near the wall before any load, and 20s matches the waits this repository's
+    // other UI suites use.
     await waitFor(
       () => expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull(),
       { timeout: 20_000 },

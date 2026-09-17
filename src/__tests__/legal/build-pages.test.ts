@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:os is untyped here (no @types/node)
 import { tmpdir } from 'node:os';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 // @ts-ignore
-declare const process: { cwd(): string; env: Record<string, string | undefined> };
+declare const process: { cwd(): string; chdir(dir: string): void; env: Record<string, string | undefined> };
 
 import type { LegalConfig } from '../../legal/config';
 import { LEGAL } from '../../legal/config';
@@ -25,6 +25,13 @@ import {
   writeAll,
   resolveMode,
 } from '../../../scripts/legal-pages-core.mts';
+
+// `writeAll` genuinely drives the license copy (`licenses/`, 185 files), which these tests never
+// used to reach — the synchronous recursive copy aborted the worker before it got there. The
+// complete-tree check measures ~1.4s on an idle machine; the budget is stated rather than inherited
+// because that copy is real file I/O competing with every other file in a parallel run, and 60s is
+// the value this repository's other heavy suites already use.
+vi.setConfig({ testTimeout: 60_000 });
 
 // The static legal-page generator (crawlable zero-JS pages +
 // sitemap/robots/security.txt).
@@ -222,11 +229,6 @@ describe('securityTxt', () => {
 describe('writeAll', () => {
   let dir: string;
 
-  // These tests genuinely copy `licenses/` (185 files) through `writeAll` — which they never used to
-  // reach, because the synchronous recursive copy aborted the worker first. That is real I/O now, and
-  // the default 5s is not enough for it while the rest of the suite runs in parallel.
-  const COPY_TIMEOUT_MS = 60_000;
-
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'legal-pages-test-'));
   });
@@ -254,7 +256,7 @@ describe('writeAll', () => {
 
     const robots = readFileSync(join(dir, 'robots.txt'), 'utf8');
     expect(robots).toContain('Sitemap: https://example.org/sitemap.xml');
-  }, COPY_TIMEOUT_MS);
+  });
 
   it('every emitted page file is present for every DocId per pagePlan', async () => {
     const cfg = fixtureCfg();
@@ -263,28 +265,72 @@ describe('writeAll', () => {
       const file = join(dir, ...page.path.split('/').filter(Boolean), 'index.html');
       expect(existsSync(file), `${page.path}/index.html missing`).toBe(true);
     }
-  }, COPY_TIMEOUT_MS);
+  });
 
-  it('copies licenses/ through', async () => {
+  /** Every file under `root`, as slash-joined relative paths, sorted — what "the copy is complete"
+   *  means, as opposed to "the destination exists". */
+  function filesUnder(root: string, prefix = ''): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) out.push(...filesUnder(join(root, entry.name), rel));
+      else out.push(rel);
+    }
+    return out.sort();
+  }
+
+  it('copies licenses/ through, in full', async () => {
     const cfg = fixtureCfg();
     await writeAll(dir, cfg, 'dev', new Date('2026-07-15T00:00:00.000Z'));
     expect(existsSync(join(dir, 'licenses'))).toBe(true);
-    const copied = readdirSync(join(dir, 'licenses'));
-    expect(copied.length).toBeGreaterThan(0);
-  }, COPY_TIMEOUT_MS);
+    // The same tree with the same bytes, not just a non-empty directory.
+    const source = join(process.cwd(), 'licenses');
+    const relative = filesUnder(source);
+    expect(relative.length).toBeGreaterThan(0);
+    expect(filesUnder(join(dir, 'licenses'))).toEqual(relative);
+    for (const rel of relative) {
+      expect(readFileSync(join(dir, 'licenses', rel)), rel).toEqual(readFileSync(join(source, rel)));
+    }
+  });
+
+  it('copies licenses/ completely when the checkout path is not ASCII', async () => {
+    // The synchronous recursive copy this used to run ABORTS the process (0xC0000409) on Windows
+    // when the SOURCE path holds a non-ASCII character, so `npm run build` from a checkout under
+    // e.g. `E:\项目\...` exited non-zero with an empty `dist/licenses` and no error message. The
+    // copy below is driven from a non-ASCII working directory, which is the condition; the
+    // assertions are about the complete result — same tree, same bytes — rather than that the call
+    // returned. Windows + Node 24 in CI runs this, as does any local checkout under such a path.
+    const root = mkdtempSync(join(tmpdir(), 'legal-pages-nonascii-'));
+    const checkout = join(root, '项目', 'petit-星布谷地');
+    const src = join(checkout, 'licenses');
+    mkdirSync(join(src, 'nested'), { recursive: true });
+    writeFileSync(join(src, 'MIT.txt'), 'MIT — 麻省理工');
+    writeFileSync(join(src, 'nested', 'Apache-2.0.txt'), 'Apache-2.0');
+    const cwd = process.cwd();
+    try {
+      process.chdir(checkout); // writeAll resolves the license source against the working directory
+      await writeAll(dir, fixtureCfg(), 'dev', new Date('2026-07-15T00:00:00.000Z'));
+    } finally {
+      process.chdir(cwd); // restored before the temp tree goes, so nothing holds it open
+      rmSync(root, { recursive: true, force: true });
+    }
+    expect(filesUnder(join(dir, 'licenses'))).toEqual(['MIT.txt', 'nested/Apache-2.0.txt']);
+    expect(readFileSync(join(dir, 'licenses', 'MIT.txt'), 'utf8')).toBe('MIT — 麻省理工');
+    expect(readFileSync(join(dir, 'licenses', 'nested', 'Apache-2.0.txt'), 'utf8')).toBe('Apache-2.0');
+  });
 
   it('release mode throws when cfg is invalid (validateLegalConfig problems)', async () => {
     const invalid = fixtureCfg({ canonicalOrigin: '' });
     await expect(writeAll(dir, invalid, 'release')).rejects.toThrow();
-  }, COPY_TIMEOUT_MS);
+  });
 
   it('release mode builds the real LEGAL config cleanly', async () => {
     await expect(writeAll(dir, LEGAL, 'release', new Date('2026-07-15T00:00:00.000Z'))).resolves.toBeUndefined();
-  }, COPY_TIMEOUT_MS);
+  });
 
   it('dev mode does NOT throw against the real LEGAL config (warnings only)', async () => {
     await expect(writeAll(dir, LEGAL, 'dev', new Date('2026-07-15T00:00:00.000Z'))).resolves.toBeUndefined();
-  }, COPY_TIMEOUT_MS);
+  });
 
   it('release mode builds a release-valid fixture cleanly, no token deferred', async () => {
     // No token is deferred: the deployment facts are authored directly into
@@ -292,7 +338,7 @@ describe('writeAll', () => {
     // so writeAll must NOT throw in release mode.
     const cfg = fixtureCfg();
     await expect(writeAll(dir, cfg, 'release')).resolves.toBeUndefined();
-  }, COPY_TIMEOUT_MS);
+  });
 
   it('the retired {deployment-facts} token appears on no privacy page', () => {
     const cfg = fixtureCfg();
