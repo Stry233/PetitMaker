@@ -40,3 +40,16 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     value: () => null,
   });
 }
+
+// Every locale's interface table, installed before any test runs, so a test that renders in French
+// reads French without fetching anything. It goes in through `registerBaseStrings` — the layer a
+// locale's own table occupies at runtime — so the lookup path under test is the one that ships.
+//
+// Loaded dynamically, and awaited: a static import would be evaluated before the storage stub above
+// (ESM imports run first, and the store reads localStorage as it loads), and an un-awaited one would
+// let tests start before the tables are in.
+const [{ registerBaseStrings }, { translations }] = await Promise.all([
+  import('./src/i18n/context'),
+  import('./src/i18n/translations'),
+]);
+registerBaseStrings(translations);

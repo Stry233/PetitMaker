@@ -143,6 +143,7 @@ export const id: Record<string, string> = {
   'planet.start_over_hint': 'Semua yang Anda bangun di planet ini akan dihapus dan tidak dapat dibatalkan.',
   'modal.settings_title': 'Pengaturan',
   'modal.settings_language': 'Bahasa',
+  'modal.settings_language_failed': 'Gagal memuat bahasa itu — pilih lagi untuk mencoba ulang.',
   'modal.settings_ui_scale': 'Skala UI',
   'modal.settings_grid': 'Garis kisi',
   'modal.settings_chunks': 'Batas chunk',

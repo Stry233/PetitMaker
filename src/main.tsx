@@ -10,6 +10,7 @@ import { publishCursorPreference } from './ui/design/cursors/cursor-vars';
 import { showToast } from './core/runtime/toast-bus';
 import { translate } from './i18n/context';
 import { useEditorStore } from './state/store';
+import { ensureLocaleStrings } from './i18n/locales';
 import { preloadScene3D } from './canvas/map3d/preload';
 
 // A chunk whose preload fails never reaches the boundary around its lazy site, because nothing
@@ -35,8 +36,16 @@ printConsoleBanner();
 
 document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 
-createRoot(document.getElementById('root')!).render(
+const FIRST_FRAME_WAIT_MS = 150;
+const mount = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+// A non-English session has one small fetch here for its interface table. Waiting for it keeps the
+// first frame from being a flash of English, but only up to a deadline: a fetch that never settles
+// still paints, and the table re-renders the interface when it lands (see i18n/context.tsx).
+void Promise.race([
+  ensureLocaleStrings(useEditorStore.getState().locale).catch(() => {}),
+  new Promise<void>((resolve) => { setTimeout(resolve, FIRST_FRAME_WAIT_MS); }),
+]).then(mount);

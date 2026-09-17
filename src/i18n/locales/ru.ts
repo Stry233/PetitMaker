@@ -143,6 +143,7 @@ export const ru: Record<string, string> = {
   'planet.start_over_hint': 'Всё построенное на этой планете будет удалено, и отменить это нельзя.',
   'modal.settings_title': 'Настройки',
   'modal.settings_language': 'Язык',
+  'modal.settings_language_failed': 'Не удалось загрузить этот язык — выберите его снова, чтобы повторить.',
   'modal.settings_ui_scale': 'Масштаб интерфейса',
   'modal.settings_grid': 'Сетка',
   'modal.settings_chunks': 'Границы чанков',

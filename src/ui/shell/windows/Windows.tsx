@@ -14,6 +14,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
 import { announceArrival } from '../../../core/runtime/arrival-bus';
+import { useLocaleSwitch } from './use-locale-switch';
 import { currentKit } from '../../../kit/context';
 import type { TransferCounts } from '../../../kit/operations';
 import { newMap, transferMap } from '../../../kit/operations';
@@ -117,7 +118,9 @@ export function Windows() {
   const helpMounted = helpEver.current;
 
   const locale = useEditorStore((s) => s.locale);
-  const setLocale = useEditorStore((s) => s.setLocale);
+  // A language whose table is a separate chunk is fetched before the preference is committed; see
+  // `use-locale-switch.ts` for the ordering rule and the failure path.
+  const changeLocale = useLocaleSwitch();
   const showGrid = useEditorStore((s) => s.showGrid);
   const setShowGrid = useEditorStore((s) => s.setShowGrid);
   const showChunkBounds = useEditorStore((s) => s.showChunkBounds);
@@ -167,7 +170,7 @@ export function Windows() {
         motionPref={motionPref}
         systemCursors={systemCursors}
         quality3d={quality3d}
-        onLocaleChange={setLocale}
+        onLocaleChange={changeLocale}
         onShowGridChange={setShowGrid}
         onShowChunksChange={setShowChunkBounds}
         onMotionPrefChange={setMotionPref}

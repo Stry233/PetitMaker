@@ -143,6 +143,7 @@ export const en: Record<string, string> = {
   'planet.start_over_hint': 'This clears everything you have built, and cannot be undone.',
   'modal.settings_title': 'Settings',
   'modal.settings_language': 'Language',
+  'modal.settings_language_failed': 'Could not load that language — pick it again to retry.',
   'modal.settings_ui_scale': 'UI scale',
   'modal.settings_grid': 'Grid lines',
   'modal.settings_chunks': 'Chunk bounds',

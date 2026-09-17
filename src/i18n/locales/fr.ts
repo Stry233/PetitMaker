@@ -143,6 +143,7 @@ export const fr: Record<string, string> = {
   'planet.start_over_hint': 'Tout ce que vous avez construit ici sera supprimé, et cette action est irréversible.',
   'modal.settings_title': 'Paramètres',
   'modal.settings_language': 'Langue',
+  'modal.settings_language_failed': 'Impossible de charger cette langue — sélectionnez-la à nouveau pour réessayer.',
   'modal.settings_ui_scale': 'Échelle de l’interface',
   'modal.settings_grid': 'Grille',
   'modal.settings_chunks': 'Limites de chunk',

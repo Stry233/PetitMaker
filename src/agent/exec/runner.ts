@@ -36,7 +36,7 @@ import { regionBounds } from '../tools/tools-common';
 import { createExecutor, wireSchemas, type DelegateOpts } from './executor';
 import { reviewText, ReviewWorkerLease } from '../../io/moderation/text/reviewer';
 import { translateFor } from '../../i18n/context';
-import { translations } from '../../i18n/translations';
+import { isLocale } from '../../i18n/locales';
 
 /** Same default `runJob` itself falls back to when `contextWindow` is omitted; kept explicit here
  *  since `budgetTokens` (unlike `contextWindow`) has no built-in fallback. */
@@ -132,8 +132,9 @@ async function orderRefused(text: string): Promise<boolean> {
 }
 
 function refusalText(uiLocale: string | undefined): string {
-  const locale = uiLocale !== undefined && uiLocale in translations ? uiLocale as keyof typeof translations : 'en';
-  return translateFor(locale, 'agent.refusal.content');
+  // An absent or unrecognised tag falls back to English, which is also where `translateFor` lands
+  // for a key the locale is missing.
+  return translateFor(uiLocale !== undefined && isLocale(uiLocale) ? uiLocale : 'en', 'agent.refusal.content');
 }
 
 export function createRunner(cfg: RunnerConfig): {

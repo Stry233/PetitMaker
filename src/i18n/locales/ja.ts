@@ -143,6 +143,7 @@ export const ja: Record<string, string> = {
   'planet.start_over_hint': 'この星に建てたものはすべて消え、取り消せません。',
   'modal.settings_title': '設定',
   'modal.settings_language': '言語',
+  'modal.settings_language_failed': 'その言語を読み込めませんでした — もう一度選ぶと再試行します。',
   'modal.settings_ui_scale': 'UIスケール',
   'modal.settings_grid': 'グリッド線',
   'modal.settings_chunks': 'チャンク境界',

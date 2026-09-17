@@ -447,16 +447,14 @@ function UiScaleSlider({ label }: { label: string }) {
 
 // Language pills — native endonyms so each is recognizable in its own script,
 // all seven visible at once. Order matches the translation source spreadsheet
-// (zh first).
-const LOCALES: { code: Locale; label: string }[] = [
-  { code: 'zh', label: '中文' },
-  { code: 'en', label: 'English' },
-  { code: 'ja', label: '日本語' },
-  { code: 'ru', label: 'Русский' },
-  { code: 'th', label: 'ไทย' },
-  { code: 'id', label: 'Indonesia' },
-  { code: 'fr', label: 'Français' },
-];
+// (zh first). The LABELS are the only thing here that is not derivable: `Record<Locale, string>`
+// makes a locale whose table exists but whose pill was forgotten a compile error, rather than a
+// language a reader can be in but cannot pick.
+const LOCALE_LABELS: Record<Locale, string> = {
+  zh: '中文', en: 'English', ja: '日本語', ru: 'Русский', th: 'ไทย', id: 'Indonesia', fr: 'Français',
+};
+const LOCALES: { code: Locale; label: string }[] = (['zh', 'en', 'ja', 'ru', 'th', 'id', 'fr'] as const)
+  .map((code) => ({ code, label: LOCALE_LABELS[code] }));
 
 export interface SettingsModalProps {
   /** Drives the shared `ModalShell` open/close choreography. Defaults to `true`
