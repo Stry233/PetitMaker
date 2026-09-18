@@ -33,9 +33,9 @@ beforeEach(() => { setCores(8); });
 afterEach(() => { setGlQualityOverride(null); setDpr(1); setCores(8); });
 
 describe('the scene sets its pixel ratio from one source', () => {
-  it('every setPixelRatio call passes maxRenderScale() and nothing else', () => {
+  it('boot and resize obtain the same surface-aware cap', () => {
     const calls = SOURCE.match(/setPixelRatio\(.*/g) ?? [];
-    expect(calls).toEqual(['setPixelRatio(maxRenderScale());', 'setPixelRatio(maxRenderScale());']);
+    expect(calls).toEqual(Array(2).fill('setPixelRatio(maxRenderScale({ width: w, height: h, budgetScale: this.budgetScale }));'));
   });
 
   it('the MSAA target sizes itself off the renderer, not off a second read of the cap', () => {

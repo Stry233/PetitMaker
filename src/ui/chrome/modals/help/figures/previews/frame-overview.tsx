@@ -1,3 +1,4 @@
+import { viewportRect } from '../../../../../../core/runtime/viewport-space';
 /*
  * frame-overview.tsx — the interface at a glance IS the interface.
  *
@@ -79,13 +80,13 @@ function useMapBackdrop(aspect: number): string | null {
  *  window's), so the answer holds under any ancestor zoom: the figure's own scale, the chrome
  *  scale the Help window rides, and the user's UI zoom all cancel out. */
 export function measureBox(root: HTMLElement, selectors: readonly string[], winW: number, padPx: number): Box | null {
-  const rootRect = root.getBoundingClientRect();
+  const rootRect = viewportRect(root);
   if (rootRect.width <= 0) return null;
   const zoom = rootRect.width / winW;
   const boxes: Box[] = [];
   for (const selector of selectors) {
     for (const el of root.querySelectorAll(selector)) {
-      const r = el.getBoundingClientRect();
+      const r = viewportRect(el);
       if (r.width <= 0 || r.height <= 0) continue;
       boxes.push({ x: (r.left - rootRect.left) / zoom, y: (r.top - rootRect.top) / zoom, w: r.width / zoom, h: r.height / zoom });
     }
@@ -101,13 +102,13 @@ export function measureBox(root: HTMLElement, selectors: readonly string[], winW
 /** A point in the same shell-pixel space `measureBox` answers in: the first present anchor's
  *  centre. */
 function measurePoint(root: HTMLElement, selectors: readonly string[], winW: number): { x: number; y: number } | null {
-  const rootRect = root.getBoundingClientRect();
+  const rootRect = viewportRect(root);
   if (rootRect.width <= 0) return null;
   const zoom = rootRect.width / winW;
   for (const selector of selectors) {
     const el = root.querySelector(selector);
     if (!el) continue;
-    const r = el.getBoundingClientRect();
+    const r = viewportRect(el);
     if (r.width <= 0 || r.height <= 0) continue;
     return { x: (r.left + r.width / 2 - rootRect.left) / zoom, y: (r.top + r.height / 2 - rootRect.top) / zoom };
   }

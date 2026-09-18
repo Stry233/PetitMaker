@@ -1,6 +1,12 @@
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
-import { CommandType, TerrainType, type Command, type GridState, type MacroCoord } from '../../core/model/types';
+import { CommandType, TerrainType, type Command, type GridState, type MacroCoord, type TerrainCell } from '../../core/model/types';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
+
+function sameTerrain(a: TerrainCell | null, b: TerrainCell | null): boolean {
+  return a === b || !!a && !!b && a.type === b.type && a.elevation === b.elevation
+    && !!a.patchOnly === !!b.patchOnly && a.patchBase === b.patchBase
+    && JSON.stringify(a.corners) === JSON.stringify(b.corners);
+}
 
 /** Restore the pre-gesture map through commands, inside the adjustment's own undo entry. */
 export function restoreMacroCommands(current: GridState, baseline: GridState): Command[] {
@@ -19,19 +25,21 @@ export function restoreMacroCommands(current: GridState, baseline: GridState): C
   };
   for (let y = 0; y < baseline.template.height; y++) for (let x = 0; x < baseline.template.width; x++) {
     const target = baseline.cells[y]![x]!.terrain, standing = current.cells[y]![x]!.terrain;
-    if (JSON.stringify(target) === JSON.stringify(standing)) continue;
+    if (sameTerrain(target, standing)) continue;
     const c = { x, y };
-    if (!target || target.patchOnly) erase.push(c);
-    else {
+    const sameBody = target && standing && target.type === standing.type && target.elevation === standing.elevation
+      && !target.patchOnly && !standing.patchOnly;
+    if (!target || target.type === TerrainType.None) erase.push(c);
+    else if (!target.patchOnly && !sameBody) {
       const from = surfaceElevation(standing);
       for (let e = Math.min(from + 1, target.elevation); e <= target.elevation; e++) {
         if (e === target.elevation && target.type === TerrainType.Water) group(water, e, c);
         else group(mountains, e, c);
       }
     }
-    if (target?.corners || target?.patchOnly) corners.push({
+    if (target && (target.corners || target.patchOnly || sameBody && standing?.corners)) corners.push({
       type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
-      beforeCorners: standing?.corners, afterCorners: target.corners ?? ['square', 'square', 'square', 'square'],
+      beforeCorners: standing?.corners, afterCorners: target.corners ? [...target.corners] : ['square', 'square', 'square', 'square'],
       patchOnly: target.patchOnly, terrainType: target.type, elevation: target.elevation, patchBase: target.patchBase,
     });
   }

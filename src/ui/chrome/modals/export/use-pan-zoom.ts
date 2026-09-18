@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../../core/runtime/viewport-space';
 /*
  * use-pan-zoom.ts — the one picture-stage interaction: drag to pan (pointer-captured for the whole
  * drag), wheel to zoom in steps, double-click to reset, with a transient reset hint that appears
@@ -65,8 +66,8 @@ export function usePanZoom(): PanZoom {
     dragging: () => drag.current !== null,
     stageProps: {
       onWheel: (e) => { const f = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP; setView((v) => ({ ...v, scale: clamp(v.scale * f, SCALE_MIN, SCALE_MAX) })); noteInteraction(); },
-      onPointerDown: (e) => { drag.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; (e.currentTarget as Element).setPointerCapture?.(e.pointerId); },
-      onPointerMove: (e) => { const d = drag.current; if (!d) return; setView((v) => ({ ...v, tx: d.tx + (e.clientX - d.x), ty: d.ty + (e.clientY - d.y) })); noteInteraction(); },
+      onPointerDown: (e) => { drag.current = { x: clientPoint(e).x, y: clientPoint(e).y, tx: view.tx, ty: view.ty }; (e.currentTarget as Element).setPointerCapture?.(e.pointerId); },
+      onPointerMove: (e) => { const d = drag.current; if (!d) return; setView((v) => ({ ...v, tx: d.tx + (clientPoint(e).x - d.x), ty: d.ty + (clientPoint(e).y - d.y) })); noteInteraction(); },
       onPointerUp: () => { drag.current = null; },
       onPointerLeave: () => { drag.current = null; },
       onDoubleClick: reset,

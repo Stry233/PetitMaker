@@ -1,10 +1,4 @@
-/*
- * BrushSizeSlider.tsx — how many cells wide the brush lays, 1 to 5.
- *
- * Five stops, not the three dots the design source drew: those are tick marks in the drawing, and
- * the brush has always taken 1..5. Here the stops and the marks happen to line up, so it draws one
- * mark per stop.
- */
+/** Brush width in cells, with one tick per available size. */
 import { useT } from '../../../i18n/context';
 import { BarSlider } from './BarSlider';
 import { BRUSH } from './terrain-cells';
@@ -17,8 +11,6 @@ import tick from '../../../assets/shell/shelf-mountain/brush-size/ticks/ellipse-
 export function BrushSizeSlider({ value, onChange, disabled }: {
   value: number;
   onChange: (v: number) => void;
-  /** The armed tool lays a figure of its own size — a rectangle, a circle — or lays nothing, so
-   *  there is no width for this to set. It stays on the row and refuses. */
   disabled?: boolean;
 }) {
   const t = useT();

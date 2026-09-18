@@ -1,12 +1,4 @@
-/*
- * strips.tsx — the slices of real interface a demo figure stands beside.
- *
- * A scene that talks about the toolbar or the shelf shows the REAL cells and cards, inert: the
- * toolbar strip is the bar's own `TerrainRow` (real glyphs, real plates, live keybinding badges,
- * live auto-trim/eraser-shape chips) with the scene's tool posed, and the shelf strip is a row of
- * real `ItemCard`s standing on the shelf's own `ShelfBand`, for the pieces the scene places. Both
- * render under `pointer-events: none` + `inert` so nothing arms.
- */
+/** Inert previews reuse the editor controls and shelf cards. */
 import type { HTMLAttributes } from 'react';
 import { PreviewFrame } from './PreviewFrame';
 import type { BuildShape, BuildTool } from '../../../../../../core/model/edit-mode';
@@ -16,9 +8,7 @@ import { useEditorStore } from '../../../../../../state/store';
 import { ScaleProvider } from '../../../../../design/scale';
 import { PLATE_BAND, QUAD, SHELF_SCALE } from '../../../../../shell/units';
 import { ObjectShelf, ShelfBand } from '../../../../../shell/bars/ObjectShelf';
-import { SettingChip } from '../../../../../shell/bars/SettingChip';
-import { EC_STATE_KEY, edgeCutGlyph } from '../../../../../shell/bars/edge-cut-glyph';
-import { useT } from '../../../../../../i18n/context';
+import { AutoTrim } from '../../../../../shell/bars/AutoTrim';
 import { TerrainRow } from '../../../../../shell/bars/TerrainBar';
 import { TOOL_CELLS, type TerrainSurface } from '../../../../../shell/bars/terrain-cells';
 import { ItemCard, SmartCard } from '../../../../../shell/bars/ItemCard';
@@ -131,28 +121,7 @@ export function ObjectShelfPreview() {
   );
 }
 
-/* ── the auto-trim chip's three faces, side by side ───────────────────────── */
-
-/** The chip that rides the brush cell, posed at each of its three states: the same glyph table
- *  and state words the live chip cycles through. */
+/** The three corner profiles share one selector. */
 export function AutoTrimModesPreview() {
-  const t = useT();
-  const modes = ['off', 'rect', 'round'] as const;
-  return (
-    <PreviewFrame height={130}>
-      <div style={{ display: 'flex', gap: 26, alignItems: 'center' }}>
-        {modes.map((m) => (
-          <SettingChip
-            key={m}
-            state={m}
-            name={t(EC_STATE_KEY[m])}
-            label={t('edgecut.auto')}
-            on={m !== 'off'}
-            glyph={(size, color) => edgeCutGlyph(m, size, color)}
-            onCycle={() => {}}
-          />
-        ))}
-      </div>
-    </PreviewFrame>
-  );
+  return <PreviewFrame height={110}><AutoTrim value="rect" disabled={false} onChange={noop}/></PreviewFrame>;
 }

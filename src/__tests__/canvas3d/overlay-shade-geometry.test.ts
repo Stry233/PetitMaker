@@ -10,7 +10,7 @@
  * Everything here is measured in MACRO units off the mesh's own vertices, so a shade that drifts
  * half a cell fails whatever the camera is doing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
 import { Overlay3D } from '../../canvas/map3d/scene/overlay3d';
 import { mapCenterOffset } from '../../canvas/map3d/core/coords';
@@ -169,5 +169,26 @@ describe('3D shades: cell-set drapes', () => {
     const o = overlayFor(gs);
     o.showBuildableRegion([{ x: 3, y: 4 }], true);
     expectCovers(macroExtent(gs, lastFill(o), true), { x: 3, y: 4, w: 1, h: 1 });
+  });
+});
+
+
+describe('editable curve footprint', () => {
+  it.each([true, false])('matches the selected grid with terrainGrid %s and survives hover clearing', terrainGrid => {
+    const gs = state(), overlay = overlayFor(gs);
+    overlay.showCurveFootprint([{ x: 4, y: 5 }, { x: 5, y: 5 }], terrainGrid);
+    const mesh = overlay.group.getObjectByName('curve-footprint') as THREE.Mesh;
+    expectCovers(macroExtent(gs, mesh, terrainGrid), { x: 4, y: 5, w: 2, h: 1 });
+    const geometry = vi.spyOn(mesh.geometry, 'dispose');
+    const material = vi.spyOn(mesh.material as THREE.Material, 'dispose');
+    overlay.clearGhost(); overlay.flush();
+    expect(overlay.group.getObjectByName('curve-footprint')).toBe(mesh);
+    overlay.clearCurveFootprint();
+    expect(geometry).toHaveBeenCalledOnce();
+    expect(material).toHaveBeenCalledOnce();
+    expect(overlay.group.getObjectByName('curve-footprint')).toBeUndefined();
+    overlay.showCurveFootprint([{ x: 6, y: 5 }], terrainGrid);
+    overlay.dispose();
+    expect(overlay.group.getObjectByName('curve-footprint')).toBeUndefined();
   });
 });

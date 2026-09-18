@@ -1,3 +1,4 @@
+import { clientPoint, toLayoutDelta } from '../../core/runtime/viewport-space';
 /**
  * Pointer gestures → camera verbs. The ONE mapping from what the hand does to how the camera
  * moves, shared by the editor's pointer machine and the export shot editor.
@@ -84,7 +85,7 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
   /** Pan by a screen delta. The verb's sign contract is "the VIEW slides by (dx, dy)", so a drag
    *  that carries the map with the hand passes the inverse of the pointer's travel. */
   const panBy = (e: PointerEvent) => {
-    host.camera()?.pan(lastX - e.clientX, lastY - e.clientY);
+    host.camera()?.pan(lastX - clientPoint(e).x, lastY - clientPoint(e).y);
   };
 
   return {
@@ -98,8 +99,8 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
       // where it cannot (2D).
       navigating = true;
       moved = false;
-      downX = e.clientX; downY = e.clientY;
-      lastX = e.clientX; lastY = e.clientY;
+      downX = clientPoint(e).x; downY = clientPoint(e).y;
+      lastX = clientPoint(e).x; lastY = clientPoint(e).y;
       const cam = host.camera();
       drag(cam && navDragVerb(capsOf(cam)) === 'orbit' ? 'orbit' : 'pan');
       return true;
@@ -109,12 +110,12 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
       if (!navigating) return false;
       const cam = host.camera();
       if (!cam) return true;
-      if (Math.abs(e.clientX - downX) > DRAG_THRESHOLD || Math.abs(e.clientY - downY) > DRAG_THRESHOLD) {
+      if (Math.abs(clientPoint(e).x - downX) > DRAG_THRESHOLD || Math.abs(clientPoint(e).y - downY) > DRAG_THRESHOLD) {
         moved = true;
       }
-      if (navDragVerb(capsOf(cam)) === 'orbit') cam.orbit!(e.clientX - lastX, e.clientY - lastY);
+      if (navDragVerb(capsOf(cam)) === 'orbit') cam.orbit!(clientPoint(e).x - lastX, clientPoint(e).y - lastY);
       else panBy(e);
-      lastX = e.clientX; lastY = e.clientY;
+      lastX = clientPoint(e).x; lastY = clientPoint(e).y;
       return true;
     },
 
@@ -126,7 +127,7 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
 
     panStep(e) {
       panBy(e);
-      lastX = e.clientX; lastY = e.clientY;
+      lastX = clientPoint(e).x; lastY = clientPoint(e).y;
     },
 
     navUp() {
@@ -157,20 +158,22 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
         case 'yaw':
           cam.orbit!(e.deltaX * lineToPx, 0);
           return;
-        case 'pan':
-          cam.pan(e.deltaX * lineToPx, horizontal ? 0 : e.deltaY * lineToPx);
+        case 'pan': {
+          const delta = toLayoutDelta(e.deltaX * lineToPx, horizontal ? 0 : e.deltaY * lineToPx);
+          cam.pan(delta.x, delta.y);
           return;
+        }
         case 'zoom-smooth':
           // A sideways-only scroll carries its magnitude in deltaX; a vertical one in deltaY.
-          cam.zoomBy(pinchWheelFactor(horizontal ? e.deltaX : e.deltaY), e.clientX, e.clientY);
+          cam.zoomBy(pinchWheelFactor(horizontal ? e.deltaX : e.deltaY), clientPoint(e).x, clientPoint(e).y);
           return;
         case 'zoom-step':
-          cam.zoomStep(e.deltaY > 0 ? -1 : 1, e.clientX, e.clientY);
+          cam.zoomStep(e.deltaY > 0 ? -1 : 1, clientPoint(e).x, clientPoint(e).y);
       }
     },
 
     pinchWheel(e) {
-      host.camera()?.zoomBy(pinchWheelFactor(e.deltaY), e.clientX, e.clientY);
+      host.camera()?.zoomBy(pinchWheelFactor(e.deltaY), clientPoint(e).x, clientPoint(e).y);
     },
 
     touch(delta) {

@@ -215,3 +215,11 @@ describe('the annotate mode', () => {
     expect(back.arming).toEqual({ kind: 'shape', shape: 'circle' });
   });
 });
+
+it('selects the freehand shape when returning from an object to the free brush', () => {
+  let mode = nextEditMode(REST_INPUTS, { mode: 'mountain', tool: 'shape', shape: 'rect' });
+  mode = nextEditMode(mode, { mode: 'object', itemId: 'tree-apple' });
+  mode = nextEditMode(mode, { mode: 'mountain' });
+  expect(mode.tool).toBe('brush');
+  expect(mode.shape).toBe('free');
+});

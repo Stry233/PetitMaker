@@ -21,6 +21,7 @@
  * measured against it. The step AFTER the block lays the map flat again, the way the last step
  * clears the build mode: a novice should end the run in the view the editor opens in.
  */
+import { IS_LITE } from '../../core/runtime/edition';
 import type { TourStep } from '../chrome/tour/steps';
 
 export const SHELL_TOUR_STEPS: readonly TourStep[] = [
@@ -40,6 +41,8 @@ export const SHELL_TOUR_STEPS: readonly TourStep[] = [
  *  block would spend three cards on a view that cannot build, so the run keeps the 2D interface it
  *  is about and the toggle says the rest itself. */
 export function shellTourSteps(webgl2: boolean): readonly TourStep[] {
-  if (webgl2) return SHELL_TOUR_STEPS;
-  return SHELL_TOUR_STEPS.filter((s) => s.id !== 'view3d' && s.id !== 'orbit' && s.id !== 'build3d');
+  if (webgl2 && !IS_LITE) return SHELL_TOUR_STEPS;
+  return SHELL_TOUR_STEPS
+    .filter(s => (!IS_LITE || s.id !== 'assistant') && (webgl2 || !['view3d', 'orbit', 'build3d'].includes(s.id)))
+    .map(s => IS_LITE && s.id === 'share' ? { ...s, view: '2d', bodyKey: 'lite.save_hint' } : IS_LITE && s.id === 'menu' ? { ...s, bodyKey: 'lite.tour_menu' } : s);
 }

@@ -1,3 +1,4 @@
+import { SUPPORTS_JSON_FILES } from '../core/runtime/edition';
 /** Shared JSON and PetitGlyph import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
 import { isOwnImageExport } from './image-ownership';
 import { deserializeParsed } from './json-codec';
@@ -59,7 +60,7 @@ function isImageFile(file: File | Blob, name: string): boolean {
 export async function inspectImportFile(file: File | Blob, name: string): Promise<ImportInspection> {
   try {
     if (file.size > MAX_IMPORT_BYTES) return { status: 'failed' };
-    if (isJsonFile(file, name)) {
+    if (SUPPORTS_JSON_FILES && isJsonFile(file, name)) {
       const text = await file.text();
       const parsed = JSON.parse(text) as { templateId?: string };
       // Modified exports remain importable with a warning; files without a checksum stay silent.

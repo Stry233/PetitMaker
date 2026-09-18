@@ -1,3 +1,4 @@
+import { viewportSize } from '../../../core/runtime/viewport-space';
 /*
  * AnnotationEditor.tsx — the plan-notes chrome that follows the map: the small verb row a selected
  * note carries (delete, and merge for several zones).
@@ -99,7 +100,7 @@ function SelectedVerbs({ notes }: { notes: MapAnnotation[] }) {
       transition={springs.bouncy}
       style={{
         position: 'fixed',
-        left: Math.max(8, Math.min(window.innerWidth - 190, at.x - 85)),
+        left: Math.max(8, Math.min(viewportSize().width - 190, at.x - 85)),
         top: Math.max(60, at.y - 56),
         zIndex: z.canvasControls,
         display: 'flex', gap: 2, padding: 4,

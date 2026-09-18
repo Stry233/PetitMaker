@@ -13,6 +13,7 @@ import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
 import { colors, font, radii } from '../design/styles';
 import { useReadableWeight } from '../design/scale';
+import { BrandName } from './BrandName';
 
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;
@@ -70,7 +71,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
         : <img src={`${import.meta.env.BASE_URL}logo-256.png`} alt="" role="presentation" style={logo} />}
       {!logoOnly && (
         <div style={names}>
-          <div style={name}>{t('app.name')}</div>
+          <div style={name}><BrandName /></div>
           {tagline && <div style={sub}>{t('app.tagline')}</div>}
         </div>
       )}

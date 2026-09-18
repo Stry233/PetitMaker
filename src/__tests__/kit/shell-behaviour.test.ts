@@ -1,16 +1,4 @@
-/**
- * The part of "a keyboard shortcut reaches the same tile a click does" that is genuinely
- * shell-independent: `kit/commands.ts`'s RUN table dispatches each surface/tool/app shortcut to
- * the CommandContext's `handleTileAction`/`openBuild`/`toggleMenu`, naming the exact `kit/actions`
- * entry or `DesignMode` a shell's implementation receives. What THAT implementation then does with
- * it (arm a tool, remember a surface, open the menu sheet) belongs to the shell: this frame builds
- * the context in `ui/shell/use-shell-commands.ts`, and none of it is pinned here.
- *
- * And the second press, which is the same question asked of a key that is already answered: a key
- * that CHOOSES something puts it away again, because the control it stands for does. The two
- * retreats differ, so both are pinned here — a mode leaves entirely, a tool leaves its surface
- * standing.
- */
+/** Mode shortcuts toggle their surface; terrain tool shortcuts keep the selected tool armed. */
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { RUN, type CommandContext } from '../../kit/commands';
 import { ACTION_BY_ID } from '../../kit/actions';
@@ -19,7 +7,6 @@ import { useEditorStore } from '../../state/store';
 import { setStoreState } from '../_store';
 import { canHoldSelection } from '../../core/interaction/tool-modes';
 import { makeState } from '../rules/_helpers';
-import { designModeToEditInputs } from '../../core/model/edit-mode';
 import type { DesignMode } from '../../core/model/types';
 
 function fakeCtx(): CommandContext & {
@@ -104,7 +91,7 @@ describe('RUN dispatches build-tool shortcuts to the exact DesignMode a shell re
   }
 });
 
-describe('a second press puts away what the first one chose', () => {
+describe('repeated mode and terrain tool shortcuts', () => {
   /** Each surface key, the mode it lands on, and the key that reaches it. */
   const surfaces: Array<[string, 'mountain' | 'water' | 'road']> = [
     ['surface.mountain', 'mountain'],
@@ -135,11 +122,6 @@ describe('a second press puts away what the first one chose', () => {
     expect(ctx.handleTileAction).toHaveBeenCalledWith(ACTION_BY_ID.get('move'));
   });
 
-  /**
-   * A TOOL LEAVES ITS SURFACE STANDING, which is the whole difference from a mode. `tool: 'none'`
-   * is the state `resolveEditMode` already has for it: the map on the hand, the mode untouched, and
-   * the shape kept so picking the same cell back up gives the figure it was laying.
-   */
   const tools: Array<[string, DesignMode]> = [
     ['tool.brush', 'brush'],
     ['tool.eraser', 'eraser'],
@@ -151,29 +133,19 @@ describe('a second press puts away what the first one chose', () => {
   ];
 
   for (const [commandId, design] of tools) {
-    it(`${commandId} pressed on the tool it armed puts it away and keeps the surface`, () => {
+    it(`${commandId} keeps the selected terrain tool and surface on repeated presses`, () => {
       const ctx = fakeCtx();
-      const s = useEditorStore.getState();
-      // On the surface with NOTHING armed, which is where the row's own second press leaves it.
-      s.setEditMode({ mode: 'water', tool: 'none' });
+      useEditorStore.getState().setEditMode({ mode: 'water', tool: 'brush', shape: 'free' });
       RUN[commandId]!(ctx);
-      // The first press only reaches the SHELL, which is what arms the tool; stand in for it here,
-      // through the same mode -> inputs step every shell's `openBuild` runs.
-      expect(ctx.openBuild).toHaveBeenCalledWith(design);
-      s.setEditMode(designModeToEditInputs(design));
       expect(useEditorStore.getState().designMode).toBe(design);
-
-      const second = fakeCtx();
-      RUN[commandId]!(second);
-      expect(second.openBuild).not.toHaveBeenCalled();
-      const after = useEditorStore.getState();
-      expect(after.editMode.tool).toBe('none');
-      expect(after.editMode.mode).toBe('water');
-      expect(after.designMode).toBe('hand');
+      RUN[commandId]!(ctx);
+      expect(useEditorStore.getState().designMode).toBe(design);
+      expect(useEditorStore.getState().editMode.mode).toBe('water');
+      expect(ctx.openBuild).not.toHaveBeenCalled();
     });
   }
 
-  it('the shape a put-away tool was laying survives, so picking it up gives the same figure', () => {
+  it('reselecting a drawing shape retains that shape', () => {
     const s = useEditorStore.getState();
     s.setEditMode({ mode: 'mountain', tool: 'shape', shape: 'circle' });
     RUN['tool.circle']!(fakeCtx());

@@ -34,6 +34,7 @@ export function registerExtraStrings(tables: Partial<Record<Locale, Record<strin
  *  The `{app}` token is always resolved from the central brand name (see version.ts), so no
  *  translation string ever hardcodes the project name. */
 export function translateFor(locale: Locale, key: string, params?: Record<string, string | number>): string {
+  if (key === 'app.name') return brandName(locale);
   let text = translations[locale]?.[key] ?? extraTables[locale]?.[key]
     ?? translations['en'][key] ?? extraTables['en']?.[key] ?? key;
   text = text.split('{app}').join(brandName(locale));

@@ -1,7 +1,8 @@
 import { prepareOwnImageReceipt } from '../../../../io/image-ownership';
 import { useAttribution } from './use-attribution';
 import { protectedImageNotes } from '../../../../core/provenance/image-attribution';
-import { useMapReview } from './review/use-map-review';
+import { automaticExportReview, isReviewTooLong, useMapReview, useTextReview } from './edition-export';
+import { SUPPORTS_DOWNLOADS } from '../../../../core/runtime/edition';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
@@ -30,8 +31,7 @@ import { badgesFor, renderExport } from '../../../../io/export/render';
 import { layersFor } from '../../../../io/export/layer-preview';
 import { needsBanding, renderBanded } from '../../../../io/export/banded';
 import { TiledMap } from '../../../../io/export/tiled-map';
-import { CANVAS_LIMITS, mapNativePx } from '../../../../io/export/sizing';
-import { clampedCaptureRequestPx } from '../../../../io/share';
+import { CANVAS_LIMITS, mapNativePx, clampedCaptureRequestPx } from '../../../../io/export/sizing';
 import { deviceCanvasLimits } from '../../../../io/export/canvas-limits';
 import { useShareCode, renderShareCodeAsset, shareCodeKey, shareCodeIssueKey, type ShareCodeIssue } from './use-share-code';
 import type { ExportComposition } from '../../../../io/export/types';
@@ -41,9 +41,7 @@ import { showToast } from '../../floating/Toast';
 import { selectedVersion } from './stylize/use-stylize-versions';
 import { composeStylizedBaseMap } from './stylize/compose-stylized';
 import { exportText, type ReviewProgress, type ReviewResult } from '../../../../io/moderation/text/policy';
-import { ReviewTooLong } from '../../../../io/moderation/text/reviewer';
 import { Expand } from '../../../primitives/Expand';
-import { useTextReview } from './review/use-text-review';
 
 /** What either baseMap producer (a real capture, or a stylized composite) actually is — narrower
  *  than `CanvasImageSource` so `.width`/`.height` stay plain numbers downstream. */
@@ -70,10 +68,17 @@ function footerDimsSample(res: ExportOptions['resolution']): string {
  *  before a heavy synchronous step runs — double rAF guarantees one composited frame. */
 const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
+export interface ImageDelivery {
+  id: string;
+  label: string;
+  available: boolean;
+  send: (image: Blob) => Promise<void>;
+}
+
 /** The share-picture controls on their own, so the "save and share" window can carry them as one
  *  of its three sections. Everything expensive here is gated on `open` — the provenance summary,
  *  the share-code build, the preview's captures — so a mounted-but-hidden section costs nothing. */
-export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => void }) {
+export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDone: () => void; deliveries?: readonly ImageDelivery[] }) {
   const t = useT();
   const busy = useCursorCss('busy');
   // Gated on `open`: this selector runs on EVERY store update, and the provenance
@@ -135,10 +140,10 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const textReview = useTextReview(open, reviewParts, composing);
   const issue = reviewIssue ?? textReview.issue;
   const textlessExportDisabled = attribution.locked || exporting || mapReview.pending || mapReview.result?.status === 'blocked';
-  const exportDisabled = exporting || mapReview.pending || mapReview.result?.status === 'blocked' || (issue !== null && typeof issue === 'object');
+  const exportDisabled = composing || exporting || mapReview.pending || mapReview.result?.status === 'blocked' || (issue !== null && typeof issue === 'object');
 
-  // Unreviewed drafts never reach the preview painter, even for one frame.
-  const safeOptions = textReview.allowed ? options : { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
+  // The web edition waits for review; Lite uses the manual export acknowledgement.
+  const safeOptions = (!automaticExportReview && !composing) || textReview.allowed ? options : { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
   const previewKey = JSON.stringify(safeOptions);
   const previewOptions = useMemo(() => safeOptions, [previewKey]); // eslint-disable-line react-hooks/exhaustive-deps -- content key
   const safeFooter = { ...footerValues, title: previewOptions.title };
@@ -159,15 +164,18 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
-  async function handleExport(withoutText = false) {
+  async function handleExport(withoutText = false, delivery?: ImageDelivery) {
+    if (delivery && !delivery.available) return;
     if (exportRun.current || !open || (withoutText ? textlessExportDisabled : exportDisabled)) return;
     const controller = new AbortController();
     exportRun.current = controller;
     const { signal } = controller;
-    const mapResult = await mapReview.check().catch(() => null);
-    if (!mapResult || mapResult.status === 'blocked' || signal.aborted) {
-      if (exportRun.current === controller) exportRun.current = null;
-      return;
+    if (automaticExportReview) {
+      const mapResult = await mapReview.check().catch(() => null);
+      if (!mapResult || mapResult.status === 'blocked' || signal.aborted) {
+        if (exportRun.current === controller) exportRun.current = null;
+        return;
+      }
     }
     const selectedOptions = withoutText ? { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER } : options;
     setReviewIssue(null);
@@ -192,14 +200,14 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       const sum = executor.getProvenanceSummary();
       const footerValues = footerTokenValues(gridState, selectedOptions, store.locale, sum);
       const parts = exportText(selectedOptions, { ...footerValues, date: formatFooterDate(), dims: '0×0' });
-      if (parts.length) {
+      if (automaticExportReview && parts.length) {
         setReviewProgress({ phase: 'checking' });
         try {
           const result = await textReview.check(parts);
           if (signal.aborted) return;
           if (!result.allowed) { setReviewIssue(result); return; }
         } catch (error) {
-          if (!signal.aborted) setReviewIssue(error instanceof ReviewTooLong ? 'too-long' : 'unavailable');
+          if (!signal.aborted) setReviewIssue(isReviewTooLong(error) ? 'too-long' : 'unavailable');
           return;
         }
         setReviewProgress(null);
@@ -370,7 +378,10 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
       if (signal.aborted) return;
       // The final composition determines whether the image carries PetitGlyph.
       if (!await notice.request(!!codeImg) || signal.aborted) return;
-      downloadBlob(blob, `petit-planet-${now}.png`);
+      if (delivery) await delivery.send(blob);
+      else if (SUPPORTS_DOWNLOADS) downloadBlob(blob, `petit-planet-${now}.png`);
+      else throw new Error('Image delivery unavailable');
+      if (signal.aborted) return;
       rememberOwnImage();
       useEditorStore.getState().markExported();   // this map has now left the browser
       if (codeTooSmall) showToast(translate('export.code_too_small'), 'info');
@@ -443,10 +454,10 @@ export function ExportPanel({ open, onDone }: { open: boolean; onDone: () => voi
               </div>
             </Expand>
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 14, flex: 'none' }}>
+          <div style={{ display: 'flex', flexDirection: deliveries ? 'column' : 'row', flexWrap: 'wrap', gap: 10, marginTop: 14, flex: 'none' }}>
             {/* A render in flight is BUSY, not refused, so it names the busy cursor rather than
                 letting the sheet's disabled rule call it blocked (same as ExportJsonModal). */}
-            <motion.button style={{ ...windowFooterPrimary, opacity: exportDisabled ? 0.6 : 1, cursor: exporting ? busy : exportDisabled ? cursors.default : cursors.clickable }} onClick={() => void handleExport()} disabled={exportDisabled} {...(exportDisabled ? {} : buttonMotion)} aria-busy={exporting}>{exporting ? '…' : t('export.btn_export')}</motion.button>
+            {deliveries ? deliveries.map((delivery) => <motion.button key={delivery.id} style={{ ...windowFooterPrimary, opacity: exportDisabled || !delivery.available ? 0.6 : 1 }} onClick={() => void handleExport(false, delivery)} disabled={exportDisabled || !delivery.available} {...buttonMotion} aria-busy={exporting}>{delivery.label}</motion.button>) : <motion.button style={{ ...windowFooterPrimary, opacity: exportDisabled ? 0.6 : 1, cursor: exporting ? busy : exportDisabled ? cursors.default : cursors.clickable }} onClick={() => void handleExport()} disabled={exportDisabled} {...(exportDisabled ? {} : buttonMotion)} aria-busy={exporting}>{exporting ? '…' : t('export.btn_export')}</motion.button>}
             <motion.button style={windowFooterGhost} onClick={onDone} {...buttonMotion}>{t('export.btn_cancel')}</motion.button>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { clientPoint } from '../../core/runtime/viewport-space';
 /**
  * Binds a camera-only surface: an overlay that shows the map but has no tools and no selection,
  * so every gesture on it moves the camera. The export shot editor is the one such surface today.
@@ -34,22 +35,22 @@ export function useCameraOnly(
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === 'touch') {
-        const count = touch.down(e.pointerId, e.clientX, e.clientY);
+        const count = touch.down(e.pointerId, clientPoint(e).x, clientPoint(e).y);
         e.preventDefault();
         if (count >= 2) { gestures.cancel(); touchNavigating = true; }
-        else gestures.panFrom(e.clientX, e.clientY);   // one finger drags the ground plane
+        else gestures.panFrom(clientPoint(e).x, clientPoint(e).y);   // one finger drags the ground plane
         return;
       }
       if (gestures.navDown(e)) return;
       if (e.button === PRIMARY_BUTTON) {
         e.preventDefault();
-        gestures.panFrom(e.clientX, e.clientY);
+        gestures.panFrom(clientPoint(e).x, clientPoint(e).y);
       }
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerType === 'touch') {
-        const delta = touch.move(e.pointerId, e.clientX, e.clientY);
+        const delta = touch.move(e.pointerId, clientPoint(e).x, clientPoint(e).y);
         if (delta && touchNavigating) gestures.touch(delta);
         else if (delta && gestures.isPanning()) gestures.touch({ ...delta, scale: 1, twist: 0 });
         return;

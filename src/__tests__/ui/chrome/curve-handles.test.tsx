@@ -21,7 +21,7 @@ const view = {
     screenToMicro: (sx: number, sy: number) => ({ x: Math.floor(sx / SCALE * 2), y: Math.floor(sy / SCALE * 2) }),
     pan: () => {},
   },
-  overlay: {} as ActiveView['overlay'],
+  overlay: { showCurveFootprint: vi.fn(), clearCurveFootprint: vi.fn() } as unknown as ActiveView['overlay'],
   applyCameraTransform: () => {},
   camera: { pan: () => {}, zoomStep: () => {}, zoomBy: () => {} },
 } as unknown as ActiveView;
@@ -72,6 +72,20 @@ afterEach(() => {
 });
 
 describe('what is on screen', () => {
+  it('keeps an eraser footprint with its anchors and moves it to the active view', () => {
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 3, terrainGrid: true, footprint: true }, { preview, repaint, finalize }));
+    expect(view.overlay.showCurveFootprint).toHaveBeenLastCalledWith(expect.arrayContaining([{ x: 5, y: 1 }, { x: 5, y: 3 }]), true);
+    const other = { ...view, overlay: { showCurveFootprint: vi.fn(), clearCurveFootprint: vi.fn() } } as unknown as ActiveView;
+    act(() => setActiveView(other));
+    expect(view.overlay.clearCurveFootprint).toHaveBeenCalled();
+    expect(other.overlay.showCurveFootprint).toHaveBeenCalled();
+    drag(screen.getByLabelText('Curve point 2'), { x: 8, y: 8 });
+    expect(other.overlay.showCurveFootprint).toHaveBeenLastCalledWith(expect.arrayContaining([{ x: 8, y: 8 }]), true);
+    act(() => endCurveSession());
+    expect(other.overlay.clearCurveFootprint).toHaveBeenCalled();
+  });
+
   it('routed roads show only their endpoints and follow a corrected worker result', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 2, terrainGrid: false, tangents: false }, { preview, repaint, finalize }));
@@ -80,6 +94,17 @@ describe('what is on screen', () => {
     const before = screen.getByLabelText('Curve point 2').style.left;
     act(() => resetCurveAnchors([{ x: 2, y: 2 }, { x: 10, y: 2 }]));
     expect(screen.getByLabelText('Curve point 2').style.left).not.toBe(before);
+  });
+
+  it('closes eraser handles when the shape or surface changes', () => {
+    act(() => { useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'erase' }); useEditorStore.getState().setEraserShape('curve'); });
+    render(<I18nProvider><CurveHandles /></I18nProvider>);
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    act(() => useEditorStore.getState().setEraserShape('line'));
+    expect(getCurveSession()).toBeNull();
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    act(() => useEditorStore.getState().setEditMode({ mode: 'water' }));
+    expect(getCurveSession()).toBeNull();
   });
 
   it('closes Smart Build handles when the armed tool changes', () => {

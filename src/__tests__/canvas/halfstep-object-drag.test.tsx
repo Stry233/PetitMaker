@@ -47,7 +47,7 @@ function makeView() {
     showSelection: vi.fn(), clearSelection: vi.fn(),
     showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
     showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(),
-    showBand: vi.fn(), clearBand: vi.fn(), showPlacementGhost: vi.fn(), showGroupPlacementGhost: vi.fn(),
+    showBand: vi.fn(), clearBand: vi.fn(), showPlacementGhost: vi.fn(), showGroupPlacementGhost: vi.fn(), showObjectMove: vi.fn(),
   };
   const view = {
     projection: {
@@ -179,12 +179,14 @@ describe('dragging a halfStep object through the real pointer path', () => {
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 150, clientY: 90 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 45, clientY: 100 }));
 
-    expect(overlay.showPlacementGhost).toHaveBeenCalled();
-    const calls = (overlay.showPlacementGhost as ReturnType<typeof vi.fn>).mock.calls;
-    const [, gx, gy, , valid, elevation] = calls[calls.length - 1]!;
+    expect(overlay.showObjectMove).toHaveBeenCalled();
+    const calls = (overlay.showObjectMove as ReturnType<typeof vi.fn>).mock.calls;
+    const [[preview], valid] = calls[calls.length - 1]!;
+    const { position: { x: gx, y: gy }, elevation } = preview;
     expect(valid, 'the half anchor re-detects a legal ramp').toBe(true);
     expect({ x: gx, y: gy }).toEqual({ x: 4.5, y: 9 });
     expect(elevation, 'the deck elevation, not the ground under a half index').toBe(1);
+    expect(overlay.showObjectMove).toHaveBeenLastCalledWith([expect.objectContaining({ position: { x: 4.5, y: 9 }, elevation: 1 })], true);
 
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 45, clientY: 100 }));
   });

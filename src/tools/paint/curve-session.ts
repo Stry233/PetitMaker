@@ -26,6 +26,8 @@ export interface CurveSession {
   freeCoords: boolean;
   /** Routed roads expose endpoints; free curves and rivers also expose direction handles. */
   tangents: boolean;
+  /** Keep the curve footprint visible while its anchors are editable. */
+  footprint: boolean;
   armingEpoch?: number;
   /** Counts up on every change, so a subscriber re-renders on an in-place anchor edit. */
   revision: number;
@@ -61,14 +63,14 @@ export function getCurveSession(): CurveSession | null {
 /** Open the adjust phase on a curve that has just been painted. */
 export function beginCurveSession(
   anchors: CurveAnchor[],
-  opts: { width: number; terrainGrid: boolean; freeCoords?: boolean; tangents?: boolean; armingEpoch?: number },
+  opts: { width: number; terrainGrid: boolean; freeCoords?: boolean; tangents?: boolean; footprint?: boolean; armingEpoch?: number },
   owner: CurveSessionHost,
 ): void {
   endCurveSession();
   session = {
     anchors: anchors.map((a) => ({ ...a })), width: opts.width, terrainGrid: opts.terrainGrid,
     freeCoords: opts.freeCoords === true, revision: 0,
-    tangents: opts.tangents !== false, armingEpoch: opts.armingEpoch,
+    tangents: opts.tangents !== false, footprint: opts.footprint === true, armingEpoch: opts.armingEpoch,
   };
   host = owner;
   emit();

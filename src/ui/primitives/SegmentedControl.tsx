@@ -13,12 +13,8 @@
 //       floats out of the box on close"). A plain persistent DOM child inherits the ancestor's
 //       exit opacity in lockstep.
 //
-// i18n: option labels are forced to one line — a longer language (ru/fr, …) that doesn't fit an
-// option's slot must never wrap to a second line (an uneven, ugly pill). The label is drawn at the
-// size it is asked for and never shrunk to its slot: a control is sized by its text, not the other
-// way round, so a row that does not fit is fixed where the room is decided. (A scale-to-fit here
-// never engages: measured across all seven locales at every place this control appears, it only
-// stands as an invitation to size a window by shrinking its words.)
+// Labels keep the requested font size. Narrow columns can enable wrapping; other callers
+// retain a single line and must provide enough room for their translated labels.
 //
 // STRETCH MODE'S PILL TARGET IS A FRACTION, NEVER A MEASURED PIXEL. Every option there is an equal
 // `flex: 1` slot in a `gap`ped row, so option i of n sits at `left: (i/n)*(100% + gap)` with
@@ -64,7 +60,7 @@ type PillBox = { x: number; w: number };
 const PILL_SPRING = springs.stiff;
 
 export function SegmentedControl<T extends string>({
-  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = TEXT_ROLES.chip.px, height,
+  value, options, onChange, render = (o) => String(o), idPrefix, stretch = true, fontSize = TEXT_ROLES.chip.px, height, wrapLabels = false,
 }: {
   value: T;
   options: readonly T[];
@@ -81,6 +77,8 @@ export function SegmentedControl<T extends string>({
    *  generate strip). The buttons fill it; their vertical padding goes. Unset, the buttons size from
    *  their own padding as they always have. */
   height?: number;
+  /** Allow complete labels in narrow settings columns. */
+  wrapLabels?: boolean;
 }) {
   const reduced = useReducedMotionConfig();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -172,7 +170,7 @@ export function SegmentedControl<T extends string>({
               padding: height !== undefined ? `0 ${stretch ? PAD_X : 14}px` : stretch ? `8px ${PAD_X}px` : '6px 14px',
             }}
           >
-            <span style={{ position: 'relative', zIndex: 1, display: 'inline-block', whiteSpace: 'nowrap' }}>
+            <span style={{ position: 'relative', zIndex: 1, display: 'inline-block', whiteSpace: wrapLabels ? 'normal' : 'nowrap', overflowWrap: wrapLabels ? 'anywhere' : undefined }}>
               {render(o)}
             </span>
           </motion.button>

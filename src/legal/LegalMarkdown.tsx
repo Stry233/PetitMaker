@@ -1,3 +1,4 @@
+import { SUPPORTS_EXTERNAL_LINKS } from '../core/runtime/edition';
 /**
  * React emitter for the constrained legal-markdown node tree
  * (`src/legal/markdown.ts`) — the in-app modal counterpart to the static
@@ -152,6 +153,7 @@ function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLink
         </code>
       );
     case 'link': {
+      if (!SUPPORTS_EXTERNAL_LINKS) return <span key={key}>{node.text}</span>;
       if (node.external) {
         return (
           <a key={key} href={node.href} target="_blank" rel="noopener noreferrer" style={PROSE.link}>

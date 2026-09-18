@@ -617,6 +617,13 @@ export class DrawingTool implements Tool {
         break;
 
       case 'curve': {
+        const first = this.curvePoints[0];
+        if (this.curvePoints.length === 1 && first && (first.x !== coord.x || first.y !== coord.y)) {
+          this.curvePoints.push(coord);
+          this.lastClick = null;
+          this.previewCurve(coord, ctx);
+          break;
+        }
         if (this.dragAnchor !== null) {
           const moved = this.dragMoved;
           this.dragAnchor = null;

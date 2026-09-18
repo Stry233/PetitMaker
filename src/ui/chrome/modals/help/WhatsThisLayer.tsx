@@ -1,3 +1,4 @@
+import { clientPoint, toClientPoint, viewportSize } from '../../../../core/runtime/viewport-space';
 /*
  * WhatsThisLayer.tsx — the "what's this?" pick mode: a question cursor over the whole app, a ring
  * and a name tag over whatever marked part the pointer rests on, and the next click opens that
@@ -44,7 +45,8 @@ interface Hover {
 }
 
 function targetAt(x: number, y: number, layer: HTMLElement): { page: HelpPageId; el: Element } | null {
-  for (const el of document.elementsFromPoint(x, y)) {
+  const point = toClientPoint(x, y);
+  for (const el of document.elementsFromPoint(point.x, point.y)) {
     if (el === layer || layer.contains(el)) continue;
     const marked = (el as HTMLElement).closest?.(`[${HELP_ATTR}]`);
     if (marked) {
@@ -88,8 +90,8 @@ export function WhatsThisLayer() {
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const layer = layerRef.current;
     if (!layer) return;
-    setNearBanner(e.clientY < 84);
-    const hit = targetAt(e.clientX, e.clientY, layer);
+    setNearBanner(clientPoint(e).y < 84);
+    const hit = targetAt(clientPoint(e).x, clientPoint(e).y, layer);
     if (!hit) { setHover(null); return; }
     setHover({ rect: visualRect(hit.el), page: hit.page });
   };
@@ -97,7 +99,7 @@ export function WhatsThisLayer() {
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const layer = layerRef.current;
     if (!layer) return;
-    const hit = targetAt(e.clientX, e.clientY, layer);
+    const hit = targetAt(clientPoint(e).x, clientPoint(e).y, layer);
     if (hit) { openHelp(hit.page); return; }
     const edit = useEditorStore.getState().editMode;
     openHelp(pageForEditState({ mode: edit.mode, tool: edit.tool }));
@@ -153,7 +155,7 @@ export function WhatsThisLayer() {
                   // Centered over the target and clamped into the window, riding the same spring
                   // as the box; the -50% is static, so the spring only ever moves the anchor.
                   animate={{
-                    left: Math.min(Math.max(hover.rect.left + hover.rect.width / 2, 120), window.innerWidth - 120),
+                    left: Math.min(Math.max(hover.rect.left + hover.rect.width / 2, 120), viewportSize().width - 120),
                     top: Math.max(6, hover.rect.top - 34),
                   }}
                   transition={springs.stiff}

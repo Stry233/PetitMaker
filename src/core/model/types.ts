@@ -33,14 +33,10 @@ export type LocalizedName = { en: string } & Partial<Record<Locale, string>>;
  * straight 45° bevel (triangle cut), 'round' uses a curved chamfer (fan cut).
  */
 export type AutoEdgeCut = 'off' | 'rect' | 'round';
+export const NEXT_AUTO_EDGE_CUT: Record<AutoEdgeCut, AutoEdgeCut> = { off: 'rect', rect: 'round', round: 'off' };
 
-/**
- * What one eraser gesture takes back: a DAB under the brush (its size decides the footprint), or a
- * rectangle/circle dragged out and taken on release. The two drag shapes reuse the drawing tool's
- * own figures (`tools/paint/shapes.ts:dragShapeCells`), so the eraser takes back exactly the shape
- * the brush lays, Shift-to-constrain included.
- */
-export type EraserShape = 'dot' | 'rect' | 'circle';
+/** Eraser footprints share the drawing tools’ geometry. */
+export type EraserShape = 'dot' | 'line' | 'curve' | 'rect' | 'circle';
 
 // --- Coordinate Types ---
 export type MacroCoord = { x: number; y: number };

@@ -88,6 +88,7 @@ export function Editor3DCanvas() {
         fail(e);
         return;
       }
+      sceneRef.current.onPerformanceLimit = () => { showToast(translate('view3d.performance')); useEditorStore.getState().setViewMode('2d'); };
       sceneRef.current.onUnrecoverableLoss = () => { builtFor.current = null; setGeneration((g) => g + 1); };
       sceneRef.current.setLayerVisibility(hiddenSetFrom(useEditorStore.getState().layerVisibility));
       const st = useEditorStore.getState();

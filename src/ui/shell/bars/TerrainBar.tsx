@@ -1,123 +1,80 @@
-/**
- * Shared bottom bar for terrain surfaces. Data selects the surface-specific glyphs and Smart Build
- * actions; tool facts still flow through `setEditMode`. The tool cells and size slider share a
- * horizontal scroll row. Shape-sized tools keep the slider visible but disabled to preserve layout.
- * Shortcut badges read live keybindings.
- */
-import { useFrameLayout } from '../frame-layout';
+import { AnimatePresence, motion, useIsPresent } from 'framer-motion';
+import type { AutoEdgeCut, EraserShape } from '../../../core/model/types';
 import type { BuildShape, BuildTool } from '../../../core/model/edit-mode';
-import type { EraserShape } from '../../../core/model/types';
-import { SWATCH_ROW_GAP, ToolRow } from './ToolRow';
-import { cssMotion } from '../motion/use-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { tourTargetAttr } from '../../chrome/tour/steps';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
-import { UNAVAILABLE, z } from '../../design/styles';
+import { z } from '../../design/styles';
+import { INK } from '../../design/tokens';
+import { useFrameLayout } from '../frame-layout';
+import { cssMotion, useMotion } from '../motion/use-motion';
 import { EDGE_RIGHT, QUAD, SCALE } from '../units';
-
+import { SWATCH_ROW_GAP, ToolRow } from './ToolRow';
 import { BrushSizeSlider } from './BrushSizeSlider';
 import { RoadStyles } from './RoadStyles';
 import { SmartBuild } from './SmartBuild';
-import { AUTO_TRIM, CELL_BOX, ERASER_SHAPE, ToolCell } from './ToolCell';
-import { BRUSH, TOOL_CELLS, activeCellId, type TerrainSurface } from './terrain-cells';
-/** The brush reading, at the size the design draws it: half again the tool captions beside it,
- *  because it is a figure read on its own rather than a name under a picture. Exported because the
- *  scope screen wears this bar's layout, down to the reading beside its slider. */
+import { AutoTrim } from './AutoTrim';
+import { CELL_BOX } from './ToolCell';
+import { TerrainToolButton, TERRAIN_TOOL_WIDTH, TERRAIN_TOOL_GROWTH } from './TerrainToolButton';
+import { TerrainShapes } from './TerrainShapes';
+import { BRUSH, TOOL_CELLS, type TerrainSurface } from './terrain-cells';
+
 export const READOUT_SIZE = Math.round(BRUSH.readoutSize * SCALE);
-
-/** Margin that aligns the slider with the tool-cell plates. */
 export const SLIDER_LIFT = CELL_BOX.h / 2 - (BRUSH.centreY - BRUSH.track.y) * SCALE;
+const MAIN_GAP = 8;
+const noop = () => {};
 
-/**
- * What pressing the ACTIVE cell writes: a cell is a toggle, the way a mode block is.
- *
- * PUTTING A TOOL AWAY IS NOT LEAVING THE MODE. A block's second press clears the mode and takes the
- * bar with it; a tool lives inside a mode that is still chosen, so this leaves the surface in force
- * with its bar up and nothing armed on the map. `core/model/edit-mode.ts:resolveEditMode` already
- * has that state and calls it `tool: 'none'` — the hand, with the mode's own content type kept, so
- * the next press on the same surface resumes where it left off.
- *
- * The SHAPE is deliberately not cleared with it. It is which figure the shape tool lays rather than
- * a tool of its own, so a visitor who puts the circle away and picks it up again gets the circle.
- */
-const PUT_AWAY = { tool: 'none' } as const;
+function TerrainSize({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const present = useIsPresent();
+  const transition = useMotion('slider.visibility');
+  return <motion.div data-terrain-size aria-hidden={!present || undefined}
+    {...(!present ? { inert: '' } : {})}
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transition}
+    style={{ flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT }}>
+    <BrushSizeSlider value={value} onChange={next => { if (present) onChange(next); }}/>
+  </motion.div>;
+}
 
-/** Shared tool arrangement for the editor and help figures. */
-export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brushSize, onBrushSize, onSelect }: {
-  surface: TerrainSurface;
-  activeTool: BuildTool;
-  activeShape: BuildShape;
-  eraserShape: EraserShape;
-  brushSize: number;
-  onBrushSize: (n: number) => void;
+/** The editor and Help figures share the same tool and setting arrangement. */
+export function TerrainRow({ surface, activeTool, activeShape, eraserShape, brushSize, onBrushSize, onSelect,
+  autoEdgeCut = 'off', onAutoEdgeCut = noop, onEraserShape = noop,
+}: {
+  surface: TerrainSurface; activeTool: BuildTool; activeShape: BuildShape; eraserShape: EraserShape;
+  brushSize: number; onBrushSize: (n: number) => void;
   onSelect: (edit: { tool: BuildTool; shape?: BuildShape }) => void;
+  autoEdgeCut?: AutoEdgeCut; onAutoEdgeCut?: (mode: AutoEdgeCut) => void;
+  onEraserShape?: (shape: EraserShape) => void;
 }) {
   const t = useT();
-  const active = activeCellId(activeTool, activeShape);
-  // A rectangle, a circle and the trimmer lay a figure of their own size, so while one of them is
-  // armed the slider has nothing to set. With NOTHING armed it stays live: the width is the store's
-  // and it is what the next tool picked up will lay at.
-  const armed = TOOL_CELLS.find((cell) => cell.id === active);
-  // The eraser is `sized` for its DAB and not for its two drag shapes, which are taken at whatever
-  // size they were dragged out to — the same reason the rectangle and circle cells are not.
-  const dragShaped = armed?.eraserShape === true && eraserShape !== 'dot';
-  const sized = !armed || (armed.sized === true && !dragShaped);
+  const drawing = activeTool === 'brush' || activeTool === 'shape';
+  const erasing = activeTool === 'erase';
+  const shape = erasing ? eraserShape === 'dot' ? 'free' : eraserShape : activeShape;
+  const sized = activeTool === 'smart' || ((drawing || erasing) && shape !== 'rect' && shape !== 'circle');
+  const selected = [drawing, erasing, activeTool === 'trim', activeTool === 'smart'];
+  const centre = (index: number) => QUAD.left + index * (TERRAIN_TOOL_WIDTH + MAIN_GAP) + TERRAIN_TOOL_WIDTH / 2
+    + (selected.slice(0, index).some(Boolean) ? TERRAIN_TOOL_GROWTH : 0) + (selected[index] ? TERRAIN_TOOL_GROWTH / 2 : 0);
+  return <ToolRow>
+    <div {...tourTargetAttr('bar')} {...helpTargetAttr('terrain')} style={{ display: 'flex', flex: 'none', alignItems: 'flex-start', gap: MAIN_GAP }}>
+      <TerrainToolButton glyph={TOOL_CELLS[0]!.glyph[surface]} label={t('terrain.brush')} commandId="tool.brush"
+        active={drawing} centre={centre(0)} onSelect={() => onSelect(activeShape === 'free' ? { tool: 'brush' } : { tool: 'shape', shape: activeShape })}/>
+      <TerrainToolButton glyph={TOOL_CELLS[1]!.glyph[surface]} label={t('design.eraser')} commandId="tool.eraser"
+        active={erasing} centre={centre(1)} onSelect={() => onSelect({ tool: 'erase' })}/>
+      <div {...helpTargetAttr('trim')}><TerrainToolButton glyph={TOOL_CELLS[2]!.glyph[surface]} label={t('design.edge_cut')} commandId="tool.edgecut"
+        active={activeTool === 'trim'} centre={centre(2)} onSelect={() => onSelect({ tool: 'trim' })}/></div>
+      <SmartBuild surface={surface} centre={centre(3)} active={activeTool === 'smart'}/>
+    </div>
+    {(drawing || erasing) && <span data-terrain-divider aria-hidden style={{ width: 1, height: 26, marginTop: (CELL_BOX.h - 26) / 2, background: INK, opacity: .25, flex: 'none' }}/>}
 
-  return (
-    <ToolRow>
-      <div
-        {...tourTargetAttr('bar')}
-        {...helpTargetAttr('terrain')}
-        style={{
-          display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: QUAD.gap,
-          flex: '0 0 auto', minWidth: 0,
-        }}
-      >
-        {/* The pitch a name is centred on holds because a cell only widens the row while it is the
-            ACTIVE one, and only the active cell shows a name: every cell standing at the pitch
-            this counts out has nothing to its left that has grown. */}
-        {TOOL_CELLS.map((cell, i) => (
-          <ToolCell
-            key={cell.id}
-            glyph={cell.glyph[surface]}
-            label={t(cell.labelKey)}
-            commandId={cell.commandId}
-            active={cell.id === active}
-            centre={QUAD.left + i * (CELL_BOX.w + QUAD.gap) + CELL_BOX.w / 2}
-            onSelect={() => onSelect(cell.id === active ? PUT_AWAY : cell.edit)}
-            {...(cell.autoTrim ? { carries: AUTO_TRIM } : cell.eraserShape ? { carries: ERASER_SHAPE } : {})}
-            {...(cell.id === 'trim' ? { helpTarget: 'trim' } : {})}
-          />
-        ))}
-        {/* The eighth cell, counted onto the same pitch as the seven so its name lands where
-            theirs do. */}
-        <SmartBuild
-          surface={surface}
-          centre={QUAD.left + TOOL_CELLS.length * (CELL_BOX.w + QUAD.gap) + CELL_BOX.w / 2}
-        />
-      </div>
-
-      {/* The far end of the same line, centred on the cells by `SLIDER_LIFT`: the reading stands
-          on the map in the frame's own outline, and the groove under the knob is the design's
-          drawing, not a plate. */}
-      {/* The gap is wider than the design's own 13 design px because the design drew the knob at
-          the middle of its travel: at one cell it stands on the track's left end, right against
-          the reading. */}
-      <div
-        style={{
-          flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT,
-          display: 'flex', alignItems: 'center', gap: 14,
-          opacity: sized ? 1 : UNAVAILABLE,
-        }}
-      >
-        {/* The reading rides the KNOB now (`BarSlider`), so the row keeps only the control. A
-            number standing permanently beside a track is read once and never again, and it was the
-            widest thing on this end of the bar. */}
-        <BrushSizeSlider value={brushSize} onChange={onBrushSize} disabled={!sized} />
-      </div>
-    </ToolRow>
-  );
+    {(drawing || erasing) && <TerrainShapes value={shape} onChange={next => {
+      if (erasing) onEraserShape(next === 'free' ? 'dot' : next);
+      else onSelect(next === 'free' ? { tool: 'brush' } : { tool: 'shape', shape: next });
+    }}/>}
+    {(drawing || erasing) && <AutoTrim value={autoEdgeCut} onChange={onAutoEdgeCut} disabled={false}/>}
+    <AnimatePresence initial={false}>
+      {sized && <TerrainSize key="size" value={brushSize} onChange={onBrushSize}/>}
+    </AnimatePresence>
+  </ToolRow>;
 }
 
 export function TerrainBar({ surface }: { surface: TerrainSurface }) {
@@ -127,6 +84,9 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
   const brushSize = useEditorStore((s) => s.brushSize);
   const setBrushSize = useEditorStore((s) => s.setBrushSize);
   const eraserShape = useEditorStore((s) => s.eraserShape);
+  const setEraserShape = useEditorStore((s) => s.setEraserShape);
+  const autoEdgeCut = useEditorStore((s) => s.autoEdgeCut);
+  const setAutoEdgeCut = useEditorStore((s) => s.setAutoEdgeCut);
 
   return (
     <div
@@ -134,8 +94,6 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
         position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
         transition: cssMotion('frame.layout.adapt', 'right'),
         display: 'flex', flexDirection: 'column', gap: SWATCH_ROW_GAP,
-        // The column spans the window, so it must let a press through everywhere it is not a
-        // control; each control below claims its own pointer events.
         pointerEvents: 'none',
       }}
     >
@@ -145,6 +103,9 @@ export function TerrainBar({ surface }: { surface: TerrainSurface }) {
         activeTool={editMode.tool}
         activeShape={editMode.shape}
         eraserShape={eraserShape}
+        onEraserShape={setEraserShape}
+        autoEdgeCut={autoEdgeCut}
+        onAutoEdgeCut={setAutoEdgeCut}
         brushSize={brushSize}
         onBrushSize={setBrushSize}
         onSelect={setEditMode}

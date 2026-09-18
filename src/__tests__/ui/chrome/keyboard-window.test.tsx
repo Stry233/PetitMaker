@@ -63,10 +63,8 @@ afterEach(() => {
 describe('the keyboard window', () => {
   it('records a chord onto the command the search found', async () => {
     renderWindow();
-    fireEvent.change(screen.getByPlaceholderText('Search commands'), { target: { value: 'free brush' } });
-    // By role: the board already engraves the same label on the key that holds the command, and only
-    // the search hit is a button.
-    fireEvent.click(await screen.findByRole('button', { name: /Free Brush/ }));
+    fireEvent.change(screen.getByPlaceholderText('Search commands'), { target: { value: 'brush' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Brush 1' }));
     fireEvent.click(screen.getByText('Record'));
     fireEvent.keyDown(window, { key: CHORD });
 

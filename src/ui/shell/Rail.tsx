@@ -398,7 +398,7 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
                 // Never wider than the word itself: the air between the word and the panel is the
                 // map's, exactly as the air inside a rail group is (`group`).
                 style={{
-                  position: 'absolute', top: 0, bottom: 0, right: 0, width: `min(100%, ${lane}px)`,
+                  position: 'absolute', top: 0, bottom: 0, right: 0, width: '100%', maxWidth: lane,
                   pointerEvents: 'auto', cursor: cursors.clickable,
                 }}
               />

@@ -150,6 +150,9 @@ export function findLeakedPaths(copiedPaths: readonly string[], manifest: Manife
 
 /** Internal paths checked directly in the produced snapshot. */
 export const DENYLIST_SPOTCHECK: readonly string[] = [
+  'artifacts',
+  'dist-lite',
+  'petitmaker-lite.zip',
   'AGENTS.md',
   'CLAUDE.md',
   'docs/internal',
@@ -310,6 +313,9 @@ export function publicGitignore(): string {
     '',
     '# Build output',
     'dist/',
+    'dist-lite/',
+    'artifacts/',
+    '*.zip',
     '',
     '# Local env files',
     '*.local',

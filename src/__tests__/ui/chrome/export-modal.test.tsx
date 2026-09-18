@@ -3,7 +3,7 @@ vi.mock('../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMa
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
-import { ExportModal } from '../../../ui/chrome/modals/export/ExportModal';
+import { ExportModal, ExportPanel } from '../../../ui/chrome/modals/export/ExportModal';
 import { useEditorStore } from '../../../state/store';
 import { makeState } from '../../rules/_helpers';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -25,13 +25,14 @@ vi.mock('../../../io/moderation/text/reviewer', async (original) => ({
 }));
 
 // Synthetic test maps lack a registered template; preserve the real glyph footprint in the stub.
-vi.mock('../../../io/share', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../io/share')>();
+vi.mock('../../../io/share/export', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../io/share/export')>();
   const { encodeGlyph } = await import('../../../io/share/glyph/encode');
+  const { moduleBaseFor } = await import('../../../io/share/glyph/geometry');
   return {
     ...actual,
     buildShareCode: vi.fn(async (_state, _summary, _meta, availableWidth: number) => {
-      const moduleBase = actual.moduleBaseFor(availableWidth);
+      const moduleBase = moduleBaseFor(availableWidth);
       if (moduleBase === null) return null;
       return { ...encodeGlyph(new Uint8Array(32), moduleBase)!, payloadLen: 32, shareOriginalRecommended: false };
     }),
@@ -47,7 +48,7 @@ vi.mock('../../../kit/host', () => ({
   host: { capture2d: vi.fn(() => null), capture2dRegionCanvas: vi.fn(() => null), capture2dTextureCap: () => 16384 },
 }));
 
-import { buildShareCode } from '../../../io/share';
+import { buildShareCode } from '../../../io/share/export';
 import { downloadBlob } from '../../../io/image-export';
 import { host } from '../../../kit/host';
 import * as Toast from '../../../ui/chrome/floating/Toast';
@@ -178,6 +179,25 @@ describe('ExportModal', () => {
       const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0]!;
       expect(blob).toBeInstanceOf(Blob);
       expect(filename).toMatch(/^petit-planet-\d+\.png$/);
+    });
+
+    it.each([false, true])('completes an injected image delivery only while its export is active (closed: %s)', async closed => {
+      mountStateWith();
+      let complete!: () => void;
+      const send = vi.fn((_image: Blob) => new Promise<void>(resolve => { complete = resolve; }));
+      const done = vi.fn();
+      const mark = vi.spyOn(useEditorStore.getState(), 'markExported');
+      const deliveries = [{ id: 'album', label: 'Save to album', available: true, send }];
+      const { rerender } = render(<ExportPanel open onDone={done} deliveries={deliveries} />, { wrapper: Wrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Save to album' }));
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      expect(send.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+      expect(requestNotice).toHaveBeenCalled();
+      expect(downloadBlob).not.toHaveBeenCalled();
+      if (closed) rerender(<ExportPanel open={false} onDone={done} deliveries={deliveries} />);
+      await act(async () => complete());
+      expect(done).toHaveBeenCalledTimes(closed ? 0 : 1);
+      expect(mark).toHaveBeenCalledTimes(closed ? 0 : 1);
     });
 
     it('keeps a dense code exportable and recommends sharing its original file', async () => {

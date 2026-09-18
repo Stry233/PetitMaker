@@ -1,3 +1,4 @@
+import { IS_LITE } from '../../../core/runtime/edition';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { focusFrame, renderThumbnail } from '../../../canvas/thumbnail';
 import type { GridState, MacroCoord, StencilPlan } from '../../../core/model/types';
@@ -161,7 +162,7 @@ export function useGeneratePreviews({
       // A picture kind's cards are the hand it was dealt, not five seeds: the plan IS the recipe, so
       // the seed rides along unused and every card is exactly what it shows.
       const dealt = stencil ? hand : seeds;
-      await Promise.all(dealt.map(async (entry, i) => {
+      const preview = async (entry: StencilSample | number, i: number) => {
         const seed = stencil ? base + i : (entry as number);
         const plan = stencil && planInputs && wordFits(entry as StencilSample)
           ? await buildStencilPlan(entry as StencilSample, planInputs)
@@ -188,7 +189,13 @@ export function useGeneratePreviews({
         const shot = candidate ? await renderThumbnail(candidate.state, SHOT_PX, SHOT_ASPECT, shotFrame) : null;
         if (dropped) return;
         setShots((prev) => prev.map((s, j) => (j === i ? shot : s)));
-      }));
+      };
+      // The offline container has no workers; finish one candidate before allocating the next.
+      if (IS_LITE) {
+        for (let i = 0; i < dealt.length && !dropped; i++) await preview(dealt[i]!, i);
+      } else {
+        await Promise.all(dealt.map(preview));
+      }
       if (!dropped) setPreviewing(false);
     };
 

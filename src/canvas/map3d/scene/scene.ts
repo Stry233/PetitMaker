@@ -1,9 +1,12 @@
+import { LiteFrameBudget } from './lite-frame-budget';
+import { viewportRect } from '../../../core/runtime/viewport-space';
 /**
  * ThreeScene — the ONLY GPU-touching module. Builds a three.js scene from a
  * GridState snapshot (terrain + object instances), drives a render-on-demand
  * loop (renders only while the controls move / damping settles), and disposes
  * everything on teardown. Mirrors MapRenderer's lifecycle + requestRender ethos.
  */
+import { IS_LITE } from '../../../core/runtime/edition';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -12,7 +15,7 @@ import helvetikerBold from '../../../assets/fonts/helvetiker_bold.typeface.json'
 import { ItemCategory, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
 import { watchContextLoss } from '../../context-loss';
 import { ELEVATION_MAX } from '../../../core/model/constants';
-import { glQuality, maxRenderScale } from '../../../core/runtime/device-quality';
+import { glQuality, maxRenderScale, canIncreaseRenderScale } from '../../../core/runtime/device-quality';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { resolveHistoryFlash } from '../../map2d/layers/error-flash';
@@ -411,8 +414,19 @@ export class ThreeScene {
   private introFrom = new THREE.Vector3();
   private introTo = new THREE.Vector3();
   private introTarget = new THREE.Vector3();
-  /** Software-GL profile: no shadows, no MSAA, 1x pixels, no fly-in (see the constructor). */
+  /** Lightweight effects profile; drawing-buffer resolution is budgeted separately. */
   private lite = false;
+  private frameBudget = new LiteFrameBudget();
+  private budgetScale = 1;
+  private resolutionLimited = false;
+  private previousFrameContinuous = false;
+  private frameCalls = 0;
+  private frameTriangles = 0;
+  onPerformanceLimit: (() => void) | null = null;
+  private onVisibility = (): void => {
+    if (document.hidden) { this.frameBudget.reset(); cancelAnimationFrame(this.raf); this.raf = 0; }
+    else this.requestRender();
+  };
   private contextLost = false;
   /** Told when the lost context never comes back; the owner rebuilds the scene on a fresh one. */
   onUnrecoverableLoss: (() => void) | null = null;
@@ -485,7 +499,7 @@ export class ThreeScene {
     // maxRenderScale carries the lite tier itself (1x there, ≤2×/≤1.5× on hardware) AND never asks
     // for more pixels than the display has, which a fixed 1 would on a page zoomed below 100%.
     // onResize re-reads it, so the two sites must read the same one thing.
-    this.renderer.setPixelRatio(maxRenderScale());
+    this.renderer.setPixelRatio(maxRenderScale({ width: w, height: h, budgetScale: this.budgetScale }));
     this.renderer.setSize(w, h);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping; // keep colours vivid, no filmic desaturation
@@ -621,6 +635,7 @@ export class ThreeScene {
     // assistant's docked panel takes a strip of the window out from under it. The window listener
     // stays for the one thing it alone reports, a page-zoom step, which redefines the css px the
     // box is measured in without necessarily changing the number.
+    if (IS_LITE) document.addEventListener('visibilitychange', this.onVisibility);
     window.addEventListener('resize', this.onResize);
     if (typeof ResizeObserver === 'function') {
       this.boxWatch = new ResizeObserver(this.onResize);
@@ -638,7 +653,7 @@ export class ThreeScene {
   };
 
   private scheduleFrame(): void {
-    if (!this.raf && this.running && !this.disposed && !this.contextLost) this.raf = requestAnimationFrame(this.loop);
+    if (!this.raf && this.running && !this.disposed && !this.contextLost && (!IS_LITE || !document.hidden)) this.raf = requestAnimationFrame(this.loop);
   }
 
   /** One-shot waiters for "a frame was actually DRAWN" (see onNextPaint). */
@@ -665,10 +680,10 @@ export class ThreeScene {
   private setupMsaaTarget(w: number, h: number): void {
     // Rendering into a HalfFloat target needs EXT_color_buffer_float; where it's
     // missing, an 8-bit target still gives correct (slightly more banded) output.
-    const half = this.renderer.extensions.has('EXT_color_buffer_float');
+    const half = !IS_LITE && this.renderer.extensions.has('EXT_color_buffer_float');
     const size = this.targetSize(w, h);
     this.msaaTarget = new THREE.WebGLRenderTarget(size.w, size.h, {
-      samples: 4,
+      samples: IS_LITE ? 2 : 4,
       type: half ? THREE.HalfFloatType : THREE.UnsignedByteType,
     });
     const quadGeo = new THREE.PlaneGeometry(2, 2);
@@ -713,10 +728,14 @@ export class ThreeScene {
     if (this.msaaTarget && this.copyScene) {
       this.renderer.setRenderTarget(this.msaaTarget);
       this.renderer.render(this.scene, this.camera);
+      this.frameCalls = this.renderer.info.render.calls;
+      this.frameTriangles = this.renderer.info.render.triangles;
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.copyScene, this.copyCam);
     } else {
       this.renderer.render(this.scene, this.camera);
+      this.frameCalls = this.renderer.info.render.calls;
+      this.frameTriangles = this.renderer.info.render.triangles;
     }
     this.notifyPainted();
   }
@@ -847,7 +866,33 @@ export class ThreeScene {
       const restingNow = this.cameraRest.update(this.camera.position.toArray(), this.camera.quaternion.toArray(), this.controls.getDistance());
       if (!restingNow) this.bus?.emit('viewport-changed', { zoom: this.zoomPercent() / 100 });
     }
+    const started = IS_LITE ? performance.now() : 0;
     this.renderFrame();
+    if (IS_LITE) {
+      const action = this.frameBudget.sample(started, performance.now() - started,
+        this.frameCalls > 100 || this.frameTriangles > 100_000,
+        !this.lite || this.budgetScale > 0.5, this.previousFrameContinuous,
+        !this.resolutionLimited && this.budgetScale < 4 && canIncreaseRenderScale());
+      if (action === 'increase') {
+        this.budgetScale = Math.min(4, this.budgetScale * 1.5);
+        this.onResize();
+      } else if (action === 'reduce') {
+        this.resolutionLimited = true;
+        if (!this.lite) {
+          this.lite = true;
+          this.renderer.shadowMap.enabled = false;
+          this.msaaTarget?.dispose();
+          this.msaaTarget = null;
+          this.copyScene = null;
+        } else this.budgetScale = Math.max(0.5, this.budgetScale * 0.75);
+        this.onResize();
+      } else if (action === 'fallback') {
+        this.pause();
+        this.onPerformanceLimit?.();
+        return;
+      }
+    }
+    this.previousFrameContinuous = this.renderWindow > 0;
     if (this.renderWindow > 0) this.scheduleFrame();
   };
 
@@ -879,7 +924,7 @@ export class ThreeScene {
     // frame (autoUpdate off), so a bigger map is a one-time cost — use 4096² on capable devices for a
     // crisper contact; low-end stays 2048². normalBias pins the shadow to the object's base (kills the
     // peter-pan gap between object and shadow that reads as floating).
-    const shadowRes = maxRenderScale() >= 2 ? 4096 : 2048;
+    const shadowRes = IS_LITE ? 1024 : maxRenderScale() >= 2 ? 4096 : 2048;
     sun.shadow.mapSize.set(shadowRes, shadowRes);
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
@@ -1520,12 +1565,12 @@ export class ThreeScene {
    *  trimmed set is small — a rebuild costs far less than tracking per-chunk).
    *  `offsets` displaces named roads on the ground plane: the group-rotation tween's
    *  per-frame arc for a road that has no instance matrix to back-date. */
-  private rebuildRoadTrim(offsets?: ReadonlyMap<string, { dx: number; dz: number }>): void {
+  private rebuildRoadTrim(offsets?: ReadonlyMap<string, { dx: number; dz: number }>, state = this.liveState): void {
     for (const mesh of this.roadTrimMeshes) this.scene.remove(mesh);
     for (const geo of this.roadTrimGeos) geo.dispose(); // the materials are cached per material, not per rebuild
     this.roadTrimMeshes = [];
     this.roadTrimGeos = [];
-    for (const part of buildRoadTrimMeshes(this.liveState, this.hiddenLayers, offsets)) {
+    for (const part of buildRoadTrimMeshes(state, this.hiddenLayers, offsets)) {
       const geo = toGeometry(part.mesh);
       const mesh = new THREE.Mesh(geo, this.roadMaterial(part));
       // A flat decal on the surface casts no shadow of its own — and the shadow depth pass ignores
@@ -1716,7 +1761,7 @@ export class ThreeScene {
     // moves devicePixelRatio while inflating the CSS viewport. Leaving it at the
     // boot value multiplies the two effects instead of cancelling them, so a
     // zoomed-out page asks for a buffer several times the screen's pixel count.
-    this.renderer.setPixelRatio(maxRenderScale());
+    this.renderer.setPixelRatio(maxRenderScale({ width: w, height: h, budgetScale: this.budgetScale }));
     this.renderer.setSize(w, h);
     const size = this.targetSize(w, h);
     this.msaaTarget?.setSize(size.w, size.h);
@@ -1746,7 +1791,7 @@ export class ThreeScene {
    *  not the ground cell under it. Terrain closer than the mesh occludes (null
    *  falls back to footprint hit-testing on the picked cell). */
   pickObjectAt(sx: number, sy: number): string | null {
-    const rect = (this.renderer.domElement as HTMLCanvasElement).getBoundingClientRect();
+    const rect = viewportRect((this.renderer.domElement as HTMLCanvasElement));
     const ndc = new THREE.Vector2(((sx - rect.left) / rect.width) * 2 - 1, -((sy - rect.top) / rect.height) * 2 + 1);
     const rc = new THREE.Raycaster();
     rc.setFromCamera(ndc, this.camera);
@@ -1772,12 +1817,49 @@ export class ThreeScene {
     return best.id;
   }
 
+  private movePreviewIds = new Set<string>();
+
+  /** Preview matrices never replace canonical instance metadata or map objects. */
+  private previewObjectMove(destinations: readonly PlacedObject[]): void {
+    const next = new Map(destinations.map(obj => [obj.id, obj]));
+    const ids = new Set([...this.movePreviewIds, ...next.keys()]);
+    let roads = false;
+    for (const id of ids) {
+      const original = this.liveState.objects.get(id);
+      if (!original) continue;
+      if (bodyRoute(this.liveState, id) === 'roadTrim') { roads = true; continue; }
+      const ref = this.slots.slotOf(id);
+      const group = ref ? this.groups.get(ref.group) : undefined;
+      if (!ref || !group) continue;
+      const obj = next.get(id) ?? original;
+      const resolved = objectInstance(this.liveState, obj);
+      if (!resolved) continue;
+      if (next.has(id)) { this.plops.delete(id); this.spins.delete(id); }
+      if (this.hiddenLayers.has(obj.elevation)) this.writeHiddenInstance(group, ref.slot);
+      else this.writeInstance(group, ref.slot, resolved.inst);
+      group.mesh.boundingSphere = null;
+      group.mesh.boundingBox = null;
+    }
+    if (roads) {
+      const objects = new Map(this.liveState.objects);
+      for (const obj of destinations) objects.set(obj.id, obj);
+      this.rebuildRoadTrim(undefined, { ...this.liveState, objects });
+    }
+    this.movePreviewIds = new Set(next.keys());
+    this.renderer.shadowMap.needsUpdate = true;
+    this.requestRender();
+  }
+
   /** This scene as the tool layer's active view: surface-pick projection +
    *  the decal overlay. Created on first request; the overlay group joins the
    *  scene then (the read-only preview never pays for it). */
   asEditorView(): ActiveView {
     if (!this.editorView) {
-      const overlay = new Overlay3D(() => this.meshState(), this.requestRender, (id) => this.objectBoundingBox(id));
+      const overlay = new Overlay3D(
+        () => this.meshState(), this.requestRender, (id) => this.objectBoundingBox(id),
+        undefined, (destinations) => this.previewObjectMove(destinations), this.camera,
+        () => viewportRect(this.renderer.domElement),
+      );
       this.scene.add(overlay.group);
       this.overlay3d = overlay;
       this.editorView = {
@@ -2105,6 +2187,8 @@ export class ThreeScene {
   /** Halt the render loop while this view is hidden (the canvas stays alive and
    *  its GL resources warm); resume() restarts it. No-ops after dispose(). */
   pause(): void {
+    this.frameBudget.reset();
+    this.previousFrameContinuous = false;
     this.running = false;
     this.inertia.cancel(); // a glide must not resume when the view comes back, minutes later
     this.zoomInertia.cancel();
@@ -2143,6 +2227,7 @@ export class ThreeScene {
   private disposed = false;
 
   dispose(): void {
+    if (IS_LITE) document.removeEventListener('visibilitychange', this.onVisibility);
     this.disposed = true;
     this.running = false;
     this.notifyPainted();  // a disposed scene never draws again; a waiter must not hang on it

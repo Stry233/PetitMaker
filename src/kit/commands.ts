@@ -13,7 +13,7 @@ import { singleSelection, selectedObjectIds } from '../state/selection';
 import { getActiveToolManager } from '../canvas/active-view';
 import { getCatalogItem } from '../state/catalog';
 import { ELEVATION_MAX } from '../core/model/constants';
-import { MODE_FOR_CONTENT, type ContentType } from '../core/model/edit-mode';
+import { BUILD_SHAPES, MODE_FOR_CONTENT, type ContentType, type BuildShape } from '../core/model/edit-mode';
 import { canHoldSelection } from '../core/interaction/tool-modes';
 import { pressSmartBuild } from '../core/runtime/smart-build';
 import { endCurveSession } from '../tools/paint';
@@ -23,7 +23,7 @@ import { rotateGroupAction, rotateObjectAction, deleteSelection } from './group-
 import { translate } from '../i18n/context';
 import { showToast } from '../core/runtime/toast-bus';
 import { ACTION_BY_ID, type EditorAction } from './actions';
-import type { DesignMode } from '../core/model/types';
+import { NEXT_AUTO_EDGE_CUT, type DesignMode } from '../core/model/types';
 import type { AnnotationTool, AnnotationZoneShape } from '../core/model/annotations';
 
 /** Deps the handlers can't get from the global store — supplied by the mounted shell. */
@@ -53,21 +53,6 @@ export interface EditorCommand extends CommandMeta {
 const store = () => useEditorStore.getState();
 const doTile = (c: CommandContext, id: string): void => { const a = ACTION_BY_ID.get(id); if (a) c.handleTileAction(a); };
 
-/*
- * A KEY THAT CHOOSES SOMETHING PUTS IT AWAY AGAIN, because the control it stands for does. Pressing
- * a chosen mode leaves the mode; pressing an armed tool leaves the tool. A key that only ever sets
- * is the odd one out: a visitor reaching for it to undo a choice finds it does nothing.
- *
- * THE TWO RETREATS ARE NOT THE SAME, and `core/model/edit-mode.ts:resolveEditMode` is where both
- * live. Leaving a MODE is `mode: null` — rest, with the mode's bar gone. Leaving a TOOL is
- * `tool: 'none'` — the surface still chosen and its bar still up, with nothing armed on the map, so
- * the next press on the same content resumes where it left off.
- *
- * Which of the two applies is read from the store each time. It is the same fact the bar lights its
- * active cell from and the same fact the map arms its tool from, so there is nothing here to keep
- * in step with anything.
- */
-
 /** A build-surface key. Its tile action names a CONTENT type, so the mode it lands on is whatever
  *  `MODE_FOR_CONTENT` derives from that; pressing it while that mode is already in force runs the
  *  `move` tile instead, which is the rest every shell already answers. */
@@ -77,14 +62,7 @@ function surfaceKey(c: CommandContext, id: string): void {
   doTile(c, store().editMode.mode === MODE_FOR_CONTENT[action.payload as ContentType] ? 'move' : id);
 }
 
-/** A tool key. `designMode` is the tool the map is on, so a key naming the one already there puts it
- *  away instead — written to the store rather than sent through `openBuild`, because that verb also
- *  decides a SURFACE and putting a tool down is not a reason to move to another one. */
-/** What each numbered tool key ARMS while the annotation layer is the mode: a key keeps its
- *  meaning wherever both modes carry the tool (2 erases, 4 rules a line, 5 bends a curve, 6 and 7
- *  drag out their shapes), the trim key carries the chip, and the smart key carries the route
- *  (at its own RUN body, since smart is not a DesignMode). Pressing the active one puts the tool
- *  away, the terrain rows' own toggle. */
+/** Shared tool commands act on notes while the annotation surface is active. */
 const ANNOTATE_ARM: Partial<Record<DesignMode, { tool: AnnotationTool; shape?: AnnotationZoneShape }>> = {
   brush: { tool: 'zone', shape: 'free' },
   line: { tool: 'zone', shape: 'line' },
@@ -108,8 +86,31 @@ function toolKey(c: CommandContext, design: DesignMode): void {
     s.setAnnotationTool(arm.tool);
     return;
   }
+  if (terrainToolActive() && (design === 'eraser' || design === 'edge-cut')) {
+    s.setEditMode({ tool: design === 'eraser' ? 'erase' : 'trim' }); return;
+  }
   if (s.designMode === design) { s.setEditMode({ tool: 'none' }); return; }
   c.openBuild(design);
+}
+
+function terrainToolActive(): boolean {
+  const s = store();
+  return !s.selectingRegion && (s.editMode.mode === 'mountain' || s.editMode.mode === 'water' || s.editMode.mode === 'road');
+}
+
+function brushKey(c: CommandContext): void {
+  const s = store();
+  if (!terrainToolActive()) { toolKey(c, 'brush'); return; }
+  s.setEditMode(s.editMode.shape === 'free' ? { tool: 'brush' } : { tool: 'shape', shape: s.editMode.shape });
+}
+
+function shapeKey(c: CommandContext, shape: BuildShape): void {
+  const s = store();
+  if (!terrainToolActive()) { toolKey(c, shape === 'free' ? 'brush' : shape); return; }
+  if (s.editMode.tool === 'erase') s.setEraserShape(shape === 'free' ? 'dot' : shape);
+  else if (s.editMode.tool === 'brush' || s.editMode.tool === 'shape') {
+    s.setEditMode(shape === 'free' ? { tool: 'brush' } : { tool: 'shape', shape });
+  }
 }
 
 function rotateSelected(delta: 90 | -90): void {
@@ -253,17 +254,20 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   // Move IS the rest state, so it has nothing of its own to put away and pressing it twice is
   // pressing it once.
   'tool.move':   (c) => doTile(c, 'move'),
-  'tool.brush':  (c) => toolKey(c, 'brush'),
+  'tool.brush':  brushKey,
+  'tool.shape_cycle': c => {
+    const s = store();
+    if (!terrainToolActive()) return;
+    const shape = s.editMode.tool === 'erase' ? s.eraserShape === 'dot' ? 'free' : s.eraserShape : s.editMode.shape;
+    shapeKey(c, BUILD_SHAPES[(BUILD_SHAPES.indexOf(shape) + 1) % BUILD_SHAPES.length]!);
+  },
+  'tool.free':   (c) => shapeKey(c, 'free'),
   'tool.eraser': (c) => toolKey(c, 'eraser'),
-  'tool.rect':   (c) => toolKey(c, 'rect'),
-  'tool.circle': (c) => toolKey(c, 'circle'),
-  'tool.line':   (c) => toolKey(c, 'line'),
-  'tool.curve':  (c) => toolKey(c, 'curve'),
+  'tool.rect':   (c) => shapeKey(c, 'rect'),
+  'tool.circle': (c) => shapeKey(c, 'circle'),
+  'tool.line':   (c) => shapeKey(c, 'line'),
+  'tool.curve':  (c) => shapeKey(c, 'curve'),
   'tool.edgecut': (c) => toolKey(c, 'edge-cut'),
-  // Smart build is not a tool the map arms, so there is no armed state to read: it is a proposal
-  // the cell opens, and the cell answers a second press by putting it away itself.
-  // The smart cell's key: in annotate mode it is the ROUTE (the bar's own eighth cell there);
-  // everywhere else it presses the smart-build pill.
   'tool.smart':  () => {
     const s = store();
     if (s.editMode.mode === 'annotate') {
@@ -271,6 +275,12 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
       return;
     }
     pressSmartBuild();
+  },
+
+  'tool.auto_trim': () => {
+    const s = store();
+    if (!terrainToolActive() || (s.editMode.tool !== 'brush' && s.editMode.tool !== 'shape' && s.editMode.tool !== 'erase')) return;
+    s.setAutoEdgeCut(NEXT_AUTO_EDGE_CUT[s.autoEdgeCut]);
   },
 
   'brush.bigger':  () => { const s = store(); s.setBrushSize(Math.min(5, s.brushSize + 1)); },

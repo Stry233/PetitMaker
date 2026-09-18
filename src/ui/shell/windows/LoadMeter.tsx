@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
  * LoadMeter.tsx — the corner disc: how full the region under the pointer is.
  *
@@ -102,7 +103,7 @@ export function LoadMeter({ art }: { art: FrameArt }) {
       const now = performance.now();
       if (now - last < SAMPLE_MS) return;
       last = now;
-      const cell = getActiveView()?.projection.screenToMacro(e.clientX, e.clientY);
+      const cell = getActiveView()?.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
       const grid = useEditorStore.getState().gridState;
       if (!cell || !grid) return;
       const { width, height } = grid.template;

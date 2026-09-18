@@ -1,3 +1,4 @@
+import { viewportSize } from '../../core/runtime/viewport-space';
 /**
  * Shared single-choice dropdown. The open card portals to `body` so ancestor zoom and stacking
  * contexts cannot clip it, anchors in viewport coordinates, and opens above when needed. Escape and
@@ -186,7 +187,7 @@ function placeCard(anchor: VisualRect, zoom: number): Placement {
   // times tighter to its row at the top of the range than at the bottom. Here it is the room test's
   // own term, which is measured in visual px, so the gap is scaled INTO it.
   const gapVisual = ANCHOR_GAP * zoom;
-  const below = window.innerHeight - anchor.bottom - gapVisual - EDGE_MARGIN;
+  const below = viewportSize().height - anchor.bottom - gapVisual - EDGE_MARGIN;
   const above = anchor.top - gapVisual - EDGE_MARGIN;
   const flip = below < ROOM_FLOOR && above > below;
   const room = Math.max(ROOM_FLOOR, flip ? above : below);
@@ -203,7 +204,7 @@ function placeCard(anchor: VisualRect, zoom: number): Placement {
       // above keeps its head inside the window. Pinning the top instead would make the card's own
       // length decide where it starts, which moves it every time the list changes.
       ...(flip
-        ? { bottom: (window.innerHeight - anchor.top) / zoom + ANCHOR_GAP }
+        ? { bottom: (viewportSize().height - anchor.top) / zoom + ANCHOR_GAP }
         : { top: anchor.bottom / zoom + ANCHOR_GAP }),
     },
   };

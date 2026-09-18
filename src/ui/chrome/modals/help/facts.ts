@@ -10,7 +10,7 @@ import { CHUNK_LOAD_LIMIT, ELEVATION_MAX } from '../../../../core/model/constant
 import { ANNOTATION_COLORS } from '../../../../core/model/annotations';
 import { ItemCategory, type PlacementTrait } from '../../../../core/model/types';
 import { getAllItems, getPlaceableByCategory } from '../../../../state/catalog';
-import { PROVIDER_IDS, providerBaseUrls } from '../../../../agent/providers/defaults';
+import { PROVIDER_IDS, providerBaseUrls } from './edition-help';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../../io/autosave';
 import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../../agent/core/governor';
 import { STYLIZE_PROVIDERS } from '../../../../io/stylize/providers';

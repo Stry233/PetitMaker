@@ -43,12 +43,7 @@ export interface EditSlice {
    */
   tileMaterialPicked: boolean;
   autoEdgeCut: AutoEdgeCut;     // auto corner-trim mode for the build brushes
-  /**
-   * What the eraser takes back in one gesture: a DAB under the brush, or a rectangle/circle dragged
-   * out and taken on release. It is the eraser's own setting rather than the row's shape, because
-   * the row's shape arms what the DRAWING tool lays and the eraser is a different tool: switching to
-   * the eraser must not inherit the shape you were painting with, nor lose it on the way back.
-   */
+  /** Erasing keeps its shape independently of the drawing tool. */
   eraserShape: EraserShape;
   activeLayer: number;          // build floor: the layer the user explicitly selected
   /**
@@ -65,6 +60,8 @@ export interface EditSlice {
   layerVisibility: Record<number, boolean>;
   layerLocked: Record<number, boolean>;
   brushSize: number;
+  drawingBrushSize: number;
+  eraserBrushSize: number;
   selectedItemId: string | null;
   /** The armed macro's id, derived by `setEditMode` exactly as `selectedItemId` is. */
   armedMacro: string | null;
@@ -133,6 +130,8 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
   layerVisibility: {} as Record<number, boolean>,
   layerLocked: {} as Record<number, boolean>,
   brushSize: 1,
+  drawingBrushSize: 1,
+  eraserBrushSize: 1,
   selectedItemId: null,
   armedMacro: null,
   armingEpoch: 0,
@@ -160,8 +159,12 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
     // picking another tool or item inside the mode the region was painted for is not leaving it.
     const leftRegion = editMode.mode !== get().editMode.mode && get().selectingRegion;
     const macroChanged = resolved.armedMacro !== get().armedMacro;
+    const brushSize = editMode.tool === 'erase' ? get().eraserBrushSize
+      : editMode.tool === 'brush' || editMode.tool === 'shape' || editMode.tool === 'smart' ? get().drawingBrushSize
+      : get().brushSize;
     set({
       editMode,
+      brushSize,
       displayLayer: null,
       activeTool: resolved.toolType,
       designMode: resolved.designMode,
@@ -189,5 +192,8 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
   setLayerLocked: (layer, locked) => set((s) => ({
     layerLocked: { ...s.layerLocked, [layer]: locked },
   })),
-  setBrushSize: (size) => set({ brushSize: size }),
+  setBrushSize: (size) => set((s) => ({
+    brushSize: size,
+    ...(s.editMode.tool === 'erase' ? { eraserBrushSize: size } : { drawingBrushSize: size }),
+  })),
 });

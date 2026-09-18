@@ -27,3 +27,18 @@ describe('OverlayLayer hover box', () => {
     expect(kids.indexOf(inner.hoverGraphics)).toBeLessThan(kids.indexOf(inner.selectionGraphics));
   });
 });
+
+
+describe('editable curve footprint', () => {
+  it('survives clearing pointer ghosts and releases its geometry on dismissal', () => {
+    const overlay = new OverlayLayer();
+    const g = (overlay as unknown as { curveGraphics: { geometry: { graphicsData: unknown[] } } }).curveGraphics;
+    overlay.showCurveFootprint([{ x: 4, y: 5 }, { x: 5, y: 5 }], true);
+    expect(g.geometry.graphicsData.length).toBeGreaterThan(0);
+    overlay.clearGhost();
+    expect(g.geometry.graphicsData.length).toBeGreaterThan(0);
+    overlay.clearCurveFootprint();
+    expect(g.geometry.graphicsData.length).toBe(0);
+    overlay.container.destroy({ children: true });
+  });
+});

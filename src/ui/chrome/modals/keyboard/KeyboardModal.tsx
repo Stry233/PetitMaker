@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../../core/runtime/viewport-space';
 /*
  * The keyboard-shortcuts page. A DaVinci-Resolve-style interactive board: a rendered ANSI keyboard + numeric keypad whose keys show each command tinted
  * by category at the active modifier layer; a search field to reach any command (incl. unmapped ones
@@ -7,6 +8,7 @@
  * bindable here, no per-command wiring. Fully DOM, so it is verifiable via the headless-Firefox
  * screenshot loop.
  */
+import { IS_LITE } from '../../../../core/runtime/edition';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, type Variants } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
@@ -114,8 +116,8 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
     const thumbW = rect.width * thumbFrac;
     // Grabbing the thumb keeps the point under the pointer; pressing the track jumps the thumb's
     // centre there, so the press lands where the user aimed rather than a thumb-width away.
-    grab.current = onThumb ? e.clientX - rect.left - (rect.width - thumbW) * posFrac : thumbW / 2;
-    const to = scrollFor(e.clientX);
+    grab.current = onThumb ? clientPoint(e).x - rect.left - (rect.width - thumbW) * posFrac : thumbW / 2;
+    const to = scrollFor(clientPoint(e).x);
     if (to !== null) onScrollTo(to, !onThumb);
   };
 
@@ -132,7 +134,7 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
       onPointerDown={(e) => down(e, false)}
       onPointerMove={(e) => {
         if (!e.buttons || grab.current === null) return;
-        const to = scrollFor(e.clientX);
+        const to = scrollFor(clientPoint(e).x);
         if (to !== null) onScrollTo(to, false);
       }}
       onPointerUp={() => { grab.current = null; }}
@@ -585,9 +587,11 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           </AnimatePresence>
         </div>
 
-        <motion.button {...buttonMotion} style={pill('quiet')} onClick={() => fileRef.current?.click()}>{t('kbd.import')}</motion.button>
-        <motion.button {...buttonMotion} style={pill('quiet')} onClick={onExport}>{t('kbd.export')}</motion.button>
-        <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: 'none' }} />
+        {!IS_LITE && <>
+          <motion.button {...buttonMotion} style={pill('quiet')} onClick={() => fileRef.current?.click()}>{t('kbd.import')}</motion.button>
+          <motion.button {...buttonMotion} style={pill('quiet')} onClick={onExport}>{t('kbd.export')}</motion.button>
+          <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: 'none' }} />
+        </>}
       </div>
 
       {/* ONLY the keyboard scrolls (header above + footer below stay pinned). One region scrolls both

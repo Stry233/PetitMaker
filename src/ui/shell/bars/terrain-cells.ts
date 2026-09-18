@@ -110,30 +110,6 @@ export interface ToolCell {
   /** What a click lays. `setEditMode` takes these two and resolves the tool; the shape cells all
    *  resolve to the same tool, which multiplexes the figure internally. */
   edit: { tool: BuildTool; shape?: BuildShape };
-  /**
-   * Whether this cell's stroke goes through the post-stroke corner trim, and so carries the
-   * auto-trim setting in its plate while it is the active cell.
-   *
-   * Every cell that LAYS content does: the brush and the four shapes are one tool
-   * (`tools/paint/drawing-tool.ts`), and its `finishStroke` runs `applyAutoEdgeCut` over whatever
-   * the stroke committed, terrain and road alike. The eraser never calls it — it takes content
-   * away, and there is no stroke to shape — and the trim cell IS the manual trimmer, so offering
-   * the automatic one inside its own plate would be a control arguing with itself.
-   */
-  autoTrim?: true;
-  /** Whether this cell carries the ERASER'S SHAPE setting while it is the active cell: only the
-   *  eraser does, since it is the only tool whose press has more than one footprint to choose
-   *  between (`tools/paint/eraser.ts`). */
-  eraserShape?: true;
-  /**
-   * Whether this tool lays a figure the BRUSH SIZE decides the width of.
-   *
-   * The free brush, the eraser, the line and the curve do (`expandLine`/`splineCells`/`brushCells`
-   * all take it); a rectangle and a circle are laid to the size they are dragged out to, and the
-   * trimmer takes one corner. The row's slider reads this and draws itself unavailable where the
-   * armed tool has no width for it to set.
-   */
-  sized?: true;
   glyph: Record<TerrainSurface, Glyph>;
 }
 
@@ -280,9 +256,7 @@ export const PLATE_ART = { badge: badgePlate };
 export const TOOL_CELLS: readonly ToolCell[] = [
   {
     id: 'draw', labelKey: 'design.free_brush', commandId: 'tool.brush',
-    sized: true,
     edit: { tool: 'brush' },
-    autoTrim: true,
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 5, w: 103, h: 75, gx: 59.31, gy: 52.79, area: 4216.4 },
@@ -305,9 +279,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'erase', labelKey: 'design.eraser', commandId: 'tool.eraser',
-    sized: true,
     edit: { tool: 'erase' },
-    eraserShape: true,
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 7.88, w: 103, h: 72.13, gx: 58.38, gy: 54.27, area: 4062.4 },
@@ -338,9 +310,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'line', labelKey: 'design.line_brush', commandId: 'tool.line',
-    sized: true,
     edit: { tool: 'shape', shape: 'line' },
-    autoTrim: true,
     glyph: shared(toGlyph(
       { x: 2.88, y: 3, w: 65.5, h: 43.13, gx: 36, gy: 24.25, area: 794.5 },
       [
@@ -352,9 +322,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'curve', labelKey: 'design.curve_brush', commandId: 'tool.curve',
-    sized: true,
     edit: { tool: 'shape', shape: 'curve' },
-    autoTrim: true,
     glyph: shared(toGlyph(
       { x: 2.88, y: 2, w: 80.38, h: 42.75, gx: 43.13, gy: 24.13, area: 1202.2 },
       [
@@ -367,7 +335,6 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   {
     id: 'rect', labelKey: 'design.rect_brush', commandId: 'tool.rect',
     edit: { tool: 'shape', shape: 'rect' },
-    autoTrim: true,
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 61, h: 61, gx: 32.5, gy: 32.5, area: 1806.4 },
       [{ src: rectShape, x: 1143, y: 1755, w: 64, h: 64 }],
@@ -376,22 +343,9 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   {
     id: 'circle', labelKey: 'design.circle_brush', commandId: 'tool.circle',
     edit: { tool: 'shape', shape: 'circle' },
-    autoTrim: true,
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 67, h: 67, gx: 35.05, gy: 35.05, area: 1861.5 },
       [{ src: circleShape, x: 1323, y: 1750, w: 70, h: 70 }],
     )),
   },
 ];
-
-/**
- * Which cell reads as the active one, from the edit-mode inputs the store holds.
- *
- * Derived rather than stored: the same facts drive the map, and a second copy of "which tool is
- * armed" beside the store's would be a second thing to keep in step. `none` (a selection gesture
- * left the surface without a tool) lights nothing, which is the honest picture.
- */
-export function activeCellId(tool: BuildTool, shape: BuildShape): string | null {
-  if (tool === 'shape') return TOOL_CELLS.find((c) => c.edit.shape === shape)?.id ?? null;
-  return TOOL_CELLS.find((c) => c.edit.tool === tool)?.id ?? null;
-}

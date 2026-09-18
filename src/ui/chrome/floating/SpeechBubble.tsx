@@ -1,3 +1,4 @@
+import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
  * A speech bubble hung from a shell control, its tail on the control. The line is the action; the
  * round button closes it and carries the five-second clock; a press anywhere else closes it too.
@@ -109,7 +110,7 @@ export function SpeechBubble({ anchor, text, onAct, onClose }: SpeechBubbleProps
           last = key;
           setAt({
             top: (r.bottom + r.height * BUBBLE_GAP_SHARE) / chrome,
-            right: (window.innerWidth - r.right) / chrome,
+            right: (viewportSize().width - r.right) / chrome,
             tailRight: r.width / 2 / chrome - TAIL / 2,
           });
         }

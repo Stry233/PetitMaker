@@ -1,3 +1,4 @@
+import { viewportSize } from '../../../../core/runtime/viewport-space';
 // DaVinci-style footer builder: a single editable line where you type plain text freely and insert
 // token "bubbles" that behave as ONE atomic character (Backspace deletes the whole chip). Tags are
 // inserted from a scroll menu opened by the "+ Insert tag" button OR by typing "/"; while the menu
@@ -224,11 +225,11 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
         {menu && (() => {
           // Open below the anchor, but flip above when there isn't room — and cap the height to the
           // available space so the menu always stays inside the window.
-          const below = window.innerHeight - menu.bottom - 12;
+          const below = viewportSize().height - menu.bottom - 12;
           const above = menu.top - 12;
           const placeAbove = below < 200 && above > below;
           const maxH = Math.max(120, Math.min(300, placeAbove ? above : below));
-          const pos: CSSProperties = placeAbove ? { bottom: (window.innerHeight - menu.top + 4) / chrome } : { top: (menu.bottom + 4) / chrome };
+          const pos: CSSProperties = placeAbove ? { bottom: (viewportSize().height - menu.top + 4) / chrome } : { top: (menu.bottom + 4) / chrome };
           return (
             <>
               <ClickCatcher onDismiss={() => setMenu(null)} />

@@ -23,6 +23,7 @@ export type BuildTool = 'brush' | 'erase' | 'trim' | 'shape' | 'none' | 'smart';
 
 /** Which figure the shape tool lays. */
 export type BuildShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
+export const BUILD_SHAPES: readonly BuildShape[] = ['free', 'line', 'curve', 'rect', 'circle'];
 
 /** The surface a build brush lays. Roads are a tile coating; the other two are terrain. */
 export type ContentType = 'mountain' | 'water' | 'tile';
@@ -128,7 +129,7 @@ export type Arming = ContentArming | ObjectArming;
 interface Inputs<M extends BuildMode, A extends Arming> {
   mode: M;
   arming: A;
-  /** The flat tool the bars still read (`terrain-cells.ts:activeCellId`, `SmartBuild`). */
+  /** The tool selected in the toolbar. */
   readonly tool: BuildTool;
   /** WHICH FIGURE THE SHAPE CELL LAYS, remembered across a put-away: it is a property of the shape
    *  tool, not an arming, so putting the tool down must not forget it. */
@@ -322,7 +323,7 @@ function carriedContent(prev: EditModeInputs, surface: ContentMode): ContentArmi
  */
 export function nextEditMode(prev: EditModeInputs, patch: EditModePatch): EditModeInputs {
   const mode = patch.mode === undefined ? prev.mode : patch.mode;
-  const shape = patch.shape ?? prev.shape;
+  const shape = patch.shape ?? (patch.tool === 'brush' ? 'free' : prev.shape);
 
   if (mode === null || mode === 'generate' || mode === 'annotate') {
     const arming = prev.arming;
@@ -333,7 +334,7 @@ export function nextEditMode(prev: EditModeInputs, patch: EditModePatch): EditMo
     return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: arming };
   }
   const arming = contentArmedBy(patch, shape, prev.arming) ?? carriedContent(prev, mode);
-  return { mode, arming, tool: TOOL_OF[arming.kind], shape, heldObject: heldObjectAfter(prev) };
+  return { mode, arming, tool: TOOL_OF[arming.kind], shape: arming.kind === 'brush' ? 'free' : shape, heldObject: heldObjectAfter(prev) };
 }
 
 /** The shelf's memory after this call: its own arming while the shelf is open, kept as it was

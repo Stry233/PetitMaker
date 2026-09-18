@@ -9,7 +9,7 @@
  * surface decals. Both views convert cells to screen coordinates for the
  * screen-anchored React chrome (SelectionHandles / ContextMenu / popovers).
  */
-import type { GridState, MacroCoord } from '../core/model/types';
+import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
 import type { GhostPaint } from '../core/runtime/preview-cell';
 import type { TrimmedCell } from '../tools/edge-cut';
 import type { RowSpan } from './map2d/layers/ghost-geometry';
@@ -56,6 +56,9 @@ export interface ToolOverlay {
   showGhost(cells: MacroCoord[], paint: GhostPaint, terrainGrid?: boolean, trim?: readonly TrimmedCell[], losses?: readonly MacroCoord[]): void;
   showGhostSpans(spans: RowSpan[], paint: GhostPaint, terrainGrid?: boolean, trim?: readonly TrimmedCell[]): void;
   clearGhost(): void;
+  /** An editable curve footprint, independent of transient pointer previews. */
+  showCurveFootprint(cells: MacroCoord[], terrainGrid: boolean): void;
+  clearCurveFootprint(): void;
   /** `append` draws this ring alongside whatever is already on screen instead of replacing it
    *  (a GROUP selection paints one ring per member). Omit or false replaces. */
   showSelection(x: number, y: number, w?: number, h?: number, elevation?: number, terrainMode?: boolean, append?: boolean): void;
@@ -95,6 +98,8 @@ export interface ToolOverlay {
    *  at the hover cell. Views without a mesh representation omit it; callers
    *  pair it with the cell ghost (which carries the footprint/validity). */
   showPlacementGhost?(catalogId: string, x: number, y: number, rotation: number, valid: boolean, elevation: number): void;
+  /** Preview solid objects at their destinations and mark their origins. Cleared by clearGhost. */
+  showObjectMove?(destinations: readonly PlacedObject[], valid: boolean): void;
   /** The GROUP drag ghost: one body per selected member, each at its own drop position, ALL
    *  sharing ONE validity tint — a group move is all-or-nothing, so tinting members individually
    *  would promise a partial move that can never happen. Views without a body-ghost representation

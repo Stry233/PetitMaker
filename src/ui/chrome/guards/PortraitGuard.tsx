@@ -26,7 +26,7 @@ const overlay: CSSProperties = {
 
 const panel: CSSProperties = {
   ...cozyPanel,
-  width: 'min(88vw, 380px)',
+  width: '88vw', maxWidth: 380,
   padding: '32px 28px',
   display: 'flex',
   flexDirection: 'column',

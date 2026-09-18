@@ -6,6 +6,7 @@
  * numbers the 2D overlay uses, so validity tints match across views.
  */
 import * as THREE from 'three';
+import { MoveOrigins3D } from './move-origins';
 import type { Corners, GridState, MacroCoord, ValidationError } from '../../../core/model/types';
 import type { ToolOverlay } from '../../view-projection';
 import type { MacroRect } from '../../interaction/marquee';
@@ -19,7 +20,7 @@ import { resolveErrorFlashCells, resolveErrorFlashRects, errorFlashSignature, sh
 import { isMotionReduced } from '../../map2d/motion-state';
 import { animConfig } from '../../../core/runtime/anim-config';
 import {
-  boundsOfCells, isPreviewCell, previewDots, previewIconRect, previewPalette,
+  CURVE_FOOTPRINT, boundsOfCells, isPreviewCell, previewDots, previewIconRect, previewPalette,
   type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette,
 } from '../../../core/runtime/preview-cell';
 import { HATCH_CELLS, previewHatchCanvas, previewIconCanvas } from '../../preview-cell-raster';
@@ -41,18 +42,8 @@ const GHOST_LOSS = 0xe2574c;
 
 interface Flash { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial; bornMs: number; lifeMs: number; peak: number }
 
-/** A ghost body is TWO meshes over one geometry: a depth-only pre-pass and the translucent colour
- *  pass that tests against it. Without the pre-pass every part of a merged model blends separately,
- *  so a trunk shows through its canopy and a post through its deck — the silhouette must read as one
- *  body, not as a stack of parts.
- *
- *  RENDER-ORDER INVARIANT for everything in `group`: the ghost body owns 1 and 2, and EVERY other
- *  object added to the group must stay at 0. A Group's own renderOrder becomes the shared groupOrder
- *  of its whole subtree, so the children sort purely by their own number — anything given 1 or more
- *  draws after the pre-pass and is depth-clipped by it wherever the ghost body stands, silently. The
- *  decals, boxes, flashes, buildable wash and route all sit at 0 for that reason, which is also what
- *  keeps the pre-pass from punching the footprint wash out from under a wide canopy.
- *  Pinned by `__tests__/canvas3d/ghost-depth-prepass.test.ts`. */
+/** Ghost depth and colour occupy orders 1 and 2. Ordinary decals stay at 0 so the
+ *  pre-pass cannot erase them. Move previews use the solid scene instances. */
 interface GhostBody { mesh: THREE.Mesh; depth: THREE.Mesh }
 const GHOST_DEPTH_ORDER = 1;
 const GHOST_COLOR_ORDER = 2;
@@ -124,6 +115,10 @@ function cardBackground(palette: PreviewPalette, geo: THREE.BufferGeometry): THR
 export class Overlay3D implements ToolOverlay {
   readonly group = new THREE.Group();
 
+  private moveOrigins: MoveOrigins3D | null = null;
+  private moving = false;
+
+  private curveFootprint: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   private pendingGhost: PendingGhost | null = null;
   private ghost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   /** The `losses` half of the ghost: its own body, its own material, disposed alongside `ghost`. */
@@ -156,6 +151,9 @@ export class Overlay3D implements ToolOverlay {
     private requestRender: () => void,
     private objectBox: (id: string) => THREE.Box3 | null = () => null,
     private nowMs: () => number = () => performance.now(),
+    private moveObjects: (destinations: readonly PlacedObject[]) => void = () => {},
+    private camera?: THREE.Camera,
+    private viewport?: () => { width: number; height: number },
   ) {
     this.group.renderOrder = 50; // over terrain and water, under nothing that matters
   }
@@ -172,7 +170,25 @@ export class Overlay3D implements ToolOverlay {
     this.requestRender();
   }
 
+  showObjectMove(destinations: readonly PlacedObject[], _valid: boolean): void {
+    this.moveOrigins ??= new MoveOrigins3D(this.group, this.camera, this.viewport, this.nowMs);
+    this.moveOrigins.show(this.state(), destinations.map(obj => obj.id));
+    this.moving = true;
+    this.dropPlacementGhost();
+    this.clearGroupPlacementGhost();
+    this.clearHover();
+    for (const box of this.selection) { box.mesh.visible = false; box.edge.visible = false; }
+    this.moveObjects(destinations);
+    this.requestRender();
+  }
+
   clearGhost(): void {
+    this.moveOrigins?.clear();
+    if (this.moving) {
+      this.moving = false;
+      this.moveObjects([]);
+      for (const box of this.selection) { box.mesh.visible = true; box.edge.visible = true; }
+    }
     this.pendingGhost = { kind: 'clear' };
     this.dropPlacementGhost();
     this.clearGroupPlacementGhost();
@@ -289,11 +305,15 @@ export class Overlay3D implements ToolOverlay {
 
   /** Consume the pending ghost update — called once per rendered frame. */
   flush(): void {
+    this.moveOrigins?.update();
     if (this.pendingSelectionIds.length) {
       const ids = this.pendingSelectionIds;
       this.pendingSelectionIds = [];
       this.unresolved = [];
       for (const id of ids) this.buildObjectSelection(id);
+    }
+    if (this.moving) {
+      for (const box of this.selection) { box.mesh.visible = false; box.edge.visible = false; }
     }
     const pending = this.pendingGhost;
     if (!pending) return;
@@ -653,7 +673,8 @@ export class Overlay3D implements ToolOverlay {
   /** Advance flash decay; true while any flash is alive (keeps the render
    *  window open, like a canvas animation). */
   tick(): boolean {
-    const pulsing = this.stepRegionPulse();
+    const fading = this.moveOrigins?.tick() ?? false;
+    const pulsing = this.stepRegionPulse() || fading;
     if (this.flashes.length === 0) return pulsing;
     const now = this.nowMs();
     this.flashes = this.flashes.filter((f) => {
@@ -756,6 +777,26 @@ export class Overlay3D implements ToolOverlay {
 
   private route: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
 
+  showCurveFootprint(cells: MacroCoord[], terrainGrid: boolean): void {
+    this.clearCurveFootprint();
+    const data = cellDecals(this.state(), cells, terrainGrid);
+    if (!data.positions.length) return;
+    const geo = toGeo(data), mat = makeMat(CURVE_FOOTPRINT.color, CURVE_FOOTPRINT.alpha);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'curve-footprint';
+    this.group.add(mesh);
+    this.curveFootprint = { mesh, geo, mat };
+    this.requestRender();
+  }
+
+  clearCurveFootprint(): void {
+    if (!this.curveFootprint) return;
+    const { mesh, geo, mat } = this.curveFootprint;
+    this.group.remove(mesh); geo.dispose(); mat.dispose();
+    this.curveFootprint = null;
+    this.requestRender();
+  }
+
   /** The maze's answer, in the 2D view's own yellow, on the TERRAIN grid — the walls stand at the
    *  −HALF_TILE offset here too, so the corridor floor between them is the shifted rect. Its own
    *  decal, so it stands beside the buildable-region drape without either replacing the other. */
@@ -781,6 +822,11 @@ export class Overlay3D implements ToolOverlay {
   }
 
   dispose(): void {
+    this.clearCurveFootprint();
+    this.moveOrigins?.dispose();
+    this.moveOrigins = null;
+    if (this.moving) this.moveObjects([]);
+    this.moving = false;
     if (this.placementGhost) {
       this.group.remove(this.placementGhost.mesh);
       this.placementGhost = null;

@@ -20,7 +20,7 @@ import {
 } from './error-flash';
 import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, roadTrimmedOutline, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RoadTrimmedGhostCell, type RowSpan } from './ghost-geometry';
 import {
-  boundsOfCells, boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, previewDots, previewIconRect,
+  CURVE_FOOTPRINT, boundsOfCells, boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, previewDots, previewIconRect,
   previewPalette, PREVIEW_CELL_ART, type CellBounds, type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette,
 } from '../../../core/runtime/preview-cell';
 import { previewIconCanvas } from '../../preview-cell-raster';
@@ -115,6 +115,7 @@ export class OverlayLayer {
   private gridGraphics: PIXI.Graphics;
   private errorGraphics: PIXI.Graphics;
   private ghostGraphics: PIXI.Graphics;
+  private curveGraphics = new PIXI.Graphics();
   private hoverGraphics: PIXI.Graphics;
   private bandGraphics: PIXI.Graphics;
   private selectionGraphics: PIXI.Graphics;
@@ -156,6 +157,7 @@ export class OverlayLayer {
     // dragging over them.
     this.container.addChild(this.gridGraphics);
     this.container.addChild(this.commitGraphics);
+    this.container.addChild(this.curveGraphics);
     this.container.addChild(this.ghostGraphics);
     this.container.addChild(this.previewIcon);
     this.container.addChild(this.hoverGraphics);
@@ -810,6 +812,19 @@ export class OverlayLayer {
 
   private routeGraphics = new PIXI.Graphics();
   private routeAdded = false;
+
+  showCurveFootprint(cells: MacroCoord[], terrainGrid: boolean): void {
+    this.curveGraphics.clear();
+    this.curveGraphics.beginFill(CURVE_FOOTPRINT.color, CURVE_FOOTPRINT.alpha);
+    for (const { x, y } of cells) cellRect(this.curveGraphics, x, y, terrainGrid);
+    this.curveGraphics.endFill();
+    this.requestRender();
+  }
+
+  clearCurveFootprint(): void {
+    this.curveGraphics.clear();
+    this.requestRender();
+  }
 
   /** The maze's answer, in the chosen-card yellow: solid enough to read as a path, translucent
    *  enough that the ground it walks stays visible. ON THE TERRAIN GRID, deliberately: the walls

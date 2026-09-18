@@ -74,12 +74,13 @@ describe('ImportModal', () => {
   it('the file picker accepts JPEG/WebP rasters, not just PNG/JSON', () => {
     setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
-    const createSpy = vi.spyOn(document, 'createElement');
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const clickSpy = vi.spyOn(input, 'click');
     fireEvent.click(screen.getByRole('button'));
-    const input = createSpy.mock.results.map((r) => r.value as HTMLElement).find((el) => el.tagName === 'INPUT') as HTMLInputElement;
+    expect(clickSpy).toHaveBeenCalledOnce();
     expect(input.accept).toContain('image/jpeg');
     expect(input.accept).toContain('image/webp');
-    createSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 
   it('routes a dropped JPEG through the raster import path (createImageBitmap → getImageData → importFromRaster), not the legacy JSON path', async () => {

@@ -1,3 +1,4 @@
+import { viewportSize } from '../../core/runtime/viewport-space';
 /**
  * Fixed providers convert design coordinates to CSS pixels. `fittedUiScale` supplies the shared live
  * CSS zoom for chrome and frame; the frame adds its constant authored ratio. The minimum workspace
@@ -107,13 +108,14 @@ export function useDockRef(): number {
  *  whether there is room to dock, which is what decides the widening the fit reads. */
 export function useViewportSize(): { w: number; h: number } {
   const posed = useUiPreviewPose()?.viewport;
-  const [w, setW] = useState(() => (typeof window === 'undefined' ? FIT_REF.w : window.innerWidth));
-  const [h, setH] = useState(() => (typeof window === 'undefined' ? FIT_REF.h : window.innerHeight));
+  const [w, setW] = useState(() => (typeof window === 'undefined' ? FIT_REF.w : viewportSize().width));
+  const [h, setH] = useState(() => (typeof window === 'undefined' ? FIT_REF.h : viewportSize().height));
   useEffect(() => {
-    const onResize = () => { setW(window.innerWidth); setH(window.innerHeight); };
+    const onResize = () => { setW(viewportSize().width); setH(viewportSize().height); };
     window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
     onResize();
-    return () => window.removeEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); window.visualViewport?.removeEventListener('resize', onResize); };
   }, []);
   // A pictured shell lays itself out for the window its figure poses, so every fit and plan
   // downstream of this reading agrees with the box the picture is drawn in.

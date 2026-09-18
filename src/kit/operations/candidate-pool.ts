@@ -17,6 +17,7 @@
  * main thread. `typeof Worker` gates the whole thing, so tests and headless runs never construct
  * one.
  */
+import { SUPPORTS_WORKERS } from '../../core/runtime/edition';
 import { decodeCells, encodeCells, type WireCells } from '../../core/model/grid-wire';
 import type { Command, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject } from '../../core/model/types';
 import type { MacroBuild, MacroId, MacroOpts, MacroPreview } from '../../tools/macros';
@@ -83,7 +84,7 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null;
 const queue: Job[] = [];
 
 export function poolAvailable(): boolean {
-  return typeof Worker !== 'undefined' && !broken;
+  return SUPPORTS_WORKERS && typeof Worker !== 'undefined' && !broken;
 }
 
 function poolSize(): number {

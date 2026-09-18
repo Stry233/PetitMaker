@@ -1,3 +1,5 @@
+import { showToast } from '../../../../core/runtime/toast-bus';
+import { IS_LITE } from '../../../../core/runtime/edition';
 /**
  * Full-screen 3D preview overlay. Mounts a ThreeScene from the current GridState
  * snapshot, owns its entrance/exit motion (Quiet Toybox: scale-in via springs,
@@ -49,6 +51,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
     const host = hostRef.current;
     if (!host || !gridState) return;
     const scene = new ThreeScene(host, gridState);
+    scene.onPerformanceLimit = () => { showToast(t('view3d.unavailable'), 'error'); onClose(); };
     sceneRef.current = scene;
     // The gestures below drive the camera verbs directly, so OrbitControls must stop handling
     // pointers — it stays for what the scene reads it for: the orbit target, the polar clamps and
@@ -157,7 +160,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
           </motion.button>
 
           {/* save a PNG of the current framing */}
-          {gridState && (
+          {gridState && !IS_LITE && (
             <motion.button
               type="button"
               onClick={onCapture}

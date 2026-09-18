@@ -30,8 +30,7 @@ import type { Glyph } from '../frame';
 import { GlyphIcon } from '../GlyphIcon';
 import { captionShift, MODE, SCALE, TEXT } from '../units';
 import { STILL, useMotion } from '../motion/use-motion';
-import { AutoTrim, CHIP_FOLDED_W, CHIP_INSET } from './AutoTrim';
-import { EraserShapeChip } from './EraserShapeChip';
+import { CHIP_FOLDED_W, CHIP_INSET } from './SettingChip';
 import { ShortcutBadge } from './bar-atoms';
 import { CAPTION, CELL, GLYPH, plateShape } from './terrain-cells';
 
@@ -60,12 +59,6 @@ const caption: CSSProperties = {
  * enough to clamp is held a little right of the frame's margin while the pill is open, never left.
  */
 const PILL_CENTRE_SHIFT = (CHIP_FOLDED_W + CHIP_INSET) / 2;
-
-/** The auto-trim chip, which is the only control a cell carries today. Named here so a row asks for
- *  it by what it is rather than by building it. */
-export const AUTO_TRIM = <AutoTrim />;
-/** The eraser's shape chip, the second of the settings a cell can carry. */
-export const ERASER_SHAPE = <EraserShapeChip />;
 
 export function ToolCell({ glyph, label, commandId, active, centre, onSelect, carries, helpTarget }: {
   glyph: Glyph;

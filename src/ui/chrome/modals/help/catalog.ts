@@ -1,3 +1,5 @@
+import { IS_LITE } from '../../../../core/runtime/edition';
+import { liteHelpContent, liteHelpPage } from './lite-catalog';
 /*
  * catalog.ts — every Help Center page, in reading order, under its group.
  *
@@ -14,7 +16,7 @@ import { SHARE_PAGES } from './pages/share';
 import { AGENT_PAGES } from './pages/agent';
 import { MISC_PAGES } from './pages/misc';
 
-export const HELP_GROUPS: readonly HelpGroupId[] = ['start', 'build', 'generate', 'plan', 'share', 'agent', 'misc'];
+export const HELP_GROUPS: readonly HelpGroupId[] = IS_LITE ? ['start', 'build', 'generate', 'plan', 'share', 'misc'] : ['start', 'build', 'generate', 'plan', 'share', 'agent', 'misc'];
 
 /** Group headings, spelled out so the key scan can see each literal. */
 export const HELP_GROUP_TITLES: Record<HelpGroupId, string> = {
@@ -29,7 +31,7 @@ export const HELP_GROUP_TITLES: Record<HelpGroupId, string> = {
 
 /** A page ships only where its subject does: the zone-load meter is gated by `MAP_LOAD_SHOWN`,
  *  so its page (and every pointer to it) follows the same flag. */
-const shipped = (id: HelpPageId): boolean => id !== 'load' || MAP_LOAD_SHOWN;
+const shipped = (id: HelpPageId): boolean => (id !== 'load' || MAP_LOAD_SHOWN) && (!IS_LITE || liteHelpPage(id));
 
 const ALL: readonly HelpPage[] = [
   ...START_PAGES,
@@ -39,7 +41,7 @@ const ALL: readonly HelpPage[] = [
   ...SHARE_PAGES,
   ...AGENT_PAGES,
   ...MISC_PAGES,
-].filter((p) => shipped(p.id)).map((p) => ({ ...p, seeAlso: p.seeAlso.filter(shipped) }));
+].filter((p) => shipped(p.id)).map(p => IS_LITE ? liteHelpContent(p) : p).map((p) => ({ ...p, seeAlso: p.seeAlso.filter(shipped) }));
 
 export const HELP_PAGE_ORDER: readonly HelpPageId[] = ALL.map((p) => p.id);
 

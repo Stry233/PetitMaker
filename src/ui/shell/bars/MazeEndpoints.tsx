@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
  * MazeEndpoints.tsx — the maze's two ends, on the map, and the drag that moves one.
  *
@@ -121,7 +122,7 @@ function Marker({ end, text, testId, onMove }: {
   const startDrag = useCallback((): void => {
     stop.current?.();
     const cellUnder = (e: PointerEvent): MacroCoord | null =>
-      getActiveView()?.projection.screenToMacro(e.clientX, e.clientY) ?? null;
+      getActiveView()?.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y) ?? null;
     const move = (e: PointerEvent): void => {
       const cell = cellUnder(e);
       if (cell) latest.current(cell, false);

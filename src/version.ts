@@ -15,11 +15,14 @@
  * Deployment titles and descriptions in legal/deploy-targets.ts, the index.html
  * fallback title, and package.json also carry the name and need review when rebranding.
  */
-export const APP_NAME = 'PetitMaker';
+import { IS_LITE } from './core/runtime/edition';
+
+export const BASE_APP_NAME = 'PetitMaker';
+export const APP_NAME = IS_LITE ? `${BASE_APP_NAME} (Lite)` : BASE_APP_NAME;
 
 /** Per-locale display-name overrides; locales absent here render APP_NAME as-is. */
 export const APP_NAME_OVERRIDES: Record<string, string> = {
-  zh: '谷地工坊',
+  zh: IS_LITE ? '谷地工坊 (Lite)' : '谷地工坊',
 };
 
 /** The brand name to display for a locale — the single resolver behind `{app}`. */
@@ -27,22 +30,25 @@ export function brandName(locale: string): string {
   return APP_NAME_OVERRIDES[locale] ?? APP_NAME;
 }
 
+/** The wordmark's name; edition badges are rendered separately. */
+export function baseBrandName(locale: string): string {
+  return locale === 'zh' ? '谷地工坊' : BASE_APP_NAME;
+}
+
 /*
  * Vite injects build identity exclusively from the committed `build-info.json` stamp.
  * `resolveVersion` derives the release line and adds `-dev` to unpublished builds.
+ * Packaged Lite builds strip `-dev` before injection; local development keeps it.
  * These fallbacks apply only when Vite's defines are absent, such as bare unit-test imports.
  */
-export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
+const sourceVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
+export const APP_VERSION: string = IS_LITE ? sourceVersion.replace(/(-dev)?$/, '-lite$1') : sourceVersion;
 export const BUILD_NUMBER: string = typeof __BUILD_NUMBER__ === 'string' ? __BUILD_NUMBER__ : 'dev';
 export const BUILD_SHA: string = typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : 'dev';
 export const BUILD_DATE: string = typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : '';
 
 /**
- * True when this build is NOT a published release: `resolveVersion` appends `-dev` unless a
- * release marker reached the stamp, and only the publish workflow writes one. So the dev site,
- * a local build, and anything built from a source checkout all report true, while a build of a
- * published snapshot reports false — with nothing to configure per environment.
- *
- * Drives the dev-site notice and watermark (ui/chrome/guards/DevBuildNotice).
+ * Drives the dev-site notice and watermark. Web builds retain `-dev` until publication;
+ * packaged Lite builds omit it, while local development retains it in both editions.
  */
 export const IS_DEV_BUILD: boolean = APP_VERSION.endsWith('-dev');

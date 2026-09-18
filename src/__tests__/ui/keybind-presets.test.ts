@@ -54,10 +54,10 @@ describe('keymap presets', () => {
       expect(pro.get(id), id).toBe(normalizeCombo(combo));
   });
 
-  it('the game default arms the terrain bar row on 1-8 and rotate on E', () => {
+  it('the game default follows the tool and shape order and keeps rotate on E', () => {
     const expects: Record<string, string | null> = {
-      'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.line': '4',
-      'tool.curve': '5', 'tool.rect': '6', 'tool.circle': '7', 'tool.smart': '8',
+      'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.smart': '4',
+      'tool.shape_cycle': '5', 'tool.free': null, 'tool.line': null, 'tool.curve': null, 'tool.rect': null, 'tool.circle': null, 'tool.auto_trim': 'q',
       'selection.rotate_cw': 'e', 'selection.rotate_ccw': null,
       'surface.mountain': null, 'tool.move': null, 'camera.pan_up': 'w',
     };
@@ -82,7 +82,7 @@ describe('preset apply + detect', () => {
     // that move carries no number (it inherits Pro's letter through the spread).
     useKeybinds.getState().applyBinds(PRESETS.find((p) => p.id === 'numeric')!.binds);
     expect(effectiveCombo(ov(), 'tool.brush')).toBe('1');
-    expect(effectiveCombo(ov(), 'tool.smart')).toBe('8');
+    expect(effectiveCombo(ov(), 'tool.smart')).toBe('4');
     expect(effectiveCombo(ov(), 'tool.move')).toBe('v');
     expect(effectiveCombo(ov(), 'camera.pan_up')).toBe('arrowup');
   });

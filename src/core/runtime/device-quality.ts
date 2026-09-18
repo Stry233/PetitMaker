@@ -13,6 +13,7 @@
  * a machine there.
  */
 
+import { IS_LITE } from './edition';
 import { readPref } from './prefs';
 
 /** Logical CPU cores (a decent proxy for device tier); defaults high so unknown devices aren't
@@ -77,7 +78,7 @@ export function glQuality(): GlQuality {
   // lite on a healthy GPU, and a software-GL user may willingly pay for the full picture.
   const pinned = readPref('quality3d');
   if (pinned !== 'auto') return pinned;
-  return probeGl();
+  return IS_LITE ? 'lite' : probeGl();
 }
 
 /** The unmasked renderer string the probe read, for the About modal's one diagnostic line: a
@@ -98,10 +99,21 @@ export function glRendererName(): string {
  * none at all on a dpr-1 one; map CAPTURES are unaffected either way, since every one of them
  * renders into a render texture at its own explicitly computed resolution.
  */
-export function maxRenderScale(): number {
+export function maxRenderScale(surface?: { width: number; height: number; budgetScale: number }): number {
   const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  if (IS_LITE) {
+    const pixels = surface ? Math.max(1, surface.width * surface.height) : typeof window === 'undefined' ? 1 : Math.max(1, window.innerWidth * window.innerHeight);
+    const initial = Math.min(dpr, 1, Math.sqrt(1_000_000 / pixels));
+    const ceiling = Math.min(dpr, isLowEndDevice() ? 1.5 : 2, Math.sqrt(8_000_000 / pixels));
+    return Math.min(ceiling, initial * (surface?.budgetScale ?? 1));
+  }
   if (glQuality() === 'lite') return Math.min(dpr, 1);
   return Math.min(dpr, isLowEndDevice() ? 1.5 : 2);
+}
+
+/** Higher resolution is earned by measured headroom, never by browser version. */
+export function canIncreaseRenderScale(): boolean {
+  return IS_LITE && readPref('quality3d') !== 'lite' && !isLowEndDevice() && probeGl() === 'full';
 }
 
 let webgl2Probe: boolean | null = null;

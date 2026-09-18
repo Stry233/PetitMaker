@@ -1,3 +1,4 @@
+import { viewportSize } from '../../core/runtime/viewport-space';
 /*
  * use-viewport-epoch.ts — "the room has changed", as one render input.
  *
@@ -17,7 +18,7 @@ import { useChromeScale } from '../design/scale';
 
 /** The window's own box, or '' where there is no window (a test, a server render). */
 function windowBox(): string {
-  return typeof window === 'undefined' ? '' : `${window.innerWidth}x${window.innerHeight}`;
+  return typeof window === 'undefined' ? '' : `${viewportSize().width}x${viewportSize().height}`;
 }
 
 export function useViewportEpoch(): string {

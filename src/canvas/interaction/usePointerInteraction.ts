@@ -1,3 +1,4 @@
+import { clientPoint } from '../../core/runtime/viewport-space';
 import { useEffect, type RefObject } from 'react';
 import { paintRegionCell, finishRegionStroke } from '../../core/runtime/region-brush';
 import { useEditorStore } from '../../state/store';
@@ -161,7 +162,7 @@ function hoverInputs(
 ): HoverInputs {
   return [
     s.activeTool, s.selectedItemId, s.armedMacro, s.brushSize, s.selectingRegion, s.placementRotation, s.viewMode,
-    s.autoEdgeCut, s.tileMaterial, s.selection,
+    s.autoEdgeCut, s.eraserShape, s.tileMaterial, s.selection,
     s.annotationTool, s.annotationZoneShape, s.annotationSelection, s.annotationsEpoch, s.locale,
     mapEpoch, toolEpoch, multiSelectHeld,
   ];
@@ -415,12 +416,12 @@ export function usePointerInteraction(
      *  with an undo watermark, so a later pinch can take back anything it painted. */
     const touchDown = (e: PointerEvent): boolean => {
       if (e.pointerType === 'touch') {
-        const count = touchPinch.down(e.pointerId, e.clientX, e.clientY);
+        const count = touchPinch.down(e.pointerId, clientPoint(e).x, clientPoint(e).y);
         if (count === 2) {
           // Second finger = navigation, never drawing: cancel whatever the first finger
           // started (stroke, drag, region brush) and hand the gesture to pinch/pan.
           e.preventDefault();
-          cancelTouchStroke(e.clientX, e.clientY);
+          cancelTouchStroke(clientPoint(e).x, clientPoint(e).y);
           dragObjId = null;
           dragging = false;
           setCursorDrag('none');
@@ -501,7 +502,7 @@ export function usePointerInteraction(
           if (intent.by === 'tool') { setCursorDrag('pan'); return; }
           if (intent.source === 'pan-key') panKeyPanning = true;
           else leftPanning = true;
-          gestures.panFrom(e.clientX, e.clientY);
+          gestures.panFrom(clientPoint(e).x, clientPoint(e).y);
           return;
         case 'paint-region':
           paintRegionCell(f.macro);
@@ -513,7 +514,7 @@ export function usePointerInteraction(
           if (store.activeTool === ToolType.Annotate && f.toolGrabs && !f.multiSelectHeld) {
             setCursorDrag('object');
           }
-          tools()?.handlePointerDown(e.clientX, e.clientY);
+          tools()?.handlePointerDown(clientPoint(e).x, clientPoint(e).y);
           return;
         case 'select':
           store.setSelection([intent.block]);
@@ -534,15 +535,15 @@ export function usePointerInteraction(
           // Reported like a pan or an orbit is: the drag is a first-class cursor state, so the
           // press has feedback whichever tool armed it.
           setCursorDrag('object');
-          dragStartX = e.clientX;
-          dragStartY = e.clientY;
+          dragStartX = clientPoint(e).x;
+          dragStartY = clientPoint(e).y;
           // The grab offset, at the SAME granularity the live drag and the drop will read the
           // pointer at (objectPointerAnchor, offset {0,0}: nothing is grabbed yet) — half-cell
           // for a halfStep ramp/bridge, so a grab anywhere on its half-covered footprint drags
           // true, whole otherwise.
           const pressProjection = view()?.projection;
           const pressAnchor = pressProjection
-            ? objectPointerAnchor(obj, pressProjection, e.clientX, e.clientY, { x: 0, y: 0 })
+            ? objectPointerAnchor(obj, pressProjection, clientPoint(e).x, clientPoint(e).y, { x: 0, y: 0 })
             : f.macro;
           grabOffsetX = obj.position.x - pressAnchor.x;
           grabOffsetY = obj.position.y - pressAnchor.y;
@@ -552,14 +553,14 @@ export function usePointerInteraction(
         case 'band-select':
           bandArmed = true;
           bandStartMacro = intent.from;
-          bandStartX = e.clientX;
-          bandStartY = e.clientY;
+          bandStartX = clientPoint(e).x;
+          bandStartY = clientPoint(e).y;
           // Neither the armed item's placement preview nor a brush's paint preview has anything
           // left to show: this gesture selects.
           view()?.overlay.clearGhost();
           return;
         case 'context-menu':
-          store.setContextMenu({ x: e.clientX, y: e.clientY, target: intent.block });
+          store.setContextMenu({ x: clientPoint(e).x, y: clientPoint(e).y, target: intent.block });
           return;
         case 'cancel-pending': {
           const mgr = tools();
@@ -592,7 +593,7 @@ export function usePointerInteraction(
     const leftDown = (e: PointerEvent): void => {
       if (e.button !== PRIMARY_BUTTON) return;
       e.preventDefault();
-      const f = buildPressFacts(PRIMARY_BUTTON, e.clientX, e.clientY);
+      const f = buildPressFacts(PRIMARY_BUTTON, clientPoint(e).x, clientPoint(e).y);
       if (!f) return;
       const plan = resolvePress(f);
       // Navigate-while-drawing: the pan-drag key is the camera, not an edit, so it leaves the hover
@@ -619,7 +620,7 @@ export function usePointerInteraction(
       if (!isCanvasTarget(e)) return;
 
       // Touch has no meaningful "position" once the finger lifts, so it never feeds the resampler.
-      if (e.pointerType !== 'touch') { lastPointerX = e.clientX; lastPointerY = e.clientY; pointerKnown = true; }
+      if (e.pointerType !== 'touch') { lastPointerX = clientPoint(e).x; lastPointerY = clientPoint(e).y; pointerKnown = true; }
 
       if (touchDown(e)) return;
       if (orbitDown(e)) return;
@@ -643,7 +644,7 @@ export function usePointerInteraction(
       if (e.pointerType === 'touch') {
         // Keep the tracker current on every touch move (so the pinch baseline is fresh the
         // instant a second finger lands); its deltas drive the camera only while navigating.
-        const delta = touchPinch.move(e.pointerId, e.clientX, e.clientY);
+        const delta = touchPinch.move(e.pointerId, clientPoint(e).x, clientPoint(e).y);
         if (touchNavigating) {
           if (delta) gestures.touch(delta);
           return true;
@@ -670,12 +671,12 @@ export function usePointerInteraction(
       // Only the drawn rect updates per move — objectsInBand runs once, on release.
       if (bandArmed) {
         if (!bandActive
-          && (Math.abs(e.clientX - bandStartX) > DRAG_THRESHOLD || Math.abs(e.clientY - bandStartY) > DRAG_THRESHOLD)) {
+          && (Math.abs(clientPoint(e).x - bandStartX) > DRAG_THRESHOLD || Math.abs(clientPoint(e).y - bandStartY) > DRAG_THRESHOLD)) {
           bandActive = true;
         }
         const bandView = view();
         if (bandActive && bandView && bandStartMacro) {
-          bandView.overlay.showBand(macroRect(bandStartMacro, bandView.projection.screenToMacro(e.clientX, e.clientY)));
+          bandView.overlay.showBand(macroRect(bandStartMacro, bandView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y)));
         }
         return true;
       }
@@ -685,7 +686,7 @@ export function usePointerInteraction(
     /** Region brush: feed the painted cell to the Generate panel. */
     const regionMove = (e: PointerEvent): boolean => {
       if (regionBrushing) {
-        const macro = view()?.projection.screenToMacro(e.clientX, e.clientY);
+        const macro = view()?.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
         if (macro) paintRegionCell(macro);
         return true;
       }
@@ -695,8 +696,8 @@ export function usePointerInteraction(
     /** Drag-to-move: arm past the threshold, then draw the drop ghost for the object or the group. */
     const dragMove = (e: PointerEvent): boolean => {
       if (dragObjId && !dragging) {
-        const ddx = e.clientX - dragStartX;
-        const ddy = e.clientY - dragStartY;
+        const ddx = clientPoint(e).x - dragStartX;
+        const ddy = clientPoint(e).y - dragStartY;
         if (Math.abs(ddx) > DRAG_THRESHOLD || Math.abs(ddy) > DRAG_THRESHOLD) {
           dragging = true;
         }
@@ -714,7 +715,7 @@ export function usePointerInteraction(
             // off-grid guard would then refuse the WHOLE move every time (all-or-nothing) — so a
             // group can never actually move. A whole-cell delta leaves each member's own half-ness
             // untouched.
-            const macro = dragView.projection.screenToMacro(e.clientX, e.clientY);
+            const macro = dragView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
             const baseX = macro.x + grabOffsetX;
             const baseY = macro.y + grabOffsetY;
             const dx = baseX - obj.position.x;
@@ -738,28 +739,26 @@ export function usePointerInteraction(
               return getFootprint(m.position.x + dx, m.position.y + dy, size.w, size.h);
             });
             dragView.overlay.showGhost(cells, valid ? GHOST_VALID : GHOST_INVALID, false);
-            // Every member's own body rides its own drop cell, each surface-elevated under the
-            // cursor's move (a terrace crossing changes each member's own drop elevation too).
-            // Read through the member's OWN plan (same seam as the solo drag below), not a direct
-            // cell lookup: a halfStep member keeps its half coordinate under a whole-cell group
-            // slide, and a plain array has no property at that fractional key.
-            dragView.overlay.showGroupPlacementGhost?.(
-              members.map((m) => {
-                const mx = m.position.x + dx, my = m.position.y + dy;
-                return {
-                  catalogId: m.catalogId, x: mx, y: my, rotation: m.rotation,
-                  elevation: planObjectMove(executor, gs, m, mx, my).preview.elevation,
-                };
-              }),
-              valid,
-            );
+            // Each plan resolves elevation for half-cell anchors and terrain-snapped items.
+            const destinations = members.map((m) => {
+              const mx = m.position.x + dx, my = m.position.y + dy;
+              return {
+                catalogId: m.catalogId, x: mx, y: my, rotation: m.rotation,
+                elevation: planObjectMove(executor, gs, m, mx, my).preview.elevation,
+              };
+            });
+            if (dragView.overlay.showObjectMove) {
+              dragView.overlay.showObjectMove(destinations.map((at, i) => ({
+                ...members[i]!, position: { x: at.x, y: at.y }, elevation: at.elevation,
+              })), valid);
+            } else dragView.overlay.showGroupPlacementGhost?.(destinations, valid);
           } else {
             // The pointer read at the DRAGGED ITEM'S OWN granularity (half-cell for a halfStep
             // ramp/bridge), so the drag steps in half cells too — reading only screenToMacro here
             // (as the group branch does, deliberately) would floor away exactly the sub-cell
             // motion a halfStep item needs, leaving it pinned to whatever offset it started with.
             const anchor = objectPointerAnchor(
-              obj, dragView.projection, e.clientX, e.clientY, soloDragOffset(obj),
+              obj, dragView.projection, clientPoint(e).x, clientPoint(e).y, soloDragOffset(obj),
             );
             const ghostKey = `${dragObjId}|${anchor.x}|${anchor.y}`;
             if (ghostKey === lastDragGhostKey) return true;
@@ -776,16 +775,9 @@ export function usePointerInteraction(
             const size = getPlacedObjectSize(at);
             const cells: MacroCoord[] = getFootprint(at.position.x, at.position.y, size.w, size.h);
             dragView.overlay.showGhost(cells, valid ? GHOST_VALID : GHOST_INVALID, false);
-            // The dragged object itself rides the cursor — the 3D view stands its
-            // mesh at the drop cell, the 2D view its sprite. The mesh height must
-            // follow the surface UNDER the cursor (moving across a terrace changes
-            // the drop elevation), not the object's origin elevation. `at.elevation` is
-            // already this: `planObjectMove` snaps it via the heightDrop/waterSpan trait for a
-            // snapping item, or from the destination surface otherwise (`movedObject`) — reading
-            // it off the map directly (`gs.cells[at.position.y]?.[at.position.x]`) is the SAME
-            // computation duplicated, and breaks the moment either coordinate is a half index (a
-            // halfStep ramp/bridge), since a plain array has no property at a fractional key.
-            dragView.overlay.showPlacementGhost?.(obj.catalogId, at.position.x, at.position.y, at.rotation, valid, at.elevation);
+            // The planned pose includes terrain snapping and the destination elevation.
+            if (dragView.overlay.showObjectMove) dragView.overlay.showObjectMove([at], valid);
+            else dragView.overlay.showPlacementGhost?.(obj.catalogId, at.position.x, at.position.y, at.rotation, valid, at.elevation);
           }
         }
         return true;
@@ -799,8 +791,8 @@ export function usePointerInteraction(
       // drag stays live even if the browser occasionally reports a target outside the element, same
       // condition the tool-feed branch below uses).
       if (e.pointerType !== 'touch' && (toolDown || isCanvasTarget(e))) {
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
+        lastPointerX = clientPoint(e).x;
+        lastPointerY = clientPoint(e).y;
         pointerKnown = true;
       }
       if (panMove(e)) return;
@@ -816,9 +808,9 @@ export function usePointerInteraction(
         // samples means the curve isn't chorded.) Hover (no stroke) only needs the final position.
         const coalesced = toolDown ? e.getCoalescedEvents?.() : undefined;
         if (coalesced && coalesced.length > 1) {
-          for (const ce of coalesced) tools()?.handlePointerMove(ce.clientX, ce.clientY);
+          for (const ce of coalesced) tools()?.handlePointerMove(clientPoint(ce).x, clientPoint(ce).y);
         } else {
-          tools()?.handlePointerMove(e.clientX, e.clientY);
+          tools()?.handlePointerMove(clientPoint(e).x, clientPoint(e).y);
         }
       }
       // Idle mouse hover: preview what a click would select as a grey box.
@@ -848,8 +840,8 @@ export function usePointerInteraction(
         return;
       }
       const store = useEditorStore.getState();
-      const macro = hoverView.projection.screenToMacro(e.clientX, e.clientY);
-      const meshHit = hoverView.projection.pickObject?.(e.clientX, e.clientY) ?? undefined;
+      const macro = hoverView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
+      const meshHit = hoverView.projection.pickObject?.(clientPoint(e).x, clientPoint(e).y) ?? undefined;
       const box = store.gridState
         ? selectionHoverBox(
             store.gridState,
@@ -866,14 +858,14 @@ export function usePointerInteraction(
       const inputs = hoverInputs(store, mapEpoch, toolEpoch, isMultiSelectHeld());
       const tool = tools()?.getActiveTool();
       const context = tools()?.getContext();
-      const ctx = context ? { ...context, halfCoord: hoverView.projection.screenToHalf?.(e.clientX, e.clientY) } : null;
-      const micro = ctx && tool?.terrainGrid?.(ctx) ? hoverView.projection.screenToMicro(e.clientX, e.clientY) : null;
+      const ctx = context ? { ...context, halfCoord: hoverView.projection.screenToHalf?.(clientPoint(e).x, clientPoint(e).y) } : null;
+      const micro = ctx && tool?.terrainGrid?.(ctx) ? hoverView.projection.screenToMicro(clientPoint(e).x, clientPoint(e).y) : null;
       const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
       if (!hoverCell || hoverCell.x !== macro.x || hoverCell.y !== macro.y
         || hoverCell.toolX !== toolCoord.x || hoverCell.toolY !== toolCoord.y || !sameHoverInputs(hoverInputsKey, inputs)) {
         hoverCell = { ...macro, toolX: toolCoord.x, toolY: toolCoord.y };
         hoverInputsKey = inputs;
-        const f = buildPressFacts(PRIMARY_BUTTON, e.clientX, e.clientY);
+        const f = buildPressFacts(PRIMARY_BUTTON, clientPoint(e).x, clientPoint(e).y);
         if (f) {
           const c = cursorFactsFor(f);
           // The forbidden badge answers a question about the TOOL, not about the press: whether this
@@ -900,11 +892,11 @@ export function usePointerInteraction(
         // close that stroke here, since this branch returns before the ordinary tool-up path.
         if (toolDown) {
           toolDown = false;
-          tools()?.handlePointerUp(e.clientX, e.clientY);
+          tools()?.handlePointerUp(clientPoint(e).x, clientPoint(e).y);
         }
         const bandView = view();
         if (bandActive && bandView && bandStartMacro) {
-          const rect = macroRect(bandStartMacro, bandView.projection.screenToMacro(e.clientX, e.clientY));
+          const rect = macroRect(bandStartMacro, bandView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y));
           bandView.overlay.clearBand();
           const store = useEditorStore.getState();
           if (store.activeTool === ToolType.Annotate) {
@@ -941,7 +933,7 @@ export function usePointerInteraction(
         // A tap targets whatever is under the pointer when it LIFTS, not where it landed, so the
         // facts are gathered here rather than carried from the press.
         if (nav.navigated && !nav.moved) {
-          const f = buildPressFacts(e.button, e.clientX, e.clientY);
+          const f = buildPressFacts(e.button, clientPoint(e).x, clientPoint(e).y);
           if (f) for (const intent of resolveNavTap(f)) runIntent(intent, e, f);
         }
         return;
@@ -970,7 +962,7 @@ export function usePointerInteraction(
         if (groupIds) {
           // GROUP DRAG STAYS WHOLE-DELTA — see `dragMove` for why a half-cell step refuses the
           // whole move.
-          const macro = dropView.projection.screenToMacro(e.clientX, e.clientY);
+          const macro = dropView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
           const newX = macro.x + grabOffsetX;
           const newY = macro.y + grabOffsetY;
           if (newX === obj.position.x && newY === obj.position.y) return;
@@ -995,7 +987,7 @@ export function usePointerInteraction(
         // The SAME anchor resolution the live drag ghost used (objectPointerAnchor): the pointer
         // read at the dragged item's own granularity, so a halfStep object's drop lands on the
         // half grid it was actually dragged to, not wherever a whole-cell reading would floor it.
-        const anchor = objectPointerAnchor(obj, dropView.projection, e.clientX, e.clientY, soloDragOffset(obj));
+        const anchor = objectPointerAnchor(obj, dropView.projection, clientPoint(e).x, clientPoint(e).y, soloDragOffset(obj));
 
         const { cmd: placeCmd, errors, preview } = planObjectMove(executor, gs, obj, anchor.x, anchor.y);
         // Nothing moved. Judged on the SNAPPED destination, not the anchor: a snapping item's
@@ -1047,7 +1039,7 @@ export function usePointerInteraction(
       }
       if (e.button === PRIMARY_BUTTON && toolDown) {
         toolDown = false;
-        tools()?.handlePointerUp(e.clientX, e.clientY);
+        tools()?.handlePointerUp(clientPoint(e).x, clientPoint(e).y);
       }
     };
 
@@ -1057,12 +1049,12 @@ export function usePointerInteraction(
       leftPanning = false;
       panKeyPanning = false;
       if (e.pointerType === 'touch') {
-        cancelTouchStroke(e.clientX, e.clientY);
+        cancelTouchStroke(clientPoint(e).x, clientPoint(e).y);
         if (touchPinch.up(e.pointerId) === 0) touchNavigating = false;
         touchUndoStart = -1;
       } else if (toolDown) {
         toolDown = false;
-        tools()?.handlePointerCancel(e.clientX, e.clientY);
+        tools()?.handlePointerCancel(clientPoint(e).x, clientPoint(e).y);
       }
       gestures.cancel();
       dragging = false;

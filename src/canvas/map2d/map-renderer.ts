@@ -1,3 +1,4 @@
+import { viewportRect } from '../../core/runtime/viewport-space';
 import * as PIXI from 'pixi.js-legacy';
 import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import '@pixi/unsafe-eval'; // self-installs on import (7.1+) — keeps strict-CSP shader builds
@@ -220,7 +221,7 @@ export class MapRenderer {
     // box also moves without resizing — the dock slide settles a transform away — and no resize
     // event marks that moment, so a recorded origin would keep answering for where the box was.
     this.viewport.setOriginSource(() => {
-      const rect = container.getBoundingClientRect();
+      const rect = viewportRect(container);
       return { x: rect.left, y: rect.top };
     });
 

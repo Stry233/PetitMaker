@@ -10,6 +10,7 @@
  * Everything else a command does it does through the store, the kit host or the active view, so the
  * whole rest of the registry is chrome-independent and arrives working.
  */
+import { IS_LITE } from '../../core/runtime/edition';
 import { useCallback } from 'react';
 import { MODE_FOR_CONTENT, designModeToEditInputs } from '../../core/model/edit-mode';
 import type { DesignMode } from '../../core/model/types';
@@ -80,8 +81,8 @@ export function useShellCommands({ toggleMenu, regionUndo, regionRedo }: ShellCo
       if (action.payload === 'new') setModal('newProject', true);
       // The save-and-share window carries both exports as sections, and opens at the one named.
       else if (action.payload === 'image') setModal('export', true);
-      else if (action.payload === 'export') setModal('exportJson', true);
-      else if (action.payload === 'import') setModal('import', true);
+      else if (!IS_LITE && action.payload === 'export') setModal('exportJson', true);
+      else if (!IS_LITE && action.payload === 'import') setModal('import', true);
       return;
     }
     if (action.action === 'move') {

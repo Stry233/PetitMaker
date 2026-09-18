@@ -26,5 +26,5 @@ export {
   subscribeCurveSession,
 } from './curve-session';
 export {
-  anchorHandles, bezier4, circleCells, curveCells, expandLine, lineCells, rectCells, snapShapeEnd,
+  anchorHandles, bezier4, circleCells, curveCells, expandLine, lineCells, rectCells, snapShapeEnd, splineCells,
 } from './shapes';

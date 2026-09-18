@@ -1,3 +1,4 @@
+import { clientPoint, viewportSize } from '../../../core/runtime/viewport-space';
 /*
  * BarSlider.tsx — the slider every bottom bar uses: a track, a row of tick marks, and a knob.
  *
@@ -131,9 +132,9 @@ export function BarSlider({
       onPointerDown={(e) => {
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
         setDragging(true);
-        pick(e.clientX);
+        pick(clientPoint(e).x);
       }}
-      onPointerMove={(e) => { if (e.buttons) pick(e.clientX); }}
+      onPointerMove={(e) => { if (e.buttons) pick(clientPoint(e).x); }}
       onPointerUp={() => setDragging(false)}
       onPointerCancel={() => setDragging(false)}
       onPointerEnter={() => setHovered(true)}
@@ -227,7 +228,7 @@ function SliderReading({ anchor, centre, width, text }: {
         if (style.visibility !== visibility) style.visibility = visibility;
         if (rect && zoom > 0) {
           const half = (bubble.current?.offsetWidth ?? 0) * zoom / 2;
-          const x = Math.max(half + 6, Math.min(window.innerWidth - half - 6, rect.left + centre * zoom));
+          const x = Math.max(half + 6, Math.min(viewportSize().width - half - 6, rect.left + centre * zoom));
           const left = `${x / zoom}px`, top = `${rect.top / zoom}px`;
           if (style.zoom !== String(zoom)) style.zoom = String(zoom);
           if (style.left !== left) style.left = left;

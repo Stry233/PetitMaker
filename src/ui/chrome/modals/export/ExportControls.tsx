@@ -6,7 +6,7 @@ import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { applyPreset, hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
-import { moduleBaseFor } from '../../../../io/share';
+import { moduleBaseFor } from '../../../../io/share/glyph/geometry';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import type { MapNotes } from '../../../../core/model/types';
 import { NOTE_LIMITS } from '../../../../core/model/notes';
@@ -16,7 +16,8 @@ import { Switch } from '../../../primitives/Switch';
 import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
-import { StylizeEntry } from './stylize/StylizeEntry';
+import { StylizeEntry } from './edition-export';
+import { IS_LITE } from '../../../../core/runtime/edition';
 import type { TextField } from '../../../../io/moderation/text/policy';
 import { ReviewIndicator } from './review/ReviewIndicator';
 
@@ -51,8 +52,8 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       {/* Preset */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.preset')}</div>
-        <SegmentedControl idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyPreset(options, p))} />
-        <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(`export.preset_${options.preset}_desc`)}</div>
+        <SegmentedControl wrapLabels={IS_LITE} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(IS_LITE ? { ...options, preset: p, importable: p === 'share', layerPreview: p === 'share', grid: p === 'share', footer: p === 'share', card3d: false } : applyPreset(options, p))} />
+        <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(IS_LITE ? (options.preset === 'share' ? 'lite.preset_share_desc' : 'lite.preset_plain_desc') : `export.preset_${options.preset}_desc`)}</div>
       </div>
 
       {/* Title + description */}
@@ -72,7 +73,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       {/* Size */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.sec_size')}</div>
-        <SegmentedControl idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
+        <SegmentedControl wrapLabels={IS_LITE} idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
 
       <StylizeEntry />

@@ -66,7 +66,7 @@ export interface ToolContext {
   layerVisibility: Readonly<Record<number, boolean>>;
   /** The corner-trim setting the Build panel holds. */
   autoEdgeCut: AutoEdgeCut;
-  /** What one eraser gesture takes back: a dab, or a dragged rectangle/circle. */
+  /** The eraser footprint, independent of the drawing shape. */
   eraserShape: EraserShape;
   /** The road catalog id the tile brush lays. */
   tileMaterial: string;

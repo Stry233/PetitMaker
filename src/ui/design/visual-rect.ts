@@ -1,3 +1,4 @@
+import { toLayoutRect } from '../../core/runtime/viewport-space';
 /**
  * Element rects in screen pixels under CSS `zoom`. Chromium before 128 reports a zoomed subtree's
  * rects in that subtree's own CSS pixels; standardized engines report screen pixels. One probe at
@@ -27,7 +28,7 @@ function probe(): boolean {
   if (typeof document === 'undefined' || !document.body) return true;
   const box = document.createElement('div');
   box.style.cssText = `position:fixed;left:0;top:0;width:${PROBE_WIDTH}px;height:10px;zoom:${PROBE_ZOOM};visibility:hidden;pointer-events:none`;
-  document.body.appendChild(box);
+  document.documentElement.appendChild(box);
   const width = box.getBoundingClientRect().width;
   box.remove();
   return Math.abs(width - PROBE_WIDTH) > 1;
@@ -77,7 +78,7 @@ function rangeContext(range: Range): Element | null {
 }
 
 /** The element's or range's rect in screen pixels on every engine. */
-export function visualRect(target: Element | Range): VisualRect {
+function physicalVisualRect(target: Element | Range): VisualRect {
   const r = target.getBoundingClientRect();
   const own = target instanceof Element ? ownPixelReading(target, r) : null;
   if (own === null && zoomedRectsAreVisual()) return r;
@@ -94,4 +95,9 @@ export function visualRect(target: Element | Range): VisualRect {
     width: r.width * z,
     height: r.height * z,
   };
+}
+
+/** Visual measurements expressed in the editor’s presentation space. */
+export function visualRect(target: Element | Range): VisualRect {
+  return toLayoutRect(physicalVisualRect(target));
 }

@@ -4,6 +4,19 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.17] - 2026-09-18
+
+### Added
+
+- Moving objects in 3D shows the solid model at the destination and a white dashed outline at its original position, helping you see where it will land.
+- The eraser offers line and curve shapes with Auto Trim, and keeps the curve footprint visible while you adjust it. With the brush or eraser, drag the first segment or click to place points, then double-click to finish and adjust the curve.
+- PetitMaker (Lite) lets you plan maps offline in Xiaohongshu, with terrain and object editing, Planet and Maze generation, 2D and adaptive-resolution 3D views, and local saving in a landscape workspace. Use the tour and Help to get started, then compose a picture with titles, layer previews and 3D views in Save and share to save to your album or create a note, and include PetitGlyph to reopen the map from the picture.
+
+### Changed
+
+- The Chinese interface now displays DeepSeek as 深度求索/DeepSeek in the assistant’s provider selection and setup guidance.
+- The terrain toolbar now groups Brush, Eraser, Edge Cut, and Smart build in one compact row, with visible shape and Auto Trim options, separate remembered brush settings, and selected option names expanded when you open the toolbar. The default shortcuts are 1 to 4 for tools, 5 to cycle shapes, and Q to cycle Auto Trim.
+
 ## [1.2.46] - 2026-09-17
 
 ### Added

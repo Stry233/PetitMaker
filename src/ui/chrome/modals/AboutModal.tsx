@@ -1,3 +1,5 @@
+import { IS_LITE, SUPPORTS_CLIPBOARD, SUPPORTS_EXTERNAL_LINKS } from '../../../core/runtime/edition';
+import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
  * Two-view About and legal-document modal. The legal reader is lazy-loaded. Both views share the
  * About view's measured, capped height; only width morphs while content cross-fades. Initial sizing
@@ -73,7 +75,7 @@ function measureAboutHeight(view: HTMLElement, capPx: number): number {
 
 // The drill-in doc rows, in reading order. The `about` doc is deliberately
 // omitted — View A itself IS the About surface (brand + team + filing).
-const GRID_DOCS: DocId[] = [
+const GRID_DOCS: DocId[] = IS_LITE ? ['license', 'third-party', 'asset-licenses'] : [
   'privacy',
   'terms',
   'license',
@@ -512,7 +514,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
 
   // The same cap ModalShell enforces as CSS (`maxHeight: (maxVh/chrome)vh`),
   // expressed in the card's own layout px so the measured height clamps to it.
-  const capPx = (ABOUT_MAX_VH / chrome / 100) * (typeof window === 'undefined' ? 900 : window.innerHeight);
+  const capPx = (ABOUT_MAX_VH / chrome / 100) * (typeof window === 'undefined' ? 900 : viewportSize().height);
 
   // Measure View A before paint, and keep measuring it while its content
   // settles (font/image reflow, a locale change re-flowing the brand/grid/team
@@ -574,6 +576,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   }, []);
 
   const copyText = async (text: string, target: 'build') => {
+    if (!SUPPORTS_CLIPBOARD) return;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -611,7 +614,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   useEffect(() => {
     if (!open) return;
     const target = useEditorStore.getState().aboutTarget;
-    setView(target ? { kind: 'doc', id: target } : { kind: 'about' });
+    setView(target && (!IS_LITE || GRID_DOCS.includes(target)) ? { kind: 'doc', id: target } : { kind: 'about' });
     if (target) useEditorStore.getState().setAboutTarget(null);
   }, [open]);
 
@@ -654,10 +657,11 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     </AnimatePresence>
   );
 
+  const versionText = [`${t('about.version')} ${APP_VERSION}`, `${t('about.build')} ${BUILD_NUMBER}`, BUILD_SHA, BUILD_DATE].filter(Boolean).join(', ');
   const versionRow = (
     <>
       <div style={versionButtonWrap}>
-        <motion.button
+        {!SUPPORTS_CLIPBOARD ? <div style={{ ...versionButton, cursor: cursors.text, userSelect: 'text', WebkitUserSelect: 'text', ...(wide ? { textAlign: 'right' } : {}) }}>{versionText}</div> : <motion.button
           type="button"
           style={{ ...versionButton, ...(wide ? { textAlign: 'right' } : {}) }}
           onClick={() => copyText(`${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})\n${navigator.userAgent}`, 'build')}
@@ -674,12 +678,12 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
           ]
             .filter(Boolean)
             .join(', ')}
-        </motion.button>
-        {copyConfirmation('build')}
+        </motion.button>}
+        {SUPPORTS_CLIPBOARD && copyConfirmation('build')}
       </div>
-      <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
+      {SUPPORTS_EXTERNAL_LINKS && <motion.a style={repositoryLink} href={LEGAL.repoUrl} target="_blank" rel="noopener noreferrer" {...buttonMotion}>
         {t('about.repository_link')} <span aria-hidden>↗</span>
-      </motion.a>
+      </motion.a>}
     </>
   );
 
@@ -699,25 +703,22 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     <div style={wide ? wideGrid : teamGrid} data-testid={gridTestId}>
       {teamInReadingOrder(members).map((m) => {
         const avatar = teamAvatarUrl(m.avatar);
+        const Member = SUPPORTS_EXTERNAL_LINKS ? motion.a : motion.div;
         return (
-          <motion.a
+          <Member
             key={m.url}
             data-testid={cardTestId}
-            style={wide ? wideCard : memberCard}
-            href={m.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t('about.team_link', { name: m.name })}
-            {...buttonMotion}
+            style={{ ...(wide ? wideCard : memberCard), ...(!SUPPORTS_EXTERNAL_LINKS ? { cursor: cursors.default } : {}) }}
+            {...(!SUPPORTS_EXTERNAL_LINKS ? {} : { href: m.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('about.team_link', { name: m.name }), ...buttonMotion })}
           >
             <span style={avatarRing}>
               {avatar && <img src={avatar} alt={m.name} style={avatarImg} />}
-              <span style={avatarBadge} aria-hidden>
+              {SUPPORTS_EXTERNAL_LINKS && <span style={avatarBadge} aria-hidden>
                 ↗
-              </span>
+              </span>}
             </span>
             <span style={memberName}>{m.name}</span>
-          </motion.a>
+          </Member>
         );
       })}
     </div>
@@ -752,7 +753,14 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     </div>
   );
 
-  const feedback = (
+  const feedback = !SUPPORTS_EXTERNAL_LINKS ? (
+    <div data-testid="feedback-links">
+      <div style={sectionLabel}>{t('about.feedback_title')}</div>
+      <div style={{ ...gridRow, cursor: cursors.text, userSelect: 'text', WebkitUserSelect: 'text' }}>
+        <span style={{ ...gridLabel, overflowWrap: 'break-word' }}>{LEGAL.privacyContactEmail}</span>
+      </div>
+    </div>
+  ) : (
     <div data-testid="feedback-links">
       <div style={sectionLabel}>{t('about.feedback_title')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -784,7 +792,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
     </div>
   );
 
-  const support = (
+  const support = SUPPORTS_EXTERNAL_LINKS && (
     <div>
       <div style={sectionLabel}>{t('about.sponsorship_title')}</div>
       <div style={gridStyle} data-testid="sponsorship-links">
@@ -805,7 +813,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   );
 
   // Only a complete number+URL pair renders.
-  const filing = (hasIcp || hasPsb) && (
+  const filing = SUPPORTS_EXTERNAL_LINKS && (hasIcp || hasPsb) && (
     <div>
       {hasIcp && (
         <div style={filingRow} data-testid="filing-icp">
@@ -916,7 +924,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                       {roster(LEGAL.acknowledgements, 'acknowledgements-grid', 'acknowledged-member')}
                     </div>
                     <div style={{ ...teamNote, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
-                      <span>{t('about.team_order')}</span>
+                      {!IS_LITE && <span>{t('about.team_order')}</span>}
                       <span>{t('about.acknowledgements_note')}</span>
                     </div>
                   </div>
@@ -934,7 +942,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                 {brand}
                 <div>
                   <div style={sectionLabel}>{t('about.team_title')}</div>
-                  <div style={teamNote}>{t('about.team_order')}</div>
+                  {!IS_LITE && <div style={teamNote}>{t('about.team_order')}</div>}
                   {roster(LEGAL.team, 'team-grid', 'team-member')}
                 </div>
                 <div>

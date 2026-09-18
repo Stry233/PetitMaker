@@ -3,6 +3,9 @@ node_modules/
 
 # Build output
 dist/
+dist-lite/
+artifacts/
+*.zip
 
 # Local env files
 *.local

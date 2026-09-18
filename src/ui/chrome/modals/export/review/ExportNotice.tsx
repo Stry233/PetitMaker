@@ -1,3 +1,4 @@
+import { IS_LITE } from '../../../../../core/runtime/edition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotionConfig } from 'framer-motion';
@@ -73,7 +74,7 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
           <ol style={{ margin: 0, paddingInlineStart: 22, display: 'grid', gap: 12 }}>
             <li>{t('export.notice.honesty')}</li>
             <li>{t('export.notice.respect')}</li>
-            <li>{t('export.notice.responsibility')}</li>
+            <li>{t(IS_LITE ? 'lite.responsibility' : 'export.notice.responsibility')}</li>
             {format === 'json' ? <li>{t('export.notice.json_attribution')}</li>
               : hasPetitGlyph && <li>{t('export.notice.image_attribution')}</li>}
           </ol>

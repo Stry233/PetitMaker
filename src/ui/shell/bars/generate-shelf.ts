@@ -3,6 +3,7 @@
  * Labels determine control widths; candidate cards and sliders retain their drawn proportions through `SHELF_SCALE`.
  * Engine constants supply behavioral ranges such as the elevation ceiling and stencil floor.
  */
+import { IS_LITE } from '../../../core/runtime/edition';
 import { ELEVATION_MAX } from '../../../core/model/constants';
 import { STENCIL_MIN_SIDE, textMinBox, type StencilMaterial } from '../../../tools/generation/stencil';
 import { glyphSurvives, gridTextFits, measuredTextMinimum } from './stencil-raster';
@@ -22,12 +23,14 @@ export interface GenerateTab {
 }
 
 /** Display order, left to right. */
-export const TABS: readonly GenerateTab[] = [
+const ALL_TABS: readonly GenerateTab[] = [
   { id: 'maze', labelKey: 'generate.algo_maze' },
   { id: 'text', labelKey: 'gen.kind_text' },
   { id: 'image', labelKey: 'gen.kind_image' },
   { id: 'island', labelKey: 'gen.kind_island' },
 ];
+
+export const TABS: readonly GenerateTab[] = ALL_TABS.filter(tab => !IS_LITE || tab.id === 'island' || tab.id === 'maze');
 
 /** Workflows whose own card ships in released builds. Development builds offer every card. */
 const CUSTOM_CARD_RELEASED: Record<GenerateKind, boolean> = {

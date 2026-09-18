@@ -1,4 +1,5 @@
 // Content-height changes animate inside ModalShell independently of its open/close motion.
+import { IS_LITE } from '../../../core/runtime/edition';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useT, localizedName } from '../../../i18n/context';
@@ -213,7 +214,7 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
             <motion.button
               type="button"
               style={exportBtnStyle}
-              onClick={() => { close(); setModal('exportJson', true); }}
+              onClick={() => { close(); setModal(IS_LITE ? 'share' : 'exportJson', true); }}
               {...pressable}
             >{t('modal.new_export_first')}</motion.button>
           </div>

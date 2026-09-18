@@ -1,3 +1,4 @@
+import { viewportRect } from '../../../../../core/runtime/viewport-space';
 /*
  * Help figures run the real 2D renderer and tool paths against an isolated demo world. DOM overlays
  * reuse the app's pointer, hints, captions, notices, and controls. Pointer positions use figure pixels
@@ -554,8 +555,8 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
       if (!strip) return null;
       const card = strip.querySelectorAll('[data-strip-card]')[i];
       if (!card) return null;
-      const cardRect = card.getBoundingClientRect();
-      const outerRect = outer.getBoundingClientRect();
+      const cardRect = viewportRect(card);
+      const outerRect = viewportRect(outer);
       // Rect deltas are SCREEN px; the cursor is positioned in the column's LAYOUT px. Any
       // ancestor zoom (the chrome scale the help window rides, the user's UI zoom) scales the
       // two apart, so divide it back out the way `measureBox` does.

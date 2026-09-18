@@ -1,3 +1,4 @@
+import { viewportRect } from '../../core/runtime/viewport-space';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
@@ -75,7 +76,7 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     const container = containerRef.current;
     if (!container) return;
 
-    const box = container.getBoundingClientRect();
+    const box = viewportRect(container);
     const renderer = new MapRenderer(eventBus, container, box.width, box.height);
     rendererRef.current = renderer;
     // A session can restore straight into 3D (`viewMode` persists), and this mount-only effect
@@ -234,7 +235,7 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     const sync = () => {
       const renderer = rendererRef.current;
       if (!renderer) return;
-      const box = container.getBoundingClientRect();
+      const box = viewportRect(container);
       renderer.resize(box.width, box.height);
     };
     window.addEventListener('resize', sync);

@@ -1,3 +1,4 @@
+import { viewportRect } from '../../../core/runtime/viewport-space';
 /**
  * Expanded layer control for all buildable elevations.
  *
@@ -614,9 +615,9 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
 function revealRefusal(plate: HTMLDivElement | null): void {
   if (!plate || plate.scrollHeight <= plate.clientHeight + 1) return;
   const tinted = [...plate.querySelectorAll('[data-testid^="shell-layer-refused-"]')];
-  const view = plate.getBoundingClientRect();
+  const view = viewportRect(plate);
   const shown = tinted.some((el) => {
-    const box = el.getBoundingClientRect();
+    const box = viewportRect(el);
     return box.bottom > view.top && box.top < view.bottom;
   });
   if (!shown) tinted[0]?.scrollIntoView({ block: 'nearest' });

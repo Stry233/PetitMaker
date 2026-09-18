@@ -172,7 +172,7 @@ export interface SeriesState {
   lastBuildNumber?: string;
 }
 
-/** Minor releases count builds in PATCH; explicit patches increment PATCH on the existing line. */
+/** PATCH counts source commits; same-line releases add them to the published PATCH. */
 export function nextReleaseVersion(
   pkgVersion: string,
   buildNumber: string,
@@ -204,7 +204,8 @@ export function nextReleaseVersion(
   }
   if (kind === 'patch') {
     if (major !== lastMajor) throw new Error('A patch release must keep the published major version');
-    return `${major}.${lastMinor}.${Number(previous[3]) + 1}`;
+    if (since === 0) throw new Error('A patch release requires new source commits');
+    return `${major}.${lastMinor}.${Number(previous[3]) + since}`;
   }
   // A newly declared MAJOR opens its line at X.0; otherwise the sync count advances.
   return major === lastMajor ? `${major}.${lastMinor + 1}.${since}` : `${major}.0.${since}`;

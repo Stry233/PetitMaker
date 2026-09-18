@@ -33,6 +33,8 @@ export interface PreviewCell {
 /** A ghost's paint: a plain tint (a placement wash) or the preview card. */
 export type GhostPaint = number | PreviewCell;
 
+export const CURVE_FOOTPRINT = { color: 0xffd75e, alpha: 0.3 } as const;
+
 export function isPreviewCell(paint: GhostPaint): paint is PreviewCell {
   return typeof paint !== 'number';
 }

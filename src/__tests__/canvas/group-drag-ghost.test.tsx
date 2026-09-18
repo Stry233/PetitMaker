@@ -1,17 +1,4 @@
-/**
- * Defect: dragging a PLURAL selection only ever showed the ghost for the one member under the
- * cursor, so the user couldn't see where the rest of the group was going or whether it fit. This
- * drives the real pointer machine (usePointerInteraction) over a mocked ActiveView — no PixiJS/GPU
- * involved, so the assertions are on the OVERLAY CALLS the machine makes, not on any pixel.
- *
- * Three things pinned here:
- *  - the cell wash (`showGhost`) covers every member's footprint, not just the dragged one;
- *  - the group's body ghost (`showGroupPlacementGhost`) carries all N members with ONE shared
- *    validity verdict (a group move is all-or-nothing, so a per-member tint would lie);
- *  - the per-move cost is bounded: a pointermove that lands on the SAME macro cell as the last one
- *    does not re-run the group validity check or rebuild the ghost (throttled on the cell, not a
- *    timer), while a move to a new cell does.
- */
+/** Group drags preview every member with shared validity and update only when the target cell changes. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
@@ -52,7 +39,7 @@ function makeMockView() {
     showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
     showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(),
     showBand: vi.fn(), clearBand: vi.fn(),
-    showPlacementGhost: vi.fn(), showGroupPlacementGhost: vi.fn(),
+    showPlacementGhost: vi.fn(), showGroupPlacementGhost: vi.fn(), showObjectMove: vi.fn(),
   };
   const view = {
     projection: {
@@ -116,18 +103,18 @@ afterEach(() => {
 });
 
 describe('dragging a plural selection', () => {
-  it('ghosts every member (cell wash covers all footprints, body ghost carries all N)', () => {
+  it('previews every member and covers all destination footprints', () => {
     // a(5,5) b(6,5) c(7,5), all selected; drag anchored on 'a' by +1 in x.
     const { overlay } = setUp([tree('a', 5, 5), tree('b', 6, 5), tree('c', 7, 5)], ['a', 'b', 'c']);
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 65, clientY: 55 })); // +1 cell
 
-    expect(overlay.showGroupPlacementGhost).toHaveBeenCalledTimes(1);
-    const [members, valid] = overlay.showGroupPlacementGhost.mock.calls[0]!;
+    expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
+    const [members, valid] = overlay.showObjectMove.mock.calls[0]!;
     expect(valid).toBe(true);
     expect(members).toHaveLength(3);
-    expect(members.map((m: { x: number; y: number }) => `${m.x},${m.y}`).sort()).toEqual(['6,5', '7,5', '8,5']);
+    expect(members.map((m: { position: { x: number; y: number } }) => `${m.position.x},${m.position.y}`).sort()).toEqual(['6,5', '7,5', '8,5']);
 
     // The cell wash is the UNION of every member's footprint, not just the dragged one.
     const cells = overlay.showGhost.mock.calls[0]![0] as Array<{ x: number; y: number }>;
@@ -144,7 +131,7 @@ describe('dragging a plural selection', () => {
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 75, clientY: 55 })); // +2 cells
 
-    const [, valid] = overlay.showGroupPlacementGhost.mock.calls[0]!;
+    const [, valid] = overlay.showObjectMove.mock.calls[0]!;
     expect(valid).toBe(false);
     const [cells, color] = overlay.showGhost.mock.calls[0]!;
     expect(color).not.toBe(0x22c55e); // GHOST_INVALID, not GHOST_VALID
@@ -156,16 +143,16 @@ describe('dragging a plural selection', () => {
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 65, clientY: 55 })); // cell (6,5): 1st compute
-    expect(overlay.showGroupPlacementGhost).toHaveBeenCalledTimes(1);
+    expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
 
     // Two more samples that land on the SAME macro cell: no recompute.
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 66, clientY: 55 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 69, clientY: 56 }));
-    expect(overlay.showGroupPlacementGhost).toHaveBeenCalledTimes(1);
+    expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
 
     // A sample that crosses into a new macro cell recomputes.
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 75, clientY: 55 }));
-    expect(overlay.showGroupPlacementGhost).toHaveBeenCalledTimes(2);
+    expect(overlay.showObjectMove).toHaveBeenCalledTimes(2);
   });
 
   it('plays the landing squash for every member on drop, requested per member as its own placement lands', () => {
@@ -205,8 +192,8 @@ describe('dragging a plural selection', () => {
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 95 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 55, clientY: 105 }));
 
-    expect(overlay.showGroupPlacementGhost).toHaveBeenCalled();
-    const groupCalls = overlay.showGroupPlacementGhost.mock.calls;
+    expect(overlay.showObjectMove).toHaveBeenCalled();
+    const groupCalls = overlay.showObjectMove.mock.calls;
     const [members] = groupCalls[groupCalls.length - 1]!;
     const rampGhost = members.find((m: { catalogId: string }) => m.catalogId === 'ramp-teak-stair');
     expect(rampGhost, 'the ramp member is in the ghost').toBeTruthy();

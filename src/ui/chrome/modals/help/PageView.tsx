@@ -1,3 +1,4 @@
+import { SUPPORTS_EXTERNAL_LINKS } from '../../../../core/runtime/edition';
 import { providerName } from '../../../../i18n/providers';
 /*
  * PageView.tsx — one help page rendered from its descriptor.
@@ -26,12 +27,11 @@ import { inlineArt, type InlineArt } from './inline-art';
 import { helpFacts } from './facts';
 import { HELP_SCENES } from './figures/scenes';
 import { HelpDemo } from './figures/HelpDemo';
-import { HELP_SURFACES } from './figures/surfaces';
+import { HELP_SURFACES, helpProvider } from './edition-help';
 import { FigureReadyContext } from './figures/figure-ready';
 import { useInView } from './figures/use-in-view';
 import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
 import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
-import { PROVIDER_META } from '../../../../agent/providers/defaults';
 
 /** One box for every inline art: the same height and baseline whatever the kind, so a sentence's
  *  icons sit level with each other and with the text. */
@@ -155,7 +155,8 @@ function SectionView({ section }: { section: HelpSection }) {
           <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
         ))}
         {section.groups.map((group) => {
-          const meta = PROVIDER_META[group.provider];
+          const meta = helpProvider(group.provider);
+          if (!meta) return null;
           // A provider with two consoles links both; the mainland one is `keyUrl` (see ProviderMeta).
           const links = meta.keyUrlIntl
             ? [{ href: meta.keyUrl, label: t('help.steps.link_cn') }, { href: meta.keyUrlIntl, label: t('help.steps.link_intl') }]
@@ -164,7 +165,7 @@ function SectionView({ section }: { section: HelpSection }) {
             <div key={group.provider} data-provider={group.provider} style={{ marginTop: 18 }}>
               <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 4px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
                 <span>{providerName(group.provider, t)}</span>
-                {links.map((link) => (
+                {SUPPORTS_EXTERNAL_LINKS && links.map((link) => (
                   <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={STEP_LINK}>
                     {link.label} <span aria-hidden>↗</span>
                   </a>

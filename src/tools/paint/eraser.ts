@@ -1,75 +1,44 @@
 import { TerrainType, ToolType } from '../../core/model/types';
-import type { MacroCoord, MicroCoord } from '../../core/model/types';
+import type { GridState, MacroCoord, MicroCoord } from '../../core/model/types';
 import type { Tool, ToolContext } from '../runtime/types';
 import type { PreviewCell } from '../../core/runtime/preview-cell';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { brushCells } from './drawing-tool';
-import { dragShapeCells, dragShapeSpans, snapShapeEnd } from './shapes';
+import { dragShapeCells, dragShapeSpans, expandLine, line4, snapShapeEnd, splineCells } from './shapes';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { showToast } from '../../core/runtime/toast-bus';
-import { getCell } from '../../core/model/grid-model';
+import { cloneGridState, getCell } from '../../core/model/grid-model';
 import type { ContentType } from '../../core/model/edit-mode';
 import { peelCommand } from './terrain-peel';
 import { eraseTileCells } from './tile-coating';
 import { overlappingCoatings, removeObjectCommand } from '../objects/object-placer';
+import { endCurveSession, isCurveSessionOpen } from './curve-session';
+import { adjustErasedCurve } from './eraser-curve';
+import { finishEraserStroke } from './eraser-stroke';
+import type { CurveAnchor } from './shapes';
 
-/** The drag shape this gesture lays out, or null for the DAB, which is the default. One reading, so
- *  the press, the ghost and the release agree. */
-function dragShape(ctx: ToolContext): 'rect' | 'circle' | null {
-  return ctx.eraserShape === 'dot' ? null : ctx.eraserShape;
-}
-
-/** The eraser erases its OWN surface: the water eraser acts on water cells only, the mountain
- *  eraser on mountain cells only — each bar's eraser takes back what that bar lays, so reaching
- *  across (a water eraser flattening a mountain, a mountain eraser breaching a pond) cannot
- *  happen by a stray dab. A mismatched cell is a SKIP, not a refusal: the badge stays quiet. */
 function erasesHere(type: TerrainType, surface: ContentType): boolean {
   if (surface === 'water') return type === TerrainType.Water;
   if (surface === 'mountain') return type === TerrainType.Mountain;
   return true;
 }
 
-/**
- * The eraser, in its three shapes (`ToolContext.eraserShape`).
- *
- * A DAB is press and drag: every cell the brush passes over is taken. The two DRAG shapes are the
- * batch: press at one corner, drag a rectangle or a circle out, and the whole figure is taken on
- * release. They are built by the drawing tool's own `dragShapeCells`, so the eraser takes back
- * exactly the figure the brush lays, and Shift constrains them to a square / a round circle the
- * same way it does there.
- *
- * ONE STROKE EITHER WAY. The dab commits as it travels and the drag commits once on release, but
- * both open at the press and close in `onPointerUp`, so either is a single undo step.
- */
+/** Erases only the selected surface, with one undo entry per gesture. */
 export class EraserTool implements Tool {
   readonly id = ToolType.Eraser;
-  terrainGrid(ctx: ToolContext): boolean { return ctx.contentType !== 'tile'; }
   readonly cursor: CursorId = 'eraser';
+  terrainGrid(ctx: ToolContext): boolean { return ctx.contentType !== 'tile'; }
 
-  /**
-   * Ask the SAME question the click answers (eraseAt), for the hovered cell: erasing a
-   * coating is a RemoveObject per coating, erasing terrain is the peel command.
-   *
-   * A cell the click SKIPS (bare ground, a hidden layer, no coating) is a no-op, not a refusal:
-   * the badge means "this would be refused". Read-only: it validates, never executes.
-   */
   canActAt(coord: MacroCoord, ctx: ToolContext): boolean {
     if (ctx.contentType === 'tile') {
-      for (const obj of overlappingCoatings(ctx.gridState, [coord])) {
-        if (ctx.validateCommand(removeObjectCommand(obj)).length > 0) return false;
-      }
-      return true;
+      return overlappingCoatings(ctx.gridState, [coord]).every(obj => ctx.validateCommand(removeObjectCommand(obj)).length === 0);
     }
     const cell = getCell(ctx.gridState.cells, coord.x, coord.y);
-    if (!cell?.terrain) return true;
-    if (ctx.layerVisibility[cell.terrain.elevation] === false) return true;
-    if (!erasesHere(cell.terrain.type, ctx.contentType)) return true;
+    if (!cell?.terrain || ctx.layerVisibility[cell.terrain.elevation] === false || !erasesHere(cell.terrain.type, ctx.contentType)) return true;
     const cmd = peelCommand(coord.x, coord.y, cell, ctx.contentType === 'water');
     return !cmd || ctx.validateCommand(cmd).length === 0;
   }
 
-  /** The eraser's preview card, in the state this cell answers with — the same `canActAt` question
-   *  the cursor's refusal badge asks. */
   private card(coord: MacroCoord, ctx: ToolContext): PreviewCell {
     return { icon: 'eraser', valid: this.canActAt(coord, ctx) };
   }
@@ -78,102 +47,170 @@ export class EraserTool implements Tool {
   private lastCoord: MacroCoord | null = null;
   private strokeStartUndoSize = 0;
   private strokeCells = new Set<string>();
-  /** Where a drag shape was started, or null for the dab (and between drags). */
   private shapeOrigin: MacroCoord | null = null;
+  private draftContext: { state: GridState; content: ContentType } | null = null;
+  private curvePoints: CurveAnchor[] = [];
+  private dragAnchor: number | null = null;
+  private dragMoved = false;
+  private lastClick: { coord: MacroCoord; at: number } | null = null;
 
   onPointerDown(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    this.refreshDraft(ctx);
+    if (isCurveSessionOpen()) { endCurveSession(); if (ctx.eraserShape === 'curve') return; }
+    if (ctx.eraserShape === 'curve') {
+      this.draftContext = { state: ctx.gridState, content: ctx.contentType };
+      this.erasing = true;
+      const hit = this.curvePoints.findIndex(p => p.x === coord.x && p.y === coord.y);
+      if (hit >= 0) { this.dragAnchor = hit; this.dragMoved = false; }
+      else this.curvePoints.push({ ...coord });
+      this.previewCurve(coord, ctx);
+      return;
+    }
     this.erasing = true;
     this.lastCoord = coord;
     this.strokeStartUndoSize = ctx.getUndoStackSize();
     this.strokeCells.clear();
-    const shape = dragShape(ctx);
-    if (shape) { this.shapeOrigin = coord; return; }  // taken on release, once its extent is known
+    if (ctx.eraserShape !== 'dot') {
+      this.shapeOrigin = coord;
+      return;
+    }
     this.eraseAt(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
   }
 
   onPointerMove(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
-    // Tiles/roads are macro-aligned (no offset); only terrain renders on the
-    // shifted micro grid, so only it needs the ghost's default terrainGrid.
-    const terrainGrid = ctx.contentType !== 'tile';
-    const shape = dragShape(ctx);
-
-    if (shape && this.shapeOrigin) {
-      // Span-native preview, as the drawing tool's own shapes are: a map-size drag never expands to
-      // a cell list before it is committed.
-      const end = this.shapeEnd(coord, shape);
-      ctx.overlay.showGhostSpans(dragShapeSpans(shape, this.shapeOrigin, end), this.card(end, ctx), terrainGrid);
+    this.refreshDraft(ctx);
+    if (isCurveSessionOpen()) { ctx.overlay.clearGhost(); return; }
+    const shape = ctx.eraserShape;
+    const terrainGrid = this.terrainGrid(ctx);
+    if (shape === 'curve' && this.curvePoints.length) {
+      if (this.dragAnchor !== null) {
+        const held = this.curvePoints[this.dragAnchor]!;
+        this.dragMoved ||= held.x !== coord.x || held.y !== coord.y;
+        this.curvePoints[this.dragAnchor] = { ...coord };
+        ctx.overlay.showGhost(splineCells(this.curvePoints, ctx.brushSize), this.card(coord, ctx), terrainGrid);
+      } else this.previewCurve(coord, ctx);
       return;
     }
-
-    ctx.overlay.showGhost(
-      shape ? [coord] : brushCells(coord.x, coord.y, ctx.brushSize),
-      this.card(coord, ctx), terrainGrid,
-    );
-
+    if (this.shapeOrigin && shape !== 'dot') {
+      const end = this.shapeEnd(coord, ctx);
+      if (shape === 'rect' || shape === 'circle') ctx.overlay.showGhostSpans(dragShapeSpans(shape, this.shapeOrigin, end), this.card(end, ctx), terrainGrid);
+      else ctx.overlay.showGhost(this.shapeCells(end, ctx), this.card(end, ctx), terrainGrid);
+      return;
+    }
+    ctx.overlay.showGhost(shape === 'rect' || shape === 'circle' ? [coord] : brushCells(coord.x, coord.y, ctx.brushSize), this.card(coord, ctx), terrainGrid);
     if (this.erasing && (coord.x !== this.lastCoord?.x || coord.y !== this.lastCoord?.y)) {
+      const from = this.lastCoord ?? coord;
       this.lastCoord = coord;
-      this.eraseAt(brushCells(coord.x, coord.y, ctx.brushSize), ctx);
+      this.eraseAt(expandLine(line4(from.x, from.y, coord.x, coord.y), ctx.brushSize), ctx);
     }
   }
 
   onPointerUp(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
-    const shape = dragShape(ctx);
-    if (shape && this.shapeOrigin) {
-      this.eraseAt(dragShapeCells(shape, this.shapeOrigin, this.shapeEnd(coord, shape), ctx.brushSize), ctx);
-      this.shapeOrigin = null;
-      ctx.overlay.clearGhost();
-    }
-    this.erasing = false;
-    this.lastCoord = null;
-    const violations = ctx.commitStroke(this.strokeStartUndoSize);
-    if (violations.length > 0) {
-      const msg = ctx.t(violations[0]!.message);
-      showToast(msg, 'warning');
-    }
-  }
-
-  /** Where the drag ends, Shift-constrained to a square / round circle exactly as the drawing
-   *  tool's shapes are (`snapShapeEnd`). */
-  private shapeEnd(coord: MacroCoord, shape: 'rect' | 'circle'): MacroCoord {
-    if (!this.shapeOrigin) return coord;
-    return isConstrainHeld() ? snapShapeEnd(this.shapeOrigin, coord, shape) : coord;
-  }
-
-  onActivate(_ctx: ToolContext): void {
-    this.erasing = false;
-    this.lastCoord = null;
-    this.shapeOrigin = null;
-    this.strokeCells.clear();
-  }
-
-  onDeactivate(ctx: ToolContext): void {
-    this.erasing = false;
-    this.lastCoord = null;
-    this.shapeOrigin = null;
-    this.strokeCells.clear();
-    ctx.overlay.clearGhost();
-  }
-
-  /** Take back `cells`. The dab calls this per step of its travel and a drag shape once, with the
-   *  whole figure; `strokeCells` is what keeps a cell the dab crosses twice from being asked twice. */
-  private eraseAt(cells: MacroCoord[], ctx: ToolContext): void {
-    if (ctx.contentType === 'tile') {
-      eraseTileCells(cells, ctx);
+    this.refreshDraft(ctx);
+    if (!this.erasing) return;
+    if (ctx.eraserShape === 'curve') {
+      this.erasing = false;
+      const first = this.curvePoints[0]!;
+      if (this.curvePoints.length === 1 && (first.x !== coord.x || first.y !== coord.y)) {
+        this.curvePoints.push({ ...coord });
+        this.lastClick = null;
+        this.previewCurve(coord, ctx);
+        return;
+      }
+      if (this.dragAnchor !== null) {
+        this.dragAnchor = null;
+        if (this.dragMoved) { this.lastClick = null; this.previewCurve(coord, ctx); return; }
+      }
+      const prev = this.lastClick;
+      if (prev && performance.now() - prev.at <= 400 && prev.coord.x === coord.x && prev.coord.y === coord.y && this.curvePoints.length >= 2) {
+        this.commitCurve(ctx);
+      } else { this.lastClick = { coord: { ...coord }, at: performance.now() }; this.previewCurve(coord, ctx); }
       return;
     }
+    const origin = this.shapeOrigin;
+    const end = this.shapeEnd(coord, ctx);
+    if (origin) this.eraseAt(this.shapeCells(end, ctx), ctx);
+    else if (this.lastCoord) this.eraseAt(expandLine(line4(this.lastCoord.x, this.lastCoord.y, coord.x, coord.y), ctx.brushSize), ctx);
+    const violations = finishEraserStroke(ctx, this.strokeStartUndoSize);
+    if (violations[0]) showToast(ctx.t(violations[0].message), 'warning');
+    this.reset(); ctx.overlay.clearGhost();
+  }
 
+  private previewCurve(coord: MacroCoord, ctx: ToolContext): void {
+    ctx.overlay.showGhost(splineCells([...this.curvePoints, coord], ctx.brushSize), this.card(coord, ctx), this.terrainGrid(ctx));
+  }
+
+  private commitCurve(ctx: ToolContext): void {
+    const anchors = this.curvePoints.map(p => ({ ...p }));
+    const baseline = cloneGridState(ctx.gridState);
+    const start = ctx.getUndoStackSize();
+    this.strokeCells.clear();
+    this.eraseAt(splineCells(anchors, ctx.brushSize), ctx);
+    const violations = finishEraserStroke(ctx, start);
+    this.reset(); ctx.overlay.clearGhost();
+    if (violations.length) {
+      ctx.rollbackTo(start);
+      showToast(ctx.t(violations[0]!.message), 'warning');
+    } else {
+      adjustErasedCurve(anchors, baseline, ctx, (cells, frozen) => { this.strokeCells.clear(); this.eraseAt(cells, frozen); });
+    }
+  }
+
+  private refreshDraft(ctx: ToolContext): void {
+    if (this.draftContext && (ctx.eraserShape !== 'curve' || ctx.contentType !== this.draftContext.content || ctx.gridState !== this.draftContext.state)) {
+      this.reset(); ctx.overlay.clearGhost();
+    }
+  }
+
+  hasPending(ctx: ToolContext): boolean { this.refreshDraft(ctx); return this.curvePoints.length > 0; }
+
+  undoPendingStep(ctx: ToolContext): boolean {
+    this.refreshDraft(ctx);
+    if (!this.curvePoints.length) return false;
+    this.curvePoints.pop(); this.dragAnchor = null; this.lastClick = null;
+    const last = this.curvePoints[this.curvePoints.length - 1];
+    if (last) this.previewCurve(last, ctx); else ctx.overlay.clearGhost();
+    return true;
+  }
+
+  private shapeEnd(coord: MacroCoord, ctx: ToolContext): MacroCoord {
+    const shape = ctx.eraserShape;
+    return this.shapeOrigin && isConstrainHeld() && (shape === 'line' || shape === 'rect' || shape === 'circle')
+      ? snapShapeEnd(this.shapeOrigin, coord, shape) : coord;
+  }
+
+  private shapeCells(end: MacroCoord, ctx: ToolContext): MacroCoord[] {
+    const origin = this.shapeOrigin!;
+    return dragShapeCells(ctx.eraserShape === 'dot' || ctx.eraserShape === 'curve' ? 'line' : ctx.eraserShape, origin, end, ctx.brushSize);
+  }
+
+  cancelPending(ctx: ToolContext): boolean {
+    if (this.shapeOrigin || this.curvePoints.length) { this.reset(); ctx.overlay.clearGhost(); return true; }
+    if (isCurveSessionOpen()) { endCurveSession(); return true; }
+    return false;
+  }
+
+  onPointerCancel(ctx: ToolContext): void {
+    if (this.erasing && !this.curvePoints.length) ctx.rollbackTo(this.strokeStartUndoSize);
+    this.reset(); ctx.overlay.clearGhost();
+  }
+
+  onActivate(_ctx: ToolContext): void { this.reset(); }
+  onDeactivate(ctx: ToolContext): void { endCurveSession(); this.reset(); ctx.overlay.clearGhost(); }
+
+  private reset(): void {
+    this.erasing = false; this.lastCoord = null; this.shapeOrigin = null; this.strokeCells.clear();
+    this.draftContext = null; this.curvePoints = []; this.dragAnchor = null; this.dragMoved = false; this.lastClick = null;
+  }
+
+  private eraseAt(cells: MacroCoord[], ctx: ToolContext): void {
+    if (ctx.contentType === 'tile') { eraseTileCells(cells, ctx); return; }
     for (const c of cells) {
       const key = `${c.x},${c.y}`;
       if (this.strokeCells.has(key)) continue;
       const cell = getCell(ctx.gridState.cells, c.x, c.y);
-      if (!cell?.terrain) continue;
-      if (!erasesHere(cell.terrain.type, ctx.contentType)) continue;
-      const elev = cell.terrain.elevation;
-      if (ctx.layerVisibility[elev] === false) continue;
+      if (!cell?.terrain || !erasesHere(cell.terrain.type, ctx.contentType) || ctx.layerVisibility[cell.terrain.elevation] === false) continue;
       this.strokeCells.add(key);
-
-      // The water eraser CONVERTS water into this layer's mountain rather than digging a hole —
-      // the probe above asks with the same flag, so the badge and the click cannot drift.
       const cmd = peelCommand(c.x, c.y, cell, ctx.contentType === 'water');
       if (cmd) ctx.executeCommand(cmd);
     }

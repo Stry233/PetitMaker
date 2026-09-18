@@ -229,10 +229,20 @@ export const MOTIONS = {
     tier: 'inform', curve: 'stiff', amplitude: 4,
     says: 'this is the setting you are holding, and where it stands',
   },
+  /** The terrain width control fades as it becomes available or unavailable. */
+  'slider.visibility': {
+    tier: 'inform', curve: 'punchy', duration: 0.22,
+    says: 'this tool accepts a brush width',
+  },
   /** A tool setting folds between its word and compact circle. */
   'chip.fold': {
     tier: 'inform', curve: 'stiff',
     says: 'this setting is doing this now',
+  },
+  /** The selection plate and option names reshape together without scaling their contents. */
+  'tool.option.select': {
+    tier: 'inform', curve: 'punchy', duration: 0.28,
+    says: 'this is the selected shape or corner treatment',
   },
   /** The Done and Discard pair rises into the tool row while a note draft stands. */
   'draft.actions.arrive': {

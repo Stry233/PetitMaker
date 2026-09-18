@@ -8,6 +8,7 @@
  * held pan keys (a rAF loop) and the UI-scale keys (live behind an open modal), both in
  * canvas/interaction/use-view-shortcuts. Both are skipped here, so each key fires once.
  */
+import { editionSupportsCommand } from '../../core/runtime/edition';
 import { useEffect } from 'react';
 import { ShortcutManager } from '../../core/runtime/shortcut-manager';
 import { COMMANDS, COMMAND_BY_ID, RUN, type CommandContext } from '../../kit/commands';
@@ -24,7 +25,7 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
       const sc = new ShortcutManager();
       const overrides = useKeybinds.getState().overrides;
       for (const cmd of COMMANDS) {
-        if (cmd.continuous) continue; // held-key pan — driven by use-view-shortcuts, not the one-shot engine
+        if (cmd.continuous || !editionSupportsCommand(cmd.id)) continue; // held-key pan — driven by use-view-shortcuts, not the one-shot engine
         // The UI-scale rows have no RUN body; their own listener answers them. Registering their
         // combo here would swallow the press (a match preventDefaults and stops the scan) for a
         // command that does nothing.
@@ -34,7 +35,7 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
       }
       for (const alias of ALIASES) {
         const cmd = COMMAND_BY_ID.get(alias.commandId);
-        if (cmd && !cmd.continuous) sc.register(alias.combo, () => cmd.run(ctx)); // continuous = held (pan), driven by use-view-shortcuts
+        if (cmd && !cmd.continuous && editionSupportsCommand(cmd.id)) sc.register(alias.combo, () => cmd.run(ctx)); // continuous = held (pan), driven by use-view-shortcuts
       }
       // Keep the held modifiers (read by modifier-state) in sync with their rebindable bindings —
       // '' when the user unbinds one (disabled).

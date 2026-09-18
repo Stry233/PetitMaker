@@ -51,6 +51,11 @@ describe('glQuality', () => {
 });
 
 describe('maxRenderScale', () => {
+  it('keeps web hardware resolution independent of the container pixel budget', () => {
+    setDpr(2);
+    setGlQualityOverride('full');
+    expect(maxRenderScale({ width: 3840, height: 2160, budgetScale: 0.5 })).toBe(2);
+  });
   it('caps a software rasterizer at 1, where the hardware tier would take 2', () => {
     setDpr(2);
     expect(maxRenderScale()).toBe(1); // jsdom has no GL, so the probe reads lite

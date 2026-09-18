@@ -1,3 +1,4 @@
+import { viewportRect } from '../../../core/runtime/viewport-space';
 /**
  * The 3D editor's ViewProjection: pointer → cell via visible-surface picking,
  * cell → screen via camera projection. Tools receive exactly the coordinate
@@ -33,7 +34,7 @@ export class Projection3D implements ViewProjection {
 
   /** Pointer ray in world space from canvas-relative CSS pixel coords. */
   private ray(sx: number, sy: number): { origin: Vec3; dir: Vec3 } {
-    const rect = this.host.canvas.getBoundingClientRect();
+    const rect = viewportRect(this.host.canvas);
     const ndc = new THREE.Vector2(
       ((sx - rect.left) / rect.width) * 2 - 1,
       -((sy - rect.top) / rect.height) * 2 + 1,
@@ -90,7 +91,7 @@ export class Projection3D implements ViewProjection {
     const off = mapCenterOffset(s.template.width, s.template.height);
     const wx = x - off.x, wz = y - off.z;
     const h = surfaceHeightAt(s, wx + 0.5, wz + 0.5);
-    const rect = this.host.canvas.getBoundingClientRect();
+    const rect = viewportRect(this.host.canvas);
     const project = (px: number, pz: number) => {
       const v = new THREE.Vector3(px, h, pz).project(this.host.camera);
       return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
@@ -135,7 +136,7 @@ export class Projection3D implements ViewProjection {
     // and safe to project (a large locked object like the plaza carries no handles anyway).
     const center = box.getCenter(new THREE.Vector3());
     if (center.clone().applyMatrix4(cam.matrixWorldInverse).z >= -0.05) return null;
-    const rect = this.host.canvas.getBoundingClientRect();
+    const rect = viewportRect(this.host.canvas);
     const v = new THREE.Vector3();
     const project = (px: number, py: number, pz: number): { x: number; y: number } => {
       v.set(px, py, pz).project(cam);

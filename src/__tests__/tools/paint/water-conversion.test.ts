@@ -17,6 +17,7 @@ import { makeState, setTerrain } from '../../rules/_helpers';
 import { peelCommand } from '../../../tools/paint/terrain-peel';
 import { planPaint } from '../../../tools/paint/paint-plan';
 import { EraserTool } from '../../../tools/paint/eraser';
+import { makeToolCtx } from '../_tool-ctx';
 import type { ToolContext } from '../../../tools/runtime/types';
 
 const exec = (s: GridState) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
@@ -110,17 +111,10 @@ describe('the eraser erases its own surface', () => {
     const ex = exec(state);
     const issued: Command[] = [];
     const tool = new EraserTool();
-    const ctx = {
-      gridState: state, brushSize: 1,
+    const ctx = makeToolCtx(state, ex, 1, 1, {
       contentType: mode,
-      layerVisibility: {},
       executeCommand: (c: Command) => { issued.push(c); return ex.execute(c); },
-      validateCommand: (c: Command) => ex.getRegistry().validatePreCommand(c, state),
-      getUndoStackSize: () => ex.getUndoStackSize(),
-      commitStroke: (n: number) => ex.commitStroke(n),
-      overlay: { showGhost: () => {}, clearGhost: () => {} },
-      t: (k: string) => k,
-    } as unknown as ToolContext;
+    });
     tool.onPointerDown({ x, y }, { x, y }, ctx);
     tool.onPointerUp({ x, y }, { x, y }, ctx);
     return issued;

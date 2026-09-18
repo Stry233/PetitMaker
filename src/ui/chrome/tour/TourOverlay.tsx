@@ -1,3 +1,5 @@
+import { BrandName } from '../BrandName';
+import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
  * First-launch tour overlay: one masked dim provides the scrim and spotlight, while a separate card
  * presents host-supplied steps. A target is prepared before measurement and tracked across animation,
@@ -15,7 +17,6 @@ import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs
 import { roleFont } from '../../design/text-weight';
 import { useChromeScale, useTouchPrimary, useViewportSize } from '../../design/scale';
 import { useFullscreen } from '../../hooks/useFullscreen';
-import { Wavy } from '../../primitives/Wavy';
 import { useOverlayLock } from '../../hooks/useOverlayLock';
 import { BrandLockup } from '../BrandLockup';
 import { placeBubble, VIEWPORT_MARGIN, type Box } from './place-bubble';
@@ -80,7 +81,7 @@ const GLIDE_MAX_TRAVEL = 1 / 3;
 function movedFar(from: Box, to: Box): boolean {
   const dx = (from.left + from.width / 2) - (to.left + to.width / 2);
   const dy = (from.top + from.height / 2) - (to.top + to.height / 2);
-  return Math.hypot(dx, dy) > Math.hypot(window.innerWidth, window.innerHeight) * GLIDE_MAX_TRAVEL;
+  return Math.hypot(dx, dy) > Math.hypot(viewportSize().width, viewportSize().height) * GLIDE_MAX_TRAVEL;
 }
 
 /**
@@ -185,7 +186,7 @@ function StepTitle({ text, name }: { text: string; name: string }) {
   return (
     <>
       {text.slice(0, at)}
-      <Wavy>{name}</Wavy>
+      <BrandName wavy />
       {text.slice(at + name.length)}
     </>
   );
@@ -510,7 +511,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
         { width: BUBBLE_W * chrome, height: (BUBBLE_H + (drawn?.height ?? 0)) * chrome },
         shown.step.side,
         GAP,
-        { width: window.innerWidth, height: window.innerHeight },
+        { width: viewportSize().width, height: viewportSize().height },
       )
     : null;
 

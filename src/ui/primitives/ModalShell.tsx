@@ -1,3 +1,4 @@
+import { IS_LITE } from '../../core/runtime/edition';
 import type { CSSProperties, ReactNode } from 'react';
 import { createContext, useContext, useEffect, useRef, useLayoutEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, useIsPresent, type Transition } from 'framer-motion';
@@ -136,6 +137,7 @@ function resolveDim(
   if (typeof px === 'string') return px;
   if (px == null) return undefined;
   if (pct == null) return px; // plain number — the card's `zoom` scales it
+  if (IS_LITE) return Math.min(px, (pct / 100 * windowPx) / chrome - frame);
   return `min(${px}px, ${(pct / 100 * windowPx) / chrome - frame}px)`;
 }
 

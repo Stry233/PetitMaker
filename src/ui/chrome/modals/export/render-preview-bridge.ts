@@ -17,7 +17,7 @@ import { badgesFor } from '../../../../io/export/render';
 import { captureMapStills, type CameraAngle } from '../../../../canvas/map3d/capture';
 import { translateFor, localizedName } from '../../../../i18n/context';
 import type { ExportOptions } from '../../../../io/export/types';
-import { mapNativePx } from '../../../../io/share';
+import { mapNativePx } from '../../../../io/export/sizing';
 import type { GridState, Locale } from '../../../../core/model/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import { selectedVersion } from './stylize/use-stylize-versions';

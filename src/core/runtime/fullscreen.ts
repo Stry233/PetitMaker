@@ -1,5 +1,7 @@
 /** Page fullscreen through the Fullscreen API: the immersive mode a browser tab offers without installation. */
 
+import { SUPPORTS_FULLSCREEN } from './edition';
+
 /** The `webkit`-prefixed calls Safari and WKWebView expose before 16.4. */
 interface PrefixedDocument {
   webkitFullscreenEnabled?: boolean;
@@ -14,19 +16,20 @@ const doc = (): Document & PrefixedDocument => document;
 const root = (): HTMLElement & PrefixedElement => document.documentElement;
 
 export function fullscreenAvailable(): boolean {
-  if (typeof document === 'undefined') return false;
+  if (!SUPPORTS_FULLSCREEN || typeof document === 'undefined') return false;
   if (document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function') return true;
   // iPhone Safari has neither form, because its element fullscreen is for video only.
   return doc().webkitFullscreenEnabled === true && typeof root().webkitRequestFullscreen === 'function';
 }
 
 export function isFullscreen(): boolean {
-  if (typeof document === 'undefined') return false;
+  if (!SUPPORTS_FULLSCREEN || typeof document === 'undefined') return false;
   return (document.fullscreenElement ?? doc().webkitFullscreenElement) != null;
 }
 
 /** Enters or leaves fullscreen; a refused request leaves the page as it is. */
 export async function toggleFullscreen(): Promise<void> {
+  if (!SUPPORTS_FULLSCREEN) return;
   try {
     if (isFullscreen()) {
       if (typeof document.exitFullscreen === 'function') await document.exitFullscreen();

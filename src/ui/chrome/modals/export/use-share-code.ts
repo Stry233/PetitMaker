@@ -1,6 +1,7 @@
 // Preview and export share a debounced glyph asset when its pixel width and payload inputs match.
 import { useEffect, useRef, useState } from 'react';
-import { buildShareCode, moduleBaseFor } from '../../../../io/share';
+import { buildShareCode } from '../../../../io/share/export';
+import { moduleBaseFor } from '../../../../io/share/glyph/geometry';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { APP_VERSION } from '../../../../version';
 import { CURRENT_VERSION } from '../../../../io/save-format';

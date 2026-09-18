@@ -51,6 +51,7 @@ function fakeOverlay(): ToolOverlay & {
   return {
     selections,
     clears: 0,
+    showCurveFootprint: () => {}, clearCurveFootprint: () => {},
     showGhost: () => {}, showGhostSpans: () => {}, clearGhost: () => {},
     showSelection: (x, y, w = 1, h = 1, elevation, terrainMode = false, append = false) => {
       selections.push({ x, y, w, h, elevation, terrainMode, append });

@@ -22,7 +22,7 @@ const wrap: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 12,
-  maxWidth: 'min(92vw, 520px)',
+  width: '92vw', maxWidth: 520,
   padding: '10px 12px 10px 16px',
   borderRadius: radii.lg,
   border: PANEL_EDGE,

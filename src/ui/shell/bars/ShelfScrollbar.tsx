@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
  * ShelfScrollbar.tsx — the bar under the item row.
  *
@@ -61,7 +62,7 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
   };
 
   const down = (e: ReactPointerEvent, onThumb: boolean) => {
-    const at = pointerToTrack(e.clientX);
+    const at = pointerToTrack(clientPoint(e).x);
     if (at === null) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     // Grabbing the thumb keeps the point under the pointer; pressing the track jumps the thumb's
@@ -83,7 +84,7 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
       onPointerDown={(e) => down(e, false)}
       onPointerMove={(e) => {
         if (!e.buttons || grab.current === null) return;
-        const at = pointerToTrack(e.clientX);
+        const at = pointerToTrack(clientPoint(e).x);
         if (at !== null) onScrollTo(scrollFor(at - grab.current), false);
       }}
       onPointerUp={() => { grab.current = null; }}

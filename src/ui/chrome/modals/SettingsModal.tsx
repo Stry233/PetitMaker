@@ -1,3 +1,5 @@
+import { BrandName } from '../BrandName';
+import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
@@ -5,7 +7,7 @@ import { font, colors, inkTint, springs, radii, buttonMotion, cursors } from '..
 import { skin, windowCard, windowPill, windowTitle } from '../../design/window-skin';
 import { roleFont, TEXT_ROLES } from '../../design/text-weight';
 import { reachableUiZoom, UI_ZOOM_MIN, useDockRef, useFitFloor, useReadableWeight, useViewportSize } from '../../design/scale';
-import { BUILD_NUMBER, brandName } from '../../../version';
+import { BUILD_NUMBER } from '../../../version';
 import type { Locale } from '../../../core/model/types';
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../core/model/constants';
 import { cursorArt } from '../../../assets/cursors/cursor-art';
@@ -369,8 +371,8 @@ function UiScaleSlider({ label }: { label: string }) {
         onDoubleClick={() => { dragRef.current = null; setDragZoom(null); setUiZoom(1); }}
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
-        onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setDrag(zoomFromClientX(e.clientX)); }}
-        onPointerMove={(e) => { if (e.buttons) setDrag(zoomFromClientX(e.clientX)); }}
+        onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setDrag(zoomFromClientX(clientPoint(e).x)); }}
+        onPointerMove={(e) => { if (e.buttons) setDrag(zoomFromClientX(clientPoint(e).x)); }}
         onPointerUp={commitDrag}
         onPointerCancel={commitDrag}
         onLostPointerCapture={commitDrag}
@@ -783,7 +785,7 @@ export function SettingsModal({
       <div style={metaStyle}>
         {/* Identity readout — the app and its build, drilling into About. */}
         <motion.button type="button" style={readoutStyle} onClick={onAbout} whileTap={{ scale: 0.985 }} whileHover={{ scale: 1.01 }} aria-label={t('modal.settings_about')}>
-          <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}>{brandName(locale)}</span>
+          <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
           <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{`${t('about.build')} ${BUILD_NUMBER}`}</span>
           <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
         </motion.button>

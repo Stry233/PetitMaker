@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { IS_LITE } from '../../../../core/runtime/edition';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { windowCard, windowTitle } from '../../../design/window-skin';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
@@ -28,6 +29,7 @@ export function ImportModal() {
   const setModal = useEditorStore((s) => s.setModal);
   const gridState = useEditorStore((s) => s.gridState);
   const close = (open: boolean) => setModal('import', open);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   /** A decoded file waiting for the user's word; the drop zone gives way to its card. */
@@ -61,7 +63,7 @@ export function ImportModal() {
 
   // Accept a pasted image while the modal is open.
   useEffect(() => {
-    if (!open) return;
+    if (IS_LITE || !open) return;
     const onPaste = (e: ClipboardEvent) => {
       const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'));
       const file = item?.getAsFile();
@@ -72,15 +74,12 @@ export function ImportModal() {
   }, [open, handleFile]);
 
   const pickFile = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp,.json,application/json';
-    input.onchange = () => { const f = input.files?.[0]; if (f) void handleFile(f, f.name); };
-    input.click();
+    if (inputRef.current) { inputRef.current.value = ''; inputRef.current.click(); }
   };
 
   return (
-    <ModalShell open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING }} ariaLabel={t('import.title')}>
+    <ModalShell open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} maxVh={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING, overflowY: 'auto' }} ariaLabel={t('import.title')}>
+      <input ref={inputRef} type="file" hidden accept={IS_LITE ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,.json,application/json'} onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void handleFile(f, f.name); }} />
       {pending ? (
         <ImportConfirm
           preview={pending.inspection.preview}

@@ -1,3 +1,4 @@
+import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
  * HTML pick/rotate/delete controls projected over the canvas selection. Repositioning follows viewport,
  * object, resize, chrome-scale, and active-view registration changes; `viewMode` may change before
@@ -181,7 +182,7 @@ export function SelectionHandles() {
       const placement = placeControlRow(
         anchor,
         groupRowMetrics(sel.length),
-        { width: window.innerWidth, height: window.innerHeight },
+        { width: viewportSize().width, height: viewportSize().height },
         chromeZoom,
       );
       if (!placement.visible) { setHandlesVisible(false); return; }
@@ -193,7 +194,7 @@ export function SelectionHandles() {
     const b = singleSelection(sel);
 
     const place = (bounds: { x: number; y: number; w: number; h: number }) => {
-      const placement = placeSelectionRow(bounds, rowRef.current, { width: window.innerWidth, height: window.innerHeight }, chromeZoom);
+      const placement = placeSelectionRow(bounds, rowRef.current, { width: viewportSize().width, height: viewportSize().height }, chromeZoom);
       if (!placement.visible) { setHandlesVisible(false); return; }
       el.style.left = `${placement.left}px`;
       el.style.top = `${placement.top}px`;

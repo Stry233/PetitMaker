@@ -370,7 +370,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
           // is not part of the field's NAME, so a reader hears "Search" and not the dots.
           placeholder={t('shelf.search_ph')}
           wrapStyle={{
-            flex: 'none', width: `min(${SEARCH.w}px, 45%)`,
+            flex: 'none', width: SEARCH.w, maxWidth: '45%',
             marginLeft: layout?.compact ? 0 : SEARCH.inset,
             // The row's own bottom edge is the mark's, and the field stands off the names' INK
             // above it (`SEARCH.bottom`), not off the line box that carries them.

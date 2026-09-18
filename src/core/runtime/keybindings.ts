@@ -1,3 +1,4 @@
+import { editionSupportsCommand } from './edition';
 /*
  * The keymap DATA — every discrete keyboard operation's identity (id, category, label, default
  * combo, continuous), the user-override layer over it, keymap PRESETS ("shortcut styles"), and
@@ -32,7 +33,7 @@ export interface CommandMeta {
 
 /* ── the registry ────────────────────────────────────────────────────────── */
 
-export const COMMAND_META: readonly CommandMeta[] = [
+const ALL_COMMAND_META: readonly CommandMeta[] = [
   // Build surface (opens the Build panel on that surface)
   { id: 'surface.mountain', category: 'surface', labelKey: 'menu.build_mountain', defaultCombo: null },
   { id: 'surface.river',    category: 'surface', labelKey: 'menu.build_river',    defaultCombo: null },
@@ -40,18 +41,18 @@ export const COMMAND_META: readonly CommandMeta[] = [
 
   // Tools
   { id: 'tool.move',    category: 'tool', labelKey: 'menu.move',           defaultCombo: null },
-  // The row sits on the number keys in the terrain bar's own cell order (draw, erase, trim, line,
-  // curve, rect, circle), so a key badge on a cell always matches the number that types it.
-  { id: 'tool.brush',   category: 'tool', labelKey: 'design.free_brush',   defaultCombo: '1' },
+  // Primary tools occupy 1–4; 5 cycles their shared shapes.
+  { id: 'tool.brush',   category: 'tool', labelKey: 'terrain.brush',       defaultCombo: '1' },
   { id: 'tool.eraser',  category: 'tool', labelKey: 'design.eraser',       defaultCombo: '2' },
   { id: 'tool.edgecut', category: 'tool', labelKey: 'design.edge_cut',     defaultCombo: '3' },
-  { id: 'tool.line',    category: 'tool', labelKey: 'design.line_brush',   defaultCombo: '4' },
-  { id: 'tool.curve',   category: 'tool', labelKey: 'design.curve_brush',  defaultCombo: '5' },
-  { id: 'tool.rect',    category: 'tool', labelKey: 'design.rect_brush',   defaultCombo: '6' },
-  { id: 'tool.circle',  category: 'tool', labelKey: 'design.circle_brush', defaultCombo: '7' },
-  // The last cell of the row, matching the shelf's Smart Build card: the whole row reads 1-8 in the
-  // order the cells sit on screen.
-  { id: 'tool.smart',   category: 'tool', labelKey: 'smart.build',         defaultCombo: '8' },
+  { id: 'tool.smart',   category: 'tool', labelKey: 'smart.build',         defaultCombo: '4' },
+  { id: 'tool.shape_cycle', category: 'tool', labelKey: 'terrain.shapes', defaultCombo: '5' },
+  { id: 'tool.free',    category: 'tool', labelKey: 'terrain.shape.free',  defaultCombo: null },
+  { id: 'tool.line',    category: 'tool', labelKey: 'eraser.line',         defaultCombo: null },
+  { id: 'tool.curve',   category: 'tool', labelKey: 'eraser.curve',        defaultCombo: null },
+  { id: 'tool.rect',    category: 'tool', labelKey: 'eraser.rect',         defaultCombo: null },
+  { id: 'tool.circle',  category: 'tool', labelKey: 'eraser.circle',       defaultCombo: null },
+  { id: 'tool.auto_trim', category: 'tool', labelKey: 'edgecut.auto',      defaultCombo: 'q' },
 
   // Shape-drag constrain (HELD): snaps line/rect/circle drags to straight/square/round. Default
   // Shift, rebindable. Continuous — the shape tools read modifier-state.isConstrainHeld. Its key
@@ -128,6 +129,8 @@ export const COMMAND_META: readonly CommandMeta[] = [
   { id: 'overlay.numbers', category: 'overlay', labelKey: 'a11y.toggle_layer_numbers', defaultCombo: null },
   { id: 'overlay.chunks',  category: 'overlay', labelKey: 'shortcut.toggle_chunks',    defaultCombo: null },
 ];
+
+export const COMMAND_META: readonly CommandMeta[] = ALL_COMMAND_META.filter(c => editionSupportsCommand(c.id));
 
 export const META_BY_ID: ReadonlyMap<string, CommandMeta> = new Map(COMMAND_META.map((c) => [c.id, c]));
 
@@ -225,7 +228,12 @@ function joinCombo(key: string, ctrl: boolean, alt: boolean, shift: boolean): st
 export function effectiveCombo(overrides: Overrides, id: string): string | null {
   const cmd = META_BY_ID.get(id);
   if (!cmd) return null;
-  return id in overrides ? overrides[id]! : cmd.defaultCombo;
+  if (id in overrides) return overrides[id]!;
+  const combo = cmd.defaultCombo;
+  // A changed default must not take a key already assigned by the user.
+  if (combo && Object.entries(overrides).some(([other, value]) => other !== id && META_BY_ID.has(other)
+    && value != null && normalizeCombo(value) === normalizeCombo(combo))) return null;
+  return combo;
 }
 
 /** normalized combo → command id, for every command with a (non-null) effective binding. */
@@ -391,6 +399,7 @@ export interface KeymapPreset {
 const PRO: Record<string, string | null> = {
   'surface.mountain': '1', 'surface.river': '2', 'surface.road': '3',
   'tool.move': 'v', 'tool.brush': 'b', 'tool.eraser': 'e', 'tool.edgecut': 'x',
+  'tool.free': null, 'tool.shape_cycle': null, 'tool.auto_trim': null,
   'tool.line': 'f', 'tool.curve': 'g', 'tool.rect': 'r', 'tool.circle': 'c', 'tool.smart': 't',
   'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
   'selection.rotate_cw': '.', 'selection.rotate_ccw': ',',
@@ -399,17 +408,13 @@ const PRO: Record<string, string | null> = {
   'overlay.grid': 'shift+g', 'overlay.numbers': 'shift+n', 'overlay.chunks': 'shift+c',
 };
 
-/** "Numeric" — Pro's letters with the game default's number row on top: tools sit on 1-8 in the
- *  terrain bar's own cell order (the SAME digits the shipped default uses, so a number means one
- *  cell in every layout that uses numbers; move keeps Pro's V), build surfaces on Q/W/E, pan on the
- *  arrow keys (leaving WASD free), and layer up/down on Page Up / Page Down. Spread order matters:
- *  the numeric-specific entries after the spread win over Pro's own 'layer.up'/'layer.down'.
- */
+/** Numeric keeps the toolbar order, with arrow-key panning and separate surface shortcuts. */
 const NUMERIC: Record<string, string | null> = {
   ...PRO,
-  'surface.mountain': 'q', 'surface.river': 'w', 'surface.road': 'e',
-  'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.line': '4',
-  'tool.curve': '5', 'tool.rect': '6', 'tool.circle': '7', 'tool.smart': '8',
+  'surface.mountain': 'shift+q', 'surface.river': 'w', 'surface.road': 'e',
+  'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.smart': '4',
+  'tool.shape_cycle': '5', 'tool.free': null, 'tool.line': null, 'tool.curve': null, 'tool.rect': null, 'tool.circle': null,
+  'tool.auto_trim': 'q',
   'camera.pan_up': 'arrowup', 'camera.pan_down': 'arrowdown',
   'camera.pan_left': 'arrowleft', 'camera.pan_right': 'arrowright',
   'layer.up': 'pageup', 'layer.down': 'pagedown',

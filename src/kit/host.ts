@@ -1,3 +1,4 @@
+import { viewportSize } from '../core/runtime/viewport-space';
 /**
  * What a shell can ask of the map view.
  *
@@ -21,7 +22,7 @@ import { useEditorStore } from '../state/store';
 import type { MacroCoord } from '../core/model/types';
 import { currentKit } from './context';
 
-const screenCentre = (): [number, number] => [window.innerWidth / 2, window.innerHeight / 2];
+const screenCentre = (): [number, number] => [viewportSize().width / 2, viewportSize().height / 2];
 
 /** The slice of the 2D viewport a macro-to-screen projection needs. React chrome anchors through
  *  `getActiveView().projection` instead (it works in both 2D and 3D); this is for a caller outside

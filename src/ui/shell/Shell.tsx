@@ -1,18 +1,20 @@
+import { viewportSize } from '../../core/runtime/viewport-space';
 /*
  * Application shell around the map. Edit state drives the five mutually exclusive mode bars; the
  * assistant opens independently without changing the armed mode. Chrome uses fixed CSS dimensions
  * under one combined page/UI zoom. This component also hosts the tour and applies its requested mode
  * and view changes.
  */
+import { SUPPORTS_ASSISTANT } from '../../core/runtime/edition';
 import { useFrameReadableWeight } from './use-frame-zoom';
 import {
-  Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+  Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode, type RefObject,
 } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import type { BuildMode } from '../../core/model/edit-mode';
 import { hasWebGL2 } from '../../core/runtime/device-quality';
-import { useAgentSession } from '../../agent/session/store';
+import { CharacterHost, GenerateShelf, Windows, PanelColumn, useAssistantConnected, clearAssistantSession } from './edition-surfaces';
 import { hasAutosave, readRestorableAutosave, type RestoredAutosave } from '../../io/autosave';
 import { offerRestoreDismiss } from '../../core/runtime/restore-offer';
 import { useT } from '../../i18n/context';
@@ -32,11 +34,9 @@ import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
 import { weightVars } from '../design/text-weight';
 import { useFocusSource } from '../design/focus-source';
 import { btnReset, cursors, font, pressable, z } from '../design/styles';
-import { CharacterHost } from '../agent/character/CharacterHost';
 import { CHARACTER_SEAT, PINNED_COLUMN_W, PINNED_DOCK_REF_W, frameZoomAt } from './panel-frame';
 import { dockAside, useDockDriver, useDockStage } from './use-dock';
-import { isConnected, useAgentPanelSettings } from '../agent/settings';
-import { GenerateShelf } from './bars/GenerateShelf';
+
 import { AnnotationBar } from './bars/AnnotationBar';
 import { ObjectShelf } from './bars/ObjectShelf';
 import { ScopeScreen } from './bars/ScopeScreen';
@@ -61,7 +61,6 @@ import {
 import { shellTourSteps } from './tour-steps';
 import { tourDiagram } from './tour-diagrams';
 import { useShellCommands } from './use-shell-commands';
-import { Windows } from './windows/Windows';
 
 /** Which top-right control a tour step points at. Only the two that DO something are named: the
  *  load readout is a readout. */
@@ -380,16 +379,6 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
 }
 
 /**
- * The assistant's panel, and the app's ONE lazy chunk for it: the tool layer and the provider SDKs
- * are behind this import and nowhere the first load can see (`__tests__/ui/eager-bundle.test.ts`).
- *
- * MOUNTED ONCE OPENED, AND THEN KEPT. The column owns the runner, which owns the running job's
- * abort handle; unmounting it with the panel would leave a job nobody can stop and a second one
- * starting over the same log the next time an order is sent (`agent/PanelColumn.tsx`'s header).
- */
-const PanelColumn = lazy(() => import('../agent/PanelColumn'));
-
-/**
  * THE PANEL STANDS OUTSIDE THE FRAME'S PLANE, and that is what lets it be the ground.
  *
  * Docked, the panel is the desk the whole interface is lying on: it holds the window's own left edge
@@ -434,7 +423,7 @@ function Assistant({ hidden }: { hidden: boolean }) {
   useEffect(() => dockAside.on('change', (v) => {
     const el = wrapRef.current;
     if (!el) return;
-    writeFrameZoom(el, frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoom, floor), dpr, dense, window.innerHeight);
+    writeFrameZoom(el, frameZoomAt(v, viewportSize().width, viewportSize().height, uiZoom, floor), dpr, dense, viewportSize().height);
   }), [uiZoom, floor, dpr, dense]);
   useEffect(() => { if (open) setEverOpened(true); }, [open]);
   if (!everOpened) return null;
@@ -602,7 +591,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   // written later in this session is this session's own work, never something to offer back.
   const [candidate, setCandidate] = useState<RestoredAutosave | null>(readRestorableAutosave);
   const dismissRestore = useCallback(() => {
-    useAgentSession.getState().clearSession();
+    if (SUPPORTS_ASSISTANT) clearAssistantSession();
     setCandidate(null);
   }, []);
   // Opening the windows is starting this session: whoever reaches for New, Import or Settings has
@@ -700,7 +689,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
         ))}
       </div>
 
-      <AssistantBlock entranceRef={entranceRef} />
+      {SUPPORTS_ASSISTANT && <AssistantBlock entranceRef={entranceRef} />}
 
       <div
         data-testid="shell-corner-actions"
@@ -796,7 +785,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   // The character's two facts, read here because its layer stands outside the frame below: whether
   // the panel is its current home, and whether there is a provider to talk to at all.
   const assistantOpen = useEditorStore((s) => s.assistantOpen);
-  const connected = useAgentPanelSettings(isConnected);
+  const connected = useAssistantConnected();
   const entranceRef = useRef<HTMLDivElement>(null);
   // The chip at the parked character's shoulder is the way back into a job that is still running
   // with the panel shut, so it opens the panel exactly as her own block does.
@@ -929,14 +918,14 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
     const map = mapPlaneRef.current;
     const vig = vignetteRef.current;
     if (!frame || !map || !vig) return;
-    const zoomNow = frameZoomAt(v, window.innerWidth, window.innerHeight, uiZoomAnim, floor);
+    const zoomNow = frameZoomAt(v, viewportSize().width, viewportSize().height, uiZoomAnim, floor);
     const refW = v * PINNED_DOCK_REF_W;
     const px = refW * (zoomNow / ZOOM);
     const atLeft = dockSide === 'left';
     const inset = `${v * PINNED_COLUMN_W}px`;
     frame.style.left = atLeft ? inset : '0px';
     frame.style.right = atLeft ? '0px' : inset;
-    writeFrameZoom(frame, zoomNow, dpr, dense, window.innerHeight);
+    writeFrameZoom(frame, zoomNow, dpr, dense, viewportSize().height);
     const travel = px / 2;
     const between = v > 0 && v < 1;
     map.style.left = !between && atLeft ? `${px}px` : '0px';
@@ -1007,7 +996,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
     <>
       {/* The docked panel stays outside the sliding frame plane. A pictured shell mounts none: the live
           panel's open state is not the picture's, and a second hosted panel would seat the character. */}
-      {!preview && <Assistant hidden={hidden} />}
+      {!preview && SUPPORTS_ASSISTANT && <Assistant hidden={hidden} />}
       {/* The map plane transforms and clips during docking, then settles to an inset. This avoids
           resizing renderer buffers on every animation frame. Pointer input stays disabled in transit
           because view projections update when the containing box settles. */}
@@ -1098,7 +1087,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
           coordinates in zoomed space while a measured rect is in the window's (see
           `agent/character/CharacterHost`). It goes away with the frame all the same — it is part of
           the interface, not of the map. */}
-      {!preview && (
+      {!preview && SUPPORTS_ASSISTANT && (
         <CharacterHost
           entranceRef={entranceRef}
           open={assistantOpen}

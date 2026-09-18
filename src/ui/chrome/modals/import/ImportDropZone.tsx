@@ -1,3 +1,4 @@
+import { IS_LITE } from '../../../../core/runtime/edition';
 import type { CSSProperties, DragEvent } from 'react';
 import { cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
@@ -66,11 +67,11 @@ export function ImportDropZone({ dragOver, busy, onClick, onDragOver, onDragLeav
             would be an invitation the surface cannot honour. */}
         <div style={{ ...roleFont('head'), color: skin.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           {busy && <Spinner size={18} />}
-          {busy ? t('import.busy') : t(onClick ? 'import.drop' : 'import.drop_only')}
+          {busy ? t('import.busy') : t(IS_LITE ? 'lite.import_pick' : onClick ? 'import.drop' : 'import.drop_only')}
         </div>
-        <div style={{ ...roleFont('caption'), marginTop: 6, opacity: 0.8 }}>{t('import.paste_hint')}</div>
+        {!IS_LITE && <div style={{ ...roleFont('caption'), marginTop: 6, opacity: 0.8 }}>{t('import.paste_hint')}</div>}
       </div>
-      <div style={noteStyle}>{t('import.note')}</div>
+      <div style={noteStyle}>{t(IS_LITE ? 'lite.import_hint' : 'import.note')}</div>
     </>
   );
 }

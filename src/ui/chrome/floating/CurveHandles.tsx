@@ -1,3 +1,4 @@
+import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
  * CurveHandles.tsx — the anchors of a just-drawn curve, still adjustable.
  *
@@ -20,7 +21,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
 import {
-  anchorHandles, endCurveSession, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
+  anchorHandles, splineCells, endCurveSession, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
 } from '../../../tools/paint';
 import { isBreakHandleHeld } from '../../../core/runtime/modifier-state';
 import { useEditorStore } from '../../../state/store';
@@ -108,6 +109,9 @@ export function CurveHandles() {
   const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
   const armingEpoch = useEditorStore(s => s.armingEpoch);
+  const eraserShape = useEditorStore(s => s.eraserShape);
+  const contentType = useEditorStore(s => s.contentType);
+  useEffect(() => () => endCurveSession(), [eraserShape, contentType]);
   const [, bump] = useState(0);
   const [screen, setScreen] = useState<ScreenAnchor[]>([]);
   const [zoomK, setZoomK] = useState(1);
@@ -126,6 +130,30 @@ export function CurveHandles() {
     eventBus.on('history-applied', close);
     return () => eventBus.off('history-applied', close);
   }, [eventBus]);
+  useEffect(() => {
+    if (!session?.footprint) return;
+    const cells = splineCells(session.anchors, session.width);
+    let overlay = getActiveView()?.overlay;
+    let frame = 0;
+    const draw = () => {
+      const next = getActiveView()?.overlay;
+      if (next !== overlay) overlay?.clearCurveFootprint();
+      overlay = next;
+      overlay?.showCurveFootprint(cells, session.terrainGrid);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); });
+    };
+    draw();
+    const offView = onActiveViewChange(draw);
+    eventBus.on('cells-changed', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      offView(); eventBus.off('cells-changed', schedule);
+      overlay?.clearCurveFootprint();
+    };
+  }, [session, eventBus]);
+
   const anchorCount = session?.anchors.length ?? 0;
 
   /** Project every anchor, and the two ends of its direction line, into screen px. */
@@ -174,14 +202,14 @@ export function CurveHandles() {
       const proj = getActiveView()?.projection;
       if (!proj) return undefined;
       if (getCurveSession()?.freeCoords) {
-        return proj.screenToHalf?.(e.clientX, e.clientY)
-          ?? (() => { const c = proj.screenToMacro(e.clientX, e.clientY); return { x: c.x + 0.5, y: c.y + 0.5 }; })();
+        return proj.screenToHalf?.(clientPoint(e).x, clientPoint(e).y)
+          ?? (() => { const c = proj.screenToMacro(clientPoint(e).x, clientPoint(e).y); return { x: c.x + 0.5, y: c.y + 0.5 }; })();
       }
       if (getCurveSession()?.terrainGrid) {
-        const micro = proj.screenToMicro(e.clientX, e.clientY);
+        const micro = proj.screenToMicro(clientPoint(e).x, clientPoint(e).y);
         return microToTerrain(micro.x, micro.y);
       }
-      return proj.screenToMacro(e.clientX, e.clientY);
+      return proj.screenToMacro(clientPoint(e).x, clientPoint(e).y);
     };
     const apply = (e: PointerEvent, commit: boolean) => {
       const g = grab.current;

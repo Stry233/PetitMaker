@@ -1,3 +1,5 @@
+import { IS_LITE } from '../core/runtime/edition';
+import attribution from '../../NOTICE?raw';
 /**
  * View B of the About modal: an in-modal reader for one legal/policy document.
  *
@@ -24,6 +26,8 @@ import { useScrollFade } from '../ui/primitives/scroll-fade';
 import { DOCS, docNodes, type DocId } from './registry';
 import { LEGAL } from './config';
 import { LegalMarkdown } from './LegalMarkdown';
+
+const liteLicenses = IS_LITE ? import.meta.glob<string>('../../licenses/**/*', { query: '?raw', import: 'default', eager: true }) : {};
 
 export interface LegalDocViewProps {
   id: DocId;
@@ -204,6 +208,11 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
           </div>
         )}
         <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} dense={isDenseScript(effLang)} />
+        {IS_LITE && id === 'license' && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: 'inherit' }}>{attribution}</pre>}
+        {IS_LITE && id === 'third-party' && Object.entries(liteLicenses).map(([path, body]) => <section key={path}>
+          <h3>{path.replace('../../licenses/', '')}</h3>
+          <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: 'inherit' }}>{body}</pre>
+        </section>)}
       </div>
 
       {dated && (

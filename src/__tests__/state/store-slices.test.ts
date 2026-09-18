@@ -35,7 +35,7 @@ const EXPECTED_STORE_FIELDS: readonly string[] = [
   'updateAnnotation',
   'aboutTarget', 'activeLayer', 'activeTool', 'armedMacro', 'armingEpoch', 'assistantDockSide', 'assistantOpen', 'assistantPinned', 'autoEdgeCut', 'brushSize', 'clearSelection',
   'commandExecutor', 'contentType', 'contextMenu', 'deletePopover', 'designMode', 'displayLayer',
-  'editMode', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'helpTarget', 'hintLevel', 'initMap',
+  'drawingBrushSize', 'editMode', 'eraserBrushSize', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'helpTarget', 'hintLevel', 'initMap',
   'layerLocked', 'layerPinned', 'layerVisibility', 'loadMap', 'locale', 'markExported', 'modals', 'notesEpoch', 'setMapNotes',
   'motionPref', 'placementRotation', 'portraitBlocked', 'preview3DEdit', 'region', 'regionBrushSize',
   'regionSelectionOwner', 'regionTool', 'selectedItemId', 'selectingRegion', 'selection', 'setAboutTarget', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',

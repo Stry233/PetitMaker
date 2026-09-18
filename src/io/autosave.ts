@@ -2,6 +2,7 @@
 // restored on the next load. Built on the versioned codec (json-codec →
 // io/save-format), so an autosave written by an older build still loads, and one
 // written by a newer build is ignored rather than mis-parsed.
+import { SUPPORTS_WORKERS } from '../core/runtime/edition';
 import { buildSaveFile, deserializeParsed, readParsedSaveCamera } from './json-codec';
 import { encodeHistory, decodeHistory, type HistorySection } from './history-codec';
 import { getMapTemplate } from '../config/maps';
@@ -93,7 +94,7 @@ function writeAutosave(state: GridState, current: number, immediate: boolean): v
     const { provenance: _provenance, ...minimal } = map;
     writeSnapshot(storage, encodeAutosave(JSON.stringify(minimal)));
   };
-  if (immediate || json.length < COMPRESS_AUTOSAVE_AT || typeof Worker === 'undefined') {
+  if (!SUPPORTS_WORKERS || immediate || json.length < COMPRESS_AUTOSAVE_AT || typeof Worker === 'undefined') {
     write(encodeAutosave(json));
     return;
   }

@@ -8,14 +8,14 @@
  * a copy of it, since the bug it guards is the two drifting apart.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { setActiveView } from '../../../canvas/active-view';
 
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../core/model/types';
-import { effectiveCombo, useKeybinds } from '../../../core/runtime/keybindings';
+import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
 import { setRegionBrushHandler } from '../../../core/runtime/region-brush';
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
@@ -67,13 +67,17 @@ describe('the scope screen wears the terrain bar', () => {
     expect(SCOPE_CELLS.map((c) => c.commandId)).toEqual(terrain.map((c) => c.commandId));
   });
 
-  it('draws a badge per cell, from the LIVE binding', () => {
+  it('shows assigned shortcuts and updates a newly bound shape', () => {
     mount();
     const overrides = useKeybinds.getState().overrides;
     for (const cell of SCOPE_CELLS) {
-      expect(screen.getByLabelText(en(cell.labelKey))).toBeTruthy();
-      expect(effectiveCombo(overrides, cell.commandId)).toBeTruthy();
+      const button = screen.getByLabelText(en(cell.labelKey));
+      const combo = effectiveCombo(overrides, cell.commandId);
+      if (combo) expect(within(button.parentElement!).getByText(prettyCombo(combo))).toBeTruthy();
     }
+    const unbound = SCOPE_CELLS.find(cell => !effectiveCombo(overrides, cell.commandId))!;
+    act(() => useKeybinds.getState().rebind(unbound.commandId, 'k'));
+    expect(within(screen.getByLabelText(en(unbound.labelKey)).parentElement!).getByText('K')).toBeTruthy();
   });
 
   it('arms the region figure a cell names', () => {
