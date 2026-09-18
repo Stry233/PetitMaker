@@ -830,6 +830,9 @@ describe('TourOverlay', () => {
       fireEvent.click(cardButton('Next')); // -> camera, still the same card: copy and height cross over
       await waitFor(() => expect(shownStep()).toBe(2));
       await waitFor(() => expect(box().style.height).toBe('120px'));
+      // Let the sampler observe the second endpoint: it reads once per frame, and the waitFor above
+      // can resolve between two frames, in which case stopping here records the first one only.
+      await frames(2);
       heightSampler.stop();
       copySampler.stop();
       // Reduced motion collapses both tweens to duration 0: the height is only ever seen at its two

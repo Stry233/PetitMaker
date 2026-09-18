@@ -2,7 +2,7 @@
  * One generate implementation, three callers. This is the test that fails if a second one appears:
  * two contexts, one seed, and the results have to be indistinguishable down to the provenance.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { generateMap, generateCandidate, clearGenerated } from '../../kit/operations';
 import { currentKit } from '../../kit/context';
 import { newMap } from '../../kit/operations';
@@ -12,6 +12,12 @@ import { serialize } from '../../io/json-codec';
 import { stableSerialize } from './_stable-serialize';
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { GenerateConfig, GridState, MacroCoord, PlacedObject } from '../../core/model/types';
+
+// A full island generation is the expensive operation in this file and it runs 21 of them, several
+// as a pair whose POINT is that both runs produce identical bytes. Measured: one case here takes
+// 584ms-1246ms on an idle machine, so it is a pair on a loaded worker that passes the default 5s
+// rather than a single run. 60s is the budget the repository's other generation suites already use.
+vi.setConfig({ testTimeout: 60_000 });
 
 const config = (seed: number): GenerateConfig => ({
   algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 4, seed, region: null,

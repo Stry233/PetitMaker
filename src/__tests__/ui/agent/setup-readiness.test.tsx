@@ -1,7 +1,7 @@
 /** Setup validates credentials; management owns every model choice and completion. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useState } from 'react';
-import { render, fireEvent, act, screen } from '@testing-library/react';
+import { render, fireEvent, act, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -637,7 +637,15 @@ describe('the exits', () => {
     // card that takes a typed id — no press in between.
     expect(screen.getByTestId('setup-screen').getAttribute('data-phase')).toBe('checking');
     await settle();
-    expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull();
+    // `settle` runs a FIXED number of turns, so on a loaded machine it can finish before this chain
+    // of awaited probes has taken the zone; wait for the handover itself, which is what the
+    // assertion is about. Measured: this case takes ~2.3s on an idle machine, so the fixed turn
+    // count is already near the wall before any load, and 20s matches the waits this repository's
+    // other UI suites use.
+    await waitFor(
+      () => expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull(),
+      { timeout: 20_000 },
+    );
     expect(screen.getByTestId('manage-screen')).toBeTruthy();
 
     // The card's own fallback for an endpoint that lists nothing: the id, typed.

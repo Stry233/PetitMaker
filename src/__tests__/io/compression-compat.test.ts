@@ -23,12 +23,38 @@ it.each([CompressionMethod.Deflate, CompressionMethod.Gzip])('rejects a corrupt 
   expect(() => decompress(packed, method, limits.maxBytes)).toThrow();
 });
 
-it('rejects concatenated gzip members like native streams and preserves output limits', async () => {
+it('bounds concatenated gzip members and preserves output limits', async () => {
   const packed = compress(bytes, CompressionMethod.Gzip);
   const pair = new Uint8Array(packed.length * 2);
   pair.set(packed); pair.set(packed, packed.length);
+
+  // Our own decoder refuses multi-member input outright.
   expect(() => decompress(pair, CompressionMethod.Gzip, limits.maxBytes)).toThrow();
+
+  // The PLATFORM decoder answers differently per runtime, and both answers are legal: RFC 1952 makes
+  // a gzip file a SEQUENCE of members, so Node's zlib-backed stream reads the whole sequence and
+  // returns both members (measured: Node 22.23.1 returns 2x the payload), while the browser's stream
+  // stops at the first member and errors on the trailing bytes. This suite runs under Node, so that
+  // is the expectation pinned here — and the block below drives the no-platform path, which is the
+  // one a browser without Compression Streams takes, and pins its answer too.
+  const both = await inflate(pair, CompressionMethod.Gzip, limits);
+  expect(both.length).toBe(bytes.length * 2);
+  expect(both.subarray(0, bytes.length)).toEqual(bytes);
+  expect(both.subarray(bytes.length)).toEqual(bytes);
+
+  // No platform streams: the fallback decoder answers, and it must refuse rather than hand back a
+  // partial buffer.
+  vi.stubGlobal('CompressionStream', undefined);
+  vi.stubGlobal('DecompressionStream', undefined);
   await expect(inflate(pair, CompressionMethod.Gzip, limits)).rejects.toThrow();
+  vi.unstubAllGlobals();
+
+  // A payload whose expansion passes the caller's cap is refused instead of buffered. One member
+  // large enough to trip it, so the check holds on either path.
+  const oversized = compress(new Uint8Array(limits.maxBytes + 1), CompressionMethod.Gzip);
+  await expect(inflate(oversized, CompressionMethod.Gzip, limits)).rejects.toThrow();
+
+  // The single-member path is unaffected, and the absolute limit still trips.
   expect(() => decompress(packed, CompressionMethod.Gzip, 100)).toThrow('safety limit');
 });
 

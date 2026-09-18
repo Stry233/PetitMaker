@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     );
   }
 
-  writeAll(distDir, LEGAL, mode);
+  await writeAll(distDir, LEGAL, mode);
 
   // The static manifest in `public/` is the global one; each deployment installs under its own name.
   writeFileSync(join(distDir, 'manifest.webmanifest'), webManifest(targetById(process.env.PETIT_TARGET)), 'utf8');
