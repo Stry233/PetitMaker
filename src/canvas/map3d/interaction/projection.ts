@@ -20,6 +20,8 @@ export interface CameraHost {
   panCamera(dx: number, dy: number): void;
   /** Mesh-precise object pick (see scene.pickObjectAt). */
   pickObjectAt(sx: number, sy: number): string | null;
+  pickAnnotationLabel?(sx: number, sy: number): string | null;
+  annotationLabelBox?(id: string): { x: number; y: number; w: number; h: number } | null;
   /** World bounding box of an object's rendered body. */
   objectBoundingBox(id: string): THREE.Box3 | null;
 }
@@ -115,6 +117,14 @@ export class Projection3D implements ViewProjection {
 
   pickObject(sx: number, sy: number): string | null {
     return this.host.pickObjectAt(sx, sy);
+  }
+
+  pickAnnotationLabel(sx: number, sy: number): string | null {
+    return this.host.pickAnnotationLabel?.(sx, sy) ?? null;
+  }
+
+  annotationLabelBox(id: string): { x: number; y: number; w: number; h: number } | null {
+    return this.host.annotationLabelBox?.(id) ?? null;
   }
 
   objectScreenBox(id: string): { x: number; y: number; w: number; h: number } | null {

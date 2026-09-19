@@ -28,7 +28,7 @@ import {
 } from './previews/generate';
 import { TourPreview } from './previews/tour';
 import { Camera3dPreview } from './previews/camera';
-import { FrameOverview, FrameCut, LayersTour, NotesRowTour } from './previews/frame-overview';
+import { FrameOverview, FrameCut, LayersTour, NotesRowTour, NotesEntryPreview } from './previews/frame-overview';
 import { AutoTrimModesPreview, ObjectShelfPreview, TerrainToolsStrip } from './previews/strips';
 import { ContextMenuPreview, DeleteConfirmPreview } from './previews/floating';
 
@@ -83,6 +83,7 @@ export const HELP_SURFACES: Record<string, ComponentType> = {
   tour: TourPreview,
   layers: LayersTour,
   'notes-row': NotesRowTour,
+  'notes-entry': NotesEntryPreview,
   candidates: CandidatesPreview,
   'stencil-picture': PictureStencilPreview,
   'object-shelf': ObjectShelfPreview,

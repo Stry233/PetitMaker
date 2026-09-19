@@ -2,7 +2,7 @@
   "id": "ramp-teak-stair",
   "category": "ramp",
   "name": {
-    "en": "Teak Stair",
+    "en": "Teak Garden Steps",
     "zh": "庭院柚木梯",
     "ja": "チーク材の階段",
     "ru": "Тиковая лестница",
@@ -294,5 +294,8 @@
         "color": "#83552e"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Teak Stair"
+  ]
 }

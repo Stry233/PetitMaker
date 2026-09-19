@@ -40,7 +40,7 @@ import { BrushSizeSlider } from './BrushSizeSlider';
 import { SCOPE_CELLS } from './scope-cells';
 import { setRegionMinSide, setRegionSingle } from '../../../core/runtime/region-brush';
 import type { RegionTool } from '../../../core/model/types';
-import { READOUT_SIZE, SLIDER_LIFT } from './TerrainBar';
+import { READOUT_SIZE, SLIDER_LIFT } from './BrushSizeSlider';
 import { CELL_BOX, ToolCell } from './ToolCell';
 
 /** Room between the cells and the actions after them, in css px: wider than the row's own gap, so

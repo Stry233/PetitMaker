@@ -14,11 +14,13 @@ import { ShortcutManager } from '../../core/runtime/shortcut-manager';
 import { COMMANDS, COMMAND_BY_ID, RUN, type CommandContext } from '../../kit/commands';
 import { effectiveCombo, useKeybinds, ALIASES } from '../../core/runtime/keybindings';
 import { setBreakHandleKey, setConstrainKey, setMultiSelectKey, setPanDragKey } from '../../core/runtime/modifier-state';
+import { useToolbarContext } from './use-toolbar-context';
 
 /** The React-provided deps the command handlers need (everything else is read from the store). */
 type Deps = CommandContext;
 
 export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu }: Deps): void {
+  const toolbar = useToolbarContext();
   useEffect(() => {
     const ctx: CommandContext = { openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu };
     const build = (): ShortcutManager => {
@@ -26,11 +28,11 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
       const overrides = useKeybinds.getState().overrides;
       for (const cmd of COMMANDS) {
         if (cmd.continuous || !editionSupportsCommand(cmd.id)) continue; // held-key pan — driven by use-view-shortcuts, not the one-shot engine
-        // The UI-scale rows have no RUN body; their own listener answers them. Registering their
+        // UI-scale and contextual-help rows have no RUN body; their own listeners answer them. Registering their
         // combo here would swallow the press (a match preventDefaults and stops the scan) for a
         // command that does nothing.
         if (!RUN[cmd.id]) continue;
-        const combo = effectiveCombo(overrides, cmd.id);
+        const combo = effectiveCombo(overrides, cmd.id, toolbar);
         if (combo) sc.register(combo, () => cmd.run(ctx));
       }
       for (const alias of ALIASES) {
@@ -55,5 +57,5 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
     // Rebuild the binding table whenever the user rebinds / clears / resets a shortcut.
     const unsub = useKeybinds.subscribe(() => { sc = build(); });
     return () => { window.removeEventListener('keydown', onKey); unsub(); };
-  }, [openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu]);
+  }, [openBuild, handleTileAction, regionUndo, regionRedo, toggleMenu, toolbar]);
 }

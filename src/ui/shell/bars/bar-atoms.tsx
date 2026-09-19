@@ -1,3 +1,4 @@
+import { useToolbarContext } from '../use-toolbar-context';
 /*
  * bar-atoms.tsx — the pieces every bottom bar is built from.
  *
@@ -79,7 +80,8 @@ export function ShortcutBadge({ commandId, active = false, grown = false }: {
 }) {
   const overrides = useKeybinds((s) => s.overrides);
   const shape = useMotion('tool.plate.shape');
-  const combo = effectiveCombo(overrides, commandId);
+  const context = useToolbarContext();
+  const combo = effectiveCombo(overrides, commandId, context);
   if (!combo) return null;
   return (
     <motion.span

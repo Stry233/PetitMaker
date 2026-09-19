@@ -110,6 +110,7 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
+    this.ctx.annotationLabelHit = this.view.projection.pickAnnotationLabel?.(screenX, screenY);
     const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
     this.activeTool.onPointerDown(coord, micro, this.ctx);
   }
@@ -144,6 +145,7 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
+    this.ctx.annotationLabelHit = this.view.projection.pickAnnotationLabel?.(screenX, screenY);
     const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
     this.activeTool.onPointerMove(coord, micro, this.ctx);
   }
@@ -154,6 +156,7 @@ export class ToolManager {
 
     this.refreshCtx();
     this.ctx.halfCoord = this.view.projection.screenToHalf?.(screenX, screenY);
+    this.ctx.annotationLabelHit = this.view.projection.pickAnnotationLabel?.(screenX, screenY);
     const coord = this.activeTool.terrainGrid?.(this.ctx) ? microToTerrain(micro.x, micro.y) : macro;
     this.activeTool.onPointerUp(coord, micro, this.ctx);
   }

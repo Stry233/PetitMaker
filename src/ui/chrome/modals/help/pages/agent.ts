@@ -14,6 +14,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     titleKey: 'help.agentintro.title',
     navKey: 'help.agentintro.nav',
     ledeKey: 'help.agentintro.lede',
+    entryKey: 'help.agentintro.entry',
     figure: { kind: 'surface', surface: 'agent-dream', captionKey: 'help.agentintro.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agintro-what', titleKey: 'help.agentintro.what_t', bodyKeys: ['help.agentintro.what_b1'] },
@@ -36,6 +37,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     group: 'agent',
     titleKey: 'help.agentsetup.title',
     ledeKey: 'help.agentsetup.lede',
+    entryKey: 'help.agentsetup.entry',
     figure: { kind: 'surface', surface: 'agent-setup', captionKey: 'help.agentsetup.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agsetup-providers', titleKey: 'help.agentsetup.providers_t', bodyKeys: ['help.agentsetup.providers_b1'] },
@@ -76,6 +78,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     group: 'agent',
     titleKey: 'help.agentrun.title',
     ledeKey: 'help.agentrun.lede',
+    entryKey: 'help.agentrun.entry',
     figure: { kind: 'surface', surface: 'agent-plan', captionKey: 'help.agentrun.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agrun-order', titleKey: 'help.agentrun.order_t', bodyKeys: ['help.agentrun.order_b1', 'help.agentrun.order_b2'] },
@@ -99,6 +102,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     titleKey: 'help.agenttrail.title',
     navKey: 'help.agenttrail.nav',
     ledeKey: 'help.agenttrail.lede',
+    entryKey: 'help.agenttrail.entry',
     figure: { kind: 'surface', surface: 'agent-trail', captionKey: 'help.agenttrail.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agtrail-ticket', titleKey: 'help.agenttrail.ticket_t', bodyKeys: ['help.agenttrail.ticket_b1'] },
@@ -121,6 +125,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     group: 'agent',
     titleKey: 'help.agentregion.title',
     ledeKey: 'help.agentregion.lede',
+    entryKey: 'help.agentregion.entry',
     figure: { kind: 'surface', surface: 'agent-region', captionKey: 'help.agentregion.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agregion-mark', titleKey: 'help.agentregion.mark_t', bodyKeys: ['help.agentregion.mark_b1'] },
@@ -144,6 +149,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     titleKey: 'help.agenttrouble.title',
     navKey: 'help.agenttrouble.nav',
     ledeKey: 'help.agenttrouble.lede',
+    entryKey: 'help.agenttrouble.entry',
     figure: { kind: 'surface', surface: 'agent-trouble', captionKey: 'help.agenttrouble.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agtrouble-banners', titleKey: 'help.agenttrouble.banners_t', bodyKeys: ['help.agenttrouble.banners_b1', 'help.agenttrouble.banners_b2'], figure: { kind: 'surface', surface: 'agent-banner', captionKey: 'help.agenttrouble.banner_figcap' } },
@@ -165,6 +171,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
     group: 'agent',
     titleKey: 'help.agentundo.title',
     ledeKey: 'help.agentundo.lede',
+    entryKey: 'help.agentundo.entry',
     figure: { kind: 'surface', surface: 'agent-undo', captionKey: 'help.agentundo.figcap' },
     sections: [
       { kind: 'prose', anchor: 'agundo-one', titleKey: 'help.agentundo.one_t', bodyKeys: ['help.agentundo.one_b1'] },

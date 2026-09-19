@@ -64,7 +64,7 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
   const ready = open && entered && seconds === 0 && atEnd;
   return createPortal(
-    <ModalShell open={open} onClose={() => onDecision(false)} onEntered={onEntered} width={530} maxVwPct={94} maxVh={88}
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} width={530} maxVwPct={94} maxVh={88}
       cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', minHeight: 0 }} ariaLabel={t('export.notice.title')}>
       <h2 style={{ ...windowTitle, margin: '0 0 16px', flex: '0 0 auto' }}>{t('export.notice.title')}</h2>
       <div ref={content} onScroll={checkEnd} tabIndex={0} role="region" aria-label={t('export.notice.title')}

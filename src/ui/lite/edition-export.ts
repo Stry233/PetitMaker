@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../state/store';
+import type { ExportOptions, ExportPreset } from '../../io/export/types';
 import type * as WebExport from '../chrome/modals/export/edition-export';
 
 // The container cannot run the review workers. Its export notice requires manual review.
@@ -26,3 +27,9 @@ export const useTextReview: typeof WebExport.useTextReview = () => ({
   allowed: false, issue: null, pending: false, progress: undefined, paused: false,
   check: unavailable, cancel: idle, retry: idle,
 });
+
+export function applyExportPreset(options: ExportOptions, preset: ExportPreset): ExportOptions {
+  const share = preset === 'share';
+  return { ...options, preset, importable: share, layerPreview: share, grid: share, footer: share, card3d: false };
+}
+export const exportPresetDescriptions = { share: 'lite.preset_share_desc', plain: 'lite.preset_plain_desc' } as const;

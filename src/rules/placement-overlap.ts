@@ -8,16 +8,18 @@
  */
 import {
   CommandType,
+  ItemCategory,
   type Command,
   type GridState,
+  type PlacedObject,
   type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
 import { bodyEvidence, rectsOverlap, type Rect } from '../core/model/grid-model';
 import { isCoating, standsOnCoating } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
-import { objectRect } from '../state/object-geometry';
-import { entriesCovering, getObjectIndex } from '../state/object-index';
+import { objectElevation, objectRect } from '../state/object-geometry';
+import { entriesCovering, getObjectIndex, type ObjectIndexEntry } from '../state/object-index';
 
 /** The overlap of two rects, as a rect. Fractional by construction wherever either body is (the
  *  plaza's x.5 origin, a ramp/bridge anchor) — `bodyEvidence` turns it into both the drawn shade
@@ -28,40 +30,35 @@ function intersectionRect(a: Rect, b: Rect): Rect {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** Shared with repaint previews, which may ignore coatings the brush will remove. */
+export function placementBlockers(object: PlacedObject, state: GridState): ObjectIndexEntry[] {
+  const rect = objectRect(object);
+  const candidate = getCatalogItem(object.catalogId);
+  const coating = !!candidate && isCoating(candidate);
+  const elevation = coating ? objectElevation(state, object) : 0;
+  const blockers: ObjectIndexEntry[] = [];
+  for (const entry of entriesCovering(getObjectIndex(state), rect)) {
+    if (entry.obj.id === object.id) continue;
+    // Solid placement strips existing coatings after its preview validates; repainting strips first.
+    if (entry.coating && !coating) continue;
+    if (candidate && standsOnCoating(entry.item, candidate)) continue;
+    // Pavement follows the ground beneath the deck; bridge landings and ramps remain occupied.
+    if (coating && entry.item?.category === ItemCategory.Bridge && elevation < entry.obj.elevation) continue;
+    if (rectsOverlap(rect, entry.rect)) blockers.push(entry);
+  }
+  return blockers;
+}
+
 export const placementOverlapRule: PreCommandRule = {
   id: 'V-PLACE-OVERLAP',
-  agentHint: 'Object footprints may not overlap (touching edges is fine).',
+  agentHint: 'Object footprints may not overlap (touching edges is fine). Roads may pass beneath a higher bridge on valid dry ground.',
   phase: 'pre-command',
   appliesTo: [CommandType.PlaceObject],
 
   validate(cmd: Command, state: GridState): ValidationError[] {
     if (cmd.type !== CommandType.PlaceObject) return [];
     const newRect = objectRect(cmd.object);
-    const candidate = getCatalogItem(cmd.object.catalogId);
-
-    // Evidence = the region where the new footprint intersects each blocker,
-    // accumulated across ALL blockers (one error, one rect per blocker).
-    // Candidates come from the spatial index, by CELL rather than by chunk: a
-    // placement asks this once per attempt, generation makes thousands of
-    // attempts on a decorated map, and a chunk bucket of a paved region holds
-    // every road in it.
-    const evidence: Rect[] = [];
-    for (const e of entriesCovering(getObjectIndex(state), newRect)) {
-      if (e.obj.id === cmd.object.id) continue; // skip self (a move/rotate re-place)
-      // A surface coating (road/path) is meant to be coated OVER — the placer strips any coating the new
-      // footprint covers — so it never blocks a SOLID's placement. That is what lets a building's ghost
-      // read green over a road and the strip happen AFTER validation: stripping first would leave the road
-      // gone whenever the placement is then rejected (see ObjectPlacerTool.onPointerDown).
-      // A coating CANDIDATE gets no such pass: every legitimate re-coat strips first, so two coatings on
-      // one cell is a state nothing may create — whichever is asked about later answers for both.
-      if (e.coating && !(candidate && isCoating(candidate))) continue;
-      // The other direction of the plantable pair: a plantable road painted UNDER standing flora
-      // coexists with it — which is also what lets the road-follow reconcile re-seat a planted
-      // dirt path when the ground under the pair changes.
-      if (candidate && standsOnCoating(getCatalogItem(e.obj.catalogId), candidate)) continue;
-      if (!rectsOverlap(newRect, e.rect)) continue;
-      evidence.push(intersectionRect(newRect, e.rect));
-    }
+    const evidence = placementBlockers(cmd.object, state).map(e => intersectionRect(newRect, e.rect));
     if (evidence.length > 0) {
       return [{
         ruleId: 'V-PLACE-OVERLAP',

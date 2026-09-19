@@ -1872,6 +1872,14 @@ export class ThreeScene {
           panCamera: (dx, dy) => this.panCamera(dx, dy),
           pickObjectAt: (sx, sy) => this.pickObjectAt(sx, sy),
           objectBoundingBox: (id) => this.objectBoundingBox(id),
+          pickAnnotationLabel: (sx, sy) => {
+            this.flushAnnotations();
+            return this.annotations3d.pickLabel(sx, sy, this.camera, viewportRect(this.renderer.domElement));
+          },
+          annotationLabelBox: (id) => {
+            this.flushAnnotations();
+            return this.annotations3d.labelBox(id, this.camera, viewportRect(this.renderer.domElement));
+          },
         }),
         overlay,
         leftDragPans: false,

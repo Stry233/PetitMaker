@@ -2,7 +2,7 @@
   "id": "flower-portulaca-white",
   "category": "flora",
   "name": {
-    "en": "White Portulaca",
+    "en": "White Moss Rose",
     "zh": "白大花马齿苋",
     "ja": "シロバナマツバボタン",
     "ru": "Белый портулак",
@@ -15,7 +15,8 @@
     "moss rose",
     "sun plant",
     "橙",
-    "orange"
+    "orange",
+    "White Portulaca"
   ],
   "icon": "flower-portulaca-white",
   "iconColor": "#c66749",

@@ -412,6 +412,35 @@ describe('routes', () => {
   });
 });
 
+describe('putting down a drawing tool during a drag', () => {
+  it.each(['zone', 'route', 'measure'] as const)('Escape cancels an active %s drag without reviving its draft', (kind) => {
+    const tool = new AnnotateTool();
+    __resetCurveSession();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().setAnnotationTool(kind);
+    tool.onPointerDown(at(3, 3), at(0, 0), press(3, 3));
+    expect(tool.cancelPending(liveCtx())).toBe(true);
+    s().setAnnotationTool('none');
+    tool.onPointerMove(at(8, 3), at(0, 0), press(8, 3));
+    tool.onPointerUp(at(8, 3), at(0, 0), press(8, 3));
+    expect(s().annotationDraft).toBeNull();
+    expect(items()).toEqual([]);
+  });
+
+  it.each(['zone', 'route', 'measure'] as const)('a shortcut can put down %s before pointer release', (kind) => {
+    const tool = new AnnotateTool();
+    __resetCurveSession();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    s().setAnnotationTool(kind);
+    tool.onPointerDown(at(3, 3), at(0, 0), press(3, 3));
+    s().toggleAnnotationTool(kind);
+    tool.onPointerMove(at(8, 3), at(0, 0), press(8, 3));
+    tool.onPointerUp(at(8, 3), at(0, 0), press(8, 3));
+    expect(s().annotationDraft).toBeNull();
+    expect(items()).toEqual([]);
+  });
+});
+
 describe('the select state', () => {
   let tool: AnnotateTool;
 
@@ -513,4 +542,95 @@ describe('the select state', () => {
     expect(zoneById('z1').cells[0]).toEqual(at(6, 10));
     expect(zoneById('z2').cells[0]).toEqual(at(14, 10));
   });
+});
+
+describe('measurements', () => {
+  let tool: AnnotateTool;
+  beforeEach(() => {
+    tool = new AnnotateTool(); multiHeld = false; __resetCurveSession();
+    s().initMap(makeTemplate(100, 100), createDefaultRegistry());
+    s().setAnnotationTool('measure');
+  });
+  it('previews between clicks and commits one measurement with two snapped endpoints', () => {
+    click(tool, 1, 4);
+    expect(tool.hasPending(liveCtx())).toBe(true);
+    tool.onPointerMove(at(84, 4), at(0, 0), press(84.1, 4.1));
+    expect(items()).toHaveLength(0);
+    expect(s().annotationDraft).toMatchObject({ kind: 'measure', points: [at(1, 4), at(84, 4)] });
+    click(tool, 84, 4);
+    expect(items()).toHaveLength(1);
+    expect(s().annotationDraft).toBeNull();
+    expect(s().annotationSelection).toEqual([items()[0]!.id]);
+    expect(s().undoAnnotation()).toBe(true); expect(items()).toHaveLength(0);
+    expect(s().redoAnnotation()).toBe(true); expect(items()).toHaveLength(1);
+  });
+  it('supports dragging and counting a single cell with two taps', () => {
+    drag(tool, [3, 5], [12, 17]);
+    expect(items()[0]).toMatchObject({ kind: 'measure', points: [at(3, 5), at(3, 17)] });
+    click(tool, 20, 20); click(tool, 20, 20);
+    expect(items()[1]).toMatchObject({ points: [at(20, 20), at(20, 20)] });
+  });
+  it.each([
+    [[24, 13], [24, 10]], [[12, 26], [10, 26]],
+    [[24, 19], [24, 10]], [[1, 3], [1, 10]], [[3, 19], [10, 19]], [[20, 20], [20, 10]],
+  ])('snaps a drag toward %j to its nearest row or column', (end, expected) => {
+    drag(tool, [10, 10], end as [number, number]);
+    expect(items()[0]).toMatchObject({ points: [at(10, 10), at(expected[0]!, expected[1]!)] });
+  });
+  it('previews direction changes between taps and snaps the final release', () => {
+    click(tool, 10, 10);
+    tool.onPointerMove(at(24, 13), at(0, 0), press(24, 13));
+    expect(s().annotationDraft).toMatchObject({ points: [at(10, 10), at(24, 10)] });
+    tool.onPointerMove(at(13, 24), at(0, 0), press(13, 24));
+    expect(s().annotationDraft).toMatchObject({ points: [at(10, 10), at(10, 24)] });
+    click(tool, 13, 24);
+    expect(items()[0]).toMatchObject({ points: [at(10, 10), at(10, 24)] });
+    tool.onPointerDown(at(40, 40), at(0, 0), press(40, 40));
+    tool.onPointerMove(at(54, 43), at(0, 0), press(54, 43));
+    tool.onPointerUp(at(43, 54), at(0, 0), press(43, 54));
+    expect(items()[1]).toMatchObject({ points: [at(40, 40), at(40, 54)] });
+  });
+  it('cancels a pending measurement and cancels touch navigation without committing', () => {
+    click(tool, 1, 1); expect(tool.undoPendingStep(liveCtx())).toBe(true);
+    expect(s().annotationDraft).toBeNull();
+    tool.onPointerDown(at(2, 2), at(0, 0), press(2, 2));
+    tool.onPointerMove(at(20, 20), at(0, 0), press(20, 20));
+    tool.onPointerCancel(liveCtx());
+    expect(s().annotationDraft).toBeNull(); expect(items()).toHaveLength(0);
+  });
+  it('selects and moves a measurement by whole cells, and erases its dimension line', () => {
+    drag(tool, [3, 5], [12, 5]);
+    s().setAnnotationTool('none');
+    click(tool, 6, 4.5);
+    expect(s().annotationSelection).toHaveLength(1);
+    drag(tool, [6, 4.5], [8.3, 7.1]);
+    expect(items()[0]).toMatchObject({ points: [at(5, 8), at(14, 8)] });
+    s().setAnnotationTool('erase'); click(tool, 8, 7.5);
+    expect(items()).toHaveLength(0);
+  });
+  it('respects layer visibility and locks and does not apply tag or text size to dimensions', () => {
+    drag(tool, [3, 5], [12, 5]);
+    const before = items()[0];
+    s().setAnnotationTag('forest'); s().setAnnotationSize('l');
+    expect(items()[0]).toBe(before);
+    s().setAnnotationsLocked(true); click(tool, 2, 2);
+    expect(s().annotationDraft).toBeNull();
+    s().setAnnotationsLocked(false); s().setAnnotationsVisible(false); click(tool, 2, 2);
+    expect(s().annotationDraft).toBeNull();
+  });
+});
+
+it('uses the rendered tag hit for selection and treats its miss as authoritative', () => {
+  const tool = new AnnotateTool();
+  s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+  s().addAnnotation({ kind: 'chip', id: 'tag', x: 5, y: 5, tag: 'homes', size: 'l', color: '#FFB347' });
+  s().setAnnotationTool('chip');
+  const labelCtx = liveCtx({ halfCoord: at(15, 15), annotationLabelHit: 'tag' });
+  expect(tool.selectHit(at(15, 15), labelCtx)).toEqual({ id: 'tag', selected: false });
+  tool.onPointerDown(at(15, 15), at(0, 0), labelCtx);
+  expect(s().annotationSelection).toEqual(['tag']);
+  expect(items()).toHaveLength(1);
+  expect(tool.grabAt(at(15, 15), liveCtx({ halfCoord: at(15, 15), annotationLabelHit: 'tag' }))).toBe(true);
+  expect(tool.selectHit(at(5, 5), liveCtx({ halfCoord: at(5, 5), annotationLabelHit: null }))).toBeNull();
+  expect(tool.selectHit(at(5, 5), liveCtx({ halfCoord: at(5, 5) }))).toEqual({ id: 'tag', selected: true });
 });

@@ -24,6 +24,7 @@ const TITLED_FRAME = 'UDIEAAEFaGV4aWH9MTTxYIZ2ORwMAwgxLjAtdGVzdMA+pWoMUml2ZXIgZ2
 function annotations(): AnnotationsState {
   return {
     items: [
+      { kind: 'measure', id: 'm1', flipped: true, points: [{ x: 1, y: 4 }, { x: 84, y: 4 }], color: '#FFB347' },
       { kind: 'zone', id: 'z1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
       { kind: 'chip', id: 't1', x: 5.5, y: 6, tag: 'plaza', size: 'l', color: '#FFB347' },
       { kind: 'route', id: 'r1', points: [{ x: 1, y: 1 }, { x: 4.5, y: 2, hx: 1.5, hy: -0.5 }], color: '#2FBF9B', dashed: true },

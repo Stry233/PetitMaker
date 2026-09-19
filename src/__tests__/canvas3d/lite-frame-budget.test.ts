@@ -34,10 +34,34 @@ describe('Lite 3D fallback', () => {
     const actions = Array.from({ length: 40 }, (_, i) => budget.sample(1000 + i * 80, 65, false, false));
     expect(actions).toContain('fallback');
   });
-  it('measures GPU scheduling delays even when CPU submission is quick', () => {
+  it.each([1000 / 30, 1000 / 15, 100, 250])('keeps responsive rendering in 3D with %s ms host callback intervals', (interval) => {
     const budget = new LiteFrameBudget();
-    const actions = Array.from({ length: 40 }, (_, i) => budget.sample(1000 + i * 80, 2, false, false));
-    expect(actions).toContain('fallback');
+    const actions = Array.from({ length: 240 }, (_, i) => budget.sample(1000 + i * interval, 2, true, false, true, true));
+    expect(actions.every(action => action === null)).toBe(true);
+  });
+  it('reduces quality for slow delivery but stays in 3D once reductions are exhausted', () => {
+    const budget = new LiteFrameBudget();
+    let reductions = 3;
+    const actions = Array.from({ length: 300 }, (_, i) => {
+      const action = budget.sample(1000 + i * 80, 2, false, reductions > 0);
+      if (action === 'reduce') reductions--;
+      return action;
+    });
+    expect(reductions).toBe(0);
+    expect(actions).not.toContain('fallback');
+  });
+  it('requires sustained render cost rather than occasional slow renders in a throttled host', () => {
+    const budget = new LiteFrameBudget();
+    const actions = Array.from({ length: 240 }, (_, i) => budget.sample(1000 + i * 100, i % 10 === 0 ? 80 : 3, false, false));
+    expect(actions).not.toContain('fallback');
+  });
+  it('clears render pressure after a pause or an idle redraw', () => {
+    const budget = new LiteFrameBudget();
+    for (let i = 0; i < 12; i++) budget.sample(1000 + i * 80, 65, false, false);
+    budget.reset();
+    for (let i = 0; i < 12; i++) budget.sample(2000 + i * 80, 65, false, false);
+    expect(budget.sample(3000, 2, false, false, false)).toBeNull();
+    for (let i = 1; i < 120; i++) expect(budget.sample(3000 + i * 100, 2, false, false)).toBeNull();
   });
   it('ignores idle cursor redraw intervals and a single compilation stall', () => {
     const budget = new LiteFrameBudget();

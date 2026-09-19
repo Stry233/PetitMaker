@@ -2,7 +2,7 @@
   "id": "flower-bellflower-cyan",
   "category": "flora",
   "name": {
-    "en": "Cyan Bellflower",
+    "en": "Teal Bellflower",
     "zh": "青风铃",
     "ja": "シアンホタルブクロ",
     "ru": "Бирюзовый колокольчик",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "blue",
-    "蓝"
+    "蓝",
+    "Cyan Bellflower"
   ],
   "icon": "flower-bellflower-cyan",
   "iconColor": "#b0c1b8",

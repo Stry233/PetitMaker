@@ -53,7 +53,6 @@ const ALLOWED: Record<string, string> = {
   'src/ui/chrome/modals/export/ExportPreview.tsx': 'the failed-preview pictograph is an illustration, not a line of type',
   'src/ui/chrome/modals/export/Preview3D.tsx': 'a glyph centred in a 46px round button',
   'src/ui/chrome/modals/AboutModal.tsx': 'the grid row\'s chevron is a mark sized to the row, not a word in it',
-  'src/ui/chrome/modals/help/PageView.tsx': 'the Q&A row\'s chevron is a mark sized to the row, not a word in it',
   // Quick Hints is unmounted and has no shared frame placement, so its local sizes are exempt.
   'src/ui/hints/tokens.tsx': 'the Quick Hints panel is built but unmounted',
 };

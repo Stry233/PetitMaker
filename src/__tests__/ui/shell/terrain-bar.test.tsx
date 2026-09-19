@@ -10,7 +10,8 @@ import { getRoadMaterials } from '../../../state/catalog';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { apparentSize } from '../../../ui/shell/frame';
 import { SCALE } from '../../../ui/shell/units';
-import { SLIDER_LIFT, TerrainBar } from '../../../ui/shell/bars/TerrainBar';
+import { TerrainBar } from '../../../ui/shell/bars/TerrainBar';
+import { SLIDER_LIFT } from '../../../ui/shell/bars/BrushSizeSlider';
 import { BRUSH, CELL, GLYPH, TOOL_CELLS, type TerrainSurface } from '../../../ui/shell/bars/terrain-cells';
 
 const surfaces: TerrainSurface[] = ['mountain', 'water', 'road'];
@@ -78,11 +79,15 @@ describe.each(surfaces)('%s terrain controls', surface => {
     click('Eraser'); active('Circle'); expect(useEditorStore.getState().brushSize).toBe(2);
   });
 
-  it('keeps an explicitly selected tool armed on repeated presses', () => {
-    mount(surface); click('Rectangle'); click('Brush'); click('Brush');
-    expect(useEditorStore.getState().designMode).toBe('rect');
-    click('Smart build'); click('Smart build');
-    expect(useEditorStore.getState().activeTool).toBe(ToolType.Macro);
+  it.each(['Brush', 'Eraser', 'Edge Cut', 'Smart build'])('toggles %s off while retaining the surface and brush shape', label => {
+    mount(surface); click('Rectangle');
+    if (label !== 'Brush') click(label);
+    active(label); click(label);
+    expect(useEditorStore.getState().editMode.tool).toBe('none');
+    expect(useEditorStore.getState().armedMacro).toBeNull();
+    expect(useEditorStore.getState().editMode.mode).toBe(surface);
+    expect(useEditorStore.getState().editMode.shape).toBe('rect');
+    click(label); active(label);
   });
 
   it.each(['Edge Cut', 'Smart build'])('%s replaces the paint tool and hides its shape settings', label => {

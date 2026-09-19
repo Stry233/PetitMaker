@@ -2,7 +2,7 @@
   "id": "flower-dahlia-cyan",
   "category": "flora",
   "name": {
-    "en": "Cyan Dahlia",
+    "en": "Teal Dwarf Dahlia",
     "zh": "青小丽花",
     "ja": "シアンダリア",
     "ru": "Бирюзовая георгина",
@@ -13,7 +13,8 @@
   "aliases": [
     "blue",
     "蓝",
-    "大丽花"
+    "大丽花",
+    "Cyan Dahlia"
   ],
   "icon": "flower-dahlia-cyan",
   "iconColor": "#82c3d1",

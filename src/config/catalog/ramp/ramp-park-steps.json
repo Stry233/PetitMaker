@@ -2,7 +2,7 @@
   "id": "ramp-park-steps",
   "category": "ramp",
   "name": {
-    "en": "Park Steps",
+    "en": "Park Stone Steps",
     "zh": "公园石阶",
     "ja": "公園の階段",
     "ru": "Парковые ступени",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "white",
-    "白"
+    "白",
+    "Park Steps"
   ],
   "width": 2,
   "height": 4,

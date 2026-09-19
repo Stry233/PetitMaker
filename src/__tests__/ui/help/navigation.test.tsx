@@ -49,6 +49,7 @@ describe('Help section navigation', () => {
     scrolled.length = 0;
     act(() => useEditorStore.getState().setHelpTarget({ page: 'welcome', anchor: 'welcome-help' }));
     await waitFor(() => expect(scrolled).toContain('help-welcome-help'));
+    await waitFor(() => expect(container.querySelector('#help-welcome-help')?.closest('section')?.textContent).toContain('What’s this?'));
     expect(article.parentElement?.parentElement?.scrollTop).toBe(123);
   });
 });

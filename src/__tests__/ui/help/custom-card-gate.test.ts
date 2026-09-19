@@ -13,10 +13,16 @@ vi.mock('../../../version', async (importOriginal) => {
 
 import { HELP_PAGES } from '../../../ui/chrome/modals/help/catalog';
 
-const bodyKeys = (id: 'gen-picture' | 'candidates'): string[] =>
+const bodyKeys = (id: 'gen-picture' | 'gen-letter' | 'candidates'): string[] =>
   HELP_PAGES[id].sections.flatMap((s) => (s.kind === 'prose' ? [...s.bodyKeys] : []));
 
 describe('help copy for the own cards a release withholds', () => {
+  it('keeps Letter examples but hides custom text entry and its limit question', () => {
+    expect(bodyKeys('gen-letter')).toContain('help.genletter.what_b1');
+    expect(bodyKeys('gen-letter')).not.toContain('help.genletter.custom_b1');
+    expect(HELP_PAGES['gen-letter'].qa.map(qa => qa.qKey)).not.toContain('help.genletter.q1');
+  });
+
   it('drops the local-image sentence and the upload question from the Picture page', () => {
     expect(bodyKeys('gen-picture')).toContain('help.genpicture.what_b1');
     expect(bodyKeys('gen-picture')).not.toContain('help.genpicture.what_b2');

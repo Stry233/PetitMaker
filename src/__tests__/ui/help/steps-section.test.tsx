@@ -32,6 +32,7 @@ describe('the key walkthrough on Connecting the agent', () => {
     const { container } = render(<Help />);
     await waitFor(() => expect(container.querySelector('#help-agsetup-keys')).toBeTruthy());
     const section = container.querySelector('#help-agsetup-keys')!.closest('section')!;
+    await waitFor(() => expect(section.querySelector('[data-provider]')).toBeTruthy());
     for (const id of agentIds) {
       const group = section.querySelector(`[data-provider="${id}"]`);
       expect(group, `${id} has a group`).toBeTruthy();

@@ -2,7 +2,7 @@
   "id": "flower-rose-cyan",
   "category": "flora",
   "name": {
-    "en": "Cyan Rose",
+    "en": "Teal Mooncycle Rose",
     "zh": "青月季",
     "ja": "シアンバラ",
     "ru": "Бирюзовая роза",
@@ -13,7 +13,8 @@
   "aliases": [
     "blue",
     "蓝",
-    "玫瑰"
+    "玫瑰",
+    "Cyan Rose"
   ],
   "icon": "flower-rose-cyan",
   "iconColor": "#73bcc5",

@@ -2,7 +2,7 @@
   "id": "facility-shop",
   "category": "facility",
   "name": {
-    "en": "Glen Shop",
+    "en": "Glenn's Goods",
     "zh": "格连商店小屋",
     "ja": "グレンマート",
     "ru": "Магазин Гленна",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "橙",
-    "orange"
+    "orange",
+    "Glen Shop"
   ],
   "icon": "facility-shop",
   "width": 7,

@@ -173,6 +173,8 @@ export const z = {
   tour: 500,         // first-launch tour scrim/spotlight/bubble, above a popover so an open
                      // dropdown can never paint over the tour that is teaching someone to use it
   contextMenu: 9990, // right-click menu + delete popover, above everything
+  helpWindow: 9992,  // contextual Help stays above the surface being explained
+  helpPicker: 9994,  // picks controls above dialogs and their portaled menus
   guard: 10000,      // the portrait-lock blocker, above every other layer including contextMenu
   splash: 10005,     // the boot splash: the app is not ready to be used, so it stands over every
                      // surface a user could reach, under only the unmissable build mark

@@ -107,7 +107,7 @@ describe('JobTicket: newest-3 collapse', () => {
   it('collapses ops beyond the newest 3 into one count pill; expanding shows all', () => {
     const ops = Array.from({ length: 5 }, () => makeOp());
     const job = makeJob({ ops });
-    const { getAllByTestId, getByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live />);
+    const { getAllByTestId, getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     expect(getAllByTestId('op-row').length).toBe(3);
     const pill = getByTestId('ops-count-pill');
     // The pill names the tail it left showing, not just the total: "5 steps" over three rows would
@@ -115,7 +115,10 @@ describe('JobTicket: newest-3 collapse', () => {
     expect(pill.textContent).toBe('5 steps, last 3');
     fireEvent.click(pill);
     expect(getAllByTestId('op-row').length).toBe(5);
-    expect(queryByTestId('ops-count-pill')).toBeNull();
+    expect(getByTestId('ops-count-pill').getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(getByTestId('ops-count-pill'));
+    expect(getAllByTestId('op-row')).toHaveLength(3);
+    expect(getByTestId('ops-count-pill').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('never collapses 3 or fewer ops', () => {
@@ -124,6 +127,38 @@ describe('JobTicket: newest-3 collapse', () => {
     const { getAllByTestId, queryByTestId } = renderWithI18n(<JobTicket job={job} live />);
     expect(getAllByTestId('op-row').length).toBe(3);
     expect(queryByTestId('ops-count-pill')).toBeNull();
+  });
+});
+
+describe('plan stage history', () => {
+  const plan: NonNullable<JobView['plan']> = {
+    stages: [{ label: 'Terrain' }, { label: 'Roads' }], currentIndex: 1, doneCount: 1, revision: 1,
+  };
+
+  it('reopens completed work in its own stage and toggles either stage closed', () => {
+    const ops = [makeOp({ stageIndex: 0, status: 'ok' }), makeOp({ stageIndex: 1, status: 'run' })];
+    const { getAllByTestId } = renderWithI18n(<JobTicket job={makeJob({ plan, ops })} live />);
+    const [done, active] = getAllByTestId('plan-stage');
+    const [doneButton, activeButton] = getAllByTestId('plan-stage-label');
+    expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0);
+    expect(active!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(1);
+    fireEvent.click(doneButton!);
+    expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(1);
+    expect(done!.querySelector('[data-testid="op-row"]')!.getAttribute('data-status')).toBe('ok');
+    expect(active!.querySelector('[data-testid="op-row"]')!.getAttribute('data-status')).toBe('run');
+    fireEvent.click(activeButton!);
+    expect(active!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0);
+    fireEvent.click(doneButton!);
+    expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0);
+  });
+
+  it('keeps ungrouped legacy operations accessible after every stage completes', () => {
+    const { getAllByTestId, queryAllByTestId } = renderWithI18n(<JobTicket job={makeJob({
+      plan: { ...plan, currentIndex: 2, doneCount: 2 }, ops: [makeOp()],
+    })} />);
+    expect(queryAllByTestId('op-row')).toHaveLength(0);
+    fireEvent.click(getAllByTestId('plan-stage-label')[1]!);
+    expect(queryAllByTestId('op-row')).toHaveLength(1);
   });
 });
 
@@ -201,10 +236,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     expect(Number(pendingLabel.style.opacity)).toBeLessThan(1);
   });
 
-  /** How much of the active stage's work did not stick, which a bare label cannot say. Only the
-   *  ACTIVE stage can carry one: the view holds a single flat op list for the whole job, so there is
-   *  nothing to count a finished stage's reverts from. */
-  it('rolls up the active stage\'s reverts, and puts the pill on no other stage', () => {
+  it('keeps ungrouped legacy reverts on the active stage', () => {
     const ops = [
       makeOp({ name: 'carve_river', status: 'revert' }),
       makeOp({ name: 'place_object', status: 'ok' }),

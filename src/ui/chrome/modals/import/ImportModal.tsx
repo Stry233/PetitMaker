@@ -78,7 +78,7 @@ export function ImportModal() {
   };
 
   return (
-    <ModalShell open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} maxVh={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING, overflowY: 'auto' }} ariaLabel={t('import.title')}>
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-import' }} open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} maxVh={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING, overflowY: 'auto' }} ariaLabel={t('import.title')}>
       <input ref={inputRef} type="file" hidden accept={IS_LITE ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,.json,application/json'} onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void handleFile(f, f.name); }} />
       {pending ? (
         <ImportConfirm

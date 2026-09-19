@@ -239,6 +239,11 @@ export const MOTIONS = {
     tier: 'inform', curve: 'stiff',
     says: 'this setting is doing this now',
   },
+  /** Tool settings leave before the next group appears in the same row. */
+  'tool.options.visibility': {
+    tier: 'inform', curve: 'punchy', duration: 0.16,
+    says: 'these settings belong to the selected tool',
+  },
   /** The selection plate and option names reshape together without scaling their contents. */
   'tool.option.select': {
     tier: 'inform', curve: 'punchy', duration: 0.28,

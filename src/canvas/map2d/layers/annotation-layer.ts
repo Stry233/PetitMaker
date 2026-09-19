@@ -21,6 +21,7 @@ import {
   ANNOTATION_INK, INK_CELLS, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneLabelAnchor,
   type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
+import { cellBounds, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
 import { isMotionReduced } from '../motion-state';
 import { requestRender } from '../render-scheduler';
 
@@ -53,6 +54,7 @@ export interface AnnotationDrawOpts {
 interface NoteNode {
   ref: MapAnnotation;
   selected: boolean;
+  draft: boolean;
   label: string;
   inkScale: number;
   parts: PIXI.Container[];
@@ -91,10 +93,11 @@ export class AnnotationLayer {
     }
     for (const note of items) {
       const node = this.nodes.get(note.id);
-      const label = note.kind !== 'route' && note.tag ? opts.tagLabel(note.tag) : '';
+      const label = (note.kind === 'zone' || note.kind === 'chip') && note.tag ? opts.tagLabel(note.tag) : '';
       const fresh = node === undefined || node.fade?.to === 0
         ? this.rebuild(note, label, opts, node)
         : node.ref !== note || node.selected !== (opts.selectionIds.includes(note.id))
+          || node.draft !== (note === opts.draft)
           || node.inkScale !== opts.inkScale || node.label !== label
           ? this.rebuild(note, label, opts, node)
           : node;
@@ -117,7 +120,7 @@ export class AnnotationLayer {
     if (old) this.drop(old);
     const selected = opts.selectionIds.includes(note.id);
     const node: NoteNode = {
-      ref: note, selected, label, inkScale: opts.inkScale,
+      ref: note, selected, draft: note === opts.draft, label, inkScale: opts.inkScale,
       parts: this.build(note, selected, label, opts),
     };
     this.nodes.set(note.id, node);
@@ -130,8 +133,11 @@ export class AnnotationLayer {
       const parts: PIXI.Container[] = [this.washPass.addChild(zoneBody(note, selected, opts.inkScale))];
       const caption = zoneLabel(note, label, opts.inkScale);
       if (caption) parts.push(this.labelPass.addChild(caption));
+      const bounds = cellBounds(note.cells);
+      if (bounds && (selected || note === opts.draft)) parts.push(this.labelPass.addChild(dimensionBody(dimensionDrawing(bounds, opts.inkScale), note.color, opts.inkScale)));
       return parts;
     }
+    if (note.kind === 'measure') return [this.labelPass.addChild(dimensionBody(measureDrawing(note.points, opts.inkScale, note.flipped), note.color, opts.inkScale, selected))];
     if (note.kind === 'route') return [this.routePass.addChild(routeBody(note, selected, opts.inkScale))];
     return [this.labelPass.addChild(chipBody(note, label, selected, opts.inkScale))];
   }
@@ -209,8 +215,7 @@ function zoneBody(zone: ZoneNote, selected: boolean, inkScale: number): PIXI.Gra
     g.lineStyle({ width: outlineW, color: strokeColor, alpha: 0.95, cap: PIXI.LINE_CAP.ROUND });
     dashPolyline(g, pts, dash, gap);
     if (selected) {
-      g.lineStyle({ width: outlineW * 0.5, color: 0xffffff, alpha: 0.9, cap: PIXI.LINE_CAP.ROUND });
-      dashPolyline(g, pts, dash, gap);
+      selectionStroke(g, pts, outlineW * 0.65);
     }
     g.lineStyle();
   }
@@ -317,6 +322,7 @@ function routeBody(route: RouteNote, selected: boolean, inkScale: number): PIXI.
   g.endFill();
   g.lineStyle();
   if (selected) {
+    selectionStroke(g, pts, lw * 0.35);
     for (const p of route.points) {
       g.lineStyle(lw * 0.3, INK, 0.62);
       g.beginFill(0xffffff, 1);
@@ -331,12 +337,11 @@ function routeBody(route: RouteNote, selected: boolean, inkScale: number): PIXI.
 function selectionBox(cx: number, cy: number, w: number, h: number, inkScale: number): PIXI.Graphics {
   const g = new PIXI.Graphics();
   const lw = Math.max(1.5, INK_CELLS.outline * inkScale * TILE_SIZE * 0.5);
-  g.lineStyle({ width: lw, color: 0xffffff, alpha: 0.9, cap: PIXI.LINE_CAP.ROUND });
-  dashPolyline(g, [
+  selectionStroke(g, [
     cx - w / 2, cy - h / 2, cx + w / 2, cy - h / 2,
     cx + w / 2, cy + h / 2, cx - w / 2, cy + h / 2,
     cx - w / 2, cy - h / 2,
-  ], lw * 4, lw * 3.3);
+  ], lw);
   g.lineStyle();
   return g;
 }
@@ -389,4 +394,37 @@ function dashOpenPolyline(g: PIXI.Graphics, pts: number[], dash: number, gap: nu
 
 function dashPolyline(g: PIXI.Graphics, closedPts: number[], dash: number, gap: number): void {
   dashOpenPolyline(g, closedPts, dash, gap);
+}
+
+function dimensionBody(drawing: DimensionDrawing, color: string, inkScale: number, selected = false): PIXI.Container {
+  const box = new PIXI.Container();
+  const g = new PIXI.Graphics();
+  const width = Math.max(1, 0.065 * inkScale * TILE_SIZE);
+  const path = ([a, b]: DimensionDrawing['lines'][number]): number[] => [a.x * TILE_SIZE, a.y * TILE_SIZE, b.x * TILE_SIZE, b.y * TILE_SIZE];
+  g.lineStyle({ width, color: hex(color), alpha: 0.85, cap: PIXI.LINE_CAP.ROUND });
+  for (const line of drawing.guides) dashOpenPolyline(g, path(line), 0.35 * inkScale * TILE_SIZE, 0.25 * inkScale * TILE_SIZE);
+  for (const line of drawing.lines) {
+    g.lineStyle({ width: width * 2.2, color: INK, alpha: 0.65, cap: PIXI.LINE_CAP.ROUND });
+    dashOpenPolyline(g, path(line), Infinity, 0);
+    g.lineStyle({ width, color: hex(color), alpha: 1, cap: PIXI.LINE_CAP.ROUND });
+    dashOpenPolyline(g, path(line), Infinity, 0);
+  }
+  if (selected) for (const line of drawing.guides.slice(0, 4)) selectionStroke(g, path(line), width * 0.65);
+  box.addChild(g);
+  for (const { at, value } of drawing.labels) {
+    const text = makeText(String(value), labelStyle(0.55 * inkScale * TILE_SIZE, MAP_TEXT));
+    text.anchor.set(0.5, 0.5);
+    text.position.set(at.x * TILE_SIZE, at.y * TILE_SIZE);
+    box.addChild(text);
+  }
+  return box;
+}
+
+/** A white selection line with a dark rim stays visible over every note colour. */
+function selectionStroke(g: PIXI.Graphics, points: number[], width: number): void {
+  for (const [color, scale] of [[INK, 2.6], [0xffffff, 1]] as const) {
+    g.lineStyle({ width: width * scale, color, alpha: 0.95, cap: PIXI.LINE_CAP.ROUND });
+    dashOpenPolyline(g, points, Infinity, 0);
+  }
+  g.lineStyle();
 }

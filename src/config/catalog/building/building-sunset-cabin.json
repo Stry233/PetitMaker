@@ -2,7 +2,7 @@
   "id": "building-sunset-cabin",
   "category": "building",
   "name": {
-    "en": "Sunset Cabin",
+    "en": "Msafiri's Savanna Sunset House",
     "zh": "原野落日小屋（萨飞里）",
     "ja": "サフィールの家",
     "ru": "Дом Мсафири",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "橙",
-    "orange"
+    "orange",
+    "Sunset Cabin"
   ],
   "icon": "building-sunset-cabin",
   "width": 5,

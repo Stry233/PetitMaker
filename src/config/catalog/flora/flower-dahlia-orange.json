@@ -2,7 +2,7 @@
   "id": "flower-dahlia-orange",
   "category": "flora",
   "name": {
-    "en": "Orange Dahlia",
+    "en": "Orange Dwarf Dahlia",
     "zh": "橙小丽花",
     "ja": "オレンジダリア",
     "ru": "Оранжевая георгина",
@@ -11,7 +11,8 @@
     "fr": "Dahlia orange"
   },
   "aliases": [
-    "大丽花"
+    "大丽花",
+    "Orange Dahlia"
   ],
   "icon": "flower-dahlia-orange",
   "iconColor": "#e0a260",

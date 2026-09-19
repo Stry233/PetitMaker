@@ -222,6 +222,10 @@
   else if (!zoomScales()) show(true);
 
   if (window.addEventListener) {
+    // The module bootstrap reports failures from its dynamically imported entry.
+    window.addEventListener('petit:boot-failed', function () {
+      if (booting()) show(false);
+    });
     // Capture: a failed script's error event is fired at the element and does not bubble.
     window.addEventListener('error', function (event) {
       if (booting() && fromEntry(event)) show(false);

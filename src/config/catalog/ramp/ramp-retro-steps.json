@@ -2,7 +2,7 @@
   "id": "ramp-retro-steps",
   "category": "ramp",
   "name": {
-    "en": "Retro Steps",
+    "en": "Retro Block Stone Steps",
     "zh": "复古街区石阶",
     "ja": "レトロな階段",
     "ru": "Ретро-ступени",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "pink",
-    "粉"
+    "粉",
+    "Retro Steps"
   ],
   "width": 2,
   "height": 4,

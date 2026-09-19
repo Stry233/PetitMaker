@@ -53,6 +53,18 @@ const boot = (dom: any): any => dom.window.document.getElementById(BOOT_ID);
 const links = (dom: any): string[] =>
   [...guard(dom).querySelectorAll('a')].map((a: any) => a.getAttribute('href'));
 
+it('reports a dynamic entry failure only while the app is still booting', () => {
+  const failed = page();
+  failed.window.dispatchEvent(new failed.window.Event('petit:boot-failed'));
+  expect(guard(failed)).not.toBeNull();
+  failed.window.close();
+  const mounted = page();
+  mountApp(mounted);
+  mounted.window.dispatchEvent(new mounted.window.Event('petit:boot-failed'));
+  expect(guard(mounted)).toBeNull();
+  mounted.window.close();
+});
+
 /** React's first render replaces everything inside `#root`, boot markup included. */
 function mountApp(dom: any): void {
   dom.window.document.getElementById('root').innerHTML = '<div id="app"></div>';

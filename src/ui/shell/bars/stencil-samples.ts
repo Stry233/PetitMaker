@@ -39,35 +39,25 @@ export const TEXT_POOL: readonly StencilSample[] = [
   ...['🌳', '🏠', '🐟', '🌊', '⛰', '🍎', '🌙'].map((c) => ({ id: c, text: c })),
 ];
 
-/**
- * Pictures to build from, all art this app already ships, so the mode can be tried with one press
- * and no file on hand: the game's fourteen neighbours, plus the app's own mark.
- *
- * A portrait is what a colour mode wants to show off — a large flat-shaded face, a few strong hues
- * and a silhouette that survives being read at twenty cells, where a small sprite is mostly outline
- * and outline is the first thing a reduction loses. Scored with the image harness's own fidelity
- * metric (`__tests__/tools/_stencil-image.ts`) over both terrain materials at 20, 28 and 40 cells,
- * the set means 0.58 against 0.53 for the item sprites. The names are the game's own, in the
- * visitor's language where the game has one.
- *
- * The art is the game's, shipped verbatim under `src/assets/neighbors/`; it is not catalog sprites
- * and does not go through `iconUrl`, whose folder is this project's own item art.
- */
+/** Game portraits ship verbatim, separately from catalog art, with localized character names. */
 const NEIGHBORS: readonly { id: string; name: LocalizedName }[] = [
-  { id: 'dorjelang', name: { en: 'Dorjelang', zh: '多杰朗' } },
-  { id: 'elsasani', name: { en: 'Elsasani', zh: '艾莎莎尼' } },
-  { id: 'frostia', name: { en: 'Frostia', zh: '幻雪' } },
-  { id: 'glenn', name: { en: 'Glenn', zh: '格连' } },
-  { id: 'harpeno', name: { en: 'Harpeno', zh: '哈佩诺' } },
-  { id: 'isaki', name: { en: 'Isaki', zh: '伊佐奇' } },
-  { id: 'medowlyn', name: { en: 'Medowlyn', zh: '绵朵莉' } },
-  { id: 'mobai', name: { en: 'Mobai', zh: '莫白' } },
-  { id: 'mors', name: { en: 'Mors', zh: '墨尔斯' } },
-  { id: 'msafiri', name: { en: 'Msafiri', zh: '萨飞里' } },
-  { id: 'nerina', name: { en: 'Nerina', zh: '纳蕾娜' } },
-  { id: 'rebella', name: { en: 'Rebella', zh: '热贝尔' } },
-  { id: 'trixie', name: { en: 'Trixie', zh: '鹊可' } },
-  { id: 'yunguo', name: { en: 'Yunguo', zh: '云果' } },
+  { id: 'dorjelang', name: { en: 'Dorjelang', zh: '多杰朗', ja: 'ドジェロ', ru: 'Дорджеланг', th: 'ดอร์เจลาง', id: 'Dorjelang', fr: 'Dorjelang' } },
+  { id: 'elsasani', name: { en: 'Elsasani', zh: '艾莎莎尼', ja: 'エササ一ニ', ru: 'Эльзасани', th: 'เอลซาซานี', id: 'Elsasani', fr: 'Elsasani' } },
+  { id: 'frostia', name: { en: 'Frostia', zh: '幻雪', ja: 'フロスティア' } },
+  { id: 'glenn', name: { en: 'Glenn', zh: '格连', ja: 'グレン', ru: 'Гленн', th: 'เกล็น', id: 'Glenn', fr: 'Glenn' } },
+  { id: 'harpeno', name: { en: 'Harpeno', zh: '哈佩诺', ja: 'ハーペノ', ru: 'Харпено', th: 'ฮาร์เปโน', id: 'Harpeno', fr: 'Harpeno' } },
+  { id: 'heyu', name: { en: 'Heyu', zh: '鹤玉', ja: 'ホーユイ', ru: 'Хэюй', th: 'เฮ่ออวี้', id: 'Heyu', fr: 'Heyu' } },
+  { id: 'isaki', name: { en: 'Isaki', zh: '伊佐奇', ja: 'イサキ', ru: 'Исаки', th: 'อิซากิ', id: 'Isaki', fr: 'Isaki' } },
+  { id: 'manna', name: { en: 'Manna', zh: '蛮蛮', ja: 'マーナ', ru: 'Манна', th: 'แมนนา', id: 'Manna', fr: 'Manna' } },
+  { id: 'medowlyn', name: { en: 'Medowlyn', zh: '绵朵莉', ja: 'メードリン', ru: 'Мэдоулин', th: 'เมโดว์ลิน', id: 'Medowlyn', fr: 'Medowlyn' } },
+  { id: 'mobai', name: { en: 'Mobai', zh: '莫白', ja: 'モーバ', ru: 'Мобай', th: 'ไม่ป้าย', id: 'Mobai', fr: 'Mobai' } },
+  { id: 'mors', name: { en: 'Mors', zh: '墨尔斯', ja: 'モルス', ru: 'Морз', th: 'มอร์ส', id: 'Mors', fr: 'Mors' } },
+  { id: 'msafiri', name: { en: 'Msafiri', zh: '萨飞里', ja: 'サフィール', ru: 'Мсафири', th: 'มาซาฟิริ', id: 'Msafiri', fr: 'Msafiri' } },
+  { id: 'nerina', name: { en: 'Nerina', zh: '纳蕾娜', ja: 'ネレイナ', ru: 'Нерина', th: 'เนริน่า', id: 'Nerina', fr: 'Nerina' } },
+  { id: 'rebella', name: { en: 'Rebella', zh: '热贝尔', ja: 'リベーラ', ru: 'Ребелла', th: 'เรเบลล่า', id: 'Rebella', fr: 'Rebella' } },
+  { id: 'tika', name: { en: 'Tika', zh: '缇卡', ja: 'ティカ', ru: 'Тика', th: 'ทิก้า', id: 'Tika', fr: 'Tika' } },
+  { id: 'trixie', name: { en: 'Trixie', zh: '鹊可', ja: 'トリクシー', ru: 'Трикси', th: 'ทริกซี่', id: 'Trixie', fr: 'Trixie' } },
+  { id: 'yunguo', name: { en: 'Yunguo', zh: '云果', ja: 'ユンカ', ru: 'Юньго', th: 'อวิ๋นกั่ว', id: 'Yunguo', fr: 'Yunguo' } },
 ];
 
 const portraits = import.meta.glob('../../../assets/neighbors/*.png', {

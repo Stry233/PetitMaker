@@ -80,6 +80,7 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
         <>
           <ClickCatcher onDismiss={onDismiss} zIndex={z.panel} />
           <motion.div
+            {...helpTargetAttr('frame', 'frame-topright')}
             key="menu-sheet"
             role="menu"
             aria-label={t('a11y.open_menu')}

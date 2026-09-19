@@ -13,7 +13,7 @@ import { singleSelection, selectedObjectIds } from '../state/selection';
 import { getActiveToolManager } from '../canvas/active-view';
 import { getCatalogItem } from '../state/catalog';
 import { ELEVATION_MAX } from '../core/model/constants';
-import { BUILD_SHAPES, MODE_FOR_CONTENT, type ContentType, type BuildShape } from '../core/model/edit-mode';
+import { BUILD_SHAPES, MODE_FOR_CONTENT, toggleBuildTool, type ContentType, type BuildShape } from '../core/model/edit-mode';
 import { canHoldSelection } from '../core/interaction/tool-modes';
 import { pressSmartBuild } from '../core/runtime/smart-build';
 import { endCurveSession } from '../tools/paint';
@@ -24,7 +24,7 @@ import { translate } from '../i18n/context';
 import { showToast } from '../core/runtime/toast-bus';
 import { ACTION_BY_ID, type EditorAction } from './actions';
 import { NEXT_AUTO_EDGE_CUT, type DesignMode } from '../core/model/types';
-import type { AnnotationTool, AnnotationZoneShape } from '../core/model/annotations';
+import type { AnnotationTool } from '../core/model/annotations';
 
 /** Deps the handlers can't get from the global store — supplied by the mounted shell. */
 export interface CommandContext {
@@ -63,31 +63,21 @@ function surfaceKey(c: CommandContext, id: string): void {
 }
 
 /** Shared tool commands act on notes while the annotation surface is active. */
-const ANNOTATE_ARM: Partial<Record<DesignMode, { tool: AnnotationTool; shape?: AnnotationZoneShape }>> = {
-  brush: { tool: 'zone', shape: 'free' },
-  line: { tool: 'zone', shape: 'line' },
-  curve: { tool: 'zone', shape: 'curve' },
-  rect: { tool: 'zone', shape: 'rect' },
-  circle: { tool: 'zone', shape: 'circle' },
-  eraser: { tool: 'erase' },
-  'edge-cut': { tool: 'chip' },
+const ANNOTATE_ARM: Partial<Record<DesignMode, Exclude<AnnotationTool, 'none'>>> = {
+  brush: 'zone',
+  eraser: 'erase',
+  'edge-cut': 'chip',
 };
 
 function toolKey(c: CommandContext, design: DesignMode): void {
   const s = store();
-  // In annotate mode the number keys drive the annotation bar's own cells (the undo keys' mode
-  // reroute, applied to the tool row), so the hands never leave the layer they are working on.
   if (s.editMode.mode === 'annotate') {
     const arm = ANNOTATE_ARM[design];
-    if (!arm) return;
-    const active = s.annotationTool === arm.tool && (arm.shape === undefined || s.annotationZoneShape === arm.shape);
-    if (active) { s.setAnnotationTool('none'); return; }
-    if (arm.shape) s.setAnnotationZoneShape(arm.shape);
-    s.setAnnotationTool(arm.tool);
+    if (arm) s.toggleAnnotationTool(arm);
     return;
   }
   if (terrainToolActive() && (design === 'eraser' || design === 'edge-cut')) {
-    s.setEditMode({ tool: design === 'eraser' ? 'erase' : 'trim' }); return;
+    s.setEditMode(toggleBuildTool(s.editMode, design === 'eraser' ? 'erase' : 'trim')); return;
   }
   if (s.designMode === design) { s.setEditMode({ tool: 'none' }); return; }
   c.openBuild(design);
@@ -101,11 +91,15 @@ function terrainToolActive(): boolean {
 function brushKey(c: CommandContext): void {
   const s = store();
   if (!terrainToolActive()) { toolKey(c, 'brush'); return; }
-  s.setEditMode(s.editMode.shape === 'free' ? { tool: 'brush' } : { tool: 'shape', shape: s.editMode.shape });
+  s.setEditMode(toggleBuildTool(s.editMode, 'brush'));
 }
 
 function shapeKey(c: CommandContext, shape: BuildShape): void {
   const s = store();
+  if (s.editMode.mode === 'annotate') {
+    if (s.annotationTool === 'zone') s.setAnnotationZoneShape(shape);
+    return;
+  }
   if (!terrainToolActive()) { toolKey(c, shape === 'free' ? 'brush' : shape); return; }
   if (s.editMode.tool === 'erase') s.setEraserShape(shape === 'free' ? 'dot' : shape);
   else if (s.editMode.tool === 'brush' || s.editMode.tool === 'shape') {
@@ -196,26 +190,19 @@ function deleteSelected(): void {
   deleteSelection(s.commandExecutor, gridState, s.eventBus, translate, ids);
 }
 
-/**
- * Escape puts down whatever is currently "held": a curve being drawn, then an ARMED catalog item
- * or macro, then the selection.
- *
- * One at a time, the armed thing first, because they are two different things to be rid of and the
- * armed one is what the pointer is about to act on — clearing both at once would take a selection
- * the user still wanted while they were only trying to stop placing. Without this command,
- * disarming means a trip back to the panel to click the item off.
- */
+/** Notes and terrain disarm with their draft; catalog placement disarms before clearing selection. */
 function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
-  if (pendingGesture().cancel()) return;
-  // The annotate analogue of the chain below: the selected note first, then the armed cell.
+  const cancelled = pendingGesture().cancel();
   if (s.editMode.mode === 'annotate') {
-    if (s.annotationDraft) { s.setAnnotationDraft(null); return; }
-    if (s.annotationSelection.length > 0) { s.setAnnotationSelection([]); return; }
-    if (s.annotationTool !== 'none') { s.setAnnotationTool('none'); return; }
+    s.setAnnotationDraft(null);
+    s.setAnnotationTool('none');
+    s.setAnnotationSelection([]);
     return;
   }
+  if (terrainToolActive() && s.editMode.tool !== 'none') { s.setEditMode({ tool: 'none' }); return; }
+  if (cancelled) return;
   if (s.selectedItemId) { s.setEditMode({ itemId: null }); return; }
   if (s.armedMacro) { s.setEditMode({ macro: null, ...(s.editMode.tool === 'smart' ? { tool: 'brush' as const } : {}) }); return; }
   s.clearSelection();
@@ -255,8 +242,18 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   // pressing it once.
   'tool.move':   (c) => doTile(c, 'move'),
   'tool.brush':  brushKey,
+  'tool.measure': () => {
+    const s = store();
+    if (s.editMode.mode === 'annotate') s.toggleAnnotationTool('measure');
+  },
   'tool.shape_cycle': c => {
     const s = store();
+    if (s.editMode.mode === 'annotate') {
+      if (s.annotationTool === 'zone') {
+        shapeKey(c, BUILD_SHAPES[(BUILD_SHAPES.indexOf(s.annotationZoneShape) + 1) % BUILD_SHAPES.length]!);
+      }
+      return;
+    }
     if (!terrainToolActive()) return;
     const shape = s.editMode.tool === 'erase' ? s.eraserShape === 'dot' ? 'free' : s.eraserShape : s.editMode.shape;
     shapeKey(c, BUILD_SHAPES[(BUILD_SHAPES.indexOf(shape) + 1) % BUILD_SHAPES.length]!);
@@ -271,7 +268,7 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   'tool.smart':  () => {
     const s = store();
     if (s.editMode.mode === 'annotate') {
-      s.setAnnotationTool(s.annotationTool === 'route' ? 'none' : 'route');
+      s.toggleAnnotationTool('route');
       return;
     }
     pressSmartBuild();
@@ -279,6 +276,12 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
 
   'tool.auto_trim': () => {
     const s = store();
+    if (s.editMode.mode === 'annotate') {
+      if (s.annotationTool === 'zone' || s.annotationTool === 'chip') {
+        s.setAnnotationSize(s.annotationSize === 's' ? 'm' : s.annotationSize === 'm' ? 'l' : 's');
+      } else if (s.annotationTool === 'route') s.setAnnotationRouteDashed(!s.annotationRouteDashed);
+      return;
+    }
     if (!terrainToolActive() || (s.editMode.tool !== 'brush' && s.editMode.tool !== 'shape' && s.editMode.tool !== 'erase')) return;
     s.setAutoEdgeCut(NEXT_AUTO_EDGE_CUT[s.autoEdgeCut]);
   },

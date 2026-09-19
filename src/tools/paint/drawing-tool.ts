@@ -117,7 +117,7 @@ export class DrawingTool implements Tool {
     // A tile click STRIPS the coating it covers before placing (placeTileCell), so a refusal
     // that is only the strippable coating's overlap is what the click makes legal — the probe
     // must answer the click's question, not the raw command's.
-    return this.contentType === 'tile' && strippableRefusal(ctx.gridState, coord, errors);
+    return first.type === CommandType.PlaceObject && strippableRefusal(ctx.gridState, first.object, errors);
   }
 
   /**

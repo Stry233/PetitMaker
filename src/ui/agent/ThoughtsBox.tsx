@@ -4,7 +4,7 @@
  * disables the job record's automatic scroll-follow so incoming updates do not move the text being
  * read. Persisted excerpts are labelled as incomplete.
  */
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useRef, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { fmtClock } from './dock-face';
 import { Icon } from './icons';
@@ -15,6 +15,7 @@ import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { ThoughtTurn } from '../../agent/core/project-view';
+import { useFollowNewest } from './use-follow-newest';
 
 /** Maximum transcript height in CSS pixels; percentage heights cannot resolve in this flex scroller. */
 export const THOUGHTS_MAX_HEIGHT = 200;
@@ -47,6 +48,8 @@ const NOTE_STYLE: CSSProperties = {
 export function ThoughtsBox({ text, excerpt }: { text: string; excerpt?: boolean }) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useFollowNewest(scrollRef, text, '', true);
   return (
     <motion.div
       data-testid="thoughts-box-frame"
@@ -57,7 +60,7 @@ export function ThoughtsBox({ text, excerpt }: { text: string; excerpt?: boolean
       transition={framerMotion('panel.thoughts.open')}
       style={{ overflow: 'hidden', flex: '0 0 auto' }}
     >
-      <div data-testid="thoughts-box" style={BOX_STYLE}>
+      <div ref={scrollRef} data-testid="thoughts-box" style={BOX_STYLE}>
         <ModelProse text={text} style={PROSE_STYLE} />
         {excerpt === true && <span data-testid="thoughts-excerpt-note" style={NOTE_STYLE}>{t('agent3.thoughts_excerpt')}</span>}
       </div>

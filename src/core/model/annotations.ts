@@ -1,5 +1,5 @@
 /** Planning annotations are independent of buildable map content and rule validation. Coordinates
- * use macro-grid cell units; zones use whole cells, while text and route anchors may be fractional. */
+ * use macro-grid cell units; zones and measurements use whole cells, while chips and routes may be fractional. */
 import type { MacroCoord } from './types';
 import { splineSamples, type CurveAnchor } from './spline';
 
@@ -74,7 +74,17 @@ export interface RouteNote {
   dashed: boolean;
 }
 
-export type MapAnnotation = ZoneNote | ChipNote | RouteNote;
+/** Two cell centres on the same row or column define an inclusive measurement span. */
+export interface MeasureNote {
+  kind: 'measure';
+  id: string;
+  points: [MacroCoord, MacroCoord];
+  color: string;
+  /** Place the dimension above or left of the span instead of below or right. */
+  flipped?: boolean;
+}
+
+export type MapAnnotation = ZoneNote | ChipNote | RouteNote | MeasureNote;
 
 /** Annotation items and their shared visibility and edit lock. */
 export interface AnnotationsState {
@@ -88,7 +98,7 @@ export function createAnnotationsState(): AnnotationsState {
 }
 
 /** Annotation tools; `none` enables selection and movement. */
-export type AnnotationTool = 'zone' | 'chip' | 'route' | 'erase' | 'none';
+export type AnnotationTool = 'zone' | 'chip' | 'route' | 'measure' | 'erase' | 'none';
 
 /** Zone shapes shared with the terrain toolbar. */
 export type AnnotationZoneShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
@@ -375,6 +385,11 @@ export function annotationsInRect(
   const caught = (n: MapAnnotation): boolean => {
     if (n.kind === 'zone') return n.cells.some((c) => inside(c.x, c.y));
     if (n.kind === 'chip') return inside(n.x, n.y);
+    if (n.kind === 'measure') {
+      const [a, b] = n.points;
+      return Math.max(a.x, b.x) >= rect.x && Math.min(a.x, b.x) < rect.x + rect.w
+        && Math.max(a.y, b.y) >= rect.y && Math.min(a.y, b.y) < rect.y + rect.h;
+    }
     return routeSamples(n.points, 8).some(([sx, sy]) => inside(sx, sy));
   };
   return items.filter(caught).map((n) => n.id);

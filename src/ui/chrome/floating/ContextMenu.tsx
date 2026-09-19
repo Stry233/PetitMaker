@@ -1,3 +1,4 @@
+import { helpTargetAttr } from '../modals/help/targets';
 /*
  * ContextMenu.tsx — the menu a right-click on the map opens.
  *
@@ -99,7 +100,7 @@ export function ContextMenuFace({ rows, onPick, style }: {
   style?: CSSProperties;
 }) {
   return (
-    <motion.div data-context-menu {...anim} style={{ ...menuStyle, ...style }}>
+    <motion.div {...helpTargetAttr('select')} data-context-menu {...anim} style={{ ...menuStyle, ...style }}>
       {rows.map((row) => {
         const rest = row.current ? colors.surfaceSecondary : 'transparent';
         return (

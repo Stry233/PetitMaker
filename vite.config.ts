@@ -1,10 +1,10 @@
 import { liteAliases, webEditionBoundary } from './scripts/edition-build.mts';
 import { liteCompatibilityPlugin } from './scripts/lite-compat-build.mts';
 import { liteBuildPlugin } from './scripts/lite-build-plugin.mts';
+import { artworkBuildPlugin } from './scripts/artwork-build.mts';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { transformHomepage } from './scripts/site-html.mts';
-import { execSync } from 'node:child_process';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -17,31 +17,23 @@ import {
 } from './security/headers-policy.ts';
 import { activeTarget } from './src/legal/deploy-targets.ts';
 
-/**
- * DEV-ONLY: append `VITE_EXTRA_CONNECT_SRC` origins to the served index.html CSP
- * `<meta>` connect-src, so a maintainer can reach a personal Custom agent
- * endpoint (e.g. a campus gateway) in local development WITHOUT adding its
- * identifying origin to the canonical, public `security/headers-policy.ts`. This
- * plugin only registers for `apply: 'serve'` (the dev server) and is inert in any
- * build, so the extra origins never reach a committed adapter output or a
- * production bundle. See docs/THREAT_MODEL.md "Custom (BYO-endpoint) provider".
- */
+// Local endpoints extend only the development CSP; production uses the canonical policy.
 function devCspExtensionPlugin(rawConnect: string | undefined, rawFont: string | undefined) {
   const connect = parseExtraConnectSrc(rawConnect);
   const fonts = parseExtraConnectSrc(rawFont);
   return {
-      name: 'petit-dev-csp-extension',
-      apply: 'serve' as const,
-      transformIndexHtml(html: string) {
-        if (connect.length === 0 && fonts.length === 0) return html;
-        const metaContent = toCspMeta(withExtraFontSrc(withExtraConnectSrc(HEADERS_POLICY, connect), fonts));
-        return html.replace(
-          /(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/,
-          `$1${metaContent}$2`
-        );
-      },
-    };
-  }
+    name: 'petit-dev-csp-extension',
+    apply: 'serve' as const,
+    transformIndexHtml(html: string) {
+      if (connect.length === 0 && fonts.length === 0) return html;
+      const metaContent = toCspMeta(withExtraFontSrc(withExtraConnectSrc(HEADERS_POLICY, connect), fonts));
+      return html.replace(
+        /(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/,
+        `$1${metaContent}$2`,
+      );
+    },
+  };
+}
 
 /** Deployment-specific initial HTML is also used by the development server. */
 function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: string) {
@@ -54,32 +46,25 @@ function indexHeadPlugin(target: ReturnType<typeof activeTarget>, basePath: stri
   };
 }
 
-  // Build metadata injected at build time. The identity is read from the COMMITTED
-  // `build-info.json` and from nowhere else — not from local git, not from a deploy
-  // host's environment — so every build of a given source tree reports the same
-  // number whatever its clone depth, host, or lack of git. `npm run stamp` is the only
-  // writer; see scripts/build-info-core.mts.
-  function readStamp(): string | null {
-    try {
-      return readFileSync(STAMP_PATH, 'utf-8');
-    } catch {
-      return null;
-    }
+// The committed stamp is the build identity on every host, including shallow and Git-free checkouts.
+function readStamp(): string | null {
+  try {
+    return readFileSync(STAMP_PATH, 'utf-8');
+  } catch {
+    return null;
   }
+}
 
-  function pkgVersion(): string {
-    try {
-      return JSON.parse(readFileSync('./package.json', 'utf-8')).version ?? '0.0.0';
-    } catch {
-      return '0.0.0';
-    }
+function pkgVersion(): string {
+  try {
+    return JSON.parse(readFileSync('./package.json', 'utf-8')).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
   }
+}
 
-  const { info: BUILD_INFO, stamped: BUILD_IS_STAMPED } = resolveBuildInfo({ readStamp });
-// MAJOR.MINOR.BUILD, with -dev unless the stamp says this tree was published. package.json
-// supplies only the MAJOR.MINOR series; the publish workflow assigns the released version.
-/** Which deployment this build is for (PETIT_TARGET). Read once: vite.config and the bundle must
- *  agree, so the id is also `define`d below rather than re-read inside the app. */
+const { info: BUILD_INFO, stamped: BUILD_IS_STAMPED } = resolveBuildInfo({ readStamp });
+// Resolve once so generated HTML and the app receive the same deployment target.
 const TARGET = activeTarget();
 
 const APP_VERSION = resolveVersion({
@@ -87,14 +72,7 @@ const APP_VERSION = resolveVersion({
   lastRelease: BUILD_INFO.lastRelease,
 });
 
-  /**
- * DEV-ONLY: restart the server when the build stamp changes.
- *
- * The build identity is `define`d once when the config loads, so a commit — which re-stamps
- * `build-info.json` through the pre-commit hook — leaves a running dev server serving the number it
- * started with. Restarting is what makes the version in the page answer the question it exists to
- * answer: whether what is loaded is what was just built.
- */
+// Vite caches define values until a restart, including the stamp updated by a commit.
 function stampWatchPlugin() {
   const stamp = resolve(process.cwd(), STAMP_PATH);
   return {
@@ -109,10 +87,7 @@ function stampWatchPlugin() {
   };
 }
 
-/** onnxruntime-web's module names every runtime variant by URL, so Vite emits all of their binaries.
- *  Two are loaded (the single-threaded WASM build and the asyncify build the WebGPU backend runs
- *  on); the legacy jsep and the jspi variants never are, and the 27 MB jsep one alone would push
- *  the deploy over the static hosts' 25 MiB per-file limit. */
+// ONNX emits every runtime variant; unused jsep/jspi binaries exceed static-host file limits.
 function dropUnusedOrtBinariesPlugin(): Plugin {
   return {
     name: 'drop-unused-ort-binaries',
@@ -129,26 +104,28 @@ export default defineConfig(({ mode, command }) => {
   const viteEnv = loadEnv(mode, process.cwd(), 'VITE_');
   const petitEnv = loadEnv(mode, process.cwd(), 'PETIT_');
   const exportSiteMark = (process.env.PETIT_EXPORT_SITE_MARK ?? petitEnv.PETIT_EXPORT_SITE_MARK) === '1';
-  // An unstamped PRODUCTION build would ship a build number that identifies nothing,
-  // so it fails here instead. Dev/test only warns.
+  // Production must identify a source build; local development can run before its first stamp.
   if (!BUILD_IS_STAMPED) {
     if (command === 'build') throw new Error(unstampedMessage(true));
     console.warn(unstampedMessage(false));
   }
   return {
-    // Where the app will be served from. Production is a domain root; the dev site is a
-    // PROJECT Pages site under a path (yuetian.me/Apollonius/), and every bundled asset,
-    // chunk and font URL has to carry that prefix or the page loads a blank screen. Set by
-    // the deploy workflow; unset everywhere else, so a normal build is unchanged.
+    // Path-based previews need the deployment prefix on every emitted resource.
     base: lite ? './' : process.env.PETIT_BASE_PATH || '/',
     publicDir: lite ? false : 'public',
-    ...(lite ? { experimental: { renderBuiltUrl(filename: string, context: { hostType: string }) { return context.hostType === 'js' ? { runtime: `new URL(${JSON.stringify('./' + filename)}, document.baseURI).href` } : { relative: true }; } } } : {}),
-    // loadEnv makes a git-ignored `.env.local` work for the dev-only CSP
-    // extension (process.env alone only sees shell-exported vars).
+    ...(lite ? {
+      experimental: {
+        renderBuiltUrl(filename: string, context: { hostType: string }) {
+          return context.hostType === 'js'
+            ? { runtime: `new URL(${JSON.stringify('./' + filename)}, document.baseURI).href` }
+            : { relative: true };
+        },
+      },
+    } : {}),
     plugins: [
       ...(lite ? [liteCompatibilityPlugin()] : []),
       react(),
-      ...(!lite ? [bundleReportPlugin(), webEditionBoundary()] : []),
+      ...(!lite ? [artworkBuildPlugin(), bundleReportPlugin(), webEditionBoundary()] : []),
       ...(!lite ? [devCspExtensionPlugin(
         viteEnv.VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC,
         viteEnv.VITE_EXTRA_FONT_SRC ?? process.env.VITE_EXTRA_FONT_SRC,
@@ -193,12 +170,17 @@ export default defineConfig(({ mode, command }) => {
     build: {
       outDir: lite ? 'dist-lite' : 'dist',
       ...(lite ? { target: ['es2017', 'chrome61'], cssTarget: 'chrome61', cssCodeSplit: false } : {}),
-      sourcemap: false, // never ship source maps (would hand attackers the readable source); also Vite's default — locked explicitly
+      sourcemap: false,
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict
       // `script-src 'self'` (no 'unsafe-inline'). Modern browsers support modulepreload natively.
       modulePreload: lite ? false : { polyfill: false },
       // Console and debugger statements leave the production bundle here; the Oxc transform has no drop option.
-      rolldownOptions: { output: { ...(lite ? { format: 'iife' as const, inlineDynamicImports: true } : {}), minify: mode !== 'development' ? { compress: { dropConsole: true, dropDebugger: true } } : undefined } },
+      rolldownOptions: {
+        output: {
+          ...(lite ? { format: 'iife' as const, inlineDynamicImports: true } : {}),
+          minify: mode !== 'development' ? { compress: { dropConsole: true, dropDebugger: true } } : undefined,
+        },
+      },
     },
   };
 });

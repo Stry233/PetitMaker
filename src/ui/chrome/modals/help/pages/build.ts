@@ -9,10 +9,11 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.terrain.title',
     ledeKey: 'help.terrain.lede',
+    entryKey: 'help.terrain.entry',
     figure: { kind: 'demo', scene: 'terrain' },
     sections: [
       {
-        kind: 'prose', anchor: 'terrain-brush', titleKey: 'help.terrain.brush_t', bodyKeys: ['help.terrain.brush_b1'],
+        kind: 'prose', anchor: 'terrain-brush', titleKey: 'help.terrain.brush_t', bodyKeys: ['help.terrain.brush_b1', 'help.terrain.tools_b1'],
         figure: { kind: 'demo', scene: 'brushfree' },
       },
       {
@@ -39,6 +40,14 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'terrain-circle', titleKey: 'help.terrain.circle_t', bodyKeys: ['help.terrain.circle_b1'],
         figure: { kind: 'demo', scene: 'circlepond' },
       },
+      { kind: 'keys', anchor: 'terrain-keys', titleKey: 'help.share.keys_t', rows: [
+        { doKey: 'terrain.brush', tokens: [{ kind: 'cmd', id: 'tool.brush' }] },
+        { doKey: 'design.eraser', tokens: [{ kind: 'cmd', id: 'tool.eraser' }] },
+        { doKey: 'design.edge_cut', tokens: [{ kind: 'cmd', id: 'tool.edgecut' }] },
+        { doKey: 'smart.build', tokens: [{ kind: 'cmd', id: 'tool.smart' }] },
+        { doKey: 'terrain.shapes', tokens: [{ kind: 'cmd', id: 'tool.shape_cycle' }] },
+        { doKey: 'edgecut.auto', tokens: [{ kind: 'cmd', id: 'tool.auto_trim' }] },
+      ] },
       { kind: 'prose', anchor: 'terrain-mountain', titleKey: 'help.terrain.mountain_t', bodyKeys: ['help.terrain.mountain_b1'] },
       {
         kind: 'prose', anchor: 'terrain-water', titleKey: 'help.terrain.water_t', bodyKeys: ['help.terrain.water_b1'],
@@ -71,6 +80,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.trim.title',
     ledeKey: 'help.trim.lede',
+    entryKey: 'help.trim.entry',
     figure: { kind: 'demo', scene: 'trim' },
     sections: [
       { kind: 'prose', anchor: 'trim-click', titleKey: 'help.trim.click_t', bodyKeys: ['help.trim.click_b1'] },
@@ -100,6 +110,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.objects.title',
     ledeKey: 'help.objects.lede',
+    entryKey: 'help.objects.entry',
     figure: { kind: 'demo', scene: 'objects' },
     sections: [
       { kind: 'prose', anchor: 'objects-tabs', titleKey: 'help.objects.tabs_t', bodyKeys: ['help.objects.tabs_b1'], figure: { kind: 'surface', surface: 'object-shelf', captionKey: 'help.objects.shelf_figcap' } },
@@ -112,7 +123,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'objects-rotate', titleKey: 'help.objects.rotate_t', bodyKeys: ['help.objects.rotate_b1'],
         figure: { kind: 'demo', scene: 'rotate' },
       },
-      { kind: 'prose', anchor: 'objects-bridge', titleKey: 'help.objects.bridge_t', bodyKeys: ['help.objects.bridge_b1'] },
+      { kind: 'prose', anchor: 'objects-bridge', titleKey: 'help.objects.bridge_t', bodyKeys: ['help.objects.bridge_b1', 'help.objects.bridge_b2'] },
       {
         kind: 'prose', anchor: 'objects-ramp', titleKey: 'help.objects.ramp_t', bodyKeys: ['help.objects.ramp_b1'],
         figure: { kind: 'demo', scene: 'ramp' },
@@ -137,6 +148,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.search.title',
     ledeKey: 'help.search.lede',
+    entryKey: 'help.search.entry',
     figure: { kind: 'surface', surface: 'search', captionKey: 'help.search.figcap' },
     sections: [
       { kind: 'prose', anchor: 'search-basic', titleKey: 'help.search.basic_t', bodyKeys: ['help.search.basic_b1'] },
@@ -158,12 +170,13 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.select.title',
     ledeKey: 'help.select.lede',
+    entryKey: 'help.select.entry',
     figure: { kind: 'demo', scene: 'select' },
     sections: [
       { kind: 'prose', anchor: 'select-click', titleKey: 'help.select.click_t', bodyKeys: ['help.select.click_b1'] },
       { kind: 'prose', anchor: 'select-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       { kind: 'prose', anchor: 'select-multi', titleKey: 'help.select.multi_t', bodyKeys: ['help.select.multi_b1'] },
-      { kind: 'prose', anchor: 'select-group', titleKey: 'help.select.group_t', bodyKeys: ['help.select.group_b1'] },
+      { kind: 'prose', anchor: 'select-group', titleKey: 'help.select.group_t', bodyKeys: ['help.select.group_b1', 'help.select.move3d_b1'] },
       {
         kind: 'prose', anchor: 'select-rotate', titleKey: 'help.select.rotate_t', bodyKeys: ['help.select.rotate_b1'],
         figure: { kind: 'demo', scene: 'grouprotate' },
@@ -195,6 +208,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     group: 'build',
     titleKey: 'help.smart.title',
     ledeKey: 'help.smart.lede',
+    entryKey: 'help.smart.entry',
     figure: {
       kind: 'demos',
       scenes: [

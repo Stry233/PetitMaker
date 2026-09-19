@@ -1,3 +1,4 @@
+import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
 /**
  * What the menu button says on arrival: a pointer to Help as the tour ends, then on a touch device
  * the invitation into immersive mode. Both wait behind the splash, the portrait guard, the tour and
@@ -16,6 +17,8 @@ import { SpeechBubble } from './SpeechBubble';
 export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
   const t = useT();
   const touch = useTouchPrimary();
+  const overrides = useKeybinds(s => s.overrides);
+  const helpCombo = effectiveCombo(overrides, 'app.whats_this');
   const fullscreen = useFullscreen();
   const tourRunning = useEditorStore((s) => s.tourRunning);
   const blocked = useEditorStore((s) => s.portraitBlocked);
@@ -52,7 +55,7 @@ export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
 
   return (
     <AnimatePresence>
-      {help && <SpeechBubble key="help" anchor="menu" text={t('hint.help')} onAct={openHelp} onClose={closeHelp} />}
+      {help && <SpeechBubble key="help" anchor="menu" text={helpCombo && !touch ? t('hint.help', { shortcut: prettyCombo(helpCombo) }) : t('hint.help_touch')} onAct={openHelp} onClose={closeHelp} />}
       {immersive && <SpeechBubble key="immersive" anchor="menu" text={t('immersive.bubble')} onAct={fullscreen.toggle} onClose={closeImmersive} />}
     </AnimatePresence>
   );

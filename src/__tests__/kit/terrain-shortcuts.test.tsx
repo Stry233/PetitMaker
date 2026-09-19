@@ -31,17 +31,27 @@ afterEach(() => { cleanup(); useKeybinds.getState().resetAll(); });
 describe('terrain keyboard controls', () => {
   it('follows the visible tool and shape order', () => {
     const commands = ['tool.brush', 'tool.eraser', 'tool.edgecut', 'tool.smart', 'tool.shape_cycle'];
-    commands.forEach((command, index) => expect(bindingIndex({}).get(String(index + 1))).toBe(command));
-    expect(bindingIndex({}).get('q')).toBe('tool.auto_trim');
+    commands.forEach((command, index) => expect(bindingIndex({}, 'terrain').get(String(index + 1))).toBe(command));
+    expect(bindingIndex({}, 'terrain').get('q')).toBe('tool.auto_trim');
   });
 
-  it('restores the drawing shape with 1 and selects each main tool idempotently', () => {
+  it('restores the drawing shape and toggles each main tool off with its key', () => {
     key('5'); key('5'); key('5'); expect(state().editMode.shape).toBe('rect');
     key('2'); key('5'); key('5'); key('5'); key('5'); expect(state().eraserShape).toBe('circle');
-    key('1'); key('1'); expect(state().designMode).toBe('rect');
-    key('2'); key('2'); expect(state().editMode.tool).toBe('erase');
-    key('3'); key('3'); expect(state().editMode.tool).toBe('trim');
-    key('4'); key('4'); expect(state().armedMacro).toBe('raise');
+    key('2'); expect(state().editMode.tool).toBe('none');
+    for (const [digit, tool] of [['1', 'shape'], ['2', 'erase'], ['3', 'trim'], ['4', 'smart']]) {
+      key(digit!); expect(state().editMode.tool).toBe(tool);
+      key(digit!); expect(state().editMode.tool).toBe('none');
+      expect(state().armedMacro).toBeNull();
+    }
+    key('1'); expect(state().designMode).toBe('rect');
+  });
+
+  it.each(['1', '2', '3', '4'])('Escape puts down tool %s without leaving the surface', digit => {
+    key('Escape'); key(digit); key('Escape');
+    expect(state().editMode.tool).toBe('none');
+    expect(state().editMode.mode).toBe('mountain');
+    expect(state().armedMacro).toBeNull();
   });
 
   it('cycles shapes in order for drawing and erasing', () => {
@@ -64,6 +74,8 @@ describe('terrain keyboard controls', () => {
     }
     const tool = state().editMode.tool;
     key('5'); expect(state().editMode.tool).toBe(tool);
+    expect(state().editMode.mode).toBe('mountain');
+    key('5'); expect(state().editMode.tool).toBe(tool);
   });
 
   it('uses rebound shortcuts and preserves text-field typing', () => {
@@ -78,7 +90,25 @@ describe('terrain keyboard controls', () => {
   it('gives saved custom bindings precedence over new defaults', () => {
     const saved = { 'tool.brush': '5' };
     expect(effectiveCombo(saved, 'tool.brush')).toBe('5');
-    expect(effectiveCombo(saved, 'tool.shape_cycle')).toBeNull();
+    expect(effectiveCombo(saved, 'tool.measure')).toBeNull();
     expect(bindingIndex(saved).get('5')).toBe('tool.brush');
   });
+  it('adapts numbers and the final options key when switching to annotations', () => {
+    act(() => state().setEditMode({ mode: 'annotate' }));
+    key('5'); expect(state().annotationTool).toBe('measure');
+    key('5'); expect(state().annotationTool).toBe('none');
+    key('1'); expect(state().annotationTool).toBe('zone');
+    key('6'); expect(state().annotationZoneShape).toBe('line');
+    act(() => state().setAnnotationSize('s'));
+    key('q'); expect(state().annotationSize).toBe('m');
+    key('3'); expect(state().annotationTool).toBe('chip');
+    key('q'); expect(state().annotationSize).toBe('l');
+    key('4'); expect(state().annotationTool).toBe('route');
+    const dashed = state().annotationRouteDashed;
+    key('q'); expect(state().annotationRouteDashed).toBe(!dashed);
+    key('2'); key('q'); expect(state().annotationRouteDashed).toBe(!dashed);
+    act(() => state().setEditMode({ mode: 'water', tool: 'brush', shape: 'free' }));
+    key('5'); expect(state().editMode.shape).toBe('line');
+  });
+
 });

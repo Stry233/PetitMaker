@@ -2,7 +2,7 @@
   "id": "flower-rose",
   "category": "flora",
   "name": {
-    "en": "Pink Rose",
+    "en": "Pink Mooncycle Rose",
     "zh": "粉月季",
     "ja": "ピンクバラ",
     "ru": "Розовая роза",
@@ -11,7 +11,8 @@
     "fr": "Rose rose"
   },
   "aliases": [
-    "玫瑰"
+    "玫瑰",
+    "Pink Rose"
   ],
   "icon": "flower-rose",
   "iconColor": "#e47c77",

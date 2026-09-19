@@ -2,7 +2,7 @@
   "id": "building-wave-cabin",
   "category": "building",
   "name": {
-    "en": "Wave Cabin",
+    "en": "Nerina's Wavesong House",
     "zh": "澜音小屋（纳蕾娜）",
     "ja": "ネレイナの家",
     "ru": "Дом Нерины",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "蓝",
-    "blue"
+    "blue",
+    "Wave Cabin"
   ],
   "icon": "building-wave-cabin",
   "width": 5,

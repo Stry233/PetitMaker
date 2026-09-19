@@ -51,7 +51,7 @@ const CONTROL_ART: Record<string, () => InlineArt | undefined> = {
   'rail-zoom-in': () => ({ kind: 'glyph', glyph: GLYPHS.zoomIn }),
   'rail-zoom-out': () => ({ kind: 'glyph', glyph: GLYPHS.zoomOut }),
   'rail-hide': () => ({ kind: 'glyph', glyph: GLYPHS.hideUi }),
-  'rail-layers': () => img(LAYERS_STACK_SRC),
+  'rail-layers': () => plated(LAYERS_STACK_SRC),
   settings: () => plated(iconUrl('settings')),
   help: () => plated(iconUrl('help')),
   // The smart-build cell's own star (`icons/ui/splat.png` is the mode row's selection blob).

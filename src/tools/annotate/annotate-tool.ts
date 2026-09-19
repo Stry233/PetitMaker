@@ -1,7 +1,7 @@
 /**
  * The plan-notes tool: everything a pointer does while the annotation layer is being edited.
  *
- * One tool for the four armings plus the put-away state, switched by `ctx.annotationTool`:
+ * The active verb comes from `ctx.annotationTool`:
  *
  * - ZONE paints cells. A stroke that begins on an existing zone edits that zone in place; a stroke
  *   on open ground grows the DRAFT, which gathers strokes until Done commits it with the armed
@@ -13,6 +13,7 @@
  *   move lays a waypoint instead, and a press back on the last waypoint ends that route. A press
  *   near an existing route selects it and raises its handles.
  * - NONE selects; a subsequent press on a selected note can drag the selection.
+ * - MEASURE counts inclusive cell extents between two taps or a drag's endpoints.
  *
  * Everything speaks CELL coordinates, so the tool is view-agnostic exactly as the map tools are.
  * A hidden or locked layer refuses every edit with a toast; selection still works under a lock.
@@ -23,8 +24,9 @@ import {
   addZoneCells, annotationInkScale, chipApproxHeightCells, chipApproxWidthCells, generateAnnotationId,
   INK_CELLS, nextZoneNumber, removeZoneCells, routeHitDistCells, routeSamples, simplifyPath, zoneCellAt,
   zoneCellSet, zoneLabelAnchor, zoneLabelApproxHeightCells, zoneLabelApproxWidthCells,
-  type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote,
+  type ChipNote, type MapAnnotation, type MeasureNote, type RouteNote, type ZoneNote,
 } from '../../core/model/annotations';
+import { dimensionHit, measureDrawing } from '../../core/model/annotation-dimensions';
 import type { CurveAnchor } from '../../core/model/spline';
 import { dragShapeCells, snapShapeEnd, splineCells } from '../paint/shapes';
 import { beginCurveSession, endCurveSession, isCurveSessionOpen } from '../paint/curve-session';
@@ -65,6 +67,7 @@ export class AnnotateTool implements Tool {
   private curveBase: MacroCoord[] = [];
   /** A dragged route's raw pointer path. */
   private routeDrag: { raw: MacroCoord[]; moved: boolean } | null = null;
+  private measurePress: MacroCoord | null = null;
   private erasing: { began: boolean } | null = null;
   /** A move drag armed by a press on a selected note: the WHOLE selection rides it, each note
    *  applied from its ORIGINAL so wobble cannot accumulate. */
@@ -99,23 +102,21 @@ export class AnnotateTool implements Tool {
     return hit ? { id: hit.id, selected: ctx.annotationSelection.includes(hit.id) } : null;
   }
 
-  /** A route mid-waypoints or a curve mid-anchors. The zone draft is not pending: it waits for
-   *  Done rather than for the next press. */
+  /** Routes, curves and measurements can await another point; zone strokes await Done. */
   hasPending(ctx: ToolContext): boolean {
-    if (ctx.annotationDraft?.kind === 'route') return true;
+    if (ctx.annotationDraft?.kind === 'route' || ctx.annotationDraft?.kind === 'measure') return true;
     return ctx.annotationDraft?.kind === 'zone' && this.curveAnchors.length > 0;
   }
 
   cancelPending(ctx: ToolContext): boolean {
-    if (isCurveSessionOpen()) { endCurveSession(); return true; }
-    if (!ctx.annotationDraft) return false;
-    this.curveAnchors = [];
-    ctx.annotationEdit.setDraft(null);
-    return true;
+    const pending = !!(isCurveSessionOpen() || ctx.annotationDraft || this.stroke || this.routeDrag || this.erasing || this.drag);
+    this.onDeactivate(ctx);
+    return pending;
   }
 
   undoPendingStep(ctx: ToolContext): boolean {
     const d = ctx.annotationDraft;
+    if (d?.kind === 'measure') { ctx.annotationEdit.setDraft(null); this.measurePress = null; return true; }
     if (!d || d.kind !== 'route') return false;
     if (d.points.length <= 1) ctx.annotationEdit.setDraft(null);
     else ctx.annotationEdit.setDraft({ ...d, points: d.points.slice(0, -1) });
@@ -134,13 +135,16 @@ export class AnnotateTool implements Tool {
       case 'zone': this.zoneDown(p, ctx); return;
       case 'chip': this.chipDown(p, ctx); return;
       case 'route': this.routeDown(p, ctx); return;
+      case 'measure': this.measureDown(p, ctx); return;
       case 'erase': this.eraseDown(p, ctx); return;
       case 'none': this.selectDown(p, ctx); return;
     }
   }
 
   onPointerMove(coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    this.discardInactiveGestures(ctx);
     const p = this.fine(coord, ctx);
+    if (ctx.annotationTool === 'measure' && ctx.annotationDraft?.kind === 'measure') { this.measureMove(p, ctx); return; }
     if (this.stroke) { this.zoneMove(p, ctx); return; }
     if (this.routeDrag) { this.routeMove(p, ctx); return; }
     if (this.erasing) { this.eraseAt(p, ctx); return; }
@@ -148,13 +152,36 @@ export class AnnotateTool implements Tool {
   }
 
   onPointerUp(_coord: MacroCoord, _micro: MicroCoord, ctx: ToolContext): void {
+    this.discardInactiveGestures(ctx);
     if (this.stroke) this.zoneUp(ctx);
     if (this.routeDrag) this.routeUp(ctx);
+    if (this.measurePress && ctx.annotationDraft?.kind === 'measure') {
+      const end = measureEnd(ctx.annotationDraft.points[0], this.fine(_coord, ctx));
+      if (end.x !== this.measurePress.x || end.y !== this.measurePress.y) {
+        this.finishMeasure({ ...ctx.annotationDraft, points: [ctx.annotationDraft.points[0], end] }, ctx);
+      }
+    }
+    this.measurePress = null;
     this.erasing = null;
     this.drag = null;
   }
 
+  onPointerCancel(ctx: ToolContext): void {
+    if (ctx.annotationDraft?.kind === 'measure') {
+      this.measurePress = null;
+      ctx.annotationEdit.setDraft(null);
+    } else this.onPointerUp({ x: 0, y: 0 }, { x: 0, y: 0 }, ctx);
+  }
+
   onActivate(_ctx: ToolContext): void {}
+
+  private discardInactiveGestures(ctx: ToolContext): void {
+    if (ctx.annotationTool !== 'zone') { this.stroke = null; this.zoneAnchor = null; }
+    if (ctx.annotationTool !== 'route') this.routeDrag = null;
+    if (ctx.annotationTool !== 'measure') this.measurePress = null;
+    if (ctx.annotationTool !== 'erase') this.erasing = null;
+    if (!this.selects(ctx)) this.drag = null;
+  }
 
   onDeactivate(ctx: ToolContext): void {
     endCurveSession();
@@ -163,6 +190,7 @@ export class AnnotateTool implements Tool {
     this.curveAnchors = [];
     this.curveDraftId = null;
     this.routeDrag = null;
+    this.measurePress = null;
     this.erasing = null;
     this.drag = null;
     if (ctx.annotationDraft) ctx.annotationEdit.setDraft(null);
@@ -387,6 +415,35 @@ export class AnnotateTool implements Tool {
     });
   }
 
+  private measureDown(p: MacroCoord, ctx: ToolContext): void {
+    if (!this.editable(ctx)) return;
+    const cell = zoneCellAt(p);
+    const draft = ctx.annotationDraft;
+    if (draft?.kind === 'measure') {
+      this.finishMeasure({ ...draft, points: [draft.points[0], measureEnd(draft.points[0], p)] }, ctx);
+      return;
+    }
+    ctx.annotationEdit.select([]);
+    this.measurePress = cell;
+    ctx.annotationEdit.setDraft({ kind: 'measure', id: generateAnnotationId(), points: [cell, cell], color: ctx.annotationColor });
+  }
+
+  private measureMove(p: MacroCoord, ctx: ToolContext): void {
+    const draft = ctx.annotationDraft;
+    if (draft?.kind !== 'measure' || ctx.annotations?.locked || ctx.annotations?.visible === false) return;
+    const cell = measureEnd(draft.points[0], p);
+    if (draft.points[1].x === cell.x && draft.points[1].y === cell.y) return;
+    ctx.annotationEdit.setDraft({ ...draft, points: [draft.points[0], cell] });
+  }
+
+  private finishMeasure(note: MeasureNote, ctx: ToolContext): void {
+    this.measurePress = null;
+    ctx.annotationEdit.setDraft(null);
+    if (!this.editable(ctx)) return;
+    ctx.annotationEdit.add(note);
+    ctx.annotationEdit.select([note.id]);
+  }
+
   /* ── erase ────────────────────────────────────────────────────────────── */
 
   private eraseDown(p: MacroCoord, ctx: ToolContext): void {
@@ -503,6 +560,7 @@ export class AnnotateTool implements Tool {
   }
 
   private captionHit(p: MacroCoord, n: ZoneNote, ink: number, ctx: ToolContext): boolean {
+    if (ctx.annotationLabelHit !== undefined) return ctx.annotationLabelHit === n.id;
     const label = n.tag ? ctx.tagLabel(n.tag) : '';
     if (n.num <= 0 && !label) return false;
     const at = zoneLabelAnchor(n.cells);
@@ -511,6 +569,7 @@ export class AnnotateTool implements Tool {
   }
 
   private chipContains(p: MacroCoord, note: ChipNote, ink: number, ctx: ToolContext): boolean {
+    if (ctx.annotationLabelHit !== undefined) return ctx.annotationLabelHit === note.id;
     const reach = Math.max(0.35, INK_CELLS.text[note.size] * ink * 0.3);
     return Math.abs(p.x - note.x) <= chipApproxWidthCells(note, ctx.tagLabel(note.tag), ink) / 2 + reach
       && Math.abs(p.y - note.y) <= chipApproxHeightCells(note, ink) / 2 + reach;
@@ -531,8 +590,13 @@ export class AnnotateTool implements Tool {
   private hitAt(p: MacroCoord, ctx: ToolContext): MapAnnotation | null {
     const items = ctx.annotations?.items ?? [];
     const ink = annotationInkScale(ctx.gridState.template);
+    if (ctx.annotationLabelHit) {
+      const label = items.find(n => n.id === ctx.annotationLabelHit);
+      if (label) return label;
+    }
     for (let i = items.length - 1; i >= 0; i--) {
       const n = items[i]!;
+      if (n.kind === 'measure' && dimensionHit(p, measureDrawing(n.points, ink, n.flipped), ink)) return n;
       if (n.kind === 'chip') {
         if (this.chipContains(p, n, ink, ctx)) return n;
       } else if (n.kind === 'zone' && this.captionHit(p, n, ink, ctx)) {
@@ -565,14 +629,21 @@ function copyNote(note: MapAnnotation): MapAnnotation {
   return JSON.parse(JSON.stringify(note)) as MapAnnotation;
 }
 
-/** The note as the drag has carried it: zones move by whole cells, the free-anchored kinds by the
- *  drag's own fraction. */
+function measureEnd(start: MacroCoord, point: MacroCoord): MacroCoord {
+  const end = zoneCellAt(point);
+  return Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
+    ? { x: end.x, y: start.y }
+    : { x: start.x, y: end.y };
+}
+
+/** Zones and measurements move by whole cells; chips and routes retain fractional positions. */
 function movedBy(orig: MapAnnotation, dx: number, dy: number): MapAnnotation {
   if (orig.kind === 'zone') {
     const ix = Math.round(dx);
     const iy = Math.round(dy);
     return { ...orig, cells: orig.cells.map((c) => ({ x: c.x + ix, y: c.y + iy })) };
   }
+  if (orig.kind === 'measure') return { ...orig, points: orig.points.map(p => ({ x: p.x + Math.round(dx), y: p.y + Math.round(dy) })) as [MacroCoord, MacroCoord] };
   if (orig.kind === 'chip') return { ...orig, x: orig.x + dx, y: orig.y + dy };
   return { ...orig, points: orig.points.map((pt) => ({ ...pt, x: pt.x + dx, y: pt.y + dy })) };
 }

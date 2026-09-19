@@ -2,7 +2,7 @@
   "id": "building-boat-cabin",
   "category": "building",
   "name": {
-    "en": "Boat Cabin",
+    "en": "Dorjelang's Yakraft House",
     "zh": "雅舟小屋（多杰朗）",
     "ja": "ドジェロの家",
     "ru": "Дом Дорджеланга",
@@ -11,7 +11,8 @@
     "fr": "Maison de Dorjelang"
   },
   "aliases": [
-    "船屋"
+    "船屋",
+    "Boat Cabin"
   ],
   "icon": "building-boat-cabin",
   "width": 5,

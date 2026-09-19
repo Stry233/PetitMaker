@@ -12,9 +12,9 @@ import { readChunks } from '../../../io/share/raster/png-chunks';
 
 const FILES = ['docs/media/share-map.png', 'docs/media/share-map.zh.png'];
 
-// The Chinese artifact has a different catalog identity; its payload integrity still verifies.
+// Both artifacts predate the corrected house footprints; payload integrity still verifies.
 const EXPECTED_WARNINGS: Record<string, string[]> = {
-  'docs/media/share-map.png': [],
+  'docs/media/share-map.png': ['catalog-drift'],
   'docs/media/share-map.zh.png': ['catalog-drift'],
 };
 

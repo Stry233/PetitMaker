@@ -202,9 +202,8 @@ export function JobTicket({
   /**
    * THE PER-TURN MARKS, by the op row they file above.
    *
-   * ONLY WHERE THE OPS STAND FLAT. A filed plan nests the same op list under the rail's active
-   * stage, and a turn is not a stage: a mark hung on the rail would claim the turn belonged to
-   * whichever stage was running when it thought, which the log does not say. A planned job's
+   * ONLY WHERE THE OPS STAND FLAT. Plans group operations by stage, but thought marks have only a
+   * turn and a global operation index, so the log does not directly assign them to a stage. A planned job's
    * thinking is still fully reported — the dock counts it live and the receipt carries the one
    * total — it simply files no row.
    */
@@ -377,6 +376,7 @@ export function JobTicket({
 
         {job.plan ? (
           <PlanRail
+            key={job.plan.revision}
             plan={job.plan}
             ops={job.ops}
             checkpoints={job.checkpoints}

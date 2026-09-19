@@ -1,17 +1,11 @@
-/**
- * What the Change-a-planet window's one verb actually does.
- *
- * The window itself only reports a destination and a choice; the shell owns the two paths behind it.
- * Carrying runs the transfer against the LIVE editor and says what became of the build; starting
- * fresh is the plain new-map path and says only where the visitor now is. The report's count is the
- * transfer's own — cells and objects together, since "what did not fit" is one loss to whoever
- * built it.
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
 import { subscribeArrival, __resetArrivals } from '../../../core/runtime/arrival-bus';
-import { Windows, transferArrival, transferLines } from '../../../ui/shell/windows/Windows';
+import { Windows } from '../../../ui/shell/windows/Windows';
+import { LiteWindows } from '../../../ui/lite/LiteWindows';
+import { transferArrival, transferLines } from '../../../ui/shell/windows/planet-arrival';
+import { setToastPresenter } from '../../../core/runtime/toast-bus';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -211,5 +205,40 @@ describe('switching planet', () => {
     expect(newMap).toHaveBeenCalledWith(TAFA.id);
     expect(transferMap).not.toHaveBeenCalled();
     expect(seen).toEqual([{ kind: 'boot' }]);
+  });
+});
+
+describe('Lite planet changes', () => {
+  it('uses the shared transfer and reports dropped content through a toast', async () => {
+    world();
+    const arrivals = heard();
+    const present = vi.fn();
+    const unregister = setToastPresenter(present);
+    try {
+      render(<I18nProvider><LiteWindows /></I18nProvider>);
+      fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+      await press();
+      expect(transferMap).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(transferMap).mock.calls[0]![1]).toEqual({ target: TAFA.id, carry: true });
+      expect(present).toHaveBeenCalledWith(translateFor('en', 'arrival.transferred_both', { cells: 3, objects: 1 }), 'info');
+      expect(arrivals).toEqual([]);
+      expect(useEditorStore.getState().editMode.mode).toBe(null);
+      expect(useEditorStore.getState().modals.newProject).toBe(false);
+    } finally { unregister(); }
+  });
+
+  it('starts a fresh planet without transfer feedback', async () => {
+    world({ built: false });
+    const present = vi.fn();
+    const unregister = setToastPresenter(present);
+    try {
+      render(<I18nProvider><LiteWindows /></I18nProvider>);
+      fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+      await press();
+      expect(newMap).toHaveBeenCalledWith(TAFA.id);
+      expect(transferMap).not.toHaveBeenCalled();
+      expect(present).not.toHaveBeenCalled();
+      expect(useEditorStore.getState().modals.newProject).toBe(false);
+    } finally { unregister(); }
   });
 });

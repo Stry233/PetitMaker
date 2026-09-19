@@ -2,7 +2,7 @@
   "id": "bridge-light-wood",
   "category": "bridge",
   "name": {
-    "en": "Light Wood",
+    "en": "Lightwood Garden Bridge",
     "zh": "庭院浅木桥",
     "ja": "明るい木の橋",
     "ru": "Светлый деревянный мост",
@@ -351,5 +351,8 @@
         "color": "#b8975f"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Light Wood"
+  ]
 }

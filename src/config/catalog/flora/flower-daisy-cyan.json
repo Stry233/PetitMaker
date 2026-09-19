@@ -2,7 +2,7 @@
   "id": "flower-daisy-cyan",
   "category": "flora",
   "name": {
-    "en": "Cyan Daisy",
+    "en": "Teal Daisy",
     "zh": "青雏菊",
     "ja": "シアンデイジー",
     "ru": "Бирюзовая маргаритка",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "blue",
-    "蓝"
+    "蓝",
+    "Cyan Daisy"
   ],
   "icon": "flower-daisy-cyan",
   "iconColor": "#98c8d3",

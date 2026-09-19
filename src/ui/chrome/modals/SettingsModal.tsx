@@ -356,7 +356,7 @@ function UiScaleSlider({ label }: { label: string }) {
   const tickCount = Math.round((max - UI_SCALE_MIN) / UI_SCALE_STEP) + 1;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div {...helpTargetAttr('settings', 'settings-scale')} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <span style={flankA('caption')} aria-hidden>A</span>
       <div
         ref={ref}
@@ -649,11 +649,11 @@ export function SettingsModal({
 
   return (
     <>
-    <ModalShell open={open} onClose={onClose} width={620} maxVh={92} maxVw={94} cardStyle={cardStyle} ariaLabel={t('modal.settings_title')}>
+    <ModalShell helpTarget={{ page: 'settings' }} open={open} onClose={onClose} width={620} maxVh={92} maxVw={94} cardStyle={cardStyle} ariaLabel={t('modal.settings_title')}>
       <div style={titleStyle}>{t('modal.settings_title')}</div>
 
       {/* Language — all seven endonyms visible at once; each names itself in its own script. */}
-      <div style={langBandStyle} role="radiogroup" aria-label={t('modal.settings_language')}>
+      <div {...helpTargetAttr('settings', 'settings-language')} style={langBandStyle} role="radiogroup" aria-label={t('modal.settings_language')}>
         {LOCALES.map(({ code, label }) => (
           <motion.button
             key={code}
@@ -672,7 +672,7 @@ export function SettingsModal({
 
       <div style={bodyStyle}>
         {/* The map: what shows on it, and how it renders. */}
-        <div style={groupStyle}>
+        <div {...helpTargetAttr('settings', 'settings-map')} style={groupStyle}>
           <div style={rowOfTiles}>
             <MapTile kind="grid" on={showGrid} label={t('modal.settings_grid')} onToggle={() => onShowGridChange(!showGrid)} />
             <MapTile kind="chunks" on={showChunks} label={t('modal.settings_chunks')} onToggle={() => onShowChunksChange(!showChunks)} />
@@ -704,7 +704,7 @@ export function SettingsModal({
         </div>
 
         {/* The interface: its size, its motion, its pointer. */}
-        <div style={groupStyle}>
+        <div {...helpTargetAttr('settings', 'settings-feel')} style={groupStyle}>
           <UiScaleSlider label={t('modal.settings_ui_scale')} />
           {/* Motion preference — System follows the OS reduce-motion setting; the others
               override it. Each step's ball performs the choice. */}
@@ -784,7 +784,7 @@ export function SettingsModal({
 
       <div style={metaStyle}>
         {/* Identity readout — the app and its build, drilling into About. */}
-        <motion.button type="button" style={readoutStyle} onClick={onAbout} whileTap={{ scale: 0.985 }} whileHover={{ scale: 1.01 }} aria-label={t('modal.settings_about')}>
+        <motion.button {...helpTargetAttr('settings', 'settings-reset')} type="button" style={readoutStyle} onClick={onAbout} whileTap={{ scale: 0.985 }} whileHover={{ scale: 1.01 }} aria-label={t('modal.settings_about')}>
           <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
           <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{`${t('about.build')} ${BUILD_NUMBER}`}</span>
           <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
@@ -792,7 +792,7 @@ export function SettingsModal({
 
         <div style={metaPillsStyle}>
           {fullscreen.available && (
-            <motion.button type="button" style={metaPillStyle} onClick={fullscreen.toggle} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+            <motion.button {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
               {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
             </motion.button>
           )}
@@ -800,13 +800,13 @@ export function SettingsModal({
           {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
               than holding a setting. Closes Settings before starting the tour so the modal does
               not sit on top of the overlay it just launched. */}
-          <motion.button type="button" style={metaPillStyle} onClick={() => { onClose(); startTour(); }} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+          <motion.button {...helpTargetAttr('tour')} type="button" style={metaPillStyle} onClick={() => { onClose(); startTour(); }} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
             {t('modal.settings_tour')}
           </motion.button>
 
           {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
               answer and the card never changes shape under it. */}
-          <motion.button type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+          <motion.button {...helpTargetAttr('settings', 'settings-reset')} type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
             {t('modal.settings_reset_btn')}
           </motion.button>
         </div>
@@ -819,7 +819,7 @@ export function SettingsModal({
         after it, so it paints above at their shared rung, and ModalShell's Escape stack makes
         one press close only this. While `resetting` the wipe is in flight and reload is the
         only exit, so the dialog stops offering one (onClose is a no-op). */}
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-reset' }}
       open={open && confirmReset}
       onClose={() => { if (!resetting) setConfirmReset(false); }}
       width={380}

@@ -17,6 +17,7 @@ import { CORNER_INDEX } from '../../../core/edge-cut/corner-index';
 import { CANONICAL_ROAD_STATES } from '../../../core/edge-cut/road-cut-states';
 import { splineCells, type CurveAnchor } from '../../../tools/paint/shapes';
 import { brushCells } from '../../../tools/paint/drawing-tool';
+import { measureDrawing } from '../../../core/model/annotation-dimensions';
 
 interface Recorded {
   ghostOks: boolean[];
@@ -548,6 +549,25 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     if (zone.kind !== 'zone') return;
     expect(zone.cells.some((c) => c.y >= 109)).toBe(true);
     expect(zone.cells.some((c) => c.x === 67 && c.y === 98)).toBe(false);
+  });
+
+  it('measurement counts both endpoints, flips its label and resizes along its original axis', () => {
+    const scene = HELP_SCENES.measurement!;
+    const initial = play({ ...scene, run: (ctx, t) => scene.run(ctx, t).slice(0, 4) });
+    const before = initial.world.state.annotations!.items[0]!;
+    expect(before.kind).toBe('measure');
+    if (before.kind !== 'measure') return;
+    const original = measureDrawing(before.points, 1);
+    expect(original.labels[0]!.value).toBe(20);
+    const resized = play(scene).world.state.annotations!.items[0]!;
+    expect(resized.kind).toBe('measure');
+    if (resized.kind !== 'measure') return;
+    expect(resized.points[0]).toEqual(before.points[0]);
+    expect(resized.points[1].y).toBe(before.points[1].y);
+    const flipped = measureDrawing(resized.points, 1, resized.flipped);
+    expect(flipped.labels[0]!.value).toBe(30);
+    expect(flipped.labels[0]!.at.y).toBeLessThan(before.points[0].y);
+    expect(original.labels[0]!.at.y).toBeGreaterThan(before.points[0].y);
   });
 
   it('noteroute: the dragged path lands as a route of three anchors', () => {

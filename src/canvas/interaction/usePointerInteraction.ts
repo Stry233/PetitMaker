@@ -284,9 +284,8 @@ export function usePointerInteraction(
     let bandStartMacro: MacroCoord | null = null;
     let bandStartX = 0;
     let bandStartY = 0;
-    // The macro cell the idle-hover probe last ran the cursor rules against: a pointer-move that
-    // stays on the same cell does not re-run them.
-    let hoverCell: (MacroCoord & { toolX: number; toolY: number }) | null = null;
+    // Cursor probes are cached by cell and rendered-label hit, alongside the live tool inputs.
+    let hoverCell: (MacroCoord & { toolX: number; toolY: number; labelHit?: string | null }) | null = null;
     /** The `hoverInputs` signature the current hover answer was computed from. */
     let hoverInputsKey: HoverInputs | null = null;
     /** Bumped on every map mutation — see `hoverInputs`. */
@@ -463,7 +462,7 @@ export function usePointerInteraction(
       const hit = objectUnderPointer(gs, macro, activeView.projection.pickObject?.(x, y) ?? undefined);
       const tool = tools()?.getActiveTool();
       const context = tools()?.getContext();
-      const ctx = context ? { ...context, halfCoord: activeView.projection.screenToHalf?.(x, y) } : null;
+      const ctx = context ? { ...context, annotationLabelHit: activeView.projection.pickAnnotationLabel?.(x, y), halfCoord: activeView.projection.screenToHalf?.(x, y) } : null;
       const micro = ctx && tool?.terrainGrid?.(ctx) ? activeView.projection.screenToMicro(x, y) : null;
       const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
       const toolGrabs = !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false));
@@ -858,12 +857,12 @@ export function usePointerInteraction(
       const inputs = hoverInputs(store, mapEpoch, toolEpoch, isMultiSelectHeld());
       const tool = tools()?.getActiveTool();
       const context = tools()?.getContext();
-      const ctx = context ? { ...context, halfCoord: hoverView.projection.screenToHalf?.(clientPoint(e).x, clientPoint(e).y) } : null;
+      const ctx = context ? { ...context, annotationLabelHit: hoverView.projection.pickAnnotationLabel?.(clientPoint(e).x, clientPoint(e).y), halfCoord: hoverView.projection.screenToHalf?.(clientPoint(e).x, clientPoint(e).y) } : null;
       const micro = ctx && tool?.terrainGrid?.(ctx) ? hoverView.projection.screenToMicro(clientPoint(e).x, clientPoint(e).y) : null;
       const toolCoord = micro ? microToTerrain(micro.x, micro.y) : macro;
       if (!hoverCell || hoverCell.x !== macro.x || hoverCell.y !== macro.y
-        || hoverCell.toolX !== toolCoord.x || hoverCell.toolY !== toolCoord.y || !sameHoverInputs(hoverInputsKey, inputs)) {
-        hoverCell = { ...macro, toolX: toolCoord.x, toolY: toolCoord.y };
+        || hoverCell.toolX !== toolCoord.x || hoverCell.toolY !== toolCoord.y || hoverCell.labelHit !== ctx?.annotationLabelHit || !sameHoverInputs(hoverInputsKey, inputs)) {
+        hoverCell = { ...macro, toolX: toolCoord.x, toolY: toolCoord.y, labelHit: ctx?.annotationLabelHit };
         hoverInputsKey = inputs;
         const f = buildPressFacts(PRIMARY_BUTTON, clientPoint(e).x, clientPoint(e).y);
         if (f) {

@@ -473,7 +473,7 @@ export function ExportJsonModal() {
   const setModal = useEditorStore((s) => s.setModal);
   const close = () => setModal('exportJson', false);
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'json' }}
       open={open}
       onClose={close}
       width={540}

@@ -443,6 +443,18 @@ function decodeAnnotation(raw: unknown): MapAnnotation | null {
     if (x === null || y === null || !isTagId(n.tag)) return null;
     return { kind: 'chip', id, x, y, tag: n.tag, size: n.size === 's' || n.size === 'l' ? n.size : 'm', color };
   }
+  if (n.kind === 'measure') {
+    if (!Array.isArray(n.points) || n.points.length !== 2) return null;
+    const points: MacroCoord[] = [];
+    for (const p of n.points) {
+      const x = finiteCoord(p?.x), y = finiteCoord(p?.y);
+      if (x === null || y === null || !Number.isInteger(x) || !Number.isInteger(y)) return null;
+      points.push({ x, y });
+    }
+    const [start, end] = points as [MacroCoord, MacroCoord];
+    if (start.x !== end.x && start.y !== end.y) return null;
+    return { kind: 'measure', id, points: [start, end], color, ...(typeof n.flipped === 'boolean' ? { flipped: n.flipped } : {}) };
+  }
   if (n.kind === 'route') {
     if (!Array.isArray(n.points)) return null;
     const points: CurveAnchor[] = [];

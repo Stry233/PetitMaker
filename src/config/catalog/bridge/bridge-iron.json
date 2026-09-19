@@ -2,7 +2,7 @@
   "id": "bridge-iron",
   "category": "bridge",
   "name": {
-    "en": "Iron Bridge",
+    "en": "Green Iron Bridge",
     "zh": "绿意铁桥",
     "ja": "鉄の橋",
     "ru": "Железный мост",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "metal",
-    "green"
+    "green",
+    "Iron Bridge"
   ],
   "icon": "bridge-iron",
   "width": 2,

@@ -1,3 +1,4 @@
+import { helpTargetAttr } from '../modals/help/targets';
 import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
  * CurveHandles.tsx — the anchors of a just-drawn curve, still adjustable.
@@ -260,6 +261,7 @@ export function CurveHandles() {
     <AnimatePresence>
       {screen.length > 0 && (
         <motion.div
+          {...helpTargetAttr('terrain', 'terrain-curve')}
           key="curve-handles"
           data-testid="curve-handles"
           initial={{ opacity: 1 }}

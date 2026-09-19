@@ -477,7 +477,7 @@ export function ExportModal() {
   const setModal = useEditorStore((s) => s.setModal);
   const close = () => setModal('export', false);
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'share' }}
       open={open}
       onClose={close}
       width={980}

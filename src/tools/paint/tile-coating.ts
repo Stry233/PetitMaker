@@ -1,8 +1,8 @@
-import type { GridState, MacroCoord, ValidationError } from '../../core/model/types';
-import { cellKey, cellOverlapsRect } from '../../core/model/grid-model';
+import type { GridState, MacroCoord, PlacedObject, ValidationError } from '../../core/model/types';
+import { cellKey } from '../../core/model/grid-model';
 import { getCatalogItem } from '../../state/catalog';
-import { entriesNear, getObjectIndex } from '../../state/object-index';
-import { overlappingCoatings, removeOverlappingCoatings } from '../objects/object-placer';
+import { placementBlockers } from '../../rules/placement-overlap';
+import { removeOverlappingCoatings } from '../objects/object-placer';
 import { planPaint } from './paint-plan';
 import type { ToolContext } from '../runtime/types';
 
@@ -48,11 +48,8 @@ export function eraseTileCells(cells: MacroCoord[], ctx: ToolContext): void {
  * matches what the click commits: a coating over a coating is refused outright by
  * V-PLACE-OVERLAP, and only the strip-then-place pair gets past it.
  */
-export function strippableRefusal(gs: GridState, coord: MacroCoord, errors: readonly ValidationError[]): boolean {
+export function strippableRefusal(gs: GridState, object: PlacedObject, errors: readonly ValidationError[]): boolean {
   if (errors.length === 0 || !errors.every((e) => e.ruleId === 'V-PLACE-OVERLAP')) return false;
-  if (overlappingCoatings(gs, [coord]).length === 0) return false;
-  for (const e of entriesNear(getObjectIndex(gs), { x: coord.x, y: coord.y, w: 1, h: 1 })) {
-    if (!e.coating && cellOverlapsRect(e.rect, coord.x, coord.y, 0)) return false; // a solid no strip removes
-  }
-  return true;
+  const blockers = placementBlockers(object, gs);
+  return blockers.length > 0 && blockers.every(e => e.coating);
 }

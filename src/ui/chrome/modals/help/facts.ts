@@ -7,6 +7,7 @@ import { providerName } from '../../../../i18n/providers';
  * record as `{token}` params on every string; a string uses the tokens it needs.
  */
 import { CHUNK_LOAD_LIMIT, ELEVATION_MAX } from '../../../../core/model/constants';
+import { NOTE_LIMITS } from '../../../../core/model/notes';
 import { ANNOTATION_COLORS } from '../../../../core/model/annotations';
 import { ItemCategory, type PlacementTrait } from '../../../../core/model/types';
 import { getAllItems, getPlaceableByCategory } from '../../../../state/catalog';
@@ -75,6 +76,22 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     agentMaxTurns: MAX_TURNS_DEFAULT,
     agentChildTurns: SUBAGENT_MAX_TURNS,
     noteColors: ANNOTATION_COLORS.length,
+    titleLimit: NOTE_LIMITS.title,
+    descriptionLimit: NOTE_LIMITS.description,
+    measureTool: translateFor(locale, 'annot.measure'),
+    flipMeasure: translateFor(locale, 'annot.flip'),
+    immersiveMode: translateFor(locale, 'modal.settings_immersive'),
+    notesName: translateFor(locale, 'annot.layer'),
+    settingsName: translateFor(locale, 'modal.settings_title'),
+    importName: translateFor(locale, 'import.title'),
+    planetName: translateFor(locale, 'modal.new_title'),
+    shareName: translateFor(locale, 'share.title'),
+    keepName: translateFor(locale, 'share.tab_keep'),
+    resumeName: translateFor(locale, 'restore.resume'),
+    islandName: translateFor(locale, 'gen.kind_island'),
+    mazeName: translateFor(locale, 'generate.algo_maze'),
+    letterName: translateFor(locale, 'gen.kind_text'),
+    pictureName: translateFor(locale, 'gen.kind_image'),
     bridgeMin: span?.min ?? 3,
     bridgeMax: span?.max ?? 6,
     treeGap: spacing?.radius ?? 1,

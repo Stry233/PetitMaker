@@ -37,6 +37,8 @@ import { generateMaze } from '../../../../../tools/generation/maze/maze-generato
 import { addZoneCells, generateAnnotationId, nextZoneNumber, removeZoneCells, simplifyPath, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type ChipNote } from '../../../../../core/model/annotations';
 import type { TokenSpec } from '../../../../hints/catalogue';
 import { DemoWorld } from './demo-world';
+import { resizeMeasurement } from '../../../../../core/model/annotation-dimensions';
+import type { MeasureNote } from '../../../../../core/model/annotations';
 
 /** The template rect a scene's view frames, and how many CSS px a cell takes. */
 export interface Stage { x1: number; y1: number; x2: number; y2: number; tile: number }
@@ -1910,6 +1912,30 @@ const notegrow: HelpScene = {
   },
 };
 
+const measurement: HelpScene = {
+  stage: NOTES_STAGE,
+  run: ({ world, view }) => {
+    const note: MeasureNote = {
+      kind: 'measure', id: generateAnnotationId(),
+      points: [{ x: 59, y: 104 }, { x: 78, y: 104 }], color: ANNOTATION_COLORS[0]!,
+    };
+    return [
+      { capKey: 'help.fig.measure_1', keys: [{ kind: 'cmd', id: 'tool.measure' }], move: [59, 104], pointer: 'place', dur: 450 },
+      { press: true, dur: 160 },
+      { move: [78, 104], dur: 1000, during: (_ctx, k) => view.annotations({ ...note, points: resizeMeasurement(note.points, 1, { x: 59 + Math.round(19 * k), y: 104 }) }) },
+      { press: false, keys: null, dur: 1500, on: () => { world.addNote(note); view.annotations(null, [note.id]); } },
+      { capKey: 'help.fig.measure_2', dur: 1800, on: () => { replaceNote(world, note.id, { flipped: true }); view.annotations(null, [note.id]); } },
+      { capKey: 'help.fig.measure_3', move: [78, 104], pointer: 'select', dur: 450 },
+      { press: true, dur: 160 },
+      { move: [88, 104], dur: 1000, during: (_ctx, k) => {
+        replaceNote(world, note.id, { points: resizeMeasurement(note.points, 1, { x: 78 + Math.round(10 * k), y: 104 }) });
+        view.annotations(null, [note.id]);
+      } },
+      { press: false, dur: 1600 },
+    ];
+  },
+};
+
 const noteroute: HelpScene = {
   stage: NOTES_STAGE,
   run: ({ world, view }) => {
@@ -1976,6 +2002,6 @@ export const HELP_SCENES: Record<string, HelpScene> = {
   water, road, roadtrim, trimmulti, trimnotch, rotate, ramp, spacing, smartpatch, grouprotate,
   locked, delight,
   smart1, smart2, stream, generate, region, maze, stencil,
-  notes, notezone, notegrow, noteroute, noteselect, undo, load, faq,
+  notes, notezone, notegrow, measurement, noteroute, noteselect, undo, load, faq,
   scope, ground, mazew1, mazew2, notetext,
 };

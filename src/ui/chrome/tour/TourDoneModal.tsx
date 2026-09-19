@@ -173,7 +173,7 @@ export function TourDoneModal() {
   const close = () => setModal('tourDone', false);
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'tour' }}
       open={open}
       onClose={close}
       width={CARD_W}

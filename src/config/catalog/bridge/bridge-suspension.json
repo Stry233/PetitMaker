@@ -2,7 +2,7 @@
   "id": "bridge-suspension",
   "category": "bridge",
   "name": {
-    "en": "Suspension",
+    "en": "Simple Wooden Suspension Bridge",
     "zh": "简木吊桥",
     "ja": "吊り橋",
     "ru": "Подвесной мост",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "rope",
-    "绳桥"
+    "绳桥",
+    "Suspension"
   ],
   "icon": "bridge-suspension",
   "width": 2,

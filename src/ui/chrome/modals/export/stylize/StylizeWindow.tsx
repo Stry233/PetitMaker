@@ -70,7 +70,7 @@ export function StylizeWindow({ onClose, listModels }: StylizeWindowProps) {
   };
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-stylize' }}
       open
       onClose={dismiss}
       width={STUDIO_CARD.width}

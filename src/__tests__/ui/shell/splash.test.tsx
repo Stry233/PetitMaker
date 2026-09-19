@@ -12,9 +12,25 @@ import { splashAssetUrls } from '../../../ui/shell/splash/asset-list';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
 import { bannerTravel, splashFit } from '../../../ui/shell/splash/Splash';
 import { I18nProvider } from '../../../i18n/context';
+import { decodeIcon } from '../../../ui/shell/splash/idle-warm';
+// @ts-ignore - node:fs is untyped in this tree
+import { readFileSync } from 'node:fs';
+// @ts-ignore - node:path is untyped in this tree
+import { resolve } from 'node:path';
 
-beforeEach(() => { localStorage.clear(); resetPreloadForTest(); });
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+declare const __dirname: string;
+const fontCss = readFileSync(resolve(__dirname, '../../../assets/fonts/fonts.css'), 'utf8') as string;
+
+vi.mock('../../../ui/shell/splash/idle-warm', () => ({ decodeIcon: vi.fn(async () => true) }));
+const imageFormat = vi.hoisted(() => ({ supportsLosslessWebp: false }));
+vi.mock('../../../assets/image-format', () => imageFormat);
+
+beforeEach(() => {
+  localStorage.clear(); resetPreloadForTest();
+  imageFormat.supportsLosslessWebp = false;
+  vi.mocked(decodeIcon).mockReset().mockResolvedValue(true);
+});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('the preload', () => {
   it('enumerates the art the app resolves through its own globs, deduplicated', () => {
@@ -23,6 +39,52 @@ describe('the preload', () => {
     expect(new Set(urls).size).toBe(urls.length);
     expect(urls.some((u: string) => u.includes('banner.svg'))).toBe(true);
     expect(urls.some((u: string) => u.includes('cursors'))).toBe(true);
+    expect(urls.some((u: string) => /shelf-object\/thumb-/.test(u))).toBe(false);
+    expect(urls.some((u: string) => u.includes('bridge-park-arch'))).toBe(true);
+  });
+
+  it('waits for catalog pixels before completing the splash preload', async () => {
+    let release!: (ready: boolean) => void;
+    vi.mocked(decodeIcon).mockReturnValue(new Promise(resolve => { release = resolve; }));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response()));
+    let complete = false;
+    const work = preloadAssets(vi.fn()).then(result => { complete = true; return result; });
+    await vi.waitFor(() => expect(decodeIcon).toHaveBeenCalled());
+    expect(complete).toBe(false);
+    release(true);
+    expect(await work).toBe(true);
+  });
+
+  it('leaves an unsuccessful image warmup eligible for the next visit', async () => {
+    vi.mocked(decodeIcon).mockResolvedValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response()));
+    expect(await preloadAssets(vi.fn())).toBe(false);
+    expect(shouldShowSplash()).toBe(true);
+  });
+
+  it('starts all declared font weights while image bodies are still loading', async () => {
+    const original = Object.getOwnPropertyDescriptor(document, 'fonts');
+    const load = vi.fn(async (_face: string) => []);
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { load } });
+    let release!: () => void;
+    const body = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: () => body })));
+    try {
+      const work = preloadAssets(vi.fn());
+      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(6));
+      const declared = [...fontCss.matchAll(/@font-face\s*\{([^}]+)\}/g)].map(([, block]) => {
+        const family = /font-family:\s*'([^']+)'/.exec(block!)![1];
+        const weight = /font-weight:\s*(\d+)/.exec(block!)![1];
+        return `${weight} 16px "${family}"`;
+      });
+      expect(load.mock.calls.map(call => call[0]).sort()).toEqual(declared.sort());
+      release();
+      expect(await work).toBe(true);
+    } finally {
+      release();
+      if (original) Object.defineProperty(document, 'fonts', original);
+      else delete (document as unknown as { fonts?: unknown }).fonts;
+    }
   });
 
   it('waits for response bodies and releases an unmounted subscriber', async () => {
@@ -47,6 +109,16 @@ describe('the preload', () => {
     const run = preloadAssets(vi.fn());
     await vi.advanceTimersByTimeAsync(30_000);
     expect(await run).toBe(false);
+    expect(shouldShowSplash()).toBe(true);
+  });
+
+  it('releases the splash deadline when image decoding stalls', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response()));
+    vi.mocked(decodeIcon).mockReturnValue(new Promise(() => {}));
+    const work = preloadAssets(vi.fn());
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await work).toBe(false);
     expect(shouldShowSplash()).toBe(true);
   });
 
@@ -84,6 +156,16 @@ describe('the cache probe', () => {
 });
 
 describe('the skip', () => {
+  it('warms the selected artwork again when decoder support changes between visits', () => {
+    markSplashDone();
+    imageFormat.supportsLosslessWebp = true;
+    expect(shouldShowSplash()).toBe(true);
+    markSplashDone();
+    expect(shouldShowSplash()).toBe(false);
+    imageFormat.supportsLosslessWebp = false;
+    expect(shouldShowSplash()).toBe(true);
+  });
+
   it('shows on a build whose assets were never fetched, and not again after one completed pass', () => {
     expect(shouldShowSplash()).toBe(true);
     markSplashDone();

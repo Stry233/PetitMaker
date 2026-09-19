@@ -8,7 +8,7 @@ import { providerName } from '../../../../i18n/providers';
  * their command ids through the live keymap (`resolveTokenSpecs`), which is what keeps a rebind
  * and its documentation the same fact.
  */
-import { Fragment, memo, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../../../state/store';
 import { startTour } from '../../tour/use-tour';
@@ -18,9 +18,8 @@ import { resolveTokenSpecs } from '../../../hints/catalogue';
 import { HintTokens } from '../../../hints/tokens';
 import { roleWeight, roleFont } from '../../../design/text-weight';
 import { INK, INSET, LINE, PLATE_INK } from '../../../design/tokens';
-import { buttonMotion, colors, cursors, primaryButton, radii, springs } from '../../../design/styles';
+import { buttonMotion, colors, cursors, primaryButton, radii } from '../../../design/styles';
 import { withAlpha } from '../../../design/styles';
-import { Expand } from '../../../primitives/Expand';
 import { BrandLockup } from '../../BrandLockup';
 import { LoadDiscSvg } from '../../../shell/windows/LoadMeter';
 import { inlineArt, type InlineArt } from './inline-art';
@@ -186,7 +185,7 @@ function SectionView({ section }: { section: HelpSection }) {
         {heading}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 10 }}>
           {section.rows.map((row) => {
-            const tokens = resolveTokenSpecs(row.tokens, overrides);
+            const tokens = resolveTokenSpecs(row.tokens, overrides, section.anchor.startsWith('notes-') ? 'notes-zone' : 'terrain');
             if (!tokens) return null;
             return (
               <div key={row.doKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -255,42 +254,11 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   );
 }
 
-/** One Q&A disclosure row: the question is a plain full-width row (a scale-based press would spill
- *  past the card's own `overflow: hidden` rounded corners), the answer's height and the chevron's
- *  turn both animate, and `Expand` folds in the reduced-motion instant snap already. */
 function QaRow({ qKey, aKey, facts, t }: { qKey: string; aKey: string; facts: ReturnType<typeof helpFacts>; t: ReturnType<typeof useT> }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div style={{ background: withAlpha(INSET, 0.42), borderRadius: 14, overflow: 'hidden' }}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          // The question ranks its own 16px answer the way `head` ranks `reading`: same size,
-          // weight apart, so an opened row does not read larger than the question it answers.
-          display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none',
-          background: 'none', textAlign: 'left', ...roleFont('head'), color: INK,
-          padding: '12px 16px', cursor: cursors.clickable, transition: 'background-color 0.15s ease',
-        }}
-        onPointerEnter={(e) => { e.currentTarget.style.background = withAlpha(INSET, 0.9); }}
-        onPointerLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-      >
-        <span style={{ flex: 1 }}>{t(qKey, facts)}</span>
-        <motion.span
-          aria-hidden
-          animate={{ rotate: open ? 90 : 0 }}
-          transition={springs.stiff}
-          style={{ fontSize: 16, fontWeight: 700, color: colors.brownText, flexShrink: 0 }}
-        >
-          ›
-        </motion.span>
-      </button>
-      <Expand open={open}>
-        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7, padding: '0 16px 14px', margin: 0 }}>
-          {emphasize(t(aKey, facts))}
-        </p>
-      </Expand>
+    <div style={{ borderTop: `1px solid ${LINE}`, padding: '14px 0' }}>
+      <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 6px' }}>{t(qKey, facts)}</h4>
+      <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7, margin: 0 }}>{emphasize(t(aKey, facts))}</p>
     </div>
   );
 }
@@ -327,15 +295,18 @@ export const PageView = memo(function PageView({ page, onGo, onReady }: { page: 
         <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, margin: '6px 0 4px' }}>
           <BrandLockup size={64} logoOnly />
           <h2 style={{ ...roleFont('title'), color: INK, lineHeight: 1.35, margin: 0 }}>{t(page.titleKey, facts)}</h2>
-          <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: 0, maxWidth: 560 }}>{emphasize(t(page.ledeKey, facts))}</p>
         </header>
       ) : (
         <>
           <div style={{ ...roleFont('note'), color: colors.brownText, marginBottom: 6 }}>{t(HELP_GROUP_TITLES[page.group])}</div>
           <h2 style={{ ...roleFont('title'), color: INK, lineHeight: 1.35, margin: 0 }}>{t(page.titleKey)}</h2>
-          <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, marginTop: 8 }}>{emphasize(t(page.ledeKey, facts))}</p>
         </>
       )}
+      <div style={{ margin: '14px 0 20px' }}>
+        <p style={{ ...roleFont('caption'), color: colors.brownText, margin: '0 0 6px' }}>{t('help.summary_label')}</p>
+        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: '0 0 8px' }}>{emphasize(t(page.ledeKey, facts))}</p>
+        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: 0 }}>{emphasize(t(page.entryKey, facts))}</p>
+      </div>
       <Figure fig={page.figure} />
       {page.action && <ActionButton action={page.action} />}
       {page.sections.map((section, i) => <SectionView key={i} section={section} />)}

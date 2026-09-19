@@ -27,7 +27,7 @@ const EXPECTED_STORE_FIELDS: readonly string[] = [
   'annotationRouteDashed', 'annotationSelection', 'annotationSize', 'annotationTag',
   'annotationTool', 'annotationUndoLane', 'annotationZoneShape', 'annotationsEpoch',
   'applyAnnotationEdit', 'beginAnnotationStroke', 'commitAnnotationDraft', 'mergeAnnotationZones', 'redoAnnotation', 'removeAnnotation',
-  'removeAnnotations',
+  'removeAnnotations', 'flipMeasurements', 'setMeasurementPoints', 'toggleAnnotationTool',
   'setAnnotationColor', 'setAnnotationDraft', 'setAnnotationRouteDashed',
   'setAnnotationSelection', 'setAnnotationSize', 'setAnnotationTag', 'setAnnotationTool',
   'setAnnotationZoneShape',

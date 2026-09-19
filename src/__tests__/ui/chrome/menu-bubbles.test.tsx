@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { MenuBubbles } from '../../../ui/chrome/floating/MenuBubbles';
+import { useKeybinds } from '../../../core/runtime/keybindings';
 import { PREFS } from '../../../core/runtime/prefs';
 import { useEditorStore } from '../../../state/store';
 import { setStoreModal, setStoreState } from '../../_store';
@@ -35,10 +36,11 @@ function renderBubbles(splashActive = false) {
 }
 
 const IMMERSIVE = /Immersive mode is recommended on mobile devices/;
-const HELP = /For more information, see Help in here/;
+const HELP = /explanation/;
 
 beforeEach(() => {
   setStoreState({ locale: 'en', portraitBlocked: false, tourRunning: false, modals: { ...useEditorStore.getState().modals, tourDone: false, help: false } });
+  useKeybinds.getState().resetAll();
   localStorage.clear();
   localStorage.setItem(PREFS.tourSeen.key, '1');
 });
@@ -113,4 +115,21 @@ describe('MenuBubbles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(await screen.findByRole('button', { name: IMMERSIVE })).toBeTruthy();
   });
+});
+
+it.each([['shift+h', /Shift.*H/], ['ctrl+alt+h', /Ctrl.*Alt.*H/]])('shows the active context-help shortcut after the tour (%s)', async (combo, label) => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+  useKeybinds.getState().rebind('app.whats_this', combo);
+  setStoreState({ tourRunning: true });
+  renderBubbles();
+  act(() => { setStoreState({ tourRunning: false }); });
+  expect(await screen.findByRole('button', { name: label })).toBeTruthy();
+});
+
+it('gives a menu route when context help is unbound', async () => {
+  useKeybinds.getState().clear('app.whats_this');
+  setStoreState({ tourRunning: true });
+  renderBubbles();
+  act(() => { setStoreState({ tourRunning: false }); });
+  expect(await screen.findByRole('button', { name: /Choose.*What’s this.*in Help/ })).toBeTruthy();
 });

@@ -1,11 +1,11 @@
 import { displayAgentText } from '../../agent/tool-labels';
 /*
- * Renders completed, active and pending plan stages as a connected rail. The active stage owns the
- * job's flat operation list and its reverted-operation rollup. Completed stages expose recorded
+ * Renders plan stages with their recorded operations. Active stages start open; completed stages
+ * can be reopened independently. Completed stages expose recorded
  * checkpoints when a rewind handler is available; checkpoint flags remain visible throughout the
  * run. The final active stage extends its spine beside nested operations.
  */
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { amplitude, framerMotion } from './motion';
 import { Icon } from './icons';
@@ -13,7 +13,7 @@ import { OpsList } from './OpRow';
 import type { LaneView } from './Lane';
 import type { Checkpoint } from './FlipTicket';
 import { ACTIVE, INK, INSET, PLATE, PLATE_INK, TRACK } from '../design/tokens';
-import { colors, cursors, font, UNAVAILABLE } from '../design/styles';
+import { buttonMotion, colors, cursors, font, UNAVAILABLE } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { Spinner } from '../primitives/Spinner';
 import { useT } from '../../i18n/context';
@@ -113,6 +113,8 @@ export function PlanRail({
   onRewind?: (checkpoint: Checkpoint) => void;
 }) {
   const t = useT();
+  const [expanded, setExpanded] = useState<ReadonlyMap<number, boolean>>(new Map());
+  const fallbackStage = Math.min(plan.currentIndex, plan.stages.length - 1);
   return (
     <div data-testid="plan-rail" style={{ display: 'flex', flexDirection: 'column' }}>
       {plan.stages.map((stage, i) => {
@@ -123,8 +125,11 @@ export function PlanRail({
         // hole in it, and a missing one would throw here and take the whole panel down with it. The
         // loop's own parser coerces the field, but a log restored from an older build need not have.
         const label = (stage.label ?? '').trim() === '' ? t('agent3.ticket_step_stage', { n: i + 1 }) : stage.label;
-        const nests = state === 'now' && ops.length > 0;
-        const rollup = state === 'now' ? rollupOf(ops, t) : null;
+        // Older records have no stage index; keep their work accessible on the current or final stage.
+        const stageOps = ops.filter(op => (op.stageIndex ?? fallbackStage) === i);
+        const open = expanded.get(i) ?? state === 'now';
+        const nests = open && stageOps.length > 0;
+        const rollup = rollupOf(stageOps, t);
         return (
           <div
             key={i}
@@ -149,18 +154,27 @@ export function PlanRail({
             <StageBox state={state} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div
+                <motion.button
+                  type="button"
                   data-testid="plan-stage-label"
+                  aria-expanded={stageOps.length > 0 ? open : undefined}
+                  disabled={stageOps.length === 0}
+                  onClick={() => setExpanded(values => new Map(values).set(i, !open))}
+                  {...(stageOps.length > 0 ? buttonMotion : {})}
                   style={{
                     ...roleFont(state === 'now' ? 'menu' : 'label'),
                     fontFamily: font.family,
                     color: state === 'todo' ? colors.brownText : PLATE_INK,
                     opacity: state === 'todo' ? 0.6 : 1,
                     minWidth: 0,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    border: 'none', background: 'none', padding: 0, textAlign: 'left',
+                    cursor: stageOps.length > 0 ? cursors.clickable : cursors.default,
                   }}
                 >
                   {displayAgentText(label, t)}
-                </div>
+                  {stageOps.length > 0 && <span style={{ display: 'inline-flex', flex: '0 0 auto', transform: open ? 'rotate(180deg)' : undefined }}><Icon id="pw-chevron" size={12} /></span>}
+                </motion.button>
                 {rollup !== null && (
                   <span data-testid="stage-rollup" style={ROLLUP_STYLE}>{rollup}</span>
                 )}
@@ -177,7 +191,7 @@ export function PlanRail({
               </div>
               {nests && (
                 <div style={{ margin: '4px 0 2px' }}>
-                  <OpsList ops={ops} {...(lane ? { lane } : {})} />
+                  <OpsList ops={stageOps} {...(lane && state === 'now' ? { lane } : {})} />
                 </div>
               )}
             </div>

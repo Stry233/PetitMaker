@@ -1,7 +1,7 @@
 import type { LiteHelpSurfaceId } from '../chrome/modals/help/lite-catalog';
 import type { ComponentType } from 'react';
 import type { helpProvider as webHelpProvider } from '../chrome/modals/help/edition-help';
-import { FrameOverview, FrameCut, LayersTour, NotesRowTour } from '../chrome/modals/help/figures/previews/frame-overview';
+import { FrameOverview, FrameCut, LayersTour, NotesRowTour, NotesEntryPreview } from '../chrome/modals/help/figures/previews/frame-overview';
 import { TourPreview } from '../chrome/modals/help/figures/previews/tour';
 import { AutoTrimModesPreview, ObjectShelfPreview, TerrainToolsStrip } from '../chrome/modals/help/figures/previews/strips';
 import { ContextMenuPreview, DeleteConfirmPreview } from '../chrome/modals/help/figures/previews/floating';
@@ -17,6 +17,7 @@ export const HELP_SURFACES: Record<string, ComponentType> = {
   tour: TourPreview,
   layers: LayersTour,
   'notes-row': NotesRowTour,
+  'notes-entry': NotesEntryPreview,
   'object-shelf': ObjectShelfPreview,
   'autotrim-modes': AutoTrimModesPreview,
   'context-menu': ContextMenuPreview,

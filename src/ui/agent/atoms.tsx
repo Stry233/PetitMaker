@@ -351,14 +351,16 @@ export function Stamp({ icon, children }: { icon: IconId; children: ReactNode })
  * IT NAMES THE TAIL IT LEFT VISIBLE, not just the total: "9 steps" alone beside three rows reads as
  * a claim that nine of them are drawn below. `shown` is what the caller kept.
  */
-export function CountPill({ total, shown, onClick }: { total: number; shown?: number; onClick?: () => void }) {
+export function CountPill({ total, shown, expanded, onClick }: { total: number; shown?: number; expanded?: boolean; onClick?: () => void }) {
   const t = useT();
   const partial = shown !== undefined && shown < total;
   return (
-    <button
+    <motion.button
       type="button"
       data-testid="ops-count-pill"
+      aria-expanded={expanded}
       onClick={onClick}
+      {...(onClick ? buttonMotion : {})}
       style={{
         alignSelf: 'flex-start',
         margin: '0 0 2px 6px',
@@ -373,10 +375,10 @@ export function CountPill({ total, shown, onClick }: { total: number; shown?: nu
         boxShadow: 'none',
       }}
     >
-      {partial
+      {expanded === true ? t('agent3.says_less') : partial
         ? t('agent3.steps_count_last', { n: total, shown })
         : t(total === 1 ? 'agent3.steps_count_one' : 'agent3.steps_count', { n: total })}
-    </button>
+    </motion.button>
   );
 }
 

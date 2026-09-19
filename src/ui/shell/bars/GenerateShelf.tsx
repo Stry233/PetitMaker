@@ -722,7 +722,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
     <>
       <MazeEndpoints ends={shownEnds} onMove={onEndMove} />
 
-      <div {...helpTargetAttr('generate')} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
+      <div {...helpTargetAttr(helpForKind(kind))} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
         <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
           {/* The backing, as the design draws it: a band at the bottom of the window that the
               candidates stand UP out of, and that the strip sits inside. See `units.ts:PLATE_BAND`. */}

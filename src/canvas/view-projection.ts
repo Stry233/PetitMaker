@@ -36,6 +36,9 @@ export interface ViewProjection {
   /** Object under the pointer by its RENDERED body (3D: mesh raycast — a tree's
    *  canopy selects the tree). Null falls back to footprint hit-testing. */
   pickObject?(sx: number, sy: number): string | null;
+  /** Camera-facing annotation labels use their rendered screen bounds, including a miss. */
+  pickAnnotationLabel?(sx: number, sy: number): string | null;
+  annotationLabelBox?(id: string): { x: number; y: number; w: number; h: number } | null;
   /** Screen bounds of an object's body, or its surface footprint without a body. */
   objectScreenBox?(id: string): { x: number; y: number; w: number; h: number } | null;
 }

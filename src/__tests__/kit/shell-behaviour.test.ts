@@ -123,14 +123,28 @@ describe('repeated mode and terrain tool shortcuts', () => {
   });
 
   const tools: Array<[string, DesignMode]> = [
-    ['tool.brush', 'brush'],
-    ['tool.eraser', 'eraser'],
     ['tool.rect', 'rect'],
     ['tool.circle', 'circle'],
     ['tool.line', 'line'],
     ['tool.curve', 'curve'],
-    ['tool.edgecut', 'edge-cut'],
   ];
+
+  it.each([
+    ['tool.brush', 'brush'],
+    ['tool.eraser', 'eraser'],
+    ['tool.edgecut', 'edge-cut'],
+  ] as const)('%s toggles off and on while retaining the terrain surface', (commandId, design) => {
+    const ctx = fakeCtx();
+    useEditorStore.getState().setEditMode({ mode: 'water', tool: 'none', shape: 'free' });
+    RUN[commandId]!(ctx);
+    expect(useEditorStore.getState().designMode).toBe(design);
+    RUN[commandId]!(ctx);
+    expect(useEditorStore.getState().designMode).toBe('hand');
+    expect(useEditorStore.getState().editMode.mode).toBe('water');
+    RUN[commandId]!(ctx);
+    expect(useEditorStore.getState().designMode).toBe(design);
+    expect(ctx.openBuild).not.toHaveBeenCalled();
+  });
 
   for (const [commandId, design] of tools) {
     it(`${commandId} keeps the selected terrain tool and surface on repeated presses`, () => {

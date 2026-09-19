@@ -18,6 +18,7 @@ import {
   type AnnotationsState, type AnnotationTool, type AnnotationZoneShape, type MapAnnotation, type TagId,
 } from '../../core/model/annotations';
 import type { EngineSlice } from './engine';
+import type { MacroCoord } from '../../core/model/types';
 
 const LANE_LIMIT = 60;
 
@@ -44,6 +45,7 @@ export interface AnnotationsSlice {
   annotationUndoLane: string[];
   annotationRedoLane: string[];
   setAnnotationTool: (t: AnnotationTool) => void;
+  toggleAnnotationTool: (t: Exclude<AnnotationTool, 'none'>) => void;
   setAnnotationZoneShape: (s: AnnotationZoneShape) => void;
   /** Arm a color; a standing selection takes it too, as one lane entry. */
   setAnnotationColor: (c: string) => void;
@@ -70,6 +72,8 @@ export interface AnnotationsSlice {
    *  zones are ignored; under two zones, nothing happens. */
   mergeAnnotationZones: (ids: string[]) => void;
   updateAnnotation: (id: string, patch: Partial<MapAnnotation>) => void;
+  flipMeasurements: (ids: string[]) => void;
+  setMeasurementPoints: (id: string, points: [MacroCoord, MacroCoord], beginStroke: boolean) => boolean;
   setAnnotationsVisible: (v: boolean) => void;
   setAnnotationsLocked: (v: boolean) => void;
   undoAnnotation: () => boolean;
@@ -100,10 +104,11 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     annotationRedoLane: [],
     // A zone draft outlives a switch among the zone figures and to the eraser: trimming a draft is
     // part of drawing it. Every other switch drops what was pending.
-    setAnnotationTool: (t) => set((s) => ({
+    setAnnotationTool: (t) => set((s) => s.annotationTool === t ? s : ({
       annotationTool: t, annotationSelection: [],
       annotationDraft: (t === 'zone' || t === 'erase') && s.annotationDraft?.kind === 'zone' ? s.annotationDraft : null,
     })),
+    toggleAnnotationTool: (t) => get().setAnnotationTool(get().annotationTool === t ? 'none' : t),
     setAnnotationZoneShape: (shape) => set({ annotationZoneShape: shape }),
     setAnnotationColor: (c) => {
       set({ annotationColor: c });
@@ -111,11 +116,11 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     },
     setAnnotationTag: (tag) => {
       set({ annotationTag: tag });
-      patchStanding(get, set, (n) => (n.kind === 'route' ? n : { ...n, tag }));
+      patchStanding(get, set, (n) => (n.kind === 'zone' || n.kind === 'chip' ? { ...n, tag } : n));
     },
     setAnnotationSize: (size) => {
       set({ annotationSize: size });
-      patchStanding(get, set, (n) => (n.kind === 'route' ? n : { ...n, size }));
+      patchStanding(get, set, (n) => (n.kind === 'zone' || n.kind === 'chip' ? { ...n, size } : n));
     },
     setAnnotationRouteDashed: (d) => {
       set({ annotationRouteDashed: d });
@@ -184,6 +189,29 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
         data2.items = data2.items.filter((n) => !restIds.has(n.id));
       });
       set({ annotationSelection: [head!.id] });
+    },
+    setMeasurementPoints: (id, points, beginStroke) => {
+      const d = data();
+      const note = d?.items.find(n => n.id === id);
+      if (!d || d.locked || !d.visible || note?.kind !== 'measure') return false;
+      if (points.some(p => !Number.isInteger(p.x) || !Number.isInteger(p.y))) return false;
+      if (points[0].x !== points[1].x && points[0].y !== points[1].y) return false;
+      if (points.every((p, i) => p.x === note.points[i]!.x && p.y === note.points[i]!.y)) return false;
+      if (beginStroke) get().beginAnnotationStroke();
+      get().applyAnnotationEdit(d => {
+        d.items = d.items.map(n => n.id === id ? { ...note, points } : n);
+      });
+      return true;
+    },
+    flipMeasurements: (ids) => {
+      const d = data();
+      if (!d || d.locked || !d.visible) return;
+      const selected = new Set(ids);
+      if (!d.items.some(n => n.kind === 'measure' && selected.has(n.id))) return;
+      get().beginAnnotationStroke();
+      get().applyAnnotationEdit(d => {
+        d.items = d.items.map(n => n.kind === 'measure' && selected.has(n.id) ? { ...n, flipped: !n.flipped } : n);
+      });
     },
     updateAnnotation: (id, patch) => {
       get().beginAnnotationStroke();

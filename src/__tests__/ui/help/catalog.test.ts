@@ -25,6 +25,7 @@ import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/pr
 import { STYLIZE_PROVIDERS } from '../../../io/stylize/providers';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/autosave';
 import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../agent/core/governor';
+import { NOTE_LIMITS } from '../../../core/model/notes';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -66,7 +67,7 @@ function figureKeys(fig: NonNullable<HelpPage['figure']>): string[] {
 }
 
 function keysOf(page: HelpPage): string[] {
-  const keys = [page.titleKey, page.ledeKey];
+  const keys = [page.titleKey, page.ledeKey, page.entryKey];
   if (page.navKey) keys.push(page.navKey);
   if (page.figure) keys.push(...figureKeys(page.figure));
   if (page.action) keys.push(page.action.labelKey);
@@ -197,6 +198,7 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
     const componentRead = (key: string) => key.startsWith('help.group.')
       || ['help.fig.plan_job', 'help.fig.plan_s1', 'help.fig.plan_s2', 'help.fig.plan_s3', 'help.fig.undo_job', 'help.fig.undo_job2', 'help.fig.steer_job', 'help.fig.steer_note', 'help.fig.trail_job', 'help.fig.pic_title', 'help.fig.pic_desc',
         'help.camera.fig_orbit', 'help.camera.fig_tilt', 'help.camera.fig_dolly', 'help.camera.fig_hturn', 'help.camera.fig_pan'].includes(key)
+      || key === 'help.summary_label' || key === 'help.notes.entry_layer'
       || key === 'help.qa_title' || key === 'help.see_also' || key === 'help.search_placeholder'
       || key.startsWith('help.steps.')
       || key.startsWith('help.whats_this') || key === 'help.fig.built_title';
@@ -228,6 +230,16 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
     }
     for (const provider of STYLIZE_PROVIDERS.filter(({ id }) => id !== 'custom')) {
       expect(String(facts.illustrationProviders)).toContain(translations.en[`stylize.provider_${provider.id}`]);
+    }
+  });
+
+  it('uses the shared title and description limits in every help locale', () => {
+    for (const locale of LOCALES) {
+      const facts = helpFacts(locale);
+      expect(facts.titleLimit).toBe(NOTE_LIMITS.title);
+      expect(facts.descriptionLimit).toBe(NOTE_LIMITS.description);
+      expect(HELP_TABLES[locale]['help.sharelook.header_b1']).toContain('{titleLimit}');
+      expect(HELP_TABLES[locale]['help.sharelook.header_b1']).toContain('{descriptionLimit}');
     }
   });
 });

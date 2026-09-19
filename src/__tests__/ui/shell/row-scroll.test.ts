@@ -4,7 +4,7 @@
  * survive — a browser whose real maximum offset sits short of `scrollWidth - clientWidth`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { wheelGlider } from '../../../ui/shell/bars/row-scroll';
+import { reveal, wheelGlider } from '../../../ui/shell/bars/row-scroll';
 
 let queue: FrameRequestCallback[] = [];
 let now = 0;
@@ -98,6 +98,46 @@ describe('wheelGlider', () => {
     pump(0); // dt = 0: a zero step proves nothing and must not read as a clamped edge
     expect(queue.length, 'the run continues past the empty frame').toBe(1);
     for (let i = 0; i < 200 && queue.length; i++) pump();
+    expect(row.scrollLeft).toBe(100);
+  });
+});
+
+
+describe('reveal', () => {
+  it.each([
+    [50, 20, 100, 50],
+    [120, 50, 100, 100],
+    [200, 50, 100, 150],
+    [50, 200, 100, 100],
+    [220, 200, 100, 220],
+  ])('reveals a tab at %i with width %i inside its row only', (left, width, initial, expected) => {
+    const article = document.createElement('div');
+    const row = document.createElement('div');
+    const tab = document.createElement('button');
+    article.append(row);
+    row.append(tab);
+    article.scrollTop = 650;
+    row.scrollTop = 7;
+    row.scrollLeft = initial;
+    Object.defineProperty(row, 'clientWidth', { value: 100 });
+    Object.defineProperties(tab, { offsetLeft: { value: left }, offsetWidth: { value: width } });
+    tab.scrollIntoView = vi.fn(() => { article.scrollTop = 0; });
+    reveal(tab);
+    expect(row.scrollLeft).toBe(expected);
+    expect(row.scrollTop).toBe(7);
+    expect(article.scrollTop).toBe(650);
+    expect(tab.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('leaves a visible tab and absent targets alone', () => {
+    const row = document.createElement('div');
+    const tab = document.createElement('button');
+    row.append(tab);
+    row.scrollLeft = 100;
+    Object.defineProperty(row, 'clientWidth', { value: 100 });
+    Object.defineProperties(tab, { offsetLeft: { value: 120 }, offsetWidth: { value: 30 } });
+    reveal(tab);
+    reveal(null);
     expect(row.scrollLeft).toBe(100);
   });
 });

@@ -25,7 +25,7 @@ export function LiteShareWindow() {
     available: xhsImageActionAvailable(action),
     send: (image: Blob) => deliverImage(image, action),
   }));
-  return <ModalShell open={open} onClose={close} width={980} height={848} maxVwPct={94} maxVhPct={92}
+  return <ModalShell helpTarget={{ page: 'share' }} open={open} onClose={close} width={980} height={848} maxVwPct={94} maxVhPct={92}
     cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} ariaLabel={t('share.title')}>
     <h2 style={{ ...windowTitle, margin: '0 0 10px' }}>{t('share.title')}</h2>
     {!deliveries.some(delivery => delivery.available) && <p role="status">{t('lite.preview_only')}</p>}

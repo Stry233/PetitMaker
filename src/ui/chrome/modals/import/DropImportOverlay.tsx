@@ -167,7 +167,7 @@ export function DropImportOverlay() {
   }, [setPhaseBoth]);
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-import' }}
       open={open}
       onClose={dismissConfirm}
       cardStyle={cardStyle}

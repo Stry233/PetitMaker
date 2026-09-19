@@ -2,7 +2,7 @@
   "id": "bridge-teak",
   "category": "bridge",
   "name": {
-    "en": "Teak Bridge",
+    "en": "Teak Garden Bridge",
     "zh": "庭院柚木桥",
     "ja": "チーク材の橋",
     "ru": "Тиковый мост",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "wood",
-    "wooden"
+    "wooden",
+    "Teak Bridge"
   ],
   "icon": "bridge-teak",
   "width": 2,

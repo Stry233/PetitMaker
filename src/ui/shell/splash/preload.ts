@@ -1,25 +1,16 @@
-/*
- * preload.ts — the boot splash's work: fetch every art asset the interface will need, so the
- * editor never downloads a sprite or a cursor mid-gesture.
- *
- * The list is enumerated from the same Vite globs the app resolves assets through (icon-urls for
- * the icon set; the shell art and cursor globs here mirror how frame.ts and cursor-vars import
- * theirs), so an asset added to those folders joins the preload with no second list to maintain.
- * Fonts ride the FontFace API instead of fetch: `document.fonts.load` pulls exactly the files the
- * declared families resolve to.
- *
- * A fetch that FAILS still counts as done — the splash's contract is "warm what can be warmed",
- * and one missing file must never hold the whole editor hostage. Whether the splash shows at all
- * is `shouldShowSplash`: asset URLs carry the build's content hash, so one completed pass per
- * build means the browser cache answers every later boot, and the splash would be a wait in
- * front of nothing.
- */
+/** Cold visits warm interface art and font faces before the splash hands off to the editor. */
 import { readPref, writePref } from '../../../core/runtime/prefs';
 import { activeTarget } from '../../../legal/deploy-targets';
 import { APP_VERSION, BUILD_SHA } from '../../../version';
+import { allIconUrls } from '../../../assets/icon-urls';
+import { supportsLosslessWebp } from '../../../assets/image-format';
+import { decodeIcon } from './idle-warm';
 
-/** The font families fonts.css declares; loading them resolves and caches their files. */
-const FONT_FAMILIES = ['PW Rounded Sans', 'Alibaba PuHuiTi 3'];
+/** Match the faces in fonts.css, including weights not visible in the initial frame. */
+const FONT_FACES = [
+  ...[400, 500, 700, 900].map(weight => `${weight} 16px "Alibaba PuHuiTi 3"`),
+  ...[500, 700].map(weight => `${weight} 16px "PW Rounded Sans"`),
+];
 
 const FETCH_POOL = 8;
 
@@ -59,7 +50,8 @@ async function runPreload(): Promise<boolean> {
     const { splashAssetUrls } = await import('./asset-list');
     if (controller.signal.aborted) return false;
     const urls = splashAssetUrls();
-    const fonts = typeof document !== 'undefined' && typeof (document.fonts as FontFaceSet | undefined)?.load === 'function' ? FONT_FAMILIES : [];
+    const icons = new Set(allIconUrls());
+    const fonts = typeof document !== 'undefined' && typeof (document.fonts as FontFaceSet | undefined)?.load === 'function' ? FONT_FACES : [];
     lastTotal = urls.length + fonts.length;
     lastDone = 0;
     let complete = true;
@@ -68,6 +60,10 @@ async function runPreload(): Promise<boolean> {
       lastDone++;
       for (const sub of subscribers) sub(lastDone, lastTotal);
     };
+    const fontWork = Promise.all(fonts.map(async face => {
+      try { await document.fonts.load(face); } catch { complete = false; }
+      settle();
+    }));
     let cursor = 0;
     const worker = async (): Promise<void> => {
       while (!controller.signal.aborted && cursor < urls.length) {
@@ -81,17 +77,15 @@ async function runPreload(): Promise<boolean> {
             try { while (!(await reader.read()).done) { /* drain without retaining asset bytes */ } }
             finally { reader.releaseLock(); }
           } else { await response.blob(); }
+          if (response.ok && !controller.signal.aborted && icons.has(url)) {
+            if (!await decodeIcon(url)) complete = false;
+          }
         } catch { complete = false; }
         settle();
       }
     };
-    await Promise.all(Array.from({ length: FETCH_POOL }, worker));
-    if (controller.signal.aborted) return false;
-    await Promise.all(fonts.map(async family => {
-      try { await document.fonts.load(`16px "${family}"`); } catch { complete = false; }
-      settle();
-    }));
-    return complete;
+    await Promise.all([fontWork, ...Array.from({ length: FETCH_POOL }, worker)]);
+    return complete && !controller.signal.aborted;
   };
   try { return await Promise.race([work().catch(() => false), expired]); }
   finally { clearTimeout(timeout!); subscribers.clear(); }
@@ -132,9 +126,9 @@ export async function probeWarmCache(): Promise<boolean> {
   }
 }
 
-/** The tag a completed preload records: same build → same immutable asset URLs. */
+/** A decoder change selects different immutable assets even within the same build. */
 export function splashTag(): string {
-  return `${APP_VERSION}#${BUILD_SHA}`;
+  return `${APP_VERSION}#${BUILD_SHA}#${supportsLosslessWebp ? 'webp' : 'png'}`;
 }
 
 export function shouldShowSplash(): boolean {

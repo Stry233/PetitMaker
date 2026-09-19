@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
+import { effectiveCombo, prettyCombo, useKeybinds } from '../../../../core/runtime/keybindings';
 import { useEditorStore } from '../../../../state/store';
 import { useT } from '../../../../i18n/context';
 import { ensureHelpStrings } from '../../../../i18n/locales/help';
@@ -12,7 +13,7 @@ import { ModalShell } from '../../../primitives/ModalShell';
 import { ClickCatcher } from '../../../primitives/ClickCatcher';
 import { roleFont } from '../../../design/text-weight';
 import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK, TRACK } from '../../../design/tokens';
-import { colors, cursors, exitTransition, pressable, radii, shadows, springs } from '../../../design/styles';
+import { colors, cursors, exitTransition, pressable, radii, shadows, springs, z } from '../../../design/styles';
 import { HELP_GROUPS, HELP_GROUP_TITLES, HELP_PAGES, HELP_PAGE_ORDER } from './catalog';
 import type { HelpPageId } from './page-schema';
 import { PageView } from './PageView';
@@ -37,6 +38,8 @@ function QuestionGlyph() {
 
 export function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
+  const overrides = useKeybinds(s => s.overrides);
+  const helpCombo = effectiveCombo(overrides, 'app.whats_this');
   const locale = useEditorStore((s) => s.locale);
   const helpTarget = useEditorStore((s) => s.helpTarget);
   const setHelpTarget = useEditorStore((s) => s.setHelpTarget);
@@ -104,10 +107,11 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
   })).filter((g) => g.pages.length > 0), []);
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'welcome', anchor: 'welcome-help' }}
       open={open}
       onClose={onClose}
       onEntered={onEntered}
+      backdropStyle={{ zIndex: z.helpWindow }}
       width={WIDTH}
       maxVw={96}
       maxVh={92}
@@ -168,7 +172,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
             <motion.button
               type="button"
-              title={t('help.whats_this_tip')}
+              title={`${t('help.whats_this_tip')}${helpCombo ? ` (${prettyCombo(helpCombo)})` : ''}`}
               aria-label={t('help.whats_this')}
               onClick={() => { setWhatsThis(true); onClose(); }}
               {...pressable}

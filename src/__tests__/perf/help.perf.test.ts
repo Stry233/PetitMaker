@@ -125,6 +125,7 @@ describe.runIf(PERF)('perf: help', () => {
         const page = HELP_PAGES[id];
         translateFor(locale, page.titleKey, facts); n++;
         translateFor(locale, page.ledeKey, facts); n++;
+        translateFor(locale, page.entryKey, facts); n++;
         for (const sec of page.sections) {
           if (sec.kind === 'callout') { translateFor(locale, sec.bodyKey, facts); n++; continue; }
           translateFor(locale, sec.titleKey, facts); n++;

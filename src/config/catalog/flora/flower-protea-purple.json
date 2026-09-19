@@ -2,7 +2,7 @@
   "id": "flower-protea-purple",
   "category": "flora",
   "name": {
-    "en": "Purple Protea",
+    "en": "Purple King Protea",
     "zh": "紫帝王花",
     "ja": "パープルプロテア",
     "ru": "Фиолетовая протея",
@@ -254,5 +254,8 @@
         "color": "#b7a3de"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Purple Protea"
+  ]
 }

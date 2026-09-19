@@ -6,7 +6,11 @@
  */
 import { allIconUrls } from '../../../assets/icon-urls';
 
-const shellArt = import.meta.glob('../../../assets/shell/**/*.{png,svg}', {
+const shellArt = import.meta.glob([
+  '../../../assets/shell/**/*.{png,svg}',
+  // The object shelf uses catalog icons; these are PSD reference pictures.
+  '!../../../assets/shell/shelf-object/thumb-*.png',
+], {
   eager: true,
   query: '?url',
   import: 'default',

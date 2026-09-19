@@ -14,6 +14,7 @@ export const START_PAGES: readonly HelpPage[] = [
     titleKey: 'help.welcome.title',
     navKey: 'help.welcome.nav',
     ledeKey: 'help.welcome.lede',
+    entryKey: 'help.welcome.entry',
     figure: { kind: 'demo', scene: 'welcome' },
     sections: [
       { kind: 'prose', anchor: 'welcome-start', titleKey: 'help.welcome.start_t', bodyKeys: ['help.welcome.start_b1'] },
@@ -29,7 +30,7 @@ export const START_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'welcome-resume', titleKey: 'help.welcome.resume_t', bodyKeys: ['help.welcome.resume_b1'],
         figure: { kind: 'surface', surface: 'save', captionKey: 'help.welcome.resume_cap' },
       },
-      { kind: 'prose', anchor: 'welcome-help', titleKey: 'help.welcome.help_t', bodyKeys: ['help.welcome.help_b1'] },
+      { kind: 'keys', anchor: 'welcome-help', titleKey: 'help.welcome.help_t', rows: [{ doKey: 'shortcut.whats_this', tokens: [{ kind: 'cmd', id: 'app.whats_this' }] }], afterKeys: ['help.whats_this_keys', 'help.welcome.help_b1'] },
       { kind: 'callout', bodyKey: 'help.welcome.co1' },
     ],
     qa: [
@@ -45,6 +46,7 @@ export const START_PAGES: readonly HelpPage[] = [
     group: 'start',
     titleKey: 'help.frame.title',
     ledeKey: 'help.frame.lede',
+    entryKey: 'help.frame.entry',
     figure: { kind: 'surface', surface: 'frame-overview', captionKey: 'help.frame.figcap' },
     sections: [
       {
@@ -87,13 +89,14 @@ export const START_PAGES: readonly HelpPage[] = [
     group: 'start',
     titleKey: 'help.camera.title',
     ledeKey: 'help.camera.lede',
+    entryKey: 'help.camera.entry',
     figure: { kind: 'demo', scene: 'camera' },
     sections: [
       {
         kind: 'prose', anchor: 'camera-drag', titleKey: 'help.camera.drag_t', bodyKeys: ['help.camera.drag_b1', 'help.camera.drag_b2'],
         figure: { kind: 'surface', surface: 'camera-3d', captionKey: 'help.camera.threed_figcap' },
       },
-      { kind: 'prose', anchor: 'camera-wheel', titleKey: 'help.camera.wheel_t', bodyKeys: ['help.camera.wheel_b1', 'help.camera.wheel_b2'] },
+      { kind: 'prose', anchor: 'camera-wheel', titleKey: 'help.camera.wheel_t', bodyKeys: ['help.camera.wheel_b1', 'help.camera.wheel_b2', 'help.camera.touch_b1'] },
       {
         kind: 'keys',
         anchor: 'camera-keys',
@@ -108,7 +111,7 @@ export const START_PAGES: readonly HelpPage[] = [
         afterKeys: ['help.camera.keys_b1'],
       },
       {
-        kind: 'prose', anchor: 'camera-buttons', titleKey: 'help.camera.buttons_t', bodyKeys: ['help.camera.buttons_b1', 'help.camera.buttons_b2'],
+        kind: 'prose', anchor: 'camera-buttons', titleKey: 'help.camera.buttons_t', bodyKeys: ['help.camera.buttons_b1', 'help.camera.buttons_b2', 'help.camera.support_b1'],
         figure: { kind: 'surface', surface: 'frame-rail', captionKey: 'help.camera.rail_cap' },
       },
     ],
@@ -126,6 +129,7 @@ export const START_PAGES: readonly HelpPage[] = [
     group: 'start',
     titleKey: 'help.tour.title',
     ledeKey: 'help.tour.lede',
+    entryKey: 'help.tour.entry',
     figure: { kind: 'surface', surface: 'tour', captionKey: 'help.tour.figcap' },
     action: { kind: 'replay-tour', labelKey: 'modal.settings_tour' },
     sections: [

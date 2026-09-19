@@ -2,7 +2,7 @@
   "id": "ramp-plank",
   "category": "ramp",
   "name": {
-    "en": "Plank Ramp",
+    "en": "Simple Wooden Ramp",
     "zh": "简木斜坡",
     "ja": "板のスロープ",
     "ru": "Дощатый пандус",
@@ -186,5 +186,8 @@
         "seg": 8
       }
     ]
-  }
+  },
+  "aliases": [
+    "Plank Ramp"
+  ]
 }

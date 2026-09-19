@@ -2,7 +2,7 @@
  * Renders one row per tool call with shared icon and verb metadata. Refusals show a localized result
  * and actionable rule text, omitting model-facing rule ids and hints; successful rows may show the
  * tool's first data line. Refusals with details open automatically. `OpsList` initially collapses
- * older rows beyond the newest three and is shared by flat tickets and active plan stages.
+ * older rows beyond the newest three and is shared by flat tickets and plan stages.
  */
 import { displayAgentText } from '../../agent/tool-labels';
 import { Fragment, useState, type ReactNode, type KeyboardEvent } from 'react';
@@ -297,8 +297,8 @@ export function OpsList({ ops, lane, marks }: OpsListProps) {
 
   return (
     <div data-testid="ops-list" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {overflow && !expanded && (
-        <CountPill total={ops.length} shown={TAIL} onClick={() => setExpanded(true)} />
+      {overflow && (
+        <CountPill total={ops.length} shown={TAIL} expanded={expanded} onClick={() => setExpanded(value => !value)} />
       )}
       {visible.map((op, i) => (
         <Fragment key={op.callId}>

@@ -40,7 +40,7 @@ function buildIndex(locale: Locale): Entry[] {
   return HELP_PAGE_ORDER.map((id) => {
     const page = HELP_PAGES[id];
     const heads: Entry['heads'] = [];
-    const body: string[] = [resolveAll(locale, page.ledeKey)];
+    const body: string[] = [resolveAll(locale, page.ledeKey), resolveAll(locale, page.entryKey)];
     for (const s of page.sections) {
       if (s.kind === 'callout') { body.push(resolveAll(locale, s.bodyKey)); continue; }
       // Display text stays in the reader's locale; the search blob carries the English twin too.

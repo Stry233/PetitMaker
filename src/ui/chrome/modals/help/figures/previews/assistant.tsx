@@ -253,12 +253,16 @@ export function AgentTrailPreview() {
   const job = makeJob({
     orderText: t('help.fig.trail_job'),
     orderAt: now - 90_000,
+    plan: {
+      stages: [{ label: t('help.fig.plan_s1') }, { label: t('help.fig.plan_s2') }, { label: t('help.fig.plan_s3') }],
+      currentIndex: 1, doneCount: 1, revision: 1,
+    },
     ops: [
-      fixtureOp({ callId: 'help-fig-trail-read', name: 'inspect_region', isRead: true }),
-      fixtureOp({ callId: 'help-fig-trail-saw', name: 'view_map', isRead: true, ...(shot ? { image: shot } : {}) }),
-      fixtureOp({ callId: 'help-fig-trail-write', name: 'paint_terrain', detail: { cells: 26 } }),
+      fixtureOp({ callId: 'help-fig-trail-read', name: 'inspect_region', isRead: true, stageIndex: 0 }),
+      fixtureOp({ callId: 'help-fig-trail-saw', name: 'view_map', isRead: true, stageIndex: 1, ...(shot ? { image: shot } : {}) }),
+      fixtureOp({ callId: 'help-fig-trail-write', name: 'build_road', stageIndex: 1, detail: { cells: 26 } }),
       fixtureOp({
-        callId: 'help-fig-trail-revert', name: 'place_object', status: 'revert',
+        callId: 'help-fig-trail-revert', name: 'place_object', status: 'revert', stageIndex: 1,
         summary: t('error.placement_not_flat'), detail: { reverted: true },
       }),
     ],

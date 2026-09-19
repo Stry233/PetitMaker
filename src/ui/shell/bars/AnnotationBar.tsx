@@ -1,24 +1,6 @@
-/*
- * AnnotationBar.tsx — the bottom bar the plan-notes layer gets, in the terrain bar's own grammar.
- *
- * The same row of tool cells at the same pitch, the same brush-size slider holding the line's
- * right end (live for the zone brush and the eraser, dimmed and refusing elsewhere), and per-tool
- * settings carried as chips inside the active cell's grown pill. Above the row stand the two
- * pickers a note is made of: the color swatches nearest the cells, where the road strip stands
- * on the terrain bar, and the TAG row above them. Picking either arms it for the next note and
- * applies it to the standing draft and selection.
- *
- * While a draft stands (a zone gathering strokes, a route mid-waypoints) the row ends in Done and
- * Discard, the scope screen's own pair: a zone is several strokes until the hand says it is one.
- *
- * Pressing the active cell puts it away — nothing armed is the select state, exactly as it is on
- * the map's own tools. There is no mode block for this bar: the layer panel's 标注 row and the
- * export modal's 编辑标注 door arm `mode: 'annotate'`, and Shell raises this bar off that one fact.
- */
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ReactNode } from 'react';
 import {
-  ANNOTATION_COLORS, SELECTABLE_ANNOTATION_TAGS, type AnnotationTool, type AnnotationZoneShape, type TagId,
+  ANNOTATION_COLORS, SELECTABLE_ANNOTATION_TAGS, type AnnotationTool, type TagId,
 } from '../../../core/model/annotations';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, ToolRow } from './ToolRow';
@@ -28,18 +10,19 @@ import { MOTIONS } from '../motion/registry';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { endCurveSession } from '../../../tools/paint';
-import { btnReset, cursors, pressable, UNAVAILABLE, z } from '../../design/styles';
+import { btnReset, cursors, pressable, z } from '../../design/styles';
 import { ACTIVE, PLATE, PLATE_INK, plateShapeEdge } from '../../design/tokens';
 import type { Glyph } from '../frame';
 import { EDGE_RIGHT, QUAD, SCALE, TEXT } from '../units';
 import { BarText } from './bar-atoms';
-import { BrushSizeSlider } from './BrushSizeSlider';
-import { SettingChip } from './SettingChip';
+import { BrushSizeControl } from './BrushSizeControl';
+import { ToolPill, TOOL_PILL_GAP, toolPillCentre } from './ToolPill';
+import { ShapeOptions } from './ShapeOptions';
+import { OptionPill } from './OptionPill';
 import { Action } from './ScopeScreen';
-import { SLIDER_LIFT } from './TerrainBar';
-import { ACTIVE_PLATE, ROAD_STYLE, TOOL_CELLS } from './terrain-cells';
+import { ACTIVE_PLATE, ROAD_STYLE } from './terrain-cells';
 import { useSwatchStripRow } from './RoadStyles';
-import { CELL_BOX, ToolCell } from './ToolCell';
+import { ToolOptions } from './ToolOptions';
 
 /** The glyph ink every drawn cell in this frame uses. */
 const GLYPH_INK = '#574935';
@@ -88,32 +71,18 @@ const ERASE_GLYPH = svgGlyph(
   { x: 6.7, y: 7, w: 50.5, h: 49.5, gx: 31, gy: 32, area: 1100 },
 );
 
-/** A terrain figure cell's shared drawing (line/curve/rect/circle are one drawing for every
- *  surface, which is what makes them honest here). */
-const terrainGlyph = (cellId: string): Glyph =>
-  TOOL_CELLS.find((c) => c.id === cellId)!.glyph.mountain;
+const MEASURE_GLYPH = svgGlyph(
+  `<g stroke="${GLYPH_INK}" stroke-width="4.5" stroke-linecap="round" fill="none">`
+  + '<rect x="8" y="21" width="48" height="22" rx="4"/><path d="M17 22v9m10-9v14m10-14v9m10-9v14"/></g>',
+  { x: 5.5, y: 18.5, w: 53, h: 27, gx: 32, gy: 32, area: 650 },
+);
 
-interface NoteCell {
-  tool: AnnotationTool;
-  /** Which figure this cell arms, for the zone family; absent on the other tools. */
-  shape?: AnnotationZoneShape;
-  labelKey: string;
-  glyph: Glyph;
-  /** The numbered tool command whose key arms this cell in this mode (`kit/commands.ts`). */
-  commandId: string;
-}
-
-const NOTE_CELLS: NoteCell[] = [
-  // THE TERRAIN ROW'S OWN LAYOUT: the same tool stands in the same slot wherever both modes carry
-  // it, the chip takes the trim's slot and the route the smart cell's, so the badges read 1 to 8.
-  { tool: 'zone', shape: 'free', labelKey: 'design.free_brush', glyph: PEN_GLYPH, commandId: 'tool.brush' },
+const NOTE_TOOLS: { tool: Exclude<AnnotationTool, 'none'>; labelKey: string; glyph: Glyph; commandId: string }[] = [
+  { tool: 'zone', labelKey: 'terrain.brush', glyph: PEN_GLYPH, commandId: 'tool.brush' },
   { tool: 'erase', labelKey: 'annot.erase', glyph: ERASE_GLYPH, commandId: 'tool.eraser' },
   { tool: 'chip', labelKey: 'annot.chip', glyph: CHIP_GLYPH, commandId: 'tool.edgecut' },
-  { tool: 'zone', shape: 'line', labelKey: 'design.line_brush', glyph: terrainGlyph('line'), commandId: 'tool.line' },
-  { tool: 'zone', shape: 'curve', labelKey: 'design.curve_brush', glyph: terrainGlyph('curve'), commandId: 'tool.curve' },
-  { tool: 'zone', shape: 'rect', labelKey: 'design.rect_brush', glyph: terrainGlyph('rect'), commandId: 'tool.rect' },
-  { tool: 'zone', shape: 'circle', labelKey: 'design.circle_brush', glyph: terrainGlyph('circle'), commandId: 'tool.circle' },
   { tool: 'route', labelKey: 'annot.route', glyph: ROUTE_GLYPH, commandId: 'tool.smart' },
+  { tool: 'measure', labelKey: 'annot.measure', glyph: MEASURE_GLYPH, commandId: 'tool.measure' },
 ];
 
 /** The colour tiles wear the road-surface strip's own dress (`RoadStyles`): the same plate, the
@@ -133,17 +102,15 @@ export function AnnotationBar() {
   const t = useT();
   const tool = useEditorStore((s) => s.annotationTool);
   const zoneShape = useEditorStore((s) => s.annotationZoneShape);
-  const setTool = useEditorStore((s) => s.setAnnotationTool);
+  const setTool = useEditorStore((s) => s.toggleAnnotationTool);
   const setZoneShape = useEditorStore((s) => s.setAnnotationZoneShape);
   const brushSize = useEditorStore((s) => s.brushSize);
   const setBrushSize = useEditorStore((s) => s.setBrushSize);
   const draft = useEditorStore((s) => s.annotationDraft);
   const commitDraft = useEditorStore((s) => s.commitAnnotationDraft);
   const setDraft = useEditorStore((s) => s.setAnnotationDraft);
-  // The slider sets the stamp and the band width; a rectangle and a circle are the size they are
-  // dragged out to, so it dims there — the terrain bar's own rule, refusal included.
-  const sized = tool === 'none' || tool === 'erase'
-    || (tool === 'zone' && (zoneShape === 'free' || zoneShape === 'line' || zoneShape === 'curve'));
+  const sized = tool === 'erase' || (tool === 'zone' && zoneShape !== 'rect' && zoneShape !== 'circle');
+  const activeIndex = NOTE_TOOLS.findIndex(cell => cell.tool === tool);
   // A draft with something in it can be finished; a route needs two points to be a route.
   const drafted = draft?.kind === 'zone' ? draft.cells.length > 0 : draft?.kind === 'route' ? draft.points.length >= 2 : false;
   const actionsArrive = useMotion('draft.actions.arrive');
@@ -163,105 +130,65 @@ export function AnnotationBar() {
       <div style={{ marginRight: tagClearance, transition: cssMotion('frame.layout.adapt', 'margin-right') }}><TagRow /></div>
       <div style={{ marginRight: colorClearance, transition: cssMotion('frame.layout.adapt', 'margin-right') }}><SwatchRow /></div>
       <ToolRow>
-        <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: QUAD.gap, flex: '0 0 auto', minWidth: 0 }}>
-          {NOTE_CELLS.map((cell, i) => {
-            const active = tool === cell.tool && (cell.shape === undefined || zoneShape === cell.shape);
-            return (
-              <ToolCell
-                key={cell.commandId}
-                glyph={cell.glyph}
-                label={t(cell.labelKey)}
-                commandId={cell.commandId}
-                active={active}
-                centre={QUAD.left + i * (CELL_BOX.w + QUAD.gap) + CELL_BOX.w / 2}
-                onSelect={() => {
-                  if (active) { setTool('none'); return; }
-                  if (cell.shape) setZoneShape(cell.shape);
-                  setTool(cell.tool);
-                }}
-                {...(active ? carriedBy(cell.tool) : {})}
-              />
-            );
-          })}
-          <AnimatePresence>
-            {drafted ? (
-              <motion.span
-                key="draft-actions"
-                initial={{ opacity: 0, y: MOTIONS['draft.actions.arrive'].amplitude, scale: 0.92 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: MOTIONS['draft.actions.arrive'].amplitude, scale: 0.92 }}
-                transition={actionsArrive}
-                style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}
-              >
-                <Action label={t('annot.discard')} onPress={() => { endCurveSession(); setDraft(null); }} />
-                <Action label={t('annot.done')} primary onPress={() => { commitDraft(); }} />
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: TOOL_PILL_GAP, flex: 'none' }}>
+          {NOTE_TOOLS.map((cell, i) => <ToolPill key={cell.tool} glyph={cell.glyph} label={t(cell.labelKey)}
+            helpTarget={{ page: 'notes', anchor: `notes-${cell.tool === 'erase' ? 'edit' : cell.tool}` }} commandId={cell.commandId} active={tool === cell.tool} centre={toolPillCentre(i, activeIndex)}
+            onSelect={() => setTool(cell.tool)} />)}
         </div>
-        <div
-          style={{
-            flex: 'none', marginLeft: 'auto', marginTop: SLIDER_LIFT,
-            display: 'flex', alignItems: 'center', gap: 14,
-            opacity: sized ? 1 : UNAVAILABLE,
-          }}
-        >
-          <BrushSizeSlider value={brushSize} onChange={setBrushSize} disabled={!sized} />
-        </div>
+        <ToolOptions mode={tool === 'zone' || tool === 'chip' || tool === 'route' ? tool : null}>
+          {tool === 'zone' && <ShapeOptions value={zoneShape} onChange={setZoneShape}/>}
+          {(tool === 'zone' || tool === 'chip') && <SizeOptions/>}
+          {tool === 'route' && <RouteOptions/>}
+        </ToolOptions>
+        <AnimatePresence initial={false}>
+          {drafted ? (
+            <motion.span
+              key="draft-actions"
+              initial={{ opacity: 0, y: MOTIONS['draft.actions.arrive'].amplitude, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: MOTIONS['draft.actions.arrive'].amplitude, scale: 0.92 }}
+              transition={actionsArrive}
+              style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}
+            >
+              <Action label={t('annot.discard')} onPress={() => { endCurveSession(); setDraft(null); }} />
+              <Action label={t('annot.done')} primary onPress={() => { commitDraft(); }} />
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
+        <AnimatePresence initial={false}>
+          {sized && <BrushSizeControl key="size" value={brushSize} onChange={setBrushSize}/>}
+        </AnimatePresence>
       </ToolRow>
     </div>
   );
 }
 
-/** The setting the active cell's pill carries, per tool — the auto-trim idiom. */
-function carriedBy(tool: AnnotationTool): { carries?: ReactNode } {
-  if (tool === 'zone' || tool === 'chip') return { carries: <SizeChip /> };
-  if (tool === 'route') return { carries: <RouteDashChip /> };
-  return {};
-}
-
-const SIZE_NEXT = { s: 'm', m: 'l', l: 's' } as const;
 const SIZE_KEY = { s: 'annot.size_s', m: 'annot.size_m', l: 'annot.size_l' } as const;
 const SIZE_GLYPH = { s: 8, m: 11, l: 14 } as const;
+const SIZES = ['s', 'm', 'l'] as const;
 
-function SizeChip() {
+function SizeOptions() {
   const t = useT();
-  const size = useEditorStore((s) => s.annotationSize);
-  const set = useEditorStore((s) => s.setAnnotationSize);
-  return (
-    <SettingChip
-      state={size}
-      name={t(SIZE_KEY[size])}
-      label={t('annot.size')}
-      on
-      glyph={(px, color) => (
-        <svg width={px} height={px} viewBox="0 0 24 24">
-          <text x="12" y="17" textAnchor="middle" fontSize={SIZE_GLYPH[size] + 6} fontWeight="800" fill={color} fontFamily="inherit">T</text>
-        </svg>
-      )}
-      onCycle={() => set(SIZE_NEXT[size])}
-    />
-  );
+  const size = useEditorStore(s => s.annotationSize);
+  const set = useEditorStore(s => s.setAnnotationSize);
+  return <OptionPill value={size} label={t('annot.size')} commandId="tool.auto_trim" onChange={set} options={SIZES.map(value => ({
+    value, label: t(SIZE_KEY[value]), glyph: <svg width={51 * SCALE} height={51 * SCALE} viewBox="0 0 24 24" aria-hidden>
+      <text x="12" y="17" textAnchor="middle" fontSize={SIZE_GLYPH[value] + 6} fontWeight="800" fill="currentColor" fontFamily="inherit">T</text>
+    </svg>,
+  }))}/>;
 }
 
-function RouteDashChip() {
+function RouteOptions() {
   const t = useT();
-  const dashed = useEditorStore((s) => s.annotationRouteDashed);
-  const set = useEditorStore((s) => s.setAnnotationRouteDashed);
-  return (
-    <SettingChip
-      state={dashed ? 'dashed' : 'solid'}
-      name={t(dashed ? 'annot.line_dashed' : 'annot.line_solid')}
-      label={t('annot.line_style')}
-      on
-      glyph={(size, color) => (
-        <svg width={size} height={size} viewBox="0 0 24 24">
-          <path d="M3 17C8 17 8 7 13 7c3.5 0 4.5 3 8 3.6" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeDasharray={dashed ? '4 3.4' : undefined} />
-        </svg>
-      )}
-      onCycle={() => set(!dashed)}
-    />
-  );
+  const dashed = useEditorStore(s => s.annotationRouteDashed);
+  const set = useEditorStore(s => s.setAnnotationRouteDashed);
+  return <OptionPill value={dashed ? 'dashed' : 'solid'} label={t('annot.line_style')} commandId="tool.auto_trim"
+    onChange={value => set(value === 'dashed')} options={(['solid', 'dashed'] as const).map(value => ({
+      value, label: t(value === 'dashed' ? 'annot.line_dashed' : 'annot.line_solid'),
+      glyph: <svg width={51 * SCALE} height={51 * SCALE} viewBox="0 0 24 24" aria-hidden>
+        <path d="M3 17C8 17 8 7 13 7c3.5 0 4.5 3 8 3.6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeDasharray={value === 'dashed' ? '4 3.4' : undefined}/>
+      </svg>,
+    }))}/>;
 }
 
 /** The tag pills: the label on a low plate, the armed one on the grown yellow plate. */

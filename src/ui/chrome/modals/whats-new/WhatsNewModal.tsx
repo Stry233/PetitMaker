@@ -37,7 +37,7 @@ export function WhatsNewModal() {
   const fullChangelog = () => { close(); setAboutTarget('changelog'); setModal('about', true); };
 
   return (
-    <ModalShell open={open} onClose={close} width={CARD_W} maxVwPct={92} maxVh={86} ariaLabel={title} cardStyle={card}>
+    <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-reset' }} open={open} onClose={close} width={CARD_W} maxVwPct={92} maxVh={86} ariaLabel={title} cardStyle={card}>
       <div style={modalTitle}>{title}</div>
       <div style={body} data-testid="whats-new-notes">
         {notes.map((n) => (

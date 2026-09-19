@@ -125,10 +125,11 @@ const noop = () => {};
 
 /** The real shell, pictured: window-sized inside its own containing block, zoomed to fit. The pose
  *  holds a mode armed so the selected icon's name and its bottom toolbar are in the picture. */
-export function PicturedShell({ win, zoom, layerPanel, notesRow, children }: {
+export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountain', children }: {
   win: { w: number; h: number };
   zoom: number;
   layerPanel?: UiPreviewPose['layerPanel'];
+  mode?: UiPreviewPose['mode'];
   notesRow?: UiPreviewPose['notesRow'];
   children?: ReactNode;
 }) {
@@ -136,8 +137,8 @@ export function PicturedShell({ win, zoom, layerPanel, notesRow, children }: {
   // One pose object per distinct state, so the pictured subtree re-renders only when a posed
   // fact changes.
   const pose = useMemo<UiPreviewPose>(
-    () => ({ viewport: win, mode: 'mountain', layerPanel, ...(notesRow ? { notesRow } : {}) }),
-    [win, layerPanel, notesRow?.visible, notesRow?.locked],
+    () => ({ viewport: win, mode, layerPanel, ...(notesRow ? { notesRow } : {}) }),
+    [win, mode, layerPanel, notesRow?.visible, notesRow?.locked],
   );
   return (
     <div style={{ position: 'relative', width: win.w, height: win.h, overflow: 'hidden', contain: 'paint', zoom }}>
@@ -234,12 +235,13 @@ export function FrameOverview() {
  *  state is not showing (the bottom bar with no mode armed) falls back to the given stand-in.
  *  The shell mounts only once the figure nears the viewport: a page holds several of these, and
  *  mounting them all with the page is seconds of work the reader has not scrolled to yet. */
-export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?: ReactNode }) {
+export function FrameCut({ corner, fallback, layerPanel, mode, targets, highlight }: { corner: FrameCorner; fallback?: ReactNode; layerPanel?: UiPreviewPose['layerPanel']; mode?: UiPreviewPose['mode']; targets?: readonly string[]; highlight?: readonly string[] }) {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
   const near = useInView(holdRef);
   const rootRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Box | null>(null);
+  const [focus, setFocus] = useState<Box | null>(null);
   const [settled, setSettled] = useState(false);
 
   const scale = box ? Math.min(620 / box.w, 340 / box.h, 1.25) : 0.4;
@@ -247,11 +249,14 @@ export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?:
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !near) return undefined;
-    const read = () => setBox(measure(root, corner, win.w));
+    const read = () => {
+      setBox(targets ? measureBox(root, targets, win.w, 20) : measure(root, corner, win.w));
+      if (highlight) setFocus(measureBox(root, highlight, win.w, 4));
+    };
     const timer = setTimeout(read, 120);
     const settle = setTimeout(() => { read(); setSettled(true); }, 900);
     return () => { clearTimeout(timer); clearTimeout(settle); };
-  }, [corner, near]);
+  }, [corner, near, layerPanel, mode, targets, highlight]);
   if (settled && !box && fallback) return <>{fallback}</>;
 
   const view = box
@@ -266,13 +271,14 @@ export function FrameCut({ corner, fallback }: { corner: FrameCorner; fallback?:
   };
   return (
     <div ref={holdRef} aria-hidden {...INERT} style={style}>
+      {box && focus && <span aria-hidden style={{ position: 'absolute', left: (focus.x - box.x) * scale, top: (focus.y - box.y) * scale, width: focus.w * scale, height: focus.h * scale, border: `3px solid ${FOCUS_RING}`, borderRadius: radii.md, zIndex: z.unmissable, pointerEvents: 'none', boxSizing: 'border-box' }}/> }
       {near && (
         <div style={{ zoom: scale }}>
           <div style={{ marginLeft: -view.dx, marginTop: -view.dy }}>
             {/* The measure root's width must BE the pictured window's, whatever the wrappers lay
                 out at: the screen-to-shell ratio is read off this box. */}
             <div ref={rootRef} style={{ width: win.w }}>
-              <PicturedShell win={win} zoom={1} />
+              <PicturedShell win={win} zoom={1} layerPanel={layerPanel} mode={mode} />
             </div>
           </div>
         </div>
@@ -571,4 +577,22 @@ export function LayersTour() {
       )}
     </div>
   );
+}
+
+
+const NOTES_ENTRY_HIGHLIGHT = ['[data-testid="shell-layer-annotation"]'];
+const NOTES_ENTRY_TARGETS = NOTES_ENTRY_HIGHLIGHT;
+
+/** The entry row and resulting toolbar are cropped from the editor's own shell. */
+export function NotesEntryPreview() {
+  const t = useT();
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 18, alignItems: 'center', width: '100%' }}>
+    <div style={{ textAlign: 'center' }}>
+      <FrameCut corner="rail" layerPanel="column" targets={NOTES_ENTRY_TARGETS} highlight={NOTES_ENTRY_HIGHLIGHT}/>
+      <p style={figureCaption({ role: 'note', padding: '3px 8px' })}>{t('help.notes.entry_layer')}</p>
+    </div>
+    <div style={{ textAlign: 'center' }}>
+      <FrameCut corner="bar" mode="annotate"/>
+    </div>
+  </div>;
 }

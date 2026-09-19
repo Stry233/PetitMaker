@@ -16,6 +16,7 @@ import { useT } from '../../i18n/context';
 import { helpTargetAttr } from '../chrome/modals/help/targets';
 import { PLATE, PLATE_INK } from '../design/tokens';
 import { radii } from '../design/styles';
+import { useFollowNewest } from './use-follow-newest';
 import { AnswerPaper, isAnswerJob } from './AnswerPaper';
 import { IconButton, PIN_KNOB, PIN_KNOB_OUT, PinKnob, Pill, RESUME_PRIMARY } from './atoms';
 import { Banner, type BannerActionId, type BannerClass } from './Banner';
@@ -109,47 +110,6 @@ const HELD: ReadonlySet<SessionPhase> = new Set<SessionPhase>([
 
 /** Phases with landed pause controls. */
 const ON_HOLD: ReadonlySet<SessionPhase> = new Set<SessionPhase>(['paused']);
-
-/** Distance from the foot that still counts as following new content, in pixels. */
-const FOLLOW_SLACK = 48;
-
-/**
- * Follows new record content while the reader remains near the foot. Height changes preserve that
- * position, while scrolling within an unchanged box transfers control to the reader.
- */
-function useFollowNewest(
-  ref: RefObject<HTMLDivElement | null>, key: unknown, epoch: string, active: boolean,
-): void {
-  const stuck = useRef(true);
-  /** The zone's height at the last reading, so a reshape can be told from a scroll. */
-  const boxHeight = useRef(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !active) return undefined;
-    const toFoot = () => {
-      boxHeight.current = el.clientHeight;
-      if (stuck.current) el.scrollTop = el.scrollHeight;
-    };
-    const onScroll = () => {
-      if (el.clientHeight !== boxHeight.current) { toFoot(); return; }
-      stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    boxHeight.current = el.clientHeight;
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(toFoot) : null;
-    observer?.observe(el);
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      observer?.disconnect();
-    };
-  }, [ref, active]);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !active || !stuck.current) return;
-    el.scrollTop = el.scrollHeight;
-    boxHeight.current = el.clientHeight;
-  }, [ref, key, epoch, active]);
-}
 
 /**
  * Animates committed CSS heights without transforming the fixed character's containing block.
@@ -915,7 +875,7 @@ export function PanelShell({
       <motion.section
         ref={rootRef}
         data-testid="panel-shell"
-        {...helpTargetAttr('agent-run')}
+        {...helpTargetAttr(showSetup || managing ? 'agent-setup' : showWelcome ? 'agent-intro' : marking ? 'agent-region' : opened ? 'agent-trail' : showTrouble ? 'agent-trouble' : 'agent-run')}
         variants={plateVariants}
         // Framer transitions are not inherited, so the plate repeats the holder's timing choice.
         transition={pinned || away === 'folded'

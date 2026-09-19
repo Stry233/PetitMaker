@@ -1,3 +1,4 @@
+import { helpAttributes, type HelpTarget } from './help-target';
 import { IS_LITE } from '../../core/runtime/edition';
 import type { CSSProperties, ReactNode } from 'react';
 import { createContext, useContext, useEffect, useRef, useLayoutEffect, useState } from 'react';
@@ -57,6 +58,7 @@ export type ModalShellChildren = ReactNode | ((exiting: boolean) => ReactNode);
 export const SIZE_MORPH_TWEEN: Transition = { type: 'tween', ease: [0.2, 0, 0, 1], duration: 0.3 };
 
 export interface ModalShellProps {
+  helpTarget?: HelpTarget;
   open: boolean;
   onClose: () => void;
   /** Starts optional content work once the card's entrance has settled. */
@@ -161,7 +163,7 @@ const sentinelStyle: CSSProperties = {
   border: 0,
 };
 
-export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
+export function ModalShell({ helpTarget, open, onClose, onEntered, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
   const preview = useContext(ModalPreviewContext);
   const passive = passiveProp || preview;
   useOverlayLock(open && lockOverlay && !preview); // suppress map keyboard shortcuts while the modal is foregrounded (see `lockOverlay`)
@@ -335,10 +337,11 @@ export function ModalShell({ open, onClose, onEntered, width, height, maxVwPct, 
   return (
     <AnimatePresence>
       {open && (
-        <motion.div style={{ ...cozyOverlay, ...previewBackdrop, ...backdropStyle }} onClick={onClose} {...overlayMotion}>
+        <motion.div {...helpAttributes(helpTarget)} style={{ ...cozyOverlay, ...previewBackdrop, ...backdropStyle }} onClick={onClose} {...overlayMotion}>
           <motion.div
             ref={cardRef}
             style={card}
+            {...helpAttributes(helpTarget)}
             role="dialog"
             aria-modal="true"
             aria-label={ariaLabel}

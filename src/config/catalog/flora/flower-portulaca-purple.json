@@ -2,7 +2,7 @@
   "id": "flower-portulaca-purple",
   "category": "flora",
   "name": {
-    "en": "Purple Portulaca",
+    "en": "Purple Moss Rose",
     "zh": "紫大花马齿苋",
     "ja": "ムラサキマツバボタン",
     "ru": "Фиолетовый портулак",
@@ -13,7 +13,8 @@
   "aliases": [
     "太阳花",
     "moss rose",
-    "sun plant"
+    "sun plant",
+    "Purple Portulaca"
   ],
   "icon": "flower-portulaca-purple",
   "iconColor": "#cc6fa1",

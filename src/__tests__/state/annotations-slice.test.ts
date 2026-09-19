@@ -19,6 +19,24 @@ describe('annotation slice', () => {
     useEditorStore.getState().initMap(makeTemplate(10, 10), createDefaultRegistry());
   });
 
+  it('flips selected measurements together as one reversible edit and respects the layer lock', () => {
+    const s = () => useEditorStore.getState();
+    for (const id of ['a', 'b']) s().addAnnotation({ kind: 'measure', id, points: [{ x: 1, y: 1 }, { x: 8, y: 1 }], color: '#FFB347' });
+    const original = JSON.stringify(s().gridState!.annotations!.items);
+    const before = s().annotationUndoLane.length;
+    s().flipMeasurements(['a', 'b']);
+    expect(s().annotationUndoLane).toHaveLength(before + 1);
+    for (const note of s().gridState!.annotations!.items) expect(note).toMatchObject({ flipped: true });
+    s().undoAnnotation(); expect(JSON.stringify(s().gridState!.annotations!.items)).toBe(original);
+    s().redoAnnotation();
+    s().setAnnotationsLocked(true);
+    s().flipMeasurements(['a']);
+    expect(s().annotationUndoLane).toHaveLength(before + 1);
+    expect(s().gridState!.annotations!.items[0]).toMatchObject({ flipped: true });
+    s().setAnnotationsLocked(false); s().flipMeasurements(['a']);
+    expect(s().gridState!.annotations!.items[0]).toMatchObject({ flipped: false });
+  });
+
   it('add, update and remove mutate the grid data and bump the epoch', () => {
     const s = () => useEditorStore.getState();
     const before = s().annotationsEpoch;

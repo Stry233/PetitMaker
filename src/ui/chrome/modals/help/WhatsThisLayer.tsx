@@ -1,24 +1,6 @@
 import { clientPoint, toClientPoint, viewportSize } from '../../../../core/runtime/viewport-space';
-/*
- * WhatsThisLayer.tsx — the "what's this?" pick mode: a question cursor over the whole app, a ring
- * and a name tag over whatever marked part the pointer rests on, and the next click opens that
- * part's help page instead of acting on it.
- *
- * The layer is a full-window surface that TAKES the pointer (a pick mode is a mode; letting the
- * press through would run the control it was asking about), and reads what stands under the
- * pointer with `elementsFromPoint`, walking up to the nearest `[data-help]`. A click on the bare
- * map answers with the page for what the hand currently holds (`pageForEditState`). Escape puts
- * the mode away and reopens nothing.
- *
- * The layer stands OUTSIDE any chrome-zoomed root (no `zoom`), since the ring and tag are placed
- * from live `getBoundingClientRect()` values already in real screen px — so its text takes
- * `weightVars` at zoom 1 rather than the chrome scale, and every text-bearing element still names
- * `font.family` itself (a `<button>` does not inherit font-family from an ancestor by default).
- *
- * Motion: the banner and the whole layer enter/exit together (one fade), the ring/tag fade in when
- * a target is first found and glide (Framer `layout`) between targets rather than jumping, and both
- * clear on exit via `pointerEvents: 'none'` so a fading-out layer can't steal the click meant for
- * whatever it was covering.
+/** The full-window picker consumes control clicks and resolves the foreground help target.
+ * Hit testing uses physical pixels; outlines use logical editor coordinates for zoom and rotation.
  */
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
@@ -32,7 +14,9 @@ import { buttonMotion, cursors, exitTransition, font, springs, z } from '../../.
 import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { HELP_PAGES } from './catalog';
 import type { HelpPageId } from './page-schema';
-import { HELP_ATTR, openHelp, pageForEditState } from './targets';
+import { openHelp, pageForEditState, helpTargetAt } from './targets';
+import { inheritedHelpTarget } from '../../../primitives/help-target';
+import { useOverlayLock } from '../../../hooks/useOverlayLock';
 import { visualRect, type VisualRect } from '../../../design/visual-rect';
 
 // The chunk's words arrive with the chunk: registering at module scope means no surface in
@@ -42,24 +26,19 @@ ensureHelpStrings();
 interface Hover {
   rect: VisualRect;
   page: HelpPageId;
+  anchor?: string;
 }
 
-function targetAt(x: number, y: number, layer: HTMLElement): { page: HelpPageId; el: Element } | null {
+function targetAt(x: number, y: number, layer: HTMLElement) {
   const point = toClientPoint(x, y);
-  for (const el of document.elementsFromPoint(point.x, point.y)) {
-    if (el === layer || layer.contains(el)) continue;
-    const marked = (el as HTMLElement).closest?.(`[${HELP_ATTR}]`);
-    if (marked) {
-      const page = marked.getAttribute(HELP_ATTR) as HelpPageId;
-      if (HELP_PAGES[page]) return { page, el: marked };
-    }
-  }
-  return null;
+  const hit = helpTargetAt(point.x, point.y, layer);
+  return hit && HELP_PAGES[hit.page as HelpPageId] ? { ...hit, page: hit.page as HelpPageId } : null;
 }
 
 export function WhatsThisLayer() {
   const t = useT();
   const on = useEditorStore((s) => s.whatsThis);
+  useOverlayLock(on);
   const setWhatsThis = useEditorStore((s) => s.setWhatsThis);
   const [hover, setHover] = useState<Hover | null>(null);
   /** The pointer is working the top edge, where the banner hangs: the banner steps aside so the
@@ -71,19 +50,39 @@ export function WhatsThisLayer() {
   const dense = useDenseScript();
 
   useEffect(() => {
-    if (!on) { setHover(null); return undefined; }
+    if (!on) { setHover(null); setNearBanner(false); return undefined; }
     // Found by data-attribute rather than a JSX ref: this div is an AnimatePresence direct child,
     // and framer-motion reads `children.props.ref` off every one of those, which React 18 warns on.
     const layer = document.querySelector<HTMLDivElement>('[data-testid="whats-this-layer"]');
     layerRef.current = layer;
     const restore = layer ? pushCursorSurface(layer, 'help') : null;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); setWhatsThis(false); }
+    const onFocus = () => {
+      const element = document.activeElement;
+      const target = inheritedHelpTarget(element);
+      setHover(target && element && HELP_PAGES[target.page as HelpPageId] ? { rect: visualRect(element), page: target.page as HelpPageId, anchor: target.anchor } : null);
     };
-    window.addEventListener('keydown', onKey, true);
+    const onWheel = (event: WheelEvent) => {
+      if (!layer) return;
+      event.preventDefault();
+      const front = document.elementsFromPoint(event.clientX, event.clientY).find(el => el !== layer && !layer.contains(el));
+      for (let el = front; el instanceof HTMLElement; el = el.parentElement ?? undefined) {
+        const style = getComputedStyle(el);
+        const vertical = /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight;
+        const horizontal = /(auto|scroll)/.test(style.overflowX) && el.scrollWidth > el.clientWidth;
+        if ((vertical && event.deltaY) || (horizontal && event.deltaX)) {
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientHeight : 1;
+          if (vertical) el.scrollTop += event.deltaY * unit;
+          if (horizontal) el.scrollLeft += event.deltaX * unit;
+          setHover(null); break;
+        }
+      }
+    };
+    document.addEventListener('focusin', onFocus);
+    layer?.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       restore?.();
-      window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('focusin', onFocus);
+      layer?.removeEventListener('wheel', onWheel);
     };
   }, [on, setWhatsThis]);
 
@@ -93,14 +92,17 @@ export function WhatsThisLayer() {
     setNearBanner(clientPoint(e).y < 84);
     const hit = targetAt(clientPoint(e).x, clientPoint(e).y, layer);
     if (!hit) { setHover(null); return; }
-    setHover({ rect: visualRect(hit.el), page: hit.page });
+    setHover({ rect: visualRect(hit.el), page: hit.page, anchor: hit.anchor });
   };
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const layer = layerRef.current;
     if (!layer) return;
     const hit = targetAt(clientPoint(e).x, clientPoint(e).y, layer);
-    if (hit) { openHelp(hit.page); return; }
+    if (hit) { openHelp(hit.page, hit.anchor); return; }
+    const point = toClientPoint(clientPoint(e).x, clientPoint(e).y);
+    const front = document.elementsFromPoint(point.x, point.y).find(el => el !== layer && !layer.contains(el));
+    if (!front || !front.closest('canvas')) return;
     const edit = useEditorStore.getState().editMode;
     openHelp(pageForEditState({ mode: edit.mode, tool: edit.tool }));
   };
@@ -118,7 +120,7 @@ export function WhatsThisLayer() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, pointerEvents: 'none', transition: exitTransition }}
           transition={springs.stiff}
-          style={{ position: 'fixed', inset: 0, zIndex: z.tour, cursor: cursors.help, ...weightVars(1, dpr, dense) }}
+          style={{ position: 'fixed', inset: 0, zIndex: z.helpPicker, cursor: cursors.help, ...weightVars(1, dpr, dense) }}
         >
           <AnimatePresence>
             {hover && (

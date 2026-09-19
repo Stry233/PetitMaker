@@ -37,10 +37,9 @@ describe('command registry', () => {
  * forgotten `RUN` entry compiles clean and the command simply does nothing when pressed — which is
  * why the checks above (built from `COMMANDS`) can't catch it. These check `RUN` itself instead.
  */
-// UI zoom is registered only to be SHOWN and PROTECTED (see keybindings.ts) — its own always-live
-// window listener (canvas/interaction/use-view-shortcuts.ts:useUiZoomShortcut) drives it directly,
-// so it never runs through the discrete engine and carries no RUN body.
-const NO_RUN_IDS = new Set(['app.ui_zoom_in', 'app.ui_zoom_out']);
+// UI zoom and context help use always-live listeners so they remain available inside dialogs.
+// useUiZoomShortcut and useContextHelp own these bindings outside the discrete command engine.
+const NO_RUN_IDS = new Set(['app.ui_zoom_in', 'app.ui_zoom_out', 'app.whats_this']);
 
 describe('COMMAND_META <-> RUN bijection', () => {
   it('every non-continuous command has a RUN body', () => {
@@ -64,9 +63,11 @@ describe('the numbered tool keys inside annotate mode', () => {
   beforeEach(() => {
     s().setEditMode({ mode: 'annotate' });
     s().setAnnotationTool('none');
+    s().setAnnotationZoneShape('free');
   });
 
   it('arms the matching annotation tool, keeping each key its cross-mode meaning', () => {
+    RUN['tool.brush']!(ctx);
     RUN['tool.line']!(ctx);
     expect(s().annotationTool).toBe('zone');
     expect(s().annotationZoneShape).toBe('line');
@@ -81,7 +82,6 @@ describe('the numbered tool keys inside annotate mode', () => {
     expect(s().annotationTool).toBe('chip');
     RUN['tool.smart']!(ctx);
     expect(s().annotationTool).toBe('route');
-    // Pressing the active one puts the tool away, the terrain rows' own toggle.
     RUN['tool.smart']!(ctx);
     expect(s().annotationTool).toBe('none');
   });
@@ -97,16 +97,19 @@ describe('the numbered tool keys inside annotate mode', () => {
     expect(s().annotationSelection).toEqual(['t1', 't2']);
   });
 
-  it('the toggle answers the shaped cells on tool AND shape together', () => {
+  it('puts Brush down and restores its selected shape', () => {
     RUN['tool.brush']!(ctx);
     expect(s().annotationTool).toBe('zone');
     expect(s().annotationZoneShape).toBe('free');
-    // The same key again puts it away; a DIFFERENT shape re-arms rather than toggling.
     RUN['tool.brush']!(ctx);
     expect(s().annotationTool).toBe('none');
+    RUN['tool.brush']!(ctx);
     RUN['tool.rect']!(ctx);
     RUN['tool.circle']!(ctx);
     expect(s().annotationTool).toBe('zone');
+    expect(s().annotationZoneShape).toBe('circle');
+    RUN['tool.eraser']!(ctx);
+    RUN['tool.brush']!(ctx);
     expect(s().annotationZoneShape).toBe('circle');
   });
 });

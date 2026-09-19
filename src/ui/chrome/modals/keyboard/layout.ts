@@ -6,7 +6,6 @@
  * pure helpers, so the board's geometry and combo mapping are unit-testable without the DOM.
  */
 import { normalizeCombo, type CommandCategory } from '../../../../core/runtime/keybindings';
-import { eventKeyToken } from '../../../../core/runtime/key-token';
 
 /** A modifier layer: any combination of the three chord modifiers (base = all false). */
 export interface Layer { ctrl: boolean; alt: boolean; shift: boolean }
@@ -177,15 +176,5 @@ export const CATEGORY_ORDER: CommandCategory[] = [
 /** Build a normalized combo string from a KeyboardEvent (for chord recording). Returns null for a
  *  bare modifier press. Numpad keys resolve to their own tokens via the shared `eventKeyToken`, so
  *  recording matches what the engine will dispatch. */
-export function comboFromEvent(e: KeyboardEvent): string | null {
-  const k = e.key;
-  if (k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return null;
-  const char = eventKeyToken(e); // 'escape', 'backspace', 'num5', 'b', 'space', …
-  const parts: string[] = [];
-  if (e.ctrlKey || e.metaKey) parts.push('ctrl');
-  if (e.altKey) parts.push('alt');
-  if (e.shiftKey) parts.push('shift');
-  parts.push(char);
-  return normalizeCombo(parts.join('+'));
-}
+export { comboFromEvent } from '../../../../core/runtime/keybindings';
 

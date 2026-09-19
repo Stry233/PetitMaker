@@ -1,3 +1,4 @@
+import { helpAttributes, inheritedHelpTarget } from './help-target';
 import { viewportSize } from '../../core/runtime/viewport-space';
 /**
  * Shared single-choice dropdown. The open card portals to `body` so ancestor zoom and stacking
@@ -109,6 +110,7 @@ export function FloatMenu({
       // rows a `body` brings carry a second control of their own (that is what `body` is
       // for), so calling it a menu would promise every child is a menuitem and leave a
       // screen reader announcing an empty one. A labelled GROUP is what it is.
+      {...helpAttributes(inheritedHelpTarget(rowRef.current))}
       role={body ? 'group' : 'menu'}
       aria-label={ariaLabel}
       initial={{ opacity: 0, scale: 0.94 }}

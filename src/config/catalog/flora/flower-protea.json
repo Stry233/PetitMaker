@@ -2,7 +2,7 @@
   "id": "flower-protea",
   "category": "flora",
   "name": {
-    "en": "White Protea",
+    "en": "White King Protea",
     "zh": "白帝王花",
     "ja": "ホワイトプロテア",
     "ru": "Белая протея",
@@ -254,5 +254,8 @@
         "color": "#cfdcca"
       }
     ]
-  }
+  },
+  "aliases": [
+    "White Protea"
+  ]
 }

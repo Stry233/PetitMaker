@@ -2,7 +2,7 @@
   "id": "flower-canna-gold",
   "category": "flora",
   "name": {
-    "en": "Gold Canna",
+    "en": "Golden Canna",
     "zh": "金美人蕉",
     "ja": "ゴールドカンナ",
     "ru": "Золотая канна",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "橙",
-    "orange"
+    "orange",
+    "Gold Canna"
   ],
   "icon": "flower-canna-gold",
   "iconColor": "#e86f3c",

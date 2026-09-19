@@ -4,6 +4,36 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.18] - 2026-09-19
+
+### Added
+
+- Notes includes a Measure tool on shortcut 5 that counts cells between two endpoints, including both end cells. Measurements snap horizontally or vertically, lie on the map in 3D, and let you drag either endpoint to resize or flip the number to the other side, while note regions show their width and height as you draw or select them.
+
+### Changed
+
+- Help now starts each page with a short summary and where to find the feature. Instructions and answers stay visible, Notes includes a visual entry guide, and What’s this? now explains controls inside panels and dialogs with a customizable Shift+H shortcut shown after the tour.
+
+- Number shortcuts now follow each toolbar’s order, with Brush shape on 5 in terrain editing and 6 in Notes, and Q cycling the final options group. Keyboard Shortcuts shows the assignments for each toolbar.
+
+- PetitMaker now uses less data on first load and prepares icons and fonts before the loading screen closes.
+
+- The Notes toolbar now uses the same grouped controls as terrain editing, with selection outlines and click targets that follow tags in 3D. You can choose brush shapes, font sizes and route styles directly, and put down a Notes or terrain tool by clicking it again, repeating its shortcut or pressing Escape.
+
+- Picture generation now includes portraits of Heyu, Manna and Tika. Neighbor portraits now use more localized names.
+
+- English object names now match the game terminology for bridges, steps, neighbor houses and selected flowers. Previous names remain searchable.
+
+### Fixed
+
+- The assistant’s reasoning follows new output while you read at the bottom and preserves your position when you scroll up. You can reopen completed plan stages and collapse expanded operation lists.
+
+- Help preserves your reading position while the object search demonstration updates.
+
+- Yunguo's Bamboo Harvest House and Medowlyn's Floofy House have a 5×4 footprint, with matching 3D proportions and space to pave in front of the door.
+
+- You can pave and repaint roads on dry ground beneath bridges between mountains.
+
 ## [1.3.17] - 2026-09-18
 
 ### Added

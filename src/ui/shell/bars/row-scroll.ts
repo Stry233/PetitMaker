@@ -149,15 +149,15 @@ export function wheelGlider(): WheelGlider {
  *  by different factors. */
 export { useFrameZoom } from '../use-frame-zoom';
 
-/**
- * Put a control back inside the row that holds it.
- *
- * `nearest` is the whole of it: it moves nothing that is already in view, and it stops at the first
- * ancestor that can scroll, so a name brought back is not also a page scrolled out from under the
- * shelf. jsdom implements no scrolling at all, which is what the guard is for.
- */
+/** Tabs are direct children of a positioned row, so offsets and scrollLeft share local pixels.
+ * Only the row moves: scrollIntoView would also scroll enclosing articles and windows. */
 export function reveal(el: HTMLElement | null | undefined): void {
-  if (typeof el?.scrollIntoView === 'function') {
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
+  const row = el?.parentElement;
+  if (!el || !row || row.clientWidth === 0) return;
+  const left = el.offsetLeft - row.scrollLeft;
+  const right = left + el.offsetWidth - row.clientWidth;
+  // A tab spanning both edges already fills the viewport.
+  if (left < 0 && right > 0) return;
+  if (left < 0) row.scrollLeft += Math.max(left, right);
+  else if (right > 0) row.scrollLeft += Math.min(left, right);
 }

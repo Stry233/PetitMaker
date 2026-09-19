@@ -2,7 +2,7 @@
   "id": "building-starbay-cabin",
   "category": "building",
   "name": {
-    "en": "Starbay Cabin",
+    "en": "Harpeno's Starhaven House",
     "zh": "星泊湾小屋（哈佩诺）",
     "ja": "ハーペノの家",
     "ru": "Дом Харпено",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "橙",
-    "orange"
+    "orange",
+    "Starbay Cabin"
   ],
   "icon": "building-starbay-cabin",
   "width": 5,

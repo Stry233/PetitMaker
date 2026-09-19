@@ -19,6 +19,8 @@ export interface ToolContext {
    *  this (see `tools/objects/object-placer.ts`); undefined in a headless/mocked context, where
    *  such an item falls back to `coord` (whole-cell) like everything else. */
   halfCoord?: MacroCoord;
+  /** Undefined uses planar caption tests; null is a rendered-label miss. */
+  annotationLabelHit?: string | null;
   executeCommand: (cmd: Command) => ValidationResult;
   commitStroke: (strokeStartSize: number, opts?: { reconcile?: boolean }) => ValidationError[];
   validateCommand: (cmd: Command) => ValidationError[];

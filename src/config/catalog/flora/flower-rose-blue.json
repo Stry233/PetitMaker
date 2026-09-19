@@ -2,7 +2,7 @@
   "id": "flower-rose-blue",
   "category": "flora",
   "name": {
-    "en": "Blue Rose",
+    "en": "Blue Mooncycle Rose",
     "zh": "蓝月季",
     "ja": "ブルーバラ",
     "ru": "Синяя роза",
@@ -11,7 +11,8 @@
     "fr": "Rose bleue"
   },
   "aliases": [
-    "玫瑰"
+    "玫瑰",
+    "Blue Rose"
   ],
   "icon": "flower-rose-blue",
   "iconColor": "#9d9ede",

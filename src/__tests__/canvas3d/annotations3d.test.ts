@@ -82,3 +82,55 @@ describe('Annotations3D', () => {
     a.dispose();
   });
 });
+
+it('renders dimensions with ribbons and a map-plane number and disposes their geometry', () => {
+  const layer = new Annotations3D();
+  layer.update(makeState(100, 100), { items: [{ kind: 'measure', id: 'm', color: '#FFB347', points: [{ x: 1, y: 4 }, { x: 84, y: 4 }] }], visible: true, locked: false }, OPTS);
+  expect(kinds(layer).filter(kind => kind === 'Sprite')).toHaveLength(0);
+  const meshes = layer.group.children.filter((node): node is THREE.Mesh => node.type === 'Mesh');
+  expect(meshes).toHaveLength(3);
+  const label = meshes.find(mesh => mesh.geometry.type === 'PlaneGeometry')!;
+  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(label.quaternion);
+  expect(normal.y).toBeCloseTo(1);
+  expect(normal.z).toBeCloseTo(0);
+  for (const mesh of meshes) expect((mesh.material as THREE.Material).depthTest).toBe(true);
+  for (const mesh of meshes) expect(Array.from(mesh.geometry.getAttribute('position').array).every(Number.isFinite)).toBe(true);
+  let disposed = 0;
+  for (const mesh of meshes) mesh.geometry.addEventListener('dispose', () => { disposed++; });
+  layer.dispose();
+  expect(disposed).toBe(meshes.length);
+});
+
+it('picks the visible chip quad and keeps its selection on that quad while the camera moves', () => {
+  const layer = new Annotations3D();
+  const state = makeState(20, 20);
+  const chip = { kind: 'chip', id: 'tag', x: 10, y: 10, tag: 'homes', size: 'l', color: '#FFB347' } as const;
+  const notes: AnnotationsState = { items: [chip], visible: true, locked: false };
+  const rect = { left: 80, top: 25, width: 1000, height: 700 };
+  const camera = new THREE.PerspectiveCamera(45, rect.width / rect.height, 0.1, 1000);
+  layer.update(state, notes, OPTS);
+  const original = layer.group.children.find((node): node is THREE.Sprite => node.type === 'Sprite')!;
+  for (const [x, y, z] of [[20, 10, 20], [-25, 15, 10], [3, 35, -20]]) {
+    camera.position.set(x!, y!, z!); camera.lookAt(original.position); camera.updateMatrixWorld(true);
+    layer.group.updateMatrixWorld(true);
+    const box = layer.labelBox('tag', camera, rect)!;
+    for (const u of [0.15, 0.5, 0.85]) for (const v of [0.2, 0.5, 0.8]) {
+      const px = box.x + box.w * u, py = box.y + box.h * v;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2((px - rect.left) / rect.width * 2 - 1, 1 - (py - rect.top) / rect.height * 2), camera);
+      expect(ray.intersectObject(original)).toHaveLength(1);
+      expect(layer.pickLabel(px, py, camera, rect)).toBe('tag');
+    }
+    expect(layer.pickLabel(box.x + box.w / 2, box.y + box.h + 5, camera, rect)).toBeNull();
+  }
+  const before = layer.labelBox('tag', camera, rect);
+  layer.update(state, notes, { ...OPTS, selection: ['tag'] });
+  expect(layer.group.children.map(node => node.type)).toEqual(['Sprite']);
+  const selected = layer.group.children[0] as THREE.Sprite;
+  expect(selected.material.map).not.toBe(original.material.map);
+  expect(layer.labelBox('tag', camera, rect)).toEqual(before);
+  layer.update(state, { ...notes, visible: false }, OPTS);
+  expect(layer.labelBox('tag', camera, rect)).toBeNull();
+  expect(layer.pickLabel(500, 350, camera, rect)).toBeNull();
+  layer.dispose();
+});

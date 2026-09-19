@@ -2,7 +2,7 @@
   "id": "flower-violet-cyan",
   "category": "flora",
   "name": {
-    "en": "Cyan Violet",
+    "en": "Teal Violet",
     "zh": "青紫罗兰",
     "ja": "シアンスミレ",
     "ru": "Бирюзовая фиалка",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "blue",
-    "蓝"
+    "蓝",
+    "Cyan Violet"
   ],
   "icon": "flower-violet-cyan",
   "iconColor": "#86b4d8",

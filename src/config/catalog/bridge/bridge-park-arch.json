@@ -2,7 +2,7 @@
   "id": "bridge-park-arch",
   "category": "bridge",
   "name": {
-    "en": "Park Arch",
+    "en": "Park Arch Bridge",
     "zh": "公园拱桥",
     "ja": "公園アーチ橋",
     "ru": "Парковый арочный мост",
@@ -14,7 +14,8 @@
     "stone",
     "石桥",
     "white",
-    "白"
+    "白",
+    "Park Arch"
   ],
   "icon": "bridge-park-arch",
   "width": 2,

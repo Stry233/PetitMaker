@@ -54,6 +54,7 @@ function Welcome({ entered }: { entered: boolean }) {
 describe('Help illustration work', () => {
   it('keeps unseen generation and map captures idle while preserving the article and figure dimensions', async () => {
     const { container, rerender } = render(<Welcome entered={false} />);
+    expect(container.querySelectorAll('details')).toHaveLength(0);
     const figures = container.querySelectorAll('figure');
     const checklist = figures[1]!;
     const save = figures[3]!;
@@ -87,7 +88,7 @@ describe('Help illustration work', () => {
 
   it('cancels scheduled illustration work when the page leaves before it starts', async () => {
     const { container, unmount } = render(<Welcome entered />);
-    approach(container.querySelectorAll('figure')[3]!);
+    approach(container.querySelector('#help-welcome-resume')!.closest('section')!.querySelector('figure')!);
     unmount();
     await act(async () => { vi.advanceTimersByTime(1000); });
     expect(generate).not.toHaveBeenCalled();

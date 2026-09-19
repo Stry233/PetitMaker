@@ -1,3 +1,4 @@
+import { helpTargetAttr } from '../help/targets';
 import { showToast } from '../../../../core/runtime/toast-bus';
 import { IS_LITE } from '../../../../core/runtime/edition';
 /**
@@ -116,6 +117,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
       {visible && (
         <motion.div
           key="preview3d"
+          {...helpTargetAttr('share', 'share-shots')}
           role="dialog"
           aria-label={t('preview3d.title')}
           initial={reduced ? false : { opacity: 0, scale: 0.96 }}

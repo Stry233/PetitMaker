@@ -2,7 +2,7 @@
   "id": "flower-portulaca-yellow",
   "category": "flora",
   "name": {
-    "en": "Yellow Portulaca",
+    "en": "Yellow Moss Rose",
     "zh": "黄大花马齿苋",
     "ja": "キバナマツバボタン",
     "ru": "Жёлтый портулак",
@@ -13,7 +13,8 @@
   "aliases": [
     "太阳花",
     "moss rose",
-    "sun plant"
+    "sun plant",
+    "Yellow Portulaca"
   ],
   "icon": "flower-portulaca-yellow",
   "iconColor": "#e6a855",

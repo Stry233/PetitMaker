@@ -10,12 +10,13 @@
 import { useEditorStore } from '../../../../state/store';
 import type { HelpPageId } from './page-schema';
 
-export const HELP_ATTR = 'data-help';
+import { helpAttributes, inheritedHelpTarget } from '../../../primitives/help-target';
+export { HELP_ATTR } from '../../../primitives/help-target';
 
 /** Spread onto the element a help page describes. Typed by the page union, so a marker cannot
  *  name a page that does not exist. */
-export function helpTargetAttr(page: HelpPageId): Record<string, string> {
-  return { [HELP_ATTR]: page };
+export function helpTargetAttr(page: HelpPageId, anchor?: string): Record<string, string> {
+  return helpAttributes({ page, anchor });
 }
 
 /** The one door into the Help Center: sets where it opens, then opens it. */
@@ -39,4 +40,13 @@ export function pageForEditState(edit: { mode: string | null; tool: string }): H
     return 'terrain';
   }
   return 'camera';
+}
+
+/** Resolve the foreground surface only; an unmarked panel must not expose controls behind it. */
+export function helpTargetAt(x: number, y: number, layer: HTMLElement): { page: string; anchor?: string; el: Element } | null {
+  const foreground = document.elementsFromPoint(x, y).find(el => el !== layer && !layer.contains(el));
+  if (!foreground) return null;
+  const target = inheritedHelpTarget(foreground);
+  if (!target) return null;
+  return { ...target, el: foreground.closest('[data-help]')! };
 }

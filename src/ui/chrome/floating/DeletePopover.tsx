@@ -1,3 +1,4 @@
+import { helpTargetAttr } from '../modals/help/targets';
 import { useEffect, useRef, type CSSProperties, type ReactElement } from 'react';
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import { roleFont } from '../../design/text-weight';
@@ -55,7 +56,9 @@ export function DeleteConfirmFace({ title, onCancel, onConfirm, style }: {
   const t = useT();
   return (
     <motion.div
-      initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
+
+          {...helpTargetAttr('select', 'select-confirm')}
+          initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
       transition={springs.bouncy}
       style={{ ...popoverStyle, ...style }}
     >

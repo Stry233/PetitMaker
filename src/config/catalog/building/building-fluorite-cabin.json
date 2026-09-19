@@ -2,7 +2,7 @@
   "id": "building-fluorite-cabin",
   "category": "building",
   "name": {
-    "en": "Fluorite Cabin",
+    "en": "Rebella's Fluorite House",
     "zh": "萤石小屋（热贝尔）",
     "ja": "リベーラの家",
     "ru": "Дом Ребеллы",
@@ -12,7 +12,8 @@
   },
   "aliases": [
     "蓝",
-    "blue"
+    "blue",
+    "Fluorite Cabin"
   ],
   "icon": "building-fluorite-cabin",
   "width": 5,

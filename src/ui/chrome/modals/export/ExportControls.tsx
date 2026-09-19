@@ -1,10 +1,11 @@
+import { helpTargetAttr } from '../help/targets';
 import { useState, type CSSProperties } from 'react';
 import { font, radii, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { applyPreset, hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
+import { hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
 import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
 import { moduleBaseFor } from '../../../../io/share/glyph/geometry';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
@@ -16,7 +17,7 @@ import { Switch } from '../../../primitives/Switch';
 import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
-import { StylizeEntry } from './edition-export';
+import { StylizeEntry, applyExportPreset, exportPresetDescriptions } from './edition-export';
 import { IS_LITE } from '../../../../core/runtime/edition';
 import type { TextField } from '../../../../io/moderation/text/policy';
 import { ReviewIndicator } from './review/ReviewIndicator';
@@ -50,28 +51,28 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Preset */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div {...helpTargetAttr('share', 'share-preset')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.preset')}</div>
-        <SegmentedControl wrapLabels={IS_LITE} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(IS_LITE ? { ...options, preset: p, importable: p === 'share', layerPreview: p === 'share', grid: p === 'share', footer: p === 'share', card3d: false } : applyPreset(options, p))} />
-        <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(IS_LITE ? (options.preset === 'share' ? 'lite.preset_share_desc' : 'lite.preset_plain_desc') : `export.preset_${options.preset}_desc`)}</div>
+        <SegmentedControl wrapLabels={IS_LITE} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyExportPreset(options, p))} />
+        <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(exportPresetDescriptions[options.preset])}</div>
       </div>
 
       {/* Title + description */}
       <Field label={t('export.field_title')} help={titleLocked ? t('export.attribution_locked') : undefined}>
-        <div style={{ position: 'relative' }}>
+        <div {...helpTargetAttr('share', 'share-header')} style={{ position: 'relative' }}>
           <input disabled={titleLocked} value={notes.title ?? ''} maxLength={NOTE_LIMITS.title} onChange={(e) => setNotes({ ...notes, title: e.target.value })} style={{ ...inputStyle, opacity: titleLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
           {checkingFields.includes('title') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
       <Field label={t('export.field_desc')} help={descriptionLocked ? t('export.attribution_locked') : undefined}>
-        <div style={{ position: 'relative' }}>
+        <div {...helpTargetAttr('share', 'share-header')} style={{ position: 'relative' }}>
           <textarea disabled={descriptionLocked} value={notes.description ?? ''} maxLength={NOTE_LIMITS.description} onChange={(e) => setNotes({ ...notes, description: e.target.value })} style={{ ...inputStyle, display: 'block', minHeight: 44, opacity: descriptionLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
           {checkingFields.includes('description') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
 
       {/* Size */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div {...helpTargetAttr('share', 'share-size')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.sec_size')}</div>
         <SegmentedControl wrapLabels={IS_LITE} idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
@@ -79,7 +80,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       <StylizeEntry />
 
       {/* Importability — labels + help bubbles, no paragraphs */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div {...helpTargetAttr('share', 'share-glyph')} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={capStyle}>{t('export.importability')}</div>
         {/* The warning shares its row's flex item to avoid a gap while collapsed. */}
         <div>
@@ -125,7 +126,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
             <Row>
               <span style={rowLabel}>{t('annot.export_include')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                <button type="button" onClick={editAnnotations} style={editNotesBtn}>{t('annot.export_edit')}</button>
+                <button {...helpTargetAttr('notes')} type="button" onClick={editAnnotations} style={editNotesBtn}>{t('annot.export_edit')}</button>
                 <Switch on={options.annotations} onClick={() => set('annotations', !options.annotations)} label={t('annot.export_include')} />
               </span>
             </Row>

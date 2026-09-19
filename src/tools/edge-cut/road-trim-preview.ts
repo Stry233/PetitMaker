@@ -77,7 +77,7 @@ export function previewRoadTrim(
     const errors = rules.validatePreCommand(cmd, state);
     // The click strips the coating it covers before placing, so a refusal that is only that
     // coating's overlap is a cell the click WILL pave — the same answer the cursor probe gives.
-    if (errors.length > 0 && !strippableRefusal(state, cmd.object.position, errors)) continue;
+    if (errors.length > 0 && !strippableRefusal(state, cmd.object, errors)) continue;
     planned.set(cellKey(cmd.object.position.x, cmd.object.position.y), cmd.object);
   }
   // What was ASKED about and refused is not the same as what was never asked: a cell inside the

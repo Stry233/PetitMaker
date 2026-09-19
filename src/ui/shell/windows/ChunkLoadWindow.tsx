@@ -50,7 +50,7 @@ export function ChunkLoadWindow() {
   const gridFade = useScrollFade(gridRef, 'y');
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'load' }}
       open={open && regions.length > 0}
       onClose={() => setModal('regionLoad', false)}
       maxVwPct={92}

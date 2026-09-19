@@ -2,7 +2,7 @@
   "id": "ramp-green-steps",
   "category": "ramp",
   "name": {
-    "en": "Green Steps",
+    "en": "Green Iron Steps",
     "zh": "绿意台阶",
     "ja": "グリーンの階段",
     "ru": "Зелёные ступени",
@@ -392,5 +392,8 @@
         "color": "#4f8c33"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Green Steps"
+  ]
 }

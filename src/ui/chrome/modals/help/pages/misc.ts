@@ -12,14 +12,16 @@ export const MISC_PAGES: readonly HelpPage[] = [
     group: 'misc',
     titleKey: 'help.settings.title',
     ledeKey: 'help.settings.lede',
+    entryKey: 'help.settings.entry',
     figure: { kind: 'surface', surface: 'settings', captionKey: 'help.settings.figcap' },
     sections: [
       { kind: 'prose', anchor: 'settings-language', titleKey: 'help.settings.language_t', bodyKeys: ['help.settings.language_b1'] },
       { kind: 'prose', anchor: 'settings-map', titleKey: 'help.settings.map_t', bodyKeys: ['help.settings.map_b1'] },
       { kind: 'prose', anchor: 'settings-scale', titleKey: 'help.settings.scale_t', bodyKeys: ['help.settings.scale_b1'] },
+      { kind: 'prose', anchor: 'settings-immersive', titleKey: 'help.settings.immersive_t', bodyKeys: ['help.settings.immersive_b1', 'help.settings.install_b1'] },
       { kind: 'prose', anchor: 'settings-feel', titleKey: 'help.settings.feel_t', bodyKeys: ['help.settings.feel_b1'] },
       { kind: 'prose', anchor: 'settings-keyboard', titleKey: 'help.settings.keyboard_t', bodyKeys: ['help.settings.keyboard_b1'] },
-      { kind: 'prose', anchor: 'settings-reset', titleKey: 'help.settings.reset_t', bodyKeys: ['help.settings.reset_b1'] },
+      { kind: 'prose', anchor: 'settings-reset', titleKey: 'help.settings.reset_t', bodyKeys: ['help.settings.reset_b1', 'help.settings.about_b1'] },
     ],
     qa: [
       { qKey: 'help.settings.q1', aKey: 'help.settings.a1' },
@@ -35,10 +37,11 @@ export const MISC_PAGES: readonly HelpPage[] = [
     group: 'misc',
     titleKey: 'help.shortcuts.title',
     ledeKey: 'help.shortcuts.lede',
+    entryKey: 'help.shortcuts.entry',
     figure: { kind: 'surface', surface: 'keyboard', captionKey: 'help.shortcuts.figcap' },
     action: { kind: 'open-keyboard', labelKey: 'help.shortcuts.open_board' },
     sections: [
-      { kind: 'prose', anchor: 'shortcuts-board', titleKey: 'help.shortcuts.board_t', bodyKeys: ['help.shortcuts.board_b1'] },
+      { kind: 'prose', anchor: 'shortcuts-board', titleKey: 'help.shortcuts.board_t', bodyKeys: ['help.shortcuts.board_b1', 'kbd.toolbar_hint'] },
       { kind: 'prose', anchor: 'shortcuts-search', titleKey: 'help.shortcuts.search_t', bodyKeys: ['help.shortcuts.search_b1'] },
       { kind: 'prose', anchor: 'shortcuts-rebind', titleKey: 'help.shortcuts.rebind_t', bodyKeys: ['help.shortcuts.rebind_b1'] },
       { kind: 'prose', anchor: 'shortcuts-reserved', titleKey: 'help.shortcuts.reserved_t', bodyKeys: ['help.shortcuts.reserved_b1'] },
@@ -58,6 +61,7 @@ export const MISC_PAGES: readonly HelpPage[] = [
     group: 'misc',
     titleKey: 'help.faq.title',
     ledeKey: 'help.faq.lede',
+    entryKey: 'help.faq.entry',
     figure: { kind: 'demo', scene: 'faq' },
     sections: [
       { kind: 'prose', anchor: 'faq-refuse', titleKey: 'help.faq.refuse_t', bodyKeys: ['help.faq.refuse_b1'] },

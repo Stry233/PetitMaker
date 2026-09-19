@@ -1,3 +1,4 @@
+import type { ToolbarContext } from '../../core/runtime/toolbar-bindings';
 /*
  * The hint content as data. A key token carries a COMMAND ID, never a letter: resolution goes
  * through effectiveCombo at render time, so a rebind reaches the panel with no extra wiring and
@@ -190,13 +191,13 @@ export function rowsFor(id: HintScenarioId, overrides: Overrides, caps: CameraCa
  * The row as a whole returns null only when it wanted at least one key token and NONE resolved
  * (nothing left to show). A separator left dangling by a dropped neighbour is stripped.
  */
-export function resolveTokenSpecs(specs: readonly TokenSpec[], overrides: Overrides): ResolvedToken[] | null {
+export function resolveTokenSpecs(specs: readonly TokenSpec[], overrides: Overrides, context?: ToolbarContext): ResolvedToken[] | null {
   const slots: (ResolvedToken[] | null)[] = [];
   let wanted = 0, resolved = 0;
   for (const t of specs) {
     if (t.kind === 'cmd') {
       wanted++;
-      const combo = effectiveCombo(overrides, t.id);
+      const combo = effectiveCombo(overrides, t.id, context);
       if (!combo) { slots.push(null); continue; }
       resolved++;
       slots.push(comboTokens(combo, t.held, t.x2));

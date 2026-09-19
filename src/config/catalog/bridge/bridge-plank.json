@@ -2,7 +2,7 @@
   "id": "bridge-plank",
   "category": "bridge",
   "name": {
-    "en": "Plank Bridge",
+    "en": "Simple Wooden Bridge",
     "zh": "简木板桥",
     "ja": "板の橋",
     "ru": "Дощатый мост",
@@ -13,7 +13,8 @@
   "aliases": [
     "wood",
     "wooden",
-    "木桥"
+    "木桥",
+    "Plank Bridge"
   ],
   "icon": "bridge-plank",
   "iconColor": "#a4795e",

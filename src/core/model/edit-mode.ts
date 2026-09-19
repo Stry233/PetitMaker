@@ -160,6 +160,13 @@ export interface EditModePatch {
   macro?: string | null;
 }
 
+/** Brush includes its remembered shape; repeated primary-tool presses return to selection. */
+export function toggleBuildTool(current: Pick<EditModeInputs, 'tool' | 'shape'>, tool: 'brush' | 'erase' | 'trim'): EditModePatch {
+  const active = tool === 'brush' ? current.tool === 'brush' || current.tool === 'shape' : current.tool === tool;
+  if (active) return { tool: 'none' };
+  return tool === 'brush' && current.shape !== 'free' ? { tool: 'shape', shape: current.shape } : { tool };
+}
+
 /** The initial inputs: nothing chosen, the brush waiting on whatever surface opens first. */
 export const REST_INPUTS: EditModeInputs = {
   mode: null, arming: { kind: 'brush' }, tool: 'brush', shape: 'free', heldObject: { kind: 'none' },

@@ -1741,18 +1741,16 @@ describe('a run that laid nothing', () => {
   });
 });
 
-/** The examples a picture is offered: the game's fourteen neighbours and the app's own mark, all
- *  art this app already ships, each carrying a name a card can show instead of a filename. */
 describe('the picture examples', () => {
-  it('are the logo and the fourteen neighbours, every one of them resolved', () => {
+  it('resolves the logo and every registered neighbor portrait', () => {
     expect(IMAGE_POOL.length).toBeGreaterThanOrEqual(CANDIDATES);
     expect(IMAGE_POOL.map((s) => s.id)).toEqual([
-      'logo', 'dorjelang', 'elsasani', 'frostia', 'glenn', 'harpeno', 'isaki', 'medowlyn',
-      'mobai', 'mors', 'msafiri', 'nerina', 'rebella', 'trixie', 'yunguo',
+      'logo', 'dorjelang', 'elsasani', 'frostia', 'glenn', 'harpeno', 'heyu', 'isaki', 'manna', 'medowlyn',
+      'mobai', 'mors', 'msafiri', 'nerina', 'rebella', 'tika', 'trixie', 'yunguo',
     ]);
     for (const sample of IMAGE_POOL) {
       expect({ id: sample.id, src: Boolean(sample.src) }).toEqual({ id: sample.id, src: true });
-      for (const locale of ['en', 'zh'] as const) {
+      for (const locale of ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'] as const) {
         expect(sampleName(sample, locale)).not.toBe(sample.id);
       }
     }
@@ -1764,9 +1762,11 @@ describe('the picture examples', () => {
     expect(sampleName(logo, 'zh')).toBe(brandName('zh'));
   });
 
-  it('falls back to English where the game has no name in that locale', () => {
+  it('uses localized names and falls back to English where a translation is unavailable', () => {
+    const frostia = IMAGE_POOL.find((s) => s.id === 'frostia')!;
+    expect([sampleName(frostia, 'ja'), sampleName(frostia, 'fr')]).toEqual(['フロスティア', 'Frostia']);
     const yunguo = IMAGE_POOL.find((s) => s.id === 'yunguo')!;
-    expect([sampleName(yunguo, 'zh'), sampleName(yunguo, 'fr')]).toEqual(['云果', 'Yunguo']);
+    expect([sampleName(yunguo, 'ru'), sampleName(yunguo, 'th')]).toEqual(['Юньго', 'อวิ๋นกั่ว']);
   });
 });
 

@@ -12,14 +12,21 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     group: 'plan',
     titleKey: 'help.notes.title',
     ledeKey: 'help.notes.lede',
-    figure: { kind: 'demo', scene: 'notes' },
+    entryKey: 'help.notes.entry',
+    figure: { kind: 'surface', surface: 'notes-entry', captionKey: 'help.notes.entry_tools' },
     sections: [
       { kind: 'prose', anchor: 'notes-zone', titleKey: 'help.notes.zone_t', bodyKeys: ['help.notes.zone_b1'], figure: { kind: 'demo', scene: 'notezone' } },
       { kind: 'prose', anchor: 'notes-edit', titleKey: 'help.notes.edit_t', bodyKeys: ['help.notes.edit_b1'], figure: { kind: 'demo', scene: 'notegrow' } },
       { kind: 'prose', anchor: 'notes-chip', titleKey: 'help.notes.chip_t', bodyKeys: ['help.notes.chip_b1'], figure: { kind: 'demo', scene: 'notetext' } },
+      { kind: 'prose', anchor: 'notes-measure', titleKey: 'help.notes.measure_t', bodyKeys: ['help.notes.measure_b1', 'help.notes.measure_b2'], figure: { kind: 'demo', scene: 'measurement' } },
       { kind: 'prose', anchor: 'notes-route', titleKey: 'help.notes.route_t', bodyKeys: ['help.notes.route_b1'], figure: { kind: 'demo', scene: 'noteroute' } },
       { kind: 'prose', anchor: 'notes-select', titleKey: 'help.notes.select_t', bodyKeys: ['help.notes.select_b1'], figure: { kind: 'demo', scene: 'noteselect' } },
       { kind: 'prose', anchor: 'notes-manage', titleKey: 'help.notes.manage_t', bodyKeys: ['help.notes.manage_b1'], figure: { kind: 'surface', surface: 'notes-row', captionKey: 'help.notes.manage_figcap' } },
+      { kind: 'keys', anchor: 'notes-tools', titleKey: 'help.share.keys_t', rows: [
+        { doKey: 'annot.measure', tokens: [{ kind: 'cmd', id: 'tool.measure' }] },
+        { doKey: 'terrain.shapes', tokens: [{ kind: 'cmd', id: 'tool.shape_cycle' }] },
+        { doKey: 'annot.size', tokens: [{ kind: 'cmd', id: 'tool.auto_trim' }] },
+      ], afterKeys: ['help.notes.tools_b1', 'kbd.toolbar_hint'] },
       { kind: 'callout', bodyKey: 'help.notes.co1' },
     ],
     qa: [
@@ -36,6 +43,7 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     group: 'plan',
     titleKey: 'help.layers.title',
     ledeKey: 'help.layers.lede',
+    entryKey: 'help.layers.entry',
     figure: { kind: 'surface', surface: 'layers', captionKey: 'help.layers.figcap' },
     sections: [
       { kind: 'prose', anchor: 'layers-floors', titleKey: 'help.layers.floors_t', bodyKeys: ['help.layers.floors_b1'] },
@@ -57,6 +65,7 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     group: 'plan',
     titleKey: 'help.load.title',
     ledeKey: 'help.load.lede',
+    entryKey: 'help.load.entry',
     figure: { kind: 'demo', scene: 'load' },
     sections: [
       { kind: 'prose', anchor: 'load-disc', titleKey: 'help.load.disc_t', bodyKeys: ['help.load.disc_b1'] },
@@ -77,6 +86,7 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     group: 'plan',
     titleKey: 'help.undo.title',
     ledeKey: 'help.undo.lede',
+    entryKey: 'help.undo.entry',
     figure: { kind: 'demo', scene: 'undo' },
     sections: [
       { kind: 'prose', anchor: 'undo-step', titleKey: 'help.undo.step_t', bodyKeys: ['help.undo.step_b1'] },

@@ -1,22 +1,22 @@
 /*
  * annotations3d.ts — the plan-notes layer in the 3D view: zone washes as surface-draped decals
  * with a dashed outline riding each cell's own top, route arrows draped per sample, and text as
- * camera-facing billboards, so a word never lies stretched across a slope.
+ * camera-facing captions. Measurement numbers lie in the map plane and follow its perspective.
  *
  * Rebuilt WHOLE per ask (the legend's own pattern: geometries disposed, materials and textures
  * cached by role) and re-baked with the terrain flush — heights are baked into the vertices, so
  * ground that moved under a note must re-drape it, exactly as the buildable region does. Selection
- * is not marked here: the floating editor anchors over the selected note through `cellToScreen`,
- * and the 2D view is where fine selection work lives.
+ * outlines follow the same terrain geometry; endpoint controls use the active projection.
  */
 import * as THREE from 'three';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import {
-  ANNOTATION_INK, annotationInkScale, INK_CELLS, chipApproxHeightCells, chipApproxWidthCells, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
+  ANNOTATION_INK, annotationInkScale, INK_CELLS, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
   zoneLabelAnchor,
   type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
+import { cellBounds, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
 import { mapCenterOffset } from '../core/coords';
 import { cellDecals, DECAL_LIFT } from '../build/overlay-decals';
 import { surfaceHeightAt } from '../interaction/pick';
@@ -106,6 +106,7 @@ function drapeHeights(
 export class Annotations3D {
   readonly group = new THREE.Group();
   private mats = new Map<string, THREE.Material>();
+  private labels = new Map<string, THREE.Sprite>();
   private textures = new Map<string, THREE.CanvasTexture>();
   private lastData: AnnotationsState | null = null;
   private lastOpts: Annotations3DOpts = { draft: null, tagLabel: () => '' };
@@ -127,17 +128,22 @@ export class Annotations3D {
     const picked = new Set(opts.selection ?? []);
     for (const n of items) if (n.kind === 'zone') this.buildZone(state, n, picked.has(n.id));
     for (const n of items) if (n.kind === 'route') this.buildRoute(state, n, picked.has(n.id));
-    for (const n of items) if (n.kind === 'chip' && picked.has(n.id)) this.buildChipSelection(state, n, opts.tagLabel(n.tag));
     for (const n of items) {
       if (n.kind === 'zone') this.buildZoneLabel(state, n, n.tag ? opts.tagLabel(n.tag) : '', usedTex);
-      else if (n.kind === 'chip') this.buildChip(state, n, opts.tagLabel(n.tag), usedTex);
+      else if (n.kind === 'chip') this.buildChip(state, n, opts.tagLabel(n.tag), usedTex, picked.has(n.id));
+      const baseInk = this.ink / INK_3D_BOOST;
+      if (n.kind === 'measure') this.buildDimensions(state, measureDrawing(n.points, baseInk, n.flipped), n.color, usedTex, picked.has(n.id));
+      if (n.kind === 'zone' && (picked.has(n.id) || n === opts.draft)) {
+        const bounds = cellBounds(n.cells);
+        if (bounds) this.buildDimensions(state, dimensionDrawing(bounds, baseInk), n.color, usedTex);
+      }
     }
     for (const [key, tex] of this.textures) {
       if (usedTex.has(key)) continue;
       this.textures.delete(key);
       tex.dispose();
-      const mat = this.mats.get(`sprite:${key}`);
-      if (mat) { this.mats.delete(`sprite:${key}`); mat.dispose(); }
+      const mat = this.mats.get(`label:${key}`);
+      if (mat) { this.mats.delete(`label:${key}`); mat.dispose(); }
     }
   }
 
@@ -147,13 +153,43 @@ export class Annotations3D {
     this.update(state, this.lastData, this.lastOpts);
   }
 
+  labelBox(id: string, camera: THREE.PerspectiveCamera, rect: { left: number; top: number; width: number; height: number }): { x: number; y: number; w: number; h: number } | null {
+    const sprite = this.labels.get(id);
+    if (!this.group.visible || !sprite) return null;
+    const position = sprite.position.clone().applyMatrix4(camera.matrixWorldInverse);
+    if (position.z >= -camera.near) return null;
+    // Sprite vertices are offset in camera space, with the raster's bottom at center.y = 0.
+    const corner = (x: number, y: number) => new THREE.Vector3(
+      position.x + (x - sprite.center.x) * sprite.scale.x,
+      position.y + (y - sprite.center.y) * sprite.scale.y, position.z,
+    ).applyMatrix4(camera.projectionMatrix);
+    const lower = corner(0, 0), upper = corner(1, 1);
+    return {
+      x: rect.left + (lower.x + 1) * rect.width / 2,
+      y: rect.top + (1 - upper.y) * rect.height / 2,
+      w: (upper.x - lower.x) * rect.width / 2,
+      h: (upper.y - lower.y) * rect.height / 2,
+    };
+  }
+
+  pickLabel(x: number, y: number, camera: THREE.PerspectiveCamera, rect: { left: number; top: number; width: number; height: number }): string | null {
+    let picked: string | null = null, nearest = -Infinity;
+    for (const [id, sprite] of this.labels) {
+      const box = this.labelBox(id, camera, rect);
+      if (!box || x < box.x - 3 || x > box.x + box.w + 3 || y < box.y - 3 || y > box.y + box.h + 3) continue;
+      const depth = sprite.position.clone().applyMatrix4(camera.matrixWorldInverse).z;
+      if (depth >= nearest) { nearest = depth; picked = id; }
+    }
+    return picked;
+  }
+
   /** Forget every baked label so the next build rasterises afresh — called once the app's own
    *  fonts land, since a texture baked against the fallback face keeps its shapes forever. */
   dropBakes(): void {
     for (const [key, tex] of this.textures) {
       tex.dispose();
-      const mat = this.mats.get(`sprite:${key}`);
-      if (mat) { this.mats.delete(`sprite:${key}`); mat.dispose(); }
+      const mat = this.mats.get(`label:${key}`);
+      if (mat) { this.mats.delete(`label:${key}`); mat.dispose(); }
     }
     this.textures.clear();
   }
@@ -169,6 +205,7 @@ export class Annotations3D {
   /** Geometries are per-build and go; materials and textures stay in their caches. A Sprite is
    *  skipped: every THREE.Sprite draws one module-shared quad, which is nobody's to dispose. */
   private clear(): void {
+    this.labels.clear();
     this.group.traverse((o) => {
       if ((o as THREE.Sprite).isSprite) return;
       (o as THREE.Mesh).geometry?.dispose();
@@ -263,14 +300,7 @@ export class Annotations3D {
       this.group.add(outline);
     }
     if (selected) {
-      // The 2D layer's own mark: a white dash at half width riding the coloured one.
-      const upper = paths.map((path) => path.map(([x, y, z]) => [x, y + 0.006, z] as [number, number, number]));
-      const mark = ribbonGeometry(upper, w * 0.5, dashes);
-      if (mark) {
-        const m = new THREE.Mesh(mark, this.selectMat());
-        m.renderOrder = ORDER.select;
-        this.group.add(m);
-      }
+      this.selectionRibbons(paths, w * 0.65);
     }
   }
 
@@ -321,6 +351,7 @@ export class Annotations3D {
     head(width * 2.2 + width * 0.6, tip[1] + 0.004, this.inkMat(), ORDER.headHalo);
     head(width * 2.2, tip[1] + 0.01, this.washMatSolid(route.color), ORDER.head);
     if (selected) {
+      this.selectionRibbons([pts], width * 0.35);
       // The 2D mark: a white disc with an ink rim on every waypoint, where the grab would land.
       for (const wp of route.points) {
         const wx = wp.x - off.x, wz = wp.y - off.z;
@@ -348,23 +379,13 @@ export class Annotations3D {
     this.group.add(m);
   }
 
-  /** A selected chip's mark: the 2D layer's dashed white box, draped around the plate. */
-  private buildChipSelection(state: GridState, note: ChipNote, label: string): void {
-    const off = mapCenterOffset(state.template.width, state.template.height);
-    const hw = chipApproxWidthCells(note, label, this.ink) / 2 + 0.3;
-    const hh = chipApproxHeightCells(note, this.ink) / 2 + 0.3;
-    const corners: Array<[number, number]> = [
-      [note.x - hw - off.x, note.y - hh - off.z], [note.x + hw - off.x, note.y - hh - off.z],
-      [note.x + hw - off.x, note.y + hh - off.z], [note.x - hw - off.x, note.y + hh - off.z],
-      [note.x - hw - off.x, note.y - hh - off.z],
-    ];
-    const lw = INK_CELLS.outline * this.ink * 0.5;
-    const path = drapeHeights(state, densify(corners), [0], lw / 2, OUTLINE_LIFT + 0.01);
-    const geo = ribbonGeometry([path], lw, { dash: lw * 4, gap: lw * 3.3 });
-    if (geo) {
-      const m = new THREE.Mesh(geo, this.selectMat());
-      m.renderOrder = ORDER.select;
-      this.group.add(m);
+  private selectionRibbons(paths: Array<Array<[number, number, number]>>, width: number): void {
+    for (const [scale, material, order] of [[2.6, this.inkMat(), ORDER.select], [1, this.selectMat(), ORDER.select + 1]] as const) {
+      const geometry = ribbonGeometry(paths, width * scale, null);
+      if (!geometry) continue;
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = order;
+      this.group.add(mesh);
     }
   }
 
@@ -381,14 +402,14 @@ export class Annotations3D {
     return mat;
   }
 
-  private edgeMat(color: string): THREE.Material {
+  private edgeMat(color: string, depthTest = false): THREE.Material {
     const shown = isInk(color) ? '#FFFFFF' : color;
-    const key = `edge:${shown}`;
+    const key = `edge:${shown}:${depthTest}`;
     let mat = this.mats.get(key);
     if (!mat) {
       mat = new THREE.MeshBasicMaterial({
         color: new THREE.Color(shown),
-        transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
+        transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, depthTest,
       });
       this.mats.set(key, mat);
     }
@@ -427,7 +448,7 @@ export class Annotations3D {
     if (!withNum && !label) return;
     const key = `zone:${this.ink}:${zone.color}:${zone.size ?? 'm'}:${withNum ? zone.num : ''}:${label}`;
     const at = zoneLabelAnchor(zone.cells);
-    this.addBillboard(state, key, at, INK_CELLS.zoneLabel[zone.size ?? 'm'] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
+    const sprite = this.addLabel(state, key, at, INK_CELLS.zoneLabel[zone.size ?? 'm'] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
       const fs = h * 0.52;
       ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
       const labelW = label ? ctx.measureText(label).width : 0;
@@ -463,12 +484,42 @@ export class Annotations3D {
       }
       return total + 16;
     });
+    if (sprite) this.labels.set(zone.id, sprite);
   }
 
-  private buildChip(state: GridState, note: ChipNote, label: string, used: Set<string>): void {
+  private buildDimensions(state: GridState, drawing: DimensionDrawing, color: string, used: Set<string>, selected = false): void {
+    const off = mapCenterOffset(state.template.width, state.template.height);
+    const width = 0.065 * this.ink;
+    const paths = (lines: DimensionDrawing['lines']) => lines.map(line => drapeHeights(state,
+      densify(line.map(p => [p.x - off.x, p.y - off.z])), [0], width / 2, ROUTE_LIFT));
+    for (const [lines, dash] of [[drawing.guides, { dash: 0.35 * this.ink, gap: 0.25 * this.ink }], [drawing.lines, null]] as const) {
+      const geo = ribbonGeometry(paths(lines), width, dash);
+      if (geo) {
+        const mesh = new THREE.Mesh(geo, this.edgeMat(color, true));
+        mesh.renderOrder = ORDER.outline;
+        this.group.add(mesh);
+      }
+    }
+    if (selected) this.selectionRibbons(paths(drawing.guides.slice(0, 4)), width * 0.65);
+    for (const { at, value } of drawing.labels) {
+      const text = String(value);
+      this.addLabel(state, `dimension:${this.ink}:${text}`, at, 0.7 * this.ink, used, (ctx, h) => {
+        const fs = h * 0.65;
+        ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
+        const width = ctx.measureText(text).width;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = INK; ctx.lineWidth = fs * 0.16;
+        const y = centeredBaseline(ctx, text, h / 2);
+        ctx.strokeText(text, 6, y); ctx.fillStyle = MAP_TEXT; ctx.fillText(text, 6, y);
+        return width + 12;
+      }, true);
+    }
+  }
+
+  private buildChip(state: GridState, note: ChipNote, label: string, used: Set<string>, selected: boolean): void {
     if (!label) return;
-    const key = `chip:${this.ink}:${note.color}:${note.size}:${label}`;
-    this.addBillboard(state, key, { x: note.x, y: note.y }, INK_CELLS.text[note.size] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
+    const key = `chip:${this.ink}:${note.color}:${note.size}:${label}:${selected}`;
+    const sprite = this.addLabel(state, key, { x: note.x, y: note.y }, INK_CELLS.text[note.size] * this.ink * BILLBOARD_PAD, used, (ctx, h) => {
       const fs = h * 0.5;
       ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
       const w = ctx.measureText(label).width;
@@ -480,6 +531,10 @@ export class Annotations3D {
       ctx.lineWidth = 2;
       roundRect(ctx, 4, cy - chipH / 2, w + padX * 2, chipH, chipH * 0.36);
       ctx.fill();
+      if (selected) {
+        ctx.strokeStyle = INK; ctx.lineWidth = 8; ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
+      }
       ctx.stroke();
       ctx.fillStyle = isInk(note.color) ? INK : '#fff';
       ctx.textAlign = 'left';
@@ -487,18 +542,19 @@ export class Annotations3D {
       ctx.fillText(label, 4 + padX, centeredBaseline(ctx, label, cy));
       return w + padX * 2 + 8;
     });
+    if (sprite) this.labels.set(note.id, sprite);
   }
 
-  /** One camera-facing sprite: `paint` draws into a canvas of height `worldH * TEX_PX_PER_UNIT`
-   *  and answers the width it used, which sizes both the canvas crop and the sprite's own scale. */
-  private addBillboard(
+  /** Labels share a cropped text raster; dimensions lie in the map plane while captions face the camera. */
+  private addLabel(
     state: GridState,
     key: string,
     at: MacroCoord,
     worldH: number,
     used: Set<string>,
     paint: (ctx: CanvasRenderingContext2D, hPx: number) => number,
-  ): void {
+    flat = false,
+  ): THREE.Sprite | undefined {
     used.add(key);
     let tex = this.textures.get(key);
     if (!tex) {
@@ -524,24 +580,46 @@ export class Annotations3D {
       tex.anisotropy = 4;
       this.textures.set(key, tex);
     }
-    const matKey = `sprite:${key}`;
-    let mat = this.mats.get(matKey) as THREE.SpriteMaterial | undefined;
+    const matKey = `label:${key}`;
+    let mat = this.mats.get(matKey);
     if (!mat) {
-      mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
+      mat = flat
+        ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide })
+        : new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
       this.mats.set(matKey, mat);
     }
     const off = mapCenterOffset(state.template.width, state.template.height);
     const wx = at.x - off.x;
     const wz = at.y - off.z;
-    const sprite = new THREE.Sprite(mat);
-    sprite.renderOrder = ORDER.label;
     const img = tex.image as HTMLCanvasElement;
-    sprite.scale.set(worldH * (img.width / img.height), worldH, 1);
+    const worldW = worldH * (img.width / img.height);
+    if (flat) {
+      const label = new THREE.Mesh(new THREE.PlaneGeometry(worldW, worldH), mat);
+      label.rotation.x = -Math.PI / 2;
+      label.renderOrder = ORDER.label;
+      label.position.set(wx, labelPlaneHeight(state, wx, wz, worldW, worldH) + ROUTE_LIFT, wz);
+      this.group.add(label);
+      return;
+    }
+    const sprite = new THREE.Sprite(mat as THREE.SpriteMaterial);
+    sprite.renderOrder = ORDER.label;
+    sprite.scale.set(worldW, worldH, 1);
     // Anchored by its FOOT, so the word stands on the ground instead of sinking through a slope.
     sprite.center.set(0.5, 0);
     sprite.position.set(wx, surfaceHeightAt(state, wx, wz) + OUTLINE_LIFT, wz);
     this.group.add(sprite);
+    return sprite;
   }
+}
+
+/** Keep the flat number above every terrain cell under its footprint, including cliff lips. */
+function labelPlaneHeight(state: GridState, x: number, z: number, width: number, height: number): number {
+  const nx = Math.max(1, Math.ceil(width * 2)), nz = Math.max(1, Math.ceil(height * 2));
+  let highest = -Infinity;
+  for (let ix = 0; ix <= nx; ix++) for (let iz = 0; iz <= nz; iz++) {
+    highest = Math.max(highest, surfaceHeightAt(state, x - width / 2 + ix / nx * width, z - height / 2 + iz / nz * height));
+  }
+  return highest;
 }
 
 /**

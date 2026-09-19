@@ -844,7 +844,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   );
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-reset' }}
       open={open}
       onClose={onClose}
       maxVh={ABOUT_MAX_VH}

@@ -15,6 +15,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     group: 'generate',
     titleKey: 'help.generate.title',
     ledeKey: 'help.generate.lede',
+    entryKey: 'help.generate.entry',
     figure: { kind: 'surface', surface: 'generate-shelf', captionKey: 'help.generate.figcap' },
     sections: [
       { kind: 'prose', anchor: 'generate-kinds', titleKey: 'help.generate.kinds_t', bodyKeys: ['help.generate.kinds_b1'] },
@@ -38,6 +39,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     titleKey: 'help.genisland.title',
     navKey: 'help.genisland.nav',
     ledeKey: 'help.genisland.lede',
+    entryKey: 'help.genisland.entry',
     figure: { kind: 'surface', surface: 'generate-shelf-island', captionKey: 'help.genisland.figcap' },
     sections: [
       { kind: 'prose', anchor: 'genisland-what', titleKey: 'help.genisland.what_t', bodyKeys: ['help.genisland.what_b1'], figure: { kind: 'demo', scene: 'generate' } },
@@ -57,6 +59,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     group: 'generate',
     titleKey: 'help.maze.title',
     ledeKey: 'help.maze.lede',
+    entryKey: 'help.maze.entry',
     figure: { kind: 'demo', scene: 'maze' },
     sections: [
       { kind: 'prose', anchor: 'maze-shape', titleKey: 'help.maze.shape_t', bodyKeys: ['help.maze.shape_b1'] },
@@ -80,15 +83,16 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     titleKey: 'help.genletter.title',
     navKey: 'help.genletter.nav',
     ledeKey: 'help.genletter.lede',
+    entryKey: 'help.genletter.entry',
     figure: { kind: 'demo', scene: 'stencil' },
     sections: [
-      { kind: 'prose', anchor: 'genletter-what', titleKey: 'help.genletter.what_t', bodyKeys: ['help.genletter.what_b1'] },
+      { kind: 'prose', anchor: 'genletter-what', titleKey: 'help.genletter.what_t', bodyKeys: ['help.genletter.what_b1', ...(hasCustomCard('text') ? ['help.genletter.custom_b1'] : [])] },
       { kind: 'prose', anchor: 'genletter-material', titleKey: 'help.genletter.material_t', bodyKeys: ['help.genletter.material_b1'], figure: { kind: 'surface', surface: 'letter-materials', captionKey: 'help.genletter.materials_figcap' } },
       { kind: 'prose', anchor: 'genletter-room', titleKey: 'help.genletter.room_t', bodyKeys: ['help.genletter.room_b1'] },
       { kind: 'prose', anchor: 'genletter-partial', titleKey: 'help.genletter.partial_t', bodyKeys: ['help.genletter.partial_b1'] },
     ],
     qa: [
-      { qKey: 'help.genletter.q1', aKey: 'help.genletter.a1' },
+      ...(hasCustomCard('text') ? [{ qKey: 'help.genletter.q1', aKey: 'help.genletter.a1' }] : []),
       { qKey: 'help.genletter.q2', aKey: 'help.genletter.a2' },
       { qKey: 'help.genletter.q3', aKey: 'help.genletter.a3' },
     ],
@@ -100,6 +104,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     titleKey: 'help.genpicture.title',
     navKey: 'help.genpicture.nav',
     ledeKey: 'help.genpicture.lede',
+    entryKey: 'help.genpicture.entry',
     figure: { kind: 'surface', surface: 'stencil-picture', captionKey: 'help.genpicture.figcap' },
     sections: [
       { kind: 'prose', anchor: 'genpicture-what', titleKey: 'help.genpicture.what_t', bodyKeys: ['help.genpicture.what_b1', ...(hasCustomCard('image') ? ['help.genpicture.what_b2'] : [])] },
@@ -119,6 +124,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     group: 'generate',
     titleKey: 'help.candidates.title',
     ledeKey: 'help.candidates.lede',
+    entryKey: 'help.candidates.entry',
     figure: { kind: 'surface', surface: 'candidates', captionKey: 'help.candidates.figcap' },
     sections: [
       { kind: 'prose', anchor: 'candidates-real', titleKey: 'help.candidates.real_t', bodyKeys: ['help.candidates.real_b1'] },
@@ -140,6 +146,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     group: 'generate',
     titleKey: 'help.region.title',
     ledeKey: 'help.region.lede',
+    entryKey: 'help.region.entry',
     figure: { kind: 'demo', scene: 'region' },
     sections: [
       { kind: 'prose', anchor: 'region-open', titleKey: 'help.region.open_t', bodyKeys: ['help.region.open_b1'] },

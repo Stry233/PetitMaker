@@ -106,9 +106,8 @@ export default function App() {
   // Preload the 3D scene at idle; sessions that open in 3D load it eagerly at the entry point.
   // three is WebGL2-only, so a device without it never fetches the chunk.
   useEffect(() => { if (hasWebGL2()) preloadScene3D({ idle: true }); }, []);
-  // Decode the catalog icons at idle, so the object shelf's first open paints already-decoded
-  // art instead of paying ~80 PNG decodes in one burst.
-  useEffect(() => { warmIconDecodes(); }, []);
+  // Warm visits decode cached catalog images in idle batches.
+  useEffect(() => { if (!splashActive) warmIconDecodes(); }, [splashActive]);
 
   // Hydrate provider, model, supervision and key status at boot. Sessions hydrate with their map.
   useEffect(() => { void useAgentPanelSettings.getState().hydrate(); }, []);

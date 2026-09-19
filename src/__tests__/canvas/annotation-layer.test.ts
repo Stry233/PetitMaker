@@ -182,3 +182,17 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 });
+
+it('renders the inclusive measurement and live region extents as numeric labels', () => {
+  const layer = new AnnotationLayer();
+  setReducedMotion(true);
+  layer.draw({ items: [{ kind: 'measure', id: 'm', color: '#FFB347', points: [{ x: 1, y: 4 }, { x: 84, y: 4 }] }], visible: true, locked: false }, OPTS);
+  const texts = (node: Container): string[] => node instanceof Text ? [node.text] : node.children.flatMap(child => texts(child as Container));
+  expect(texts(layer.container)).toEqual(['84']);
+  const zone: ZoneNote = { kind: 'zone', id: 'z', color: '#FFB347', cells: [{ x: 1, y: 1 }, { x: 5, y: 3 }], tag: null, num: 0 };
+  layer.draw(null, { ...OPTS, draft: zone });
+  expect(texts(layer.container)).toEqual(['5', '3']);
+  layer.draw({ items: [zone], visible: true, locked: false }, OPTS);
+  expect(texts(layer.container)).toEqual([]);
+  layer.destroy(); __resetMotionState();
+});

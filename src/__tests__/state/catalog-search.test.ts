@@ -17,6 +17,18 @@ describe('searchCatalog', () => {
     expect(results.some((i) => i.name.en.toLowerCase().includes('apple'))).toBe(true);
   });
 
+  it.each([
+    ['bridge-suspension', 'Suspension', 'Simple Wooden Suspension Bridge'],
+    ['building-bamboo-cabin', 'Bamboo Cabin', "Yunguo's Bamboo Harvest House"],
+    ['flower-rose-cyan', 'Cyan Rose', 'Teal Mooncycle Rose'],
+  ])('finds %s by its previous and current English names', (id, previous, current) => {
+    for (const locale of ['en', 'zh'] as const) {
+      for (const query of [previous, current]) {
+        expect(searchCatalog(query, locale).some(item => item.id === id)).toBe(true);
+      }
+    }
+  });
+
   it('is case-insensitive', () => {
     const lower = searchCatalog('apple', 'en');
     const upper = searchCatalog('APPLE', 'en');
@@ -158,12 +170,14 @@ describe('searchCatalog multi-term', () => {
   });
 
   it('the category facet does not widen a SINGLE term: "bridge" alone still means named Bridge, not is-a-Bridge', () => {
-    // The object shelf's own category tab already covers "every Bridge" — a lone category word
-    // opening the facet here would make the two indistinguishable. "Suspension" is a real bridge
-    // item with no "bridge" in its name or aliases, so it must stay out of a single-term search.
+    registerCatalogItem({
+      id: 'test-category-only-bridge', category: ItemCategory.Bridge,
+      name: { en: 'Overpass' }, icon: 'bridge',
+      width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+    });
     const ids = searchCatalog('bridge', 'en').map((i) => i.id);
-    expect(ids).toContain('bridge-iron'); // name match ("Iron Bridge")
-    expect(ids).not.toContain('bridge-suspension');
+    expect(ids).toContain('bridge-iron');
+    expect(ids).not.toContain('test-category-only-bridge');
   });
 });
 

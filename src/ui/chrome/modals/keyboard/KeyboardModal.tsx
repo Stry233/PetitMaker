@@ -1,3 +1,5 @@
+import { TOOLBAR_CONTEXTS, toolbarLabel, type ToolbarContext } from '../../../../core/runtime/toolbar-bindings';
+import { useToolbarContext } from '../../../shell/use-toolbar-context';
 import { clientPoint } from '../../../../core/runtime/viewport-space';
 /*
  * The keyboard-shortcuts page. A DaVinci-Resolve-style interactive board: a rendered ANSI keyboard + numeric keypad whose keys show each command tinted
@@ -227,6 +229,9 @@ const ROW_IN_REDUCED: Variants = {
 
 export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const t = useT();
+  const activeToolbar = useToolbarContext();
+  const [toolbar, setToolbar] = useState<ToolbarContext>(activeToolbar);
+  useEffect(() => { if (open) setToolbar(activeToolbar); }, [open, activeToolbar]);
   const overrides = useKeybinds((s) => s.overrides);
   const rebind = useKeybinds((s) => s.rebind);
   const clear = useKeybinds((s) => s.clear);
@@ -294,14 +299,14 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
     e.target.value = ''; // allow re-importing the same file
     if (!file) return;
     const res = parseKeybinds(await file.text());
-    if (res.ok && res.binds) { applyBinds(res.binds); setSelectedId(null); showToast(t('kbd.imported'), 'info'); }
+    if (res.ok && res.binds) { applyBinds(res.binds, res.overrides); setSelectedId(null); showToast(t('kbd.imported'), 'info'); }
     else showToast(t('kbd.import_failed'), 'error');
   };
 
-  const index = useMemo(() => bindingIndex(overrides), [overrides]);
+  const index = useMemo(() => bindingIndex(overrides, toolbar), [overrides, toolbar]);
   const aliases = useMemo(() => aliasIndex(), []);
   const selected = selectedId ? COMMAND_BY_ID.get(selectedId) : undefined;
-  const label = (id: string): string => { const c = COMMAND_BY_ID.get(id); return c ? t(c.labelKey) : id; };
+  const label = (id: string): string => { const c = COMMAND_BY_ID.get(id); return c ? t(toolbarLabel(toolbar, id) ?? c.labelKey) : id; };
 
   // Reset transient state whenever the page closes/reopens.
   useEffect(() => { if (!open) { setSelectedId(null); setSearch(''); setRecording(false); setNote(null); setLayer(BASE_LAYER); setPresetOpen(false); } }, [open]);
@@ -314,7 +319,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
       if (e.key === 'Escape') { setRecording(false); return; }
       const combo = comboFromEvent(e);
       if (!combo) return; // bare modifier / space — keep listening
-      const r = rebind(selectedId, combo);
+      const r = rebind(selectedId, combo, toolbar);
       // The one refusal a recorded chord can hit: a shifted twin of a live UI-scale binding, which
       // the UI-scale listener answers on the same keycap.
       if (!r.ok) setNote(t('kbd.reserved'));
@@ -323,7 +328,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [recording, selectedId, rebind, t]);
+  }, [recording, selectedId, rebind, t, toolbar]);
 
   const pick = (id: string): void => { setSelectedId(id); setRecording(false); setNote(null); };
   const toggleMod = (mod: 'ctrl' | 'alt' | 'shift'): void => setLayer((l) => ({ ...l, [mod]: !l[mod] }));
@@ -331,8 +336,8 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const searchHits: EditorCommand[] = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    return COMMANDS.filter((c) => t(c.labelKey).toLowerCase().includes(q)).slice(0, 7);
-  }, [search, t]);
+    return COMMANDS.filter((c) => (t(toolbarLabel(toolbar, c.id) ?? c.labelKey)).toLowerCase().includes(q)).slice(0, 7);
+  }, [search, t, toolbar]);
 
   /* ── keyboard grid ──────────────────────────────────────────────────────── */
   const renderKey = (key: KeyDef, ri: number, ki: number) => {
@@ -390,7 +395,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
         key={`${ri}-${ki}`}
         style={st}
         onClick={onClick}
-        title={cmd ? t(cmd.labelKey) : undefined}
+        title={cmd ? label(cmd.id) : undefined}
         animate={{ backgroundColor: bg }}
         whileHover={interactive ? { y: -2 } : undefined}
         whileTap={interactive ? { scale: 0.93 } : undefined}
@@ -420,7 +425,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                   display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                   overflow: 'hidden', wordBreak: 'break-word',
                 }}>
-                  {t(cmd.labelKey)}
+                  {label(cmd.id)}
                 </span>
               </motion.span>
             )}
@@ -453,15 +458,15 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   );
 
   /* ── detail strip ───────────────────────────────────────────────────────── */
-  const selCombo = selectedId ? effectiveCombo(overrides, selectedId) : null;
+  const selCombo = selectedId ? effectiveCombo(overrides, selectedId, toolbar) : null;
   const detail = (() => {
     if (!selected) return <span style={{ ...roleFont('body'), color: skin.muted, fontFamily: font.family }}>{t('kbd.hint')}</span>;
     const clearOff = !selCombo;
-    const resetOff = effectiveCombo({}, selected.id) === selCombo;
+    const resetOff = effectiveCombo({}, selected.id, toolbar) === selCombo;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ width: 13, height: 13, borderRadius: 4, background: CATEGORY_COLOR[selected.category], flex: '0 0 auto' }} />
-        <span style={{ ...roleFont('head'), color: skin.ink, fontFamily: font.family }}>{t(selected.labelKey)}</span>
+        <span style={{ ...roleFont('head'), color: skin.ink, fontFamily: font.family }}>{label(selected.id)}</span>
         <span style={recording ? { ...comboChip, background: skin.active, color: skin.ink } : comboChip}>
           {recording ? t('kbd.recording') : selCombo ? prettyCombo(selCombo) : t('kbd.unbound')}
         </span>
@@ -470,7 +475,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
         <motion.button
           {...(resetOff ? {} : buttonMotion)}
           style={pill('quiet', resetOff, 'inset')} disabled={resetOff}
-          onClick={() => { if (selected.defaultCombo) rebind(selected.id, selected.defaultCombo); else clear(selected.id); setNote(null); }}
+          onClick={() => { const defaults = effectiveCombo({}, selected.id, toolbar); if (defaults) rebind(selected.id, defaults, toolbar); else clear(selected.id); setNote(null); }}
         >{t('kbd.reset')}</motion.button>
         {note && <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{note}</span>}
       </div>
@@ -488,7 +493,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const width = KEYBOARD_W + 48 + 24 + 12 + 8;
 
   return (
-    <ModalShell open={open} onClose={onClose} width={width} maxVwPct={88} maxVh={86} cardStyle={cardStyle} ariaLabel={t('modal.keyboard_title')}>
+    <ModalShell helpTarget={{ page: 'shortcuts' }} open={open} onClose={onClose} width={width} maxVwPct={88} maxVh={86} cardStyle={cardStyle} ariaLabel={t('modal.keyboard_title')}>
       <div style={{ ...titleStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ flex: '1 1 auto' }}>{t('modal.keyboard_title')}</span>
         <motion.button type="button" {...buttonMotion} aria-label={t('hint.close')} onClick={onClose} style={closeStyle}>
@@ -496,6 +501,19 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
             <path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </motion.button>
+      </div>
+
+      <div data-shortcut-recording={recording || undefined} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12, flexShrink: 0 }}>
+        <label style={{ ...roleFont('body'), color: skin.ink }}>
+          {t('kbd.toolbar_view')}{' '}
+          <select value={toolbar} onChange={e => { setToolbar(e.target.value as ToolbarContext); setRecording(false); setNote(null); }}
+            style={{ ...pill('quiet'), fontFamily: 'inherit' }}>
+            {TOOLBAR_CONTEXTS.map(context => <option key={context} value={context}>
+              {context === 'terrain' ? t('kbd.toolbar_terrain') : `${t('annot.layer')} (${t(context === 'notes-zone' ? 'terrain.brush' : context === 'notes-chip' ? 'annot.chip' : context === 'notes-route' ? 'annot.route' : 'annot.measure')})`}
+            </option>)}
+          </select>
+        </label>
+        <span style={{ ...roleFont('caption'), color: skin.muted, flex: '1 1 360px' }}>{t('kbd.toolbar_hint')}</span>
       </div>
 
       {/* search (left) + reset-all (right), the same two ends the modifier row below hangs its own
@@ -523,7 +541,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                 style={{ ...menuStyle, left: 0, right: 0, minWidth: undefined, zIndex: 5 }}
               >
                 {searchHits.map((c) => {
-                  const combo = effectiveCombo(overrides, c.id);
+                  const combo = effectiveCombo(overrides, c.id, toolbar);
                   return (
                     <motion.button
                       key={c.id}
@@ -533,7 +551,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: windowMenuItem(false).background, borderRadius: radii.md, padding: '9px 14px', cursor: cursors.clickable }}
                     >
                       <span style={{ width: 11, height: 11, borderRadius: 3, background: CATEGORY_COLOR[c.category], flex: '0 0 auto' }} />
-                      <span style={{ flex: '1 1 auto', textAlign: 'left', ...roleFont('label'), color: skin.ink, fontFamily: font.family }}>{t(c.labelKey)}</span>
+                      <span style={{ flex: '1 1 auto', textAlign: 'left', ...roleFont('label'), color: skin.ink, fontFamily: font.family }}>{label(c.id)}</span>
                       <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{combo ? prettyCombo(combo) : t('kbd.unbound')}</span>
                     </motion.button>
                   );

@@ -201,7 +201,7 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, subject, ini
   const close = () => { if (!running.current) onClose(); };
 
   return (
-    <ModalShell open={open} onClose={close} width={520} maxVh={90} cardStyle={cardStyle} ariaLabel={t('modal.new_title')}>
+    <ModalShell helpTarget={{ page: 'planet' }} open={open} onClose={close} width={520} maxVh={90} cardStyle={cardStyle} ariaLabel={t('modal.new_title')}>
       <div
         ref={body.ref}
         data-testid="planet-body"

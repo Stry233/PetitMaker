@@ -61,6 +61,20 @@ afterEach(() => {
 });
 
 describe('the keyboard window', () => {
+  it('shows terrain and annotation assignments on the same keyboard', () => {
+    const { container } = renderWindow();
+    const select = screen.getByRole('combobox', { name: 'Toolbar shown' });
+    fireEvent.change(select, { target: { value: 'terrain' } });
+    const key = (title: string) => [...container.querySelectorAll<HTMLElement>('#kbd-region [title]')].find(keycap => keycap.title === title);
+    expect(key('Brush shape')?.textContent).toContain('5');
+    fireEvent.change(select, { target: { value: 'notes-zone' } });
+    expect(key('Brush shape')?.textContent).toContain('6');
+    expect(key('Measure')?.textContent).toContain('5');
+    expect(key('Font size')?.textContent).toContain('Q');
+    fireEvent.change(select, { target: { value: 'notes-route' } });
+    expect(key('Line style')?.textContent).toContain('Q');
+  });
+
   it('records a chord onto the command the search found', async () => {
     renderWindow();
     fireEvent.change(screen.getByPlaceholderText('Search commands'), { target: { value: 'brush' } });

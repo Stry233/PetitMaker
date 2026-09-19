@@ -2,7 +2,7 @@
   "id": "flower-dahlia",
   "category": "flora",
   "name": {
-    "en": "Yellow Dahlia",
+    "en": "Yellow Dwarf Dahlia",
     "zh": "黄小丽花",
     "ja": "イエローダリア",
     "ru": "Жёлтая георгина",
@@ -11,7 +11,8 @@
     "fr": "Dahlia jaune"
   },
   "aliases": [
-    "大丽花"
+    "大丽花",
+    "Yellow Dahlia"
   ],
   "icon": "flower-dahlia",
   "iconColor": "#d8ad60",

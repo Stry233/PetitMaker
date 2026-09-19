@@ -44,7 +44,7 @@ describe('ExportJsonModal', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(toggle.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(screen.getAllByRole('button', { name: 'Help' })[0]!);
-    expect(screen.getByText(/still too similar/)).toBeTruthy();
+    expect(screen.getByText(/To respect the map creator’s original work/)).toBeTruthy();
   });
   it('renders all section rows with size chips; generation disabled without a recipe', async () => {
     mount();

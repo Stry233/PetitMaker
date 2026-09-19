@@ -2,7 +2,7 @@
   "id": "flower-protea-red",
   "category": "flora",
   "name": {
-    "en": "Red Protea",
+    "en": "Red King Protea",
     "zh": "红帝王花",
     "ja": "レッドプロテア",
     "ru": "Красная протея",
@@ -254,5 +254,8 @@
         "color": "#d5719f"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Red Protea"
+  ]
 }

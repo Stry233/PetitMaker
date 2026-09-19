@@ -1,3 +1,4 @@
+import { eventKeyToken } from './key-token';
 import { editionSupportsCommand } from './edition';
 /*
  * The keymap DATA — every discrete keyboard operation's identity (id, category, label, default
@@ -16,6 +17,7 @@ import { editionSupportsCommand } from './edition';
  */
 import { create } from 'zustand';
 import { readPref, writePref } from './prefs';
+import { TOOLBAR_CONTEXTS, toolbarDefault, type ToolbarContext } from './toolbar-bindings';
 
 export type CommandCategory =
   | 'surface' | 'tool' | 'brush' | 'layer' | 'selection' | 'camera' | 'view' | 'history' | 'app' | 'overlay';
@@ -41,12 +43,13 @@ const ALL_COMMAND_META: readonly CommandMeta[] = [
 
   // Tools
   { id: 'tool.move',    category: 'tool', labelKey: 'menu.move',           defaultCombo: null },
-  // Primary tools occupy 1–4; 5 cycles their shared shapes.
+  // Toolbar defaults follow the active layout through toolbar-bindings.
   { id: 'tool.brush',   category: 'tool', labelKey: 'terrain.brush',       defaultCombo: '1' },
   { id: 'tool.eraser',  category: 'tool', labelKey: 'design.eraser',       defaultCombo: '2' },
   { id: 'tool.edgecut', category: 'tool', labelKey: 'design.edge_cut',     defaultCombo: '3' },
   { id: 'tool.smart',   category: 'tool', labelKey: 'smart.build',         defaultCombo: '4' },
-  { id: 'tool.shape_cycle', category: 'tool', labelKey: 'terrain.shapes', defaultCombo: '5' },
+  { id: 'tool.measure', category: 'tool', labelKey: 'annot.measure', defaultCombo: '5' },
+  { id: 'tool.shape_cycle', category: 'tool', labelKey: 'terrain.shapes', defaultCombo: '6' },
   { id: 'tool.free',    category: 'tool', labelKey: 'terrain.shape.free',  defaultCombo: null },
   { id: 'tool.line',    category: 'tool', labelKey: 'eraser.line',         defaultCombo: null },
   { id: 'tool.curve',   category: 'tool', labelKey: 'eraser.curve',        defaultCombo: null },
@@ -114,6 +117,7 @@ const ALL_COMMAND_META: readonly CommandMeta[] = [
   // match — so unbinding either here hands that key back to the browser, as it should.
   { id: 'app.export_json',  category: 'app', labelKey: 'menu.export', defaultCombo: 'ctrl+s' },
   { id: 'app.export_image', category: 'app', labelKey: 'menu.image',  defaultCombo: 'ctrl+p' },
+  { id: 'app.whats_this', category: 'app', labelKey: 'shortcut.whats_this', defaultCombo: 'shift+h' },
   { id: 'app.help', category: 'app', labelKey: 'menu.help', defaultCombo: null },
   { id: 'app.menu',  category: 'app', labelKey: 'shortcut.toggle_menu', defaultCombo: null },
 
@@ -225,22 +229,25 @@ function joinCombo(key: string, ctrl: boolean, alt: boolean, shift: boolean): st
 
 /** Effective combo for a command: an explicit override (incl. null=unbound) wins, else the registry
  *  default. */
-export function effectiveCombo(overrides: Overrides, id: string): string | null {
+export function effectiveCombo(overrides: Overrides, id: string, context?: ToolbarContext): string | null {
   const cmd = META_BY_ID.get(id);
   if (!cmd) return null;
+  const contextual = context ? toolbarDefault(context, id) : undefined;
+  if (contextual === null) return null;
   if (id in overrides) return overrides[id]!;
-  const combo = cmd.defaultCombo;
+  const combo = contextual ?? cmd.defaultCombo;
   // A changed default must not take a key already assigned by the user.
   if (combo && Object.entries(overrides).some(([other, value]) => other !== id && META_BY_ID.has(other)
+    && (!context || toolbarDefault(context, other) !== null)
     && value != null && normalizeCombo(value) === normalizeCombo(combo))) return null;
   return combo;
 }
 
 /** normalized combo → command id, for every command with a (non-null) effective binding. */
-export function bindingIndex(overrides: Overrides): Map<string, string> {
+export function bindingIndex(overrides: Overrides, context?: ToolbarContext): Map<string, string> {
   const m = new Map<string, string>();
   for (const cmd of COMMAND_META) {
-    const combo = effectiveCombo(overrides, cmd.id);
+    const combo = effectiveCombo(overrides, cmd.id, context);
     if (combo) m.set(normalizeCombo(combo), cmd.id);
   }
   return m;
@@ -328,20 +335,31 @@ interface KeybindStore {
   /** Assign `combo` to `id`, stealing it from any current holder (which becomes unbound). Returns
    *  the displaced command id when a steal happened. Refuses a shifted twin of a live UI-zoom
    *  binding (`uiZoomVariantCombos`), which the zoom listener would answer alongside it. */
-  rebind: (id: string, combo: string) => RebindResult;
+  rebind: (id: string, combo: string, context?: ToolbarContext) => RebindResult;
   /** Explicitly unbind a command (override = null). */
   clear: (id: string) => void;
   /** Replace the ENTIRE keymap from a binds map (id → combo|null). Commands absent from `binds` fall
    *  back to their default; a combo equal to the default stores no override. Used by preset-apply +
    *  JSON import (the caller validates uniqueness first). */
-  applyBinds: (binds: Record<string, string | null>) => void;
+  applyBinds: (binds: Record<string, string | null>, exactOverrides?: Overrides) => void;
   /** Drop every user override (back to shipped defaults). */
   resetAll: () => void;
 }
 
+function overridesFor(binds: Record<string, string | null>): Overrides {
+  const next: Overrides = {};
+  for (const cmd of COMMAND_META) {
+    const desired = cmd.id in binds ? binds[cmd.id] : cmd.defaultCombo;
+    const norm = desired == null ? null : normalizeCombo(desired);
+    const defNorm = cmd.defaultCombo == null ? null : normalizeCombo(cmd.defaultCombo);
+    if (norm !== defNorm) next[cmd.id] = norm;
+  }
+  return next;
+}
+
 export const useKeybinds = create<KeybindStore>((set, get) => ({
   overrides: load(),
-  rebind: (id, combo) => {
+  rebind: (id, combo, context) => {
     const cmd = META_BY_ID.get(id);
     const n = normalizeCombo(combo);
     if (!cmd || !n) return { ok: false };
@@ -352,13 +370,18 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
     }
     const next: Overrides = { ...get().overrides };
     let displaced: string | undefined;
-    for (const [c, holderId] of bindingIndex(next)) {
-      if (c === n && holderId !== id) { next[holderId] = null; displaced = holderId; }
-    }
-    // Assigning a command its own default → drop the override (stay on default) rather than store a
-    // redundant one, so resetAll and "is-default" checks stay clean.
-    if (cmd.defaultCombo && normalizeCombo(cmd.defaultCombo) === n) delete next[id];
+    const defaultCombo = effectiveCombo({}, id, context);
+    if (defaultCombo && normalizeCombo(defaultCombo) === n) delete next[id];
     else next[id] = n;
+    // A custom binding applies in every available toolbar, including ones not currently shown.
+    const own = id in next ? { [id]: next[id]! } : {};
+    for (const scope of [undefined, ...TOOLBAR_CONTEXTS]) {
+      const target = effectiveCombo(own, id, scope);
+      if (!target) continue;
+      for (const [combo, holder] of bindingIndex(get().overrides, scope)) {
+        if (combo === normalizeCombo(target) && holder !== id) { next[holder] = null; displaced = holder; }
+      }
+    }
     set({ overrides: next }); persist(next);
     return { ok: true, displaced };
   },
@@ -367,14 +390,9 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
     const next: Overrides = { ...get().overrides, [id]: null };
     set({ overrides: next }); persist(next);
   },
-  applyBinds: (binds) => {
-    const next: Overrides = {};
-    for (const cmd of COMMAND_META) {
-      const desired = cmd.id in binds ? binds[cmd.id] : cmd.defaultCombo;
-      const norm = desired == null ? null : normalizeCombo(desired);
-      const defNorm = cmd.defaultCombo == null ? null : normalizeCombo(cmd.defaultCombo);
-      if (norm !== defNorm) next[cmd.id] = norm; // else matches default → store no override
-    }
+  applyBinds: (binds, exactOverrides) => {
+    if (exactOverrides) { set({ overrides: { ...exactOverrides } }); persist(exactOverrides); return; }
+    const next = overridesFor(binds);
     set({ overrides: next }); persist(next);
   },
   resetAll: () => { set({ overrides: {} }); persist({}); },
@@ -399,7 +417,7 @@ export interface KeymapPreset {
 const PRO: Record<string, string | null> = {
   'surface.mountain': '1', 'surface.river': '2', 'surface.road': '3',
   'tool.move': 'v', 'tool.brush': 'b', 'tool.eraser': 'e', 'tool.edgecut': 'x',
-  'tool.free': null, 'tool.shape_cycle': null, 'tool.auto_trim': null,
+  'tool.free': null, 'tool.measure': null, 'tool.shape_cycle': null, 'tool.auto_trim': null,
   'tool.line': 'f', 'tool.curve': 'g', 'tool.rect': 'r', 'tool.circle': 'c', 'tool.smart': 't',
   'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
   'selection.rotate_cw': '.', 'selection.rotate_ccw': ',',
@@ -413,7 +431,7 @@ const NUMERIC: Record<string, string | null> = {
   ...PRO,
   'surface.mountain': 'shift+q', 'surface.river': 'w', 'surface.road': 'e',
   'tool.brush': '1', 'tool.eraser': '2', 'tool.edgecut': '3', 'tool.smart': '4',
-  'tool.shape_cycle': '5', 'tool.free': null, 'tool.line': null, 'tool.curve': null, 'tool.rect': null, 'tool.circle': null,
+  'tool.measure': '5', 'tool.shape_cycle': '6', 'tool.free': null, 'tool.line': null, 'tool.curve': null, 'tool.rect': null, 'tool.circle': null,
   'tool.auto_trim': 'q',
   'camera.pan_up': 'arrowup', 'camera.pan_down': 'arrowdown',
   'camera.pan_left': 'arrowleft', 'camera.pan_right': 'arrowright',
@@ -437,10 +455,10 @@ export function presetBinds(preset: KeymapPreset): Map<string, string | null> {
 }
 
 /** Full effective keymap under the current overrides. */
-function currentBinds(overrides: Overrides): Map<string, string | null> {
+function currentBinds(overrides: Overrides, context?: ToolbarContext): Map<string, string | null> {
   const m = new Map<string, string | null>();
   for (const cmd of COMMAND_META) {
-    const c = effectiveCombo(overrides, cmd.id);
+    const c = effectiveCombo(overrides, cmd.id, context);
     m.set(cmd.id, c == null ? null : normalizeCombo(c));
   }
   return m;
@@ -454,8 +472,10 @@ function mapsEqual(a: Map<string, string | null>, b: Map<string, string | null>)
 
 /** Which preset the current overrides match, or 'custom'. */
 export function detectPreset(overrides: Overrides): string {
-  const cur = currentBinds(overrides);
-  for (const p of PRESETS) if (mapsEqual(cur, presetBinds(p))) return p.id;
+  for (const preset of PRESETS) {
+    const expected = overridesFor(preset.binds);
+    if ([undefined, ...TOOLBAR_CONTEXTS].every(context => mapsEqual(currentBinds(overrides, context), currentBinds(expected, context)))) return preset.id;
+  }
   return 'custom';
 }
 
@@ -471,12 +491,13 @@ const FILE_MARK = 'petitmaker-keybinds';
 export function serializeKeybinds(overrides: Overrides): string {
   const binds: Record<string, string | null> = {};
   for (const [id, combo] of currentBinds(overrides)) binds[id] = combo;
-  return JSON.stringify({ app: FILE_MARK, version: 1, binds }, null, 2);
+  return JSON.stringify({ app: FILE_MARK, version: 1, binds, overrides }, null, 2);
 }
 
 export interface ParseResult {
   ok: boolean;
   binds?: Record<string, string | null>;
+  overrides?: Overrides;
   error?: 'invalid-json' | 'invalid-shape' | 'invalid-combo' | 'reserved-combo' | 'duplicate-combo' | 'empty';
 }
 
@@ -511,5 +532,27 @@ export function parseKeybinds(text: string): ParseResult {
   for (const [id, combo] of Object.entries(binds)) {
     if (combo && !UI_ZOOM_IDS.includes(id) && variants.has(combo)) return { ok: false, error: 'reserved-combo' };
   }
+  if (env && typeof env === 'object' && 'overrides' in env) {
+    const exact = (env as { overrides: unknown }).overrides;
+    if (!exact || typeof exact !== 'object' || Array.isArray(exact)) return { ok: false, error: 'invalid-shape' };
+    const parsed = Object.keys(exact).length ? parseKeybinds(JSON.stringify(exact)) : { ok: true, binds: {} };
+    if (!parsed.ok || !parsed.binds) return { ok: false, error: 'invalid-shape' };
+    for (const [id, combo] of currentBinds(parsed.binds)) {
+      if (binds[id] !== combo) return { ok: false, error: 'invalid-shape' };
+    }
+    return { ok: true, binds, overrides: parsed.binds };
+  }
   return { ok: true, binds };
+}
+
+export function comboFromEvent(e: KeyboardEvent): string | null {
+  const k = e.key;
+  if (k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return null;
+  const char = eventKeyToken(e); // 'escape', 'backspace', 'num5', 'b', 'space', …
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+  if (e.altKey) parts.push('alt');
+  if (e.shiftKey) parts.push('shift');
+  parts.push(char);
+  return normalizeCombo(parts.join('+'));
 }

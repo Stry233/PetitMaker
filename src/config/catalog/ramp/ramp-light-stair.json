@@ -2,7 +2,7 @@
   "id": "ramp-light-stair",
   "category": "ramp",
   "name": {
-    "en": "Light Stair",
+    "en": "Lightwood Garden Steps",
     "zh": "庭院浅木梯",
     "ja": "明るい木の階段",
     "ru": "Светлая лестница",
@@ -294,5 +294,8 @@
         "color": "#caa876"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Light Stair"
+  ]
 }

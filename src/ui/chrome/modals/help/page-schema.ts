@@ -71,6 +71,8 @@ export interface HelpPage {
   /** A shorter name for the nav column; the page heading keeps `titleKey`. */
   navKey?: string;
   ledeKey: string;
+  /** Where to find the feature, displayed with the summary. */
+  entryKey: string;
   figure?: HelpFigure;
   action?: HelpAction;
   sections: readonly HelpSection[];

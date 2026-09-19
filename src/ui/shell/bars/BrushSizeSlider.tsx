@@ -2,11 +2,16 @@
 import { useT } from '../../../i18n/context';
 import { BarSlider } from './BarSlider';
 import { BRUSH } from './terrain-cells';
+import { CELL_BOX } from './ToolCell';
+import { SCALE } from '../units';
 
 import track from '../../../assets/shell/shelf-mountain/brush-size/roundrect.svg';
 import knob from '../../../assets/shell/shelf-mountain/brush-size/ellipse-1.svg';
 import pip from '../../../assets/shell/shelf-mountain/brush-size/ellipse-2.svg';
 import tick from '../../../assets/shell/shelf-mountain/brush-size/ticks/ellipse-1.svg';
+
+export const READOUT_SIZE = Math.round(BRUSH.readoutSize * SCALE);
+export const SLIDER_LIFT = CELL_BOX.h / 2 - (BRUSH.centreY - BRUSH.track.y) * SCALE;
 
 export function BrushSizeSlider({ value, onChange, disabled }: {
   value: number;

@@ -114,7 +114,7 @@ export function ShareWindow() {
   const gameFade = useScrollFade(gameRef, 'y');
 
   return (
-    <ModalShell
+    <ModalShell helpTarget={{ page: section === 'keep' ? 'json' : section === 'game' ? 'checklist' : 'share' }}
       open={open}
       onClose={close}
       motionSize={SIZE[section]}

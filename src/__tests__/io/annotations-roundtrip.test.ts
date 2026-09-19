@@ -1,7 +1,7 @@
 /** The save codec carries a non-empty plan-notes layer as one optional, validated field. The
  * canonical terrain/object map remains independent from this annotation carrier. */
 import { describe, it, expect } from 'vitest';
-import { serialize, deserialize } from '../../io/json-codec';
+import { serialize, deserialize, decodeAnnotations } from '../../io/json-codec';
 import { canonicalize, toSaveJSON } from '../../io/share/canonical';
 import { autosaveWorthy } from '../../io/autosave';
 import { makeState } from '../rules/_helpers';
@@ -94,5 +94,29 @@ describe('annotations through serialize/deserialize', () => {
     expect(autosaveWorthy(state)).toBe(false);
     state.annotations = notes();
     expect(autosaveWorthy(state)).toBe(true);
+  });
+});
+
+describe('measurement persistence', () => {
+  const note = { kind: 'measure', id: 'distance', points: [{ x: 1, y: 4 }, { x: 84, y: 4 }], color: '#FFB347' } as const;
+  it('round-trips a measurement-only map and makes it autosave-worthy', () => {
+    const state = makeState(100, 100);
+    state.annotations = { items: [{ ...note, points: [...note.points] }], visible: true, locked: false };
+    expect(autosaveWorthy(state)).toBe(true);
+    expect(deserialize(serialize(state), state.template).annotations).toEqual(state.annotations);
+  });
+  it.each([true, false])('preserves the flipped side %s in save files', flipped => {
+    const state = makeState(100, 100);
+    state.annotations = { items: [{ ...note, points: [...note.points], flipped }], visible: true, locked: false };
+    expect(deserialize(serialize(state), state.template).annotations).toEqual(state.annotations);
+  });
+  it.each([
+    { points: [{ x: 1, y: 2 }] },
+    { points: [{ x: 1.5, y: 2 }, { x: 8, y: 2 }] },
+    { points: [{ x: 1, y: 2 }, { x: 8, y: 9 }] },
+    { points: [null, { x: 8, y: 2 }] },
+    { points: [{ x: 1, y: 2 }, { x: Infinity, y: 2 }] },
+  ])('rejects malformed measurement endpoints $points', ({ points }) => {
+    expect(decodeAnnotations({ items: [{ ...note, points }] })).toBeUndefined();
   });
 });

@@ -249,27 +249,14 @@ describe('the row of names travels sideways', () => {
     expect(list.classList.contains('pw-noscroll')).toBe(true);
   });
 
-  /**
-   * The bring-back must follow the CHOICE: picking a name at the row's far end and having the row
-   * snap home to its first name scrolls the chosen tab out from under the click. A conditional ref
-   * cannot carry this on a motion element — framer memoizes its forwarded ref callback, so a ref
-   * prop that changes on a persistent button never rebinds — which is why the reveal reads the row
-   * for the selected tab instead.
-   */
-  it('brings the tab that was chosen back into view, not the one the shelf opened on', () => {
-    const revealed: HTMLElement[] = [];
-    (HTMLElement.prototype as { scrollIntoView?: (opts?: unknown) => void }).scrollIntoView =
-      function (this: HTMLElement) { revealed.push(this); };
-    try {
-      mount();
-      const tabs = screen.getAllByRole('tab');
-      const far = tabs[tabs.length - 1]!;
-      fireEvent.click(far);
-      const last = revealed[revealed.length - 1];
-      expect(last?.textContent).toBe(far.textContent);
-    } finally {
-      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    }
+  it('reveals the newly selected tab within its own row', () => {
+    mount();
+    const list = overflowing();
+    const tabs = screen.getAllByRole('tab');
+    const far = tabs[tabs.length - 1]!;
+    Object.defineProperties(far, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
+    fireEvent.click(far);
+    expect(list.scrollLeft).toBe(500);
   });
 
   /**
@@ -338,51 +325,26 @@ describe('the row of names travels sideways', () => {
     expect(list.scrollLeft).toBe(was);
   });
 
-  /**
-   * The routes that are not a click on the name. The shelf opens on the ARMED item's category,
-   * which can be the last of the six, and clearing a search puts a category back in force; neither
-   * would scroll to the name on its own. jsdom implements no scrolling, so the call is the fact.
-   */
-  it('brings the chosen name back into view when it was not clicked', () => {
-    const seen: HTMLElement[] = [];
-    Element.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
-      seen.push(this);
-    };
-    try {
-      mount('facility-pavilion');
-      const facilities = screen.getByRole('tab', { name: 'Facilities' });
-      expect(facilities.getAttribute('aria-selected')).toBe('true');
-      expect(seen).toContain(facilities);
-
-      // A search puts no name in force, and clearing it brings the category's own name back.
-      seen.length = 0;
-      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzznothing' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
-      expect(seen).toContain(screen.getByRole('tab', { name: 'Facilities' }));
-    } finally {
-      delete (Element.prototype as Partial<Element>).scrollIntoView;
-    }
+  it('reveals the armed category when a search is cleared', () => {
+    mount('facility-pavilion');
+    const list = overflowing();
+    const facilities = screen.getByRole('tab', { name: 'Facilities' });
+    expect(facilities.getAttribute('aria-selected')).toBe('true');
+    Object.defineProperties(facilities, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzznothing' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(list.scrollLeft).toBe(500);
   });
 
-  /** Every name stays a tab stop, and a focused one is brought into view: a row reachable only by a
-   *  horizontal wheel is not reachable on most hardware. */
-  it('brings a focused name into view, and keeps every one of them a tab stop', () => {
-    const seen: HTMLElement[] = [];
-    Element.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
-      seen.push(this);
-    };
-    try {
-      mount();
-      const tabs = screen.getAllByRole('tab');
-      for (const tab of tabs) expect(tab.tabIndex).toBeGreaterThanOrEqual(0);
-
-      const last = tabs[tabs.length - 1]!;
-      seen.length = 0;
-      fireEvent.focus(last);
-      expect(seen).toContain(last);
-    } finally {
-      delete (Element.prototype as Partial<Element>).scrollIntoView;
-    }
+  it('reveals a focused tab within its row and keeps every tab a tab stop', () => {
+    mount();
+    const list = overflowing();
+    const tabs = screen.getAllByRole('tab');
+    for (const tab of tabs) expect(tab.tabIndex).toBeGreaterThanOrEqual(0);
+    const last = tabs[tabs.length - 1]!;
+    Object.defineProperties(last, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
+    fireEvent.focus(last);
+    expect(list.scrollLeft).toBe(500);
   });
 });
 

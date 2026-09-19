@@ -2,7 +2,7 @@
   "id": "bridge-retro-arch",
   "category": "bridge",
   "name": {
-    "en": "Retro Arch",
+    "en": "Retro Block Arch Bridge",
     "zh": "复古街区拱桥",
     "ja": "レトロアーチ橋",
     "ru": "Ретро-арочный мост",
@@ -14,7 +14,8 @@
     "stone",
     "石桥",
     "red",
-    "红"
+    "红",
+    "Retro Arch"
   ],
   "icon": "bridge-retro-arch",
   "width": 2,

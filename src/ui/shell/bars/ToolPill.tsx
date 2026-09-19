@@ -1,3 +1,5 @@
+import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
+import { useToolbarContext } from '../use-toolbar-context';
 import { AnimatePresence, motion } from 'framer-motion';
 import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
 import { btnReset, buttonMotion, cursors } from '../../design/styles';
@@ -5,24 +7,34 @@ import { ACTIVE, PLATE } from '../../design/tokens';
 import { GlyphIcon } from '../GlyphIcon';
 import type { Glyph } from '../frame';
 import { useMotion } from '../motion/use-motion';
-import { captionShift, SCALE, TEXT } from '../units';
+import { captionShift, QUAD, SCALE, TEXT } from '../units';
 import { BarText, ShortcutBadge } from './bar-atoms';
 import { CELL_BOX } from './ToolCell';
 import { PILL_H, PLATE_PAD } from './terrain-cells';
 
-export const TERRAIN_TOOL_WIDTH = 170 * SCALE;
-export const TERRAIN_TOOL_GROWTH = 30 * SCALE;
+export const TOOL_PILL_WIDTH = 170 * SCALE;
+export const TOOL_PILL_GROWTH = 30 * SCALE;
 
-export function TerrainToolButton({ glyph, label, commandId, active, centre, onSelect }: {
+export const TOOL_PILL_GAP = 8;
+
+export function toolPillCentre(index: number, activeIndex: number): number {
+  return QUAD.left + index * (TOOL_PILL_WIDTH + TOOL_PILL_GAP) + TOOL_PILL_WIDTH / 2
+    + (activeIndex >= 0 && activeIndex < index ? TOOL_PILL_GROWTH : 0)
+    + (activeIndex === index ? TOOL_PILL_GROWTH / 2 : 0);
+}
+
+export function ToolPill({ helpTarget, glyph, label, commandId, active, centre, onSelect }: {
+  helpTarget?: HelpTarget;
   glyph: Glyph; label: string; commandId?: string;
   active: boolean; centre: number; onSelect: () => void;
 }) {
   const transition = useMotion('tool.plate.shape');
   const overrides = useKeybinds(s => s.overrides);
-  const combo = commandId ? effectiveCombo(overrides, commandId) : null;
-  return <motion.div initial={false} animate={{ width: TERRAIN_TOOL_WIDTH + (active ? TERRAIN_TOOL_GROWTH : 0) }} transition={transition}
+  const context = useToolbarContext();
+  const combo = commandId ? effectiveCombo(overrides, commandId, context) : null;
+  return <motion.div initial={false} animate={{ width: TOOL_PILL_WIDTH + (active ? TOOL_PILL_GROWTH : 0) }} transition={transition}
     style={{ position: 'relative', height: CELL_BOX.h, flex: 'none' }}>
-    <motion.button type="button" {...buttonMotion} aria-label={label} aria-pressed={active}
+    <motion.button {...helpAttributes(helpTarget)} type="button" {...buttonMotion} aria-label={label} aria-pressed={active}
       title={combo ? `${label} (${prettyCombo(combo)})` : label} onClick={onSelect}
       initial={false} animate={{ backgroundColor: active ? ACTIVE : PLATE }} transition={transition}
       style={{ ...btnReset, position: 'absolute', top: -PLATE_PAD.y, width: '100%', height: PILL_H,

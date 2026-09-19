@@ -1,3 +1,4 @@
+import { useToolbarContext } from '../../../shell/use-toolbar-context';
 /*
  * KeymapMiniature.tsx — the live keymap as a picture: the main typing block with every keycap
  * wearing its command's category color at the base layer, no key text. It reads the same binding
@@ -34,7 +35,8 @@ const VIEW_H = ROWS.length * KEY_H + (ROWS.length - 1) * ROW_G + PAD * 2;
 
 export function KeymapMiniature({ style }: { style?: CSSProperties }) {
   const overrides = useKeybinds((s) => s.overrides);
-  const index = useMemo(() => bindingIndex(overrides), [overrides]);
+  const context = useToolbarContext();
+  const index = useMemo(() => bindingIndex(overrides, context), [overrides, context]);
   const aliases = useMemo(() => aliasIndex(), []);
 
   const keys: ReactNode[] = [];

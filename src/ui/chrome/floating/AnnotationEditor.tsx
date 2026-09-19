@@ -1,3 +1,4 @@
+import { helpTargetAttr } from '../modals/help/targets';
 import { viewportSize } from '../../../core/runtime/viewport-space';
 /*
  * AnnotationEditor.tsx — the plan-notes chrome that follows the map: the small verb row a selected
@@ -22,6 +23,7 @@ import { endCurveSession } from '../../../tools/paint';
 import { btnReset, cursors, exitTransition, font, springs, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
+import { MeasurementHandles } from './MeasurementHandles';
 
 /** Where a note's chrome stands: the note's own anchor, projected. */
 function anchorOf(note: MapAnnotation): { x: number; y: number } {
@@ -40,9 +42,13 @@ export function AnnotationEditor() {
   useEffect(() => {
     const onMove = () => setTick((n) => n + 1);
     eventBus.on('viewport-changed', onMove);
+    eventBus.on('cells-changed', onMove);
+    window.addEventListener('resize', onMove);
     const offView = onActiveViewChange(onMove);
     return () => {
       eventBus.off('viewport-changed', onMove);
+      eventBus.off('cells-changed', onMove);
+      window.removeEventListener('resize', onMove);
       offView();
     };
   }, [eventBus]);
@@ -51,18 +57,26 @@ export function AnnotationEditor() {
 
   const items = useEditorStore.getState().gridState?.annotations?.items ?? [];
   const picked = selection.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
+  const data = useEditorStore.getState().gridState?.annotations;
+  const measurement = picked.length === 1 && picked[0]?.kind === 'measure' ? picked[0] : null;
   return (
+    <>
+    {mode === 'annotate' && data?.visible && !data.locked && measurement
+      ? <MeasurementHandles key={measurement.id} note={measurement} /> : null}
     <AnimatePresence>
-      {mode === 'annotate' && picked.length > 0
+      {mode === 'annotate' && data?.visible && picked.length > 0
         ? <SelectedVerbs key={`verbs-${picked[picked.length - 1]!.id}-${picked.length}`} notes={picked} />
         : null}
     </AnimatePresence>
+    </>
   );
 }
 
 function screenAnchor(note: MapAnnotation): { x: number; y: number; behind: boolean } | null {
   const proj = getActiveView()?.projection;
   if (!proj) return null;
+  const label = proj.annotationLabelBox?.(note.id);
+  if (label) return { x: label.x + label.w / 2, y: label.y, behind: false };
   const a = anchorOf(note);
   const s = proj.cellToScreen(a.x, a.y);
   return { x: s.x, y: s.y, behind: s.behind === true };
@@ -77,9 +91,11 @@ function SelectedVerbs({ notes }: { notes: MapAnnotation[] }) {
   const s = () => useEditorStore.getState();
   const locked = s().gridState?.annotations?.locked === true;
   const mergeable = notes.length > 1 && notes.every((n) => n.kind === 'zone');
+  const flippable = notes.every(n => n.kind === 'measure');
   const verb = (label: string, onPress: () => void, danger?: boolean) => (
     <button
       type="button"
+      disabled={locked}
       onClick={onPress}
       style={{
         ...btnReset, cursor: cursors.clickable,
@@ -94,6 +110,7 @@ function SelectedVerbs({ notes }: { notes: MapAnnotation[] }) {
   );
   return (
     <motion.div
+      {...helpTargetAttr('notes', 'notes-select')}
       initial={{ scale: 0.85, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
@@ -110,6 +127,7 @@ function SelectedVerbs({ notes }: { notes: MapAnnotation[] }) {
       {mergeable
         ? verb(t('annot.merge'), () => { if (!locked) s().mergeAnnotationZones(notes.map((n) => n.id)); })
         : null}
+      {flippable ? verb(t('annot.flip'), () => s().flipMeasurements(notes.map(n => n.id))) : null}
       {verb(t('annot.delete'), () => {
         if (locked) return;
         endCurveSession();

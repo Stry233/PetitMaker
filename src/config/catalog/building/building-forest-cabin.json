@@ -2,7 +2,7 @@
   "id": "building-forest-cabin",
   "category": "building",
   "name": {
-    "en": "Forest Cabin",
+    "en": "Isaki's Mushi no Mori House",
     "zh": "虫之森小屋（伊佐奇）",
     "ja": "イサキの家",
     "ru": "Дом Исаки",
@@ -620,5 +620,8 @@
         "color": "#ece5cf"
       }
     ]
-  }
+  },
+  "aliases": [
+    "Forest Cabin"
+  ]
 }
