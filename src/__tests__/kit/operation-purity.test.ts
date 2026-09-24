@@ -32,8 +32,13 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
+/** `filesUnder` builds paths with `path.join`, so the separator is the platform's. Report and
+ *  compare on the POSIX form — otherwise a Windows checkout both fails to exempt the bindings and
+ *  prints backslash paths in the failure message. */
+const toPosix = (file: string): string => file.replace(/\\/g, '/');
+
 /** The pointer binding receives ToolContext and reports outcomes; macro bodies stay silent. */
-const isToolBinding = (file: string): boolean => ['macros/macro-tool.ts', 'macros/drag-tool.ts', 'macros/spray-tool.ts'].some(binding => file.endsWith(binding));
+const isToolBinding = (file: string): boolean => ['macros/macro-tool.ts', 'macros/drag-tool.ts', 'macros/spray-tool.ts'].some(binding => toPosix(file).endsWith(binding));
 
 describe('operations stay silent', () => {
   it('never narrates its own result', () => {
@@ -48,7 +53,7 @@ describe('operations stay silent', () => {
         if (isToolBinding(file)) continue;
         const text = readFileSync(file, 'utf8');
         for (const { pattern, why } of FORBIDDEN) {
-          if (pattern.test(text)) offenders.push(`${relative(resolve(__dirname, '../..'), file)} ${why}`);
+          if (pattern.test(text)) offenders.push(`${toPosix(relative(resolve(__dirname, '../..'), file))} ${why}`);
         }
       }
     }
@@ -63,7 +68,7 @@ describe('operations stay silent', () => {
       for (const file of filesUnder(root)) {
         if (isToolBinding(file)) continue;
         const text = readFileSync(file, 'utf8');
-        if (/\buseEditorStore\b/.test(text)) offenders.push(relative(resolve(__dirname, '../..'), file));
+        if (/\buseEditorStore\b/.test(text)) offenders.push(toPosix(relative(resolve(__dirname, '../..'), file)));
       }
     }
     expect(offenders).toEqual([]);

@@ -48,11 +48,16 @@ async function main(): Promise<void> {
   const nextVercel = stringifyVercelJson(toVercelJson(existingVercel, HEADERS_POLICY));
   writeIfChanged(vercelPath, nextVercel, drift, check);
 
-  // Deployment-operator copy of the ESA headers.
+  // Deployment-operator copy of the ESA headers. It lives under docs/internal/, a tree the public
+  // snapshot does not carry, so the guard is the DIRECTORY's presence: where the internal tree
+  // exists the doc is written and checked (deleting it is drift); where it does not, the file is
+  // not this checkout's to assert on and reporting it would fail every run.
   const esaPath = join(rootDir, 'docs', 'internal', 'deployment', 'esa-headers.md');
-  writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY, {
-    canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins,
-  }), drift, check);
+  if (existsSync(join(rootDir, 'docs', 'internal'))) {
+    writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY, {
+      canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins,
+    }), drift, check);
+  }
 
   // index.html — surgical CSP <meta> (+ comment) rewrite only.
   const indexPath = join(rootDir, 'index.html');
@@ -66,10 +71,10 @@ async function main(): Promise<void> {
       for (const p of drift.paths) console.error(`  ${p}`);
       process.exitCode = 1;
     } else {
-      console.log('[generate-headers] up to date (public/_headers, vercel.json, docs/internal/deployment/esa-headers.md, index.html).');
+      console.log('[generate-headers] up to date (public/_headers, vercel.json, index.html, and the ESA doc where docs/internal/ exists).');
     }
   } else {
-    console.log('[generate-headers] wrote public/_headers, vercel.json, docs/internal/deployment/esa-headers.md; rewrote index.html CSP meta.');
+    console.log('[generate-headers] wrote public/_headers, vercel.json; rewrote index.html CSP meta (plus the ESA doc where docs/internal/ exists).');
   }
 }
 

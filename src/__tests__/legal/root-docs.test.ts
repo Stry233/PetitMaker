@@ -13,6 +13,19 @@ const read = (p: string) => readFileSync(p, 'utf8');
 // Count `##`/`###`/… headings in a markdown slice.
 const headingCount = (md: string) => (md.match(/^#{2,}\s/gm) ?? []).length;
 
+/*
+ * Changelog state helpers. `scripts/changelog-core.mts` rewrites the staged heading
+ * (`## [Unreleased]` / `## [未发布]`) into a released one (`## [x.y.z] - date`), so a changelog is
+ * legitimately in one of two states and moves between them on every publish: STAGED (pending work
+ * sits under the staged heading) or PUBLISHED (that heading has already become a release). Pin what
+ * must hold in BOTH — a single staged section at most, and well-formed released headings — rather
+ * than the repository's current release stage, which the guards below cannot see.
+ */
+const STAGED_HEADING = /^##\s*\[(?:Unreleased|未发布)\]\s*$/gm;
+const RELEASED_HEADING = /^##\s*\[\d+\.\d+\.\d+\]\s*-\s*\d{4}-\d{2}-\d{2}\s*$/gm;
+const stagedHeadings = (md: string) => md.match(STAGED_HEADING) ?? [];
+const releasedHeadings = (md: string) => md.match(RELEASED_HEADING) ?? [];
+
 describe('SECURITY.md — reporting policy', () => {
   const SEC = read('SECURITY.md');
 
@@ -221,10 +234,12 @@ describe('CHANGELOG.zh-CN.md — authored equivalent', () => {
   });
 
   it('carries the staged section the publish step rewrites into a release', () => {
-    // changelog-core.mts matches this heading in either language; losing it would publish
-    // a Chinese changelog with no release notes at all. Its mechanics are pinned in
-    // scripts/__tests__/release.test.mts.
-    expect(ZH).toMatch(/^##\s*\[未发布\]\s*$/m);
+    // changelog-core.mts matches this heading in either language; losing it while staged work
+    // remains would publish a Chinese changelog with no release notes at all. Its mechanics are
+    // pinned in scripts/__tests__/release.test.mts. A published changelog has already spent it, so
+    // the guard is "at most one, and never none of both states".
+    expect(stagedHeadings(ZH).length).toBeLessThanOrEqual(1);
+    expect(stagedHeadings(ZH).length + releasedHeadings(ZH).length).toBeGreaterThan(0);
   });
 });
 
@@ -249,23 +264,26 @@ describe('CONTRIBUTING.md — DCO + inbound=outbound', () => {
   });
 });
 
-describe('CHANGELOG.md — Keep a Changelog, one unpublished section', () => {
+describe('CHANGELOG.md — Keep a Changelog, one staged section', () => {
   const CL = read('docs/CHANGELOG.md');
 
   it('follows Keep a Changelog and links the format', () => {
     expect(CL).toContain('Keep a Changelog');
   });
 
-  it('carries the Unreleased section the publish step rewrites into a release', () => {
-    // changelog-core.mts turns this heading into `## [version] - date`, so losing it would
-    // publish a changelog with no release notes at all.
-    expect(CL).toMatch(/^##\s*\[Unreleased\]\s*$/m);
+  it('carries the staged section the publish step rewrites into a release', () => {
+    // changelog-core.mts turns this heading into `## [version] - date`, so a second staged heading
+    // would be rewritten ambiguously, and a changelog with neither state has no notes to publish.
+    expect(stagedHeadings(CL).length).toBeLessThanOrEqual(1);
+    expect(stagedHeadings(CL).length + releasedHeadings(CL).length).toBeGreaterThan(0);
   });
 
-  it('holds no released section yet, so a first publish reads as one release', () => {
-    // Every `## [x.y.z]` here would be carried forward alongside the new release. The public
-    // repository has none published, so a seeded version would show up as a second entry.
-    expect(CL.match(/^##\s*\[\d/gm)).toBeNull();
+  it('marks every released section with a version and a date', () => {
+    // The publish rewrite is the only thing that introduces released headings, and it writes the
+    // date with the version. A numeric heading that is not `## [x.y.z] - YYYY-MM-DD` (a bare
+    // `## [1.2]`, a missing date) would leave the next publish without a date to order by.
+    const numericHeadings = CL.match(/^##\s*\[\d[^\]]*\]/gm) ?? [];
+    expect(numericHeadings.length).toBe(releasedHeadings(CL).length);
   });
 });
 

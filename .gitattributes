@@ -1,0 +1,29 @@
+# Line endings are LF everywhere, whatever the platform's `core.autocrlf` says.
+#
+# Without this file, a Windows checkout with git's default `core.autocrlf=true` rewrites every
+# text file to CRLF, and the guards that compare committed bytes then fail on a clean clone:
+# LICENSE/NOTICE are pinned by length and SHA-256 (license-files.test.ts), public/_headers,
+# vercel.json and the index.html CSP meta are compared as text (headers-policy.test.ts), and
+# docs/ARCHITECTURE.md is compared against a fresh render (reference-doc.test.ts). Tooling that
+# reads the same files (`generate-headers`, `generate-reference`, `stamp-build`) is line-ending
+# agnostic because of this declaration rather than because every caller normalizes by hand.
+* text=auto eol=lf
+
+# Third-party licence text is copied verbatim from the shipped packages by `npm run legal:licenses`,
+# and several upstream LICENSE files are CRLF. Normalising them would make the committed copies
+# differ from what the extractor produces, so they are excluded from text conversion.
+licenses/** -text
+
+# Binary assets: never inspected, never converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.onnx binary
+*.bin  binary
+*.gz   binary
+*.wasm binary

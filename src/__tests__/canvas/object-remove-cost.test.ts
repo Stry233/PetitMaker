@@ -11,7 +11,7 @@
  * at zero, however many decorations sit on the map.
  */
 import './_pixi-env';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ObjectLayer } from '../../canvas/map2d/layers/object-layer';
 import { type PlacedObject } from '../../core/model/types';
 import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
@@ -35,6 +35,14 @@ function instrumentLodMap(layer: ObjectLayer): { map: Map<string, unknown>; walk
   map.forEach = count(map.forEach.bind(map));
   return { map, walks: () => walks };
 }
+
+/** Building thousands of sprites through Pixi inside jsdom dominates these tests; the assertions
+ *  themselves only count full-collection walks. Measured on an idle machine the three cases take
+ *  117ms, 823ms and 396ms, so the default 5s is not the problem — a LOADED worker is, where all
+ *  three timed out while the whole suite ran in parallel. Stated rather than inherited, at the
+ *  budget the repository's other heavy suites already use (`vi.setConfig({ testTimeout: 60_000 })`
+ *  in the generation suites). */
+vi.setConfig({ testTimeout: 60_000 });
 
 describe('ObjectLayer.removeObjects costs the removal, not the map', () => {
   it('drops exactly the removed ids from the LOD-tracked set', () => {

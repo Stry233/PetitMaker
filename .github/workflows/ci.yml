@@ -1,0 +1,70 @@
+# Type-check, test, drift-check and build on every push to the public branch and every pull request.
+#
+# Windows is in the matrix deliberately. Two shipped guards fail ONLY on a Windows checkout:
+#
+#   * the byte-comparison guards (LICENSE length + SHA-256, public/_headers, vercel.json, the
+#     index.html CSP meta, docs/ARCHITECTURE.md against a fresh render) compare committed text, and
+#     a checkout with git's default `core.autocrlf=true` rewrote every file to CRLF before
+#     `.gitattributes` pinned `eol=lf`. The guards were red on a clean clone and nothing said so;
+#   * `kit/operation-purity.test.ts` exempts three macro bindings by suffix, and `path.join` gives
+#     them backslash separators on Windows, so the exemption silently stopped applying.
+#
+# A Linux-only job cannot observe either, which is how both reached a release.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # The repository's own floor, not a copy of it: `.node-version` is what a local clone reads.
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Test
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      # Generated artefacts carry their own drift guards, and they read the same committed files the
+      # tests do — so they run after the build has produced `dist/` for the license/bundle closure
+      # comparison. `legal:validate` is the release-mode config check `npm run build:release` leads
+      # with; running it here means a broken legal config fails on the pull request rather than at
+      # publish time.
+      - name: Generated-artefact drift
+        shell: bash
+        run: |
+          npm run stamp:check
+          npm run docs:check
+          npm run legal:licenses:check
+          npm run legal:headers:check
+          npm run legal:validate
